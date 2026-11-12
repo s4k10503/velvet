@@ -13,12 +13,12 @@ namespace Velvet
     // are not Velvet's to restyle. One of them inside another is left to inherit, so a family an element between the
     // two names reaches what is under it.
     //
-    // The preflight's rule loses to an author's, so nothing is written on one of them that a rule of a stylesheet other
-    // than a default one, or an inline font, gives a font, on itself or on an element above it: that font is inherited
-    // instead. The rules are asked of the engine's matcher through BorderPreflight.AuthorRuleSets, and where the
-    // matcher cannot be built only inline fonts are read. An inline font somebody else wrote on one of them is theirs
-    // and stays, as does StyleFontResolver's on a portal row (Overwritten); the value written here is taken back only
-    // while it is still the one written here.
+    // The preflight's rule loses to an author's, so nothing is written on one of them where the font that would show
+    // without the write is one an author gave it or an element above it, by a rule of a stylesheet other than a default
+    // one or inline (AuthorFont): that font is inherited instead. The rules are asked of the engine's matcher through
+    // BorderPreflight.AuthorRuleSets, and where the matcher cannot be built only inline fonts are read. An inline font
+    // somebody else wrote on one of them is theirs and stays, as does StyleFontResolver's on a portal row
+    // (Overwritten); the value written here is taken back only while it is still the one written here.
     //
     // What decides all of this is read again at each hold, each release and each change to the registry, and, while a
     // default family resolves, at each update of the element's panel after the stamp of its chain moves.
@@ -58,7 +58,8 @@ namespace Velvet
         private static readonly List<Root> s_held = new();
         private static readonly Predicate<Root> s_collected = static root => !root.Element.TryGetTarget(out _);
 
-        private static readonly string[] s_fontProperties = { "-unity-font-definition", "-unity-font" };
+        private static readonly string[] s_definition = { "-unity-font-definition" };
+        private static readonly string[] s_legacy = { "-unity-font" };
 
         static DefaultFamilyRoots() => VelvetFonts.FontsChanged += Apply;
 
@@ -159,7 +160,9 @@ namespace Velvet
         private static void Write(VisualElement element, Root root, FontAsset? asset)
         {
             var inline = element.style.unityFontDefinition;
-            var ours = root.Written != null && inline.value.fontAsset == root.Written;
+            // LineBoxFont shows the element's font through a copy of it, which is the write here where it copies that.
+            var shown = inline.value.fontAsset;
+            var ours = root.Written != null && (shown == root.Written || LineBoxFont.SourceOf(shown) == root.Written);
             if (!ours && inline.keyword != StyleKeyword.Null) return;
 
             root.Written = asset;
@@ -178,22 +181,34 @@ namespace Velvet
             return false;
         }
 
-        // Whether an author gives element, or an element above it, a font: an inline one on an ancestor (the element's
-        // own is Write's to keep), or one a rule of a stylesheet other than a default one sets.
+        // Whether the font that would show on element without the write here is an author's: a definition a rule gives
+        // element or an element above it, or that an ancestor holds inline (the element's own is Write's to keep); or a
+        // legacy Font so given, or held inline on element itself, where no definition applies there or is inherited
+        // into it, since UI Toolkit draws a definition ahead of a legacy Font.
         private static bool AuthorFont(VisualElement element)
         {
             for (var link = element; link != null; link = link.hierarchy.parent)
             {
-                if (link != element && InlineFont(link)) return true;
-                if (BorderPreflight.AuthorRuleSets(link, s_fontProperties) == true) return true;
+                if (link != element && link.style.unityFontDefinition.keyword != StyleKeyword.Null) return true;
+                if (BorderPreflight.AuthorRuleSets(link, s_definition) == true) return true;
+                if (Defined(element, link)) continue;
+                if (link.style.unityFont.keyword != StyleKeyword.Null) return true;
+                if (BorderPreflight.AuthorRuleSets(link, s_legacy) == true) return true;
             }
 
             return false;
         }
 
-        private static bool InlineFont(VisualElement element)
-            => element.style.unityFontDefinition.keyword != StyleKeyword.Null
-               || element.style.unityFont.keyword != StyleKeyword.Null;
+        // Whether a font definition applies at link or is inherited into it, the one written here on element aside.
+        private static bool Defined(VisualElement element, VisualElement link)
+        {
+            var definition = link != element
+                ? link.resolvedStyle.unityFontDefinition
+                : StyleCascade.RulesFontDefinition(element)
+                    ?? element.hierarchy.parent?.resolvedStyle.unityFontDefinition
+                    ?? default;
+            return definition != default;
+        }
 
         // What the decision reads off the chain from element up: each element, its name, classes, stylesheets and
         // matched rules, which a pseudo-state moves, and its inline font. Read on every update of the panel, so nothing

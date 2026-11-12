@@ -622,7 +622,6 @@ namespace Velvet
         {
             var held = _ctx.HeldRowLayoutEffects.Pop();
             _ctx.FontScope.Drain(_ctx.BatchScheduler.Anchor);
-            _ctx.SyncPortalRowFamilies();
             FiberEffects.CommitHeldRowLayoutEffects(_ctx, held);
         }
 
@@ -1145,6 +1144,8 @@ namespace Velvet
                 bridge.Release();
             }
             _ctx.SamePanelPortalBridges.Clear();
+            // MUTANT_SURVIVES(unreachable, line removed): the table is empty by now, for the reason
+            // ReconcilerContext.ReleasePortalRowFamilies gives.
             _ctx.ReleasePortalRowFamilies();
             // Layer and world-space hosts are framework-owned GameObjects with runtime-created
             // panel assets: destroy them so a disposed tree leaves no hidden panels behind. The

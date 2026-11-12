@@ -75,6 +75,40 @@ namespace Velvet.Tests
             var resolved = document.rootVisualElement.Q<Label>("plain").resolvedStyle.unityFontDefinition.fontAsset;
             Assert.That(theme != null ? resolved : null, Is.SameAs(s_sans));
         }
+
+        [UnityTest]
+        public IEnumerator Given_ALegacyInlineFontOnTheDocumentRootUnderTheRuntimeTheme_When_ATreeMountsWithADefaultFamily_Then_ItsLabelResolvesTheDefaultFamily()
+        {
+            // Arrange — the theme's root definition is drawn ahead of a legacy Font, so the app's one would not show.
+            var theme = AssetDatabase.LoadAssetAtPath<ThemeStyleSheet>(ThemePath);
+            if (s_sans == null)
+            {
+                s_sans = FontAsset.CreateFontAsset(Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf"));
+            }
+            VelvetFonts.Register(new VelvetFontFamily("sans",
+                new VelvetFontWeightEntry { weight = VelvetFontWeight.Normal, upright = s_sans }));
+            VelvetFonts.DefaultFamily = "sans";
+            _settings = ScriptableObject.CreateInstance<PanelSettings>();
+            _settings.themeStyleSheet = theme;
+            _host = new GameObject(nameof(DefaultFamilyThemePlaybackTests));
+            var document = _host.AddComponent<UIDocument>();
+            document.panelSettings = _settings;
+            yield return null;
+            document.rootVisualElement.style.unityFont = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            yield return null;
+
+            // Act
+            _mounted = V.Mount(document.rootVisualElement, V.Div(children: new VNode[]
+            {
+                V.Label(text: "plain", name: "plain"),
+            }));
+            yield return null;
+            yield return null;
+
+            // Assert — read as null where the theme is missing, so a missing theme fails the case rather than passing.
+            var resolved = document.rootVisualElement.Q<Label>("plain").resolvedStyle.unityFontDefinition.fontAsset;
+            Assert.That(theme != null ? resolved : null, Is.SameAs(s_sans));
+        }
     }
 }
 #endif

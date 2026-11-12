@@ -550,9 +550,9 @@ namespace Velvet.Tests
             var mountRoot = NewRootUnderAuthorSheet("unruled");
             _mounted = V.Mount(mountRoot, V.Div(children: new[] { Plain("plain") }));
 
-            // Act — the restyle first, then the update of the panel that reads the root again.
+            // Act — the panel's scheduler ahead of its style pass, so what reads the root again is the change
+            // itself rather than the rules it comes to match.
             mountRoot.AddToClassList("author-font");
-            EditorPanelTestHelpers.ForcePanelUpdate(_host.Panel);
             EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
 
             // Assert
@@ -570,9 +570,9 @@ namespace Velvet.Tests
             mountRoot.AddToClassList("author-font");
             _mounted = V.Mount(mountRoot, V.Div(children: new[] { Plain("plain") }));
 
-            // Act — the restyle first, then the update of the panel that reads the root again.
+            // Act — the panel's scheduler ahead of its style pass, so what reads the root again is the change
+            // itself rather than the rules it comes to match.
             _host.Root.styleSheets.Add(UnityEditor.AssetDatabase.LoadAssetAtPath<StyleSheet>(AuthorSheet));
-            EditorPanelTestHelpers.ForcePanelUpdate(_host.Panel);
             EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
 
             // Assert
@@ -594,6 +594,99 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(ResolvedFont(mountRoot, "plain"), Is.SameAs(_sans));
+        }
+
+        [Test]
+        public void Given_ADefaultFamily_When_APortalRendersAZIndexedRowBesideTheMountRoot_Then_ItsLabelResolvesTheDefaultFamily()
+        {
+            // Arrange — an absolute z-50 row is relocated, leaving a placeholder in its slot.
+            VelvetFonts.DefaultFamily = "sans";
+            var target = NewRootElement();
+
+            // Act
+            _mounted = V.Mount(NewRootElement(), PortalInto(target,
+                V.Div(className: "absolute z-50", children: new[] { Plain("raised") })));
+
+            // Assert
+            Assert.That(ResolvedFont(target, "raised"), Is.SameAs(_sans));
+        }
+
+        // GREEN_ON_BASE(characterization): an author's legacy font rule reaches the tree where no definition is.
+        // The base writes nothing there; this pins that the default family's definition does not stand over it.
+        [Test]
+        public void Given_AnAuthorsLegacyFontRuleOnTheMountRootAndNoDefinition_When_ATreeMounts_Then_ItsLabelDoesNotResolveTheDefaultFamily()
+        {
+            // Arrange
+            VelvetFonts.DefaultFamily = "sans";
+            var mountRoot = NewRootUnderAuthorSheet("author-legacy-font");
+
+            // Act
+            _mounted = V.Mount(mountRoot, V.Div(children: new[] { Plain("plain") }));
+
+            // Assert
+            Assert.That(ResolvedFont(mountRoot, "plain"), Is.Not.SameAs(_sans));
+        }
+
+        // GREEN_ON_BASE(characterization): an app's legacy inline font on the mount root shows where no definition is.
+        // The base writes nothing there; this pins that the default family's definition does not stand over it.
+        [Test]
+        public void Given_ALegacyInlineFontTheAppWroteOnTheMountRootAndNoDefinition_When_ATreeMounts_Then_ItsLabelDoesNotResolveTheDefaultFamily()
+        {
+            // Arrange
+            VelvetFonts.DefaultFamily = "sans";
+            var mountRoot = NewRootElement();
+            mountRoot.style.unityFont = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+
+            // Act
+            _mounted = V.Mount(mountRoot, V.Div(children: new[] { Plain("plain") }));
+
+            // Assert
+            Assert.That(ResolvedFont(mountRoot, "plain"), Is.Not.SameAs(_sans));
+        }
+
+        // Created once and never destroyed, for the reason FontRelativeUnitPanelTests gives its own.
+        private static FontAsset s_lineBoxFirst;
+        private static FontAsset s_lineBoxSecond;
+
+        private static FontAsset LineBoxFamily(string name, ref FontAsset asset)
+        {
+            if (asset == null)
+            {
+                asset = FontAsset.CreateFontAsset(Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf"));
+            }
+            VelvetFonts.Register(new VelvetFontFamily(name,
+                new VelvetFontWeightEntry { weight = VelvetFontWeight.Normal, upright = asset }));
+            return asset;
+        }
+
+        [Test]
+        public void Given_APortalRowWithRichTextOffDrawnInACopyOfTheDefaultFamily_When_TheDefaultFamilyChanges_Then_ItIsDrawnInACopyOfTheNewOne()
+        {
+            // Arrange — the bundled sheet gives the label the property its line box answers to; rich text off draws it
+            // in LineBoxFont's copy of the font written on it.
+            LineBoxFamily("first", ref s_lineBoxFirst);
+            var second = LineBoxFamily("second", ref s_lineBoxSecond);
+            VelvetFonts.DefaultFamily = "first";
+            VelvetStyleUtilities.AttachTo(_host.Root);
+            var target = NewRootElement();
+            _mounted = V.Mount(NewRootElement(),
+                PortalInto(target, V.Label(className: "text-[16px]", text: "row", name: "row")));
+            var row = target.Q<Label>("row");
+            row.enableRichText = false;
+            for (var i = 0; i < 3; i++)
+            {
+                EditorPanelTestHelpers.ForcePanelUpdate(_host.Panel);
+            }
+
+            // Act
+            VelvetFonts.DefaultFamily = "second";
+            for (var i = 0; i < 3; i++)
+            {
+                EditorPanelTestHelpers.ForcePanelUpdate(_host.Panel);
+            }
+
+            // Assert
+            Assert.That(LineBoxFont.SourceOf(row.resolvedStyle.unityFontDefinition.fontAsset), Is.SameAs(second));
         }
     }
 }

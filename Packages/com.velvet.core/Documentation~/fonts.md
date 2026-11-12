@@ -118,9 +118,11 @@ with no render.
 
 An element whose font classes resolve to an asset has that asset written inline
 ([How resolution works](#how-resolution-works)), and what is under it inherits that one instead; a font a
-stylesheet sets on an element below them decides there in the same way. Where an author's stylesheet rule or inline
-font gives one of them, or an element above it, a font, Velvet writes nothing on it and that font is inherited; a
-rule of a panel's theme does not count, a theme being a default stylesheet. While a default family is set, Velvet
+stylesheet sets on an element below them decides there in the same way. Where the font that would show on one of
+them without Velvet's write is one an author's stylesheet rule or inline style gives it or an element above it,
+Velvet writes nothing on it and that font is inherited. That is a `-unity-font-definition`, or a legacy `-unity-font`
+where no definition applies or is inherited, since UI Toolkit draws a definition ahead of a legacy font; a rule of a
+panel's theme does not count, a theme being a default stylesheet. While a default family is set, Velvet
 reads this again at each update of the element's panel after the element or one above it moves, or changes its
 classes, name, stylesheets, matched rules or inline font. The value Velvet wrote is taken off when the tree is
 disposed or the element leaves the portal. `DefaultFamilyScopePanelTests` pins where the family is written, left

@@ -1749,7 +1749,9 @@ namespace Velvet
                 {
                     if (LogicalChildSlots.TryGetPhysical(target, slot, out var physical))
                     {
-                        _portalRows.Add(target[physical]);
+                        // A row FiberZLayerCoordinator relocates keeps only a placeholder in its slot.
+                        var occupant = target[physical];
+                        _portalRows.Add(ZLayerPlaceholders.TryGetValue(occupant, out var real) ? real : occupant);
                     }
                 }
             }
@@ -1773,7 +1775,11 @@ namespace Velvet
         // Every row's hold, given back when the reconciler is disposed.
         internal void ReleasePortalRowFamilies()
         {
+            // MUTANT_SURVIVES(unreachable, line removed): no case leaves a row in the table by now, since the unmount
+            // reconcile ahead of Dispose ends in a pass whose sync releases each row its cleanup took out of
+            // PortalState; this is for a pass parked at Dispose, a shape no fixture builds.
             foreach (var hold in _portalRowFamilies.Values) hold.Dispose();
+            // MUTANT_SURVIVES(equivalent, line removed): a disposed context runs no pass that reads the table.
             _portalRowFamilies.Clear();
         }
 

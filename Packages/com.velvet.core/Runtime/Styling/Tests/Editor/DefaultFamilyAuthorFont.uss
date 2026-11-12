@@ -2,3 +2,5 @@
 .author-font { -unity-font-definition: initial; }
 
 .author-hover:hover { -unity-font-definition: initial; }
+
+.author-legacy-font { -unity-font: initial; }

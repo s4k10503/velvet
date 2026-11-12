@@ -63,9 +63,9 @@ namespace Velvet
         /// The family the elements Velvet renders start from, as the <c>font-family</c> Tailwind's preflight
         /// gives <c>html</c>: Velvet writes it on the element a tree is mounted on, on what a portal renders and on
         /// a layer or world-space panel's root, for what is under them to inherit, unless one sits inside another or
-        /// an author's font reaches it; and resolves it for a weight, italic or width class where neither the
-        /// element nor an ancestor Velvet rendered names a family (Documentation~/fonts.md, "What DefaultFamily
-        /// reaches").
+        /// an author's font is what would show there; and resolves it for a weight, italic or width class where
+        /// neither the element nor an ancestor Velvet rendered names a family (Documentation~/fonts.md, "What
+        /// DefaultFamily reaches").
         /// A name that is null, empty or not registered writes no font, leaving each element on the one its
         /// stylesheets and ancestors give it.
         /// </summary>
