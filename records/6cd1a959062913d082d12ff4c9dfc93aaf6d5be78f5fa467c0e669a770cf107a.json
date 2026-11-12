@@ -1,8 +1,15 @@
 {
- "detail": "EditMode survived; PlayMode: -",
+ "detail": "EditMode: 1 failed: Given_AnOverrideOfAReportedMethod_When_ItsReportIsReadWithInheritance_Then_ThereIsNone",
  "file": "b68169e271dee6192d11d9a0328932d279ad3f5a835d00e5939c507284481681",
- "killers": [],
- "measured_by": "42555673605",
+ "killers": [
+  {
+   "case": "Velvet.Tests.MemoizationReportAttributeTests.Given_AnOverrideOfAReportedMethod_When_ItsReportIsReadWithInheritance_Then_ThereIsNone",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/MemoizationReportAttributeTests.cs": "3b1827ca99cc54193103aa614615543f480f79b55baed90fd6c2a249d2115d1f"
+   }
+  }
+ ],
+ "measured_by": "43007694835",
  "mutant": {
   "after": "true",
   "before": "false",
@@ -13,9 +20,9 @@
   "shadowed": []
  },
  "mutator": 10,
- "platform": "PlayMode",
+ "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "a5395f0cc726ce2565be694bced9679a56713246cc9946aac3608d804f919707",
- "verdict": "survived"
+ "tests": "033208b61e0f5eab71ced9897c0bbea430c3612b5d2680e479b38bc567e57a18",
+ "verdict": "killed"
 }

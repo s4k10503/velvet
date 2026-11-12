@@ -1,8 +1,15 @@
 {
- "detail": "EditMode survived; PlayMode: -",
+ "detail": "EditMode: 1 failed among the 10 case(s) that ran the site: Given_AMaterialWhoseShaderDeclaresASourceFactorAlone_When_ItsBlendIsRead_Then_ItIsReadByNameAndDrawsAlphaBlended",
  "file": "c194d9fa2d9cb2f7466a208425a42c9f7c3dbc832827e3f1cf16f9c976cfb48b",
- "killers": [],
- "measured_by": "42555673605",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ParticleBlendMaterialsTests.Given_AMaterialWhoseShaderDeclaresASourceFactorAlone_When_ItsBlendIsRead_Then_ItIsReadByNameAndDrawsAlphaBlended",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/ParticleBlendMaterialsTests.cs": "8f405884ff87afc766b1c4a85e18b44fa8ea743fa3376348a0f0cb249637ea31"
+   }
+  }
+ ],
+ "measured_by": "43007694835",
  "mutant": {
   "after": "",
   "before": " && material.HasProperty(\"_DstBlend\")",
@@ -15,9 +22,9 @@
   ]
  },
  "mutator": 10,
- "platform": "PlayMode",
+ "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "a5395f0cc726ce2565be694bced9679a56713246cc9946aac3608d804f919707",
- "verdict": "survived"
+ "tests": "033208b61e0f5eab71ced9897c0bbea430c3612b5d2680e479b38bc567e57a18",
+ "verdict": "killed"
 }

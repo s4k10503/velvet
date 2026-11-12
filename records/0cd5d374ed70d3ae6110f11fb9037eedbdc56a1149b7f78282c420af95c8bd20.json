@@ -1,8 +1,15 @@
 {
- "detail": "EditMode survived; PlayMode: -",
+ "detail": "EditMode: 1 failed among the 1 case(s) that ran the site: Given_AParentInheritingEveryFamily_When_AChildsRingInherits_Then_ItTakesTheGrandparentsRingColour",
  "file": "6fefcfbf79fba07a1e665ed32b02141c0da25bc57ca78ed8a0f7aeeab076b26f",
- "killers": [],
- "measured_by": "41817246568",
+ "killers": [
+  {
+   "case": "Velvet.Tests.BandColourInheritanceTests.Given_AParentInheritingEveryFamily_When_AChildsRingInherits_Then_ItTakesTheGrandparentsRingColour",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BandColourInheritanceTests.cs": "91fae0f7ef7e96938992a782e4c78825dec7ce8dd78387c151640e94617d020e"
+   }
+  }
+ ],
+ "measured_by": "43007694835",
  "mutant": {
   "after": "==",
   "before": "!=",
@@ -13,9 +20,9 @@
   "shadowed": []
  },
  "mutator": 10,
- "platform": "PlayMode",
+ "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
- "verdict": "survived"
+ "tests": "033208b61e0f5eab71ced9897c0bbea430c3612b5d2680e479b38bc567e57a18",
+ "verdict": "killed"
 }

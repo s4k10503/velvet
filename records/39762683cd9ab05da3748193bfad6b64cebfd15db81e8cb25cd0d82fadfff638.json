@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed among the 487 case(s) that ran the site: Given_RowsWhosePropsAreUnchangedAfterAnAnimatePresence_When_TheirParentReRenders_Then_NoRowElementIsPatched",
+ "file": "8be06f4795de85410b6cd0646d13607a6ce5d76c9d33b0468293ec36e4a48650",
+ "killers": [
+  {
+   "case": "Velvet.Tests.BailedRowSubtreeTests.Given_RowsWhosePropsAreUnchangedAfterAnAnimatePresence_When_TheirParentReRenders_Then_NoRowElementIsPatched",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/BailedRowSubtreeTests.cs": "bf29255becd3195a6506ed7cf2d4ec6d2bf2f6f54c376a74eee2a69390c8e6a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  }
+ ],
+ "measured_by": "43007694835",
+ "mutant": {
+  "after": ";",
+  "before": "walk.ReuseSuspended--;",
+  "column": 28,
+  "line": 1010,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/GeneralPathReconciler.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "033208b61e0f5eab71ced9897c0bbea430c3612b5d2680e479b38bc567e57a18",
+ "verdict": "killed"
+}

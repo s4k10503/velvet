@@ -1,8 +1,18 @@
 {
- "detail": "EditMode survived; PlayMode: -",
+ "detail": "EditMode: 1 failed among the 1 case(s) that ran the site: Given_ARotatedLayoutIdMotionInsideAnother_When_ItTakesAClip_Then_TheWrapperItHoldsCarriesTheClip",
  "file": "74f1852bfedadb299dae5c53d83a7599f3ecf8b315c530b18731a0d75f0f2363",
- "killers": [],
- "measured_by": "41345847163",
+ "killers": [
+  {
+   "case": "Velvet.Tests.MotionLayoutIdSurfaceTests.Given_ARotatedLayoutIdMotionInsideAnother_When_ItTakesAClip_Then_TheWrapperItHoldsCarriesTheClip",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionLayoutIdSurfaceTests.cs": "e37a1a559c54ef339d58fb3bc1c37903d1bf7144ac8de1ea145aba5c2a9c2b6e",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionSimulatedPanelTestsBase.cs": "319b26852fbe6c4376e12d0d0c9e76d0ced9d71ce1cae10efb9b3d4871118db3",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  }
+ ],
+ "measured_by": "43007694835",
  "mutant": {
   "after": ";",
   "before": "UnwrapClipPathInPlace(element, binding);",
@@ -13,9 +23,9 @@
   "shadowed": []
  },
  "mutator": 10,
- "platform": "PlayMode",
+ "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
- "verdict": "survived"
+ "tests": "033208b61e0f5eab71ced9897c0bbea430c3612b5d2680e479b38bc567e57a18",
+ "verdict": "killed"
 }

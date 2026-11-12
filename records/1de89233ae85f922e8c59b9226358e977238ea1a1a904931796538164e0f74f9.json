@@ -1,8 +1,16 @@
 {
- "detail": "EditMode survived; PlayMode: -",
+ "detail": "EditMode: 1 failed: Given_ACallFollowedByANopThatFallsOffTheEnd_When_Woven_Then_TheMethodCarriesAReport",
  "file": "70cb243f7d4302326ebdaf9d86b49674543b03d796378b538b43a3731ab631d9",
- "killers": [],
- "measured_by": "42555673605",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ReactiveScopeSyntheticBodyTests.Given_ACallFollowedByANopThatFallsOffTheEnd_When_Woven_Then_TheMethodCarriesAReport",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeSyntheticBodyTests.cs": "6267daf88c4fce5b8c8b65f53484f1beef9b2aff528a6368c2ca9e6779dad073",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeTestSupport.cs": "1a6cfc790d411eead2a0ac87d846f948e098bb0b651e6bec15a43a489dbd2137"
+   }
+  }
+ ],
+ "measured_by": "43007694835",
  "mutant": {
   "after": "<=",
   "before": "<",
@@ -17,9 +25,9 @@
   ]
  },
  "mutator": 10,
- "platform": "PlayMode",
+ "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "a5395f0cc726ce2565be694bced9679a56713246cc9946aac3608d804f919707",
- "verdict": "survived"
+ "tests": "033208b61e0f5eab71ced9897c0bbea430c3612b5d2680e479b38bc567e57a18",
+ "verdict": "killed"
 }
