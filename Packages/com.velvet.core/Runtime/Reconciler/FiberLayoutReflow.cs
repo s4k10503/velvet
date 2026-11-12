@@ -243,10 +243,10 @@ namespace Velvet
                 _laidOut = true;
             }
 
-            // Whether a dirty root can be read as the mark the last computation left: the panel's own layout pass has
-            // not run since, and the panel's hierarchy version, the root node's own layout style and the dirty flags
-            // of the root's children are as that computation left them. A computation sets the root node's new-layout
-            // flag and the panel's pass clears it. While the root is dirty, a layout change below it marks the
+            // Whether a dirty root can be read as the mark the last computation left: the root node's new-layout flag,
+            // the panel's hierarchy version, the root node's own layout style and the dirty flags of the root's
+            // children are as that computation left them. A computation sets the new-layout flag, and the panel's pass
+            // clears it on a displayed root. While the root is dirty, a layout change below it marks the
             // elements from it upward until one already marked, the root's child it sits under at the latest; adding,
             // removing or moving one of the root's own children need mark none of them, and moves the hierarchy
             // version; and a write to the root's own size or style marks the root alone. RefAttachLayoutCostTests
