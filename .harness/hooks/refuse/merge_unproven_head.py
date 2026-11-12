@@ -16,10 +16,12 @@ that head — what a cancelled run followed by a push leaves behind — and read
 running" is how a pull request sat unnoticed for 7h45m.
 
 A list whose every check passed is refused too while the head still has a workflow run to finish,
-carries a workflow whose newest run failed, or lacks a context its base requires. All of it is read
+carries a workflow run that failed, or lacks a context its base requires. All of it is read
 off the head's workflow runs and the base's rules inside the same pair of head readings, and
 `scripts/pr/expected_checks.py` owns what each of those is and why. A mutation campaign's runs and
-checks are left out of what it reads, as `settle.py` leaves them out; `campaign.py` says which.
+checks are left out of what it reads, as `settle.py` leaves them out; `campaign.py` says which. The
+checks of a run GitHub cancelled are read as `expected_checks.read_duplicates` says, each told to
+its run by `expected_checks.run_of`.
 
 The other merge preconditions have their own hooks: `merge_unchecked_against_base.py` for a base
 whose required workflows last failed on push, a head behind the base's newest release commit, a
@@ -92,7 +94,7 @@ def checks_of(cwd, number):
     Its old commit status is left out by its context, which a status carries with no workflow.
     """
     answer = repository.gh_answer(["pr", "checks", *([number] if number else []),
-                                   "--json", "name,bucket,workflow"], cwd=cwd)
+                                   "--json", "name,bucket,workflow,link"], cwd=cwd)
     try:
         listed = json.loads(answer.stdout)
     except ValueError:
@@ -189,6 +191,8 @@ def unproven(asked, cwd):
                                  + "; ".join(expected_checks.stuck_exit(run) for run in opened)
                                  + "), or ask `settle.py merge`, which reads them all"))
         else:
+            listed = expected_checks.read_duplicates(listed, others, jobs, now,
+                                                     expected_checks.run_of)
             waiting = expected_checks.unfinished(others, jobs, now)
             failing = expected_checks.failed(others, jobs, now)
             absent = expected_checks.absent(required, (entry["name"] for entry in listed))

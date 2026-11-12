@@ -111,9 +111,10 @@ inherited velocity and the opacity, rotate, translate and scale a layoutId move 
 to write a filter change past a running transform-origin transition ([styling-filters.md](styling-filters.md#transitions)),
 the border colors an element's matching style
 rules give it, which a [dashed divider](styling-flexbox-and-gap.md) paints in,
-and a panel's version, layout-phase flag, style updater and that updater's traversal flag, an element's layout
-node, last layout and version increment, and the node's layout computation, dirty flag and new-layout flag, which
-a commit uses to lay the panel out before its layout effects and callback refs read it
+and a panel's version, hierarchy version, layout-phase flag, style updater and that updater's traversal flag, an
+element's layout node, last layout and version increment, and the node's layout computation, dirty flag, new-layout
+flag and copy of another node's style, which a commit uses to lay the panel out before its layout effects and
+callback refs read it
 ([react-migration.md](react-migration.md)), the custom properties a stylesheet declares on an element, with
 the stylesheet reads that spell their values ([styling-custom-properties.md](styling-custom-properties.md)), a
 panel's hierarchy-change event with the kinds of change it announces, on which a `group-*:` or `peer-*:` consumer
@@ -123,7 +124,11 @@ clear and insert of its children, which lay a relocated `z-*` or `order-*` eleme
 depth the renderer draws an immediate-mode element under, which place a
 [backdrop filter](styling-filters.md#backdrop-filters) on the pixels beneath its element, and whether an element clips
 what it holds, with a panel's hierarchy version, which decide where an `outline-*` paints
-([styling-variants.md](styling-variants.md)).
+([styling-variants.md](styling-variants.md)), and the screen-space runtime panels in their sorting order, the
+update, repaint and render `VelvetPreviewPanel.Render` calls on those of them drawing into its texture, the end of
+the repaint pass, and the function a panel reads its time through with the time it reads without one, with which it
+draws a frame into that texture
+([preview-tooling.md](preview-tooling.md#headless-screenshot-capture)).
 `EngineMember` declares these members. `EngineMemberRegistryTests` checks direct `GetField` / `GetProperty` / `GetMethod`
 and related named-reflection calls, non-generic `Enum.Parse` / `Enum.TryParse`, literal-name delegate
 creation, and fluent member selections comparing `Name` to a literal outside the registry. Whole
@@ -135,7 +140,9 @@ linker a link.xml keeping those members, from an `IUnityLinkerProcessor` step; a
 overload of its name. There is nothing to configure; the file is written under the project's Temp folder
 while the build runs.
 
-A member that no longer resolves leaves the feature reading it undone rather than throwing.
+A member that no longer resolves leaves the feature reading it undone rather than throwing, except in
+`VelvetPreviewPanel.Render`, which throws `NotSupportedException` naming each member of its frame that does not
+resolve.
 `EngineMemberResolutionTests` resolves every declaration, with its member kind and type, against the
 editor running the suite, so a Unity upgrade that renames or retypes one fails there and names it.
 Shape matching checks type metadata, generic arguments, vector elements and by-ref parameters rather

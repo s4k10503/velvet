@@ -625,7 +625,10 @@ A declaration for a method that is posed reads, above it:
 Both instruments above ask what happens when the production code is broken on purpose.
 `scripts/test_quality/base_red_check.py` asks the cheaper question first, and the one a pull request is
 actually claiming: was this case red before the change it says it pins? It checks out the merge base,
-copies the branch's changed test files onto it, and runs the cases the branch wrote there.
+copies the branch's test files onto it, and runs the cases the branch wrote there. What it copies is
+what the branch changed of its test files and of `TestUtilities/`, and each file it adds under a C#
+test directory other than an assembly definition, a compiler response file or a `.meta` — a style
+sheet a case loads, say — with, beside each copied file, the `.meta` the branch holds for it.
 
 ```bash
 python3 scripts/test_quality/base_red_check.py --base origin/main --plan   # what it would ask, no run
@@ -1431,16 +1434,17 @@ measured before it ships.
 The two trend jobs flag a median above 150% of the previous entry in the summary and neither fails: CI
 runners' timings are noisy enough that a gate would be a coin flip. A run of this workflow is a run for
 the head like any other, so `scripts/pr/expected_checks.py` waits for an unfinished one on a labelled
-pull request, and a failed newest run blocks its merge.
+pull request, and a failed one blocks its merge.
 
 ### Merging a pull request
 
-A pull request labelled `automerge` is merged by `.github/workflows/automerge.yml` once every check on
-its head has passed or been skipped; every other pull request is merged by hand after review, with
-`settle.py merge`. The label means *review has settled: merge when every check on the head has passed
-or been skipped*: add it once review has settled, and remove it to hold the pull request. Labelling
-takes triage access or above, so only an account holding that can opt a pull request in. The workflow
-does not create the label; it has to exist in the repository.
+A pull request labelled `automerge` is merged by `.github/workflows/automerge.yml` once
+`settle.py merge` finds nothing blocking it, and settle's docstring owns what blocks, which checks it
+leaves out included. Every other pull request is merged by hand after review, with `settle.py merge`.
+The label means *review has settled: merge once `settle.py merge` would*: add it once review has
+settled, and remove it to hold the pull request. Labelling takes triage access or above, so only an
+account holding that can opt a pull request in. The workflow does not create the label; it has to
+exist in the repository.
 
 A pull request in a stack is merged through GitHub's asynchronous merge endpoint, since GitHub refuses
 a stack member on the one `settle.py merge` uses for every other pull request. GitHub documents that
@@ -1542,8 +1546,9 @@ drain question a major is held to passes over the breaks it exists to catch.
 
 The CHANGELOG holds two open sections, and which one an entry goes in is settled when the entry is
 written rather than when the version closes. `## [Unreleased]` is what a minor or a patch may ship.
-`## [Unreleased — breaking]` is what has to wait for a major: an API a caller has to edit around, and
-behaviour a working application would notice changing.
+`## [Unreleased — breaking]` is what has to wait for a major: an API a caller has to edit around. A
+change that leaves the API as it was is a fix and goes in `## [Unreleased]`, even where a working
+application would notice the behaviour change.
 
 A change does not write either section in the file. It adds one fragment, a markdown file under
 `Packages/com.velvet.core/Changelog~/unreleased/` for `## [Unreleased]` or under

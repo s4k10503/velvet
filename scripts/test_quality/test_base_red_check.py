@@ -2150,6 +2150,296 @@ class DroppedFromTheBaseTreeTests(unittest.TestCase):
                          ([self.FIXTURE, self.PRODUCTION], [self.FIXTURE]))
 
 
+class CarriedFixtureTests(unittest.TestCase):
+    """What `carried_files` takes and leaves beyond the test side `changed_lines_by_file` reads.
+
+    On a base tree without a style sheet the branch added, a case loading it reads nothing, and one
+    that then stops before it compares is a case the base could not answer.
+    """
+
+    FIXTURE = "Packages/p/Runtime/A/Tests/Editor/ProbeTests.cs"
+    SHEET = "Packages/p/Runtime/A/Tests/Editor/Probe.uss"
+    RULE = ".probe { width: 1px; }\n"
+
+    def carried(self, base, branch):
+        root, since = two_commit_repo(self, {self.FIXTURE: "// a fixture\n", **base}, branch)
+        return base_red_check.carried_files(root, since)
+
+    def built(self, branch):
+        """The base tree `build_base_tree` builds from what `carried_files` reads off `branch`."""
+        root, since = two_commit_repo(self, {self.FIXTURE: "// a fixture\n"}, branch)
+        tree = worktree_beside(self, root)
+        base_red_check.build_base_tree(
+            root, since, tree, sorted(base_red_check.carried_files(root, since)), [])
+        return tree
+
+    def uncommitted(self, ignore="\n"):
+        """(a repository whose branch commit is only `ignore` as its .gitignore, the merge base).
+
+        What a case writes into it afterwards is the branch's uncommitted work.
+        """
+        return two_commit_repo(self, {self.FIXTURE: "// a fixture\n"}, {".gitignore": ignore})
+
+    def test_Given_AStyleSheetAddedAndNotCommitted_When_TheCarriedFilesAreRead_Then_ItIsAmongThem(self):
+        # Arrange -- a run before a commit, which `changed_lines_by_file` measures as well.
+        root, since = self.uncommitted()
+        (root / self.SHEET).write_text(self.RULE)
+
+        # Act
+        carried = base_red_check.carried_files(root, since)
+
+        # Assert
+        self.assertIn(self.SHEET, carried)
+
+    # GREEN_ON_BASE(characterization): the base carries no file the ignore rules hide, and still does not.
+    def test_Given_AnIgnoredFileInATestDirectory_When_TheCarriedFilesAreRead_Then_ItIsNotAmongThem(self):
+        # Arrange
+        root, since = self.uncommitted(ignore="*.log\n")
+        ignored = "Packages/p/Runtime/A/Tests/Editor/run.log"
+        (root / ignored).write_text("a run\n")
+
+        # Act
+        carried = base_red_check.carried_files(root, since)
+
+        # Assert
+        self.assertNotIn(ignored, carried)
+
+    # GREEN_ON_BASE(characterization): the base carries no directory a branch puts in a test directory.
+    def test_Given_ANestedRepositoryInATestDirectory_When_TheCarriedFilesAreRead_Then_NoDirectoryIsAmongThem(self):
+        # Arrange -- the untracked listing names it as a directory, and `build_base_tree` copies files.
+        root, since = self.uncommitted()
+        nested = root / "Packages/p/Runtime/A/Tests/Editor/Nested"
+        nested.mkdir()
+        subprocess.run(["git", "-C", str(nested), "init", "-q"], check=True, capture_output=True)
+        (nested / "Probe.uss").write_text(self.RULE)
+
+        # Act
+        carried = base_red_check.carried_files(root, since)
+
+        # Assert
+        self.assertFalse(any((root / name).is_dir() for name in carried))
+
+    def test_Given_AStyleSheetAddedInATestDirectory_When_TheBaseTreeIsBuilt_Then_ItIsThere(self):
+        # Arrange / Act
+        tree = self.built({self.SHEET: self.RULE})
+
+        # Assert
+        self.assertTrue((tree / self.SHEET).is_file())
+
+    def test_Given_AnAddedStyleSheetsMeta_When_TheBaseTreeIsBuilt_Then_ItIsThere(self):
+        # Arrange / Act
+        tree = self.built({self.SHEET: self.RULE, self.SHEET + ".meta": "guid: 0\n"})
+
+        # Assert
+        self.assertTrue((tree / (self.SHEET + ".meta")).is_file())
+
+    def test_Given_AStyleSheetRenamedUnchanged_When_TheCarriedFilesAreRead_Then_ItIsAmongThem(self):
+        # Arrange -- the base holds the text under the old name only, so a case loading the new one
+        # finds nothing there either.
+        old = "Packages/p/Runtime/A/Tests/Editor/Earlier.uss"
+
+        # Act
+        carried = self.carried({old: self.RULE}, {old: None, self.SHEET: self.RULE})
+
+        # Assert
+        self.assertIn(self.SHEET, carried)
+
+    def test_Given_AHelperRenamedUnchanged_When_TheCarriedFilesAreRead_Then_ItIsAmongThem(self):
+        # Arrange -- the base tree drops the old name, so without the new one the cases calling the
+        # helper find it under neither.
+        old = "Packages/p/TestUtilities/Probe.cs"
+        renamed = "Packages/p/TestUtilities/Probing.cs"
+
+        # Act
+        carried = self.carried({old: "class Probe { }\n"}, {old: None, renamed: "class Probe { }\n"})
+
+        # Assert
+        self.assertIn(renamed, carried)
+
+    # GREEN_ON_BASE(characterization): the base carries no style sheet it already holds, and still does not.
+    def test_Given_AStyleSheetTheBaseHolds_When_TheBranchChangesIt_Then_ItIsNotCarried(self):
+        # Act
+        carried = self.carried({self.SHEET: self.RULE}, {self.SHEET: ".probe { width: 2px; }\n"})
+
+        # Assert
+        self.assertNotIn(self.SHEET, carried)
+
+    # GREEN_ON_BASE(characterization): the base carries no style sheet added outside a test directory.
+    def test_Given_AStyleSheetAddedOutsideATestDirectory_When_TheCarriedFilesAreRead_Then_ItIsNotAmongThem(self):
+        # Arrange -- carrying production material would put the branch's change under the case.
+        production = "Packages/p/Runtime/A/Probe.uss"
+
+        # Act
+        carried = self.carried({}, {production: self.RULE})
+
+        # Assert
+        self.assertNotIn(production, carried)
+
+    # GREEN_ON_BASE(characterization): the base carries no asmdef added in a test directory.
+    def test_Given_AnAsmdefAddedInATestDirectory_When_TheCarriedFilesAreRead_Then_ItIsNotAmongThem(self):
+        # Arrange
+        definition = "Packages/p/Runtime/A/Tests/Editor/Probe.Tests.asmdef"
+
+        # Act
+        carried = self.carried({}, {definition: "{}\n"})
+
+        # Assert
+        self.assertNotIn(definition, carried)
+
+    # GREEN_ON_BASE(characterization): the base carries no response file added in a test directory.
+    def test_Given_AResponseFileAddedInATestDirectory_When_TheCarriedFilesAreRead_Then_ItIsNotAmongThem(self):
+        # Arrange
+        response = "Packages/p/Runtime/A/Tests/Editor/csc.rsp"
+
+        # Act
+        carried = self.carried({}, {response: "-nullable:enable\n"})
+
+        # Assert
+        self.assertNotIn(response, carried)
+
+    # GREEN_ON_BASE(characterization): the base carries a test directory's meta only beside its file.
+    def test_Given_AnAddedStyleSheetsMeta_When_TheCarriedFilesAreRead_Then_ItIsNoEntryOfItsOwn(self):
+        # Act
+        carried = self.carried({}, {self.SHEET: self.RULE, self.SHEET + ".meta": "guid: 0\n"})
+
+        # Assert
+        self.assertNotIn(self.SHEET + ".meta", carried)
+
+    def test_Given_AStyleSheetAddedInATestDirectory_When_TheBaseTreeIsEmitted_Then_ItIsThere(self):
+        # Arrange -- `--emit` builds the tree CI runs, from a call site of its own.
+        case = ("namespace N\n{\n    class ProbeTests\n    {\n        [Test]\n"
+                "        public void Given_A_When_B_Then_C() => BODY;\n    }\n}\n")
+        root, since = two_commit_repo(
+            self, {self.FIXTURE: case.replace("BODY", "Assert.Pass()")},
+            {self.FIXTURE: case.replace("BODY", "Assert.That(1, Is.EqualTo(1))"), self.SHEET: self.RULE})
+        tree = worktree_beside(self, root)
+
+        # Act
+        printed = subprocess.run(
+            [sys.executable, str(REPO_ROOT / "scripts/test_quality/base_red_check.py"),
+             "--project", str(root), "--base", since, "--lane", "csharp",
+             "--emit", str(root / "plan.json"), "--base-tree", str(tree)],
+            capture_output=True, text=True)
+        if printed.returncode != 0:
+            raise RuntimeError("--emit did not run:\n" + printed.stdout + printed.stderr)
+
+        # Assert
+        self.assertTrue((tree / self.SHEET).is_file())
+
+
+class UnusualPathTests(unittest.TestCase):
+    """A path git does not print as it is spelled on disk, read back as it is spelled on disk.
+
+    Read in git's spelling it names no file on disk, and what was read off it is lost in silence.
+    """
+
+    DIRECTORY = "Packages/p/Runtime/A/Tests/Editor/"
+    FIXTURE = DIRECTORY + "ProbeTests.cs"
+    ACCENTED = DIRECTORY + "Probé.uss"
+    ACCENTED_FIXTURE = DIRECTORY + "ProbéTests.cs"
+
+    def test_Given_AStyleSheetWithAnAccentedNameAdded_When_TheCarriedFilesAreRead_Then_ItIsAmongThem(self):
+        # Arrange
+        root, since = two_commit_repo(self, {self.FIXTURE: "// a\n"}, {self.ACCENTED: ".a { }\n"})
+
+        # Act
+        carried = base_red_check.carried_files(root, since)
+
+        # Assert
+        self.assertIn(self.ACCENTED, carried)
+
+    def test_Given_AStyleSheetWithAnAccentedNameNotCommitted_When_TheCarriedFilesAreRead_Then_ItIsAmongThem(self):
+        # Arrange
+        root, since = two_commit_repo(self, {self.FIXTURE: "// a\n"}, {self.FIXTURE: "// b\n"})
+        (root / self.ACCENTED).write_text(".a { }\n")
+
+        # Act
+        carried = base_red_check.carried_files(root, since)
+
+        # Assert
+        self.assertIn(self.ACCENTED, carried)
+
+    def test_Given_AnAccentedTestFileChanged_When_ItsLinesAreRead_Then_ItIsAmongThem(self):
+        # Arrange
+        root, since = two_commit_repo(self, {self.ACCENTED_FIXTURE: "// a\n"},
+                                      {self.ACCENTED_FIXTURE: "// a\n// b\n"})
+
+        # Act
+        changed = base_red_check.changed_lines_by_file(root, since)
+
+        # Assert
+        self.assertIn(self.ACCENTED_FIXTURE, changed)
+
+    def test_Given_ATestFileWithASpaceInItsNameChanged_When_ItsLinesAreRead_Then_ItIsAmongThem(self):
+        # Arrange
+        spaced = self.DIRECTORY + "Probe Tests.cs"
+        root, since = two_commit_repo(self, {spaced: "// a\n"}, {spaced: "// a\n// b\n"})
+
+        # Act
+        changed = base_red_check.changed_lines_by_file(root, since)
+
+        # Assert
+        self.assertIn(spaced, changed)
+
+    def test_Given_ATestFileWithASpaceAndAnAccentInItsNameChanged_When_ItsLinesAreRead_Then_ItIsAmongThem(self):
+        # Arrange -- its header is quoted and then tabbed, so the quotes are found only once the tab
+        # is off.
+        both = self.DIRECTORY + "Prob é.cs"
+        root, since = two_commit_repo(self, {both: "// a\n"}, {both: "// a\n// b\n"})
+
+        # Act
+        changed = base_red_check.changed_lines_by_file(root, since)
+
+        # Assert
+        self.assertIn(both, changed)
+
+    def test_Given_ARepositoryConfiguredForNoPrefix_When_AChangedTestFilesLinesAreRead_Then_ItIsAmongThem(self):
+        # Arrange -- a setting in someone's own git configuration, which the headers read here
+        # would otherwise follow.
+        root, since = two_commit_repo(self, {self.FIXTURE: "// a\n"}, {self.FIXTURE: "// a\n// b\n"})
+        subprocess.run(["git", "-C", str(root), "config", "diff.noprefix", "true"], check=True,
+                       capture_output=True)
+
+        # Act
+        changed = base_red_check.changed_lines_by_file(root, since)
+
+        # Assert
+        self.assertIn(self.FIXTURE, changed)
+
+    def test_Given_AnAccentedTestFileAdded_When_ItsLinesAreRead_Then_ItIsReadAsAddedWhole(self):
+        # Arrange -- its patch names it too, so only the reading as added whole tells the listing's
+        # spelling apart.
+        root, since = two_commit_repo(self, {self.FIXTURE: "// a\n"}, {self.ACCENTED_FIXTURE: "// a\n"})
+
+        # Act
+        changed = base_red_check.changed_lines_by_file(root, since)
+
+        # Assert
+        self.assertIsNone(changed.get(self.ACCENTED_FIXTURE, "absent"))
+
+    def test_Given_AnAccentedTestFileNotCommitted_When_ItsLinesAreRead_Then_ItIsReadAsAddedWhole(self):
+        # Arrange
+        root, since = two_commit_repo(self, {self.FIXTURE: "// a\n"}, {self.FIXTURE: "// b\n"})
+        (root / self.ACCENTED_FIXTURE).write_text("// a\n")
+
+        # Act
+        changed = base_red_check.changed_lines_by_file(root, since)
+
+        # Assert
+        self.assertIsNone(changed.get(self.ACCENTED_FIXTURE, "absent"))
+
+    def test_Given_AnAccentedTestFileDeleted_When_TheDroppedFilesAreRead_Then_ItIsAmongThem(self):
+        # Arrange
+        root, since = two_commit_repo(self, {self.FIXTURE: "// a\n", self.ACCENTED_FIXTURE: "// a\n"},
+                                      {self.ACCENTED_FIXTURE: None})
+
+        # Act
+        dropped = base_red_check.deleted_files(root, since)
+
+        # Assert
+        self.assertIn(self.ACCENTED_FIXTURE, dropped)
+
+
 class UnbuildableOnBaseTests(unittest.TestCase):
     """Which carried files the reading withdraws, over a real base tree rather than an invented one."""
 
