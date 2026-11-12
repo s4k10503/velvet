@@ -34,8 +34,8 @@ namespace Velvet
         };
     }
 
-    // An element type that hands its own size changes to CornerRadiusFit.OnGeometryChanged while RadiusFitWatches is
-    // set, in place of the callback the fit registers on any other element it watches.
+    // An element type that hands its own events to CornerRadiusFit.OnHostEvent while RadiusFitWatches is set, in place
+    // of the callback the fit registers on any other element it watches.
     internal interface IRadiusFitHost
     {
         bool RadiusFitWatches { get; set; }
@@ -286,6 +286,15 @@ namespace Velvet
                 return null;
             }
             return StyleArbitraryValueResolver.TryParseValue(text.AsSpan(), out var value, out var unit) ? new Length(value, unit) : null;
+        }
+
+        // An event a watched host's type was handed, of which the fit reads its size changes.
+        internal static void OnHostEvent(VisualElement host, EventBase evt)
+        {
+            if (evt is GeometryChangedEvent geometry)
+            {
+                OnGeometryChanged(host, geometry);
+            }
         }
 
         // A host's size change once its own geometry binding has run (FiberEventBindingManager.FitAfter).

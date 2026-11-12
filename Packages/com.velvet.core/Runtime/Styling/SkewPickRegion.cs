@@ -61,9 +61,9 @@ namespace Velvet
         [EventInterest(typeof(GeometryChangedEvent))]
         protected override void HandleEventBubbleUp(EventBase evt)
         {
-            if (evt.target == this && RadiusFitWatches && evt is GeometryChangedEvent geometry)
+            if (RadiusFitWatches)
             {
-                CornerRadiusFit.OnGeometryChanged(this, geometry);
+                CornerRadiusFit.OnHostEvent(this, evt);
             }
         }
     }
@@ -92,9 +92,9 @@ namespace Velvet
             if (evt.target == this)
             {
                 _lineBox?.Handle(evt);
-                if (RadiusFitWatches && evt is GeometryChangedEvent geometry)
+                if (RadiusFitWatches)
                 {
-                    CornerRadiusFit.OnGeometryChanged(this, geometry);
+                    CornerRadiusFit.OnHostEvent(this, evt);
                 }
             }
         }
@@ -130,9 +130,9 @@ namespace Velvet
             if (evt.target == this)
             {
                 _lineBox?.Handle(evt);
-                if (RadiusFitWatches && evt is GeometryChangedEvent geometry)
+                if (RadiusFitWatches)
                 {
-                    CornerRadiusFit.OnGeometryChanged(this, geometry);
+                    CornerRadiusFit.OnHostEvent(this, evt);
                 }
             }
         }

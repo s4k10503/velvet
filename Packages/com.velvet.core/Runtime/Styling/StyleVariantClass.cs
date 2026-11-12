@@ -177,7 +177,7 @@ namespace Velvet
             new List<KeyValuePair<string, StyleVariantKind>>(s_kinds).ToArray();
 
         // The keyword token[0..length) spells, matched in place so that a parse cuts out no prefix
-        // (ClassReadAllocationTests).
+        // (ClassReadAllocationTests). No keyword holds a '/', so a prefix carrying a relational name matches none.
         private static bool TryMatchKeyword(string token, int length, out string keyword, out StyleVariantKind kind)
         {
             foreach (var entry in s_keywords)
@@ -249,7 +249,7 @@ namespace Velvet
                 return false;
             }
 
-            if (token.IndexOf('/', 0, colon) == -1 && TryMatchKeyword(token, colon, out var keyword, out kind))
+            if (TryMatchKeyword(token, colon, out var keyword, out kind))
             {
                 if (!Accepts(keyword, kind, ref name))
                 {
