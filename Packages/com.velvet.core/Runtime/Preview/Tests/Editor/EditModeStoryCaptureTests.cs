@@ -49,7 +49,8 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): a mount alone does not write the texture in Edit Mode.
-        // That is why the guide has a harness wait for editor frames; waiting them before the readback reddens it.
+        // That is why the guide has a harness call VelvetPreviewPanel.Render; waiting editor frames before the
+        // readback reddens it.
         [Test]
         public void Given_AStoryMountedOnARenderTexturePanel_When_ReadBackInTheMountsOwnFrame_Then_TheTextureDoesNotHoldTheStoryYet()
         {
