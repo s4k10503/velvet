@@ -290,5 +290,67 @@ namespace Velvet.Tests
             // Assert
             Assert.That(scope.Reconciler.Context.SkewTransformed.Count, Is.EqualTo(0));
         }
+
+        // GREEN_ON_BASE(characterization): the base already drops the shape the skew gave the element.
+        [Test]
+        public void Given_ASkewedElement_When_TheSkewIsRemoved_Then_ItHoldsNoPickShape()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var first = new VNode[] { V.Div(className: "skew-x-12", name: "card") };
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), first);
+            var target = scope.Root.Q<VisualElement>("card") as ISkewPickTarget;
+            var shaped = target?.PickRegion != null;
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, first, new VNode[] { V.Div(className: "p-1", name: "card") });
+
+            // Assert — a fresh object where the skew never gave the element a shape, which is not null
+            Assert.That(shaped ? target.PickRegion : new object(), Is.Null);
+        }
+
+        // A play's skew goes through an applier of its own over the context, as StyleAnimationScheduler's does.
+        private static FiberSkewApplier PlayApplier(ReconcilerScope scope) => new(scope.Reconciler.Context);
+
+        // GREEN_ON_BASE(characterization): the base already lands a cut play on the angle the patched classes name.
+        [Test]
+        public void Given_ASkewPlayDrivingAnElement_When_APatchChangesItsSkewClassAndThePlayIsCutShort_Then_ItShowsThePatchedClassesAngle()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var first = new VNode[] { V.Div(className: "skew-x-6", name: "card") };
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), first);
+            var card = scope.Root.Q<VisualElement>("card");
+            var play = PlayApplier(scope);
+            play.Drive(card, 20f, null);
+            scope.Reconciler.Reconcile(scope.Root, first, new VNode[] { V.Div(className: "skew-x-12", name: "card") });
+
+            // Act
+            play.EndDrive(card, null, null);
+
+            // Assert
+            Assert.That(Angles(card).X, Is.EqualTo(12f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base already gives back at disposal the angle a play landed on an element its classes never skewed.
+        [Test]
+        public void Given_AnUnskewedElementAPlayLandedOnASkew_When_TheTreeIsDisposed_Then_ItCarriesNoSkew()
+        {
+            // Arrange
+            var scope = new ReconcilerScope();
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(),
+                new VNode[] { V.Div(className: "p-1", name: "card") });
+            var card = scope.Root.Q<VisualElement>("card");
+            var play = PlayApplier(scope);
+            play.Drive(card, 12f, null);
+            play.EndDrive(card, 12f, null);
+            var landed = Angles(card).X == 12f;
+
+            // Act
+            scope.Dispose();
+
+            // Assert — 0 where the landing never showed, which is not NaN
+            Assert.That(landed ? Angles(card).X : 0f, Is.NaN);
+        }
     }
 }

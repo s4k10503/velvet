@@ -175,6 +175,8 @@ namespace Velvet
                 _shadowFrom = _owner._ctx.ShadowBindings.TryGetValue(_element, out var shadow)
                     ? shadow.Layers : Array.Empty<ShadowSpec>();
                 _gradientFrom = LiveGradient();
+                // MUTANT_SURVIVES(equivalent, line removed): _skewShown is read only by a takeover in Open, which needs _drawn.
+                // Write is what sets _drawn true, and every call of it assigns _skewShown before that.
                 _skewShown = _skewFrom;
                 _shadowShown = _shadowFrom;
                 _gradientShown = _gradientFrom;

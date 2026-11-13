@@ -205,6 +205,27 @@ namespace Velvet.Tests
             Assert.That(field.text, Is.EqualTo("abX"));
         }
 
+        // GREEN_ON_BASE(characterization): a limit a later render declares unlimited already lets a character past the old bound in.
+        [Test]
+        public void Given_ALimitThatWasDeclared_When_ALaterRenderDeclaresItUnlimitedAndACharacterIsTyped_Then_TheCharacterIsInserted()
+        {
+            // Arrange
+            var oldTree = new VNode[] { V.TextField(value: "ab", maxLength: 2) };
+            var newTree = new VNode[] { V.TextField(value: "ab", maxLength: -1) };
+            _reconciler.Reconcile(_root, System.Array.Empty<VNode>(), oldTree);
+            _reconciler.Reconcile(_root, oldTree, newTree);
+            EditorPanelTestHelpers.ForcePanelUpdate(_host.Panel);
+            var field = (TextField)_root.ElementAt(0);
+            Input(field).Focus();
+            field.SelectRange(2, 2);
+
+            // Act
+            SendKey(field, 'X', KeyCode.X, EventModifiers.None);
+
+            // Assert
+            Assert.That(field.text, Is.EqualTo("abX"));
+        }
+
         // GREEN_ON_BASE(characterization): a limit of zero already refuses a typed character, as HTML's maxlength="0" does.
         [Test]
         public void Given_AZeroMaxLength_When_ACharacterIsTyped_Then_TheTextStaysEmpty()

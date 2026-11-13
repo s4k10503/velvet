@@ -366,6 +366,66 @@ namespace Velvet.Tests
             Assert.That(ShownSkewX(card), Is.EqualTo((SkewXOf(Skewed) + SkewXOf(SkewedFurther)) / 2f).Within(1e-3f));
         }
 
+        // GREEN_ON_BASE(characterization): the base already opens the exit on the drawn blend.
+        [Test]
+        public void Given_APlayBetweenTwoGradientsThatHasDrawnHalfway_When_AnExitOpensOverIt_Then_TheGradientHoldsTheHalfwayBlend()
+        {
+            // Arrange
+            var (scope, card) = MountWithClasses(RedToBlue);
+            using var _s = scope;
+            var context = scope.Reconciler.Context;
+            StyleGradientClass.TryExtract(RedToBlue, card, out var start, out _);
+            StyleGradientClass.TryExtract(GreenToBlue, card, out var end, out _);
+            var halfway = MotionPaintInterpolation.Gradient(start, end, 0.5f);
+            var first = context.PaintLeases.Open(card, RedToBlue, GreenToBlue, isExit: false);
+            context.PaintLeases.Note(card, GreenToBlue);
+            first.Apply(0f);
+            first.Apply(0.5f);
+
+            // Act
+            context.PaintLeases.Open(card, GreenToBlue, RedToBlue, isExit: true);
+
+            // Assert
+            Assert.That(context.GradientBackgrounds[card].Spec, Is.EqualTo(MotionPaintInterpolation.Gradient(halfway, start, 0f)));
+        }
+
+        // GREEN_ON_BASE(characterization): the base already ends the enter on the angle the element showed.
+        [Test]
+        public void Given_AnElementShowingASkew_When_AnEnterWithNoPassDrawsToItsEnd_Then_TheSkewIsTheOneItShowed()
+        {
+            // Arrange
+            var (scope, card) = MountWithClasses(Skewed);
+            using var _s = scope;
+            var lease = scope.Reconciler.Context.PaintLeases.Open(card, SkewedFurther, Skewed, isExit: false);
+
+            // Act
+            lease.Apply(1f);
+
+            // Assert
+            Assert.That(ShownSkewX(card), Is.EqualTo(SkewXOf(Skewed)).Within(1e-3f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base already binds the end pose's gradient once the play lets go.
+        [Test]
+        public void Given_APlayBetweenTwoGradientsThatHasDrawnHalfway_When_ItIsReleased_Then_TheBoundGradientIsTheEndPoses()
+        {
+            // Arrange
+            var (scope, card) = MountWithClasses(RedToBlue);
+            using var _s = scope;
+            var context = scope.Reconciler.Context;
+            StyleGradientClass.TryExtract(GreenToBlue, card, out var end, out _);
+            var lease = context.PaintLeases.Open(card, RedToBlue, GreenToBlue, isExit: false);
+            context.PaintLeases.Note(card, GreenToBlue);
+            lease.Apply(0f);
+            lease.Apply(0.5f);
+
+            // Act
+            lease.Release();
+
+            // Assert
+            Assert.That(context.GradientBackgrounds[card].Spec, Is.EqualTo(end));
+        }
+
         // GREEN_ON_BASE(characterization): the base already gives the classes' angle back.
         [Test]
         public void Given_APlayHoldingTheSkewThatEndsOnTheElementsOwnClass_When_ItIsReleasedHalfway_Then_TheSkewIsTheClasses()

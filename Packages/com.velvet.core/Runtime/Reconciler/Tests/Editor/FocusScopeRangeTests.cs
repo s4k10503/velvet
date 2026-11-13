@@ -375,6 +375,23 @@ namespace Velvet.Tests
             Assert.That(start.Binding, Is.Null);
         }
 
+        // GREEN_ON_BASE(characterization): the base already gives back the count its mount took.
+        [Test]
+        public void Given_AMountedFocusScope_When_ItUnmounts_Then_TheCountOfLiveRangesIsWhatItWasBeforeTheMount()
+        {
+            // Arrange
+            var before = FocusScopeRange.Live;
+            Mount(ToggledScopeRow);
+            var counted = FocusScopeRange.Live - before == 1;
+
+            // Act
+            s_setShowScope.Invoke(false);
+            _mounted.FlushStateForTest();
+
+            // Assert — int.MinValue where the mount never counted the range, which is not 0
+            Assert.That(counted ? FocusScopeRange.Live - before : int.MinValue, Is.EqualTo(0));
+        }
+
         private static VNode Probe()
         {
             s_manager = Hooks.UseFocusManager();
