@@ -7,7 +7,7 @@ namespace Velvet.Tests
 {
     /// <summary>
     /// Pins which of a play's channels a gesture state's classes take over (<see cref="GestureChannelMask.MaskChannels"/>),
-    /// without a panel.
+    /// and a play marked as an exit's (<see cref="GestureChannelMask.MarkExit"/>), without a panel.
     /// </summary>
     internal sealed class GestureChannelMaskTests
     {
@@ -49,6 +49,56 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(colour.Progress.Masked, Is.True);
+        }
+
+        // GREEN_ON_BASE(characterization): the base masks a length channel the gesture state's classes name.
+        [Test]
+        public void Given_ABezierPlayDrivingTheWidth_When_AGestureStateNamingTheWidthMasksIt_Then_TheLengthChannelIsMasked()
+        {
+            // Arrange
+            var element = new VisualElement();
+            var width = new BezierLengthChannel(ArbitraryProperty.Width, 10f, 20f, LengthUnit.Pixel);
+            var state = LinearHalfway();
+            state.Lengths = new List<BezierLengthChannel> { width };
+
+            // Act
+            GestureChannelMask.MaskChannels(element, state, StyleLonghandSet.Of(StyleLonghand.Width));
+
+            // Assert
+            Assert.That(width.Value.Masked, Is.True);
+        }
+
+        // GREEN_ON_BASE(characterization): the base ends the drive of a colour channel it masks.
+        // Nothing then writes the play's colour back over the element's own layer.
+        [Test]
+        public void Given_ABezierPlayDrivingTheBackgroundOverTheElementsOwn_When_AGestureStateNamingTheBackgroundMasksIt_Then_TheElementsOwnBackgroundIsShown()
+        {
+            // Arrange — a red layer of the element's own, and blue the play drove over it last.
+            var element = new VisualElement();
+            StyleArbitraryValueResolver.Apply(element, new ArbitraryStyle(ArbitraryProperty.BackgroundColor, Color.red));
+            var state = LinearHalfway();
+            state.Colors = new List<BezierColorChannel> { new(ArbitraryProperty.BackgroundColor, Color.red, Color.blue) };
+            StyleArbitraryValueResolver.ApplyDriven(element, new ArbitraryStyle(ArbitraryProperty.BackgroundColor, Color.blue));
+
+            // Act
+            GestureChannelMask.MaskChannels(element, state, StyleLonghandSet.Of(StyleLonghand.BackgroundColor));
+
+            // Assert
+            Assert.That(element.style.backgroundColor.value, Is.EqualTo(Color.red));
+        }
+
+        // GREEN_ON_BASE(characterization): the base marks a play an exit plays as an exit's.
+        [Test]
+        public void Given_ABezierPlay_When_AnExitMarksIt_Then_ItIsAnExitsPlay()
+        {
+            // Arrange
+            var state = LinearHalfway();
+
+            // Act
+            GestureChannelMask.MarkExit(state, true);
+
+            // Assert
+            Assert.That(state.Exit, Is.True);
         }
 
         // GREEN_ON_BASE(characterization): the base clears the inline scale of a channel the gesture state's classes name.
