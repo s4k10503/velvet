@@ -434,6 +434,68 @@ namespace Velvet.Tests
             Assert.That(held ? g1.panel.focusController.focusedElement : null, Is.EqualTo(g1));
         }
 
+        private static StateUpdater<int> s_setRenderPass;
+
+        // Renders again on demand, so the portal patches without anything else about it changing.
+        [Component(Compiler = false)]
+        private static VNode RerenderablePortalHost()
+        {
+            var (_, setPass) = Hooks.UseState(0);
+            s_setRenderPass = setPass;
+            return V.Div(children: new VNode[]
+            {
+                V.Button(name: "main1"),
+                V.Portal(UILayer.Overlay, key: "portal", focusOrder: s_focusOrder, children: new VNode[]
+                {
+                    V.Button(name: "p1"),
+                    V.Button(name: "p2"),
+                }),
+            });
+        }
+
+        // GREEN_ON_BASE(characterization): the base already attaches the navigator to the host's new panel when the portal patches.
+        [UnityTest]
+        [TestCase(PanelFocusOrder.Appended, ExpectedResult = null,
+            TestName = "Given_AnAppendedLayerPortalWhoseHostDocumentWasDisabledAndEnabled_When_ItPatchesAndTabDispatchesFromTheHostsLastFocusable_Then_FocusReturnsToTheDeclaringPanel")]
+        [TestCase(PanelFocusOrder.Chained, ExpectedResult = null,
+            TestName = "Given_AChainedLayerPortalWhoseHostDocumentWasDisabledAndEnabled_When_ItPatchesAndTabDispatchesFromTheHostsLastFocusable_Then_FocusReturnsToTheDeclaringPanel")]
+        public IEnumerator Given_ALayerPortalWhoseHostDocumentWasDisabledAndEnabled_When_ItPatchesAndTabDispatchesFromTheHostsLastFocusable_Then_FocusReturnsToTheDeclaringPanel(
+            PanelFocusOrder order)
+        {
+            // Arrange — the host document is off for two frames before it is enabled again and the declaring component
+            // renders again; `replaced` reads whether the host then has a new root in a new panel
+            s_focusOrder = order;
+            _mounted = V.Mount(_panelGo.GetComponent<UIDocument>().rootVisualElement,
+                V.Component(RerenderablePortalHost, key: "root"));
+            yield return null;
+            yield return null;
+            var document = _mounted.Root.Reconciler.Context.LayerHosts[UILayer.Overlay].Document;
+            var oldRoot = document.rootVisualElement;
+            var oldPanel = oldRoot.panel;
+            document.enabled = false;
+            yield return null;
+            yield return null;
+            document.enabled = true;
+            s_setRenderPass.Invoke(1);
+            yield return null;
+            yield return null;
+            var root = document.rootVisualElement;
+            var replaced = !ReferenceEquals(root, oldRoot) && root.panel != null && !ReferenceEquals(root.panel, oldPanel);
+            var p2 = HostElement("p2");
+            var main1 = Main("main1");
+            p2.Focus();
+            var held = p2.panel.focusController.focusedElement == p2;
+
+            // Act
+            SendMove(p2, NavigationMoveEvent.Direction.Next);
+            yield return null;
+            yield return null;
+            yield return null;
+
+            // Assert — null where the host kept its root or its panel, or p2 never took focus, which main1 can never be
+            Assert.That(replaced && held ? main1.panel.focusController.focusedElement : null, Is.EqualTo(main1));
+        }
+
         [Component]
         private static VNode GroupBeforeAnAppendedHost() => V.Div(children: new VNode[]
         {
