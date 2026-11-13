@@ -1117,6 +1117,16 @@ namespace Velvet.Tests
 
         private VisualEffect MountedClone() => _mounted.Root.Reconciler.Context.ParticlesBindings[_host.Root.Q<ParticlesElement>()].EffectHost;
 
+        // Bounded in frames rather than seconds, so the frames this fixture's remarks say stall on a GPU-less runner
+        // do not end the wait before the graph has been stepped.
+        private IEnumerator WaitUntilParticlesAreAlive(VisualEffect clone)
+        {
+            for (var frame = 0; frame < 600 && clone.aliveParticleCount <= 0; frame++)
+            {
+                yield return WaitFramesDraining(1, _host.TargetTexture);
+            }
+        }
+
         // GREEN_ON_BASE(characterization): a Manual clone already spawns nothing until something plays it.
         [UnityTest]
         public IEnumerator Given_AManualVisualEffectGraph_When_FramesAdvance_Then_TheCloneHoldsNoLiveParticle()
@@ -1127,11 +1137,14 @@ namespace Velvet.Tests
             _mounted = V.Mount(_host.Root, V.Particles(effect, className: "w-[300px] h-[300px]", playOn: PlayTrigger.Manual));
             var clone = MountedClone();
 
-            // Act
-            yield return WaitRealtimeDraining(1.0, _host.TargetTexture);
+            // Act — the Play after the reading shows the count rises on this device once the graph runs
+            yield return WaitFramesDraining(60, _host.TargetTexture);
+            var unplayed = clone.aliveParticleCount;
+            _host.Root.Q<ParticlesElement>().Play();
+            yield return WaitUntilParticlesAreAlive(clone);
 
-            // Assert
-            Assert.That(clone.aliveParticleCount, Is.EqualTo(0));
+            // Assert — a count that never rose once played reads as int.MaxValue, which no unplayed count is under
+            Assert.That(clone.aliveParticleCount > 0 ? unplayed : int.MaxValue, Is.LessThanOrEqualTo(0));
         }
 
         // GREEN_ON_BASE(characterization): flipping a Manual clone to Mount already starts it from the source's initial event.
@@ -1142,16 +1155,12 @@ namespace Velvet.Tests
             s_visualEffect = CreateLoopEffect();
             _host = new RenderTexturePanelHost("ParticlesPanel", 300, 300);
             _mounted = V.Mount(_host.Root, V.Component(VisualEffectTriggerFlipHost, key: "root"));
-            yield return WaitRealtimeDraining(0.3, _host.TargetTexture);
+            yield return WaitFramesDraining(30, _host.TargetTexture);
             var clone = MountedClone();
 
             // Act
             s_setFlag.Invoke(true);
-            var deadline = Time.realtimeSinceStartupAsDouble + 5.0;
-            while (clone.aliveParticleCount == 0 && Time.realtimeSinceStartupAsDouble < deadline)
-            {
-                yield return WaitRealtimeDraining(0.1, _host.TargetTexture);
-            }
+            yield return WaitUntilParticlesAreAlive(clone);
 
             // Assert
             Assert.That(clone.aliveParticleCount, Is.GreaterThan(0));
