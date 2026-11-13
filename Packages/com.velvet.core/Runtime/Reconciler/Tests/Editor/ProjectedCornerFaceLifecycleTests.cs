@@ -511,6 +511,26 @@ namespace Velvet.Tests
             Assert.That(Root.Q<VisualElement>("box").style.backgroundColor.keyword, Is.EqualTo(StyleKeyword.Null));
         }
 
+        // GREEN_ON_BASE(characterization): the base holds the radius slots at none while the face paints the corners.
+        [Test]
+        public void Given_ALayoutIdMotionWithAPercentRadiusDrawnScaledDifferentlyOnEachAxis_When_ItsRadiusTurnsToPixelsMidMove_Then_ItsRadiusSlotsHoldNone()
+        {
+            // Arrange — blue, with a percent radius, which scales with the box and is written to the slots as it is, drawn
+            // at a quarter across and a half down.
+            s_classes = "rounded-[10%] bg-blue-500";
+            s_movedClasses = "rounded-[20px] bg-blue-500";
+            using var mounted = MountAndWiden();
+            Tick();
+
+            // Act — a pixel radius, which the face paints with a radius per axis.
+            Step(mounted, 2);
+            Tick();
+
+            // Assert — NaN where the face paints no corner, which no slot holds.
+            var box = Root.Q<VisualElement>("box");
+            Assert.That(ProjectedCornerFace.TryGetRadii(box, out _) ? box.style.borderTopLeftRadius.value.value : float.NaN, Is.Zero);
+        }
+
         // GREEN_ON_BASE(characterization): the base never hides the background of a moving Motion, so it is blue throughout.
         // Dropping the `NarrowIfIntercepted` call from ProjectedCornerFace.Begin, or releasing at once in
         // ProjectedCornerFace.ReleaseOnceRestored, reddens this case: the background then fades in from transparent.
