@@ -1,11 +1,20 @@
 {
- "detail": "EditMode: 4 failed among the 131 case(s) that ran the site: Given_APortalBetweenTwoSiblings_When_Mounted_Then_ThePortalsChildCommitsAtThePortalsPositionInEveryPhase, Given_APortalChildAndASiblingAfterThePortalUpdatedTogether_When_TheyCommit_Then_ThePortalChildsEffectsRunFirst, Given_APortalChildsRowReachedByAResumedSliceOfItsUpdate_When_ThatRowAndASiblingAfterThePortalUpdateTogether_Then_TheRowsEffectsRunFirst",
+ "detail": "EditMode: 6 failed among the 153 case(s) that ran the site: Given_APassThatRenderedAListsRowInAPortal_When_TheComponentAfterTheListAndASiblingAfterThePortalUpdate_Then_TheComponentsEffectsRunFirst, Given_APortalBetweenTwoSiblings_When_Mounted_Then_ThePortalsChildCommitsAtThePortalsPositionInEveryPhase, Given_APortalChildAndASiblingAfterThePortalUpdatedTogether_When_TheyCommit_Then_ThePortalChildsEffectsRunFirst",
  "file": "d332e20cfa6c7ac955458ecd475022c486dde6b158c6a5ae4ca571e92f8d1a15",
  "killers": [
   {
+   "case": "Velvet.Tests.PortalCommitOrderEventLogTests.Given_APassThatRenderedAListsRowInAPortal_When_TheComponentAfterTheListAndASiblingAfterThePortalUpdate_Then_TheComponentsEffectsRunFirst",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PortalCommitOrderEventLogTests.cs": "693ccd16858a0469e42335e81b8586b0e2df0f844cfb3909fef8e8065482924c",
+    "Packages/com.velvet.core/TestUtilities/EventLog.cs": "f8851c55cde58b2a9c3b2ea7282a508a425e4c459badf397641be77e18571845",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  },
+  {
    "case": "Velvet.Tests.PortalCommitOrderEventLogTests.Given_APortalBetweenTwoSiblings_When_Mounted_Then_ThePortalsChildCommitsAtThePortalsPositionInEveryPhase",
    "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PortalCommitOrderEventLogTests.cs": "7adf06a6952dfbc319a4588af348c6afcb665fbece3d29d8217db3eec287a22c",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PortalCommitOrderEventLogTests.cs": "693ccd16858a0469e42335e81b8586b0e2df0f844cfb3909fef8e8065482924c",
     "Packages/com.velvet.core/TestUtilities/EventLog.cs": "f8851c55cde58b2a9c3b2ea7282a508a425e4c459badf397641be77e18571845",
     "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
     "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
@@ -14,7 +23,7 @@
   {
    "case": "Velvet.Tests.PortalCommitOrderEventLogTests.Given_APortalChildAndASiblingAfterThePortalUpdatedTogether_When_TheyCommit_Then_ThePortalChildsEffectsRunFirst",
    "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PortalCommitOrderEventLogTests.cs": "7adf06a6952dfbc319a4588af348c6afcb665fbece3d29d8217db3eec287a22c",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PortalCommitOrderEventLogTests.cs": "693ccd16858a0469e42335e81b8586b0e2df0f844cfb3909fef8e8065482924c",
     "Packages/com.velvet.core/TestUtilities/EventLog.cs": "f8851c55cde58b2a9c3b2ea7282a508a425e4c459badf397641be77e18571845",
     "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
     "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
@@ -23,7 +32,7 @@
   {
    "case": "Velvet.Tests.PortalCommitOrderEventLogTests.Given_APortalChildsRowReachedByAResumedSliceOfItsUpdate_When_ThatRowAndASiblingAfterThePortalUpdateTogether_Then_TheRowsEffectsRunFirst",
    "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PortalCommitOrderEventLogTests.cs": "7adf06a6952dfbc319a4588af348c6afcb665fbece3d29d8217db3eec287a22c",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PortalCommitOrderEventLogTests.cs": "693ccd16858a0469e42335e81b8586b0e2df0f844cfb3909fef8e8065482924c",
     "Packages/com.velvet.core/TestUtilities/EventLog.cs": "f8851c55cde58b2a9c3b2ea7282a508a425e4c459badf397641be77e18571845",
     "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
     "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
@@ -32,14 +41,23 @@
   {
    "case": "Velvet.Tests.PortalCommitOrderEventLogTests.Given_APortalFollowedByAComponentRenderingNothing_When_Mounted_Then_ThePortalsChildCommitsAheadOfThatComponent",
    "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PortalCommitOrderEventLogTests.cs": "7adf06a6952dfbc319a4588af348c6afcb665fbece3d29d8217db3eec287a22c",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PortalCommitOrderEventLogTests.cs": "693ccd16858a0469e42335e81b8586b0e2df0f844cfb3909fef8e8065482924c",
+    "Packages/com.velvet.core/TestUtilities/EventLog.cs": "f8851c55cde58b2a9c3b2ea7282a508a425e4c459badf397641be77e18571845",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  },
+  {
+   "case": "Velvet.Tests.PortalCommitOrderEventLogTests.Given_AVirtualListRowInAPortalAndASiblingAfterThePortalUpdatedTogether_When_TheyCommit_Then_TheRowsEffectsRunFirst",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PortalCommitOrderEventLogTests.cs": "693ccd16858a0469e42335e81b8586b0e2df0f844cfb3909fef8e8065482924c",
     "Packages/com.velvet.core/TestUtilities/EventLog.cs": "f8851c55cde58b2a9c3b2ea7282a508a425e4c459badf397641be77e18571845",
     "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
     "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
    }
   }
  ],
- "measured_by": "43140876866",
+ "measured_by": "43267299514",
  "mutant": {
   "after": "!=",
   "before": "==",
@@ -55,6 +73,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "3a0737ae805726605d7b4b1c058bc11f5aa4144189d9159ff88180e9426f3730",
+ "tests": "209ea2522791c7d5695294d5efb607d02394e8baec347c197a23749bff024646",
  "verdict": "killed"
 }

@@ -1,0 +1,35 @@
+{
+ "detail": "EditMode: 1 failed among the 138 case(s) that ran the site: Given_ATransitionGivenUpOnOneBoundarysRead_When_AnotherBoundarysReadResolves_Then_ThatBoundaryShowsItsContent",
+ "file": "f3cfbe11f5635b795e83000eacd00068e3f04b88a2a3cbbbcf46c2ba83e9335c",
+ "killers": [
+  {
+   "case": "Velvet.Tests.SuspenseTransitionTests.Given_ATransitionGivenUpOnOneBoundarysRead_When_AnotherBoundarysReadResolves_Then_ThatBoundaryShowsItsContent",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/SuspenseTransitionTests.cs": "59c9192ec4f14817419740d05458c75bac50a6874de2a624add0ecd76e0abb03",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  }
+ ],
+ "measured_by": "43267299514",
+ "mutant": {
+  "after": "",
+  "before": " && ReferenceEquals(current.SuspendedOn, fiber)",
+  "column": 49,
+  "line": 935,
+  "operator": "clause removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberRenderer.cs",
+  "shadowed": [
+   "guard removed",
+   "literal",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "209ea2522791c7d5695294d5efb607d02394e8baec347c197a23749bff024646",
+ "verdict": "killed"
+}

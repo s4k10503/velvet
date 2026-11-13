@@ -2,7 +2,7 @@
  "detail": "EditMode survived; PlayMode: -",
  "file": "f9ab82e03f919ae443bb5fbc7ddc3124a8c224df601116df83e13c4ceab29a16",
  "killers": [],
- "measured_by": "43149574925",
+ "measured_by": "43267299514",
  "mutant": {
   "after": ";",
   "before": "_pass.Direction = new Vector2(1f / _frame.Region.width, 0f);",
@@ -16,6 +16,6 @@
  "platform": "PlayMode",
  "schema": 3,
  "stood": null,
- "tests": "98b533eb2508d98e7e434af28fbbcb8fd1a08380c2ace242c045247e786a592f",
+ "tests": "209ea2522791c7d5695294d5efb607d02394e8baec347c197a23749bff024646",
  "verdict": "survived"
 }

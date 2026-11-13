@@ -1,0 +1,23 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "195a0235a0958c495c3552739630e05ceb3ec042cd42a0553dab2eb5ea2fcb2b",
+ "killers": [],
+ "measured_by": "43267299514",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 37,
+  "line": 306,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleCascade.cs",
+  "shadowed": [
+   "equality"
+  ]
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "209ea2522791c7d5695294d5efb607d02394e8baec347c197a23749bff024646",
+ "verdict": "survived"
+}

@@ -1,0 +1,28 @@
+{
+ "detail": "EditMode: 1 failed among the 1 case(s) that ran the site: Given_AListNoNameOfWhichIsRegistered_When_ResolvedAtWeight600_Then_TheBoldIsLeftResidual",
+ "file": "38f7bbdd72795ef28e32f130dce0ebafee986bf97f7ad9aef600543246eea3cf",
+ "killers": [
+  {
+   "case": "Velvet.Tests.FontFamilyListTests.Given_AListNoNameOfWhichIsRegistered_When_ResolvedAtWeight600_Then_TheBoldIsLeftResidual",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/FontFamilyListTests.cs": "3d308e4917c8123efbb4c539b851a6d5aedcac70d2f9f49d7494a8a053fe55e3"
+   }
+  }
+ ],
+ "measured_by": "43267299514",
+ "mutant": {
+  "after": ">",
+  "before": ">=",
+  "column": 71,
+  "line": 206,
+  "operator": "boundary",
+  "path": "Packages/com.velvet.core/Runtime/Styling/VelvetFonts.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "209ea2522791c7d5695294d5efb607d02394e8baec347c197a23749bff024646",
+ "verdict": "killed"
+}

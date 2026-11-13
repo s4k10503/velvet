@@ -1,0 +1,52 @@
+{
+ "detail": "EditMode: 3 failed among the 17 case(s) that ran the site: Given_APortalRowWithRichTextOffDrawnInACopyOfTheDefaultFamily_When_TheDefaultFamilyChanges_Then_ItIsDrawnInACopyOfTheNewOne, Given_APortalRowWithRichTextOffNamingAFamily_When_TheRegistryChanges_Then_ItIsDrawnInACopyOfThatFamily, Given_APortalRowWithRichTextOffUnderAnAuthorsFontRule_When_TheRuleStopsMatching_Then_ItIsDrawnInACopyOfTheDefaultFamily",
+ "file": "65c91c78388be23aa85a1a34af7eac1bc2c249df692bc2a928c6841f07a104e5",
+ "killers": [
+  {
+   "case": "Velvet.Tests.DefaultFamilyScopePanelTests.Given_APortalRowWithRichTextOffDrawnInACopyOfTheDefaultFamily_When_TheDefaultFamilyChanges_Then_ItIsDrawnInACopyOfTheNewOne",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/DefaultFamilyScopePanelTests.cs": "cc9b92593d42f218b1c700cf7d59d39b601b37c52b5a6a7a7fb705c11cd9050b",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26"
+   }
+  },
+  {
+   "case": "Velvet.Tests.DefaultFamilyScopePanelTests.Given_APortalRowWithRichTextOffNamingAFamily_When_TheRegistryChanges_Then_ItIsDrawnInACopyOfThatFamily",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/DefaultFamilyScopePanelTests.cs": "cc9b92593d42f218b1c700cf7d59d39b601b37c52b5a6a7a7fb705c11cd9050b",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26"
+   }
+  },
+  {
+   "case": "Velvet.Tests.DefaultFamilyScopePanelTests.Given_APortalRowWithRichTextOffUnderAnAuthorsFontRule_When_TheRuleStopsMatching_Then_ItIsDrawnInACopyOfTheDefaultFamily",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/DefaultFamilyScopePanelTests.cs": "cc9b92593d42f218b1c700cf7d59d39b601b37c52b5a6a7a7fb705c11cd9050b",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26"
+   }
+  }
+ ],
+ "measured_by": "43267299514",
+ "mutant": {
+  "after": "==",
+  "before": "!=",
+  "column": 32,
+  "line": 425,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Styling/LineBoxFont.cs",
+  "shadowed": [
+   "clause removed",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "209ea2522791c7d5695294d5efb607d02394e8baec347c197a23749bff024646",
+ "verdict": "killed"
+}

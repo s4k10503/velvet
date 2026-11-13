@@ -1,0 +1,31 @@
+{
+ "detail": "EditMode: 1 failed among the 1814 case(s) that ran the site: Given_EffectWithCleanupReadingRef_When_Unmounted_Then_CleanupSeesValidRef",
+ "file": "4cb6c439faa3babb1126a003a13b519efeee1822be1845d4726326c72e6a2dd2",
+ "killers": [
+  {
+   "case": "Velvet.Tests.UseLayoutEffectTests.Given_EffectWithCleanupReadingRef_When_Unmounted_Then_CleanupSeesValidRef",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseLayoutEffectTests.cs": "7e70af3d41972f440274aece540b9741d9c994cb0dbff4b19b3f340cafb4b860",
+    "Packages/com.velvet.core/TestUtilities/ActionDisposable.cs": "e95e072a106d4d4a77b0e090c5bdd56a05df277aa99aeb1d28e41c5ce3d3e1ea",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  }
+ ],
+ "measured_by": "43267299514",
+ "mutant": {
+  "after": ";",
+  "before": "TakeDownStartingAt(element);",
+  "column": 12,
+  "line": 139,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/PreOrderTeardown.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "209ea2522791c7d5695294d5efb607d02394e8baec347c197a23749bff024646",
+ "verdict": "killed"
+}

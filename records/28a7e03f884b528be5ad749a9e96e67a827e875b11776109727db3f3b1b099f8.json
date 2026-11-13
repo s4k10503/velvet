@@ -1,0 +1,43 @@
+{
+ "detail": "EditMode: 3 failed among the 39 case(s) that ran the site: Given_ARingWhoseBoxShadowTheBrowserDiscards_When_Extracted_Then_NoRingIsDrawn(\"ring shadow-[calc(1px)_4px] shadow-[#ggg]\"), Given_ARingWhoseBoxShadowTheBrowserDiscards_When_Extracted_Then_NoRingIsDrawn(\"ring-2 shadow-[calc(1px)_calc(2px)] shadow-[color:0_4px_8px]\"), Given_ARingWhoseBoxShadowTheBrowserDiscards_When_Extracted_Then_NoRingIsDrawn(\"ring-2 shadow-2xl/150 shadow-[calc(1px)_calc(2px)_red] shadow-red-500\")",
+ "file": "4fd4c6f6d65f64001cba1ccff11c3543e1c039db02a98a5372d0060b0515af3c",
+ "killers": [
+  {
+   "case": "Velvet.Tests.RejectedValueTests.Given_ARingWhoseBoxShadowTheBrowserDiscards_When_Extracted_Then_NoRingIsDrawn(\"ring shadow-[calc(1px)_4px] shadow-[#ggg]\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/RejectedValueTests.cs": "cb41916238bd5825c3995f5f02d97280da1514db64d38079ba743d65fc7ec007"
+   }
+  },
+  {
+   "case": "Velvet.Tests.RejectedValueTests.Given_ARingWhoseBoxShadowTheBrowserDiscards_When_Extracted_Then_NoRingIsDrawn(\"ring-2 shadow-2xl/150 shadow-[calc(1px)_calc(2px)_red] shadow-red-500\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/RejectedValueTests.cs": "cb41916238bd5825c3995f5f02d97280da1514db64d38079ba743d65fc7ec007"
+   }
+  },
+  {
+   "case": "Velvet.Tests.RejectedValueTests.Given_ARingWhoseBoxShadowTheBrowserDiscards_When_Extracted_Then_NoRingIsDrawn(\"ring-2 shadow-[calc(1px)_calc(2px)] shadow-[color:0_4px_8px]\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/RejectedValueTests.cs": "cb41916238bd5825c3995f5f02d97280da1514db64d38079ba743d65fc7ec007"
+   }
+  }
+ ],
+ "measured_by": "43267299514",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 31,
+  "line": 886,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleShadowClass.cs",
+  "shadowed": [
+   "clause removed",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "209ea2522791c7d5695294d5efb607d02394e8baec347c197a23749bff024646",
+ "verdict": "killed"
+}

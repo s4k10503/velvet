@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed among the 13 case(s) that ran the site: Given_AHorizontalEdgeKeywordThenALength_When_Extracted_Then_TheKeywordIsTheX",
+ "file": "892ca6f69859a64c035e3021eae85ab8fa06d09681d5ba5cdd403bda10bb6c99",
+ "killers": [
+  {
+   "case": "Velvet.Tests.GradientPositionTests.Given_AHorizontalEdgeKeywordThenALength_When_Extracted_Then_TheKeywordIsTheX",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/GradientPositionTests.cs": "a48102fa2235257dfd66ed6e74ed54b751b9bb5703f088c7e4152a4a12d8cd6a"
+   }
+  }
+ ],
+ "measured_by": "43267299514",
+ "mutant": {
+  "after": "false",
+  "before": "true",
+  "column": 51,
+  "line": 1463,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleGradientClass.cs",
+  "shadowed": [
+   "literal"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "209ea2522791c7d5695294d5efb607d02394e8baec347c197a23749bff024646",
+ "verdict": "killed"
+}

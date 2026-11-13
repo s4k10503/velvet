@@ -1,8 +1,19 @@
 {
- "detail": "EditMode survived; PlayMode: -",
+ "detail": "EditMode survived; PlayMode: 1 failed: Given_AClippingChildInheritingAnInvalidShadowColour_When_Rendered_Then_ItsSpreadIsNotPainted",
  "file": "abf780105d255cc014a1d6ce37cdc49d54f53df91c0e706eb775c62634908119",
- "killers": [],
- "measured_by": "43149574925",
+ "killers": [
+  {
+   "case": "Velvet.Tests.InheritedShadowDiscardPlaybackTests.Given_AClippingChildInheritingAnInvalidShadowColour_When_Rendered_Then_ItsSpreadIsNotPainted",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/PlayMode/InheritedShadowDiscardPlaybackTests.cs": "9062e56725bb9f069c40c44cd288a91e94974c9eb1b67444a05c09ba715183e7",
+    "Packages/com.velvet.core/TestUtilities/RenderTexturePanelHost.cs": "194e0d5bc1138e5ae5cdeeae94298ce65a10fe077c4a75c73599e7abfa531bb6",
+    "Packages/com.velvet.core/TestUtilities/TargetFrameRateScope.cs": "2a2bdd5a934388428380fda4fcf82e2ec5df7d1ab86930011f6dbb3f772ae50c",
+    "Packages/com.velvet.core/TestUtilities/TestPanelSettings.cs": "c7a36f6a4acd48eb54e9b4c339d7caf0c56cbef64dacd018497182f9fadacc29",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  }
+ ],
+ "measured_by": "43267299514",
  "mutant": {
   "after": "<",
   "before": "<=",
@@ -21,6 +32,6 @@
  "platform": "PlayMode",
  "schema": 3,
  "stood": null,
- "tests": "98b533eb2508d98e7e434af28fbbcb8fd1a08380c2ace242c045247e786a592f",
- "verdict": "survived"
+ "tests": "209ea2522791c7d5695294d5efb607d02394e8baec347c197a23749bff024646",
+ "verdict": "killed"
 }

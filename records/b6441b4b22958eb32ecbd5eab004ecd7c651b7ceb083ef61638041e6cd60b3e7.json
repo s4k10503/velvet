@@ -1,0 +1,31 @@
+{
+ "detail": "EditMode: 1 failed among the 382 case(s) that ran the site: Given_AnEmRadialRadius_When_Mounted_Then_TheBoundGradientIsReadAgainstTheElement",
+ "file": "892ca6f69859a64c035e3021eae85ab8fa06d09681d5ba5cdd403bda10bb6c99",
+ "killers": [
+  {
+   "case": "Velvet.Tests.MeasuredLengthPanelTests.Given_AnEmRadialRadius_When_Mounted_Then_TheBoundGradientIsReadAgainstTheElement",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/MeasuredLengthPanelTests.cs": "52b3649208b556c50fab6d571faa44ca23569949ff67921bc70575b9ce750d3f",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166",
+    "Packages/com.velvet.core/TestUtilities/RenderedTextProbe.cs": "1eb2072fc3aef248a139379b3ca65d395e5e267af058df5603edf70feaab20f8"
+   }
+  }
+ ],
+ "measured_by": "43267299514",
+ "mutant": {
+  "after": ";",
+  "before": "s_measuredRead |= reading.Measured;",
+  "column": 12,
+  "line": 656,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleGradientClass.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "209ea2522791c7d5695294d5efb607d02394e8baec347c197a23749bff024646",
+ "verdict": "killed"
+}

@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "65c91c78388be23aa85a1a34af7eac1bc2c249df692bc2a928c6841f07a104e5",
+ "killers": [],
+ "measured_by": "43267299514",
+ "mutant": {
+  "after": ";",
+  "before": "copy.ReadFontAssetDefinition();",
+  "column": 12,
+  "line": 245,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/LineBoxFont.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "209ea2522791c7d5695294d5efb607d02394e8baec347c197a23749bff024646",
+ "verdict": "survived"
+}

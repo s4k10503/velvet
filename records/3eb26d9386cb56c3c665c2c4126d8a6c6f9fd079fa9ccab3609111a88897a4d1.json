@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed among the 2 case(s) that ran the site: Given_AnInsetShadowAnInsetRingAndAShadow_When_Extracted_Then_TheyAreListedInThatOrder",
+ "file": "4fd4c6f6d65f64001cba1ccff11c3543e1c039db02a98a5372d0060b0515af3c",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ShadowClassParityTests.Given_AnInsetShadowAnInsetRingAndAShadow_When_Extracted_Then_TheyAreListedInThatOrder",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ShadowClassParityTests.cs": "e6608306a38fc266760f60699310b8c1624ab121bf718fba9eb02e2f5945441e"
+   }
+  }
+ ],
+ "measured_by": "43267299514",
+ "mutant": {
+  "after": "-",
+  "before": "+",
+  "column": 45,
+  "line": 352,
+  "operator": "arithmetic",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleShadowClass.cs",
+  "shadowed": [
+   "line removed"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "209ea2522791c7d5695294d5efb607d02394e8baec347c197a23749bff024646",
+ "verdict": "killed"
+}

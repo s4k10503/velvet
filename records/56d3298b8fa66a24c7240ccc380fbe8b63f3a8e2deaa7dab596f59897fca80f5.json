@@ -1,0 +1,32 @@
+{
+ "detail": "EditMode: 1 failed among the 31 case(s) that ran the site: Given_AShadowTransparentColour_When_TheBoxShadowIsReadAgain_Then_NothingIsAllocated",
+ "file": "4fd4c6f6d65f64001cba1ccff11c3543e1c039db02a98a5372d0060b0515af3c",
+ "killers": [
+  {
+   "case": "Velvet.Tests.BoxShadowReadAllocationTests.Given_AShadowTransparentColour_When_TheBoxShadowIsReadAgain_Then_NothingIsAllocated",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BoxShadowReadAllocationTests.cs": "87ef869384095bc2d6e4500edf83eedfc09189ad4963e830c8097fa362f6fded",
+    "Packages/com.velvet.core/TestUtilities/GCAllocationCanary.cs": "fc61cead251d89e031e7591ac080a706d0568f2f3427cd7cda1ec3c93b965e58",
+    "Packages/com.velvet.core/TestUtilities/GCAllocationProbe.cs": "492823c099cf4f4de89da0da69c98d45cfc042070d93e2d0c0b95773310ebc2c"
+   }
+  }
+ ],
+ "measured_by": "43267299514",
+ "mutant": {
+  "after": "",
+  "before": " || suffix.SequenceEqual(\"transparent\".AsSpan())",
+  "column": 62,
+  "line": 768,
+  "operator": "clause removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleShadowClass.cs",
+  "shadowed": [
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "209ea2522791c7d5695294d5efb607d02394e8baec347c197a23749bff024646",
+ "verdict": "killed"
+}

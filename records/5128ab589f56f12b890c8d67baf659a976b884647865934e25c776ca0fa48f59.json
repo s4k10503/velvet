@@ -1,0 +1,32 @@
+{
+ "detail": "EditMode: 1 failed among the 49 case(s) that ran the site: Given_AShadowCasterWhoseRadiusChangesInline_When_ItsShadowBoxIsTaken_Then_ItHasTheNewRadius",
+ "file": "337b1e5025bf6122fdd346b0c898cbbbe0b98c75148494cce6ea83932b17a6f4",
+ "killers": [
+  {
+   "case": "Velvet.Tests.BoxShadowRadiusRereadTests.Given_AShadowCasterWhoseRadiusChangesInline_When_ItsShadowBoxIsTaken_Then_ItHasTheNewRadius",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BoxShadowRadiusRereadTests.cs": "9ac6c05d47c0c679502b5d0b92c550da9a2e26d6d4adbed6b28e21cdf436784f",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  }
+ ],
+ "measured_by": "43267299514",
+ "mutant": {
+  "after": ";",
+  "before": "ResolveCornerRadius(ve, binding);",
+  "column": 12,
+  "line": 384,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/BoxShadowSilhouette.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "209ea2522791c7d5695294d5efb607d02394e8baec347c197a23749bff024646",
+ "verdict": "killed"
+}

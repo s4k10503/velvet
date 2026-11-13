@@ -1,0 +1,23 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "337b1e5025bf6122fdd346b0c898cbbbe0b98c75148494cce6ea83932b17a6f4",
+ "killers": [],
+ "measured_by": "43267299514",
+ "mutant": {
+  "after": "false",
+  "before": "true",
+  "column": 66,
+  "line": 338,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Styling/BoxShadowSilhouette.cs",
+  "shadowed": [
+   "line removed"
+  ]
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "209ea2522791c7d5695294d5efb607d02394e8baec347c197a23749bff024646",
+ "verdict": "survived"
+}

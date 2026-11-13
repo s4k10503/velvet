@@ -1,0 +1,46 @@
+{
+ "detail": "EditMode survived; PlayMode: 3 failed: Given_AWholePixelBorderWidthDetachedAcrossAScaleChange_When_ItIsAttachedAgain_Then_LaterScaleChangesSnapItAgain, Given_AWholePixelBorderWidthMountedAtOneDevicePixel_When_ThePanelScaleBecomesOneAndAHalf_Then_ItIsSnappedDown, Given_AWholePixelDivideWidth_When_ThePanelScaleBecomesOneAndAHalf_Then_TheDividerIsSnappedDown",
+ "file": "3aafabea7179c6e8e068386cfcfe16619df3473c8243d2f748c6f577e55a4029",
+ "killers": [
+  {
+   "case": "Velvet.Tests.BorderWidthScalePlaybackTests.Given_AWholePixelBorderWidthDetachedAcrossAScaleChange_When_ItIsAttachedAgain_Then_LaterScaleChangesSnapItAgain",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/PlayMode/BorderWidthScalePlaybackTests.cs": "d61918c5a83ea505d06d99ae00af7e425244d8ea5079b225098932d631d19671",
+    "Packages/com.velvet.core/TestUtilities/RenderTexturePanelHost.cs": "194e0d5bc1138e5ae5cdeeae94298ce65a10fe077c4a75c73599e7abfa531bb6",
+    "Packages/com.velvet.core/TestUtilities/TestPanelSettings.cs": "c7a36f6a4acd48eb54e9b4c339d7caf0c56cbef64dacd018497182f9fadacc29"
+   }
+  },
+  {
+   "case": "Velvet.Tests.BorderWidthScalePlaybackTests.Given_AWholePixelBorderWidthMountedAtOneDevicePixel_When_ThePanelScaleBecomesOneAndAHalf_Then_ItIsSnappedDown",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/PlayMode/BorderWidthScalePlaybackTests.cs": "d61918c5a83ea505d06d99ae00af7e425244d8ea5079b225098932d631d19671",
+    "Packages/com.velvet.core/TestUtilities/RenderTexturePanelHost.cs": "194e0d5bc1138e5ae5cdeeae94298ce65a10fe077c4a75c73599e7abfa531bb6",
+    "Packages/com.velvet.core/TestUtilities/TestPanelSettings.cs": "c7a36f6a4acd48eb54e9b4c339d7caf0c56cbef64dacd018497182f9fadacc29"
+   }
+  },
+  {
+   "case": "Velvet.Tests.BorderWidthScalePlaybackTests.Given_AWholePixelDivideWidth_When_ThePanelScaleBecomesOneAndAHalf_Then_TheDividerIsSnappedDown",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/PlayMode/BorderWidthScalePlaybackTests.cs": "d61918c5a83ea505d06d99ae00af7e425244d8ea5079b225098932d631d19671",
+    "Packages/com.velvet.core/TestUtilities/RenderTexturePanelHost.cs": "194e0d5bc1138e5ae5cdeeae94298ce65a10fe077c4a75c73599e7abfa531bb6",
+    "Packages/com.velvet.core/TestUtilities/TestPanelSettings.cs": "c7a36f6a4acd48eb54e9b4c339d7caf0c56cbef64dacd018497182f9fadacc29"
+   }
+  }
+ ],
+ "measured_by": "43267299514",
+ "mutant": {
+  "after": ";",
+  "before": "Run(element, entry);",
+  "column": 16,
+  "line": 136,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/PanelScaleWatch.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "209ea2522791c7d5695294d5efb607d02394e8baec347c197a23749bff024646",
+ "verdict": "killed"
+}

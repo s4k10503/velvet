@@ -1,0 +1,41 @@
+{
+ "detail": "EditMode: 2 failed among the 64 case(s) that ran the site: Given_ATokenAnotherPassOwns_When_ItIsAddedOnReRender_Then_TheTokenIsNotOnTheClassList(\"[--brand:red]\"), Given_ATokenAnotherPassOwns_When_ItIsAddedOnReRender_Then_TheTokenIsNotOnTheClassList(\"w-(--w)\")",
+ "file": "d5d537b142088335cd3e61f346e77002d058e453594d7ebc5409ae5546142ea6",
+ "killers": [
+  {
+   "case": "Velvet.Tests.PatchClassTokenOwnershipTests.Given_ATokenAnotherPassOwns_When_ItIsAddedOnReRender_Then_TheTokenIsNotOnTheClassList(\"[--brand:red]\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PatchClassTokenOwnershipTests.cs": "828823464619f1d2af83565e0849eb8106ea49aa75da7833338d545c9f9b6bc8",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  },
+  {
+   "case": "Velvet.Tests.PatchClassTokenOwnershipTests.Given_ATokenAnotherPassOwns_When_ItIsAddedOnReRender_Then_TheTokenIsNotOnTheClassList(\"w-(--w)\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PatchClassTokenOwnershipTests.cs": "828823464619f1d2af83565e0849eb8106ea49aa75da7833338d545c9f9b6bc8",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  }
+ ],
+ "measured_by": "43267299514",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 28,
+  "line": 2987,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberNodePatcher.cs",
+  "shadowed": [
+   "clause removed",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "209ea2522791c7d5695294d5efb607d02394e8baec347c197a23749bff024646",
+ "verdict": "killed"
+}

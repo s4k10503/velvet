@@ -1,0 +1,34 @@
+{
+ "detail": "EditMode: 2 failed among the 83 case(s) that ran the site: Given_AComponentPlacedAtARowAndOneMountedInsideIt_When_TheRowsCommitTheirOrder_Then_ThePlacedOneComesFirst, Given_AWrapperMountedComponentInALaterRow_When_TheRowsCommitTheirOrder_Then_ItFollowsTheComponentPlacedInAnEarlierRow",
+ "file": "d2a26e1050b2d84741a23cfd2d9f939252e69b9d85647524539ec760ced1ee5b",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ComponentRegistryTableTests.Given_AComponentPlacedAtARowAndOneMountedInsideIt_When_TheRowsCommitTheirOrder_Then_ThePlacedOneComesFirst",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/ComponentRegistryTableTests.cs": "1c249a34f98230c532ecac241d95ea9f5bb1e6036233e9945d0fb39d4accf11f"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ComponentRegistryTableTests.Given_AWrapperMountedComponentInALaterRow_When_TheRowsCommitTheirOrder_Then_ItFollowsTheComponentPlacedInAnEarlierRow",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/ComponentRegistryTableTests.cs": "1c249a34f98230c532ecac241d95ea9f5bb1e6036233e9945d0fb39d4accf11f"
+   }
+  }
+ ],
+ "measured_by": "43267299514",
+ "mutant": {
+  "after": ";",
+  "before": "byParent[fiber.Parent] = members;",
+  "column": 16,
+  "line": 607,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Component/ComponentRegistry.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "209ea2522791c7d5695294d5efb607d02394e8baec347c197a23749bff024646",
+ "verdict": "killed"
+}
