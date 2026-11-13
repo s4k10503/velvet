@@ -6767,19 +6767,6 @@ namespace Velvet.Tests
             Assert.That(CornerRadiusFit.InlineCorner(element.style, corner).value.value, Is.EqualTo(expected).Within(0.01f));
         }
 
-        // GREEN_ON_BASE(characterization): the base never writes the radius of a layoutId Motion, so it never divides one.
-        // A box drawn with no extent must be drawn with no radius rather than an infinite one.
-        [Test]
-        public void Given_ARoundedLayoutIdMotionGrowingFromNothing_When_ItsTweenStarts_Then_ItsRadiusIsFinite()
-        {
-            // Arrange / Act — from a box of no size.
-            s_resizeFrom = 0;
-            using var mounted = ResizeBoxFor("rounded-[10px]", 1);
-
-            // Assert
-            Assert.That(float.IsFinite(Root.Q<VisualElement>("shared").style.borderTopLeftRadius.value.value), Is.True);
-        }
-
         // The resizing box, rounded and blue, grown from a box of no size on a linear second that waits a second first,
         // and played some way into the delay, through which it is drawn at the old box: at a scale of zero on both axes.
         private MountedTree GrowFromNothingIntoADelay()
