@@ -306,5 +306,34 @@ namespace Velvet.Tests
             // Assert
             Assert.That(layer.style.left, Is.EqualTo(new StyleLength(0f)));
         }
+
+        // GREEN_ON_BASE(characterization): a blend layer is pinned to the element's right edge, as before.
+        [Test]
+        public void Given_ABlendLayer_When_ItIsCreated_Then_ItIsPinnedToTheRightEdge()
+        {
+            // Arrange & Act
+            var layer = ParticlesDriver.CreateLayer();
+
+            // Assert
+            Assert.That(layer.style.right, Is.EqualTo(new StyleLength(0f)));
+        }
+
+        // GREEN_ON_BASE(characterization): the live extent is the union of the targets' extents alone, as before.
+        // TheLiveExtentIsTheirUnion's first extent starts at the origin, which a union that took the origin in would match.
+        [Test]
+        public void Given_ExtentsThatLeaveTheOriginOut_When_TheTickArranges_Then_TheLiveExtentIsTheirUnionAlone()
+        {
+            // Arrange
+            var binding = MountAlphaRootOverAdditiveChild("fx-extents-off-origin");
+            binding.TargetExtents.Clear();
+            binding.TargetExtents.Add(new Rect(20f, 30f, 10f, 10f));
+            binding.TargetExtents.Add(new Rect(40f, 50f, 10f, 10f));
+
+            // Act
+            AdvanceTicks(1);
+
+            // Assert
+            Assert.That(binding.LiveExtentLocal, Is.EqualTo(new Rect(20f, 30f, 30f, 30f)));
+        }
     }
 }

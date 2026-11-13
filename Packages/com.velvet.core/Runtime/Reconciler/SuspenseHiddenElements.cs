@@ -28,6 +28,7 @@ namespace Velvet
 
         internal static void Reveal(VisualElement element)
         {
+            // MUTANT_SURVIVES(unreachable, line removed): Reveal's one caller, SuspenseOffscreenCommit.Run, reveals after its own HideHeld took every hold it placed, so a hold here is an enclosing commit's, and the commit a hide's cleanup nests is an error boundary's swap, which unmounts the rows it replaces rather than revealing one.
             s_heldForHide.Remove(element);
             if (!s_hidden.TryGetValue(element, out var before)) return;
             element.style.display = before.Display;
@@ -56,8 +57,7 @@ namespace Velvet
 
         // The elements SuspenseOffscreenCommit hides once the cleanups ahead of its hide have run. Release drops the
         // hold of one returned to the pool meanwhile, which VNodePool resets as it takes it back, so the hide does not
-        // reach the element's next consumer. Reveal drops it too: a commit a cleanup nests decides later than the one
-        // holding the element.
+        // reach the element's next consumer.
         private static readonly ConditionalWeakTable<VisualElement, object> s_heldForHide = new();
         private static readonly object s_hold = new();
 
