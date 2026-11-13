@@ -152,6 +152,7 @@ namespace Velvet
             if (binding.OnKeyDown != null)
             {
                 element.UnregisterCallback(binding.OnKeyDown, TrickleDown.TrickleDown);
+                // MUTANT_SURVIVES(equivalent): only Attach and Detach read the field, and each Detach caller drops the binding.
                 binding.OnKeyDown = null;
             }
             ctx.ActiveDrag?.OnDraggableDetached(element);

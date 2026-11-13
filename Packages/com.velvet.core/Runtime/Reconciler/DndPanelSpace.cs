@@ -101,6 +101,7 @@ namespace Velvet
             var camera = Camera.main;
             if (camera == null)
             {
+                // MUTANT_SURVIVES(unreachable, literal): CanMap, which TryPoint asks before this, refuses a world-space panel with no Camera.main.
                 return false;
             }
             var ray = camera.ScreenPointToRay(screen);

@@ -523,6 +523,8 @@ namespace Velvet
             _containerRect = _source.parent?.worldBound;
             _savedTranslate = _source.style.translate;
             _baseTranslate = ResolveBaseTranslate(_savedTranslate);
+            // MUTANT_SURVIVES(equivalent): a session activates once, and the raw delta still holds its zero default here.
+            // Its other writes are a move's and a release's, which reach the session only after this snapshot.
             _rawDelta = Vector2.zero;
             _delta = Vector2.zero;
             // Snapshot what the session applies (see the field-block note): restore symmetry must not
@@ -775,6 +777,7 @@ namespace Velvet
         // A scroll the auto-scroller made moves the droppables under a pointer that has not moved.
         internal void OnAutoScrolled()
         {
+            // MUTANT_SURVIVES(unreachable, clause removed): only the auto-scroller calls this, and it lives from activation to close.
             if (_closed || !_active)
             {
                 return;
@@ -1158,6 +1161,11 @@ namespace Velvet
         // element's class projection before it cancels the session.
         internal void ReleaseClassesOf(VisualElement element)
         {
+            // MUTANT_SURVIVES(equivalent, boundary): an empty dragging-class array toggles no class and hands no channel back.
+            // The re-syncs Apply still runs reach nothing the source keeps past this cleanup, which calls this first:
+            // a write over a face's suppression is captured again by that face's Release later in the cleanup, the
+            // held play it re-asserts is released there too, and the clip wrapper it mirrors classes onto leaves with
+            // the source.
             if (ReferenceEquals(element, _source) && _activeDraggingClasses.Length > 0)
             {
                 ToggleDragging(false);
@@ -1273,12 +1281,7 @@ namespace Velvet
         {
             UnregisterFromObserved(_onDragMove);
             UnregisterFromObserved(_onDragUp);
-            // MUTANT_SURVIVES(equivalent): OnDragDown only reaches Cancel, which returns at once on the
-            // closed session; the unregister releases the session and keeps the chain's callback lists
-            // from growing with every drag.
             UnregisterFromObserved(_onDragDown);
-            // MUTANT_SURVIVES(equivalent): the pointer-cancel handler also only reaches Cancel, for the
-            // same reason as the line above.
             UnregisterFromObserved(_onDragCancel);
             if (_onCaptureOut != null) _source.UnregisterCallback(_onCaptureOut, TrickleDown.TrickleDown);
             if (_onEscape != null)
@@ -1384,15 +1387,8 @@ namespace Velvet
 
         private void UnregisterPendingObservers()
         {
-            // MUTANT_SURVIVES(equivalent): OnPendingMove returns at once once the session is active or
-            // closed, the only two states this is called in; the unregister releases the session and
-            // keeps the chain's callback lists from growing with every drag.
             UnregisterFromObserved(_onPendingMove);
-            // MUTANT_SURVIVES(equivalent): OnPendingUp returns at once once the session is active or
-            // closed, for the same reason as the line above.
             UnregisterFromObserved(_onPendingUp);
-            // MUTANT_SURVIVES(equivalent): the pending pointer-cancel handler reaches DiscardPending, which
-            // returns at once once the session is active or closed, for the same reason as the lines above.
             UnregisterFromObserved(_onPendingCancel);
             _onPendingMove = null;
             _onPendingUp = null;
