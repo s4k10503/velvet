@@ -69,10 +69,11 @@ worth only what the readiness that raised it means, so the two are one function.
 
 `watch` alone prints until it retires, and a caller that ran it in the background hears of a process
 when it exits, so a READY line sat unread until then. `--until-actionable` exits once an open pull
-request is ready, is green and blocked by something other than its checks, or has a failing check
-or failed run that this caller has not already been told of, so the exit is what wakes that caller;
-`watcher_state.rearm_command` is the form the guards name. Where another process already watches,
-it follows what that process writes instead of refusing; `follow` says how.
+request is ready, is green and blocked by something other than its checks, conflicts with its base
+whatever its checks read, or has a failing check or failed run that this caller has not already
+been told of, so the exit is what wakes that caller; `watcher_state.rearm_command` is the form the
+guards name. Where another process already watches, it follows what that process writes instead of
+refusing; `follow` says how.
 
 Run: python3 scripts/pr/settle.py watch [--until-actionable]
      python3 scripts/pr/settle.py merge <number>
@@ -616,8 +617,7 @@ def reasons_from(before, after, results, branch, base, held_by_worktree,
     # comes and goes would drop and re-add the entry, resetting the age
     # `refuse/edit_while_a_ready_pr_sits.py` measures a pull request by.
     if merge_state == "dirty":
-        reasons.append(f"it conflicts with {base}: resolve the conflict in the branch, which "
-                       f"`settle.py update` declines to do")
+        reasons.append(conflict_reason(base))
     if stack_tangles:
         reasons.append("its stack is not linear on {}: {}. {}".format(
             base, "; ".join(f"#{member} does not hold the head of {below}" if how == "lacks"
@@ -672,6 +672,11 @@ def check_reasons(after, results, base, required, runs_unfinished, runs_failed):
     return reasons
 
 
+def conflict_reason(base):
+    return (f"it conflicts with {base}: resolve the conflict in the branch, which "
+            f"`settle.py update` declines to do")
+
+
 def held_reason(branch):
     return (f"a worktree holds {branch}: remove it first, or the local branch outlives the merge "
             f"and has to be swept by hand later")
@@ -717,7 +722,7 @@ def release_commit(project, base):
         raise RuntimeError(f"the newest release commit on origin/{base} could not be read: {failure}")
 
 
-def blocking_reasons(project, number, base=None, states=None):
+def blocking_reasons(project, number, base=None, states=None, previous=()):
     """reasons_from, with every reading taken from the repository and the API.
 
     `base` names the branch to judge against, and None means the pull request's own, or its stack's
@@ -726,9 +731,17 @@ def blocking_reasons(project, number, base=None, states=None):
     `states` carries the per-base readings across one poll. They are per base rather than per
     repository — a fetch and a tag listing each answer about one — and a poll normally sees a single
     base, so the cache is what keeps a poll over N pull requests at one fetch rather than N.
+
+    `previous` is the actionable lines the last poll left. A merge state that reads `unknown` on a
+    head one of them names as conflicting reads as that conflict, so `watch` does not tell a missing
+    reading as a conflict that cleared. `merge` hands none, and to it `unknown` is no reason.
     """
     before = pull_request(project, number)
     target = base or (before.stack.base if before.stack else before.base)
+    merge_state = before.merge_state
+    if merge_state == "unknown" and any(line.startswith(f"PR#{number} {before.sha[:7]} ")
+                                        and conflict_reason(target) in line for line in previous):
+        merge_state = "dirty"
     # Ahead of every other reading, and with no check results, so `watch` has nothing to print or
     # record for a pull request that closed after the listing named it.
     if before.state != "open":
@@ -768,7 +781,7 @@ def blocking_reasons(project, number, base=None, states=None):
                                  held_by_worktree=before.branch in state.held,
                                  unpublished_release=unpublished,
                                  draft=before.draft,
-                                 merge_state=before.merge_state,
+                                 merge_state=merge_state,
                                  fork=before.fork,
                                  failing_runs=uncovered,
                                  behind_release=behind_release,
@@ -1133,13 +1146,14 @@ def poll_until(project, base, lock, until_actionable, caller):
         # polls would otherwise go on blocking every pull request that names it until the watcher
         # is restarted.
         states = {}
+        previous = read_lines(watcher_state.ACTIONABLE) or set()
 
         ready = set()
         actionable = []
         read = set()
         for number in pull_requests:
             try:
-                blocking = blocking_reasons(project, number, base, states)
+                blocking = blocking_reasons(project, number, base, states, previous)
             except RuntimeError as error:
                 print(f"! PR#{number}: {error}", flush=True)
                 continue
@@ -1182,6 +1196,11 @@ def poll_until(project, base, lock, until_actionable, caller):
                 line = blocked_line(number, blocking)
                 lines.append(line)
                 actionable.append(line)
+            elif conflict_reason(blocking.base) in blocking.reasons:
+                # Whatever its checks read: none of them resolves a conflict.
+                line = f"PR#{number} {blocking.head[:7]} BLOCKED: {conflict_reason(blocking.base)}"
+                lines.append(line)
+                actionable.append(line)
 
             # A run that wakes its caller by exiting prints only the lines it exits over, which a
             # page of passing checks would bury.
@@ -1193,7 +1212,6 @@ def poll_until(project, base, lock, until_actionable, caller):
         write_ready_state(ready, ready_since)
         # What a follower reads. A pull request whose readings raised this poll keeps the lines the
         # last poll wrote for it, for the reason given below about the reported record.
-        previous = read_lines(watcher_state.ACTIONABLE) or set()
         write_lines(watcher_state.ACTIONABLE, set(actionable) | {
             line for line in previous
             if reported_number(line) in pull_requests and reported_number(line) not in read})
