@@ -57,8 +57,7 @@ namespace Velvet
 
         // The elements SuspenseOffscreenCommit hides once the cleanups ahead of its hide have run. Release drops the
         // hold of one returned to the pool meanwhile, which VNodePool resets as it takes it back, so the hide does not
-        // reach the element's next consumer. Reveal drops it too: a commit a cleanup nests decides later than the one
-        // holding the element.
+        // reach the element's next consumer.
         private static readonly ConditionalWeakTable<VisualElement, object> s_heldForHide = new();
         private static readonly object s_hold = new();
 
