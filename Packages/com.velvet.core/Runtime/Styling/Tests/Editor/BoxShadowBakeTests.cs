@@ -462,20 +462,21 @@ namespace Velvet.Tests
 
         // GREEN_ON_BASE(characterization): the base makes a bake it hands back from the cache its most recently used one.
         [Test]
-        public void Given_AFullCacheWhoseOldestBakeIsFetchedAgain_When_OneMoreIsStored_Then_TheFetchedBakeIsKept()
+        public void Given_ACacheOneShortOfItsCapWhoseOldestBakeIsFetchedAgain_When_TwoMoreAreStored_Then_TheFetchedBakeIsKept()
         {
             TestGraphics.IgnoreIfHeadless("a GPU shadow bake (Graphics.Blit + ReadPixels)");
 
             // Arrange — the bake is the least recently used entry until it is fetched again.
             var baked = BoxShadowBaker.GetOrBakeSilhouette(Box(100f, 40f), Layer(8f), Vector2.zero);
             var cap = Cap;
-            for (var i = 1; i < cap; i++)
+            for (var i = 1; i < cap - 1; i++)
             {
                 Store(i, new Texture2D(2, 2));
             }
             BoxShadowBaker.GetOrBakeSilhouette(Box(100f, 40f), Layer(8f), Vector2.zero);
 
             // Act
+            Store(cap - 1, new Texture2D(2, 2));
             Store(cap, new Texture2D(2, 2));
 
             // Assert — false for a destroyed Object (Unity's fake-null) and for a bake that never happened.
