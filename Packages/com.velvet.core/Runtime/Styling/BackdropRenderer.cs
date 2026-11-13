@@ -397,7 +397,6 @@ namespace Velvet
 
         // The reach one pass of the shader holds a Gaussian to, in texels (MAX_REACH there).
         private const float MaxReach = 1024f;
-        private const int MaxHalvings = 14;
 
         private readonly BackdropFrame _frame;
         private readonly Material _material;
@@ -453,7 +452,7 @@ namespace Velvet
                 return;
             }
             Finish();
-            var halvings = HalvingsFor(sigma);
+            var halvings = HalvingsFor(sigma, _frame.Region);
             if (halvings > 0)
             {
                 _pass = new BackdropPass { Source = BlurHalved(_pass, sigma, halvings) };
@@ -477,7 +476,7 @@ namespace Velvet
             var source = _pass.Source;
             var before = new List<BackdropStep>(_pass.Before);
             var sigma = step.C * _frame.PixelScale;
-            var halvings = HalvingsFor(sigma);
+            var halvings = HalvingsFor(sigma, _frame.Region);
             if (halvings > 0)
             {
                 DropShadowHalved(source, before, step, sigma, halvings);
@@ -523,12 +522,15 @@ namespace Velvet
             _pass = new BackdropPass { Source = Execute() };
         }
 
-        // How many times a texture is halved before the deviation's reach fits one pass.
-        private static int HalvingsFor(float sigma)
+        // How many times a texture is halved before the deviation's reach fits one pass, and none past the halving that
+        // leaves the region a single texel. The size is floored at two so that it never withholds the first halving,
+        // the one that runs the colour functions before the blur (BlurHalved).
+        private static int HalvingsFor(float sigma, RectInt region)
         {
+            var size = Math.Max(2, Math.Max(region.width, region.height));
             var halvings = 0;
-            // MUTANT_SURVIVES(equivalent, boundary): fourteen halvings already leave a region up to 16384 pixels a side at one texel, which a fifteenth copies unchanged; the two part only on a larger target.
-            while (halvings < MaxHalvings && Mathf.Ceil(3f * sigma / (1 << halvings)) > MaxReach)
+            // MUTANT_SURVIVES(equivalent, boundary): `<=` adds a halving only after one that left the region a single texel, never the first, and BlurHalved's later halvings copy a single texel unchanged.
+            while ((1 << halvings) < size && Mathf.Ceil(3f * sigma / (1 << halvings)) > MaxReach)
             {
                 halvings++;
             }
