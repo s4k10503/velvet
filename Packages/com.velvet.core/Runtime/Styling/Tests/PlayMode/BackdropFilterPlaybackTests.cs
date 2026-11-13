@@ -563,5 +563,68 @@ namespace Velvet.Tests
             // Assert — the box's 40 columns, give or take the one at either edge.
             Assert.That(yellow, Is.InRange(38, 42), $"yellow={yellow} at x=60: {row[60]} x=58: {row[58]}");
         }
+
+        // A blue stage under a 20px clip at (10, 40), scaled by 1.02 from its corner and moved 0.4px right, so that
+        // its right edge stands at x = 30.8, part way into column 30. The clip holds a 40px box running past that edge.
+        private IEnumerator RenderUnderAFractionalClip(string className, int antiAliasing)
+        {
+            _host = new RenderTexturePanelHost(nameof(BackdropFilterPlaybackTests), Size, Size);
+            _host.TargetTexture.Release();
+            _host.TargetTexture.antiAliasing = antiAliasing;
+            _mounted = V.Mount(_host.Root, V.Div(name: "stage", className: $"w-[{Size}px] h-[{Size}px] bg-[#0000ff]",
+                children: new VNode[]
+                {
+                    V.Div(name: "clip", className: "w-[20px] h-[20px]",
+                        children: new VNode[] { V.Div(name: "glass", className: $"w-[40px] h-[20px] {className}") }),
+                }));
+            var clip = _host.Root.Q<VisualElement>("clip").style;
+            clip.position = Position.Absolute;
+            clip.left = 10f;
+            clip.top = 40f;
+            clip.overflow = Overflow.Hidden;
+            clip.transformOrigin = new TransformOrigin(0f, 0f, 0f);
+            clip.scale = new Scale(new Vector2(1.02f, 1.02f));
+            clip.translate = new Translate(0.4f, 0f);
+            var glass = Glass().style;
+            glass.position = Position.Absolute;
+            glass.left = 0f;
+            glass.top = 0f;
+            yield return WaitRealtime(0.8);
+        }
+
+        // Column 30's red on the clip's middle row, or -1 where the clip does not span x = 10.4 to 30.8.
+        private int RedOfTheColumnTheClipEndsIn()
+        {
+            var clip = _host.Root.Q<VisualElement>("clip").worldBound;
+            return Near(clip.x, 10.4f) && Near(clip.xMax, 30.8f) ? Resolved(_host.TargetTexture, 30, 50).r : -1;
+        }
+
+        // GREEN_ON_BASE(characterization): the base paints a blurred backdrop up to its clip's fractional edge.
+        [UnityTest]
+        public IEnumerator Given_ABackdropBlurUnderAClipEndingPartWayIntoAPixel_When_Rendered_Then_ItPaintsThatPixel()
+        {
+            // Arrange — the inversion paints the box yellow over the blue.
+            yield return RenderUnderAFractionalClip("backdrop-filter-[blur(1px)_invert(1)]", 1);
+
+            // Act
+            var red = RedOfTheColumnTheClipEndsIn();
+
+            // Assert — column 30's centre, at 30.5, lies inside the clip: yellow there, where the stage's blue reads 0.
+            Assert.That(red, Is.GreaterThan(200), $"clip={_host.Root.Q<VisualElement>("clip").worldBound}");
+        }
+
+        // GREEN_ON_BASE(characterization): the base paints a backdrop off a multisampled target up to its clip's fractional edge.
+        [UnityTest]
+        public IEnumerator Given_ABackdropInvertOnAMultisampledTargetUnderAClipEndingPartWayIntoAPixel_When_Rendered_Then_ItPaintsThatPixel()
+        {
+            // Arrange — a multisampled target is captured by a blit, and an inversion alone runs no pass after it.
+            yield return RenderUnderAFractionalClip("backdrop-invert", 4);
+
+            // Act
+            var red = RedOfTheColumnTheClipEndsIn();
+
+            // Assert — column 30's centre, at 30.5, lies inside the clip: yellow there, where the stage's blue reads 0.
+            Assert.That(red, Is.GreaterThan(200), $"clip={_host.Root.Q<VisualElement>("clip").worldBound}");
+        }
     }
 }

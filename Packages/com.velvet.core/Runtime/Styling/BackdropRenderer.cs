@@ -160,7 +160,6 @@ namespace Velvet
         {
             var commands = Commands;
             commands.Clear();
-            // MUTANT_SURVIVES(equivalent): a command-buffer blit inside a draw under a clip scissor writes its whole destination and leaves no scissor on (BackdropBlitScissorTests).
             commands.DisableScissorRect();
             commands.Blit(source, destination, material, BackdropShader.StagePass);
             Graphics.ExecuteCommandBuffer(commands);
@@ -259,7 +258,6 @@ namespace Velvet
             var flips = _target == null && SystemInfo.graphicsUVStartsAtTop;
             var commands = BackdropRenderer.Commands;
             commands.Clear();
-            // MUTANT_SURVIVES(equivalent): for the reason the DisableScissorRect in BackdropRenderer.Blit gives.
             commands.DisableScissorRect();
             commands.Blit(BuiltinRenderTextureType.CurrentActive, texture,
                 new Vector2((float)Region.width / _targetWidth, (flips ? -1f : 1f) * Region.height / _targetHeight),
