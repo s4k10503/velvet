@@ -28,8 +28,8 @@ whose required workflows last failed on push, a head behind the base's newest re
 head on another repository, and a long-lived head; `merge_without_branch_deletion.py` for the flag;
 `merge_branch_held_by_worktree.py` for a branch git will refuse to delete;
 `merge_onto_unpublished_release.py` for a base holding a release nobody dispatched.
-`scripts/pr/settle.py` reports these together with one more it holds alone — a draft head — and that
-reporting is the convenience; these are what hold when nobody runs it.
+`scripts/pr/settle.py` reports these together with the ones its own docstring names as having no
+hook, and that reporting is the convenience; these are what hold when nobody runs it.
 """
 
 import json

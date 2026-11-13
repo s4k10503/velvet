@@ -355,10 +355,10 @@ background:
 
   {rearm_command(HOOK_DIRECTORY.parent.parent)}
 
-It exits once a pull request is ready or failing, and that exit is what reaches you. Re-run the
-command it prints as it exits rather than this one, within {STALE_AFTER}s of that exit: its
-`--caller` then keeps what it already told you from being told again, and a later re-run tells you
-again what still stands.
+It exits on what `settle.py --help` says `--until-actionable` exits on, and that exit is what
+reaches you. Re-run the command it prints as it exits rather than this one, within {STALE_AFTER}s
+of that exit: its `--caller` then keeps what it already told you from being told again, and a
+later re-run tells you again what still stands.
 
 And merge through the same script. It reads the head SHA on both sides of the check list, so a
 force-push between them voids the answer instead of merging a SHA nothing tested, and it declines
