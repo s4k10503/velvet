@@ -88,9 +88,9 @@ namespace Velvet
         // would compute subtree rings that drift from the engine's own panel-wide ring, and registering
         // per call-site element would stack duplicate listeners whose relative order inverts the branch
         // priority. An element with no panel yet defers via a tracked self-removing attach hook (one per
-        // element — repeat calls while detached dedup). Called from V.Mount (main panel),
-        // ConfigurePortalFocusOrder (declaring + host panels), and the focus-scope attach hook
-        // (whatever panel the scope lands in).
+        // element — repeat calls while detached dedup). Called from V.Mount (main panel), PanelHostFactory
+        // (each host panel it creates), ConfigurePortalFocusOrder (a chained portal's declaring panel), and
+        // the focus-scope attach hook (whatever panel the scope lands in).
         internal static void EnsureAttached(VisualElement? element, ReconcilerContext ctx)
         {
             var pending = Request(element, ctx);
@@ -238,7 +238,6 @@ namespace Velvet
                 // ownership is handed to a survivor when the owner departs — see ReleaseChainedOwnership.
                 ctx.ChainedHostRoots.TryAdd(hostRoot, placeholder);
                 EnsureAttached(placeholder, ctx);
-                EnsureAttached(hostRoot, ctx);
                 return;
             }
             if (ctx.ChainedPlaceholders.Remove(placeholder))
@@ -259,7 +258,6 @@ namespace Velvet
                 {
                     ctx.AppendedHosts.Add(record);
                 }
-                EnsureAttached(hostRoot, ctx);
             }
         }
 
