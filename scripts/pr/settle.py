@@ -69,8 +69,8 @@ worth only what the readiness that raised it means, so the two are one function.
 
 `watch` alone prints until it retires, and a caller that ran it in the background hears of a process
 when it exits, so a READY line sat unread until then. `--until-actionable` exits once an open pull
-request is ready, is held only by worktrees, or has a failing check or failed run that this
-caller has not already been told of, so the exit is what wakes that caller;
+request is ready, is green and blocked by something other than its checks, or has a failing check
+or failed run that this caller has not already been told of, so the exit is what wakes that caller;
 `watcher_state.rearm_command` is the form the guards name. Where another process already watches,
 it follows what that process writes instead of refusing; `follow` says how.
 
@@ -618,32 +618,13 @@ def reasons_from(before, after, results, branch, base, held_by_worktree,
     if merge_state == "dirty":
         reasons.append(f"it conflicts with {base}: resolve the conflict in the branch, which "
                        f"`settle.py update` declines to do")
-
-    absent = expected_checks.absent(required, (entry["name"] for entry in results))
-    if not results and not runs_unfinished:
-        reasons.append(f"no check has run for {after[:7]}: a workflow was never triggered for this head")
-    elif absent:
-        reasons.append("required by {} and not reported at {}: {}".format(
-            base, after[:7], ", ".join(absent)))
-    if runs_unfinished:
-        reasons.append("workflow runs not finished at {}: {}".format(after[:7],
-                                                                   ", ".join(runs_unfinished)))
-    if runs_failed:
-        reasons.append("workflow runs failed at {}: {}".format(after[:7], ", ".join(runs_failed)))
     if stack_tangles:
         reasons.append("its stack is not linear on {}: {}. {}".format(
             base, "; ".join(f"#{member} does not hold the head of {below}" if how == "lacks"
                             else f"#{member} holds a merge commit over {below}"
                             for member, below, how in stack_tangles), REBASE_WAY_OUT))
 
-    unfinished = [entry["name"] for entry in results
-                  if entry["bucket"] not in TERMINAL_PASS and entry["bucket"] not in TERMINAL_FAIL]
-    failed = [f"{entry['name']}={entry['bucket']}" for entry in results
-              if entry["bucket"] in TERMINAL_FAIL]
-    if unfinished:
-        reasons.append("still pending at {}: {}".format(after[:7], ", ".join(sorted(unfinished))))
-    if failed:
-        reasons.append("failing at {}: {}".format(after[:7], ", ".join(sorted(failed))))
+    reasons.extend(check_reasons(after, results, base, required, runs_unfinished, runs_failed))
 
     for failing in failing_runs:
         reasons.append(f"origin/{base}'s last {failing.workflow} push run failed at "
@@ -664,6 +645,33 @@ def reasons_from(before, after, results, branch, base, held_by_worktree,
     return reasons
 
 
+def check_reasons(after, results, base, required, runs_unfinished, runs_failed):
+    """The reasons `reasons_from` gives about the head's own checks and workflow runs. A head that
+    did not move and has none of them is what `watch` calls green."""
+    reasons = []
+    absent = expected_checks.absent(required, (entry["name"] for entry in results))
+    if not results and not runs_unfinished:
+        reasons.append(f"no check has run for {after[:7]}: a workflow was never triggered for this head")
+    elif absent:
+        reasons.append("required by {} and not reported at {}: {}".format(
+            base, after[:7], ", ".join(absent)))
+    if runs_unfinished:
+        reasons.append("workflow runs not finished at {}: {}".format(after[:7],
+                                                                   ", ".join(runs_unfinished)))
+    if runs_failed:
+        reasons.append("workflow runs failed at {}: {}".format(after[:7], ", ".join(runs_failed)))
+
+    unfinished = [entry["name"] for entry in results
+                  if entry["bucket"] not in TERMINAL_PASS and entry["bucket"] not in TERMINAL_FAIL]
+    failed = [f"{entry['name']}={entry['bucket']}" for entry in results
+              if entry["bucket"] in TERMINAL_FAIL]
+    if unfinished:
+        reasons.append("still pending at {}: {}".format(after[:7], ", ".join(sorted(unfinished))))
+    if failed:
+        reasons.append("failing at {}: {}".format(after[:7], ", ".join(sorted(failed))))
+    return reasons
+
+
 def held_reason(branch):
     return (f"a worktree holds {branch}: remove it first, or the local branch outlives the merge "
             f"and has to be swept by hand later")
@@ -672,10 +680,10 @@ def held_reason(branch):
 # What merge needs from the readings besides the verdict: the SHA the checks were read at, which the
 # merge request carries, the branch it deletes afterwards, and the stack that decides which request
 # it sends. And what `watch` prints: the check results with the head they were read at, the failed
-# runs, and each worktree holding the branch beside its `holder_state`.
+# runs, each worktree holding the branch beside its `holder_state`, and whether the head is green.
 Blocking = collections.namedtuple(
-    "Blocking", "reasons head branch results base read_at holders runs_failed stack",
-    defaults=(None, (), (), None))
+    "Blocking", "reasons head branch results base read_at holders runs_failed stack green",
+    defaults=(None, (), (), None, False))
 
 # The readings that answer for something wider than one pull request: the publication state of a
 # base, its newest release commit, its required workflows' last push verdicts, the contexts its
@@ -754,6 +762,7 @@ def blocking_reasons(project, number, base=None, states=None):
     holders = state.held.get(before.branch) or ()
     held = tuple((tree.path, holder_state(project, tree, after)) for tree in holders)
     runs_failed = expected_checks.failed(others, jobs, now)
+    runs_unfinished = expected_checks.unfinished(others, jobs, now)
     members = stack_members(project, stack.number) if stack else []
     return Blocking(reasons_from(before.sha, after, results, before.branch, target,
                                  held_by_worktree=before.branch in state.held,
@@ -764,7 +773,7 @@ def blocking_reasons(project, number, base=None, states=None):
                                  failing_runs=uncovered,
                                  behind_release=behind_release,
                                  long_lived_head=long_lived_head,
-                                 runs_unfinished=expected_checks.unfinished(others, jobs, now),
+                                 runs_unfinished=runs_unfinished,
                                  runs_failed=runs_failed,
                                  required=state.required,
                                  stack_below=unmerged_below(members, number) if stack else (),
@@ -772,7 +781,9 @@ def blocking_reasons(project, number, base=None, states=None):
                                  stack_tangles=stack_tangles(project, target, members)),
                     after, before.branch, results, target, before.sha, held,
                     # Read at `before`, so a moved head has none, as its reasons have none.
-                    runs_failed if before.sha == after else (), stack)
+                    runs_failed if before.sha == after else (), stack,
+                    before.sha == after and not check_reasons(after, results, target, state.required,
+                                                              runs_unfinished, runs_failed))
 
 
 def write_ready_state(ready, since):
@@ -907,6 +918,18 @@ def held_line(number, blocking):
         for path, why in blocking.holders)
 
 
+def blocked_line(number, blocking):
+    """What `watch` says of a green pull request that something besides its holders blocks.
+
+    Holders are left to the held line, so one coming or going does not tell the caller again. Each
+    reason is put on one line, because a reason can span several and the records this line is
+    written to hold one per line.
+    """
+    return f"PR#{number} {blocking.head[:7]} GREEN, BLOCKED: " + "; ".join(
+        " ".join(reason.split()) for reason in blocking.reasons
+        if reason != held_reason(blocking.branch))
+
+
 def read_lines(path):
     """The lines a record written by `write_lines` holds, or None when it was not written inside
     the staleness window."""
@@ -932,7 +955,8 @@ def write_lines(path, lines):
 def told_key(line):
     """What a reported record keeps of an actionable line: the pull request, the head and, for a
     READY or held one, its kind alone. A holder's own edits and commits change the rest of a held
-    line, and a caller told it is held is not told anything new by those."""
+    line, and a caller told it is held is not told anything new by those. A `blocked_line` is kept
+    whole, so a caller is told again when a reason it names appears or clears."""
     number, _, rest = line.partition(" ")
     head, _, said = rest.partition(" ")
     if said.startswith(HELD_CLEAN.strip() + " ") or said.startswith("green, but "):
@@ -1004,7 +1028,7 @@ def report(project, actionable, caller):
 
 def watch(project, base, until_actionable=False, caller=None):
     """Emit each check that reaches a terminal state, once, and hold the heartbeat open until
-    nothing reads it — or, `until_actionable`, until a pull request is ready or failing. `caller`
+    nothing reads it — or, `until_actionable`, until something actionable is new to `caller`, which
     keys what such a run has already been told; `new_caller` stands in for None."""
     caller = caller or (new_caller() if until_actionable else None)
     lock, holder = hold_the_watch()
@@ -1152,6 +1176,10 @@ def poll_until(project, base, lock, until_actionable, caller):
             elif blocking.holders and blocking.reasons == [held_reason(blocking.branch)]:
                 # Not ready, so not in the ready record: `merge` refuses it until the holders go.
                 line = held_line(number, blocking)
+                lines.append(line)
+                actionable.append(line)
+            elif blocking.green:
+                line = blocked_line(number, blocking)
                 lines.append(line)
                 actionable.append(line)
 
@@ -1442,7 +1470,8 @@ def main():
                               help="the token an --until-actionable run reports under, as the "
                                    "re-arm it prints names it (default: a fresh one)")
     watch_parser.add_argument("--until-actionable", action="store_true",
-                              help="exit once a pull request is ready, or has a failing check or failed run")
+                              help="exit once something actionable is new to the caller; "
+                                   "`settle.py --help` says what is")
     merge_parser = sub.add_parser("merge", help="merge one pull request if nothing blocks it")
     merge_parser.add_argument("number", type=int)
     merge_parser.add_argument("--dry-run", action="store_true",
