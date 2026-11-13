@@ -1,6 +1,7 @@
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.UIElements;
+using Velvet.TestUtilities;
 
 namespace Velvet.Tests
 {
@@ -112,6 +113,23 @@ namespace Velvet.Tests
             // Assert
             Assert.That((element.style.rotate.keyword, element.style.scale.keyword),
                 Is.EqualTo((StyleKeyword.Null, StyleKeyword.Null)));
+        }
+
+        // GREEN_ON_BASE(characterization): the base takes off the element the restyle callback that engaging registered.
+        [Test]
+        public void Given_ASkewedElement_When_Released_Then_ItHoldsNoCallbackEngagingRegistered()
+        {
+            // Arrange
+            var element = new VisualElement();
+            var before = CallbackRegistryProbe.BubbleUpCallbackCount(element);
+            AuthoredTransform.Engage(element, 12f, 6f);
+            var engaged = CallbackRegistryProbe.BubbleUpCallbackCount(element);
+
+            // Act
+            AuthoredTransform.Release(element);
+
+            // Assert — -1 where engaging registered nothing, which no count is.
+            Assert.That(engaged > before ? CallbackRegistryProbe.BubbleUpCallbackCount(element) : -1, Is.EqualTo(before));
         }
 
         [Test]

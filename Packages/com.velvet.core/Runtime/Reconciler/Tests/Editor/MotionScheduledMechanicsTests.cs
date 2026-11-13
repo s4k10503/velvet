@@ -5685,8 +5685,7 @@ namespace Velvet.Tests
 
 
         // GREEN_ON_BASE(characterization): the base hands a translate that landed as the move ended back to the engine.
-        // The engine then runs the later change on "b" as it runs it on the control. Leaving `projection.WritesTranslate`
-        // set in MotionLayoutIdDriver.End hands the change to the tail's carry instead, which an ease-out curve tells apart.
+        // The engine then runs the later change on "b" as it runs it on the control.
         [Test]
         public void Given_ALeadWhoseRotateRunsOnPastItsLanding_When_ItsTranslateChangesOnAnEaseOutCurve_Then_TheTranslateRunsAsTheControlsDoes()
         {
@@ -5709,6 +5708,29 @@ namespace Velvet.Tests
             // Assert — "b" where the control is, part way along its second.
             var control = Root.Q<VisualElement>("control").resolvedStyle.translate.x;
             Assert.That(Root.Q<VisualElement>("b").resolvedStyle.translate.x, Is.EqualTo(control > 2f && control < 38f ? control : float.NaN).Within(1f));
+        }
+
+
+        // GREEN_ON_BASE(characterization): the base hands a translate that landed as the move ended back to the engine.
+        [Test]
+        public void Given_ALeadWhoseRotateRunsOnPastItsLanding_When_TheMoveHasLanded_Then_NothingWritesItsTranslateInline()
+        {
+            // Arrange — the bundled sheet; "b", transitioning everything linearly over a second, takes the id from an
+            // unrotated "a" on a one-second tween and turns 0.6 s in.
+            VelvetStyleUtilities.AttachTo(Root);
+            s_bClasses = "transition-all duration-1000 ease-linear";
+            using var mounted = MountBOverA();
+            for (var i = 0; i < 36; i++) Tick();
+            s_bClasses += " rotate-90";
+            RenderShared(mounted);
+
+            // Act — past the landing, with the turn running on.
+            for (var i = 0; i < 30; i++) Tick();
+
+            // Assert — Undefined where the turn is not running on, which the expected keyword is not.
+            var b = Root.Q<VisualElement>("b");
+            var turning = b.style.rotate.value.angle.ToDegrees() is > 10f and < 80f;
+            Assert.That(turning ? b.style.translate.keyword : StyleKeyword.Undefined, Is.EqualTo(StyleKeyword.Null));
         }
 
 
@@ -5757,6 +5779,86 @@ namespace Velvet.Tests
             for (var i = 0; i < 35; i++) Tick();
 
             // Assert — where the control stands, rather than a fresh second begun from where the move left it.
+            var control = Root.Q<VisualElement>("control").resolvedStyle.rotate.angle.ToDegrees();
+            var b = Root.Q<VisualElement>("b").resolvedStyle.rotate.angle.ToDegrees();
+            Assert.That(b, Is.EqualTo(control > 30f && control < 80f ? control : float.NaN).Within(1.5f));
+        }
+
+
+        // "b", and a control holding no id, both transitioning everything linearly over a second; "b" takes the id from
+        // an unrounded "a" on a one-second tween, and both round to twenty pixels 0.6 s in, so that the move lands with
+        // "b"'s rounding running on.
+        private MountedTree RoundLateInTheMove()
+        {
+            VelvetStyleUtilities.AttachTo(Root);
+            (s_bClasses, s_controlClasses) = ("transition-all duration-1000 ease-linear", "transition-all duration-1000 ease-linear");
+            var mounted = MountBOverA();
+            for (var i = 0; i < 36; i++) Tick();
+            (s_bClasses, s_controlClasses) = (s_bClasses + " rounded-[20px]", s_controlClasses + " rounded-[20px]");
+            RenderShared(mounted);
+            return mounted;
+        }
+
+
+        // GREEN_ON_BASE(characterization): the base runs a radius still carried as the move lands on past the landing.
+        [Test]
+        public void Given_ALeadWhoseOwnRadiusChangesLateInItsMove_When_TheMoveLands_Then_ItsRadiusRunsOnAsTheEngineRunsIt()
+        {
+            // Arrange
+            using var mounted = RoundLateInTheMove();
+
+            // Act — past the landing; some 0.75 s into the rounding.
+            for (var i = 0; i < 46; i++) Tick();
+
+            // Assert — where the control stands, part way along its second.
+            var control = Root.Q<VisualElement>("control").resolvedStyle.borderTopLeftRadius;
+            Assert.That(Root.Q<VisualElement>("b").resolvedStyle.borderTopLeftRadius,
+                Is.EqualTo(control > 10f && control < 19f ? control : float.NaN).Within(1f));
+        }
+
+
+        // GREEN_ON_BASE(characterization): the base hands a radius it carried past the landing back once it lands.
+        [Test]
+        public void Given_ALeadWhoseOwnRadiusChangesLateInItsMove_When_ItsRoundingHasRunOut_Then_ItIsDrawnAtItsOwnRadius()
+        {
+            // Arrange
+            using var mounted = RoundLateInTheMove();
+
+            // Act — well past the end of the rounding's second.
+            AdvancePast(1.5f);
+
+            // Assert
+            Assert.That(Root.Q<VisualElement>("b").resolvedStyle.borderTopLeftRadius, Is.EqualTo(20f).Within(0.5f));
+        }
+
+
+        // GREEN_ON_BASE(characterization): the base times a turn by the element's own rules again once a pose swap ends.
+        [Test]
+        public void Given_ALeadWhoseTurnRunsOnPastAPoseSwapThatEndsAfterItsLanding_When_ItsClassesTurnItPartWayBack_Then_ItRunsAsTheControlsDoes()
+        {
+            // Arrange — the bundled sheet and the test's own; "b", and a control holding no id, both transitioning their
+            // rotate linearly over a second; "b" takes the id from an unrotated "a" on a one-second tween, both turn 0.6 s
+            // in, and "b" swaps to its hidden pose on a 0.3 s tween 0.2 s later, which ends after the move has landed and
+            // while the turn runs on.
+            VelvetStyleUtilities.AttachTo(Root);
+            Root.styleSheets.Add(AssetDatabase.LoadAssetAtPath<StyleSheet>(TestRulesPath));
+            (s_bClasses, s_controlClasses, s_bPose) = ("layout-id-test-turn", "layout-id-test-turn", "visible");
+            s_bTransition = new StyleTransitionConfig { DurationSec = 0.3f, Easing = EasingMode.Linear, Layout = s_slowTween };
+            using var mounted = MountBOverA();
+            for (var i = 0; i < 36; i++) Tick();
+            (s_bClasses, s_controlClasses) = ("layout-id-test-turn rotate-90", "layout-id-test-turn rotate-90");
+            RenderShared(mounted);
+            for (var i = 0; i < 12; i++) Tick();
+            s_bPose = "hidden";
+            RenderShared(mounted);
+            for (var i = 0; i < 36; i++) Tick();
+
+            // Act — both take rotate-45; some 0.2 s on.
+            (s_bClasses, s_controlClasses) = ("layout-id-test-turn rotate-45", "layout-id-test-turn rotate-45");
+            RenderShared(mounted);
+            for (var i = 0; i < 11; i++) Tick();
+
+            // Assert — where the control stands, part way back to forty-five degrees.
             var control = Root.Q<VisualElement>("control").resolvedStyle.rotate.angle.ToDegrees();
             var b = Root.Q<VisualElement>("b").resolvedStyle.rotate.angle.ToDegrees();
             Assert.That(b, Is.EqualTo(control > 30f && control < 80f ? control : float.NaN).Within(1.5f));
@@ -6529,6 +6631,29 @@ namespace Velvet.Tests
             var scale = element.style.scale.value.value.x;
             Assert.That(scale < 0.95f ? element.style.borderTopLeftRadius.value.value * scale : float.NaN, Is.EqualTo(20f).Within(0.5f));
         }
+
+        // GREEN_ON_BASE(characterization): the base carries a corner in the unit it last landed in.
+        [Test]
+        public void Given_ARoundedLayoutIdMotionDoublingInPlace_When_ItsPercentRadiusChangesAfterItsUnitDid_Then_TheChangeRunsOnItsOwnTransition()
+        {
+            // Arrange — the bundled sheet; a few frames into doubling on a spring, transitioning everything linearly over a
+            // second from then on, its radius turned from pixels to a percent, which lands at once.
+            VelvetStyleUtilities.AttachTo(Root);
+            using var mounted = ResizeBoxFor("rounded-[20px]", 3);
+            RestyleResizedBox(mounted, "transition-all duration-1000 ease-linear rounded-[10%]");
+
+            // Act — a larger percent; some 0.2 s on.
+            RestyleResizedBox(mounted, "transition-all duration-1000 ease-linear rounded-[30%]");
+            for (var i = 0; i < 11; i++) Tick();
+
+            // Assert — part way from ten to thirty; NaN where the move has ended, which no range holds.
+            var element = Root.Q<VisualElement>("shared");
+            var drawn = mounted.Root.Reconciler.Context.LayoutIdProjections.TryGetValue(element, out var projection)
+                ? projection.DrawnRadii[0].value
+                : float.NaN;
+            Assert.That(drawn, Is.InRange(11f, 20f));
+        }
+
 
         // GREEN_ON_BASE(characterization): the base never writes the radius of a layoutId Motion.
         // A radius correction must leave a Motion with no radius alone.

@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.UIElements;
@@ -5,8 +6,8 @@ using UnityEngine.UIElements;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Pins a bezier play giving up its scale to a play that names it, and taking its rotate back from a gesture
-    /// state that let it go, without a panel.
+    /// Pins a bezier play giving up its scale to a play that names it, taking its rotate back from a gesture state that
+    /// let it go, and keeping held a colour a gesture state letting go of something else does not name, without a panel.
     /// </summary>
     [TestFixture]
     internal sealed class BezierChannelHandBackTests
@@ -46,6 +47,24 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(state.Rotate.Masked, Is.False);
+        }
+
+        // GREEN_ON_BASE(characterization): the base leaves held a colour the gesture state letting go does not name.
+        [Test]
+        public void Given_ABezierColourAGestureHolds_When_AGestureNamingOnlyOpacityHandsItsChannelsBack_Then_TheColourStaysHeld()
+        {
+            // Arrange
+            var element = new VisualElement();
+            var state = LinearHalfway();
+            state.Colors = new List<BezierColorChannel> { new(ArbitraryProperty.BackgroundColor, Color.red, Color.blue) };
+            state.Colors[0].Progress.Masked = true;
+
+            // Act
+            BezierTweenDriver.ReturnChannels(element, state, StyleLonghandSet.Of(StyleLonghand.Opacity),
+                MotionSlotContext.ReadImportant(element, null, null));
+
+            // Assert — read off the list, since a colour handed back is a fresh channel in its place.
+            Assert.That(state.Colors[0].Progress.Masked, Is.True);
         }
     }
 }
