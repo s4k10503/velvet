@@ -523,6 +523,8 @@ namespace Velvet
             _containerRect = _source.parent?.worldBound;
             _savedTranslate = _source.style.translate;
             _baseTranslate = ResolveBaseTranslate(_savedTranslate);
+            // MUTANT_SURVIVES(equivalent): a session activates once, and the raw delta still holds its zero default here.
+            // Its other writes are a move's and a release's, which reach the session only after this snapshot.
             _rawDelta = Vector2.zero;
             _delta = Vector2.zero;
             // Snapshot what the session applies (see the field-block note): restore symmetry must not
@@ -775,6 +777,7 @@ namespace Velvet
         // A scroll the auto-scroller made moves the droppables under a pointer that has not moved.
         internal void OnAutoScrolled()
         {
+            // MUTANT_SURVIVES(unreachable, clause removed): only the auto-scroller calls this, and it lives from activation to close.
             if (_closed || !_active)
             {
                 return;
@@ -1158,6 +1161,9 @@ namespace Velvet
         // element's class projection before it cancels the session.
         internal void ReleaseClassesOf(VisualElement element)
         {
+            // MUTANT_SURVIVES(equivalent, boundary): toggling no dragging class changes no class and hands no channel back.
+            // What Apply still runs re-syncs the source to that unchanged class list, and the held play it re-asserts
+            // is released by the same cleanup, which calls this first.
             if (ReferenceEquals(element, _source) && _activeDraggingClasses.Length > 0)
             {
                 ToggleDragging(false);

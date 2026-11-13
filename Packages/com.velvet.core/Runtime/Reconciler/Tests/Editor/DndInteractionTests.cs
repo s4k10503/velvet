@@ -1675,6 +1675,26 @@ namespace Velvet.Tests
             Assert.That(translate.x, Is.EqualTo(0f));
         }
 
+        // GREEN_ON_BASE(characterization): the base already pins the left edge to the window's; writing `+` for the `-` of RestrictToBoundingRect's left-edge pin reddens it.
+        // The case above holds both left edges at zero, where the two spellings agree.
+        [Test]
+        public void Given_ARectDraggedPastTheWindowsLeftEdge_When_RestrictToWindowEdgesRuns_Then_ItsLeftEdgeIsPinnedToTheWindows()
+        {
+            // Arrange — the rect's left edge, at x = 30, would land at -10.
+            var args = new DndModifierArgs
+            {
+                Transform = new Vector2(-40f, 0f),
+                DraggingNodeRect = new Rect(30, 0, 50, 50),
+                WindowRect = new Rect(0, 0, 100, 100),
+            };
+
+            // Act
+            var translate = DndModifiers.RestrictToWindowEdges(in args);
+
+            // Assert
+            Assert.That(translate.x, Is.EqualTo(-30f));
+        }
+
         [Test]
         public void Given_CandidatesRegisteredOutOfOrder_When_RectIntersectionRuns_Then_TheyAreRankedByIntersectionRatioNotOverlapArea()
         {
