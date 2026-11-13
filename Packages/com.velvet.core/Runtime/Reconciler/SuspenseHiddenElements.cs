@@ -28,6 +28,7 @@ namespace Velvet
 
         internal static void Reveal(VisualElement element)
         {
+            // MUTANT_SURVIVES(unreachable, line removed): Reveal's one caller, SuspenseOffscreenCommit.Run, reveals after its own HideHeld took every hold it placed, so a hold here is an enclosing commit's, and the commit a hide's cleanup nests is an error boundary's swap, which unmounts the rows it replaces rather than revealing one.
             s_heldForHide.Remove(element);
             if (!s_hidden.TryGetValue(element, out var before)) return;
             element.style.display = before.Display;

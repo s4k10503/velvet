@@ -99,6 +99,7 @@ namespace Velvet
             for (var i = _hooks.Count - 1; i >= 0; i--)
             {
                 var render = _hooks[i];
+                // MUTANT_SURVIVES(unreachable, clause removed): a journaled render had the Reconciler FiberRenderer.Mount assigns, and FiberRenderer.Unmount's one production caller is Dispose, which sets IsDisposed first, so no entry point leaves a journaled fiber unmounted and undisposed.
                 if (render.Fiber.IsDisposed || !render.Fiber.IsMounted) continue;
                 // The fiber the pass started from cut its own effects in the catch of its render, and the retry its
                 // suspend asks for renders it, so it is not owed a render here.

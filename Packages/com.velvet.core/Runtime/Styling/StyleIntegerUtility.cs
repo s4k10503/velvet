@@ -49,7 +49,6 @@ namespace Velvet
             value = 0;
             var negate = cls.Length > 0 && cls[0] == '-';
             var offset = negate ? 1 : 0;
-            // MUTANT_SURVIVES(equivalent, boundary): where cls is the prefix alone the remainder is empty, which the bracket strip and the bare parse below both decline, so `<` returns false for it as well.
             if (cls.Length <= offset + prefix.Length || string.CompareOrdinal(cls, offset, prefix, 0, prefix.Length) != 0)
             {
                 return false;

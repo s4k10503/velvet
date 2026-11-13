@@ -1115,6 +1115,48 @@ namespace Velvet.Tests
             Assert.That((beforePlay, playing > 50, NotGreen()), Is.EqualTo((0, true, 0)), capability);
         }
 
+        private VisualEffect MountedClone() => _mounted.Root.Reconciler.Context.ParticlesBindings[_host.Root.Q<ParticlesElement>()].EffectHost;
+
+        // GREEN_ON_BASE(characterization): a Manual clone already spawns nothing until something plays it.
+        [UnityTest]
+        public IEnumerator Given_AManualVisualEffectGraph_When_FramesAdvance_Then_TheCloneHoldsNoLiveParticle()
+        {
+            // Arrange
+            var effect = CreateLoopEffect();
+            _host = new RenderTexturePanelHost("ParticlesPanel", 300, 300);
+            _mounted = V.Mount(_host.Root, V.Particles(effect, className: "w-[300px] h-[300px]", playOn: PlayTrigger.Manual));
+            var clone = MountedClone();
+
+            // Act
+            yield return WaitRealtimeDraining(1.0, _host.TargetTexture);
+
+            // Assert
+            Assert.That(clone.aliveParticleCount, Is.EqualTo(0));
+        }
+
+        // GREEN_ON_BASE(characterization): flipping a Manual clone to Mount already starts it from the source's initial event.
+        [UnityTest]
+        public IEnumerator Given_AManualVisualEffectGraph_When_ItsTriggerFlipsToMount_Then_TheCloneSpawnsParticles()
+        {
+            // Arrange
+            s_visualEffect = CreateLoopEffect();
+            _host = new RenderTexturePanelHost("ParticlesPanel", 300, 300);
+            _mounted = V.Mount(_host.Root, V.Component(VisualEffectTriggerFlipHost, key: "root"));
+            yield return WaitRealtimeDraining(0.3, _host.TargetTexture);
+            var clone = MountedClone();
+
+            // Act
+            s_setFlag.Invoke(true);
+            var deadline = Time.realtimeSinceStartupAsDouble + 5.0;
+            while (clone.aliveParticleCount == 0 && Time.realtimeSinceStartupAsDouble < deadline)
+            {
+                yield return WaitRealtimeDraining(0.1, _host.TargetTexture);
+            }
+
+            // Assert
+            Assert.That(clone.aliveParticleCount, Is.GreaterThan(0));
+        }
+
         [UnityTest]
         public IEnumerator Given_AVisualEffectWithAQuadUnderItAndASceneQuadInFront_When_FramesAdvance_Then_OnlyItsQuadRendersWithTheElementShowingAroundIt()
         {
@@ -1306,6 +1348,7 @@ namespace Velvet.Tests
         }
 
         private static ParticleSystem s_effect;
+        private static VisualEffect s_visualEffect;
         private static StateUpdater<bool> s_setFlag;
 
         [Component]
@@ -1314,6 +1357,15 @@ namespace Velvet.Tests
             var (mount, setMount) = Hooks.UseState(false);
             s_setFlag = setMount;
             return V.Particles(s_effect, className: "w-[300px] h-[300px]",
+                playOn: mount ? PlayTrigger.Mount : PlayTrigger.Manual);
+        }
+
+        [Component]
+        private static VNode VisualEffectTriggerFlipHost()
+        {
+            var (mount, setMount) = Hooks.UseState(false);
+            s_setFlag = setMount;
+            return V.Particles(s_visualEffect, className: "w-[300px] h-[300px]",
                 playOn: mount ? PlayTrigger.Mount : PlayTrigger.Manual);
         }
 

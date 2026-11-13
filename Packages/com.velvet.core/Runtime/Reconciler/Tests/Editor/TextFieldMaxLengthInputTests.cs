@@ -205,6 +205,93 @@ namespace Velvet.Tests
             Assert.That(field.text, Is.EqualTo("abX"));
         }
 
+        // GREEN_ON_BASE(characterization): a limit of zero already refuses a typed character, as HTML's maxlength="0" does.
+        [Test]
+        public void Given_AZeroMaxLength_When_ACharacterIsTyped_Then_TheTextStaysEmpty()
+        {
+            // Arrange
+            var tree = new VNode[] { V.TextField(value: string.Empty, maxLength: 0) };
+            _reconciler.Reconcile(_root, System.Array.Empty<VNode>(), tree);
+            EditorPanelTestHelpers.ForcePanelUpdate(_host.Panel);
+            var field = (TextField)_root.ElementAt(0);
+            Input(field).Focus();
+            field.SelectRange(0, 0);
+
+            // Act
+            SendKey(field, 'X', KeyCode.X, EventModifiers.None);
+
+            // Assert
+            Assert.That(field.text, Is.EqualTo(string.Empty));
+        }
+
+        // GREEN_ON_BASE(characterization): a limit declared again after a render dropped it already refuses what does not fit.
+        [Test]
+        public void Given_ALimitDroppedAndThenDeclaredAgain_When_ACharacterIsTypedAtTheLimit_Then_TheTextIsUnchanged()
+        {
+            // Arrange
+            var limited = new VNode[] { V.TextField(value: "ab", maxLength: 2) };
+            var unlimited = new VNode[] { V.TextField(value: "ab") };
+            var limitedAgain = new VNode[] { V.TextField(value: "ab", maxLength: 2) };
+            _reconciler.Reconcile(_root, System.Array.Empty<VNode>(), limited);
+            _reconciler.Reconcile(_root, limited, unlimited);
+            _reconciler.Reconcile(_root, unlimited, limitedAgain);
+            EditorPanelTestHelpers.ForcePanelUpdate(_host.Panel);
+            var field = (TextField)_root.ElementAt(0);
+            Input(field).Focus();
+            field.SelectRange(2, 2);
+
+            // Act
+            SendKey(field, 'X', KeyCode.X, EventModifiers.None);
+
+            // Assert
+            Assert.That(field.text, Is.EqualTo("ab"));
+        }
+
+        // GREEN_ON_BASE(characterization): dropping a limit already takes off every bubble-up callback declaring it put on.
+        [Test]
+        public void Given_ALimitThatWasDeclared_When_ALaterRenderDropsIt_Then_TheInputHoldsTheBubbleUpCallbacksItHadBefore()
+        {
+            // Arrange — every tree declares the placeholder, so only the limit comes and goes between them
+            var unlimited = new VNode[] { V.TextField(value: "ab", placeholder: "p") };
+            var limited = new VNode[] { V.TextField(value: "ab", placeholder: "p", maxLength: 2) };
+            var unlimitedAgain = new VNode[] { V.TextField(value: "ab", placeholder: "p") };
+            _reconciler.Reconcile(_root, System.Array.Empty<VNode>(), unlimited);
+            var input = Input((TextField)_root.ElementAt(0));
+            var before = CallbackRegistryProbe.BubbleUpCallbackCount(input);
+            _reconciler.Reconcile(_root, unlimited, limited);
+
+            // Act
+            _reconciler.Reconcile(_root, limited, unlimitedAgain);
+
+            // Assert
+            Assert.That(CallbackRegistryProbe.BubbleUpCallbackCount(input) - before, Is.EqualTo(0));
+        }
+
+        // GREEN_ON_BASE(characterization): Shift+Tab already moves focus out of a multiline field holding as much as its limit.
+        [Test]
+        public void Given_AMultilineFieldShowingAsManyCharactersAsItsLimit_When_ShiftTabIsPressed_Then_FocusMovesToTheFieldBeforeIt()
+        {
+            // Arrange
+            var tree = new VNode[]
+            {
+                V.TextField(name: "before"),
+                V.TextField(value: "ab", maxLength: 2, multiline: true),
+            };
+            _reconciler.Reconcile(_root, System.Array.Empty<VNode>(), tree);
+            EditorPanelTestHelpers.ForcePanelUpdate(_host.Panel);
+            var before = (TextField)_root.ElementAt(0);
+            var field = (TextField)_root.ElementAt(1);
+            Input(field).Focus();
+            field.SelectRange(2, 2);
+
+            // Act
+            SendKey(field, '\t', KeyCode.Tab, EventModifiers.Shift);
+
+            // Assert
+            var focused = _host.Panel.focusController.focusedElement as VisualElement;
+            Assert.That(focused != null && (focused == before || before.Contains(focused)), Is.True);
+        }
+
         private static TextElement Input(TextField field) => (TextElement)field.textEdition;
 
         private static EventModifiers PasteModifiers =>

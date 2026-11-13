@@ -131,6 +131,7 @@ namespace Velvet
             binding.EffectCamera = null;
             binding.EffectTexture = null;
             binding.EffectRenderers = null;
+            // MUTANT_SURVIVES(equivalent, line removed): Render reads the layer only behind the EffectCamera cleared above, which Create assigns ahead of a new layer, and a second Destroy removes a layer already removed, so the stale reference only keeps that layer reachable until the next Create.
             binding.EffectLayer = null;
         }
 
