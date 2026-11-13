@@ -397,6 +397,43 @@ namespace Velvet.Tests
             Assert.That(a1.panel.focusController.focusedElement, Is.EqualTo(a1));
         }
 
+        // The isolated host is in no tree's order, and its only focusables are the group's members.
+        [Component]
+        private static VNode GroupFillingAnIsolatedHostBesideAnAppendedOne() => V.Div(children: new VNode[]
+        {
+            V.Button(name: "main1"),
+            V.Portal(UILayer.Overlay, key: "appended", children: new VNode[] { V.Button(name: "a1") }),
+            V.Portal(UILayer.Topmost, key: "isolated", focusOrder: PanelFocusOrder.Isolated, children: new VNode[]
+            {
+                FocusScopeElement.Div(name: "group", singleTabStop: true, children: new VNode[]
+                {
+                    V.Button(name: "g1"),
+                    V.Button(name: "g2"),
+                }),
+            }),
+        });
+
+        // GREEN_ON_BASE(characterization): the base already keeps focus on the member of a group in a host outside the order.
+        [UnityTest]
+        public IEnumerator Given_ASingleTabStopGroupFillingAnIsolatedHostBesideAnAppendedOne_When_TabDispatchesFromAMember_Then_TheMemberKeepsFocus()
+        {
+            // Arrange
+            _mounted = V.Mount(_panelGo.GetComponent<UIDocument>().rootVisualElement,
+                V.Component(GroupFillingAnIsolatedHostBesideAnAppendedOne, key: "root"));
+            yield return null;
+            yield return null;
+            var g1 = LayerElement(UILayer.Topmost, "g1");
+            g1.Focus();
+            var held = g1.panel.focusController.focusedElement == g1;
+
+            // Act
+            SendMove(g1, NavigationMoveEvent.Direction.Next);
+            yield return null;
+
+            // Assert — null where g1 never took focus, which g1 can never be
+            Assert.That(held ? g1.panel.focusController.focusedElement : null, Is.EqualTo(g1));
+        }
+
         [Component]
         private static VNode GroupBeforeAnAppendedHost() => V.Div(children: new VNode[]
         {

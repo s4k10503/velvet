@@ -1495,6 +1495,8 @@ namespace Velvet
                 element.UnregisterCallback(binding.OnAttach);
                 binding.OnAttach = null;
             }
+            // MUTANT_SURVIVES(unreachable, clause removed): each caller passes the binding it read from FocusScopeBindings.
+            // Attach wrote that binding onto the start as it was stored there, and only Detach writes Binding again.
             if (element is FocusScopeStart start && ReferenceEquals(start.Binding, binding))
             {
                 start.Binding = null;
