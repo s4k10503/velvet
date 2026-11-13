@@ -308,6 +308,73 @@ namespace Velvet.Tests
             Assert.That((heldInside, Focused), Is.EqualTo((true, (Focusable)opener)));
         }
 
+        [Component]
+        private static VNode AutoFocusRowAroundANestedScope() => V.Div(children: new VNode[]
+        {
+            V.Button(name: "before"),
+            V.FocusScope(autoFocus: true, children: new VNode[]
+            {
+                V.FocusScope(key: "inner", children: new VNode[] { V.Button(name: "i1") }),
+                V.Button(name: "o1"),
+            }),
+        });
+
+        // GREEN_ON_BASE(characterization): the base already finds the outer start past the nested range.
+        [Test]
+        public void Given_AnAutoFocusScopeWhoseFirstElementSitsInAScopeNestedInIt_When_Mounted_Then_ThatElementHoldsFocus()
+        {
+            // Arrange & Act
+            Mount(AutoFocusRowAroundANestedScope);
+
+            // Assert
+            Assert.That(Focused, Is.EqualTo(Q("i1")));
+        }
+
+        // GREEN_ON_BASE(characterization): the base already skips an end it holds no start for.
+        [Test]
+        public void Given_ARangeEndWithNoStartBeforeItAmongAChildsSiblings_When_TheStartsAroundTheChildAreAppended_Then_NoneIs()
+        {
+            // Arrange
+            var parent = new VisualElement();
+            parent.Add(new FocusScopeEnd());
+            var child = new VisualElement();
+            parent.Add(child);
+            var starts = new List<FocusScopeStart>();
+
+            // Act
+            FocusScopeRange.AppendStartsAround(child, starts);
+
+            // Assert
+            Assert.That(starts, Is.Empty);
+        }
+
+        [Component]
+        private static VNode ToggledScopeRow()
+        {
+            var (shown, setShown) = Hooks.UseState(true);
+            s_setShowScope = setShown;
+            return V.Div(name: "row", children: new VNode[]
+            {
+                shown ? V.FocusScope(key: "scope", children: new VNode[] { V.Button(name: "s1") }) : null,
+            });
+        }
+
+        // GREEN_ON_BASE(characterization): the base already drops the binding.
+        [Test]
+        public void Given_AMountedFocusScope_When_ItUnmounts_Then_ItsStartHoldsNoBinding()
+        {
+            // Arrange
+            Mount(ToggledScopeRow);
+            var start = StartInRow();
+
+            // Act
+            s_setShowScope.Invoke(false);
+            _mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(start.Binding, Is.Null);
+        }
+
         private static VNode Probe()
         {
             s_manager = Hooks.UseFocusManager();

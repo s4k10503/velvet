@@ -144,6 +144,27 @@ namespace Velvet.Tests
             // Assert
             Assert.That(outcome, Is.EqualTo((true, (Focusable)start)));
         }
+
+        // GREEN_ON_BASE(characterization): the base already steps a left arrow back.
+        [UnityTest]
+        public IEnumerator Given_AGroupFocusedOnItsSecondMember_When_ALeftArrowMoves_Then_FocusReachesTheFirst()
+        {
+            // Arrange
+            var start = Element("stopB");
+            start.Focus();
+
+            // Act
+            using (var move = NavigationMoveEvent.GetPooled(NavigationMoveEvent.Direction.Left))
+            {
+                move.target = start;
+                start.SendEvent(move);
+            }
+            yield return null;
+
+            // Assert
+            var first = Element("stopA");
+            Assert.That(first.panel.focusController.focusedElement, Is.EqualTo(first));
+        }
     }
 }
 #endif
