@@ -10,8 +10,8 @@ namespace Velvet.Tests
     /// <summary>
     /// Specifies how a box's dashed side is laid out and painted: a square-cornered side is a line of its own from
     /// corner to corner (<see cref="DashedBorderPainter.ComputeSideRuns"/>), every side is cut to its own corner of the
-    /// box (<see cref="DashedBorderPainter.ComputeSidePieces"/>), and a side is painted with its box's shear. GWT, one
-    /// assert per case.
+    /// box (<see cref="DashedBorderPainter.ComputeSidePieces"/>), and a side is painted with its box's shear, each piece
+    /// filled as a closed shape. GWT, one assert per case.
     /// </summary>
     [TestFixture]
     internal sealed class DashedBorderSideTests
@@ -111,39 +111,51 @@ namespace Velvet.Tests
             }
         }
 
-        // GREEN_ON_BASE(characterization): the base's Painter2D meshes a sub-path left open as it meshes the closed one.
-        // A `MUTANT_SURVIVES` over PaintSide's ClosePath rests on this.
+        // GREEN_ON_BASE(characterization): the base closes each piece of a dashed side before it fills it.
         [Test]
-        public void Given_AQuadLeftOpen_When_Filled_Then_ItMeshesToAsManyVerticesAsTheClosedOne()
+        public void Given_ADashedTopSide_When_Painted_Then_ItMeshesAsItsPiecesFilledClosedDo()
         {
-            // Arrange
-            var closed = FilledVertices(close: true);
+            // Arrange — the top of a 40 × 20 box at width 2 cuts into four pieces, none ending where it starts, filled
+            // here one after another as closed shapes.
+            var box = new BorderBox { Size = new Vector2(40f, 20f), Left = 2f, Top = 2f, Right = 2f, Bottom = 2f };
+            var points = new List<Vector2>();
+            var counts = new List<int>();
+            DashedBorderPainter.ComputeSidePieces(DivideEdge.Top, box, BorderLineStyle.Dashed, points, counts);
+            var closed = MeshedVertices(painter =>
+            {
+                painter.fillColor = Color.white;
+                var at = 0;
+                foreach (var count in counts)
+                {
+                    painter.BeginPath();
+                    painter.MoveTo(points[at]);
+                    for (var i = 1; i < count; i++)
+                    {
+                        painter.LineTo(points[at + i]);
+                    }
+                    painter.ClosePath();
+                    painter.Fill();
+                    at += count;
+                }
+            });
 
             // Act
-            var open = FilledVertices(close: false);
+            var painted = MeshedVertices(painter =>
+                DashedBorderPainter.PaintSide(painter, DivideEdge.Top, box, Color.white, BorderLineStyle.Dashed));
 
-            // Assert — -1 where the closed quad meshed to nothing, which no count can equal.
-            Assert.That(open, Is.EqualTo(closed > 0 ? closed : -1));
+            // Assert — -1 where the closed pieces meshed to nothing, which no count can equal.
+            Assert.That(painted, Is.EqualTo(closed > 0 ? closed : -1));
         }
 
-        // The vertices of a filled 12 × 8 quad saved to a VectorImage, its sub-path closed or left open.
-        private static int FilledVertices(bool close)
+        // The vertices of what paint fills, saved to a VectorImage.
+        private static int MeshedVertices(System.Action<Painter2D> paint)
         {
             var image = ScriptableObject.CreateInstance<VectorImage>();
             try
             {
                 using (var painter = new Painter2D())
                 {
-                    painter.BeginPath();
-                    painter.MoveTo(new Vector2(0f, 0f));
-                    painter.LineTo(new Vector2(12f, 0f));
-                    painter.LineTo(new Vector2(12f, 8f));
-                    painter.LineTo(new Vector2(0f, 8f));
-                    if (close)
-                    {
-                        painter.ClosePath();
-                    }
-                    painter.Fill();
+                    paint(painter);
                     painter.SaveToVectorImage(image);
                 }
                 var vertices = typeof(VectorImage).GetField("vertices", BindingFlags.Instance | BindingFlags.NonPublic)

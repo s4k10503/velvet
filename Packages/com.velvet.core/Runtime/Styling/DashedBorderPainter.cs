@@ -108,8 +108,6 @@ namespace Velvet
                     var point = s_points[at + i];
                     painter.LineTo(sheared ? shear.Apply(point.x, point.y) : point);
                 }
-                // MUTANT_SURVIVES(equivalent, line removed): Fill meshes a piece left open as it meshes the closed one.
-                // DashedBorderSideTests' Given_AQuadLeftOpen_When_Filled_Then_ItMeshesToAsManyVerticesAsTheClosedOne holds it.
                 painter.ClosePath();
                 painter.Fill();
                 at += count;
