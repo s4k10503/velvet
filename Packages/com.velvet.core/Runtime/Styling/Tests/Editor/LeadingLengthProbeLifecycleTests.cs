@@ -18,10 +18,10 @@ namespace Velvet.Tests
     {
         private static VNode Owner(string cls) => V.Div(className: cls, V.Label(text: "hi"));
 
-        // Whether the probe's viewport poll is set to run, or null where it holds none or none can be read.
-        private static bool? IsPolling(LeadingLengthProbe probe)
-            => (typeof(LeadingLengthProbe).GetField("_tick", BindingFlags.NonPublic | BindingFlags.Instance)?.GetValue(probe)
-                as IVisualElementScheduledItem)?.isActive;
+        // The probe's viewport poll, or null where it holds none or none can be read.
+        private static IVisualElementScheduledItem PollOf(LeadingLengthProbe probe)
+            => typeof(LeadingLengthProbe).GetField("_tick", BindingFlags.NonPublic | BindingFlags.Instance)?.GetValue(probe)
+                as IVisualElementScheduledItem;
 
         [Test]
         public void Given_AnEmLeading_When_Mounted_Then_TheElementCarriesTheMarkerClass()
@@ -113,7 +113,24 @@ namespace Velvet.Tests
             scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), new[] { Owner("leading-[10vw]") });
 
             // Assert
-            Assert.That(IsPolling(scope.Reconciler.Context.LeadingLengthProbes[scope.Root[0]]), Is.EqualTo((bool?)true));
+            Assert.That(PollOf(scope.Reconciler.Context.LeadingLengthProbes[scope.Root[0]])?.isActive, Is.EqualTo((bool?)true));
+        }
+
+        // GREEN_ON_BASE(characterization): the base stops the poll of a viewport leading swapped for an em one.
+        [Test]
+        public void Given_AViewportLeading_When_SwappedForAnEmOne_Then_ItsPollStops()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var viewport = new[] { Owner("leading-[10vw]") };
+            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), viewport);
+            var poll = PollOf(scope.Reconciler.Context.LeadingLengthProbes[scope.Root[0]]);
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, viewport, new[] { Owner("leading-[1.5em]") });
+
+            // Assert — null where no poll ran before the swap, which the expected value is not.
+            Assert.That(poll?.isActive, Is.EqualTo((bool?)false));
         }
 
         // GREEN_ON_BASE(characterization): the base polls a viewport leading declared again after an em one stopped it.
@@ -131,7 +148,7 @@ namespace Velvet.Tests
             scope.Reconciler.Reconcile(scope.Root, em, new[] { Owner("leading-[10vw]") });
 
             // Assert
-            Assert.That(IsPolling(scope.Reconciler.Context.LeadingLengthProbes[scope.Root[0]]), Is.EqualTo((bool?)true));
+            Assert.That(PollOf(scope.Reconciler.Context.LeadingLengthProbes[scope.Root[0]])?.isActive, Is.EqualTo((bool?)true));
         }
 
         // GREEN_ON_BASE(characterization): the base takes off the element both callbacks its probe registered.

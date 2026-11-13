@@ -6780,24 +6780,38 @@ namespace Velvet.Tests
             Assert.That(float.IsFinite(Root.Q<VisualElement>("shared").style.borderTopLeftRadius.value.value), Is.True);
         }
 
-        // GREEN_ON_BASE(characterization): the base leaves the corners of a box drawn at no size on both axes to UI Toolkit.
-        [Test]
-        public void Given_ARoundedBlueLayoutIdMotionGrowingFromNothingAfterADelay_When_TheDelayRuns_Then_ItsBackgroundStaysInItsOwnSlot()
+        // The resizing box, rounded and blue, grown from a box of no size on a linear second that waits a second first,
+        // and played some way into the delay, through which it is drawn at the old box: at a scale of zero on both axes.
+        private MountedTree GrowFromNothingIntoADelay()
         {
-            // Arrange — from a box of no size, on a linear second that waits a second first, during which it is drawn at
-            // the old box: at a scale of zero on both axes.
             s_resizeFrom = 0;
             s_resizeTransition = new StyleTransitionConfig
             {
                 Type = TransitionType.Bezier, DurationSec = 1f, DelaySec = 1f, BezierX1 = 0f, BezierY1 = 0f, BezierX2 = 1f, BezierY2 = 1f,
             };
-            using var mounted = ResizeBoxFor("rounded-[10px] bg-[#0000ff]", 1);
+            return ResizeBoxFor("rounded-[10px] bg-[#0000ff]", 6);
+        }
 
-            // Act — some way into the delay.
-            for (var i = 0; i < 5; i++) Tick();
+        // GREEN_ON_BASE(characterization): the base leaves the corners of a box drawn at no size on both axes to UI Toolkit.
+        [Test]
+        public void Given_ARoundedBlueLayoutIdMotionGrowingFromNothingAfterADelay_When_TheDelayRuns_Then_ItsBackgroundStaysInItsOwnSlot()
+        {
+            // Arrange / Act
+            using var mounted = GrowFromNothingIntoADelay();
 
             // Assert — the element's own blue, where a face painting it would hold the slot cleared.
             Assert.That(Root.Q<VisualElement>("shared").style.backgroundColor.value, Is.EqualTo(Color.blue));
+        }
+
+        // GREEN_ON_BASE(characterization): the base writes none to the slots of a pixel radius on a box drawn at no size.
+        [Test]
+        public void Given_ARoundedBlueLayoutIdMotionGrowingFromNothingAfterADelay_When_TheDelayRuns_Then_ItsRadiusSlotsHoldNone()
+        {
+            // Arrange / Act
+            using var mounted = GrowFromNothingIntoADelay();
+
+            // Assert
+            Assert.That(Root.Q<VisualElement>("shared").style.borderTopLeftRadius.value.value, Is.Zero);
         }
 
         [Test]
