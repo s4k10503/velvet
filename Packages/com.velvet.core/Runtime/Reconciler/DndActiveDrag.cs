@@ -1161,6 +1161,11 @@ namespace Velvet
         // element's class projection before it cancels the session.
         internal void ReleaseClassesOf(VisualElement element)
         {
+            // MUTANT_SURVIVES(equivalent, boundary): an empty dragging-class array toggles no class and hands no channel back.
+            // The re-syncs Apply still runs reach nothing the source keeps past this cleanup, which calls this first:
+            // a write over a face's suppression is captured again by that face's Release later in the cleanup, the
+            // held play it re-asserts is released there too, and the clip wrapper it mirrors classes onto leaves with
+            // the source.
             if (ReferenceEquals(element, _source) && _activeDraggingClasses.Length > 0)
             {
                 ToggleDragging(false);

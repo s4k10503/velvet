@@ -449,9 +449,9 @@ namespace Velvet
 
         public Color BorderColor => BorderColors[(int)DivideEdge.Left];
 
-        // Whether the captured background came from an INLINE value (the resolver's bg-[…] write) rather than a
-        // USS rule. An inline color is authoritative and only ever changes via another resolver write, which
-        // overwrites the sentinel and is caught by SyncOnPatch's re-capture branch.
+        // Whether the captured background came from an INLINE value (the resolver's bg-[…] write, or one made
+        // through a ref) rather than a USS rule. An inline color is authoritative: a later write over the sentinel
+        // is captured by the next re-capture, and at the latest by Release.
         public bool BgFromInline;
 
         // The border equivalent of BgFromInline, true where any side's is inline.
@@ -687,7 +687,9 @@ namespace Velvet
             {
                 var inlineStyle = SilhouetteFace.InlineBorderColor(element, side);
                 var inline = inlineStyle.value;
-                var fromInline = false;
+                // A side the sentinel still masks keeps whether its colour came inline, as BgFromInline does:
+                // CaptureFace sets the flag only from a slot it can read.
+                var fromInline = HasStash && _sideInline[(int)side];
                 // A dashed divider's mask is not this stash's suppression, so a first capture under it takes the
                 // color the divider paints there rather than keeping a stash it never had.
                 var underDash = false;
@@ -783,6 +785,9 @@ namespace Velvet
         // inline bg-[…] or border-[…] stays the element's (a face handed from a shadow to a skew keeps it).
         public void Release(VisualElement element)
         {
+            // A value written over the suppression since the last capture is the face's now, as every re-capture
+            // takes it, so the slot gets that back rather than the colour captured before it.
+            Capture(element);
             if (_includeBackground)
             {
                 element.style.backgroundColor = BgFromInline ? BgColor : StyleKeyword.Null;

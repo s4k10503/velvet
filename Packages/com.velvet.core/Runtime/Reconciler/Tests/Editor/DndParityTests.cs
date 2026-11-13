@@ -267,9 +267,8 @@ namespace Velvet.Tests
                 });
         }
 
-        // GREEN_ON_BASE(characterization): the base hands back the background the shadow captured, as it does for an element no drag holds; writing `>=` for the `>` of DndActiveDrag.ReleaseClassesOf's dragging-class test reddens it.
         [Test]
-        public void Given_AShadowedSourceWhoseBackgroundARefWroteDuringAPress_When_ItUnmounts_Then_ItKeepsTheBackgroundTheShadowCaptured()
+        public void Given_AShadowedSourceWhoseBackgroundARefWroteDuringAPress_When_ItUnmounts_Then_ItKeepsTheBackgroundTheRefWrote()
         {
             // Arrange — the shadow suppresses the source's background, and the write over it stands for app code
             // reaching the source through a ref.
@@ -285,8 +284,7 @@ namespace Velvet.Tests
             _mounted.FlushStateForTest();
 
             // Assert — null where the shadow never suppressed the background or the press armed no session.
-            Assert.That(suppressed && pending ? item.style.backgroundColor.value : (Color?)null,
-                Is.EqualTo(new Color(0f, 0f, 1f, 1f)));
+            Assert.That(suppressed && pending ? item.style.backgroundColor.value : (Color?)null, Is.EqualTo(Color.red));
         }
 
         [Test]
