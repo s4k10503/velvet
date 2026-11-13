@@ -1161,9 +1161,6 @@ namespace Velvet
         // element's class projection before it cancels the session.
         internal void ReleaseClassesOf(VisualElement element)
         {
-            // MUTANT_SURVIVES(equivalent, boundary): toggling no dragging class changes no class and hands no channel back.
-            // What Apply still runs re-syncs the source to that unchanged class list, and the held play it re-asserts
-            // is released by the same cleanup, which calls this first.
             if (ReferenceEquals(element, _source) && _activeDraggingClasses.Length > 0)
             {
                 ToggleDragging(false);
@@ -1279,12 +1276,7 @@ namespace Velvet
         {
             UnregisterFromObserved(_onDragMove);
             UnregisterFromObserved(_onDragUp);
-            // MUTANT_SURVIVES(equivalent): OnDragDown only reaches Cancel, which returns at once on the
-            // closed session; the unregister releases the session and keeps the chain's callback lists
-            // from growing with every drag.
             UnregisterFromObserved(_onDragDown);
-            // MUTANT_SURVIVES(equivalent): the pointer-cancel handler also only reaches Cancel, for the
-            // same reason as the line above.
             UnregisterFromObserved(_onDragCancel);
             if (_onCaptureOut != null) _source.UnregisterCallback(_onCaptureOut, TrickleDown.TrickleDown);
             if (_onEscape != null)
@@ -1390,15 +1382,8 @@ namespace Velvet
 
         private void UnregisterPendingObservers()
         {
-            // MUTANT_SURVIVES(equivalent): OnPendingMove returns at once once the session is active or
-            // closed, the only two states this is called in; the unregister releases the session and
-            // keeps the chain's callback lists from growing with every drag.
             UnregisterFromObserved(_onPendingMove);
-            // MUTANT_SURVIVES(equivalent): OnPendingUp returns at once once the session is active or
-            // closed, for the same reason as the line above.
             UnregisterFromObserved(_onPendingUp);
-            // MUTANT_SURVIVES(equivalent): the pending pointer-cancel handler reaches DiscardPending, which
-            // returns at once once the session is active or closed, for the same reason as the lines above.
             UnregisterFromObserved(_onPendingCancel);
             _onPendingMove = null;
             _onPendingUp = null;

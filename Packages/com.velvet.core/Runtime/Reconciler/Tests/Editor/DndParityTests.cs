@@ -211,6 +211,84 @@ namespace Velvet.Tests
             Assert.That(pressed > before ? TrickleDownCallbackCount(grip) : -1, Is.EqualTo(before));
         }
 
+        // GREEN_ON_BASE(characterization): the base already takes a discarded press's callbacks off; deleting any of the three unregisters in DndActiveDrag.UnregisterPendingObservers reddens it.
+        [Test]
+        public void Given_APressReleasedBelowTheDistance_When_ItsPendingSessionCloses_Then_TheDraggableCarriesNoneOfItsCallbacks()
+        {
+            // Arrange
+            Mount(HookScene);
+            var item = Q("item");
+            var before = TrickleDownCallbackCount(item);
+            item.SendPointerDownEvent(new Vector2(10, 10));
+            var pressed = TrickleDownCallbackCount(item);
+
+            // Act — released where it was pressed, under the 4 px constraint.
+            item.SendPointerUpEvent(new Vector2(10, 10));
+
+            // Assert — -1 where the press registered nothing on the draggable, which no count equals.
+            Assert.That(pressed > before ? TrickleDownCallbackCount(item) : -1, Is.EqualTo(before));
+        }
+
+        // GREEN_ON_BASE(characterization): the base already takes a dropped drag's callbacks off; deleting the pointer-down or the pointer-cancel unregister from DndActiveDrag.UnregisterActiveObservers reddens it.
+        [Test]
+        public void Given_ADraggedItem_When_ItIsReleased_Then_ItCarriesNoneOfTheSessionsCallbacks()
+        {
+            // Arrange — 10 px of travel crosses the 4 px constraint.
+            Mount(HookScene);
+            var item = Q("item");
+            var before = TrickleDownCallbackCount(item);
+            item.SendPointerDownEvent(new Vector2(10, 10));
+            item.SendPointerMoveEvent(new Vector2(20, 10));
+            var dragging = TrickleDownCallbackCount(item);
+
+            // Act
+            item.SendPointerUpEvent(new Vector2(20, 10));
+
+            // Assert — -1 where the drag registered nothing on the draggable, which no count equals.
+            Assert.That(dragging > before ? TrickleDownCallbackCount(item) : -1, Is.EqualTo(before));
+        }
+
+        // A shadowed draggable under a scope whose 4 px constraint keeps a press pending, unmounted when the flag
+        // drops.
+        [Component]
+        private static VNode RemovableShadowedSourceScene()
+        {
+            var (show, setShow) = Hooks.UseState(true);
+            s_setFlag = setShow;
+            return V.DndContext(
+                activation: new DragActivation(Distance: 4f),
+                className: "w-[300px] h-[300px]",
+                children: new VNode[]
+                {
+                    show
+                        ? V.Draggable("item", name: "item", key: "item",
+                            className: "w-[50px] h-[50px] bg-[#0000ff] shadow-lg")
+                        : null,
+                });
+        }
+
+        // GREEN_ON_BASE(characterization): the base hands back the background the shadow captured, as it does for an element no drag holds; writing `>=` for the `>` of DndActiveDrag.ReleaseClassesOf's dragging-class test reddens it.
+        [Test]
+        public void Given_AShadowedSourceWhoseBackgroundARefWroteDuringAPress_When_ItUnmounts_Then_ItKeepsTheBackgroundTheShadowCaptured()
+        {
+            // Arrange — the shadow suppresses the source's background, and the write over it stands for app code
+            // reaching the source through a ref.
+            Mount(RemovableShadowedSourceScene);
+            var item = Q("item");
+            var suppressed = SilhouetteFace.IsSentinel(item.style.backgroundColor.value);
+            item.SendPointerDownEvent(new Vector2(10, 10));
+            var pending = Ctx.ActiveDrag != null;
+            item.style.backgroundColor = Color.red;
+
+            // Act
+            s_setFlag.Invoke(false);
+            _mounted.FlushStateForTest();
+
+            // Assert — null where the shadow never suppressed the background or the press armed no session.
+            Assert.That(suppressed && pending ? item.style.backgroundColor.value : (Color?)null,
+                Is.EqualTo(new Color(0f, 0f, 1f, 1f)));
+        }
+
         [Test]
         public void Given_APendingPress_When_ThePointerMoves_Then_TheMoveCarriesTheEnginesDraggableClaim()
         {
