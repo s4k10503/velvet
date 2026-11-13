@@ -147,6 +147,7 @@ namespace Velvet
                 return;
             }
             var floor = into.Count;
+            // MUTANT_SURVIVES(equivalent, boundary): child is one of parent's children, so the loop returns at it before i reaches the count.
             for (var i = 0; i < parent.hierarchy.childCount; i++)
             {
                 var sibling = parent.hierarchy[i];
