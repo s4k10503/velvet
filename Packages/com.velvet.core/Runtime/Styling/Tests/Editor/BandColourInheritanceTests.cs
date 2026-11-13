@@ -51,5 +51,43 @@ namespace Velvet.Tests
             // Assert
             Assert.That(resolved, Is.EqualTo(Color.white));
         }
+
+        // GREEN_ON_BASE(characterization): the base records an ancestor that names a ring-offset colour and no other.
+        [Test]
+        public void Given_AParentRecordingOnlyARingOffsetColour_When_AChildsRingOffsetInherits_Then_ItTakesThatColour()
+        {
+            // Arrange
+            var parent = new VisualElement();
+            var child = new VisualElement();
+            parent.Add(child);
+            var none = new BandColourInheritance.Own(false, ColorReference.None, Color.clear);
+            BandColourInheritance.Record(parent, none, new BandColourInheritance.Own(true, ColorReference.None, Color.red),
+                none);
+
+            // Act
+            var resolved = BandColourInheritance.Resolve(child, BandColourInheritance.Family.Offset);
+
+            // Assert
+            Assert.That(resolved, Is.EqualTo(Color.red));
+        }
+
+        // GREEN_ON_BASE(characterization): the base records an ancestor that names an outline colour and no other.
+        [Test]
+        public void Given_AParentRecordingOnlyAnOutlineColour_When_AChildsOutlineInherits_Then_ItTakesThatColour()
+        {
+            // Arrange
+            var parent = new VisualElement();
+            var child = new VisualElement();
+            parent.Add(child);
+            var none = new BandColourInheritance.Own(false, ColorReference.None, Color.clear);
+            BandColourInheritance.Record(parent, none, none,
+                new BandColourInheritance.Own(true, ColorReference.None, Color.red));
+
+            // Act
+            var resolved = BandColourInheritance.Resolve(child, BandColourInheritance.Family.Outline);
+
+            // Assert
+            Assert.That(resolved, Is.EqualTo(Color.red));
+        }
     }
 }

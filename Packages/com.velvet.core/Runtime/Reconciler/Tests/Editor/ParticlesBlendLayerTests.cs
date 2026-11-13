@@ -269,6 +269,32 @@ namespace Velvet.Tests
             Assert.That(binding.TargetExtents[0].width, Is.GreaterThan(0f));
         }
 
+        // GREEN_ON_BASE(characterization): the base takes each paint's extent into the live extent as it paints, as before.
+        // A patch that adds a filter between a paint and the next tick reads it to size the bounds spacer.
+        [Test]
+        public void Given_ALiveEffect_When_TheElementIsPaintedBetweenTicks_Then_TheLiveExtentIsWhatItDrew()
+        {
+            // Arrange
+            _fakeMs = 1000;
+            EditorPanelTestHelpers.SetPanelTimeFunction(_host.Panel, () => _fakeMs / 1000.0);
+            var effect = CreateEffectSource("fx-live-extent");
+            effect.GetComponent<ParticleSystemRenderer>().sharedMaterial = NewParticleMaterial("Legacy Shaders/Particles/Alpha Blended");
+            var emission = effect.emission;
+            emission.rateOverTime = 1000f;
+            var binding = MountEffect(effect, "px-live-extent");
+            AdvanceTicks(3);
+
+            // Act
+            EditorPanelTestHelpers.ForcePanelUpdate(_host.Panel);
+
+            // Assert
+            var painted = binding.TargetExtents[0];
+            Assert.That(painted.width > 0f && painted.height > 0f
+                    ? binding.LiveExtentLocal
+                    : new Rect(float.NaN, float.NaN, float.NaN, float.NaN),
+                Is.EqualTo(painted));
+        }
+
         // GREEN_ON_BASE(characterization): a live element's Stop ends the simulation's logical play, as before.
         [Test]
         public void Given_ALiveHostOutsidePlayMode_When_StopIsCalledOnTheElement_Then_ItIsNoLongerLogicallyPlaying()
