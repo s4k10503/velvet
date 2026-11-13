@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1794580789485,
+  "lastUpdate": 1794580821407,
   "repoUrl": "https://github.com/s4k10503/velvet",
   "entries": {
     "Velvet benchmarks": [
@@ -107042,6 +107042,756 @@ window.BENCHMARK_DATA = {
             "value": 0.22299999999972897,
             "unit": "ms",
             "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "50241623+s4k10503@users.noreply.github.com",
+            "name": "0y0",
+            "username": "s4k10503"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "b59412f21f42cfe8dfb53dd899e41f93dd140f67",
+          "message": "test(velvet): answer the focus, paint-lease, skew and maxLength survivors the 3.0.0 gate refused (#1635)\n\nNo issue: answers the release gate's second-round unanswered survivors in `FiberFocusNavigator`, `FiberPaintLeases`, `FiberSkewApplier` and `FiberPropApplier`.\n\nThe 3.0.0 release gate's second reading refuses main on twelve survivors in these files.\n\n**Nine are killed by new cases:**\n- a single tab-stop group in an isolated host beside an appended one keeps focus on Tab;\n- an unmounted focus scope leaves the live-range count where it was;\n- a gradient play opened over halfway holds the halfway blend, and its release binds the end pose;\n- an enter drawn to its end with no pass keeps the skew the element showed;\n- a declared `maxLength:` that a later render makes unlimited stops refusing input;\n- a skew play cut short after a patch shows the patched class's angle;\n- a disposed tree releases a skew a play landed on;\n- removing a skew drops its pick shape.\n\n**Two get `MUTANT_SURVIVES` declarations:**\n- `unreachable`: a focus scope's start always carries the binding `Detach` is given.\n- `equivalent`: the drawn skew is assigned on every write before the takeover reads it.\n\n**The twelfth is killed by a PlayMode case, one row for each portal order:** an Appended or Chained layer portal whose host document was disabled through a frame and enabled again comes back with a new root in a new panel. Once the portal patches, `ConfigurePortalFocusOrder` attaches the navigator there, so Tab from the host's last focusable returns to the declaring panel. `EnsureAttached`'s caller list now says so.\n\nEvery case is green on the merge base and declared `GREEN_ON_BASE(characterization)`. The next record run is what shows each one killing its mutant.\n\nNo production behaviour changes, so there is no CHANGELOG fragment and no `Documentation~` impact.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+          "timestamp": "2026-11-13T23:27:44+09:00",
+          "tree_id": "013eaa566106a20db7956452136db358485a78f8",
+          "url": "https://github.com/s4k10503/velvet/commit/b59412f21f42cfe8dfb53dd899e41f93dd140f67"
+        },
+        "date": 1794580819009,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "Velvet.Tests.Performance.VNodePoolBenchmarks.RentReturnProps_Cycle / Time.GC()",
+            "value": 0,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.VNodePoolBenchmarks.RentReturnProps_Cycle / Time",
+            "value": 0.01389999999992142,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.VNodePoolBenchmarks.VButton_Allocation / Time.GC()",
+            "value": 1,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.VNodePoolBenchmarks.VButton_Allocation / Time",
+            "value": 0.021250000000463842,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.VNodePoolBenchmarks.VDiv_Allocation / Time.GC()",
+            "value": 1,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.VNodePoolBenchmarks.VDiv_Allocation / Time",
+            "value": 0.015150000000176078,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.VNodePoolBenchmarks.VLabel_Allocation / Time.GC()",
+            "value": 1,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.VNodePoolBenchmarks.VLabel_Allocation / Time",
+            "value": 0.02109999999993306,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.UseMutationPlayModeBenchmarks.UseMutation_OneMutateRoundTrip / Time.GC()",
+            "value": 55,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.UseMutationPlayModeBenchmarks.UseMutation_OneMutateRoundTrip / Time",
+            "value": 0.48204999999984466,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.UseStateRerenderAllocBenchmarks.UseState_RerenderClosureAlloc / Time.GC()",
+            "value": 4505,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.UseStateRerenderAllocBenchmarks.UseState_RerenderClosureAlloc / Time",
+            "value": 14.823100000000068,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Mount_1000Elements_WithLayoutAndPaint / E2E.Time",
+            "value": 105.17875000000001,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Mount_1000Elements_WithLayoutAndPaint / E2E.GC",
+            "value": 1273856,
+            "unit": "b",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Mount_1000Elements_WithLayoutAndPaint / E2E.Reconcile",
+            "value": 105.17465000000001,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Mount_1000Elements_WithLayoutAndPaint / E2E.MarkDirty",
+            "value": 0.0041,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Mount_100Elements_WithLayoutAndPaint / E2E.Time",
+            "value": 9.6463,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Mount_100Elements_WithLayoutAndPaint / E2E.GC",
+            "value": 0,
+            "unit": "b",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Mount_100Elements_WithLayoutAndPaint / E2E.Reconcile",
+            "value": 9.6426,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Mount_100Elements_WithLayoutAndPaint / E2E.MarkDirty",
+            "value": 0.00385,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Mount_10Elements_WithLayoutAndPaint / E2E.Time",
+            "value": 1.3245500000000001,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Mount_10Elements_WithLayoutAndPaint / E2E.GC",
+            "value": 0,
+            "unit": "b",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Mount_10Elements_WithLayoutAndPaint / E2E.Reconcile",
+            "value": 1.3210000000000002,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Mount_10Elements_WithLayoutAndPaint / E2E.MarkDirty",
+            "value": 0.0037,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.FiberAsyncResourcePlayModeBenchmarks.HooksUse_SuspendResumeRoundTrip / HooksUse.SuspendResume.Time",
+            "value": 1.4811,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.FiberAsyncResourcePlayModeBenchmarks.HooksUse_SuspendResumeRoundTrip / HooksUse.SuspendResume.GC",
+            "value": 80,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_A_NewLabelAlone / Time.GC()",
+            "value": 11007,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_A_NewLabelAlone / Time",
+            "value": 7.113200000000006,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_B_NewLabelWithText / Time.GC()",
+            "value": 11007,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_B_NewLabelWithText / Time",
+            "value": 7.258199999999988,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_C_NewLabelAndSetText / Time.GC()",
+            "value": 9001,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_C_NewLabelAndSetText / Time",
+            "value": 7.245799999999917,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_D_NewLabelAndAddToRoot / Time.GC()",
+            "value": 11018,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_D_NewLabelAndAddToRoot / Time",
+            "value": 7.996300000000019,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_E_FullPipelineParity / Time.GC()",
+            "value": 11018,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_E_FullPipelineParity / Time",
+            "value": 10.770800000000008,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_F_VelvetReconcile / Time.GC()",
+            "value": 26380,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_F_VelvetReconcile / Time",
+            "value": 58.21955000000003,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_G_VelvetReconcileLongLived / Time.GC()",
+            "value": 23017,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_G_VelvetReconcileLongLived / Time",
+            "value": 25.568649999999934,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.InstrumentCanariesPlayModeBenchmarks.InstrumentCanary_AllocationBlocks / Time.GC()",
+            "value": 1,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.InstrumentCanariesPlayModeBenchmarks.InstrumentCanary_AllocationBlocks / Time",
+            "value": 0.006150000000161526,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.InstrumentCanariesPlayModeBenchmarks.InstrumentCanary_TimingBaseline / Time",
+            "value": 0.2955000000000001,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.Append_1000RowsTo1000 / Op.Time",
+            "value": 264.89135,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.Append_1000RowsTo1000 / Op.GC",
+            "value": 179873.5,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.Clear_1000Rows / Op.Time",
+            "value": 41.91705,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.Clear_1000Rows / Op.GC",
+            "value": 13055,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.Create_10000Rows / Op.Time",
+            "value": 2784.07,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.Create_10000Rows / Op.GC",
+            "value": 1748789,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.Create_1000Rows / Op.Time",
+            "value": 247.4152,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.Create_1000Rows / Op.GC",
+            "value": 177122,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.PartialUpdate_EveryTenthOf1000Rows / Op.Time",
+            "value": 32.2308,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.PartialUpdate_EveryTenthOf1000Rows / Op.GC",
+            "value": 10171,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.Remove_OneOf1000Rows / Op.Time",
+            "value": 13.87105,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.Remove_OneOf1000Rows / Op.GC",
+            "value": 5085,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.Replace_AllOf1000Rows / Op.Time",
+            "value": 382.42420000000004,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.Replace_AllOf1000Rows / Op.GC",
+            "value": 190076,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.Select_OneOf1000Rows / Op.Time",
+            "value": 14.11365,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.Select_OneOf1000Rows / Op.GC",
+            "value": 5167,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.Swap_Rows2And999Of1000 / Op.Time",
+            "value": 17.090049999999998,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.Swap_Rows2And999Of1000 / Op.GC",
+            "value": 5159,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.PaintPassReconcileBenchmarks.Reconcile_UnchangedClassList_100LiteralPaintRows / Time.GC()",
+            "value": 705,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.PaintPassReconcileBenchmarks.Reconcile_UnchangedClassList_100LiteralPaintRows / Time",
+            "value": 20.742899999999736,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.PaintPassReconcileBenchmarks.Reconcile_UnchangedClassList_100VariantGatedPaintRows / Time.GC()",
+            "value": 2505,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.PaintPassReconcileBenchmarks.Reconcile_UnchangedClassList_100VariantGatedPaintRows / Time",
+            "value": 31.88324999999986,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.PooledButtonRowBenchmarks.Clear_1000PooledButtonRows / Time",
+            "value": 35.312699999999964,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.PooledButtonRowBenchmarks.Create_1000PooledButtonRows / Time",
+            "value": 33.35489999999996,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.InitialMount_1000Elements / Time.GC()",
+            "value": 24018,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.InitialMount_1000Elements / Time",
+            "value": 26.690649999999778,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.InitialMount_100Elements / Time.GC()",
+            "value": 2109,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.InitialMount_100Elements / Time",
+            "value": 2.865199999999959,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.InitialMount_10Elements / Time.GC()",
+            "value": 221,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.InitialMount_10Elements / Time",
+            "value": 0.579599999999914,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.PooledWidgetRecycle_LabelsAndButtons_10Elements / Time.GC()",
+            "value": 165,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.PooledWidgetRecycle_LabelsAndButtons_10Elements / Time",
+            "value": 9.069099999999935,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_AllChange_100Elements / Time.GC()",
+            "value": 5,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_AllChange_100Elements / Time",
+            "value": 2.50445000000002,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_BudgetedIndexed_AllChange_200Elements / Time.GC()",
+            "value": 5,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_BudgetedIndexed_AllChange_200Elements / Time",
+            "value": 40.819800000000214,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_BudgetedIndexed_GrowShrink_100To200Elements / Time.GC()",
+            "value": 2062,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_BudgetedIndexed_GrowShrink_100To200Elements / Time",
+            "value": 67.0007499999997,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_BudgetedKeyed_AllChange_200Elements / Time.GC()",
+            "value": 7,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_BudgetedKeyed_AllChange_200Elements / Time",
+            "value": 12.92240000000038,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_Expansion_AllChange_100Nodes / Time.GC()",
+            "value": 6609,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_Expansion_AllChange_100Nodes / Time",
+            "value": 27.68609999999967,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_Expansion_NoChange_100Nodes / Time.GC()",
+            "value": 215,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_Expansion_NoChange_100Nodes / Time",
+            "value": 1.4043500000002496,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_Keyed_AllChange_100Elements / Time.GC()",
+            "value": 5,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_Keyed_AllChange_100Elements / Time",
+            "value": 5.243950000000041,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_Keyed_NoChange_100Elements / Time.GC()",
+            "value": 5,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_Keyed_NoChange_100Elements / Time",
+            "value": 0.25090000000000146,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_Keyed_Reverse_100Elements / Time.GC()",
+            "value": 33,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_Keyed_Reverse_100Elements / Time",
+            "value": 2.171749999999861,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_NoChange_100Elements / Time.GC()",
+            "value": 5,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_NoChange_100Elements / Time",
+            "value": 0.1317999999996573,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.StyleManipulatorReconcileBenchmarks.Mount_100StyledRows / Time.GC()",
+            "value": 79597,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.StyleManipulatorReconcileBenchmarks.Mount_100StyledRows / Time",
+            "value": 287.51955,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.StyleManipulatorReconcileBenchmarks.Reconcile_ChangedClassList_100StyledRows / Time.GC()",
+            "value": 41905,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.StyleManipulatorReconcileBenchmarks.Reconcile_ChangedClassList_100StyledRows / Time",
+            "value": 153.10930000000008,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.StyleManipulatorReconcileBenchmarks.Reconcile_StripAndRestoreClassList_100StyledRows / Time.GC()",
+            "value": 81587,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.StyleManipulatorReconcileBenchmarks.Reconcile_StripAndRestoreClassList_100StyledRows / Time",
+            "value": 378.91169999999966,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.StyleManipulatorReconcileBenchmarks.Reconcile_UnchangedClassList_100StyledRows / Time.GC()",
+            "value": 5800,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.StyleManipulatorReconcileBenchmarks.Reconcile_UnchangedClassList_100StyledRows / Time",
+            "value": 52.19100000000026,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.TextSizeEffectReconcileBenchmarks.Reconcile_RetextLabels_200LabelsUnderAnInertContainer / Time.GC()",
+            "value": 5,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.TextSizeEffectReconcileBenchmarks.Reconcile_RetextLabels_200LabelsUnderAnInertContainer / Time",
+            "value": 10.142300000000432,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.TextSizeEffectReconcileBenchmarks.Reconcile_RetextLabels_200LabelsUnderATextSizeContainer / Time.GC()",
+            "value": 805,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.TextSizeEffectReconcileBenchmarks.Reconcile_RetextLabels_200LabelsUnderATextSizeContainer / Time",
+            "value": 13.865449999999782,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.TextSizeEffectReconcileBenchmarks.Reconcile_RetextLabels_200LabelsWithAnInertClass / Time.GC()",
+            "value": 5,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.TextSizeEffectReconcileBenchmarks.Reconcile_RetextLabels_200LabelsWithAnInertClass / Time",
+            "value": 13.020649999999932,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.TextSizeEffectReconcileBenchmarks.Reconcile_RetextLabels_200LabelsWithATextSize / Time.GC()",
+            "value": 405,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.TextSizeEffectReconcileBenchmarks.Reconcile_RetextLabels_200LabelsWithATextSize / Time",
+            "value": 17.152400000000398,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.VisibleToggleProjectionBenchmarks.Reconcile_ToggleVisible_200Rows / Time.GC()",
+            "value": 1207,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.VisibleToggleProjectionBenchmarks.Reconcile_ToggleVisible_200Rows / Time",
+            "value": 141.80899999999951,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.VisibleToggleProjectionBenchmarks.Reconcile_ToggleVisible_200RowsWithASuppressedClass / Time.GC()",
+            "value": 5607,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.VisibleToggleProjectionBenchmarks.Reconcile_ToggleVisible_200RowsWithASuppressedClass / Time",
+            "value": 155.2098000000001,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.RouteLoaderRunnerPlayModeBenchmarks.RunLoadersSync_AwaitSyncCompleted / Time.GC()",
+            "value": 14,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.RouteLoaderRunnerPlayModeBenchmarks.RunLoadersSync_AwaitSyncCompleted / Time",
+            "value": 0.05165000000033615,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.RouteLoaderRunnerPlayModeBenchmarks.RunLoadersSync_SuspendDeferredCompletion / RouteLoaderRunner.SuspendDeferred.Time",
+            "value": 0.3448,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.RouteLoaderRunnerPlayModeBenchmarks.RunLoadersSync_SuspendDeferredCompletion / RouteLoaderRunner.SuspendDeferred.GC",
+            "value": 11,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.RouterNavigationPlayModeBenchmarks.NavigateAsync_LoaderAndBlocker / Time.GC()",
+            "value": 112,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.RouterNavigationPlayModeBenchmarks.NavigateAsync_LoaderAndBlocker / Time",
+            "value": 0.2072000000002845,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) 6975P-C"
           }
         ]
       }
