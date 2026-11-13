@@ -89,5 +89,27 @@ namespace Velvet.Tests
             // Assert
             Assert.That(resolved, Is.EqualTo(Color.red));
         }
+
+        // GREEN_ON_BASE(characterization): the base forgets an ancestor's colours once it records that it names none.
+        [Test]
+        public void Given_AParentThatRecordedARingOffsetColour_When_ItRecordsNone_Then_AChildsRingOffsetInheritTakesWhite()
+        {
+            // Arrange
+            var parent = new VisualElement();
+            var child = new VisualElement();
+            parent.Add(child);
+            var none = new BandColourInheritance.Own(false, ColorReference.None, Color.clear);
+            BandColourInheritance.Record(parent, none, new BandColourInheritance.Own(true, ColorReference.None, Color.red),
+                none);
+            var recorded = BandColourInheritance.Resolve(child, BandColourInheritance.Family.Offset);
+
+            // Act
+            BandColourInheritance.Record(parent, none, none, none);
+
+            // Assert — NaN where the first record never reached the child, which white never equals.
+            var resolved = BandColourInheritance.Resolve(child, BandColourInheritance.Family.Offset);
+            Assert.That(recorded == Color.red ? resolved : new Color(float.NaN, float.NaN, float.NaN, float.NaN),
+                Is.EqualTo(Color.white));
+        }
     }
 }
