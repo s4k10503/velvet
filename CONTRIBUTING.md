@@ -341,7 +341,8 @@ not against what a mutant usually costs: one that hangs takes every bound it is 
 fit reads `not measured (budget)`, is recorded as such, and the shard exits 0, so the step passes, the shard's
 other verdicts are uploaded and the record job can dispatch the next run. The run's decision fails on such
 a mutant as on any unmeasured one, nothing records it, and the next run measures it again. A session's launch
-is bounded by what is left as well. Before the budget, a shard whose mutants took longer than the step reached
+is bounded by what is left as well, and an area's own baseline whose bound and `BUDGET_MARGIN` do not fit is not
+launched. Before the budget, a shard whose mutants took longer than the step reached
 the step's own timeout, which fails the shard and so keeps the record job from dispatching the next run.
 
 **The same tree and the same record give the same answer.** Which mutants a run deals, which entries it
