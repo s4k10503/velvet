@@ -74,8 +74,8 @@ CRASHED = "killed (the editor crashed)"
 
 # A mutant's launch is stopped at the baseline's wall clock times TIMEOUT_FACTOR plus TIMEOUT_CONSTANT
 # seconds, so the bound comes from the same run's unmutated launch on the same runner and a launch that
-# reaches it is the mutation's doing. `--timeout` bounds the baseline itself, which has no baseline to
-# derive from, and is the outer cap on a session launch.
+# reaches it is the mutation's doing. The baseline has no baseline to derive from: `baseline_bound` bounds
+# it.
 TIMEOUT_FACTOR = 1.5
 TIMEOUT_CONSTANT = 5
 SURVIVED = "survived"
@@ -168,7 +168,7 @@ REACH_SHARE = 10
 # The run costs about one baseline, and CONTRIBUTING.md ▸ Checking that the tests can fail has the
 # measurement and what a placed mutant saves against it, which is where four comes from.
 REACH_MIN_MUTANTS = 4
-# The reach run is stopped at this many times the baseline's wall clock, or --timeout if that is less,
+# The reach run is stopped at this many times the baseline's wall clock, or `baseline_bound` if that is less,
 # so a run that does not finish costs what `ShardCeilingTests` charges it. One that finishes costs less;
 # the same section of CONTRIBUTING.md has by how much.
 REACH_BOUND = 2
@@ -3032,6 +3032,15 @@ def mutant_bound(baseline_wall):
     return math.ceil(baseline_wall * TIMEOUT_FACTOR + TIMEOUT_CONSTANT)
 
 
+def baseline_bound(timeout, budget):
+    """Seconds the baseline's launch is left to run: `timeout`, or, where it is longer, the longest
+    baseline after which a mutant's own launch at `mutant_bound`, with `BUDGET_MARGIN`, still fits in
+    `budget` -- the check `measure` makes before that launch, counted from the budget's start. A fixed
+    figure was rejected because the suite outgrows it while the shard's budget still has room for its
+    mutants."""
+    return max(timeout, math.floor((budget - BUDGET_MARGIN - TIMEOUT_CONSTANT) / (1 + TIMEOUT_FACTOR)))
+
+
 def budget_left(args):
     """Seconds of `--budget` not yet used, or None where the run has none."""
     deadline = getattr(args, "deadline", None)
@@ -4025,7 +4034,7 @@ def measure_reach(args, project, directory, whole_scope, total, holder, bound):
     for stale in list(reach.glob("item-*.json")) + list(reach.glob("mutant-*.xml")) + [reach / REACH_FILE]:
         if stale.exists():
             stale.unlink()
-    plan = reach_plan(reach, args.platform, whole_scope, min(args.timeout, bound))
+    plan = reach_plan(reach, args.platform, whole_scope, bound)
     plan["watch"] = library_files(project)
     plan["tolerate"] = holder.state.first_left if holder.state is not None else []
     runs, lost, stopped = run_session(args, project, plan, reach, holder)
@@ -4082,7 +4091,8 @@ def measure_in_session(args, project, holder, output, mutants, pending, baseline
                   len(placed), REACH_MIN_MUTANTS))
         return {}, False, set()
 
-    ceiling = min(args.timeout, baseline_wall)
+    longest = baseline_bound(args.timeout, args.budget)
+    ceiling = min(longest, baseline_wall)
     expected = {"whole": baseline["total"]}
     rewritten = {project / relative: text for relative, text in answer["files"].items()}
     il_read = il_reading_assemblies(project, set(assembly_seconds(baseline_results)[1]))
@@ -4158,7 +4168,7 @@ def measure_in_session(args, project, holder, output, mutants, pending, baseline
         # The reach run comes first and its plan second: which mutants are measured, and against what, is
         # read off it.
         standing = measure_reach(args, project, directory, whole_scope, baseline["total"], holder,
-                                 REACH_BOUND * baseline_wall) if reaching else None
+                                 min(longest, REACH_BOUND * baseline_wall)) if reaching else None
         if standing is not None:
             reached, setup, seconds, unsure = standing
             selection, uncovered = select_by_reach(placed, reached, setup, seconds,
@@ -5081,11 +5091,11 @@ def measure(args, project, holder, output, targets, mutants, scope, campaign, co
     text_readers = text_reading_fixtures(project)
     # The launch carries the editor arguments as well; `scope` alone is what a verdict is keyed on.
     launched = excluding(scope, text_readers) + args.editor_arg
+    longest = baseline_bound(args.timeout, args.budget)
     baseline_wall, baseline_timed_out, _ = run_suite(args.unity, project, args.platform, launched,
-                                                  baseline_results, output / "baseline.log",
-                                                  args.timeout, holder)
+                                                  baseline_results, output / "baseline.log", longest, holder)
     if baseline_timed_out:
-        raise SystemExit("the baseline run did not finish within --timeout, so no mutant can be timed")
+        raise SystemExit("the baseline run did not finish within {}s, so no mutant can be timed".format(longest))
     baseline = read_counts(baseline_results)
     if baseline is None:
         raise SystemExit("the baseline run wrote no result; read {}\n{}".format(
@@ -5130,7 +5140,7 @@ def measure(args, project, holder, output, targets, mutants, scope, campaign, co
     # area's assemblies run by themselves would otherwise read as a kill of every mutant there that
     # built. Not taken under a scope the caller chose, which already asks a question of its own.
     attempts = {}
-    ceiling = min(args.timeout, baseline_wall)
+    ceiling = min(longest, baseline_wall)
     if not scope and args.platform in NARROWED_PLATFORMS and not reach_made:
         areas = {area_of(mutants[index - 1].path, project) for index in own - il_only} - {None}
         for area, names in narrowable(baseline_results, areas).items():
@@ -5492,7 +5502,8 @@ def main():
                         help="print the join refusal's census over the package and exit; redirect it "
                              "over " + REFUSAL_BASELINE + " to record a deliberate change to it")
     parser.add_argument("--timeout", type=int, default=900,
-                        help="seconds before the baseline editor is killed, and the most a session launch is left to "
+                        help="seconds before the baseline editor is killed, unless --budget raises that as "
+                             "`baseline_bound` gives, and the most a session launch is left to "
                              "run past its stages' bounds; a mutant's launch is bounded by the "
                              "baseline's time instead, and Generators~/README.md ▸ The Unity "
                              "assemblies says which verdict that is (default: 900)")

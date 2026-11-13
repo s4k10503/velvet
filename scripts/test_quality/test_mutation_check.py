@@ -7615,6 +7615,55 @@ class BudgetTests(unittest.TestCase):
         self.assertEqual(campaign.launches, ["baseline.xml", "baseline-Reconciler.xml"])
 
 
+class BaselineBoundTests(unittest.TestCase):
+    """`baseline_bound` under `--budget`, and a launch the campaign bounds by it."""
+
+    BUDGET = 10200
+
+    def test_Given_ABudget_When_TheBaselinesBoundIsDerived_Then_ItIsTheLongestBaselineAMutantsOwnLaunchFitsAfter(self):
+        # Arrange — found by trying each baseline against the check `measure` makes before a mutant's own
+        # launch, rather than by inverting that check.
+        longest = max(seconds for seconds in range(self.BUDGET)
+                      if seconds + mutation_check.mutant_bound(seconds) + mutation_check.BUDGET_MARGIN
+                      <= self.BUDGET)
+
+        # Act
+        bound = mutation_check.baseline_bound(900, self.BUDGET)
+
+        # Assert
+        self.assertEqual(bound, longest)
+
+    def test_Given_ABudgetWhoseDerivedBoundIsShorterThanTheTimeout_When_TheBaselinesBoundIsDerived_Then_ItIsTheTimeout(self):
+        # Arrange — 400 s of budget leave room after a baseline of 134 s at most.
+        budget = 400
+
+        # Act
+        bound = mutation_check.baseline_bound(900, budget)
+
+        # Assert
+        self.assertEqual(bound, 900)
+
+    def test_Given_ABudget_When_TheCampaignRuns_Then_TheBaselineIsLaunchedWithTheBoundTheBudgetDerives(self):
+        # Arrange
+        campaign = StubbedCampaign()
+
+        # Act
+        campaign.run_over_diff("--timeout", "900", "--budget", str(self.BUDGET))
+
+        # Assert
+        self.assertEqual(campaign.timeouts.get("baseline.xml"), mutation_check.baseline_bound(900, self.BUDGET))
+
+    def test_Given_ABudgetAndABaselineLongerThanTheTimeout_When_AnAreasOwnBaselineIsLaunched_Then_TheWholeBaselineBoundsIt(self):
+        # Arrange — 1000 s is past the 900 s timeout and inside what the budget derives.
+        campaign = TimedAreaCampaign({"baseline.xml": 1000.0, "baseline-Reconciler.xml": 40.0})
+
+        # Act
+        campaign.run_over_diff("--timeout", "900", "--budget", str(self.BUDGET))
+
+        # Assert
+        self.assertEqual(campaign.bounds.get("baseline-Reconciler.xml"), 1000.0)
+
+
 class BudgetWorkflowTests(unittest.TestCase):
     """What `mutation.yml` hands the campaign as its budget, and what it does with the mutants the budget
     left."""
@@ -9301,6 +9350,26 @@ class SessionReachTests(SessionRoutingBase):
         # Assert
         self.assertEqual([stage["bound"] for item in self.campaign.plans[0]["items"] for stage in item["stages"]],
                          [bound])
+
+    def test_Given_ABudgetAndABaselineLongerThanTheTimeout_When_TheReachRunIsPlanned_Then_ItIsStoppedAtTwiceTheBaselinesTime(self):
+        # Arrange — 1000 s is past the 900 s timeout, which would stop the run before one baseline's time.
+        self.campaign.baseline_seconds = 1000.0
+
+        # Act
+        self.campaign.run("--max", "1", "--timeout", "900", "--budget", str(BaselineBoundTests.BUDGET))
+
+        # Assert
+        self.assertEqual(self.campaign.plans[0]["items"][0]["stages"][0]["bound"], mutation_check.REACH_BOUND * 1000)
+
+    def test_Given_ABudgetAndABaselineLongerThanTheTimeout_When_TheSessionOpens_Then_ItsGateIsBoundedByTheWholeBaseline(self):
+        # Arrange — as above; the gate is the opening run of the mutant's covered cases.
+        self.campaign.baseline_seconds = 1000.0
+
+        # Act
+        self.campaign.run("--max", "1", "--timeout", "900", "--budget", str(BaselineBoundTests.BUDGET))
+
+        # Assert
+        self.assertEqual(self.campaign.plans[-1]["items"][0]["stages"][0]["bound"], 1000.0)
 
     def test_Given_AGateThatFailsUnmutated_When_TheMutantIsKilledInItsCoveredStage_Then_ItTakesItsOwnLaunch(self):
         # Arrange — the cases fail in that order without any mutation, so their failure is no kill.
