@@ -108,6 +108,8 @@ namespace Velvet
                     var point = s_points[at + i];
                     painter.LineTo(sheared ? shear.Apply(point.x, point.y) : point);
                 }
+                // MUTANT_SURVIVES(equivalent, line removed): Fill meshes a piece left open as it meshes the closed one.
+                // DashedBorderSideTests' Given_AQuadLeftOpen_When_Filled_Then_ItMeshesToAsManyVerticesAsTheClosedOne holds it.
                 painter.ClosePath();
                 painter.Fill();
                 at += count;
@@ -317,6 +319,8 @@ namespace Velvet
                 return;
             }
             var twoDashes = 2f * dash + gap + (closed ? gap : 0f);
+            // MUTANT_SURVIVES(equivalent, boundary): where length equals twoDashes neither branch moves dash or gap.
+            // The scale below is 1 there, and the dashed arm's BestGap returns the preferred gap there.
             if (length <= twoDashes)
             {
                 var scale = length / twoDashes;
