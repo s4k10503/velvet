@@ -1,8 +1,16 @@
 {
- "detail": "EditMode survived; PlayMode: -",
+ "detail": "EditMode: 1 failed: Given_AMethodWithOneDeclinedRun_When_Compiled_Then_TheReportHoldsOneEntry",
  "file": "1ed757090277796293c6bd6a8c82e61458175687d87d56b9360e98c737bb285f",
- "killers": [],
- "measured_by": "42555673605",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ReactiveScopeRunEffectTests.Given_AMethodWithOneDeclinedRun_When_Compiled_Then_TheReportHoldsOneEntry",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeRunEffectTests.cs": "f8447880acf84d945f7b16c5daae8b184f24503133d861db7ba3654d5d47da72",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeTestSupport.cs": "1a6cfc790d411eead2a0ac87d846f948e098bb0b651e6bec15a43a489dbd2137"
+   }
+  }
+ ],
+ "measured_by": "43442992980",
  "mutant": {
   "after": ">=",
   "before": ">",
@@ -15,9 +23,9 @@
   ]
  },
  "mutator": 10,
- "platform": "PlayMode",
+ "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "a5395f0cc726ce2565be694bced9679a56713246cc9946aac3608d804f919707",
- "verdict": "survived"
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
+ "verdict": "killed"
 }

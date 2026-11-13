@@ -1,8 +1,17 @@
 {
- "detail": "EditMode survived; PlayMode: -",
+ "detail": "EditMode: 1 failed among the 1 case(s) that ran the site: Given_ASkewPlayDrivingAnElement_When_APatchChangesItsSkewClassAndThePlayIsCutShort_Then_ItShowsThePatchedClassesAngle",
  "file": "60703c4fe1b01794c1c9191a55504e8d0590dff1747464d3031ccc7aa3bd3fde",
- "killers": [],
- "measured_by": "41489604024",
+ "killers": [
+  {
+   "case": "Velvet.Tests.SkewTransformAppliedTests.Given_ASkewPlayDrivingAnElement_When_APatchChangesItsSkewClassAndThePlayIsCutShort_Then_ItShowsThePatchedClassesAngle",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/SkewCompositeMath.cs": "c88b38e855c9f38c76266fb3d5f4b50443da12bc199580316e003c142bf12b38",
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/SkewTransformAppliedTests.cs": "d00b78cd4bae150317d5df7d9149a38e57758aa0214813bc41fa396d82a7e087",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  }
+ ],
+ "measured_by": "43442992980",
  "mutant": {
   "after": ";",
   "before": "_ctx.SkewDriven[element] = (landing.XDeg, landing.YDeg);",
@@ -13,9 +22,9 @@
   "shadowed": []
  },
  "mutator": 10,
- "platform": "PlayMode",
+ "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
- "verdict": "survived"
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
+ "verdict": "killed"
 }

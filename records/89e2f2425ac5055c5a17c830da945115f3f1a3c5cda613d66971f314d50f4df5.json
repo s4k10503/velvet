@@ -1,11 +1,11 @@
 {
- "detail": "EditMode: 2 failed among the 15 case(s) that ran the site: Given_AManualVisualEffect_When_Mounted_Then_TheManualTriggerIsRecordedAsApplied, Given_AManualVisualEffect_When_ThePlayTriggerFlipsToMount_Then_TheCloneNamesTheSourcesInitialEvent",
+ "detail": "EditMode: 2 failed among the 17 case(s) that ran the site: Given_AManualVisualEffect_When_Mounted_Then_TheManualTriggerIsRecordedAsApplied, Given_AManualVisualEffect_When_ThePlayTriggerFlipsToMount_Then_TheCloneNamesTheSourcesInitialEvent",
  "file": "00a943dc5e6c4f8fd9671f5306545c7167548b21339a21b67332d175a57c3b8d",
  "killers": [
   {
    "case": "Velvet.Tests.ParticlesEffectViewTests.Given_AManualVisualEffect_When_Mounted_Then_TheManualTriggerIsRecordedAsApplied",
    "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ParticlesEffectViewTests.cs": "ec4cbb0a207e0d3b800adf3055da4fa0180690c97e27628ef9f34feb9d61569f",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ParticlesEffectViewTests.cs": "343a676ed6b73d9598709959a90dbb9cdfccbe7a4fd2f495ad91704e958e83ea",
     "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
     "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
     "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
@@ -17,7 +17,7 @@
   {
    "case": "Velvet.Tests.ParticlesEffectViewTests.Given_AManualVisualEffect_When_ThePlayTriggerFlipsToMount_Then_TheCloneNamesTheSourcesInitialEvent",
    "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ParticlesEffectViewTests.cs": "ec4cbb0a207e0d3b800adf3055da4fa0180690c97e27628ef9f34feb9d61569f",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ParticlesEffectViewTests.cs": "343a676ed6b73d9598709959a90dbb9cdfccbe7a4fd2f495ad91704e958e83ea",
     "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
     "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
     "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
@@ -27,7 +27,7 @@
    }
   }
  ],
- "measured_by": "42872060540",
+ "measured_by": "43442992980",
  "mutant": {
   "after": ";",
   "before": "ApplyPlayTrigger(binding);",
@@ -41,6 +41,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "263aac50e3877ae16fc6220feb4d02f6446308f91c6965765a7efd36266ebd85",
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
  "verdict": "killed"
 }

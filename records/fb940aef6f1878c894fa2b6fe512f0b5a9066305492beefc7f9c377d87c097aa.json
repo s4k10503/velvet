@@ -1,11 +1,11 @@
 {
- "detail": "EditMode survived; PlayMode: 1 failed: Given_AnIsolatedLayerPortalReRenderedAsAppended_When_TabDispatchesFromTheDeclaringPanelsLastFocusable_Then_FocusEntersTheHostAtItsFirst",
+ "detail": "EditMode survived; PlayMode: 3 failed: Given_AnAppendedLayerPortalWhoseHostDocumentWasDisabledAndEnabled_When_ItPatchesAndTabDispatchesFromTheHostsLastFocusable_Then_FocusReturnsToTheDeclaringPanel, Given_AChainedLayerPortalWhoseHostDocumentWasDisabledAndEnabled_When_ItPatchesAndTabDispatchesFromTheHostsLastFocusable_Then_FocusReturnsToTheDeclaringPanel, Given_AnIsolatedLayerPortalReRenderedAsAppended_When_TabDispatchesFromTheDeclaringPanelsLastFocusable_Then_FocusEntersTheHostAtItsFirst",
  "file": "d5d537b142088335cd3e61f346e77002d058e453594d7ebc5409ae5546142ea6",
  "killers": [
   {
    "case": "Velvet.Tests.FocusChainedPortalTests.Given_AnIsolatedLayerPortalReRenderedAsAppended_When_TabDispatchesFromTheDeclaringPanelsLastFocusable_Then_FocusEntersTheHostAtItsFirst",
    "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/PlayMode/FocusChainedPortalTests.cs": "8dbcd76ca37710ad817b9e59e536df4d909fd746b9eba462b5b44bf290623be1",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/PlayMode/FocusChainedPortalTests.cs": "efcde8e711999434e2b4dea4eaa4c34a32e2ca8b12e071e061642a58fd08d098",
     "Packages/com.velvet.core/TestUtilities/FocusScopeElement.cs": "caee04a0e47cefaac0d9a6a30491bbf026426ccdbc1185e3ac842f7d698edb34",
     "Packages/com.velvet.core/TestUtilities/RenderTexturePanelHost.cs": "194e0d5bc1138e5ae5cdeeae94298ce65a10fe077c4a75c73599e7abfa531bb6",
     "Packages/com.velvet.core/TestUtilities/TargetFrameRateScope.cs": "2a2bdd5a934388428380fda4fcf82e2ec5df7d1ab86930011f6dbb3f772ae50c",
@@ -13,7 +13,7 @@
    }
   }
  ],
- "measured_by": "43382198098",
+ "measured_by": "43442992980",
  "mutant": {
   "after": ";",
   "before": "FiberFocusNavigator.ConfigurePortalFocusOrder(placeholder, layerHost, newNode.FocusOrder, _ctx);",
@@ -27,6 +27,6 @@
  "platform": "PlayMode",
  "schema": 3,
  "stood": null,
- "tests": "0940803656451c4c899c450637e7d22df5be21ad3c9e1bb98ae5f1c9d764acb9",
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
  "verdict": "killed"
 }

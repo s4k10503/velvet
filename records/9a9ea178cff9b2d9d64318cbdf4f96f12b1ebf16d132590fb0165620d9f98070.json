@@ -1,8 +1,15 @@
 {
- "detail": "EditMode survived; PlayMode: -",
+ "detail": "EditMode: 1 failed among the 192 case(s) that ran the site: Given_APercentageRadiusMixedTowardNone_When_HalfWay_Then_TheMixIsInPercent",
  "file": "047962229baaa445bff88ab6bd23bb7147c024e59464f29939925bc3d91bbd2e",
- "killers": [],
- "measured_by": "42317740368",
+ "killers": [
+  {
+   "case": "Velvet.Tests.LayoutIdRadiusMixTests.Given_APercentageRadiusMixedTowardNone_When_HalfWay_Then_TheMixIsInPercent",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/LayoutIdRadiusMixTests.cs": "60f597338ba12cb60e6741daeb2734f559ccf6e76da38ca501f1291584e106bb"
+   }
+  }
+ ],
+ "measured_by": "43442992980",
  "mutant": {
   "after": "==",
   "before": "!=",
@@ -17,9 +24,9 @@
   ]
  },
  "mutator": 10,
- "platform": "PlayMode",
+ "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
- "verdict": "survived"
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
+ "verdict": "killed"
 }

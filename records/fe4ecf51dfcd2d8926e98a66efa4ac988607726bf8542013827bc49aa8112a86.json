@@ -1,8 +1,21 @@
 {
- "detail": "EditMode survived; PlayMode: -",
+ "detail": "EditMode: 1 failed among the 3 case(s) that ran the site: Given_ARectDraggedPastTheWindowsLeftEdge_When_RestrictToWindowEdgesRuns_Then_ItsLeftEdgeIsPinnedToTheWindows",
  "file": "5c2db1185aad4731ec844e05655df84afe8a2e8b620a82ea3885312df9776fb4",
- "killers": [],
- "measured_by": "43267299514",
+ "killers": [
+  {
+   "case": "Velvet.Tests.DndInteractionTests.Given_ARectDraggedPastTheWindowsLeftEdge_When_RestrictToWindowEdgesRuns_Then_ItsLeftEdgeIsPinnedToTheWindows",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/DndInteractionTests.cs": "2978fc80a5e02bbfe383fd3b1f55354c3b38a7702186f1164996a6631621468e",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  }
+ ],
+ "measured_by": "43442992980",
  "mutant": {
   "after": "+",
   "before": "-",
@@ -15,9 +28,9 @@
   ]
  },
  "mutator": 10,
- "platform": "PlayMode",
+ "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "209ea2522791c7d5695294d5efb607d02394e8baec347c197a23749bff024646",
- "verdict": "survived"
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
+ "verdict": "killed"
 }

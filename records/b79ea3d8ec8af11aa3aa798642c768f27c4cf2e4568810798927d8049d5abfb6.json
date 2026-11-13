@@ -1,11 +1,11 @@
 {
- "detail": "EditMode: 1 failed among the 56 case(s) that ran the site: 0f)",
+ "detail": "EditMode: 1 failed among the 61 case(s) that ran the site: 0f)",
  "file": "047962229baaa445bff88ab6bd23bb7147c024e59464f29939925bc3d91bbd2e",
  "killers": [
   {
    "case": "Velvet.Tests.MotionScheduledMechanicsTests.Given_AMotionRoundingOnATransition_When_ItTakesAHeldIdAndMixesItsRadius_Then_ItsOwnRunsAsTheEngineRunsIt(\"rounded-[25%]\",8.0f,17.0f)",
    "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionScheduledMechanicsTests.cs": "02cd2a717502f28763a6b283585b6ac9a7960e80ecd7db3eabcfd9e2dabc52b9",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionScheduledMechanicsTests.cs": "255a1020b1e2d25245f3b68ce4c478dd12b26d0edbc2a66646567e2c5a6c4b1d",
     "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionSimulatedPanelTestsBase.cs": "319b26852fbe6c4376e12d0d0c9e76d0ced9d71ce1cae10efb9b3d4871118db3",
     "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
     "Packages/com.velvet.core/TestUtilities/GCAllocationProbe.cs": "492823c099cf4f4de89da0da69c98d45cfc042070d93e2d0c0b95773310ebc2c",
@@ -14,7 +14,7 @@
    }
   }
  ],
- "measured_by": "43140876866",
+ "measured_by": "43442992980",
  "mutant": {
   "after": ";",
   "before": "projection.RadiusUnits[corner] = own[corner].unit;",
@@ -28,6 +28,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "3a0737ae805726605d7b4b1c058bc11f5aa4144189d9159ff88180e9426f3730",
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
  "verdict": "killed"
 }

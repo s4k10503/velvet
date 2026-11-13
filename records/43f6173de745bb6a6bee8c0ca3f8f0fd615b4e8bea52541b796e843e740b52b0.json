@@ -1,8 +1,16 @@
 {
- "detail": "EditMode survived; PlayMode: -",
+ "detail": "EditMode: 1 failed among the 3 case(s) that ran the site: Given_APlayHoldingTheSkewThatEndsOnTheElementsOwnClass_When_ItIsReleasedHalfway_Then_TheSkewIsTheClasses",
  "file": "60703c4fe1b01794c1c9191a55504e8d0590dff1747464d3031ccc7aa3bd3fde",
- "killers": [],
- "measured_by": "41489604024",
+ "killers": [
+  {
+   "case": "Velvet.Tests.PaintLeaseTests.Given_APlayHoldingTheSkewThatEndsOnTheElementsOwnClass_When_ItIsReleasedHalfway_Then_TheSkewIsTheClasses",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PaintLeaseTests.cs": "39a31f7a52bda0a700c01087584067459dd0464fb4f3c91bd6793e6e831574a2",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  }
+ ],
+ "measured_by": "43442992980",
  "mutant": {
   "after": ";",
   "before": "AuthoredTransform.Engage(element, spec.XDeg, spec.YDeg);",
@@ -13,9 +21,9 @@
   "shadowed": []
  },
  "mutator": 10,
- "platform": "PlayMode",
+ "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
- "verdict": "survived"
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
+ "verdict": "killed"
 }

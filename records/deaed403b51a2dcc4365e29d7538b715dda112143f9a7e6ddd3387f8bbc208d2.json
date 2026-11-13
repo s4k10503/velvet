@@ -1,11 +1,11 @@
 {
- "detail": "EditMode: 1 failed among the 28 case(s) that ran the site: Given_AClippingDashedElementDetachedWithASettleQueued_When_TheSettleRuns_Then_NoOverlayIsPutBack",
+ "detail": "EditMode: 1 failed among the 33 case(s) that ran the site: Given_AClippingDashedElementDetachedWithASettleQueued_When_TheSettleRuns_Then_NoOverlayIsPutBack",
  "file": "9617eefafeb4bdecb42206e58afe639895b696ef71cb53b366ac3b0f2e8f7adf",
  "killers": [
   {
    "case": "Velvet.Tests.BorderStyleOverlaySettleTests.Given_AClippingDashedElementDetachedWithASettleQueued_When_TheSettleRuns_Then_NoOverlayIsPutBack",
    "files": {
-    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BorderStyleOverlaySettleTests.cs": "4ee022396f5ea3c222cd72a2c1042b9d384aa0563ef3e2d58669c4b66ba8f7d6",
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BorderStyleOverlaySettleTests.cs": "607b06565ebd575dd2cdafbd44be58c1cb76a6aac069e0f8a3738e8f0c2b243d",
     "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
     "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
     "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
@@ -13,7 +13,7 @@
    }
   }
  ],
- "measured_by": "42872060540",
+ "measured_by": "43442992980",
  "mutant": {
   "after": "false",
   "before": "true",
@@ -29,6 +29,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "263aac50e3877ae16fc6220feb4d02f6446308f91c6965765a7efd36266ebd85",
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
  "verdict": "killed"
 }

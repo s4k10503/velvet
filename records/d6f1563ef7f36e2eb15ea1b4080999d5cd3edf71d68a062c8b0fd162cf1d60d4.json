@@ -1,8 +1,15 @@
 {
- "detail": "EditMode survived; PlayMode: -",
+ "detail": "EditMode: 1 failed among the 1 case(s) that ran the site: Given_TheMultiplyBlend_When_ItsMaterialIsMade_Then_ItFadesTheColourTowardWhite",
  "file": "c194d9fa2d9cb2f7466a208425a42c9f7c3dbc832827e3f1cf16f9c976cfb48b",
- "killers": [],
- "measured_by": "42555673605",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ParticleBlendMaterialsTests.Given_TheMultiplyBlend_When_ItsMaterialIsMade_Then_ItFadesTheColourTowardWhite",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/ParticleBlendMaterialsTests.cs": "8f405884ff87afc766b1c4a85e18b44fa8ea743fa3376348a0f0cb249637ea31"
+   }
+  }
+ ],
+ "measured_by": "43442992980",
  "mutant": {
   "after": ";",
   "before": "material.SetFloat(\"_Multiply\", 1f);",
@@ -13,9 +20,9 @@
   "shadowed": []
  },
  "mutator": 10,
- "platform": "PlayMode",
+ "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "a5395f0cc726ce2565be694bced9679a56713246cc9946aac3608d804f919707",
- "verdict": "survived"
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
+ "verdict": "killed"
 }

@@ -1,0 +1,82 @@
+{
+ "detail": "EditMode: 5 failed among the 14 case(s) that ran the site: Given_AContainedFocusScope_When_FocusMovesToAnElementBesideIt_Then_FocusReturnsToTheScope, Given_AContainedFocusScope_When_TabDispatchesFromItsLastElement_Then_FocusWrapsToItsFirst, Given_AContainedFocusScopeAroundAnElementScope_When_TabDispatchesFromTheInnerScopesLastElement_Then_FocusWrapsToTheOuterScopesFirst",
+ "file": "a777a2ae4d0b0da54e046dfd4f9a16b39f682f856128e5c7213fc4e5816e94b9",
+ "killers": [
+  {
+   "case": "Velvet.Tests.FocusScopeRangeTests.Given_AContainedFocusScopeAroundAnElementScope_When_TabDispatchesFromTheInnerScopesLastElement_Then_FocusWrapsToTheOuterScopesFirst",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/FocusScopeRangeTests.cs": "068a6cf1d7c93654f0144d4ba7f9a8e3f6665e697aa573f1e6827d960e2752be",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/FocusScopeElement.cs": "caee04a0e47cefaac0d9a6a30491bbf026426ccdbc1185e3ac842f7d698edb34",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26"
+   }
+  },
+  {
+   "case": "Velvet.Tests.FocusScopeRangeTests.Given_AContainedFocusScope_When_FocusMovesToAnElementBesideIt_Then_FocusReturnsToTheScope",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/FocusScopeRangeTests.cs": "068a6cf1d7c93654f0144d4ba7f9a8e3f6665e697aa573f1e6827d960e2752be",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/FocusScopeElement.cs": "caee04a0e47cefaac0d9a6a30491bbf026426ccdbc1185e3ac842f7d698edb34",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26"
+   }
+  },
+  {
+   "case": "Velvet.Tests.FocusScopeRangeTests.Given_AContainedFocusScope_When_TabDispatchesFromItsLastElement_Then_FocusWrapsToItsFirst",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/FocusScopeRangeTests.cs": "068a6cf1d7c93654f0144d4ba7f9a8e3f6665e697aa573f1e6827d960e2752be",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/FocusScopeElement.cs": "caee04a0e47cefaac0d9a6a30491bbf026426ccdbc1185e3ac842f7d698edb34",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26"
+   }
+  },
+  {
+   "case": "Velvet.Tests.FocusScopeRangeTests.Given_AMountedFocusScope_When_ItUnmounts_Then_TheCountOfLiveRangesIsWhatItWasBeforeTheMount",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/FocusScopeRangeTests.cs": "068a6cf1d7c93654f0144d4ba7f9a8e3f6665e697aa573f1e6827d960e2752be",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/FocusScopeElement.cs": "caee04a0e47cefaac0d9a6a30491bbf026426ccdbc1185e3ac842f7d698edb34",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26"
+   }
+  },
+  {
+   "case": "Velvet.Tests.FocusScopeRangeTests.Given_ASingleTabStopFocusScope_When_AnArrowMovesFromItsFirstElement_Then_FocusMovesToItsSecond",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/FocusScopeRangeTests.cs": "068a6cf1d7c93654f0144d4ba7f9a8e3f6665e697aa573f1e6827d960e2752be",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/FocusScopeElement.cs": "caee04a0e47cefaac0d9a6a30491bbf026426ccdbc1185e3ac842f7d698edb34",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26"
+   }
+  }
+ ],
+ "measured_by": "43442992980",
+ "mutant": {
+  "after": ";",
+  "before": "FocusScopeRange.Live++;",
+  "column": 16,
+  "line": 1471,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberFocusNavigator.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
+ "verdict": "killed"
+}

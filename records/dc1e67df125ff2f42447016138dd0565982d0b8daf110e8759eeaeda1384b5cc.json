@@ -1,8 +1,15 @@
 {
- "detail": "EditMode survived; PlayMode: -",
+ "detail": "EditMode: 1 failed among the 6 case(s) that ran the site: Given_ACurveTooSteepForTheHalvingToMeetItsTolerance_When_Evaluated_Then_TheOutputIsWhereTheThirtySecondHalvingStops",
  "file": "c071548fcfa39b2bdc79a4843035036fb8b60ba5cb87dc27285abb1cfa7d0cbe",
- "killers": [],
- "measured_by": "43007694835",
+ "killers": [
+  {
+   "case": "Velvet.Tests.BezierTweenDriverTests.Given_ACurveTooSteepForTheHalvingToMeetItsTolerance_When_Evaluated_Then_TheOutputIsWhereTheThirtySecondHalvingStops",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BezierTweenDriverTests.cs": "a9fddb639d93993154b709adb68b3e6018b95b1c90fe9be9c5fcf04d26978a9c"
+   }
+  }
+ ],
+ "measured_by": "43442992980",
  "mutant": {
   "after": "+",
   "before": "-",
@@ -16,9 +23,9 @@
   ]
  },
  "mutator": 10,
- "platform": "PlayMode",
+ "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "033208b61e0f5eab71ced9897c0bbea430c3612b5d2680e479b38bc567e57a18",
- "verdict": "survived"
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
+ "verdict": "killed"
 }

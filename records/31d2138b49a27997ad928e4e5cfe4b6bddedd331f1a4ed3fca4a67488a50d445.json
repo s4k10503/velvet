@@ -1,8 +1,27 @@
 {
- "detail": "EditMode survived; PlayMode: -",
+ "detail": "EditMode: 3 failed among the 3 case(s) that ran the site: Given_ABezierPlayDrivingTheBackground_When_AGestureStateNamingTheBackgroundMasksIt_Then_TheColourChannelIsMasked, Given_ABezierPlayDrivingTheBackgroundOverTheElementsOwn_When_AGestureStateNamingTheBackgroundMasksIt_Then_TheElementsOwnBackgroundIsShown, Given_ABezierPlayDrivingTheWidth_When_AGestureStateNamingTheWidthMasksIt_Then_TheLengthChannelIsMasked",
  "file": "1940f1c44a5c1217b3260b8f8eac5b1285e22defcc584f1b6b661a78bc1f0bc3",
- "killers": [],
- "measured_by": "42317740368",
+ "killers": [
+  {
+   "case": "Velvet.Tests.GestureChannelMaskTests.Given_ABezierPlayDrivingTheBackgroundOverTheElementsOwn_When_AGestureStateNamingTheBackgroundMasksIt_Then_TheElementsOwnBackgroundIsShown",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/GestureChannelMaskTests.cs": "7096bcf06006b0716e98b8217501cdb27afa8ee3d99d1bcfc3ded7db9d500713"
+   }
+  },
+  {
+   "case": "Velvet.Tests.GestureChannelMaskTests.Given_ABezierPlayDrivingTheBackground_When_AGestureStateNamingTheBackgroundMasksIt_Then_TheColourChannelIsMasked",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/GestureChannelMaskTests.cs": "7096bcf06006b0716e98b8217501cdb27afa8ee3d99d1bcfc3ded7db9d500713"
+   }
+  },
+  {
+   "case": "Velvet.Tests.GestureChannelMaskTests.Given_ABezierPlayDrivingTheWidth_When_AGestureStateNamingTheWidthMasksIt_Then_TheLengthChannelIsMasked",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/GestureChannelMaskTests.cs": "7096bcf06006b0716e98b8217501cdb27afa8ee3d99d1bcfc3ded7db9d500713"
+   }
+  }
+ ],
+ "measured_by": "43442992980",
  "mutant": {
   "after": "<=",
   "before": "<",
@@ -13,9 +32,9 @@
   "shadowed": []
  },
  "mutator": 10,
- "platform": "PlayMode",
+ "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
- "verdict": "survived"
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
+ "verdict": "killed"
 }

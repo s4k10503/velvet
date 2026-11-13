@@ -1,8 +1,16 @@
 {
- "detail": "EditMode: 1 failed among the 54 case(s) that ran the site: Given_ASkewBesideANegativeRotateClass_When_Mounted_Then_TheSlotsCarryTheComposite",
+ "detail": "EditMode: 2 failed in Velvet.Tests.Styling.Editor: Given_ASkewBesideANegativeRotateClass_When_Mounted_Then_TheSlotsCarryTheComposite, Given_ANegatedRotatePreset_When_DispatchGateChecked_Then_ItIsInlineResolved",
  "file": "204a3fa94dc959802c8ff3980534a4eb8a485b2d906aa6cd99e78f5c7238c280",
- "killers": [],
- "measured_by": "43382198098",
+ "killers": [
+  {
+   "case": "Velvet.Tests.SpacingStepTests.Given_ANegatedRotatePreset_When_DispatchGateChecked_Then_ItIsInlineResolved",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/SpacingPrecedenceTests.cs": "4213fd6940030dcf8c3c995d84cb0edb50e5a8402e13a98e0c1a737c6d193176",
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/SpacingStepTests.cs": "ec3b6bae9f963beffd6c930411ce7f227ee9a37299d0971d660441179f328b22"
+   }
+  }
+ ],
+ "measured_by": "43442992980",
  "mutant": {
   "after": "",
   "before": " || body.StartsWith(\"rotate-\")",
@@ -19,6 +27,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "0940803656451c4c899c450637e7d22df5be21ad3c9e1bb98ae5f1c9d764acb9",
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
  "verdict": "killed"
 }

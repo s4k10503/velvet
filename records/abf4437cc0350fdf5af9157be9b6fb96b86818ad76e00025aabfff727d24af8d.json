@@ -5,17 +5,17 @@
   {
    "case": "Velvet.Tests.UseAnimateTests.Given_ASegmentOffsetPastThePreviousEnd_When_ThePreviousEndsAndTheOffsetHasNotPassed_Then_ItHasNotStarted",
    "files": {
-    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseAnimateTests.cs": "7132facde6a4f279c7e5b245e3e8473ca5306d1f022d54a9b706770074a7e5b2"
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseAnimateTests.cs": "3bcc2c21eff196078e2c83da6c3a355ee6459d0d3209266b9ef741b44b528d02"
    }
   },
   {
    "case": "Velvet.Tests.UseAnimateTests.Given_ASegmentOffsetPastThePreviousEnd_When_TheWholeTimelineHasPassed_Then_TheControlsAreFinished",
    "files": {
-    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseAnimateTests.cs": "7132facde6a4f279c7e5b245e3e8473ca5306d1f022d54a9b706770074a7e5b2"
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseAnimateTests.cs": "3bcc2c21eff196078e2c83da6c3a355ee6459d0d3209266b9ef741b44b528d02"
    }
   }
  ],
- "measured_by": "43140876866",
+ "measured_by": "43442992980",
  "mutant": {
   "after": "+",
   "before": "-",
@@ -29,6 +29,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "3a0737ae805726605d7b4b1c058bc11f5aa4144189d9159ff88180e9426f3730",
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
  "verdict": "killed"
 }

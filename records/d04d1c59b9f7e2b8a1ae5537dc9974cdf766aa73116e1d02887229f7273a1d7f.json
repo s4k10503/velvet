@@ -1,11 +1,11 @@
 {
- "detail": "EditMode: 5 failed among the 212 case(s) that ran the site: Given_AHolderRoundingOnATransition_When_AnotherTakesItsId_Then_TheOtherMixesFromTheRadiusItIsDrawnAt, Given_ALayoutIdMotionDoublingInPlace_When_ItsPoseTweensItsRadiusMidMove_Then_ItIsDrawnAtThePosesRadiusAsItTweens, Given_ALayoutIdMotionJoiningARoundedHolder_When_AQuarterOfItsTweenHasPassed_Then_ItsRadiusIsMixingFromTheHolders",
+ "detail": "EditMode: 5 failed among the 213 case(s) that ran the site: Given_AHolderRoundingOnATransition_When_AnotherTakesItsId_Then_TheOtherMixesFromTheRadiusItIsDrawnAt, Given_ALayoutIdMotionDoublingInPlace_When_ItsPoseTweensItsRadiusMidMove_Then_ItIsDrawnAtThePosesRadiusAsItTweens, Given_ALayoutIdMotionJoiningARoundedHolder_When_AQuarterOfItsTweenHasPassed_Then_ItsRadiusIsMixingFromTheHolders",
  "file": "597c4199242bc2a858acd61191ed6bd5a429c62f0a790c3940ebfbe08bf4e2ec",
  "killers": [
   {
    "case": "Velvet.Tests.MotionScheduledMechanicsTests.Given_AHolderRoundingOnATransition_When_AnotherTakesItsId_Then_TheOtherMixesFromTheRadiusItIsDrawnAt",
    "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionScheduledMechanicsTests.cs": "bca4899a32a9aaf655c1a1b18f03f858636d0cf669119f283ad73a620a9ffb93",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionScheduledMechanicsTests.cs": "255a1020b1e2d25245f3b68ce4c478dd12b26d0edbc2a66646567e2c5a6c4b1d",
     "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionSimulatedPanelTestsBase.cs": "319b26852fbe6c4376e12d0d0c9e76d0ced9d71ce1cae10efb9b3d4871118db3",
     "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
     "Packages/com.velvet.core/TestUtilities/GCAllocationProbe.cs": "492823c099cf4f4de89da0da69c98d45cfc042070d93e2d0c0b95773310ebc2c",
@@ -16,7 +16,7 @@
   {
    "case": "Velvet.Tests.MotionScheduledMechanicsTests.Given_ALayoutIdMotionDoublingInPlace_When_ItsPoseTweensItsRadiusMidMove_Then_ItIsDrawnAtThePosesRadiusAsItTweens",
    "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionScheduledMechanicsTests.cs": "bca4899a32a9aaf655c1a1b18f03f858636d0cf669119f283ad73a620a9ffb93",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionScheduledMechanicsTests.cs": "255a1020b1e2d25245f3b68ce4c478dd12b26d0edbc2a66646567e2c5a6c4b1d",
     "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionSimulatedPanelTestsBase.cs": "319b26852fbe6c4376e12d0d0c9e76d0ced9d71ce1cae10efb9b3d4871118db3",
     "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
     "Packages/com.velvet.core/TestUtilities/GCAllocationProbe.cs": "492823c099cf4f4de89da0da69c98d45cfc042070d93e2d0c0b95773310ebc2c",
@@ -27,7 +27,7 @@
   {
    "case": "Velvet.Tests.MotionScheduledMechanicsTests.Given_ALayoutIdMotionJoiningARoundedHolder_When_AQuarterOfItsTweenHasPassed_Then_ItsRadiusIsMixingFromTheHolders",
    "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionScheduledMechanicsTests.cs": "bca4899a32a9aaf655c1a1b18f03f858636d0cf669119f283ad73a620a9ffb93",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionScheduledMechanicsTests.cs": "255a1020b1e2d25245f3b68ce4c478dd12b26d0edbc2a66646567e2c5a6c4b1d",
     "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionSimulatedPanelTestsBase.cs": "319b26852fbe6c4376e12d0d0c9e76d0ced9d71ce1cae10efb9b3d4871118db3",
     "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
     "Packages/com.velvet.core/TestUtilities/GCAllocationProbe.cs": "492823c099cf4f4de89da0da69c98d45cfc042070d93e2d0c0b95773310ebc2c",
@@ -38,7 +38,7 @@
   {
    "case": "Velvet.Tests.MotionScheduledMechanicsTests.Given_ALayoutIdMotionRoundedByAStylesheetDoublingInPlace_When_ItsClassChangesToALargerRadiusMidMove_Then_ItIsDrawnAtTheNewRadius",
    "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionScheduledMechanicsTests.cs": "bca4899a32a9aaf655c1a1b18f03f858636d0cf669119f283ad73a620a9ffb93",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionScheduledMechanicsTests.cs": "255a1020b1e2d25245f3b68ce4c478dd12b26d0edbc2a66646567e2c5a6c4b1d",
     "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionSimulatedPanelTestsBase.cs": "319b26852fbe6c4376e12d0d0c9e76d0ced9d71ce1cae10efb9b3d4871118db3",
     "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
     "Packages/com.velvet.core/TestUtilities/GCAllocationProbe.cs": "492823c099cf4f4de89da0da69c98d45cfc042070d93e2d0c0b95773310ebc2c",
@@ -49,7 +49,7 @@
   {
    "case": "Velvet.Tests.MotionScheduledMechanicsTests.Given_ALayoutIdMotionRoundedByItsRulesWithAnInlineInitialRadius_When_ItDoublesInPlace_Then_ItIsDrawnSquare",
    "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionScheduledMechanicsTests.cs": "bca4899a32a9aaf655c1a1b18f03f858636d0cf669119f283ad73a620a9ffb93",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionScheduledMechanicsTests.cs": "255a1020b1e2d25245f3b68ce4c478dd12b26d0edbc2a66646567e2c5a6c4b1d",
     "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionSimulatedPanelTestsBase.cs": "319b26852fbe6c4376e12d0d0c9e76d0ced9d71ce1cae10efb9b3d4871118db3",
     "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
     "Packages/com.velvet.core/TestUtilities/GCAllocationProbe.cs": "492823c099cf4f4de89da0da69c98d45cfc042070d93e2d0c0b95773310ebc2c",
@@ -58,7 +58,7 @@
    }
   }
  ],
- "measured_by": "43382198098",
+ "measured_by": "43442992980",
  "mutant": {
   "after": "!=",
   "before": "==",
@@ -76,6 +76,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "0940803656451c4c899c450637e7d22df5be21ad3c9e1bb98ae5f1c9d764acb9",
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
  "verdict": "killed"
 }

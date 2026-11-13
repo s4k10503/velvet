@@ -1,0 +1,31 @@
+{
+ "detail": "EditMode: 1 failed among the 28 case(s) that ran the site: Given_APlayOfTheShadowOnAStackedElement_When_ItIsReleasedHavingBeenToldNoZ_Then_TheElementKeepsItsZ",
+ "file": "c4d147e417c0fe593f6ee92b1ed02ff64c066cc8701e0cb0343df2de5926dd7f",
+ "killers": [
+  {
+   "case": "Velvet.Tests.PaintLeaseTests.Given_APlayOfTheShadowOnAStackedElement_When_ItIsReleasedHavingBeenToldNoZ_Then_TheElementKeepsItsZ",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PaintLeaseTests.cs": "39a31f7a52bda0a700c01087584067459dd0464fb4f3c91bd6793e6e831574a2",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  }
+ ],
+ "measured_by": "43442992980",
+ "mutant": {
+  "after": "true",
+  "before": "false",
+  "column": 24,
+  "line": 185,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberPaintLeases.cs",
+  "shadowed": [
+   "line removed"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
+ "verdict": "killed"
+}

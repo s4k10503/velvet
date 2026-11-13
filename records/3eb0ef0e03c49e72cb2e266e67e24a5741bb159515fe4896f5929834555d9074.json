@@ -1,8 +1,15 @@
 {
- "detail": "EditMode survived; PlayMode: -",
+ "detail": "EditMode: 1 failed among the 119 case(s) that ran the site: Given_AParentThatRecordedARingOffsetColour_When_ItRecordsNone_Then_AChildsRingOffsetInheritTakesWhite",
  "file": "6fefcfbf79fba07a1e665ed32b02141c0da25bc57ca78ed8a0f7aeeab076b26f",
- "killers": [],
- "measured_by": "41817246568",
+ "killers": [
+  {
+   "case": "Velvet.Tests.BandColourInheritanceTests.Given_AParentThatRecordedARingOffsetColour_When_ItRecordsNone_Then_AChildsRingOffsetInheritTakesWhite",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BandColourInheritanceTests.cs": "7f041632ae685523a0582c47331ec6623507680f71004bd2224d56eff4eec912"
+   }
+  }
+ ],
+ "measured_by": "43442992980",
  "mutant": {
   "after": ";",
   "before": "s_owned.Remove(element);",
@@ -13,9 +20,9 @@
   "shadowed": []
  },
  "mutator": 10,
- "platform": "PlayMode",
+ "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
- "verdict": "survived"
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
+ "verdict": "killed"
 }

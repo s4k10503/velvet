@@ -1,8 +1,21 @@
 {
- "detail": "EditMode survived; PlayMode: -",
+ "detail": "EditMode: 2 failed among the 131 case(s) that ran the site: Given_AParentRecordingOnlyARingOffsetColour_When_AChildsRingOffsetInherits_Then_ItTakesThatColour, Given_AParentThatRecordedARingOffsetColour_When_ItRecordsNone_Then_AChildsRingOffsetInheritTakesWhite",
  "file": "6fefcfbf79fba07a1e665ed32b02141c0da25bc57ca78ed8a0f7aeeab076b26f",
- "killers": [],
- "measured_by": "43382198098",
+ "killers": [
+  {
+   "case": "Velvet.Tests.BandColourInheritanceTests.Given_AParentRecordingOnlyARingOffsetColour_When_AChildsRingOffsetInherits_Then_ItTakesThatColour",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BandColourInheritanceTests.cs": "7f041632ae685523a0582c47331ec6623507680f71004bd2224d56eff4eec912"
+   }
+  },
+  {
+   "case": "Velvet.Tests.BandColourInheritanceTests.Given_AParentThatRecordedARingOffsetColour_When_ItRecordsNone_Then_AChildsRingOffsetInheritTakesWhite",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BandColourInheritanceTests.cs": "7f041632ae685523a0582c47331ec6623507680f71004bd2224d56eff4eec912"
+   }
+  }
+ ],
+ "measured_by": "43442992980",
  "mutant": {
   "after": "",
   "before": " && !offset.Names",
@@ -16,9 +29,9 @@
   ]
  },
  "mutator": 10,
- "platform": "PlayMode",
+ "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "0940803656451c4c899c450637e7d22df5be21ad3c9e1bb98ae5f1c9d764acb9",
- "verdict": "survived"
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
+ "verdict": "killed"
 }

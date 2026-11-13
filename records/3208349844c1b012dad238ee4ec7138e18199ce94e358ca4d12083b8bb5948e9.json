@@ -1,8 +1,16 @@
 {
- "detail": "EditMode survived; PlayMode: -",
+ "detail": "EditMode: 1 failed: Given_ABranchOverAFieldReadNothingReaches_When_Woven_Then_TheMethodCarriesAReport",
  "file": "9f02bb6cdba562014cd7cdc37f39bd771e7944eff86a11baa333e3959be1931e",
- "killers": [],
- "measured_by": "42555673605",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ReactiveScopeSyntheticBodyTests.Given_ABranchOverAFieldReadNothingReaches_When_Woven_Then_TheMethodCarriesAReport",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeSyntheticBodyTests.cs": "6267daf88c4fce5b8c8b65f53484f1beef9b2aff528a6368c2ca9e6779dad073",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeTestSupport.cs": "1a6cfc790d411eead2a0ac87d846f948e098bb0b651e6bec15a43a489dbd2137"
+   }
+  }
+ ],
+ "measured_by": "43442992980",
  "mutant": {
   "after": ";",
   "before": "Popped[i] = System.Array.Empty<StackValue>();",
@@ -13,9 +21,9 @@
   "shadowed": []
  },
  "mutator": 10,
- "platform": "PlayMode",
+ "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "a5395f0cc726ce2565be694bced9679a56713246cc9946aac3608d804f919707",
- "verdict": "survived"
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
+ "verdict": "killed"
 }

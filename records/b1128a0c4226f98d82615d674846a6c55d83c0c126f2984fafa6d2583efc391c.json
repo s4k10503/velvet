@@ -1,15 +1,15 @@
 {
- "detail": "EditMode: 1 failed among the 1 case(s) that ran the site: Given_ABezierRotateAGestureHeld_When_TheGestureHandsRotateBack_Then_TheChannelWritesAgain",
+ "detail": "EditMode: 1 failed among the 2 case(s) that ran the site: Given_ABezierRotateAGestureHeld_When_TheGestureHandsRotateBack_Then_TheChannelWritesAgain",
  "file": "207a264f0d222cb53f09031b7d7b3dfcc9b003e9bc4176047ae52ae1ccf67a62",
  "killers": [
   {
    "case": "Velvet.Tests.BezierChannelHandBackTests.Given_ABezierRotateAGestureHeld_When_TheGestureHandsRotateBack_Then_TheChannelWritesAgain",
    "files": {
-    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BezierChannelHandBackTests.cs": "d416518c568f1ae8f5ca3d53f92a74c46412d04afb3bc6ec66c065f4fb203159"
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BezierChannelHandBackTests.cs": "0dddb80cd22ff00cbe207875e2d9b403451b4157edfed65771be4dc4a57cd7ac"
    }
   }
  ],
- "measured_by": "43140876866",
+ "measured_by": "43442992980",
  "mutant": {
   "after": ";",
   "before": "returned |= Restart(state, state.Rotate, named, (StyleLonghand.Rotate, ArbitraryProperty.Rotate), shown);",
@@ -23,6 +23,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "3a0737ae805726605d7b4b1c058bc11f5aa4144189d9159ff88180e9426f3730",
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
  "verdict": "killed"
 }

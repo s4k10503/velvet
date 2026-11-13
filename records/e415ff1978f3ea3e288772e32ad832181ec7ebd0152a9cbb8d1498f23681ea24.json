@@ -1,8 +1,23 @@
 {
- "detail": "EditMode survived; PlayMode: -",
+ "detail": "EditMode: 2 failed: Given_ALabelReadingAnAutomaticPropertyOfAFrameworkType_When_Compiled_Then_TheGetterIsReadForTheKeyToo, Given_ALabelReadingTheLengthOfAString_When_Compiled_Then_TheLengthIsReadOnce; 1 other editor(s) were up",
  "file": "865f5b436be777c7f0fc73b901ee3e9c4000f5155e52a8ad9654b7e7c08b5278",
- "killers": [],
- "measured_by": "42555673605",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ReactiveScopeKeyedMemberTests.Given_ALabelReadingAnAutomaticPropertyOfAFrameworkType_When_Compiled_Then_TheGetterIsReadForTheKeyToo",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeKeyedMemberTests.cs": "c2fc5d217e92e8038dac9353b79d75a6988b775ac93ec198bf914e0f7256e94f",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeTestSupport.cs": "1a6cfc790d411eead2a0ac87d846f948e098bb0b651e6bec15a43a489dbd2137"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ReactiveScopeKeyedMemberTests.Given_ALabelReadingTheLengthOfAString_When_Compiled_Then_TheLengthIsReadOnce",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeKeyedMemberTests.cs": "c2fc5d217e92e8038dac9353b79d75a6988b775ac93ec198bf914e0f7256e94f",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeTestSupport.cs": "1a6cfc790d411eead2a0ac87d846f948e098bb0b651e6bec15a43a489dbd2137"
+   }
+  }
+ ],
+ "measured_by": "43442992980",
  "mutant": {
   "after": "!=",
   "before": "==",
@@ -15,9 +30,9 @@
   ]
  },
  "mutator": 10,
- "platform": "PlayMode",
+ "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "a5395f0cc726ce2565be694bced9679a56713246cc9946aac3608d804f919707",
- "verdict": "survived"
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
+ "verdict": "killed"
 }

@@ -5,11 +5,11 @@
   {
    "case": "Velvet.Tests.BezierChannelHandBackTests.Given_ABezierPlayWritingScale_When_ItReleasesScale_Then_TheInlineScaleIsCleared",
    "files": {
-    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BezierChannelHandBackTests.cs": "d416518c568f1ae8f5ca3d53f92a74c46412d04afb3bc6ec66c065f4fb203159"
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BezierChannelHandBackTests.cs": "0dddb80cd22ff00cbe207875e2d9b403451b4157edfed65771be4dc4a57cd7ac"
    }
   }
  ],
- "measured_by": "43140876866",
+ "measured_by": "43442992980",
  "mutant": {
   "after": ";",
   "before": "AuthoredTransform.SetScale(element, StyleKeyword.Null);",
@@ -23,6 +23,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "3a0737ae805726605d7b4b1c058bc11f5aa4144189d9159ff88180e9426f3730",
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
  "verdict": "killed"
 }
