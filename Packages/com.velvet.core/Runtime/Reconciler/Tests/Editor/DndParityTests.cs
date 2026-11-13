@@ -113,6 +113,15 @@ namespace Velvet.Tests
             target.SendEvent(evt);
         }
 
+        private static void Send<TEvent>(TEvent evt, VisualElement target) where TEvent : EventBase<TEvent>, new()
+        {
+            using (evt)
+            {
+                evt.target = target;
+                target.SendEvent(evt);
+            }
+        }
+
         private static int TrickleDownCallbackCount(VisualElement element)
         {
             var registry = typeof(CallbackEventHandler)
@@ -747,6 +756,134 @@ namespace Velvet.Tests
             Assert.That(s_events, Has.Member("offered:KeyDownEvent"));
         }
 
+        // GREEN_ON_BASE(characterization): the base already passes on a key that is no start key; writing `true` for the `false` DndKeyboardSensor.TryActivate returns for one reddens it.
+        [Test]
+        public void Given_AKeyboardSensorAheadOfAnother_When_AKeyThatStartsNothingReachesTheDraggable_Then_TheOtherIsOfferedTheKey()
+        {
+            // Arrange
+            s_sensors = new DndSensor[] { new DndKeyboardSensor(), new RecordingSensor() };
+            Mount(HookScene);
+            var item = Q("item");
+
+            // Act
+            SendKey(item, KeyCode.N);
+
+            // Assert
+            Assert.That(string.Join(",", s_events), Is.EqualTo("offered:KeyDownEvent"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base already arms a press under the sensor's own activation; deleting `Activation = activation;` from the DndPointerSensor constructor reddens it.
+        [Test]
+        public void Given_APointerSensorWithAnActivationOfItsOwn_When_APressLandsOnTheDraggable_Then_ItsActivationWinsOverTheScopes()
+        {
+            // Arrange — the scope's 4 px constraint keeps a press pending, where the sensor's activates at the press.
+            s_sensors = new DndSensor[] { new DndPointerSensor(DragActivation.None) };
+            Mount(HookScene);
+            var item = Q("item");
+
+            // Act
+            item.SendPointerDownEvent(new Vector2(10, 10));
+
+            // Assert — null stands where the tree holds no drag after the press.
+            Assert.That(Ctx.ActiveDrag?.IsActivePhase, Is.True);
+        }
+
+        // GREEN_ON_BASE(characterization): the base already holds a navigation move back for the drag's length; deleting the line registering it on the panel root in the keyboard sensor's listener reddens it.
+        [Test]
+        public void Given_AKeyboardDrag_When_ANavigationMoveReachesTheDraggable_Then_ItIsHeldBack()
+        {
+            // Arrange — a move sent before the drag shows one reaches the draggable at all.
+            Mount(HookScene);
+            var item = Q("item");
+            var heard = 0;
+            item.RegisterCallback<NavigationMoveEvent>(_ => heard++);
+            Send(NavigationMoveEvent.GetPooled(NavigationMoveEvent.Direction.None), item);
+            var heardBefore = heard;
+            SendKey(item, KeyCode.Space);
+
+            // Act
+            Send(NavigationMoveEvent.GetPooled(NavigationMoveEvent.Direction.None), item);
+
+            // Assert — -1 stands where the earlier move was not heard or no drag started.
+            Assert.That(heardBefore == 1 && Ctx.ActiveDrag != null ? heard - heardBefore : -1, Is.EqualTo(0));
+        }
+
+        // GREEN_ON_BASE(characterization): the base already holds a navigation submit back for the drag's length; deleting the line registering it on the panel root in the keyboard sensor's listener reddens it.
+        [Test]
+        public void Given_AKeyboardDrag_When_ANavigationSubmitReachesTheDraggable_Then_ItIsHeldBack()
+        {
+            // Arrange — a submit sent before the drag shows one reaches the draggable at all.
+            Mount(HookScene);
+            var item = Q("item");
+            var heard = 0;
+            item.RegisterCallback<NavigationSubmitEvent>(_ => heard++);
+            Send(EventBase<NavigationSubmitEvent>.GetPooled(), item);
+            var heardBefore = heard;
+            SendKey(item, KeyCode.Space);
+
+            // Act
+            Send(EventBase<NavigationSubmitEvent>.GetPooled(), item);
+
+            // Assert — -1 stands where the earlier submit was not heard or no drag started.
+            Assert.That(heardBefore == 1 && Ctx.ActiveDrag != null ? heard - heardBefore : -1, Is.EqualTo(0));
+        }
+
+        // GREEN_ON_BASE(characterization): the base already lets a navigation move through once a keyboard drag ends; deleting the navigation move's UnregisterCallback from the listener's Detach reddens it.
+        [Test]
+        public void Given_AKeyboardDragThatEnded_When_ANavigationMoveReachesTheDraggable_Then_ItIsHeard()
+        {
+            // Arrange — the second Space is an end key.
+            Mount(HookScene);
+            var item = Q("item");
+            var heard = 0;
+            item.RegisterCallback<NavigationMoveEvent>(_ => heard++);
+            SendKey(item, KeyCode.Space);
+            var started = Ctx.ActiveDrag != null;
+            SendKey(item, KeyCode.Space);
+
+            // Act
+            Send(NavigationMoveEvent.GetPooled(NavigationMoveEvent.Direction.None), item);
+
+            // Assert — -1 stands where no drag started or the drag did not end.
+            Assert.That(started && Ctx.ActiveDrag == null ? heard : -1, Is.EqualTo(1));
+        }
+
+        // GREEN_ON_BASE(characterization): the base already lets a submit through once a keyboard drag ends; deleting the navigation submit's UnregisterCallback from the listener's Detach reddens it.
+        [Test]
+        public void Given_AKeyboardDragThatEnded_When_ANavigationSubmitReachesTheDraggable_Then_ItIsHeard()
+        {
+            // Arrange — the second Space is an end key.
+            Mount(HookScene);
+            var item = Q("item");
+            var heard = 0;
+            item.RegisterCallback<NavigationSubmitEvent>(_ => heard++);
+            SendKey(item, KeyCode.Space);
+            var started = Ctx.ActiveDrag != null;
+            SendKey(item, KeyCode.Space);
+
+            // Act
+            Send(EventBase<NavigationSubmitEvent>.GetPooled(), item);
+
+            // Assert — -1 stands where no drag started or the drag did not end.
+            Assert.That(started && Ctx.ActiveDrag == null ? heard : -1, Is.EqualTo(1));
+        }
+
+        // GREEN_ON_BASE(characterization): the base already cancels a keyboard drag on Escape; deleting `session.Cancel();` from the keyboard sensor's key listener reddens it.
+        [Test]
+        public void Given_AKeyboardDrag_When_EscapeReachesTheDraggable_Then_TheDragIsCancelled()
+        {
+            // Arrange
+            Mount(GripScene);
+            var item = Q("item");
+            SendKey(item, KeyCode.Space);
+
+            // Act
+            SendKey(item, KeyCode.Escape);
+
+            // Assert
+            Assert.That(string.Join(",", s_events), Is.EqualTo("start:item,cancel:item"));
+        }
+
         [Test]
         public void Given_AScopeRestrictedToTheHorizontalAxis_When_ThePointerMovesDiagonally_Then_TheSourceMovesOnlyAlongX()
         {
@@ -1013,25 +1150,24 @@ namespace Velvet.Tests
             Assert.That(Q("ghost"), Is.Not.Null);
         }
 
-        // GREEN_ON_BASE(characterization): the base already starts the drop animation for a source out of its panel; making DndDropAnimator.IsOnSource answer true for one reddens it.
+        // GREEN_ON_BASE(characterization): the base already leaves the overlay shown for the drop animation of a source out of its panel; making DndDropAnimator.IsOnSource answer true for such a source reddens it.
         [Test]
-        public void Given_AnUnmovedSensorDragWhoseSourceLeftItsPanel_When_TheSensorEndsIt_Then_TheOverlayKeepsThePreviewForTheDropAnimation()
+        public void Given_AnUnmovedSensorDragWhoseSourceLeftItsPanel_When_TheSensorEndsIt_Then_TheOverlayStaysShownForTheDropAnimation()
         {
             // Arrange — an overlay that never moved is over its source, which then leaves its panel by a removal the
             // tree did not make.
             s_sensors = new DndSensor[] { new StillSensor() };
             Mount(ContextOverlayScene);
-            _mounted.FlushEffectsForTest();
+            var positioner = Ctx.DragOverlayBindings.Keys.Single();
             var item = Q("item");
             SendKey(item, KeyCode.S);
             item.RemoveFromHierarchy();
 
             // Act
             s_sensorSession.End();
-            _mounted.FlushStateForTest();
 
-            // Assert
-            Assert.That(Q("ghost"), Is.Not.Null);
+            // Assert — the overlay shows from the drag's start, and a close that runs no drop animation hides it.
+            Assert.That(positioner.style.display.value, Is.EqualTo(DisplayStyle.Flex));
         }
 
         // A draggable whose overlay a portal puts on another editor panel.
