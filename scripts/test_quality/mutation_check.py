@@ -90,8 +90,8 @@ LOCKED = "not measured (the project lock was held)"
 BUILD_SYSTEM = "not measured (the build system failed)"
 # The mutant's launches did not fit what `--budget` had left, so none was started.
 BUDGET = "not measured (budget)"
-# Added to the bounds of a mutant's launches before they are held against the budget: the clock that
-# reads it also runs the waits, restores and verdict writes between launches.
+# Added to the bounds of a mutant's launches, and to an area's own baseline's, before they are held against
+# the budget: the clock that reads it also runs the waits, restores and verdict writes between launches.
 BUDGET_MARGIN = 60
 
 # No case of the suite ran the mutated site, so no launch was made for it. It stands where a survivor
@@ -5144,6 +5144,11 @@ def measure(args, project, holder, output, targets, mutants, scope, campaign, co
     if not scope and args.platform in NARROWED_PLATFORMS and not reach_made:
         areas = {area_of(mutants[index - 1].path, project) for index in own - il_only} - {None}
         for area, names in narrowable(baseline_results, areas).items():
+            left = budget_left(args)
+            if left is not None and ceiling + BUDGET_MARGIN > left:
+                print("{} alone is bounded at {:.0f}s, and {:.0f}s of --budget {} were left, so it is not "
+                      "launched".format(", ".join(names), ceiling, max(left, 0), args.budget))
+                continue
             attempt = excluding(["-assemblyNames", ";".join(names)], text_readers) + args.editor_arg
             results = output / "baseline-{}.xml".format(area.name)
             if results.exists():
