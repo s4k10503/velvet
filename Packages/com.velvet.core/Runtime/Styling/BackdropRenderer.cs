@@ -160,6 +160,7 @@ namespace Velvet
         {
             var commands = Commands;
             commands.Clear();
+            // MUTANT_SURVIVES(equivalent): a command-buffer blit inside a draw under a clip scissor writes its whole destination and leaves no scissor on (BackdropBlitScissorTests).
             commands.DisableScissorRect();
             commands.Blit(source, destination, material, BackdropShader.StagePass);
             Graphics.ExecuteCommandBuffer(commands);
@@ -258,6 +259,7 @@ namespace Velvet
             var flips = _target == null && SystemInfo.graphicsUVStartsAtTop;
             var commands = BackdropRenderer.Commands;
             commands.Clear();
+            // MUTANT_SURVIVES(equivalent): for the reason the DisableScissorRect in BackdropRenderer.Blit gives.
             commands.DisableScissorRect();
             commands.Blit(BuiltinRenderTextureType.CurrentActive, texture,
                 new Vector2((float)Region.width / _targetWidth, (flips ? -1f : 1f) * Region.height / _targetHeight),
@@ -527,6 +529,7 @@ namespace Velvet
         private static int HalvingsFor(float sigma)
         {
             var halvings = 0;
+            // MUTANT_SURVIVES(equivalent, boundary): fourteen halvings already leave a region up to 16384 pixels a side at one texel, which a fifteenth copies unchanged; the two part only on a larger target.
             while (halvings < MaxHalvings && Mathf.Ceil(3f * sigma / (1 << halvings)) > MaxReach)
             {
                 halvings++;
