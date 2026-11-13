@@ -414,6 +414,9 @@ namespace Velvet
         {
             Poll?.Stop();
             Poll = null;
+            // MUTANT_SURVIVES(equivalent, line removed): nothing reads MeasuredSource before it is written again.
+            // FiberClipPathApplier.SyncMask compares it only while its positive width is within half a pixel of BakedWidth,
+            // and the reset below holds BakedWidth at -1 until a SyncMask has written MeasuredSource.
             MeasuredSource = null;
             Wrapper.style.backgroundImage = StyleKeyword.Null;
             BakedWidth = -1f;

@@ -172,6 +172,8 @@ namespace Velvet
             var right = corner is 1 or 2;
             var bottom = corner is 2 or 3;
             var at = new Vector2(right ? rect.xMax : rect.xMin, bottom ? rect.yMax : rect.yMin);
+            // MUTANT_SURVIVES(equivalent, boundary): a radius with no x extent leaves the contour around what a square corner does.
+            // Every point of its arc then lies on the vertical side through the corner.
             if (radius.x > 0f && radius.y > 0f)
             {
                 var centre = at + new Vector2(right ? -radius.x : radius.x, bottom ? -radius.y : radius.y);
