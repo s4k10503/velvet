@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1794580752185,
+  "lastUpdate": 1794580789485,
   "repoUrl": "https://github.com/s4k10503/velvet",
   "entries": {
     "Velvet benchmarks": [
@@ -106290,6 +106290,756 @@ window.BENCHMARK_DATA = {
           {
             "name": "Velvet.Tests.Performance.RouterNavigationPlayModeBenchmarks.NavigateAsync_LoaderAndBlocker / Time",
             "value": 0.2283500000003187,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "50241623+s4k10503@users.noreply.github.com",
+            "name": "0y0",
+            "username": "s4k10503"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "39a2d12bd46606c6e51cf675813a6bf96798d107",
+          "message": "test(velvet): answer the drag-and-drop survivors the 3.0.0 gate's second reading refused (#1638)\n\nNo issue: answers the release gate's second-round unanswered survivors in `DndSensors`, `DndDropAnimator`, `DndModifiers` and `SortableHosts`.\n\nThe 3.0.0 release gate's second reading refuses main on eleven survivors in these files.\n\n**Ten are killed by cases in `DndParityTests`, `DndInteractionTests` and a new `SortableHostsTests`.** They pin:\n- a pointer sensor's own activation winning over the scope's;\n- a key that starts nothing being offered to the next sensor;\n- a keyboard drag holding back navigation move and submit, and releasing both once it ends;\n- Escape cancelling a keyboard drag;\n- an unmoved sensor drag whose source left its panel keeping the overlay shown for the drop animation;\n- `restrictToWindowEdges` pinning the top edge;\n- the sortable host components staying unwoven by the compiler transform.\n\nThe drop-animation case rewrites a round-1 case. Its claim that the mutant reddens it was contradicted by the record run, so it now asserts the overlay positioner's display.\n\n**One gets a declaration.** It is `unreachable`: the session that begins a drop animation joined its overlay through `BeginSession`, which already stopped any earlier run.\n\nEvery case is green on the merge base and declared `GREEN_ON_BASE(characterization)`. The next record run is what shows each one killing its mutant.\n\nNo production behaviour changes, so there is no CHANGELOG fragment and no `Documentation~` impact.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+          "timestamp": "2026-11-13T23:28:08+09:00",
+          "tree_id": "5ab415add343998394c8b6c10d7258b1c68e77d6",
+          "url": "https://github.com/s4k10503/velvet/commit/39a2d12bd46606c6e51cf675813a6bf96798d107"
+        },
+        "date": 1794580787000,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "Velvet.Tests.Performance.VNodePoolBenchmarks.RentReturnProps_Cycle / Time.GC()",
+            "value": 0,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.VNodePoolBenchmarks.RentReturnProps_Cycle / Time",
+            "value": 0.016499999999950887,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.VNodePoolBenchmarks.VButton_Allocation / Time.GC()",
+            "value": 1,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.VNodePoolBenchmarks.VButton_Allocation / Time",
+            "value": 0.02755000000001928,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.VNodePoolBenchmarks.VDiv_Allocation / Time.GC()",
+            "value": 1,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.VNodePoolBenchmarks.VDiv_Allocation / Time",
+            "value": 0.015949999999975262,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.VNodePoolBenchmarks.VLabel_Allocation / Time.GC()",
+            "value": 1,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.VNodePoolBenchmarks.VLabel_Allocation / Time",
+            "value": 0.025650000000041473,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.UseMutationPlayModeBenchmarks.UseMutation_OneMutateRoundTrip / Time.GC()",
+            "value": 55,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.UseMutationPlayModeBenchmarks.UseMutation_OneMutateRoundTrip / Time",
+            "value": 0.5402500000000146,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.UseStateRerenderAllocBenchmarks.UseState_RerenderClosureAlloc / Time.GC()",
+            "value": 4506,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.UseStateRerenderAllocBenchmarks.UseState_RerenderClosureAlloc / Time",
+            "value": 10.48905000000002,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Mount_1000Elements_WithLayoutAndPaint / E2E.Time",
+            "value": 74.81630000000001,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Mount_1000Elements_WithLayoutAndPaint / E2E.GC",
+            "value": 1306624,
+            "unit": "b",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Mount_1000Elements_WithLayoutAndPaint / E2E.Reconcile",
+            "value": 74.8118,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Mount_1000Elements_WithLayoutAndPaint / E2E.MarkDirty",
+            "value": 0.004150000000000001,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Mount_100Elements_WithLayoutAndPaint / E2E.Time",
+            "value": 7.06775,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Mount_100Elements_WithLayoutAndPaint / E2E.GC",
+            "value": 0,
+            "unit": "b",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Mount_100Elements_WithLayoutAndPaint / E2E.Reconcile",
+            "value": 7.063000000000001,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Mount_100Elements_WithLayoutAndPaint / E2E.MarkDirty",
+            "value": 0.004200000000000001,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Mount_10Elements_WithLayoutAndPaint / E2E.Time",
+            "value": 1.1095000000000002,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Mount_10Elements_WithLayoutAndPaint / E2E.GC",
+            "value": 0,
+            "unit": "b",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Mount_10Elements_WithLayoutAndPaint / E2E.Reconcile",
+            "value": 1.1058,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Mount_10Elements_WithLayoutAndPaint / E2E.MarkDirty",
+            "value": 0.0039000000000000003,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.FiberAsyncResourcePlayModeBenchmarks.HooksUse_SuspendResumeRoundTrip / HooksUse.SuspendResume.Time",
+            "value": 1.3406,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.FiberAsyncResourcePlayModeBenchmarks.HooksUse_SuspendResumeRoundTrip / HooksUse.SuspendResume.GC",
+            "value": 80,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_A_NewLabelAlone / Time.GC()",
+            "value": 11006,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_A_NewLabelAlone / Time",
+            "value": 6.726549999999975,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_B_NewLabelWithText / Time.GC()",
+            "value": 11007,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_B_NewLabelWithText / Time",
+            "value": 6.294350000000122,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_C_NewLabelAndSetText / Time.GC()",
+            "value": 11006,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_C_NewLabelAndSetText / Time",
+            "value": 6.155649999999923,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_D_NewLabelAndAddToRoot / Time.GC()",
+            "value": 11018,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_D_NewLabelAndAddToRoot / Time",
+            "value": 6.372699999999895,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_E_FullPipelineParity / Time.GC()",
+            "value": 11018,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_E_FullPipelineParity / Time",
+            "value": 7.414800000000014,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_F_VelvetReconcile / Time.GC()",
+            "value": 26381,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_F_VelvetReconcile / Time",
+            "value": 44.30600000000004,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_G_VelvetReconcileLongLived / Time.GC()",
+            "value": 23018,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_G_VelvetReconcileLongLived / Time",
+            "value": 21.486450000000332,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.InstrumentCanariesPlayModeBenchmarks.InstrumentCanary_AllocationBlocks / Time.GC()",
+            "value": 1,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.InstrumentCanariesPlayModeBenchmarks.InstrumentCanary_AllocationBlocks / Time",
+            "value": 0.007249999999885404,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.InstrumentCanariesPlayModeBenchmarks.InstrumentCanary_TimingBaseline / Time",
+            "value": 0.23809999999999998,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.Append_1000RowsTo1000 / Op.Time",
+            "value": 202.4688,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.Append_1000RowsTo1000 / Op.GC",
+            "value": 180263.5,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.Clear_1000Rows / Op.Time",
+            "value": 47.017450000000004,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.Clear_1000Rows / Op.GC",
+            "value": 13055,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.Create_10000Rows / Op.Time",
+            "value": 2394.1451,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.Create_10000Rows / Op.GC",
+            "value": 1756595,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.Create_1000Rows / Op.Time",
+            "value": 168.02895,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.Create_1000Rows / Op.GC",
+            "value": 177122,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.PartialUpdate_EveryTenthOf1000Rows / Op.Time",
+            "value": 25.151200000000003,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.PartialUpdate_EveryTenthOf1000Rows / Op.GC",
+            "value": 10171,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.Remove_OneOf1000Rows / Op.Time",
+            "value": 14.3854,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.Remove_OneOf1000Rows / Op.GC",
+            "value": 5085,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.Replace_AllOf1000Rows / Op.Time",
+            "value": 314.76120000000003,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.Replace_AllOf1000Rows / Op.GC",
+            "value": 190076,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.Select_OneOf1000Rows / Op.Time",
+            "value": 13.446750000000002,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.Select_OneOf1000Rows / Op.GC",
+            "value": 5167,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.Swap_Rows2And999Of1000 / Op.Time",
+            "value": 15.157150000000001,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.Swap_Rows2And999Of1000 / Op.GC",
+            "value": 5159,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.PaintPassReconcileBenchmarks.Reconcile_UnchangedClassList_100LiteralPaintRows / Time.GC()",
+            "value": 706,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.PaintPassReconcileBenchmarks.Reconcile_UnchangedClassList_100LiteralPaintRows / Time",
+            "value": 13.508150000000342,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.PaintPassReconcileBenchmarks.Reconcile_UnchangedClassList_100VariantGatedPaintRows / Time.GC()",
+            "value": 2506,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.PaintPassReconcileBenchmarks.Reconcile_UnchangedClassList_100VariantGatedPaintRows / Time",
+            "value": 22.363850000000184,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.PooledButtonRowBenchmarks.Clear_1000PooledButtonRows / Time",
+            "value": 29.205600000000004,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.PooledButtonRowBenchmarks.Create_1000PooledButtonRows / Time",
+            "value": 27.69580000000002,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.InitialMount_1000Elements / Time.GC()",
+            "value": 24019,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.InitialMount_1000Elements / Time",
+            "value": 21.6327,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.InitialMount_100Elements / Time.GC()",
+            "value": 2110,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.InitialMount_100Elements / Time",
+            "value": 2.361750000000029,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.InitialMount_10Elements / Time.GC()",
+            "value": 216,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.InitialMount_10Elements / Time",
+            "value": 0.5238500000000386,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.PooledWidgetRecycle_LabelsAndButtons_10Elements / Time.GC()",
+            "value": 166,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.PooledWidgetRecycle_LabelsAndButtons_10Elements / Time",
+            "value": 6.261799999999994,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_AllChange_100Elements / Time.GC()",
+            "value": 6,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_AllChange_100Elements / Time",
+            "value": 2.018600000000106,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_BudgetedIndexed_AllChange_200Elements / Time.GC()",
+            "value": 6,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_BudgetedIndexed_AllChange_200Elements / Time",
+            "value": 28.018800000000283,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_BudgetedIndexed_GrowShrink_100To200Elements / Time.GC()",
+            "value": 2062,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_BudgetedIndexed_GrowShrink_100To200Elements / Time",
+            "value": 44.96985000000018,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_BudgetedKeyed_AllChange_200Elements / Time.GC()",
+            "value": 8,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_BudgetedKeyed_AllChange_200Elements / Time",
+            "value": 8.947049999999876,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_Expansion_AllChange_100Nodes / Time.GC()",
+            "value": 6610,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_Expansion_AllChange_100Nodes / Time",
+            "value": 17.199899999999616,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_Expansion_NoChange_100Nodes / Time.GC()",
+            "value": 216,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_Expansion_NoChange_100Nodes / Time",
+            "value": 1.3161999999999807,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_Keyed_AllChange_100Elements / Time.GC()",
+            "value": 6,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_Keyed_AllChange_100Elements / Time",
+            "value": 3.951249999999618,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_Keyed_NoChange_100Elements / Time.GC()",
+            "value": 6,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_Keyed_NoChange_100Elements / Time",
+            "value": 0.24125000000003638,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_Keyed_Reverse_100Elements / Time.GC()",
+            "value": 34,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_Keyed_Reverse_100Elements / Time",
+            "value": 1.8642999999995027,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_NoChange_100Elements / Time.GC()",
+            "value": 6,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_NoChange_100Elements / Time",
+            "value": 0.12450000000035288,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.StyleManipulatorReconcileBenchmarks.Mount_100StyledRows / Time.GC()",
+            "value": 79597,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.StyleManipulatorReconcileBenchmarks.Mount_100StyledRows / Time",
+            "value": 211.03125,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.StyleManipulatorReconcileBenchmarks.Reconcile_ChangedClassList_100StyledRows / Time.GC()",
+            "value": 41906,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.StyleManipulatorReconcileBenchmarks.Reconcile_ChangedClassList_100StyledRows / Time",
+            "value": 120.77755000000025,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.StyleManipulatorReconcileBenchmarks.Reconcile_StripAndRestoreClassList_100StyledRows / Time.GC()",
+            "value": 81587,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.StyleManipulatorReconcileBenchmarks.Reconcile_StripAndRestoreClassList_100StyledRows / Time",
+            "value": 286.4369499999998,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.StyleManipulatorReconcileBenchmarks.Reconcile_UnchangedClassList_100StyledRows / Time.GC()",
+            "value": 5806,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.StyleManipulatorReconcileBenchmarks.Reconcile_UnchangedClassList_100StyledRows / Time",
+            "value": 37.89614999999992,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.TextSizeEffectReconcileBenchmarks.Reconcile_RetextLabels_200LabelsUnderAnInertContainer / Time.GC()",
+            "value": 6,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.TextSizeEffectReconcileBenchmarks.Reconcile_RetextLabels_200LabelsUnderAnInertContainer / Time",
+            "value": 7.965949999999793,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.TextSizeEffectReconcileBenchmarks.Reconcile_RetextLabels_200LabelsUnderATextSizeContainer / Time.GC()",
+            "value": 806,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.TextSizeEffectReconcileBenchmarks.Reconcile_RetextLabels_200LabelsUnderATextSizeContainer / Time",
+            "value": 10.649450000000002,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.TextSizeEffectReconcileBenchmarks.Reconcile_RetextLabels_200LabelsWithAnInertClass / Time.GC()",
+            "value": 6,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.TextSizeEffectReconcileBenchmarks.Reconcile_RetextLabels_200LabelsWithAnInertClass / Time",
+            "value": 9.94840000000022,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.TextSizeEffectReconcileBenchmarks.Reconcile_RetextLabels_200LabelsWithATextSize / Time.GC()",
+            "value": 406,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.TextSizeEffectReconcileBenchmarks.Reconcile_RetextLabels_200LabelsWithATextSize / Time",
+            "value": 11.244750000000295,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.VisibleToggleProjectionBenchmarks.Reconcile_ToggleVisible_200Rows / Time.GC()",
+            "value": 1208,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.VisibleToggleProjectionBenchmarks.Reconcile_ToggleVisible_200Rows / Time",
+            "value": 103.0338999999999,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.VisibleToggleProjectionBenchmarks.Reconcile_ToggleVisible_200RowsWithASuppressedClass / Time.GC()",
+            "value": 5608,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.VisibleToggleProjectionBenchmarks.Reconcile_ToggleVisible_200RowsWithASuppressedClass / Time",
+            "value": 114.89725000000021,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.RouteLoaderRunnerPlayModeBenchmarks.RunLoadersSync_AwaitSyncCompleted / Time.GC()",
+            "value": 14,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.RouteLoaderRunnerPlayModeBenchmarks.RunLoadersSync_AwaitSyncCompleted / Time",
+            "value": 0.05445000000008804,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.RouteLoaderRunnerPlayModeBenchmarks.RunLoadersSync_SuspendDeferredCompletion / RouteLoaderRunner.SuspendDeferred.Time",
+            "value": 0.3208,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.RouteLoaderRunnerPlayModeBenchmarks.RunLoadersSync_SuspendDeferredCompletion / RouteLoaderRunner.SuspendDeferred.GC",
+            "value": 11,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.RouterNavigationPlayModeBenchmarks.NavigateAsync_LoaderAndBlocker / Time.GC()",
+            "value": 112,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.RouterNavigationPlayModeBenchmarks.NavigateAsync_LoaderAndBlocker / Time",
+            "value": 0.22299999999972897,
             "unit": "ms",
             "extra": "processor: AMD EPYC 9V45 96-Core Processor"
           }
