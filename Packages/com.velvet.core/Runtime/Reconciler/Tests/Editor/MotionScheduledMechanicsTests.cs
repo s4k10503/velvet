@@ -75,7 +75,7 @@ namespace Velvet.Tests
             (s_aClasses, s_bClasses, s_aSize, s_bSize) = (null, null, 100, 100);
             (s_aPose, s_aTransition, s_bPose, s_bVariants) = (null, null, null, null);
             s_aVariants = null;
-            (s_resizeFrom, s_resizeTo) = (100, null);
+            (s_resizeFrom, s_resizeTo, s_resizeTransition) = (100, null, null);
             (s_aField, s_looseField, s_controlClasses) = (false, false, null);
             (s_modalTransition, s_exitCompletions, s_presenceGone, s_cardClasses) = (null, 0, false, null);
             (s_modalLeft, s_moverLeft) = (300, -1);
@@ -1288,6 +1288,8 @@ namespace Velvet.Tests
         private static int s_resizeFrom;
         // The size step 1 lays the box out at, two hundred pixels square while null.
         private static Vector2Int? s_resizeTo;
+        // The transition the box takes, s_layoutSpring while null.
+        private static StyleTransitionConfig s_resizeTransition;
 
         // At step 0 the box is s_resizeFrom pixels square, and from step 1 s_resizeTo, in place, its top-left corner
         // fixed; s_resizeOrigin holds its transform origin, or any other classes.
@@ -1299,7 +1301,7 @@ namespace Velvet.Tests
             var size = step == 0 ? new Vector2Int(s_resizeFrom, s_resizeFrom) : s_resizeTo ?? new Vector2Int(200, 200);
             return V.Div(children: new VNode[]
             {
-                V.Motion(name: "shared", layoutId: "shared-box", transition: s_layoutSpring,
+                V.Motion(name: "shared", layoutId: "shared-box", transition: s_resizeTransition ?? s_layoutSpring,
                     className: $"left-[0px] top-[0px] w-[{size.x}px] h-[{size.y}px] {s_resizeOrigin}"),
             });
         }
@@ -6776,6 +6778,26 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(float.IsFinite(Root.Q<VisualElement>("shared").style.borderTopLeftRadius.value.value), Is.True);
+        }
+
+        // GREEN_ON_BASE(characterization): the base leaves the corners of a box drawn at no size on both axes to UI Toolkit.
+        [Test]
+        public void Given_ARoundedBlueLayoutIdMotionGrowingFromNothingAfterADelay_When_TheDelayRuns_Then_ItsBackgroundStaysInItsOwnSlot()
+        {
+            // Arrange — from a box of no size, on a linear second that waits a second first, during which it is drawn at
+            // the old box: at a scale of zero on both axes.
+            s_resizeFrom = 0;
+            s_resizeTransition = new StyleTransitionConfig
+            {
+                Type = TransitionType.Bezier, DurationSec = 1f, DelaySec = 1f, BezierX1 = 0f, BezierY1 = 0f, BezierX2 = 1f, BezierY2 = 1f,
+            };
+            using var mounted = ResizeBoxFor("rounded-[10px] bg-[#0000ff]", 1);
+
+            // Act — some way into the delay.
+            for (var i = 0; i < 5; i++) Tick();
+
+            // Assert — the element's own blue, where a face painting it would hold the slot cleared.
+            Assert.That(Root.Q<VisualElement>("shared").style.backgroundColor.value, Is.EqualTo(Color.blue));
         }
 
         [Test]
