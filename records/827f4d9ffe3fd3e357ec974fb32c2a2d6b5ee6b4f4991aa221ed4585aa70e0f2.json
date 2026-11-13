@@ -2,7 +2,7 @@
  "detail": "EditMode survived; PlayMode: -",
  "file": "f40a5ff13762e2811fe110a77d64c46e543b2a1b902a2254a43499235addfcba",
  "killers": [],
- "measured_by": "43149574925",
+ "measured_by": "43382198098",
  "mutant": {
   "after": ";",
   "before": "FocusScopeRange.Live--;",
@@ -16,6 +16,6 @@
  "platform": "PlayMode",
  "schema": 3,
  "stood": null,
- "tests": "98b533eb2508d98e7e434af28fbbcb8fd1a08380c2ace242c045247e786a592f",
+ "tests": "0940803656451c4c899c450637e7d22df5be21ad3c9e1bb98ae5f1c9d764acb9",
  "verdict": "survived"
 }

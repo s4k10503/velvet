@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed among the 102 case(s) that ran the site: Given_ABindingPollingItsRelativeLengths_When_ItIsDetached_Then_ItKeepsNoPoll",
+ "file": "5daa0b206da350c1fede93fc90053dd6cefe2b02107a32b203ccfb4bae280fb9",
+ "killers": [
+  {
+   "case": "Velvet.Tests.GradientBackgroundLifecycleTests.Given_ABindingPollingItsRelativeLengths_When_ItIsDetached_Then_ItKeepsNoPoll",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/GradientBackgroundLifecycleTests.cs": "b18c7c966c1496910f683734ff7fe3ad325aa60515a0e2e752459c925eda4845"
+   }
+  }
+ ],
+ "measured_by": "43382198098",
+ "mutant": {
+  "after": "true",
+  "before": "false",
+  "column": 69,
+  "line": 470,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Styling/GradientBackground.cs",
+  "shadowed": [
+   "line removed"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "0940803656451c4c899c450637e7d22df5be21ad3c9e1bb98ae5f1c9d764acb9",
+ "verdict": "killed"
+}

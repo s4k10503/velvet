@@ -1,8 +1,17 @@
 {
- "detail": "EditMode survived; PlayMode: -",
+ "detail": "EditMode survived; PlayMode: 1 failed: Given_AButtonUserCodeMovedToAnotherPanelAndBack_When_ItIsFocusedAndMovedAwayAgainAndTheFirstRegainsFocus_Then_TheButtonIsNotFocused",
  "file": "9b0c7d14eea0a483740c6be3b0040c7382d1f5e6ead1ea123bdeec10023fd7d4",
- "killers": [],
- "measured_by": "41622815197",
+ "killers": [
+  {
+   "case": "Velvet.Tests.PooledFocusMemoryTests.Given_AButtonUserCodeMovedToAnotherPanelAndBack_When_ItIsFocusedAndMovedAwayAgainAndTheFirstRegainsFocus_Then_TheButtonIsNotFocused",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/PlayMode/PooledFocusMemoryTests.cs": "0ef931dbdf55cd85979f97a13a9cd16717e2409297e3ec3fb56ca19e83d78a1d",
+    "Packages/com.velvet.core/TestUtilities/TestPanelSettings.cs": "c7a36f6a4acd48eb54e9b4c339d7caf0c56cbef64dacd018497182f9fadacc29",
+    "Packages/com.velvet.core/TestUtilities/VNodePoolTestAccess.cs": "d50fccad2f12416b791e49faf5d592049f746ea390282ca8319ad81957333cdb"
+   }
+  }
+ ],
+ "measured_by": "43382198098",
  "mutant": {
   "after": ";",
   "before": "Disarm();",
@@ -16,6 +25,6 @@
  "platform": "PlayMode",
  "schema": 3,
  "stood": null,
- "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
- "verdict": "survived"
+ "tests": "0940803656451c4c899c450637e7d22df5be21ad3c9e1bb98ae5f1c9d764acb9",
+ "verdict": "killed"
 }

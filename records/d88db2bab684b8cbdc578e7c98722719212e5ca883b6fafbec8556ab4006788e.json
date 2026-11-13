@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed among the 114 case(s) that ran the site: Given_AnInsetOutlineWithAnOversizedRadius_When_Built_Then_EveryCornerTakesTheInsetOffItsFittedRadius",
+ "file": "a75f719d749e6109716fe298b2539870e2605bce40a3fa6048e39493b2e5f07f",
+ "killers": [
+  {
+   "case": "Velvet.Tests.SilhouetteFaceCornerBoundTests.Given_AnInsetOutlineWithAnOversizedRadius_When_Built_Then_EveryCornerTakesTheInsetOffItsFittedRadius",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/SilhouetteFaceCornerBoundTests.cs": "76a9381b4be242a45863855415e97e1ea7bf317e2eca8d2479ea7dd1f947fee1"
+   }
+  }
+ ],
+ "measured_by": "43382198098",
+ "mutant": {
+  "after": "+",
+  "before": "-",
+  "column": 38,
+  "line": 320,
+  "operator": "arithmetic",
+  "path": "Packages/com.velvet.core/Runtime/Styling/SilhouetteFace.cs",
+  "shadowed": [
+   "line removed"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "0940803656451c4c899c450637e7d22df5be21ad3c9e1bb98ae5f1c9d764acb9",
+ "verdict": "killed"
+}

@@ -1,8 +1,29 @@
 {
- "detail": "EditMode survived; PlayMode: -",
+ "detail": "EditMode survived; PlayMode: 2 failed: Given_AnAppendedLayerPortalReRenderedAsIsolated_When_TabDispatchesFromTheDeclaringPanelsOnlyFocusable_Then_ItKeepsFocus, Given_AVisualEffectWithAQuadUnderItAndASceneQuadInFront_When_FramesAdvance_Then_OnlyItsQuadRendersWithTheElementShowingAroundIt",
  "file": "f40a5ff13762e2811fe110a77d64c46e543b2a1b902a2254a43499235addfcba",
- "killers": [],
- "measured_by": "43149574925",
+ "killers": [
+  {
+   "case": "Velvet.Tests.FocusChainedPortalTests.Given_AnAppendedLayerPortalReRenderedAsIsolated_When_TabDispatchesFromTheDeclaringPanelsOnlyFocusable_Then_ItKeepsFocus",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/PlayMode/FocusChainedPortalTests.cs": "8dbcd76ca37710ad817b9e59e536df4d909fd746b9eba462b5b44bf290623be1",
+    "Packages/com.velvet.core/TestUtilities/FocusScopeElement.cs": "caee04a0e47cefaac0d9a6a30491bbf026426ccdbc1185e3ac842f7d698edb34",
+    "Packages/com.velvet.core/TestUtilities/RenderTexturePanelHost.cs": "194e0d5bc1138e5ae5cdeeae94298ce65a10fe077c4a75c73599e7abfa531bb6",
+    "Packages/com.velvet.core/TestUtilities/TargetFrameRateScope.cs": "2a2bdd5a934388428380fda4fcf82e2ec5df7d1ab86930011f6dbb3f772ae50c",
+    "Packages/com.velvet.core/TestUtilities/TestPanelSettings.cs": "c7a36f6a4acd48eb54e9b4c339d7caf0c56cbef64dacd018497182f9fadacc29"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ParticlesPlaybackTests.Given_AVisualEffectWithAQuadUnderItAndASceneQuadInFront_When_FramesAdvance_Then_OnlyItsQuadRendersWithTheElementShowingAroundIt",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/PlayMode/ParticlesPlaybackTests.cs": "a40457bc44638b5d96db6d202d8bade0bc7c4a219b54c51583df54e23127433f",
+    "Packages/com.velvet.core/TestUtilities/RenderTexturePanelHost.cs": "194e0d5bc1138e5ae5cdeeae94298ce65a10fe077c4a75c73599e7abfa531bb6",
+    "Packages/com.velvet.core/TestUtilities/TargetFrameRateScope.cs": "2a2bdd5a934388428380fda4fcf82e2ec5df7d1ab86930011f6dbb3f772ae50c",
+    "Packages/com.velvet.core/TestUtilities/TestPanelSettings.cs": "c7a36f6a4acd48eb54e9b4c339d7caf0c56cbef64dacd018497182f9fadacc29",
+    "Packages/com.velvet.core/TestUtilities/VfxGraphCapability.cs": "353c23f8bf3d1fbc979339f5dc01b5526db06b11edc028e180dcc6eef2ae251a"
+   }
+  }
+ ],
+ "measured_by": "43382198098",
  "mutant": {
   "after": ";",
   "before": "ctx.AppendedHosts.Remove(record);",
@@ -16,6 +37,6 @@
  "platform": "PlayMode",
  "schema": 3,
  "stood": null,
- "tests": "98b533eb2508d98e7e434af28fbbcb8fd1a08380c2ace242c045247e786a592f",
- "verdict": "survived"
+ "tests": "0940803656451c4c899c450637e7d22df5be21ad3c9e1bb98ae5f1c9d764acb9",
+ "verdict": "killed"
 }

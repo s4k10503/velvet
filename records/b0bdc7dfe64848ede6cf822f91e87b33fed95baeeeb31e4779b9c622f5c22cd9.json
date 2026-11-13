@@ -5,7 +5,7 @@
   {
    "case": "Velvet.Tests.LineBoxFontTests.Given_AnIdleCopyWhoseSourceIsDestroyed_When_AnotherCopyIsAskedFor_Then_NoEntryIsKeptForTheDestroyedSource",
    "files": {
-    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/LineBoxFontTests.cs": "8db70855d961f8d1f02eb02ef3edac994f5196c44e5127186d9bed9cf4dbfcc0",
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/LineBoxFontTests.cs": "376df6033e5d7c33eda4368f9009b36f22c63e8bd134cfcd90aea9cfa938335e",
     "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
     "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
     "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
@@ -15,7 +15,7 @@
   {
    "case": "Velvet.Tests.LineBoxFontTests.Given_AnIdleCopyWhoseSourceIsDestroyed_When_AnotherCopyIsAskedFor_Then_TheIdleOneIsGone",
    "files": {
-    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/LineBoxFontTests.cs": "8db70855d961f8d1f02eb02ef3edac994f5196c44e5127186d9bed9cf4dbfcc0",
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/LineBoxFontTests.cs": "376df6033e5d7c33eda4368f9009b36f22c63e8bd134cfcd90aea9cfa938335e",
     "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
     "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
     "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
@@ -23,7 +23,7 @@
    }
   }
  ],
- "measured_by": "43267299514",
+ "measured_by": "43382198098",
  "mutant": {
   "after": ";",
   "before": "Destroy(node.Value);",
@@ -37,6 +37,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "209ea2522791c7d5695294d5efb607d02394e8baec347c197a23749bff024646",
+ "tests": "0940803656451c4c899c450637e7d22df5be21ad3c9e1bb98ae5f1c9d764acb9",
  "verdict": "killed"
 }

@@ -1,8 +1,18 @@
 {
- "detail": "EditMode survived; PlayMode: -",
+ "detail": "EditMode survived; PlayMode: 1 failed: Given_AGroupLaidOutInReverse_When_ARightArrowMovesPastItsLastMember_Then_FocusStaysThere",
  "file": "f40a5ff13762e2811fe110a77d64c46e543b2a1b902a2254a43499235addfcba",
- "killers": [],
- "measured_by": "43267299514",
+ "killers": [
+  {
+   "case": "Velvet.Tests.FocusScopeSingleTabStopPlaybackTests.Given_AGroupLaidOutInReverse_When_ARightArrowMovesPastItsLastMember_Then_FocusStaysThere",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/PlayMode/FocusScopeSingleTabStopPlaybackTests.cs": "34a533481da66734fbef967b7836d65e08755aedc8d2c123be10e8b0d89f5252",
+    "Packages/com.velvet.core/TestUtilities/FocusScopeElement.cs": "caee04a0e47cefaac0d9a6a30491bbf026426ccdbc1185e3ac842f7d698edb34",
+    "Packages/com.velvet.core/TestUtilities/TestPanelSettings.cs": "c7a36f6a4acd48eb54e9b4c339d7caf0c56cbef64dacd018497182f9fadacc29",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  }
+ ],
+ "measured_by": "43382198098",
  "mutant": {
   "after": ";",
   "before": "controller.IgnoreEvent(evt);",
@@ -16,6 +26,6 @@
  "platform": "PlayMode",
  "schema": 3,
  "stood": null,
- "tests": "209ea2522791c7d5695294d5efb607d02394e8baec347c197a23749bff024646",
- "verdict": "survived"
+ "tests": "0940803656451c4c899c450637e7d22df5be21ad3c9e1bb98ae5f1c9d764acb9",
+ "verdict": "killed"
 }

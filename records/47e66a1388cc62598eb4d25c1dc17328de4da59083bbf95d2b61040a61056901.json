@@ -1,0 +1,35 @@
+{
+ "detail": "EditMode: 1 failed among the 60 case(s) that ran the site: Given_AClippingElementWithNoOverlay_When_ItIsAskedWhetherItClips_Then_ASettleIsMarkedPending",
+ "file": "fc027a2f9fb1653524dd32829090e95701b8e3d926164ba148a15cb3bf63e552",
+ "killers": [
+  {
+   "case": "Velvet.Tests.FaceBorderOverlayTests.Given_AClippingElementWithNoOverlay_When_ItIsAskedWhetherItClips_Then_ASettleIsMarkedPending",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/FaceBorderOverlayTests.cs": "30119026e13b6847f21a6eb8e0463a7e585c1901903d749299c231019fa08767",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  }
+ ],
+ "measured_by": "43382198098",
+ "mutant": {
+  "after": "==",
+  "before": "!=",
+  "column": 21,
+  "line": 86,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Styling/FaceBorderOverlay.cs",
+  "shadowed": [
+   "clause removed",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "0940803656451c4c899c450637e7d22df5be21ad3c9e1bb98ae5f1c9d764acb9",
+ "verdict": "killed"
+}

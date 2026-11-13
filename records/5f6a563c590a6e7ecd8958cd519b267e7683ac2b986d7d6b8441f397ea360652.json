@@ -1,0 +1,40 @@
+{
+ "detail": "EditMode: 3 failed among the 55 case(s) that ran the site: Given_ADashedBoxRoundedLessThanHalfItsBorder_When_ItsLeftSidesPiecesAreComputed_Then_TheyReachIntoTheCornerTheTopsFirstDashCrosses, Given_ADashedTopSide_When_Painted_Then_ItMeshesAsItsPiecesFilledClosedDo, Given_ASquareBoxWithEveryBorderTwoWide_When_ItsTopSidesPiecesAreComputed_Then_TheFirstStopsAtTheCornerMiter",
+ "file": "efc4e8894c7016e6ed6c11444fb12ee88c550782aabfa81e3b25c792787b2cd7",
+ "killers": [
+  {
+   "case": "Velvet.Tests.DashedBorderSideTests.Given_ADashedBoxRoundedLessThanHalfItsBorder_When_ItsLeftSidesPiecesAreComputed_Then_TheyReachIntoTheCornerTheTopsFirstDashCrosses",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/DashedBorderSideTests.cs": "fa429ebc8497c5a465967150ff37586ed2295f11025950f89e6fe22b0a29a1ae"
+   }
+  },
+  {
+   "case": "Velvet.Tests.DashedBorderSideTests.Given_ADashedTopSide_When_Painted_Then_ItMeshesAsItsPiecesFilledClosedDo",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/DashedBorderSideTests.cs": "fa429ebc8497c5a465967150ff37586ed2295f11025950f89e6fe22b0a29a1ae"
+   }
+  },
+  {
+   "case": "Velvet.Tests.DashedBorderSideTests.Given_ASquareBoxWithEveryBorderTwoWide_When_ItsTopSidesPiecesAreComputed_Then_TheFirstStopsAtTheCornerMiter",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/DashedBorderSideTests.cs": "fa429ebc8497c5a465967150ff37586ed2295f11025950f89e6fe22b0a29a1ae"
+   }
+  }
+ ],
+ "measured_by": "43382198098",
+ "mutant": {
+  "after": ";",
+  "before": "polygon.Clear();",
+  "column": 12,
+  "line": 196,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/DashedBorderPainter.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "0940803656451c4c899c450637e7d22df5be21ad3c9e1bb98ae5f1c9d764acb9",
+ "verdict": "killed"
+}

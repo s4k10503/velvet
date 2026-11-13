@@ -5,14 +5,14 @@
   {
    "case": "Velvet.Tests.UseQueriesTests.Given_FourSuspendingQueriesWithACombine_When_NoneHasLanded_Then_TheSuspenseShowsItsFallback",
    "files": {
-    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseQueriesTests.cs": "e30caefca89c8ee3b5af5fb0873f3d524463f6d2c4907815a6c3885794eb90fe",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseQueriesTests.cs": "1ad0378313af0566dd7a32268d970e6c80977ad3f464e9f9fcfb8ef26f8385b9",
     "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
     "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
     "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
    }
   }
  ],
- "measured_by": "43140876866",
+ "measured_by": "43382198098",
  "mutant": {
   "after": "false",
   "before": "true",
@@ -26,6 +26,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "3a0737ae805726605d7b4b1c058bc11f5aa4144189d9159ff88180e9426f3730",
+ "tests": "0940803656451c4c899c450637e7d22df5be21ad3c9e1bb98ae5f1c9d764acb9",
  "verdict": "killed"
 }

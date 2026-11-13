@@ -5,7 +5,7 @@
   {
    "case": "Velvet.Tests.BorderPreflightTests.Given_ALabelWhoseClassRuleSetsAnInitialBorderWidth_When_Resolved_Then_ItIsNotMarked",
    "files": {
-    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BorderPreflightTests.cs": "3691b35298c2c75f8aa4332a556c26ef134292dd76600aabff39afff4fca47e6",
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BorderPreflightTests.cs": "e366bb36092070eb9d677530b19f3abb0ca60844228f618e4400643c862f05d0",
     "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
     "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
     "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
@@ -15,7 +15,7 @@
    }
   }
  ],
- "measured_by": "43267299514",
+ "measured_by": "43382198098",
  "mutant": {
   "after": "!=",
   "before": "==",
@@ -29,6 +29,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "209ea2522791c7d5695294d5efb607d02394e8baec347c197a23749bff024646",
+ "tests": "0940803656451c4c899c450637e7d22df5be21ad3c9e1bb98ae5f1c9d764acb9",
  "verdict": "killed"
 }

@@ -5,7 +5,7 @@
   {
    "case": "Velvet.Tests.FocusScopeRangeTests.Given_AContainedFocusScopeAroundAnElementScope_When_TabDispatchesFromTheInnerScopesLastElement_Then_FocusWrapsToTheOuterScopesFirst",
    "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/FocusScopeRangeTests.cs": "2fe023413b0a47b22cc20c43d8a6b84b46683fbbcd850de16b97a3243709d47b",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/FocusScopeRangeTests.cs": "a94f0ced9885ef48cd9450fa4e9b63fdc347fefa651c1ccd66d199cdded283f5",
     "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
     "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
     "Packages/com.velvet.core/TestUtilities/FocusScopeElement.cs": "caee04a0e47cefaac0d9a6a30491bbf026426ccdbc1185e3ac842f7d698edb34",
@@ -17,7 +17,7 @@
   {
    "case": "Velvet.Tests.FocusScopeRangeTests.Given_AContainedFocusScope_When_TabDispatchesFromItsLastElement_Then_FocusWrapsToItsFirst",
    "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/FocusScopeRangeTests.cs": "2fe023413b0a47b22cc20c43d8a6b84b46683fbbcd850de16b97a3243709d47b",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/FocusScopeRangeTests.cs": "a94f0ced9885ef48cd9450fa4e9b63fdc347fefa651c1ccd66d199cdded283f5",
     "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
     "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
     "Packages/com.velvet.core/TestUtilities/FocusScopeElement.cs": "caee04a0e47cefaac0d9a6a30491bbf026426ccdbc1185e3ac842f7d698edb34",
@@ -27,7 +27,7 @@
    }
   }
  ],
- "measured_by": "42872060540",
+ "measured_by": "43382198098",
  "mutant": {
   "after": ";",
   "before": "Redirect(move.Evt, move.Panel, new ScopeRing(containRoot).Next(move.Focused, ToRingDirection(move.Forward)));",
@@ -41,6 +41,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "263aac50e3877ae16fc6220feb4d02f6446308f91c6965765a7efd36266ebd85",
+ "tests": "0940803656451c4c899c450637e7d22df5be21ad3c9e1bb98ae5f1c9d764acb9",
  "verdict": "killed"
 }

@@ -1,8 +1,16 @@
 {
- "detail": "EditMode survived; PlayMode: -",
+ "detail": "EditMode: 1 failed among the 1 case(s) that ran the site: Given_ATargetExactlyTheMinimumDistanceFromAPerspectiveCamera_When_ItsDistanceScaleIsTaken_Then_TheScaleHoldsAtOne",
  "file": "d1c37b977a429f22473bbcc2b0c7c94b81ebee4ef9b1ede603c3f466ad82cf87",
- "killers": [],
- "measured_by": "43267299514",
+ "killers": [
+  {
+   "case": "Velvet.Tests.AnchoredTests.Given_ATargetExactlyTheMinimumDistanceFromAPerspectiveCamera_When_ItsDistanceScaleIsTaken_Then_TheScaleHoldsAtOne",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/AnchoredTests.cs": "7daa0dc755db9bddb1c2cb3701f75be53c865cdd5101e82f05f7238ccdd62bca",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionSimulatedPanelTestsBase.cs": "319b26852fbe6c4376e12d0d0c9e76d0ced9d71ce1cae10efb9b3d4871118db3"
+   }
+  }
+ ],
+ "measured_by": "43382198098",
  "mutant": {
   "after": ">=",
   "before": ">",
@@ -17,9 +25,9 @@
   ]
  },
  "mutator": 10,
- "platform": "PlayMode",
+ "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "209ea2522791c7d5695294d5efb607d02394e8baec347c197a23749bff024646",
- "verdict": "survived"
+ "tests": "0940803656451c4c899c450637e7d22df5be21ad3c9e1bb98ae5f1c9d764acb9",
+ "verdict": "killed"
 }

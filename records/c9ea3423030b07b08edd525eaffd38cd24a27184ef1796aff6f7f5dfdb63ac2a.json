@@ -1,8 +1,15 @@
 {
- "detail": "EditMode survived; PlayMode: -",
+ "detail": "EditMode: 1 failed among the 9 case(s) that ran the site: Given_ABezierOpacityNarrowingTheElementsOpacityTransition_When_AGestureStateTakesTheOpacity_Then_NoTransitionPropertyIsLeftInline",
  "file": "1940f1c44a5c1217b3260b8f8eac5b1285e22defcc584f1b6b661a78bc1f0bc3",
- "killers": [],
- "measured_by": "43267299514",
+ "killers": [
+  {
+   "case": "Velvet.Tests.GestureChannelMaskTests.Given_ABezierOpacityNarrowingTheElementsOpacityTransition_When_AGestureStateTakesTheOpacity_Then_NoTransitionPropertyIsLeftInline",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/GestureChannelMaskTests.cs": "99b35b4a085d7b5de62e9168b904ef228fe7cb80fe0dff4e4cc3709d2fb983f3"
+   }
+  }
+ ],
+ "measured_by": "43382198098",
  "mutant": {
   "after": ";",
   "before": "ResyncNarrowing(element, state);",
@@ -13,9 +20,9 @@
   "shadowed": []
  },
  "mutator": 10,
- "platform": "PlayMode",
+ "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "209ea2522791c7d5695294d5efb607d02394e8baec347c197a23749bff024646",
- "verdict": "survived"
+ "tests": "0940803656451c4c899c450637e7d22df5be21ad3c9e1bb98ae5f1c9d764acb9",
+ "verdict": "killed"
 }

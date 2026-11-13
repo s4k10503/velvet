@@ -1,8 +1,16 @@
 {
- "detail": "EditMode survived; PlayMode: -",
+ "detail": "EditMode: 1 failed among the 73 case(s) that ran the site: Given_AnOffsetShadowOnACasterSkewedOnBothAxes_When_ItsRectIsTaken_Then_ItCentresWhereTheFacesShearCarriesTheOffset",
  "file": "b9e11215a83bb7cea86d3f73a2f0666b88a209c6e9fbfcf62069ef5471ebd45a",
- "killers": [],
- "measured_by": "43267299514",
+ "killers": [
+  {
+   "case": "Velvet.Tests.BoxShadowBakeTests.Given_AnOffsetShadowOnACasterSkewedOnBothAxes_When_ItsRectIsTaken_Then_ItCentresWhereTheFacesShearCarriesTheOffset",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BoxShadowBakeTests.cs": "d77e7ffb33ffaad0cae97403013294d87dc866654f78cc66f8fc975536ec7815",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  }
+ ],
+ "measured_by": "43382198098",
  "mutant": {
   "after": "-",
   "before": "+",
@@ -15,9 +23,9 @@
   ]
  },
  "mutator": 10,
- "platform": "PlayMode",
+ "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "209ea2522791c7d5695294d5efb607d02394e8baec347c197a23749bff024646",
- "verdict": "survived"
+ "tests": "0940803656451c4c899c450637e7d22df5be21ad3c9e1bb98ae5f1c9d764acb9",
+ "verdict": "killed"
 }

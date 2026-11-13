@@ -1,0 +1,36 @@
+{
+ "detail": "EditMode: 2 failed among the 5 case(s) that ran the site: Given_GrayscaleAtQuarter_When_ItsMatrixIsBuilt_Then_TheGreenRowsRedWeightIsTheSpecifications, Given_SaturateAtHalf_When_ItsMatrixIsBuilt_Then_TheGreenRowsRedWeightIsTheSpecifications",
+ "file": "89178baab78c5939bda222dc3d98126f19e16ae78965962c1fac0f374c507a01",
+ "killers": [
+  {
+   "case": "Velvet.Tests.BackdropColorStepTests.Given_GrayscaleAtQuarter_When_ItsMatrixIsBuilt_Then_TheGreenRowsRedWeightIsTheSpecifications",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BackdropColorStepTests.cs": "e1e99f08032d507ac2ca88182eb265d53a4e2da592f6628b6f0ed3e37d9fcae6"
+   }
+  },
+  {
+   "case": "Velvet.Tests.BackdropColorStepTests.Given_SaturateAtHalf_When_ItsMatrixIsBuilt_Then_TheGreenRowsRedWeightIsTheSpecifications",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BackdropColorStepTests.cs": "e1e99f08032d507ac2ca88182eb265d53a4e2da592f6628b6f0ed3e37d9fcae6"
+   }
+  }
+ ],
+ "measured_by": "43382198098",
+ "mutant": {
+  "after": "+",
+  "before": "-",
+  "column": 29,
+  "line": 635,
+  "operator": "arithmetic",
+  "path": "Packages/com.velvet.core/Runtime/Styling/BackdropRenderer.cs",
+  "shadowed": [
+   "arithmetic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "0940803656451c4c899c450637e7d22df5be21ad3c9e1bb98ae5f1c9d764acb9",
+ "verdict": "killed"
+}

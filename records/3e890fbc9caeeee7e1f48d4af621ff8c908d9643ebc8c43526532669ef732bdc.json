@@ -1,8 +1,16 @@
 {
- "detail": "EditMode survived; PlayMode: -",
+ "detail": "EditMode: 1 failed among the 25 case(s) that ran the site: Given_AnElementMountedOnTheEndGradient_When_AnEnterOpensItsLease_Then_TheStartGradientShowsAtOnce",
  "file": "075c7c0d55040a13d4fee3801c13889c38192bff641a861f0f1f265cbc6a2733",
- "killers": [],
- "measured_by": "43267299514",
+ "killers": [
+  {
+   "case": "Velvet.Tests.PaintLeaseTests.Given_AnElementMountedOnTheEndGradient_When_AnEnterOpensItsLease_Then_TheStartGradientShowsAtOnce",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PaintLeaseTests.cs": "6ba29261e6b56a135d1ca7f74e703b5310d4b126a2ddca59727e6641d8780eed",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  }
+ ],
+ "measured_by": "43382198098",
  "mutant": {
   "after": "==",
   "before": "!=",
@@ -15,9 +23,9 @@
   ]
  },
  "mutator": 10,
- "platform": "PlayMode",
+ "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "209ea2522791c7d5695294d5efb607d02394e8baec347c197a23749bff024646",
- "verdict": "survived"
+ "tests": "0940803656451c4c899c450637e7d22df5be21ad3c9e1bb98ae5f1c9d764acb9",
+ "verdict": "killed"
 }

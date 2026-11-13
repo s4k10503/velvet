@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed among the 5 case(s) that ran the site: Given_AOnePixelDottedEdgeAnEvenLength_When_SegmentsComputed_Then_ItsFirstDotGrowsByAPixel",
+ "file": "efc4e8894c7016e6ed6c11444fb12ee88c550782aabfa81e3b25c792787b2cd7",
+ "killers": [
+  {
+   "case": "Velvet.Tests.DashedBorderPainterTests.Given_AOnePixelDottedEdgeAnEvenLength_When_SegmentsComputed_Then_ItsFirstDotGrowsByAPixel",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/DashedBorderPainterTests.cs": "23fe8c9a554fd5b25b69b201d425d488a312ba3eb174f9b47610088a2d615aec"
+   }
+  }
+ ],
+ "measured_by": "43382198098",
+ "mutant": {
+  "after": "-",
+  "before": "+",
+  "column": 40,
+  "line": 374,
+  "operator": "arithmetic",
+  "path": "Packages/com.velvet.core/Runtime/Styling/DashedBorderPainter.cs",
+  "shadowed": [
+   "line removed"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "0940803656451c4c899c450637e7d22df5be21ad3c9e1bb98ae5f1c9d764acb9",
+ "verdict": "killed"
+}

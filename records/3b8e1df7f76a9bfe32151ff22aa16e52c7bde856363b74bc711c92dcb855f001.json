@@ -1,11 +1,11 @@
 {
- "detail": "EditMode: 1 failed among the 352 case(s) that ran the site: Given_AHolderRoundedByItsRules_When_ItsRadiiAreReadAgain_Then_NothingIsAllocated",
+ "detail": "EditMode: 1 failed among the 358 case(s) that ran the site: Given_AHolderRoundedByItsRules_When_ItsRadiiAreReadAgain_Then_NothingIsAllocated",
  "file": "3abe85d2f59c1304ea91bb1f4c6c5e0102ad5d49f3ce329405a836c194bbf2a2",
  "killers": [
   {
    "case": "Velvet.Tests.MotionScheduledMechanicsTests.Given_AHolderRoundedByItsRules_When_ItsRadiiAreReadAgain_Then_NothingIsAllocated",
    "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionScheduledMechanicsTests.cs": "02cd2a717502f28763a6b283585b6ac9a7960e80ecd7db3eabcfd9e2dabc52b9",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionScheduledMechanicsTests.cs": "bca4899a32a9aaf655c1a1b18f03f858636d0cf669119f283ad73a620a9ffb93",
     "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionSimulatedPanelTestsBase.cs": "319b26852fbe6c4376e12d0d0c9e76d0ced9d71ce1cae10efb9b3d4871118db3",
     "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
     "Packages/com.velvet.core/TestUtilities/GCAllocationProbe.cs": "492823c099cf4f4de89da0da69c98d45cfc042070d93e2d0c0b95773310ebc2c",
@@ -14,7 +14,7 @@
    }
   }
  ],
- "measured_by": "43140876866",
+ "measured_by": "43382198098",
  "mutant": {
   "after": "==",
   "before": "!=",
@@ -31,6 +31,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "3a0737ae805726605d7b4b1c058bc11f5aa4144189d9159ff88180e9426f3730",
+ "tests": "0940803656451c4c899c450637e7d22df5be21ad3c9e1bb98ae5f1c9d764acb9",
  "verdict": "killed"
 }
