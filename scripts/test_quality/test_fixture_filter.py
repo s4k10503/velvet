@@ -83,6 +83,15 @@ def selected(value, roster=ROSTER):
                    if any(re.search(term, name) for term in terms for name in names)})
 
 
+def given_arguments(name, arguments):
+    """A roster of the one fixture `Velvet.Tests.<name>` the runner names with `arguments`, as it names
+    a fixture given arguments: `ThemeTests("dark")`, a string quoted, or `LogTests(UIToolkit)` from a
+    `TestFixtureSource` entry's `ToString`. Both spellings are read off this repository's EditMode
+    results."""
+    named = "Velvet.Tests.{}({})".format(name, arguments)
+    return [(named, chain(EDITOR_ASSEMBLY, named))]
+
+
 def fixture(name, body="", base=None, attributes=""):
     heading = "{}internal sealed class {}{}".format(
         attributes, name, " : " + base if base else "")
@@ -296,7 +305,7 @@ class FixtureFilterTests(unittest.TestCase):
         # Assert
         self.assertEqual((code, value), (fixture_filter.CANNOT_ANSWER, ""))
 
-    def test_Given_AFixtureArgumentOnAGrandparent_When_ALeafValueIsTaken_Then_NoValueIsPrinted(self):
+    def test_Given_AFixtureArgumentOnAGrandparent_When_ALeafValueIsMatched_Then_TheRunnerSelectsTheLeafUnderIt(self):
         # Arrange
         project = self.project({
             EDITOR + "KeyboardTests.cs": source(fixture(
@@ -306,12 +315,13 @@ class FixtureFilterTests(unittest.TestCase):
                 "WirelessGamepadTests", CASE, "GamepadTests"))})
 
         # Act
-        code, value, _ = project.value(EDITOR + "WirelessGamepadTests.cs")
+        _, value, _ = project.value(EDITOR + "WirelessGamepadTests.cs")
 
         # Assert
-        self.assertEqual((code, value), (fixture_filter.CANNOT_ANSWER, ""))
+        self.assertEqual(selected(value, given_arguments("WirelessGamepadTests", '"dark"')),
+                         ['Velvet.Tests.WirelessGamepadTests("dark")'])
 
-    def test_Given_FixtureArgumentsInTestUtilities_When_ADerivedFixtureIsSelected_Then_NoValueIsPrinted(self):
+    def test_Given_FixtureArgumentsInTestUtilities_When_ADerivedFixtureIsMatched_Then_TheRunnerSelectsItUnderThem(self):
         # Arrange
         project = self.project({
             "Packages/com.velvet.core/TestUtilities/InputBase.cs": source(
@@ -319,10 +329,11 @@ class FixtureFilterTests(unittest.TestCase):
             EDITOR + "KeyboardTests.cs": source(fixture("KeyboardTests", CASE, "InputBase"))})
 
         # Act
-        code, value, _ = project.value(EDITOR + "KeyboardTests.cs")
+        _, value, _ = project.value(EDITOR + "KeyboardTests.cs")
 
         # Assert
-        self.assertEqual((code, value), (fixture_filter.CANNOT_ANSWER, ""))
+        self.assertEqual(selected(value, given_arguments("KeyboardTests", '"dark"')),
+                         ['Velvet.Tests.KeyboardTests("dark")'])
 
     def test_Given_ACaselessBaseInTestUtilities_When_ItsValueIsTaken_Then_ItRequiresAnExplicitRoster(self):
         # Arrange
@@ -471,29 +482,63 @@ class FixtureFilterTests(unittest.TestCase):
         self.assertEqual(selected(value, ROSTER + [("Velvet.Tests.StoreTests", chain(
             EDITOR_ASSEMBLY, "Velvet.Tests.StoreTests"))]), ["Velvet.Tests.StoreTests"])
 
-    def test_Given_AFixtureTakingArguments_When_ItsValueIsTaken_Then_NoValueIsPrinted(self):
+    def test_Given_AFixtureTakingArguments_When_ItsValueIsMatched_Then_TheRunnerSelectsItUnderThem(self):
         # Arrange
-        project = self.project({EDITOR + "ThemeTests.cs": source(
-            fixture("ThemeTests", CASE, attributes='[TestFixture("dark")]\n    '))})
+        project = self.project({EDITOR + "PaletteTests.cs": source(
+            fixture("PaletteTests", CASE, attributes='[TestFixture("dark")]\n    '))})
 
         # Act
-        code, value, _ = project.value(EDITOR + "ThemeTests.cs")
+        _, value, _ = project.value(EDITOR + "PaletteTests.cs")
 
         # Assert
-        self.assertEqual((code, value), (fixture_filter.CANNOT_ANSWER, ""))
+        self.assertEqual(selected(value, given_arguments("PaletteTests", '"dark"')),
+                         ['Velvet.Tests.PaletteTests("dark")'])
 
-    def test_Given_AnHeirWhoseBaseTakesFixtureArguments_When_ItsValueIsTaken_Then_NoValueIsPrinted(self):
+    def test_Given_AFixtureFromAFixtureSource_When_ItsValueIsMatched_Then_TheRunnerSelectsItUnderItsArgument(self):
+        # Arrange
+        project = self.project({EDITOR + "LogTests.cs": source(fixture(
+            "LogTests", CASE,
+            attributes="[TestFixtureSource(typeof(Renderers), nameof(Renderers.All))]\n    "))})
+
+        # Act
+        _, value, _ = project.value(EDITOR + "LogTests.cs")
+
+        # Assert
+        self.assertEqual(selected(value, given_arguments("LogTests", "UIToolkit")),
+                         ["Velvet.Tests.LogTests(UIToolkit)"])
+
+    # GREEN_ON_BASE(characterization): the base refuses every fixture given arguments, this one among them.
+    # Drop the `TestFixtureData` refusal from `Tree.spelling` and this prints a value.
+    def test_Given_AFixtureSourceBuildingFixtureData_When_ItsValueIsTaken_Then_NoValueIsPrinted(self):
+        # Arrange -- fixture data is the one shape of source this reads nothing of.
+        project = self.project({
+            "Packages/com.velvet.core/TestUtilities/Renderers.cs": source(
+                "    internal static class Renderers\n    {\n"
+                "        public static TestFixtureData[] All = { new TestFixtureData(1) };\n    }\n"),
+            EDITOR + "LogTests.cs": source(fixture(
+                "LogTests", CASE,
+                attributes="[TestFixtureSource(typeof(Renderers), nameof(Renderers.All))]\n    "))})
+
+        # Act
+        code, _, _ = project.value(EDITOR + "LogTests.cs")
+
+        # Assert
+        self.assertEqual(code, fixture_filter.CANNOT_ANSWER)
+
+    def test_Given_AnHeirWhoseBaseTakesFixtureArguments_When_ItsValueIsMatched_Then_TheRunnerSelectsEachHeirUnderThem(self):
         # Arrange -- written on the base, in another file.
         project = self.project({
             EDITOR + "WidgetPoolHelperTests.cs": WIDGETS,
             EDITOR + "PoolHelperTestsBase.cs": POOL_BASE.replace(
                 "    public abstract class", '    [TestFixture("dark")]\n    public abstract class')})
+        heirs = [name.rsplit(".", 1)[1] for name in POOL_FIXTURES]
 
         # Act
-        code, value, _ = project.value(EDITOR + "WidgetPoolHelperTests.cs")
+        _, value, _ = project.value(EDITOR + "WidgetPoolHelperTests.cs")
 
         # Assert
-        self.assertEqual((code, value), (fixture_filter.CANNOT_ANSWER, ""))
+        self.assertEqual(selected(value, [entry for heir in heirs for entry in given_arguments(heir, '"dark"')]),
+                         ['{}("dark")'.format(name) for name in POOL_FIXTURES])
 
     def test_Given_AFixtureAttributeCarryingOnlyANamedProperty_When_ItsValueIsMatched_Then_TheRunnerSelectsIt(self):
         # Arrange -- a named property is passed over.

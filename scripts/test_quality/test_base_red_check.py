@@ -3376,6 +3376,21 @@ class ParameterisedFixtureNameTests(unittest.TestCase):
         # Assert
         self.assertEqual(verdict, base_red_check.PASSED_ON_BASE)
 
+    def test_Given_ARowWithNoMethodNameWhoseBodyMessageOpensWithASection_When_Read_Then_ItIsTheBodysFailure(self):
+        # Arrange -- the trace leads back to the method, which the fixture's arguments stand in front of
+        # in the row's full name.
+        case = ET.fromstring(
+            '<test-case name="{0}" fullname="N.ProbeTests(UIToolkit).{0}" result="Failed"><failure>'
+            '<message>TearDown : the body expected this text</message><stack-trace>  at N.ProbeTests.{0} '
+            '() [0x00011] in ./Packages/p/Runtime/A/Tests/Editor/ProbeTests.cs:41 </stack-trace></failure>'
+            '</test-case>'.format(self.METHOD))
+
+        # Act
+        reading = base_red_check.reading_of(case)
+
+        # Assert
+        self.assertEqual(reading, "Failed")
+
     def test_Given_ACaseThatPassedUnderOneFixtureArgumentAndDisagreedUnderAnother_When_Decided_Then_ItIsRed(self):
         # Arrange -- read as one argument list each, the method passed only where both did.
         rows = (self.row("UIToolkit", "Passed"), self.row("Test", "Failed"))
