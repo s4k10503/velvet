@@ -37,6 +37,7 @@ namespace Velvet.TestUtilities
 
             internal UIToolkitTree(MountedTree tree) => _tree = tree;
 
+            // Bypasses: what MountedTreeTestExtensions.DrainForTest bypasses, which it calls.
             public override void DrainForTest() => _tree.DrainForTest();
 
             public override void Dispose() => _tree.Dispose();
@@ -50,6 +51,7 @@ namespace Velvet.TestUtilities
         /// Renders what is queued and runs the passive effects the commits left pending, as
         /// <see cref="MountedTreeTestExtensions.DrainForTest"/> does for a tree <c>V.Mount</c> returned.
         /// </summary>
+        // Bypasses: what each renderer's drain bypasses; UIToolkitTree's is MountedTreeTestExtensions.DrainForTest's.
         public abstract void DrainForTest();
 
         /// <summary>Unmounts the tree.</summary>
