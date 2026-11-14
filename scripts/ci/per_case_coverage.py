@@ -85,8 +85,8 @@ def compress_finished(source, target, final=False):
 
     The package writes one file at a time, so in each folder every numbered file but the newest is
     finished, and the newest is too once the editor has exited, which is what `final` says. A file
-    whose copy is already in `target` is passed over: what stands under its name by then is the empty
-    one, and compressing that would overwrite the copy.
+    whose copy is already in `target` is passed over: a copy takes its name only once it is whole, and
+    compressing the empty file left under the original's name would overwrite it.
     """
     if not source.is_dir():
         return 0

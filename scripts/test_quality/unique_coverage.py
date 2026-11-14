@@ -27,8 +27,9 @@ and the kill set measure that; this does not.
 Paths are printed relative to `--root`, which defaults to where the workflow mounts the checkout in the
 editor's container.
 
-Exits 0 with the report, and 2 where it cannot be read: no file among the inputs, a file that is not
-OpenCover, no test reference in any file, or a `--group` that took no test.
+Exits 0 with the report, and 2 where no reading can be taken: an input that is neither a file nor a
+directory, inputs holding no OpenCover file, a file that is not one, no test reference in any file,
+or a `--group` that is not LABEL=REGEX or took no test.
 """
 
 import argparse
@@ -81,7 +82,7 @@ def coverage_files(inputs):
 
 
 def references(path):
-    """{(class, method): {(source, line)}} for every test reference in one OpenCover file."""
+    """{(class, method): {(source, line)}}: the lines each test reference in one OpenCover file ran."""
     opener = gzip.open if path.name.endswith(".gz") else open
     try:
         with opener(str(path), "rb") as stream:
@@ -203,8 +204,8 @@ def main(argv):
         paths = coverage_files(args.inputs)
         owner, labels, tests, records, unnamed = read(paths, groups)
         if not records:
-            raise Unreadable("no file among {} holds a test reference, so none was written with "
-                             "generateTestReferences".format(len(paths)))
+            raise Unreadable("no file among {} holds a test reference: was the run given "
+                             "generateTestReferences?".format(len(paths)))
         empty = [label for label, _ in groups if label not in labels]
         if empty:
             raise Unreadable("--group {} took no test".format(", ".join(empty)))

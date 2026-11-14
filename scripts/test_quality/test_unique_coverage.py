@@ -151,7 +151,7 @@ class UniqueCoverageTests(unittest.TestCase):
         self.assertIn("pruned: 1 line(s) only it reaches", printed)
 
     def test_Given_AGroupWhosePatternFindsNoTest_When_Reported_Then_TheReadingIsRefused(self):
-        # Arrange — a misspelt pattern would otherwise report the cases it meant as reaching nothing.
+        # Arrange — a misspelt pattern would otherwise leave the group out of the report without a word.
         records = [record(test_name("ATests", "Given_X"), [(A, 10, 1)])]
 
         # Act
