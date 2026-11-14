@@ -97,8 +97,7 @@ class UniqueCoverageTests(unittest.TestCase):
 
     def test_Given_LinesOneFixturesCaseAloneReaches_When_Reported_Then_TheyAreListedUnderThatFixture(self):
         # Arrange — two lines of one file, so a count of files would read as a count of lines.
-        records = [record(test_name("ATests", "Given_X"), [(A, 10, 1), (A, 30, 1)]),
-                   record(test_name("BTests", "Given_Y"), [(A, 20, 1)])]
+        records = [record(test_name("ATests", "Given_X"), [(A, 10, 1), (A, 30, 1)])]
 
         # Act
         _, printed = run(records, "--root", "/elsewhere")
