@@ -75,7 +75,7 @@ def assembly_filter(command):
 
 class Editor:
     """Stands in for `licensed_editor.run_licensed`, writing `numbers` where the package would and
-    answering with `status`. With `blocked_for`, a file stands where the copies' directory goes for that
+    answering with `status`. With `blocked_for`, a file stands where the copies' folder goes for that
     long after the files are written, so every compressing pass in that time fails; with `keep_blocked`,
     it is never taken away."""
 
@@ -88,14 +88,14 @@ class Editor:
     def __call__(self, command, what):
         self.commands.append(command)
         coverage = Path(command[command.index("-coverageResultsPath") + 1])
-        blocker = coverage.parent / "per-case"
+        blocker = coverage.parent / "per-case" / "project-opencov"
         if self.blocked_for or self.keep_blocked:
             blocker.write_text("")
         write(coverage / "project-opencov" / "EditMode", self.numbers)
         if self.blocked_for:
             time.sleep(self.blocked_for)
             blocker.unlink()
-        per_case = blocker / "project-opencov" / "EditMode" / (name(self.numbers[0]) + ".gz")
+        per_case = blocker / "EditMode" / (name(self.numbers[0]) + ".gz")
         deadline = time.time() + self.wait_for_copy
         while time.time() < deadline and not per_case.exists():
             time.sleep(0.01)
@@ -242,6 +242,17 @@ class MainTests(unittest.TestCase):
         # Assert
         self.assertEqual(assembly_filter(editor.commands[0]), "+Velvet")
 
+    def test_Given_ARun_When_TheEditorIsLaunched_Then_TheAssembliesItWasAskedForAreWrittenBesideTheRecords(self):
+        # Arrange — the reader refuses an asked assembly no record reaches, and reads what was asked here.
+        editor = Editor()
+
+        # Act
+        _, output = run_main(self.holder(), editor)
+
+        # Assert — None where no such file was written, which the list it names never reads as.
+        written = output / "per-case" / "asked-assemblies.txt"
+        self.assertEqual(written.read_text() if written.exists() else None, "Velvet\n")
+
     def test_Given_ARun_When_TheEditorIsLaunched_Then_ItIsAskedForEachCasesReferences(self):
         # Arrange
         editor = Editor()
@@ -306,8 +317,9 @@ def job_block(text, job):
 
 
 def run_sha_step(github_ref, default_branch="main"):
-    """What the commit job's sha step writes to GITHUB_OUTPUT for a run on `github_ref`, its env read
-    off the workflow with the default branch's expression standing for `default_branch`."""
+    """(exit status, what it wrote to GITHUB_OUTPUT) of the commit job's sha step for a run on
+    `github_ref`, its env read off the workflow with the default branch's expression standing for
+    `default_branch`."""
     block = job_block(WORKFLOW.read_text(), "commit")
     step = block[block.index("      - id: sha") + 1:]
     step = step[:next((index for index, line in enumerate(step) if line.startswith("      - ")), len(step))]
@@ -323,9 +335,9 @@ def run_sha_step(github_ref, default_branch="main"):
     with tempfile.TemporaryDirectory() as holder:
         output = Path(holder) / "output"
         output.write_text("")
-        subprocess.run(["bash", "-e", "-c", script], cwd=str(REPO_ROOT), check=True, capture_output=True,
-                       env=dict(os.environ, GITHUB_REF=github_ref, GITHUB_OUTPUT=str(output), **default))
-        return output.read_text()
+        done = subprocess.run(["bash", "-e", "-c", script], cwd=str(REPO_ROOT), capture_output=True,
+                              env=dict(os.environ, GITHUB_REF=github_ref, GITHUB_OUTPUT=str(output), **default))
+        return done.returncode, output.read_text()
 
 
 class WorkflowTests(unittest.TestCase):
@@ -335,7 +347,7 @@ class WorkflowTests(unittest.TestCase):
         github_ref = "refs/heads/my-pruning-branch"
 
         # Act
-        written = run_sha_step(github_ref)
+        _, written = run_sha_step(github_ref)
 
         # Assert
         self.assertEqual(written, "")
@@ -345,10 +357,20 @@ class WorkflowTests(unittest.TestCase):
         github_ref = "refs/heads/main"
 
         # Act
-        written = run_sha_step(github_ref)
+        _, written = run_sha_step(github_ref)
 
         # Assert
         self.assertTrue(written.startswith("sha="))
+
+    def test_Given_AnEventNamingNoDefaultBranch_When_TheCommitJobRuns_Then_TheStepFails(self):
+        # Arrange — skipping there would end every dispatch green with nothing measured.
+        github_ref = "refs/heads/main"
+
+        # Act
+        status, _ = run_sha_step(github_ref, default_branch="")
+
+        # Assert
+        self.assertEqual(status, 1)
 
     def test_Given_TheWorkflow_When_ItsSuiteJobIsRead_Then_ItRunsOnlyForACommitTheCommitJobResolved(self):
         # Arrange

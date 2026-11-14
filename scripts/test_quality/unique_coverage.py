@@ -21,7 +21,9 @@ reached no line still puts the test in the report, among those reaching no line 
 
 The report's second line names the assemblies holding a line some record reaches. An assembly the run
 did not ask for is in no record, so a group alone in reaching one of its lines reads as reaching
-nothing; `per_case_coverage.py` decides which assemblies a run asks for.
+nothing; `per_case_coverage.py` decides which assemblies a run asks for, and writes them to `ASKED` beside
+the records. An assembly asked for that holds no reached line in any record is refused, since what a
+group reaches of it was measured by nobody, and so are inputs holding no `ASKED` to say what was asked.
 
 A record holds only what ran between its own case's start and finish, so what a fixture's
 `[OneTimeSetUp]` reaches before its first case starts is in none. Nor does a record say what a case
@@ -33,8 +35,9 @@ Paths are printed relative to `--root`, which defaults to where the workflow mou
 editor's container.
 
 Exits 0 with the report, and 2 where no reading can be taken: an input that is neither a file nor a
-directory, inputs holding no OpenCover file, a file that is not one, no file naming a test, or a
-`--group` that is not LABEL=REGEX or took no test.
+directory, inputs holding no OpenCover file or no `ASKED`, a file that is not one, no file naming a
+test, an assembly asked for holding no reached line, or a `--group` that is not LABEL=REGEX or took no
+test.
 """
 
 import argparse
@@ -45,6 +48,9 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 ROOT = "/github/workspace"
+
+# The file beside the records naming, one a line, the assemblies the run asked Code Coverage for.
+ASKED = "asked-assemblies.txt"
 
 CANNOT_READ = 2
 
@@ -84,6 +90,16 @@ def coverage_files(inputs):
     if not found:
         raise Unreadable("no OpenCover file among: {}".format(" ".join(inputs)))
     return found
+
+
+def asked_assemblies(inputs):
+    """Every assembly an `ASKED` file among `inputs` names, or None where none is there."""
+    found = [path for given in inputs for path in
+             (sorted(Path(given).rglob(ASKED)) if Path(given).is_dir() else
+              [Path(given).with_name(ASKED)] if Path(given).with_name(ASKED).is_file() else [])]
+    if not found:
+        return None
+    return {name.strip() for path in found for name in path.read_text().splitlines() if name.strip()}
 
 
 def references(path):
@@ -217,6 +233,13 @@ def main(argv):
         if not records:
             raise Unreadable("no file among {} names a test: was the run given "
                              "generateTestReferences?".format(len(paths)))
+        asked = asked_assemblies(args.inputs)
+        if asked is None:
+            raise Unreadable("no {} among the inputs says which assemblies the run asked for".format(ASKED))
+        unreached = sorted(asked - assemblies)
+        if unreached:
+            raise Unreadable("{} asked for, and no record reaches a line of it, so what a group reaches "
+                             "there was measured by nobody".format(", ".join(unreached)))
         empty = [label for label, _ in groups if label not in labels]
         if empty:
             raise Unreadable("--group {} took no test".format(", ".join(empty)))

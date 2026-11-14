@@ -74,8 +74,9 @@ def record(test, points, module="Velvet"):
             "    </Module>\n  </Modules>\n</CoverageSession>\n").format(module, files, methods, tracked)
 
 
-def run(records, *options, packed=False, extra=None):
-    """(exit status, printed text) of `main` over a directory holding `records`, one file each."""
+def run(records, *options, packed=False, extra=None, asked=("Velvet",)):
+    """(exit status, printed text) of `main` over a directory holding `records`, one file each, beside
+    the file naming the `asked` assemblies, or none where `asked` is None."""
     printed = io.StringIO()
     with tempfile.TemporaryDirectory() as root, contextlib.redirect_stdout(printed), \
             contextlib.redirect_stderr(io.StringIO()):
@@ -89,6 +90,8 @@ def run(records, *options, packed=False, extra=None):
                 (directory / name).write_text(text)
         if extra is not None:
             (directory / "TestCoverageResults_{:04d}.xml".format(len(records))).write_text(extra)
+        if asked is not None:
+            (directory / "asked-assemblies.txt").write_text("".join(name + "\n" for name in asked))
         status = unique_coverage.main([str(directory), *options])
     return status, printed.getvalue()
 
@@ -170,6 +173,27 @@ class UniqueCoverageTests(unittest.TestCase):
 
         # Assert
         self.assertIn("\nlines reached in: Velvet\n", printed)
+
+    def test_Given_AnAssemblyAskedForThatNoRecordReaches_When_Reported_Then_TheReadingIsRefused(self):
+        # Arrange — a group alone in reaching the weaver's lines would otherwise read as reaching none.
+        records = [record(test_name("WeaverReflectionProbeTests", "Given_X"), [(A, 10, 0)]),
+                   record(test_name("BTests", "Given_Y"), [(A, 10, 1)])]
+
+        # Act
+        status, _ = run(records, asked=("Velvet", "Unity.Velvet.CodeGen"))
+
+        # Assert
+        self.assertEqual(status, unique_coverage.CANNOT_READ)
+
+    def test_Given_RecordsWithNothingSayingWhatTheRunAskedFor_When_Reported_Then_TheReadingIsRefused(self):
+        # Arrange
+        records = [record(test_name("ATests", "Given_X"), [(A, 10, 1)])]
+
+        # Act
+        status, _ = run(records, asked=None)
+
+        # Assert
+        self.assertEqual(status, unique_coverage.CANNOT_READ)
 
     def test_Given_AGroupWhosePatternFindsNoTest_When_Reported_Then_TheReadingIsRefused(self):
         # Arrange — a misspelt pattern would otherwise leave the group out of the report without a word.

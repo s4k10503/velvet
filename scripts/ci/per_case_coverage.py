@@ -14,8 +14,10 @@ empty file is left under its name in `OUTPUT/coverage`: the package numbers its 
 deleted file would make it skip a later case. That reading is of the writer in Code Coverage
 `PINNED_PACKAGE`, and a project resolving another version is refused before any editor starts.
 
-`scripts/test_quality/unique_coverage.py` reads what `OUTPUT/per-case` holds. The editor's results and
-log go to `OUTPUT/results`, where the workflow's provenance checks read them. An `OUTPUT` that already
+`scripts/test_quality/unique_coverage.py` reads what `OUTPUT/per-case` holds, the assemblies the run asked
+for among it under that script's `ASKED`, so that the reader can refuse an asked assembly no record
+reaches. The editor's results and log go to `OUTPUT/results`, where the workflow's provenance checks
+read them. An `OUTPUT` that already
 holds anything is refused: the package clears its own folder's `.xml` files when a run starts and
 numbers from zero again, so a second run's files would take names whose copies the first run left, and
 be passed over.
@@ -37,7 +39,9 @@ import threading
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "test_quality"))
 import licensed_editor  # noqa: E402
+import unique_coverage  # noqa: E402
 
 PACKAGE = "com.unity.testtools.codecoverage"
 PINNED_PACKAGE = "1.3.0"
@@ -169,6 +173,8 @@ def main(argv, run=licensed_editor.run_licensed, poll=POLL):
 
     coverage, per_case, results = output / "coverage", output / "per-case", output / "results"
     results.mkdir(parents=True, exist_ok=True)
+    per_case.mkdir(parents=True)
+    (per_case / unique_coverage.ASKED).write_text("".join(name + "\n" for name in assemblies))
 
     stop = threading.Event()
     watcher = threading.Thread(target=watch, args=(coverage, per_case, stop, poll), daemon=True)

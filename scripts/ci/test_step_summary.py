@@ -169,9 +169,11 @@ class MainTests(unittest.TestCase):
         self.assertLessEqual(size(out.getvalue()), summary.LIMIT_BYTES + 1)
 
 
-# One shell command naming the summary is bounded only where it is step_summary.py writing straight to it.
-# Any other command naming it is reported, an assignment of it to a variable included, so a summary
-# reached through another name is refused rather than followed.
+# Each line is cut at every `;`, `&&`, `||` and `|`, quoted or not, and a piece naming the summary passes
+# only where it is step_summary.py writing straight to it; any other piece naming it is reported, an
+# assignment of it to a variable included. A line is all it reads, so three shapes can pass: a command a
+# `\` carries onto the next line, a separator inside quotes, and a summary reached without its name on
+# the line, as a heredoc's script reaching it through `os.environ` would.
 SUMMARY_COMMAND_SEPARATOR = re.compile(r"\s*(?:;|&&|\|\||\|)\s*")
 BOUNDED_APPEND = re.compile(
     r'^(?:-\s*)?(?:run:\s*)?python3 scripts/ci/step_summary\.py (?:verdict|block|plain) .*'
@@ -179,7 +181,8 @@ BOUNDED_APPEND = re.compile(
 
 
 def unbounded_appends(line):
-    """Each command on `line` that names the job summary and is not step_summary.py appending to it."""
+    """Each piece of `line`, cut as above, that names the job summary and is not step_summary.py
+    appending to it."""
     return [command for command in SUMMARY_COMMAND_SEPARATOR.split(line.strip())
             if "GITHUB_STEP_SUMMARY" in command and not BOUNDED_APPEND.match(command)]
 

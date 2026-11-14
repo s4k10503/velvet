@@ -198,18 +198,19 @@ class SplitJobTests(unittest.TestCase):
 # stay under: the runner's own agent and the daemon share the rest.
 RUNNER_MEMORY_GIB = 16
 EDITOR_IMAGE = "unityci/editor:"
+DOCKER_RUN = re.compile(r"docker (?:container )?run ")
 # A floor under the suite launches read rather than their count, since a reading that found none holds
 # every limit.
 SUITE_LAUNCH_FLOOR = 4
 
 
 def docker_commands(text):
-    """Each `docker run` command a workflow's text spells, its continuation lines joined."""
+    """Each `docker run` or `docker container run` a workflow's text spells, continuation lines joined."""
     lines = text.splitlines()
     for index, line in enumerate(lines):
-        if line.lstrip().startswith("#") or "docker run " not in line:
+        if line.lstrip().startswith("#") or not DOCKER_RUN.search(line):
             continue
-        parts, at = [line.split("docker run ", 1)[1]], index
+        parts, at = [DOCKER_RUN.split(line, 1)[1]], index
         while parts[-1].rstrip().endswith("\\") and at + 1 < len(lines):
             at += 1
             parts.append(lines[at])
@@ -217,9 +218,13 @@ def docker_commands(text):
 
 
 def suite_launches():
-    """(workflow text, the flags ahead of the image) for each `docker run` of the editor image in any
-    workflow that runs a suite: every one but a launch handing licensed_editor.py an editor command line
-    without -runTests, which runs no case."""
+    """(workflow text, the flags ahead of the image) for each launch `docker_commands` reads that
+    spells the editor image, in any workflow, but one handing licensed_editor.py an editor command line
+    that spells no -runTests, which is read as running no case.
+
+    What a launch does not spell is not read: one naming the image through a variable is left out, and
+    so is a suite run through `-executeMethod` or a `-runTests` held in a variable.
+    """
     found = []
     for path in sorted(item for pattern in ("*.yml", "*.yaml")
                        for item in (REPO_ROOT / ".github/workflows").glob(pattern)):
@@ -245,6 +250,22 @@ def memory_gibibytes(text, flags):
         value = declared.group(1) if declared else ""
     found = re.fullmatch(r"([0-9]+)g", value)
     return int(found.group(1)) if found else None
+
+
+class DockerCommandTests(unittest.TestCase):
+
+    # GREEN_ON_BASE(construction): the reading under test is this file's own helper, which a base run
+    # takes from the branch. Replacing `r"docker (?:container )?run "` with `r"docker run "` is what
+    # reddens this case.
+    def test_Given_ALaunchSpelledAsDockerContainerRun_When_TheWorkflowIsRead_Then_ItIsAmongTheCommands(self):
+        # Arrange
+        text = 'docker container run --rm \\\n  "unityci/editor:x" python3 -u scripts/ci/per_case_coverage.py\n'
+
+        # Act
+        commands = list(docker_commands(text))
+
+        # Assert
+        self.assertEqual(commands, ['--rm "unityci/editor:x" python3 -u scripts/ci/per_case_coverage.py'])
 
 
 class RunnerLimitTests(unittest.TestCase):

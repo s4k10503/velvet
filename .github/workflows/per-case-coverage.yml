@@ -64,6 +64,10 @@ jobs:
         env:
           DEFAULT_REF: refs/heads/${{ github.event.repository.default_branch }}
         run: |
+          if [ "$DEFAULT_REF" = "refs/heads/" ]; then
+            echo "::error::the event names no default branch, so whether this run is on it cannot be told"
+            exit 1
+          fi
           if [ "$GITHUB_REF" = "$DEFAULT_REF" ]; then
             echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
           else
