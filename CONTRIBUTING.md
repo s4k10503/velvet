@@ -1381,7 +1381,7 @@ benchmark that throws fails the run like any other test. No job fails on a numbe
   refreshes with the next docs deployment, so it can trail the newest entry by a merge, and the site
   lacks the page until `main` has recorded a first entry and a docs deployment has followed.
 - `regressions` runs after `trend-main`, on `main` in this repository alone, reads the whole history back
-  from the branch and files the steps up it finds (below) as issues labelled `performance` and `bug` and
+  from the branch and files the steps up and the drifts it finds (below) as issues labelled `performance` and `bug` and
   assigned to s4k10503 (`scripts/ci/benchmark_steps.py`, held by `scripts/ci/test_benchmark_steps.py`).
   Its concurrency group runs one at a time, and it lists the issues through the REST issues endpoint,
   because `gh issue list --label` reads them through search.
@@ -1428,9 +1428,24 @@ order their entries were appended:
 - Entries written before the processor was recorded carry none, so times are read from the first runs
   that do and counts from the whole history.
 
+A rise that arrives as smaller steps can file none, since each of its runs is measured against the
+slowest of the five before it on its model. What `regressions` reads as a drift is the second rule,
+and it reads times alone, from the runs that record their processor:
+
+- **A time drifts** when, on at least two processor models, the median of a model's latest five runs is
+  at least 1.3 times the median of its earliest five in the last 30 days of the history, counting a model
+  only where it ran at least ten times in them, over at least 14 days. Where the benchmark stepped up in
+  those 30 days, the runs compared start at its latest step's first slow run, so a drift repeats no rise
+  a step names.
+- The drifts one run finds that no issue names go into one new issue, under a marker of their own that
+  holds the benchmark and the latest run's commit. An issue labelled `performance` names a drift, open or
+  closed and whoever opened it, when its marker's commit is an entry of the history that landed no
+  earlier than the first run the drift compares. The job never rewrites a drift issue and never closes
+  one.
+
 Given a `data.js` and `--replay`, `scripts/ci/benchmark_steps.py` syncs every prefix of that history in
-turn against issues it keeps in memory and prints what it opened, which is how a change to the rule is
-measured before it ships.
+turn against issues it keeps in memory and prints what it opened, which is how a change to either rule
+is measured before it ships.
 
 The two trend jobs flag a median above 150% of the previous entry in the summary and neither fails: CI
 runners' timings are noisy enough that a gate would be a coin flip. A run of this workflow is a run for
