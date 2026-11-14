@@ -256,7 +256,7 @@ namespace Velvet.Tests
         }
 
         [TestFixture]
-        internal sealed class UIToolkitOnly
+        internal sealed class UIToolkitOnlyPortals
         {
             // GREEN_ON_BASE(characterization): on the UI renderer's own fixture the base runs the row's effects first.
             [Test]

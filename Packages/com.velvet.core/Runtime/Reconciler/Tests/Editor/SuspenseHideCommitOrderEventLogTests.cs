@@ -10,9 +10,9 @@ namespace Velvet.Tests
     /// string: React 19's <c>disappearLayoutEffects</c> walks the hidden tree in pre-order, running a component's
     /// layout cleanups as it reaches the component and detaching an element's ref as it reaches the element. A
     /// Suspense removed while it hides that tree runs the tree's insertion cleanups ahead of its fallback's, and none
-    /// of the layout cleanups the hide ran. react-reconciler 19.1's deletion walk (<c>commitDeletionEffectsOnFiber</c>)
-    /// runs those insertion cleanups only under its <c>enableHiddenSubtreeInsertionEffectCleanup</c> flag, which its
-    /// default flags (<c>packages/shared/ReactFeatureFlags.js</c>) leave off.
+    /// of the layout cleanups the hide ran, as react-reconciler's deletion walk (<c>commitDeletionEffectsOnFiber</c>)
+    /// does from 19.2, which turned <c>enableHiddenSubtreeInsertionEffectCleanup</c> on. 19.1's default flags leave
+    /// it off, and its walk skips those insertion cleanups.
     /// </summary>
     [TestFixtureSource(typeof(EventLogRenderer), nameof(EventLogRenderer.All))]
     internal sealed class SuspenseHideCommitOrderEventLogTests

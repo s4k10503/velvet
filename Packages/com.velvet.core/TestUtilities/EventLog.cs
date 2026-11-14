@@ -11,7 +11,7 @@ namespace Velvet.TestUtilities
     /// <remarks>
     /// A tree reaches its log through <see cref="Provide"/> at the root rather than through a static, so no
     /// fixture's entries reach another's. The probes never read the host tree, the instance a ref callback is
-    /// handed included, so that a case moves to another renderer by its mount line alone.
+    /// handed included.
     /// </remarks>
     public sealed class EventLog
     {

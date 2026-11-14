@@ -11387,6 +11387,20 @@ class FixtureTraceTests(unittest.TestCase):
         self.assertEqual(sorted(traced or {}), [relative])
 
 
+class KillingCaseNameTests(unittest.TestCase):
+    """How a lapsed kill names the case that killed it."""
+
+    def test_Given_ACaseOfAFixtureGivenArguments_When_Shortened_Then_ItIsItsClassAndMethod(self):
+        # Arrange -- the runner names the fixture with its arguments, ahead of the method.
+        case = "Velvet.Tests.ProbeTests(UIToolkit).Given_A_When_B_Then_Probe"
+
+        # Act
+        short = mutation_check.short_case(case)
+
+        # Assert
+        self.assertEqual(short, "ProbeTests.Given_A_When_B_Then_Probe")
+
+
 class KillStandingTests(unittest.TestCase):
     """Whether a recorded kill still stands: every way the tree can have moved under it."""
 

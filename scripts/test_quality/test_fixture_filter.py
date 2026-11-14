@@ -510,7 +510,7 @@ class FixtureFilterTests(unittest.TestCase):
     # GREEN_ON_BASE(characterization): the base refuses every fixture given arguments, this one among them.
     # Drop the `TestFixtureData` refusal from `Tree.spelling` and this prints a value.
     def test_Given_AFixtureSourceBuildingFixtureData_When_ItsValueIsTaken_Then_NoValueIsPrinted(self):
-        # Arrange -- fixture data is the one shape of source this reads nothing of.
+        # Arrange -- the name a `TestFixtureData` gives the fixture it builds is read by nothing here.
         project = self.project({
             "Packages/com.velvet.core/TestUtilities/Renderers.cs": source(
                 "    internal static class Renderers\n    {\n"

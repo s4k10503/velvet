@@ -4526,7 +4526,7 @@ def measured_entry(mutant, project, index, text_readers, run):
 
 
 def short_case(case):
-    return ".".join(CASE_NAME.match(case).group(1).split(".")[-2:])
+    return ".".join(CASE_NAME.match(fixture_arguments_after_row(case)).group(1).split(".")[-2:])
 
 
 def kill_problem(record, mutant, project, index):

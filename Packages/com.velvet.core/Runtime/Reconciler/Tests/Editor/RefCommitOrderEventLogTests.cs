@@ -87,7 +87,7 @@ namespace Velvet.Tests
 
         // GREEN_ON_BASE(characterization): the base detaches the old ref first and attaches the new one in post-order.
         [Test]
-        public void Given_AnElementAfterASiblingComponent_When_ItsRefCallbackIsSwapped_Then_TheOldDetachesWithTheMutationsAndTheNewAttachesAtItsPostOrderSlot()
+        public void Given_AnElementAfterASiblingComponent_When_ItsRefCallbackIsSwapped_Then_TheOldDetachesAheadOfTheOwnersInsertionEffectAndTheNewAttachesBetweenTheirLayoutSetups()
         {
             // Arrange
             var log = new EventLog();
@@ -159,7 +159,7 @@ namespace Velvet.Tests
         }
 
         [TestFixture]
-        internal sealed class UIToolkitOnly
+        internal sealed class UIToolkitOnlyRefs
         {
             // GREEN_ON_BASE(characterization): the base holds a parked pass's ref cleanups and setups until it completes.
             [Test]

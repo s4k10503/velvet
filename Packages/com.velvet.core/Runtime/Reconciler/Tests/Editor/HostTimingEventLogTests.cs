@@ -100,10 +100,11 @@ namespace Velvet.Tests
         private static VNode DropsASibling(Captured removed)
         {
             var (shown, _) = EventLog.UseState("Shown", true);
+            // A cleanup, so that React detaches this ref by calling it, and the case reads the removal alone.
             var capture = Hooks.UseCallback<Func<VisualElement, Action>>(element =>
             {
                 removed.Element = element;
-                return null;
+                return () => { };
             }, Array.Empty<object>());
             return V.Div(children: new VNode?[]
             {

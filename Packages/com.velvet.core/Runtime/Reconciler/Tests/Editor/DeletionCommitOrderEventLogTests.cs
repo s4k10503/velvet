@@ -707,7 +707,7 @@ namespace Velvet.Tests
         }
 
         [TestFixture]
-        internal sealed class UIToolkitOnly
+        internal sealed class UIToolkitOnlyDeletions
         {
             [TearDown]
             public void TearDown() => RuntimeStateProbe.ClearPortalRegistry();
