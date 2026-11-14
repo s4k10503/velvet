@@ -304,6 +304,10 @@ Velvet is a personal, single-maintainer project. Contributions are welcome on a 
 basis — see [CONTRIBUTING.md](CONTRIBUTING.md). If you need it to move faster than one
 maintainer can keep up with, forking is encouraged (it's MIT).
 
+The benchmark trend on `main` is charted at <https://s4k10503.github.io/velvet/dev/bench/>. It is for
+spotting a regression between commits, not for absolute numbers;
+[CONTRIBUTING.md ▸ Benchmarks](CONTRIBUTING.md#benchmarks) says how it is measured.
+
 ## License
 
 [MIT](LICENSE) © s4k10503
