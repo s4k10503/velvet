@@ -7,6 +7,7 @@ Run: python3 scripts/pr/test_maintenance_line.py
 """
 
 import ast
+import json
 import shutil
 import subprocess
 import sys
@@ -287,6 +288,104 @@ class ReadTests(unittest.TestCase):
         # Assert
         self.assertEqual([body.strip() for _, _, body in reading.commits],
                          ["BREAKING CHANGE: the knob is gone"])
+
+
+RELEASED_MAJOR = """# Changelog
+
+## [Unreleased]
+
+## [Unreleased — breaking]
+
+## [3.0.0] - 2026-11-14
+
+- A change.
+"""
+
+
+class MaintainedTests(unittest.TestCase):
+    """`origin/main` declaring 3.0.0, with nothing waiting in its breaking section."""
+
+    def setUp(self):
+        self.root = Path(tempfile.mkdtemp(prefix="velvet-maintained-"))
+        self.addCleanup(shutil.rmtree, self.root, ignore_errors=True)
+        origin, self.project = self.root / "origin.git", self.root / "project"
+        subprocess.run(["git", "init", "-q", "--bare", str(origin)], check=True, timeout=60)
+        subprocess.run(["git", "init", "-q", "-b", "main", str(self.project)], check=True,
+                       timeout=60)
+        git(self.project, "remote", "add", "origin", str(origin))
+        self.write("Packages/com.velvet.core/package.json",
+                   json.dumps({"name": "com.velvet.core", "version": "3.0.0"}))
+        self.write("Packages/com.velvet.core/CHANGELOG.md", RELEASED_MAJOR)
+
+    def write(self, path, text):
+        (self.project / path).parent.mkdir(parents=True, exist_ok=True)
+        (self.project / path).write_text(text, encoding="utf-8")
+
+    def maintained(self):
+        git(self.project, "add", "-A")
+        git(self.project, "commit", "-q", "-m", "chore(velvet): the state under test")
+        git(self.project, "push", "-q", "origin", "main")
+        return maintenance_line.maintained(self.project)
+
+    def test_Given_MainAtAReleasedMajorWithNothingBreakingWaiting_When_Read_Then_TheSeriesBeforeIsMaintained(self):
+        # Act
+        kept = self.maintained()
+
+        # Assert
+        self.assertEqual(kept, "2.x")
+
+    def test_Given_MainHoldingABreakingEntry_When_Read_Then_ItsOwnSeriesIsMaintained(self):
+        # Arrange
+        self.write("Packages/com.velvet.core/CHANGELOG.md", RELEASED_MAJOR.replace(
+            "## [Unreleased — breaking]\n", "## [Unreleased — breaking]\n\n### Removed\n\n- The knob.\n"))
+
+        # Act
+        kept = self.maintained()
+
+        # Assert
+        self.assertEqual(kept, "3.x")
+
+    def test_Given_MainHoldingABreakingFragment_When_Read_Then_ItsOwnSeriesIsMaintained(self):
+        # Arrange
+        self.write(maintenance_line.BREAKING_FRAGMENTS + "/topic.md", "### Removed\n\n- The knob.\n")
+
+        # Act
+        kept = self.maintained()
+
+        # Assert
+        self.assertEqual(kept, "3.x")
+
+    def test_Given_MainsPackageDeclaringNoVersion_When_Read_Then_ItRaisesRatherThanNamingALine(self):
+        # Arrange
+        self.write("Packages/com.velvet.core/package.json", json.dumps({"name": "com.velvet.core"}))
+
+        # Act / Assert
+        with self.assertRaises(maintenance_line.UNREAD):
+            self.maintained()
+
+
+class UnmaintainedTests(unittest.TestCase):
+    def test_Given_ALineMainHasMovedPast_When_Asked_Then_TheMessageSaysSecuritysTableMovesWithIt(self):
+        # Act
+        said = maintenance_line.unmaintained("2.x", "3.x")
+
+        # Assert
+        self.assertIn("SECURITY.md's supported-versions table is updated in the same change that "
+                      "ends 2.x", said or "")
+
+    def test_Given_MainsOwnSeries_When_Asked_Then_ItIsNotTheMaintainedLine(self):
+        # Act
+        said = maintenance_line.unmaintained("3.x", "2.x")
+
+        # Assert
+        self.assertIn("3.x is not the line main maintains, which is 2.x", said or "")
+
+    def test_Given_TheMaintainedLine_When_Asked_Then_NothingIsSaid(self):
+        # Act
+        said = maintenance_line.unmaintained("2.x", "2.x")
+
+        # Assert
+        self.assertIsNone(said)
 
 
 # A line's name spelled into a string: an escaped dot or a bracketed one before the `x`, or an `x`

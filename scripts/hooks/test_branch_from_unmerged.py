@@ -280,5 +280,68 @@ class UnreadHeadTests(unittest.TestCase):
                          (ALLOWED, None))
 
 
+class LineCutTests(unittest.TestCase):
+    """`origin/main` declaring 3.0.0 with nothing breaking waiting, so the line it maintains is 2.x
+    and 3.x is its own series. Each creation names a start point, which the guard allows on its own,
+    and a push is read for its line alone, so a refusal here is the line's."""
+
+    def setUp(self):
+        self.root = Path(tempfile.mkdtemp(prefix="velvet-line-cut-"))
+        self.addCleanup(shutil.rmtree, self.root, ignore_errors=True)
+        origin, self.project = self.root / "origin.git", self.root / "project"
+        subprocess.run(["git", "init", "-q", "--bare", str(origin)], check=True, timeout=60)
+        subprocess.run(["git", "init", "-q", "-b", "main", str(self.project)], check=True,
+                       timeout=60)
+        git(self.project, "remote", "add", "origin", str(origin))
+        package = self.project / "Packages/com.velvet.core/package.json"
+        package.parent.mkdir(parents=True)
+        package.write_text(json.dumps({"name": "com.velvet.core", "version": "3.0.0"}))
+        (package.parent / "CHANGELOG.md").write_text(
+            "# Changelog\n\n## [Unreleased]\n\n## [3.0.0] - 2026-11-14\n\n- A change.\n")
+        git(self.project, "add", "-A")
+        commit(self.project, "chore(velvet): release v3.0.0")
+        git(self.project, "push", "-q", "origin", "main")
+
+    def ask(self, command):
+        event = {"tool_name": "Bash", "cwd": str(self.project), "tool_input": {"command": command}}
+        environment = dict(os.environ, HOME=str(self.root))
+        return subprocess.run([sys.executable, "-B", str(HOOK)], input=json.dumps(event),
+                              capture_output=True, text=True, env=environment, timeout=120)
+
+    def test_Given_MainsOwnSeries_When_ItsLineIsCreated_Then_ItIsRefused(self):
+        # Act
+        result = self.ask("git branch 3.x origin/main")
+
+        # Assert
+        self.assertIn("3.x is not the line main maintains, which is 2.x",
+                      result.stderr if result.returncode == REFUSED else "")
+
+    def test_Given_MainsOwnSeries_When_ItsLineIsPushed_Then_ItIsRefused(self):
+        # Act
+        result = self.ask("git push origin origin/main:refs/heads/3.x")
+
+        # Assert
+        self.assertIn("3.x is not the line main maintains, which is 2.x",
+                      result.stderr if result.returncode == REFUSED else "")
+
+    # GREEN_ON_BASE(characterization): the base lets a named start point through whatever its name.
+    # What it pins is that the line main maintains is not refused: refusing every line reddens it.
+    def test_Given_TheLineMainMaintains_When_ItIsCreated_Then_ItIsAllowed(self):
+        # Act
+        result = self.ask("git branch 2.x origin/main")
+
+        # Assert
+        self.assertEqual(result.returncode, ALLOWED)
+
+    # GREEN_ON_BASE(characterization): the base reads no push at all, so it lets this one through.
+    # What it pins is that deleting a line is no push to one: reading `--delete` as one reddens it.
+    def test_Given_MainsOwnSeries_When_ItsLineIsDeleted_Then_ItIsAllowed(self):
+        # Act
+        result = self.ask("git push origin --delete 3.x")
+
+        # Assert
+        self.assertEqual(result.returncode, ALLOWED)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

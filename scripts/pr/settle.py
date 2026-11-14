@@ -54,9 +54,10 @@ Twelve preconditions:
   owns which heads those are. Nor is a head carrying commits of a line that its base lacks, which a
   squash would land without the line entering the base's ancestry; `maintenance_line.carried` reads
   those.
-- **A pull request onto a maintenance line carries no commit `main` holds that the line does not,
-  no `feat` or breaking title or commit, and no breaking fragment**, and no base or head is named
-  like a line without being one. `maintenance_line.py` owns those readings.
+- **A pull request onto a maintenance line lands only on the line `main` maintains, and carries no
+  commit `main` holds that the line does not, no `feat` or breaking title or commit, and no breaking
+  fragment**, and no base or head is named like a line without being one. `maintenance_line.py`
+  owns those readings.
 - **A stack member merges only once every member below it has merged, and while its stack is
   linear on its base.** It goes through the asynchronous endpoint, which GitHub documents as merging
   every member below the one asked for as well, and nothing here read their checks; and GitHub
@@ -743,6 +744,15 @@ def line_reading(project, line, sha):
                            f"{git_said(failure)}")
 
 
+def line_maintained(project):
+    """`maintenance_line.maintained` off origin/main, raising as `line_reading` does."""
+    try:
+        return maintenance_line.maintained(project)
+    except maintenance_line.UNREAD as failure:
+        raise RuntimeError(f"which line origin/main maintains could not be read: "
+                           f"{git_said(failure)}")
+
+
 def line_carried(project, base, sha):
     """`maintenance_line.carried` for `sha` onto origin/<base>, raising as `line_reading` does."""
     try:
@@ -836,7 +846,9 @@ def blocking_reasons(project, number, base=None, states=None, previous=()):
                                  stack_settings=stack_settings(project) if stack else None,
                                  stack_tangles=stack_tangles(project, target, members),
                                  line_pull_request=maintenance_line.pull_request_reasons(
-                                     target, before.branch, before.title),
+                                     target, before.branch, before.title,
+                                     line_maintained(project)
+                                     if maintenance_line.is_line(target) else None),
                                  line_head=line_head, line_squash=line_squash),
                     after, before.branch, results, target, before.sha, held,
                     # Read at `before`, so a moved head has none, as its reasons have none.

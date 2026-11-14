@@ -183,8 +183,14 @@ def refuse_one(cwd, pr, merge_commit=False):
         return UNREADABLE_REFUSAL.format(
             f"the newest release commit on {target.base} could not be read")
 
+    kept = None
+    if onto_line:
+        try:
+            kept = maintenance_line.maintained(cwd)
+        except maintenance_line.UNREAD:
+            return UNREADABLE_REFUSAL.format("which line origin/main maintains could not be read")
     said = [f"{label}: {reason}.\n" for reason in
-            maintenance_line.pull_request_reasons(target.base, target.head, target.title)]
+            maintenance_line.pull_request_reasons(target.base, target.head, target.title, kept)]
     if onto_line:
         try:
             reading = maintenance_line.read(cwd, target.base, target.commit, GIT_TIMEOUT)

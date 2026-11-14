@@ -93,6 +93,17 @@ def commit(project, message, changelog=None):
     return git(project, "rev-parse", "HEAD")
 
 
+PACKAGE = "Packages/com.velvet.core/package.json"
+
+
+def package(project, version):
+    """Stage a package declaring `version`, for the next commit."""
+    (project / PACKAGE).parent.mkdir(parents=True, exist_ok=True)
+    (project / PACKAGE).write_text(json.dumps({"name": "com.velvet.core", "version": version}),
+                                   encoding="utf-8")
+    git(project, "add", PACKAGE)
+
+
 def released(*versions):
     """A CHANGELOG with an open section over each of `versions`, closed, newest first."""
     return "# Changelog\n\n## [Unreleased]\n\n" + "".join(
@@ -121,6 +132,8 @@ class UncheckedAgainstBaseTests(unittest.TestCase):
         subprocess.run(["git", "init", "-q", "-b", "main", str(self.project)], check=True,
                        timeout=60)
         git(self.project, "remote", "add", "origin", str(origin))
+        # The series whose maintained line is 2.x, which the cases onto 2.x read off main.
+        package(self.project, "3.0.0")
         self.fork_point = commit(self.project, "release 1.0.0", released("1.0.0"))
         git(self.project, "branch", "topic")
         self.tip = commit(self.project, "main moves on")
@@ -315,6 +328,34 @@ class UncheckedAgainstBaseTests(unittest.TestCase):
 
         # Assert
         self.assertIn(f"of main that 2.x does not hold, starting with {self.tip[:7]}",
+                      result.stderr if result.returncode == REFUSED else "")
+
+    def test_Given_AFixOntoALineMainHasMovedPast_When_TheMergeIsAsked_Then_ItIsRefused(self):
+        # Arrange — main moves on to 4.0.0, so the line it maintains is 3.x.
+        package(self.project, "4.0.0")
+        commit(self.project, "chore(velvet): release v4.0.0")
+        git(self.project, "push", "-q", "origin", "main")
+        pulls = self.onto_a_line(self.fork_point, title="fix(velvet): a fix")
+
+        # Act
+        result = self.ask(self.green(), pulls=pulls)
+
+        # Assert
+        self.assertIn("2.x is no longer maintained: the one line is 3.x",
+                      result.stderr if result.returncode == REFUSED else "")
+
+    def test_Given_AFixOntoALineForMainsOwnSeries_When_TheMergeIsAsked_Then_ItIsRefused(self):
+        # Arrange — main declares 3.0.0 and holds nothing breaking, so 3.x is main's own series.
+        git(self.project, "push", "-q", "origin", f"{self.fork_point}:refs/heads/3.x",
+            f"{self.fork_point}:refs/heads/backport")
+        pulled = pull("backport", "3.x", self.fork_point)
+        pulled["title"] = "fix(velvet): a fix"
+
+        # Act
+        result = self.ask(self.green(), pulls={"7": pulled})
+
+        # Assert
+        self.assertIn("3.x is not the line main maintains, which is 2.x",
                       result.stderr if result.returncode == REFUSED else "")
 
     def forward_merge(self):

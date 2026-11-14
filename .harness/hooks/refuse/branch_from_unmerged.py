@@ -11,6 +11,9 @@ each miss is silent: exit 0 and no output is what a guard with nothing to say lo
 `BranchGuardParsingTests` holds the table of what is and is not a creation for `checkout`, `switch`
 and `branch`; `scripts/hooks/test_branch_from_unmerged.py` holds it for `git worktree add`, whose
 start point is a positional beside the path rather than the token after the flag.
+
+It also refuses creating a maintenance line, or pushing to one, that `main` does not maintain, from
+whatever start point; `scripts/pr/maintenance_line.py` decides which line that is.
 """
 
 import json
@@ -22,6 +25,9 @@ from deferrals import DEFERRALS_OPERAND, deferred, disowned, unusable
 from repository import git_answer
 from shell_commands import (NAME_THE_TREE, UNPLACEABLE_MOVE, UNRESOLVED_CD, command_directory,
                             command_segments, git_invocation, tokens_of, without_redirections)
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts" / "pr"))
+import maintenance_line  # noqa: E402
 
 
 HOOK_TOOLS = {"Bash"}
@@ -128,6 +134,53 @@ def created_by_worktree(operands):
     if not name or unborn:
         return None
     return name, positionals[1] if len(positionals) > 1 else None
+
+
+PUSH_VALUE_FLAGS = {"-o", "--push-option", "--repo", "--receive-pack", "--exec"}
+PUSH_DELETES = {"-d", "--delete"}
+
+
+def pushed_lines(command):
+    """Every line a `git push` in this command names as a destination, as (line, -C directory). A
+    deletion names none."""
+    found = []
+    for segment in command_segments(command):
+        invocation = git_invocation(without_redirections(tokens_of(segment)))
+        if not invocation or invocation[1] != "push":
+            continue
+        directory, _, operands = invocation
+        if any(token in PUSH_DELETES for token in operands):
+            continue
+        positionals, index = [], 0
+        while index < len(operands):
+            if operands[index].startswith("-"):
+                index += 2 if operands[index] in PUSH_VALUE_FLAGS else 1
+                continue
+            positionals.append(operands[index])
+            index += 1
+        for refspec in positionals[1:]:
+            source, colon, destination = refspec.lstrip("+").partition(":")
+            if colon and not source:
+                continue
+            name = (destination if colon else source).removeprefix("refs/heads/")
+            if maintenance_line.is_line(name):
+                found.append((name, directory))
+    return found
+
+
+def line_refusal(cwd, name):
+    """The refusal text for creating or pushing the line `name` in `cwd`, or None when main
+    maintains it."""
+    try:
+        kept = maintenance_line.maintained(cwd)
+    except maintenance_line.UNREAD as failure:
+        return (f"Refusing to create or push `{name}`: which line main maintains could not be read "
+                f"off origin/main.\n\n  {failure}")
+    why = maintenance_line.unmaintained(name, kept)
+    if why is None:
+        return None
+    return (f"Refusing to create or push `{name}`: {why}.\n\nCut or push {kept} instead, and give a "
+            f"branch that is not a line a name that is not one.")
 
 
 def creations(command):
@@ -282,7 +335,9 @@ def main():
 
     command = event.get("tool_input", {}).get("command", "")
     made = creations(command)
-    if not made:
+    lines = [(name, directory) for name, _, directory in made
+             if maintenance_line.is_line(name)] + pushed_lines(command)
+    if not made and not lines:
         return 0
 
     cwd = command_directory(command, event.get("cwd") or ".")
@@ -290,7 +345,10 @@ def main():
         sys.stderr.write("Refusing this branch creation: which tree it would branch in could not "
                          f"be read.\n\n{UNPLACEABLE_MOVE}\n\n{NAME_THE_TREE}\n")
         return 2
-    refusals = []
+    # Apart from the deferrals below, which release a creation stacked on unmerged work and not a
+    # line main does not maintain.
+    refusals = [text for text in (line_refusal(directory or cwd, name) for name, directory in lines)
+                if text]
     # Every creation in the command is evaluated. Consulting only the first let an undeferred
     # creation chained after a deferred one through on the deferral meant for the other name.
     for name, start_point, directory in made:

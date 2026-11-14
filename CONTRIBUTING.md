@@ -1773,10 +1773,11 @@ next major is built. **One line is maintained at a time — the series immediate
 
 **The line takes fixes, and the CI its own pull requests need. It does not take features.**
 `settle.py merge` — and so the automerge workflow, which runs `main`'s copy whatever the base — and
-`merge_unchecked_against_base.py` refuse a pull request onto a line that carries a commit `main`
-holds and the line does not, a `feat` or breaking title or commit, or a breaking fragment, and a base
-or head named like a line without being one — a branch the session-start report names on `origin`
-too; `scripts/pr/maintenance_line.py` owns that reading.
+`merge_unchecked_against_base.py` refuse a pull request onto a line other than the one `main`
+maintains, or onto a line with a commit `main` holds and the line does not, a `feat` or breaking
+title or commit, or a breaking fragment, and a base or head named like a line without being one — a
+branch the session-start report names on `origin` too; `branch_from_unmerged.py` refuses creating or
+pushing a line `main` does not maintain, and `scripts/pr/maintenance_line.py` owns those readings.
 
 **The line is merged forward into `main`, not picked back out of it**, and a fix that lands there is
 owed a release. The first is not optional: a fix that stays on the line is one a branch cut from

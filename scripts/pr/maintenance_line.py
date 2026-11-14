@@ -8,6 +8,12 @@ their strings for one that does.
 import collections
 import re
 import subprocess
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "release"))
+import published_check  # noqa: E402
+import release_notes  # noqa: E402
 
 MAIN = "main"
 
@@ -35,6 +41,36 @@ def is_line(branch):
 def lookalike(branch):
     """Whether `branch` is named like a line without being one."""
     return not is_line(branch) and bool(LOOKALIKE.fullmatch(branch or ""))
+
+
+# What `maintained` raises where the tree at its revision cannot be read for an answer.
+UNREAD = (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError, ValueError,
+          release_notes.ReleaseNotesError)
+
+
+def maintained(cwd, rev=f"origin/{MAIN}"):
+    """The one line the tree at `rev` maintains: the series before main's, which is its package's
+    major, and the next major while its CHANGELOG holds a breaking entry. Raises one of `UNREAD`."""
+    version = published_check.declared_version(
+        published_check.read_at(cwd, rev, published_check.PACKAGE_JSON_PATH))
+    if not isinstance(version, str) or not version.split(".")[0].isdigit():
+        raise ValueError(f"the package at {rev} declares no version: {version!r}")
+    building = int(version.split(".")[0]) + bool(published_check.section_entries(
+        published_check.changelog_at(cwd, rev), release_notes.BREAKING_SECTION))
+    return f"{building - 1}.x"
+
+
+def unmaintained(line, kept):
+    """Why `line` is not the line `kept`, `maintained`'s answer, or None where it is."""
+    if not is_line(line) or line == kept:
+        return None
+    if int(line.split(".")[0]) < int(kept.split(".")[0]):
+        return (f"{line} is no longer maintained: the one line is {kept}, the series before main's. "
+                f"The line moves when main starts building its next major, and SECURITY.md's "
+                f"supported-versions table is updated in the same change that ends {line} ({SECTION})")
+    return (f"{line} is not the line main maintains, which is {kept}: a line is the series before "
+            f"main's, and {line} becomes it once main holds a breaking entry for the major after "
+            f"{line.split('.')[0]} ({SECTION})")
 
 
 def refused_subject(subject, body=""):
@@ -105,13 +141,17 @@ def _counted(found, noun):
     return f"{len(found)} {noun}{'' if len(found) == 1 else 's'}"
 
 
-def pull_request_reasons(base, branch, title):
+def pull_request_reasons(base, branch, title, kept=None):
     """The reasons a pull request from `branch` onto `base` does not land, read off its names and
-    title, each naming its way out."""
+    title and, where `kept` is `maintained`'s answer, which line main maintains, each naming its way
+    out."""
     found = [f"its {role} {name} is named like a maintenance line and is not one: a line is "
              f"`<major>.x`, and any other branch takes a name that is not a version, as "
              f"`release/2.1.1` did ({SECTION})"
              for role, name in (("base", base), ("head", branch)) if lookalike(name)]
+    why = unmaintained(base, kept) if kept else None
+    if why:
+        found.append(f"{why}. Retarget it onto {kept} or {MAIN}")
     if is_line(base) and refused_subject(title):
         found.append(f"its title `{title}` is a feature or a breaking change, and {base} takes "
                      f"neither: a fix is titled as one, and the rest lands on {MAIN} ({SECTION})")
