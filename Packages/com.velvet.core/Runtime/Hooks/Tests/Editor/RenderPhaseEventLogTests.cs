@@ -95,6 +95,48 @@ namespace Velvet.Tests
             return V.Div();
         }
 
+        private sealed record HeldChild(VNode Child);
+
+        [Component]
+        private static VNode HandsBackItsChild(HeldChild props)
+        {
+            var (value, _) = EventLog.UseState("Owner", 0);
+            EventLog.UseRender("Owner");
+            return V.Provider(Value, value, new[] { props.Child });
+        }
+
+        [Component]
+        private static VNode Between()
+        {
+            EventLog.UseRender("Between");
+            return V.Div(children: new VNode[] { V.Component(ContextReader) });
+        }
+
+        [Component]
+        private static VNode ContextReader()
+        {
+            EventLog.UseContext("Reader", Value);
+            return V.Div();
+        }
+
+        private sealed record Named(string Name);
+
+        [Component]
+        private static VNode Batched(Named props)
+        {
+            var (value, _) = EventLog.UseState(props.Name, 0);
+            EventLog.UseRender(props.Name, value);
+            EventLog.UseCommit(props.Name, value);
+            return V.Div();
+        }
+
+        [Component]
+        private static VNode BatchedSiblings()
+            => V.Fragment(
+                V.Component(Batched, new Named("A"), key: "a"),
+                V.Component(Batched, new Named("B"), key: "b"),
+                V.Component(Batched, new Named("C"), key: "c"));
+
         // GREEN_ON_BASE(characterization): through the renderer source the base's drain still renders the parent first.
         // The child was queued ahead of it in the same batch.
         [Test]
@@ -189,6 +231,50 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(log.ToString(), Is.EqualTo("render:Root render:Consumer=1"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base bails a child handed its own element and still renders its consumer.
+        // Have ComponentRegistry.ReconcileExistingFiber take a plain component's props as changed whatever node reaches it
+        // and `render:Between` joins the log.
+        [Test]
+        public void Given_AProviderOwnerHandingBackTheChildItWasGiven_When_TheValueChanges_Then_TheConsumerBelowThatChildRendersAndTheChildDoesNot()
+        {
+            // Arrange
+            var log = new EventLog();
+            using var mounted = _renderer.Mount(log.Provide(
+                V.Component(HandsBackItsChild, new HeldChild(V.Component(Between)))));
+            mounted.DrainForTest();
+            log.Clear();
+
+            // Act
+            log.Setter<int>("Owner").Invoke(1);
+            mounted.DrainForTest();
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("render:Owner ctx:Reader=1"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base renders the three siblings in one drain and commits them together.
+        // Have FiberBatchScheduler.Drain run its drain-end callback after each fiber it flushes and each commit follows its
+        // render.
+        [Test]
+        public void Given_ThreeSiblingsEachWithItsOwnState_When_AllThreeAreSetInOneBatch_Then_EachRendersOnceAndOneCommitShowsAllThree()
+        {
+            // Arrange
+            var log = new EventLog();
+            using var mounted = _renderer.Mount(log.Provide(V.Component(BatchedSiblings)));
+            mounted.DrainForTest();
+            log.Clear();
+
+            // Act
+            log.Setter<int>("A").Invoke(1);
+            log.Setter<int>("B").Invoke(1);
+            log.Setter<int>("C").Invoke(1);
+            mounted.DrainForTest();
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo(
+                "render:A=1 render:B=1 render:C=1 commit:A=1 commit:B=1 commit:C=1"));
         }
     }
 }
