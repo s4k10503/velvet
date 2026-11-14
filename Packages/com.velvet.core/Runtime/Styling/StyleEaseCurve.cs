@@ -321,7 +321,18 @@ namespace Velvet
 
         internal static void NoteClasses(VisualElement element, string[] classNames)
         {
-            var classed = StyleClassFamilies.Has(classNames, StyleClassFamily.EaseCurve);
+            var classed = false;
+            if (classNames != null)
+            {
+                foreach (var name in classNames)
+                {
+                    if (IsTimingToken(name))
+                    {
+                        classed = true;
+                        break;
+                    }
+                }
+            }
             if (!classed && !s_bindings.TryGetValue(element, out _))
             {
                 return;

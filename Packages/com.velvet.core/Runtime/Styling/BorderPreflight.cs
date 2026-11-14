@@ -1045,10 +1045,6 @@ namespace Velvet
         // those a field's surface takes for its input box.
         private static bool HasOwnBorderWidth(VisualElement element, string[] classNames)
         {
-            if (!StyleClassFamilies.Has(classNames, StyleClassFamily.BorderWidth))
-            {
-                return false;
-            }
             var control = StyleInputBoxSurface.IsControl(element);
             for (var i = 0; i < classNames.Length; i++)
             {

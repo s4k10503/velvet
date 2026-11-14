@@ -10,32 +10,34 @@ namespace Velvet
         None = 0,
         Gradient = 1u << 0,
         Animate = 1u << 1,
-        FilterTransition = 1u << 2,
-        EaseCurve = 1u << 3,
-        Skew = 1u << 4,
-        Shadow = 1u << 5,
-        BorderStyle = 1u << 6,
-        BorderWidth = 1u << 7,
-        Ring = 1u << 8,
-        Backdrop = 1u << 9,
-        ChildVariant = 1u << 10,
-        Gap = 1u << 11,
-        Grid = 1u << 12,
-        Divide = 1u << 13,
-        PointerEvents = 1u << 14,
-        Stacking = 1u << 15,
-        ZIndex = 1u << 16,
-        Order = 1u << 17,
+        Skew = 1u << 2,
+        Shadow = 1u << 3,
+        BorderStyle = 1u << 4,
+        Ring = 1u << 5,
+        Backdrop = 1u << 6,
+        ChildVariant = 1u << 7,
+        Gap = 1u << 8,
+        Grid = 1u << 9,
+        Divide = 1u << 10,
+        PointerEvents = 1u << 11,
+        Stacking = 1u << 12,
+        ZIndex = 1u << 13,
+        Order = 1u << 14,
     }
 
     // The families a class array's tokens feed, read once per array and kept by its identity, so the passes a
     // patch runs over one array answer their gates with a bit test instead of a scan each. A bit is set where its
-    // family's own token predicate holds for some token, so a gate reading it answers what a scan would.
-    // StyleClassFamiliesTests fails where a family's parse reads a corpus token its bit does not flag.
+    // family's own token predicate holds for some token. StyleClassFamiliesTests fails where a family's parse reads
+    // a corpus token its bit does not flag.
     //
-    // Keyed by identity, a reading holds only while the array's contents do, which the reconciler already
-    // depends on: ClassNameParseCache hands the same array back for the same string, and DiffClassList returns
-    // on an identical array without reading it.
+    // A reading kept by identity stands for every mount the array reaches — ClassNameParseCache hands one array to
+    // all of them — and for as long as the array's contents stay as they are, which the reconciler already depends
+    // on (DiffClassList returns on an identical array without reading it). So a family whose predicate can reach
+    // anything beyond the token's text has no bit here, and its gate scans per call: the timing-keyword and
+    // transition-filter predicates peel variants through the mount's theme scope, which decides whether `3xl:` is a
+    // variant at all, and the border-width predicate parses a bracket through the arbitrary-value parser, which can
+    // reach a theme-scope read. ClassGateThemeScopeTests fails where a family here reads a token differently inside a
+    // sheet's scope.
     //
     // Direct-mapped, so the table is bounded without an eviction pass and a miss allocates nothing of its own. Two
     // arrays sharing a slot each read again when the other displaced it, and the table keeps the last array of
@@ -50,12 +52,9 @@ namespace Velvet
         {
             (StyleClassFamily.Gradient, StyleGradientClass.IsActivatorToken),
             (StyleClassFamily.Animate, StyleAnimateClass.IsAnimateClass),
-            (StyleClassFamily.FilterTransition, FiberFilterTransitionApplier.IsFilterTransitionToken),
-            (StyleClassFamily.EaseCurve, StyleEaseCurve.IsTimingToken),
             (StyleClassFamily.Skew, StyleSkewClass.IsSkewClass),
             (StyleClassFamily.Shadow, StyleShadowClass.IsShadowToken),
             (StyleClassFamily.BorderStyle, StyleBorderStyleClass.IsBorderStyleClass),
-            (StyleClassFamily.BorderWidth, BorderPreflight.IsBorderWidthToken),
             (StyleClassFamily.Ring, StyleRingClass.IsRingClass),
             (StyleClassFamily.Backdrop, StyleBackdropClass.IsBackdropToken),
             (StyleClassFamily.ChildVariant, StyleChildVariantClass.IsChildVariant),
