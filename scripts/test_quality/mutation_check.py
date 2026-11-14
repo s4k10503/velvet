@@ -4622,9 +4622,10 @@ def dealing_order(mutants, project, salt, survivors):
     """Every index of `mutants` in the order a capped plan deals them, each part by rank: the sample,
     then `survivors`, then the rest.
 
-    A survivor's entry lapses on a change to any test source (`tests_digest`), and the gate does not
-    wait for one outside the sample; dealt next, it is measured again and, standing and unanswered,
-    refuses the release after.
+    A survivor's entry lapses on a change to any test source (`tests_digest`), and a run's verdict
+    names an unanswered survivor only where that run measured it or reused an entry that still
+    stands; dealt next, a lapsed one is measured, and named again where it still survives, ahead of
+    the other unsampled mutants the record does not answer.
     """
     sample = sampled(mutants, project, salt)
     order = ranked(mutants, project, salt)
@@ -5452,8 +5453,8 @@ def report_shard(mutants, selected, shard):
 
 def gate(mutants, reused, reasons, declared, coverage, project, sample):
     """The record's decision over the diff, made without an editor: 0 where every mutant of `sample`
-    holds a standing verdict, every standing survivor anywhere in the scope is answered and no
-    declaration is stale, 1 otherwise.
+    holds a standing verdict, every standing survivor of `sample` is answered and no declaration in
+    the scope is stale, 1 otherwise.
 
     The same tree and the same record give the same lines and the same exit, since nothing here is
     measured: a sampled mutant the record holds no standing verdict for is unresolved, never a pass.
@@ -5463,8 +5464,15 @@ def gate(mutants, reused, reasons, declared, coverage, project, sample):
     unresolved = [number for number in unmeasured if number in sample]
     for number, record in reused.items():
         mutants[number - 1].verdict, mutants[number - 1].detail = record["verdict"], reuse_detail(record)
-    unanswered, stale = answered(
+    # Stale is read over the whole scope while unanswered is cut to the sample: a stale declaration
+    # misdescribes the tree whether or not the sample drew the line under it.
+    survivors, stale = answered(
         mutants, {(mutants[number - 1].path, mutants[number - 1].line) for number in unmeasured}, declared)
+    drawn = {mutants[number - 1] for number in sample}
+    unanswered = [(mutant, complaint) for mutant, complaint in survivors if mutant in drawn]
+    unsampled = [(mutant, complaint) for mutant, complaint in survivors if mutant not in drawn]
+    for mutant, complaint in unsampled:
+        print("\nUNSAMPLED   {}\n            {}".format(mutant.describe(project), complaint))
     for number in unresolved:
         print("\nUNRESOLVED  {}\n            {}".format(mutants[number - 1].describe(project),
                                                        reasons.get(number, "-")))
@@ -5474,13 +5482,16 @@ def gate(mutants, reused, reasons, declared, coverage, project, sample):
         print("\nSTALE       {}:{} declares a survivor, and line {} has none"
               .format(relative_to(path, project), declaration.line, subject))
     print("\ngate: {} mutant(s), {} sampled; {} resolved, {} unresolved, {} unmeasured outside the sample, "
-          "{} unanswered, {} stale".format(
+          "{} unanswered in the sample, {} unanswered outside it, {} stale".format(
               len(mutants), len(sample), len(reused), len(unresolved), len(unmeasured) - len(unresolved),
-              len(unanswered), len(stale)))
+              len(unanswered), len(unsampled), len(stale)))
     if unresolved:
         print("An unresolved mutant is a sampled one that holds no standing verdict: record runs deal the "
               "sample\nfirst, and `gh workflow run mutation.yml --ref <branch>` starts "
               "one. A change\nanswers an unanswered survivor or a stale declaration.")
+    if unsampled:
+        print("An unsampled survivor is an unanswered one outside the sample, which refuses nothing; "
+              "CONTRIBUTING.md's\nrelease section says where it is answered.")
     return 1 if unresolved or unanswered or stale else 0
 
 
@@ -5545,7 +5556,7 @@ def main():
     parser.add_argument("--gate", action="store_true",
                         help="with --reuse-from, decide the diff from the record alone, without an "
                              "editor: refuse a sampled mutant that holds no standing verdict, an "
-                             "unanswered survivor and a stale declaration")
+                             "unanswered survivor of the sample and a stale declaration")
     parser.add_argument("--cap", type=int, metavar="N",
                         help="with --plan, deal at most the first N mutants the record does not "
                              "answer, the sample first, then the record's survivors, each part in "
