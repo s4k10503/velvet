@@ -7,9 +7,9 @@ namespace Velvet.Tests
 {
     /// <summary>
     /// Pins the order a transition's writes commit in, as one <see cref="EventLog"/> string per case, each what
-    /// react-reconciler 19.1 commits for the same tree: they land on one transition lane, which an urgent update
-    /// outranks and a second transition writing the same queue is entangled with (<c>entangleTransitionUpdate</c>),
-    /// and a concurrent render commits nothing until it completes. The probes record the committed state and not
+    /// react-reconciler 19.1 commits for the same tree: they land on a transition lane, which an urgent update
+    /// outranks and which every transition started in one event shares (<c>requestTransitionLane</c>), and a
+    /// concurrent render commits nothing until it completes. The probes record the committed state and not
     /// <c>isPending</c>, whose clearing commits a render later here than in React (react-migration.md's
     /// <c>useTransition</c> row).
     /// </summary>
@@ -87,10 +87,11 @@ namespace Velvet.Tests
 
         private const int SlicedRowCount = 3;
 
+        // Neither component logs its render: where a slice parks among the renders is set by the reconcile's first
+        // budget check, not by any order React fixes.
         [Component]
         private static VNode SlicedRow(Dep props)
         {
-            EventLog.UseRender(props.Name);
             EventLog.UseInsertionAndLayoutEffects(props.Name, new object[] { props.Version });
             return V.Fragment(Array.Empty<VNode>());
         }
@@ -100,7 +101,6 @@ namespace Velvet.Tests
         private static VNode SlicedRows(Slicing slicing)
         {
             slicing.Fiber = FiberAmbientStack.Current;
-            EventLog.UseRender("Rows");
             var version = slicing.Version;
             var rows = new VNode[SlicedRowCount];
             for (var i = 0; i < SlicedRowCount; i++)
@@ -117,7 +117,7 @@ namespace Velvet.Tests
             // GREEN_ON_BASE(characterization): the base holds a parked pass's insertion and layout work until its last slice.
             // Have FiberEffects.IsHeld answer false and `ins-x:R0 ins:R0 lay-x:R0 lay:R0` lands ahead of `parked`.
             [Test]
-            public void Given_ATimeSlicedTransitionOfRowsWithEffects_When_ItsFirstSliceParks_Then_OnlyRendersAreLoggedUntilItsLastSliceCommits()
+            public void Given_ATimeSlicedTransitionOfRowsWithEffects_When_ItsFirstSliceParks_Then_NoEffectRunsUntilItsLastSliceCommits()
             {
                 // Arrange
                 var log = new EventLog();
@@ -136,8 +136,7 @@ namespace Velvet.Tests
 
                 // Assert — a pass that never parked commits in its first slice, so that reading is a sentinel
                 Assert.That(log.ToString(), Is.EqualTo(
-                    "render:Rows render:R0 parked render:R1 render:R2"
-                    + " ins-x:R0 ins:R0 lay-x:R0 ins-x:R1 ins:R1 lay-x:R1 ins-x:R2 ins:R2 lay-x:R2"
+                    "parked ins-x:R0 ins:R0 lay-x:R0 ins-x:R1 ins:R1 lay-x:R1 ins-x:R2 ins:R2 lay-x:R2"
                     + " lay:R0 lay:R1 lay:R2"));
             }
         }

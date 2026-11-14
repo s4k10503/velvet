@@ -155,8 +155,8 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base brings a revealed primary's layout effects and refs back in post-order.
-        // Drop the Ctx.AttachRefsHiddenUnder call SuspenseOffscreenCommit.Run makes for a revealed element and `ref:I`,
-        // the ref one element down, is missing from the reveal.
+        // Drop the Ctx.AttachRefsHiddenUnder call SuspenseOffscreenCommit.Run makes for a revealed element and `ref:I`
+        // is missing from the reveal, while `ref:O2` and `ref:O` still attach.
         [Test]
         public void Given_APrimaryWithNestedComponentsAndRefsHiddenBehindAFallback_When_TheReadResolves_Then_TheFallbackIsTakenDownAndTheirLayoutEffectsAndRefsComeBackInPostOrder()
         {
@@ -239,7 +239,7 @@ namespace Velvet.Tests
         // GREEN_ON_BASE(characterization): the base runs the Portal child's insertion cleanup where the Portal sits.
         // Have PreOrderTeardown.VisitPortalRows return for a Portal with a target and `ins-x:PC` moves behind `ref-x:F`.
         [Test]
-        public void Given_ASuspenseHidingAPortal_When_TheSuspenseIsRemoved_Then_OnlyTheInsertionCleanupsInsideThePortalRunAheadOfTheFallbacks()
+        public void Given_ASuspenseHidingAPortal_When_TheSuspenseIsRemoved_Then_OnlyTheHiddenTreesInsertionCleanupsRunThroughThePortalAheadOfTheFallbacks()
         {
             // Arrange
             var log = new EventLog();
