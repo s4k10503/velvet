@@ -1658,13 +1658,17 @@ of `main` that CI built rather than building a release of their own. Before anyt
   completed push run of each required workflow (`red_base.REQUIRED_WORKFLOWS`) at the commit passed;
 - the record answers the campaign's scope at the commit
   ([Checking that the tests can fail](#checking-that-the-tests-can-fail) owns the scope and the
-  record): each mutant of the sample below holds an entry that still stands, every standing survivor
-  anywhere in the scope is answered by a declaration, and no declaration is stale. A sampled mutant
-  past a run's cap, never measured, or measured to nothing is unresolved and refuses the release. Any
-  other mutant nothing measured refuses nothing, a survivor whose entry lapsed included: a change to
-  any test source outside a C# comment lapses every survivor's entry, and the gate does not wait for
-  one outside the sample. Record runs deal such a survivor ahead of the unsampled rest, so it is
-  measured again, and where it still survives unanswered it refuses a release while that entry stands.
+  record): each mutant of the sample below holds an entry that still stands, each of them that
+  survived is answered by a declaration, and no declaration anywhere in the scope is stale. A sampled
+  mutant past a run's cap, never measured, or measured to nothing is unresolved and refuses the
+  release. Outside the sample only a stale declaration refuses it. A record run that measures mutants
+  nothing had measured before can add survivors there, so a release waiting on every survivor in the
+  scope would wait on a list each such run can lengthen for as long as the scope is still being
+  measured, where the sample holds at most `SAMPLE_SIZE` mutants however large the scope grows. The
+  gate names each unanswered survivor outside the sample on an UNSAMPLED line, refusing nothing on it,
+  and counts them in its summary line; they are answered as other work is, from the code-scanning
+  alerts the record runs raise
+  ([Checking that the tests can fail](#checking-that-the-tests-can-fail) owns those).
 
 **The sample is drawn from git alone.** `mutation_check.py`'s `ranked` orders the scope's mutants by a
 hash of the scope's base commit — the release tag, or the cutover — with each mutant's file path,
@@ -1690,7 +1694,7 @@ its log names each mutant it refuses on: wait for the record runs to catch up, d
 
 **The way past it** is the dispatch's `skip_release_gate` input: a reason written there releases
 without either check, and the run's log carries it as a warning. It is for a record that cannot be had —
-the branch lost, the runners down for days — and not for a survivor nobody answered.
+the branch lost, the runners down for days — and not for a sampled survivor nobody answered.
 
 Between step 2 and step 3, `main` names a version that does not exist. The dispatch builds the note
 from the CHANGELOG section, which was written before anything merged in that window and describes none

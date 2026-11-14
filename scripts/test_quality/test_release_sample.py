@@ -182,17 +182,25 @@ def lapse_tests(campaign):
                            "Given_A_When_B_Then_Changed")
 
 
-def gate_over_sample_of_first(campaign):
-    """(the exit, what it printed) of the gate whose sample is the first of the two mutants alone."""
-    salt = salt_ranking(campaign, [1, 2])
+def gate_over_sample_of(campaign, drawn):
+    """(the exit, what it printed) of the gate whose sample is `RecordCampaign`'s mutant numbered
+    `drawn` alone."""
+    salt = salt_ranking(campaign, {1: [1, 2], 2: [2, 1]}[drawn])
     with mock.patch.object(mutation_check, "sample_salt", lambda _project, _base: salt), \
             mock.patch.object(mutation_check, "SAMPLE_SIZE", 1):
         code = campaign.run_over_diff("--gate", "--reuse-from", str(campaign.record))
     return code, campaign.printed
 
 
+def recorded_verdict(campaign, line):
+    """The verdict the record holds for the mutant on `line`, or None where it holds none."""
+    return next((entry["verdict"] for entry in campaign.written_record()["records"]
+                 if entry["mutant"]["line"] == line), None)
+
+
 class SampledGateTests(unittest.TestCase):
-    """`--gate` over a sample of one: the first of `RecordCampaign`'s two mutants."""
+    """`--gate` over a sample of one of `RecordCampaign`'s two mutants: the first, unless a case
+    draws the second."""
 
     @staticmethod
     def gate_with_one_entry(drop, body=None):
@@ -201,32 +209,57 @@ class SampledGateTests(unittest.TestCase):
         campaign.measure()
         campaign.decide()
         drop_entry(campaign, drop)
-        return gate_over_sample_of_first(campaign)
+        return gate_over_sample_of(campaign, 1)
 
-    def test_Given_AnUnansweredSurvivorOutsideTheSample_When_Gated_Then_ItIsRefusedAsUnanswered(self):
+    def test_Given_AnUnansweredSurvivorOutsideTheSample_When_Gated_Then_ItPasses(self):
         # Arrange — the second mutant, outside the sample, survived and its entry stands.
+        campaign = suite.RecordCampaign()
+        campaign.after_a_campaign()
+        survived = recorded_verdict(campaign, 6) == mutation_check.SURVIVED
+
+        # Act
+        code, _ = gate_over_sample_of(campaign, 1)
+
+        # Assert
+        self.assertEqual(code if survived else None, 0)
+
+    def test_Given_AnUnansweredSurvivorOutsideTheSample_When_Gated_Then_ItIsNamedAsUnsampled(self):
+        # Arrange
         campaign = suite.RecordCampaign()
         campaign.after_a_campaign()
 
         # Act
-        code, printed = gate_over_sample_of_first(campaign)
+        _, printed = gate_over_sample_of(campaign, 1)
+
+        # Assert
+        self.assertIn("\nUNSAMPLED   Packages/com.velvet.core/Runtime/Probe.cs:6", printed)
+
+    # GREEN_ON_BASE(characterization): the base refused every standing unanswered survivor, this one included.
+    def test_Given_AnUnansweredSurvivorInTheSample_When_Gated_Then_ItIsRefusedAsUnanswered(self):
+        # Arrange — the second mutant, the sample, survived and its entry stands.
+        campaign = suite.RecordCampaign()
+        campaign.after_a_campaign()
+
+        # Act
+        code, printed = gate_over_sample_of(campaign, 2)
         refusal = printed if code == 1 else ""
 
         # Assert
         self.assertIn("\nUNANSWERED  Packages/com.velvet.core/Runtime/Probe.cs:6", refusal)
 
-    def test_Given_AnUnansweredSurvivorOutsideTheSampleWhoseEntryLapsed_When_Gated_Then_ItPasses(self):
-        # Arrange — a test source changed since the second mutant was recorded as a survivor, which
-        # nothing answers; record runs measure it again, and the gate does not wait for them.
-        campaign = suite.RecordCampaign()
-        campaign.after_a_campaign()
-        lapse_tests(campaign)
+    # GREEN_ON_BASE(characterization): the base read stale declarations over the whole scope already.
+    def test_Given_ADeclarationOverAKilledMutantOutsideTheSample_When_Gated_Then_ItIsRefusedAsStale(self):
+        # Arrange — both mutants killed, and the second, outside the sample, declared a survivor.
+        campaign = suite.RecordCampaign(DECLARED_OTHER)
+        campaign.measure()
+        campaign.decide()
 
         # Act
-        code, _ = gate_over_sample_of_first(campaign)
+        code, printed = gate_over_sample_of(campaign, 1)
+        refusal = printed if code == 1 else ""
 
         # Assert
-        self.assertEqual(code, 0)
+        self.assertIn("\nSTALE       Packages/com.velvet.core/Runtime/Probe.cs:6 declares a survivor", refusal)
 
     def test_Given_ADeclarationOverAnUnmeasuredMutantOutsideTheSample_When_Gated_Then_ItPasses(self):
         # Act — the declaration moves the second mutant to line 7, whose entry is taken out.
