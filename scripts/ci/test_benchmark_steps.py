@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Unit tests for benchmark_steps.py: which runs of the benchmark history read as a step, and what the
-issue for one says and does.
+"""Unit tests for benchmark_steps.py: which runs of the benchmark history read as a step or a drift, and
+what the issue for one says and does.
 
 Run: python3 scripts/ci/test_benchmark_steps.py
 """
