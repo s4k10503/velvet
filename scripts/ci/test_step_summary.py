@@ -171,15 +171,17 @@ class MainTests(unittest.TestCase):
 
 class WorkflowTests(unittest.TestCase):
     def test_Given_TheWorkflows_When_Read_Then_NoStepAppendsAFileToTheSummaryWithoutTheBound(self):
-        # Arrange
-        unbounded = []
-        for name in ("mutation.yml", "kill-set.yml", "per-case-coverage.yml"):
-            for line in (ROOT / ".github" / "workflows" / name).read_text().splitlines():
-                if "GITHUB_STEP_SUMMARY" in line and "step_summary.py" not in line:
-                    unbounded.append((name, line.strip()))
+        # Arrange — every workflow, since a list of them left benchmarks.yml's append unread.
+        workflows = sorted(path for pattern in ("*.yml", "*.yaml")
+                           for path in (ROOT / ".github" / "workflows").glob(pattern))
 
-        # Assert
-        self.assertEqual(unbounded, [])
+        # Act
+        unbounded = [(path.name, line.strip()) for path in workflows
+                     for line in path.read_text().splitlines()
+                     if "GITHUB_STEP_SUMMARY" in line and "step_summary.py" not in line]
+
+        # Assert — a directory that read empty reports itself, since it holds nothing unbounded either.
+        self.assertEqual(unbounded if workflows else [("no workflow under", ".github/workflows")], [])
 
 
 if __name__ == "__main__":

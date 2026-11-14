@@ -2,9 +2,9 @@
 """Write a job-summary section whose size is bounded in code.
 
 GitHub rejects a step's summary upload past 1 MiB and drops the whole of it, which happens to a
-campaign exactly when it has the most to say. Every summary section the mutation and kill-set
-workflows write goes through here, so the bound is enforced on the bytes written rather than on how
-long the input happens to be.
+campaign exactly when it has the most to say. Every append to the summary a workflow's step spells
+goes through here, which test_step_summary.py holds every workflow to, so the bound is enforced on
+the bytes written rather than on how long the input happens to be.
 
     step_summary.py verdict VERDICT_FILE      counts, then unanswered survivors grouped by file
     step_summary.py block TITLE FILE [NOTE]   a titled code block over the head of FILE
