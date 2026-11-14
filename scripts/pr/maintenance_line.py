@@ -70,6 +70,37 @@ def read(cwd, line, head, timeout, remote="origin"):
     return Reading(commits, from_main, fragments)
 
 
+# Fetches every branch named `*.x` on origin into the refs `carried` reads.
+LINES_REFSPEC = "+refs/heads/*.x:refs/remotes/origin/*.x"
+
+
+def carried(cwd, base, head, timeout, remote="origin"):
+    """Each line on `<remote>` other than `base` whose commits `head` holds and `<remote>/<base>`
+    does not, as (line, [(sha, subject)]), read off refs the caller has fetched. Raises as `read`
+    does."""
+    listed = _git(cwd, ["for-each-ref", "--format=%(refname:strip=3)", f"refs/remotes/{remote}"],
+                  timeout)
+    found = []
+    for line in sorted(name for name in listed.split() if is_line(name) and name != base):
+        bases = _git(cwd, ["merge-base", "--all", head, f"{remote}/{line}"], timeout).split()
+        logged = _git(cwd, ["log", "--format=%H%x00%s", *bases, "--not", f"{remote}/{base}"],
+                      timeout)
+        commits = [tuple(entry.split("\x00", 1)) for entry in logged.splitlines() if entry]
+        if commits:
+            found.append((line, commits))
+    return found
+
+
+def squash_reasons(base, lines):
+    """The reasons a head carrying `lines`, `carried`'s answer, is not squashed onto `base`, each
+    naming its way out."""
+    return [f"it carries {_counted(commits, 'commit')} of {line} that {base} does not hold, starting "
+            f"with {commits[0][0][:7]} {commits[0][1]}: squashed, they reach {base} and {line} stays "
+            f"out of its ancestry. Land it as a merge commit, from the web interface's \"Create a "
+            f"merge commit\" or with `gh pr merge <number> --merge --delete-branch` ({SECTION})"
+            for line, commits in lines]
+
+
 def _counted(found, noun):
     return f"{len(found)} {noun}{'' if len(found) == 1 else 's'}"
 

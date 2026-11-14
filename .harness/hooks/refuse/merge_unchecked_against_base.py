@@ -12,9 +12,10 @@ own checks to have seen them:
   not hold, or holds as a different branch of the same name, so neither containment can be read;
   and a long-lived head, which `scripts/pr/long_lived.py` names, is not to be squashed or deleted.
 
-What a pull request onto a maintenance line brings, and whether a base or head is named like a line
-without being one, `scripts/pr/maintenance_line.py` decides. `lib/merge_target.py` owns which pull
-request a command would land.
+What a pull request onto a maintenance line brings, whether a base or head is named like a line
+without being one, and which lines' commits a head would land without a merge commit,
+`scripts/pr/maintenance_line.py` decides. `lib/merge_target.py` owns which pull request a command
+would land.
 """
 import collections
 import json
@@ -25,7 +26,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 from merge_target import GH_TIMEOUT, UNRESOLVED, merge_targets
 from repository import gh, git_answer
-from shell_commands import NAME_THE_TREE, UNPLACEABLE_MOVE, UNRESOLVED_CD, command_directory
+from pr_body import merges_nothing
+from shell_commands import (NAME_THE_TREE, UNPLACEABLE_MOVE, UNRESOLVED_CD, command_directory,
+                            program_invocations)
 
 SCRIPTS = Path(__file__).resolve().parents[3] / "scripts"
 sys.path.insert(0, str(SCRIPTS / "pr"))
@@ -50,6 +53,18 @@ UNREADABLE_PROBE = {"command": "gh pr merge 1 --squash --delete-branch"}
 GIT_TIMEOUT = 30
 
 Target = collections.namedtuple("Target", "head base commit fork title")
+
+# The method that lands a head with a merge commit, which keeps what it carries in the base's
+# ancestry; a squash and a rebase both land new commits instead.
+MERGE_COMMIT_FLAGS = ("--merge", "-m")
+
+
+def landed_by_merge_commit(command):
+    """The pull requests this command merges with a merge commit, "" meaning the current branch's."""
+    return {next((token for token in operands if token.isdigit()), "")
+            for operands in program_invocations(command, "gh", ("pr", "merge"))
+            if not merges_nothing(operands)
+            and any(token.partition("=")[0] in MERGE_COMMIT_FLAGS for token in operands)}
 
 UNREADABLE_REFUSAL = (
     "Refusing `gh pr merge`: what its base holds against the head could not be read.\n\n"
@@ -129,8 +144,9 @@ def holds(cwd, head, sha):
     return {0: True, 1: False}.get(held.code)
 
 
-def refuse_one(cwd, pr):
+def refuse_one(cwd, pr, merge_commit=False):
     """What to say about one merge in the command, or None when nothing about it blocks.
+    `merge_commit` is whether the command lands it with one.
 
     Every merge the command carries is decided, not the first: a compound command lands each of
     them, and a guard reading one operand covers one of the merges it was posed.
@@ -155,7 +171,8 @@ def refuse_one(cwd, pr):
     # release and name the one before it.
     onto_line = maintenance_line.is_line(target.base)
     fetched = git_answer(["fetch", "-q", "origin", target.base, target.head,
-                          *([maintenance_line.MAIN] if onto_line else [])], cwd=cwd,
+                          *([maintenance_line.MAIN] if onto_line else []),
+                          *([] if merge_commit else [maintenance_line.LINES_REFSPEC])], cwd=cwd,
                          timeout=GIT_TIMEOUT)
     if fetched.code != 0:
         return UNREADABLE_REFUSAL.format(
@@ -176,6 +193,14 @@ def refuse_one(cwd, pr):
                 f"what {target.commit[:7]} brings onto {target.base} could not be read")
         said.extend(f"{label}: {reason}.\n"
                     for reason in maintenance_line.head_reasons(target.base, reading))
+    if not merge_commit:
+        try:
+            lines = maintenance_line.carried(cwd, target.base, target.commit, GIT_TIMEOUT)
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError):
+            return UNREADABLE_REFUSAL.format(
+                f"which lines {target.commit[:7]} carries past {target.base} could not be read")
+        said.extend(f"{label}: {reason}.\n"
+                    for reason in maintenance_line.squash_reasons(target.base, lines))
     if release:
         held = holds(cwd, target.head, release[0])
         if held is None:
@@ -237,8 +262,9 @@ def main():
                          f"from could not be read itself.\n\n{UNPLACEABLE_MOVE}\n\n"
                          f"{NAME_THE_TREE}\n")
         return 2
+    merge_commits = landed_by_merge_commit(command)
     for pr in targets:
-        refusal = refuse_one(cwd, pr)
+        refusal = refuse_one(cwd, pr, pr in merge_commits)
         if refusal is not None:
             sys.stderr.write(refusal)
             return 2

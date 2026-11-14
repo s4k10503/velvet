@@ -1787,9 +1787,10 @@ and `merge-base --is-ancestor` answers it without anyone reading a pull request;
 
 **Merging forward takes a merge commit, and the line outlives it.** A squash records no ancestry,
 and `settle.py merge` squashes and then deletes the head, so it refuses a pull request whose head is
-the line, as the `gh pr merge` guards do. Land it from the web interface with *Create a merge commit*,
-and if GitHub's delete-on-merge setting removes the line afterwards, restore it with the pull
-request's *Restore branch* button. The continuous-integration section says which other heads are
+the line, as the `gh pr merge` guards do, and one whose head carries commits of a line that its base
+lacks, which those guards refuse unless the merge names `--merge`. Land it from the web interface
+with *Create a merge commit*, and if GitHub's delete-on-merge setting removes the line afterwards,
+restore it with the pull request's *Restore branch* button. The continuous-integration section says which other heads are
 refused the same way.
 
 **A fix that lands there is owed a release.** `main` between releases is expected to hold unreleased

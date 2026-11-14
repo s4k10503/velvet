@@ -51,7 +51,9 @@ Twelve preconditions:
   not got, so neither containment above is asked of it, and the branch deleted after a merge is
   addressed on origin by that name.
 - **A long-lived head is not merged from here**, since this squashes and deletes it. `long_lived.py`
-  owns which heads those are.
+  owns which heads those are. Nor is a head carrying commits of a line that its base lacks, which a
+  squash would land without the line entering the base's ancestry; `maintenance_line.carried` reads
+  those.
 - **A pull request onto a maintenance line carries no commit `main` holds that the line does not,
   no `feat` or breaking title or commit, and no breaking fragment**, and no base or head is named
   like a line without being one. `maintenance_line.py` owns those readings.
@@ -579,7 +581,7 @@ def contains_commit(project, branch, sha):
 def reasons_from(before, after, results, branch, base, held_by_worktree,
                  unpublished_release, draft, merge_state, fork, failing_runs, behind_release,
                  long_lived_head, runs_unfinished, runs_failed, required, stack_below,
-                 stack_settings, stack_tangles, line_pull_request, line_head):
+                 stack_settings, stack_tangles, line_pull_request, line_head, line_squash):
     """Every reason not to merge, decided from plain data so the decision is testable without a network.
 
     `unpublished_release` takes no default on purpose: a caller that stops supplying it would otherwise
@@ -592,8 +594,9 @@ def reasons_from(before, after, results, branch, base, held_by_worktree,
     requires. Nor do `stack_below`, what `unmerged_below` answers for a stack member and () for any
     other pull request, `stack_settings`, what `stack_settings` reads for a stack member and None
     for any other, and `stack_tangles`, what `stack_tangles` answers for a stack member and () for
-    any other. `line_pull_request` and `line_head`, what `maintenance_line.pull_request_reasons` and
-    `maintenance_line.head_reasons` answer, take none either.
+    any other. `line_pull_request`, `line_head` and `line_squash`, what
+    `maintenance_line.pull_request_reasons`, `maintenance_line.head_reasons` and
+    `maintenance_line.squash_reasons` answer, take none either.
 
     A moved head returns with the reasons that are not about a commit and nothing else: with the
     readings straddling a force-push, nothing else read here is known to be about the same commit, so
@@ -629,6 +632,7 @@ def reasons_from(before, after, results, branch, base, held_by_worktree,
     if merge_state == "dirty":
         reasons.append(conflict_reason(base))
     reasons.extend(line_head)
+    reasons.extend(line_squash)
     if stack_tangles:
         reasons.append("its stack is not linear on {}: {}. {}".format(
             base, "; ".join(f"#{member} does not hold the head of {below}" if how == "lacks"
@@ -724,15 +728,28 @@ def project_state(project, base):
                         red, release_commit(project, base), required_contexts(project, base))
 
 
+def git_said(failure):
+    return (failure.stderr if isinstance(failure, subprocess.CalledProcessError)
+            and failure.stderr else str(failure)).strip()
+
+
 def line_reading(project, line, sha):
     """`maintenance_line.read` for `sha` onto origin/<line>, raising a failure as the RuntimeError
     `watch` catches per pull request."""
     try:
         return maintenance_line.read(project, line, sha, GIT_TIMEOUT)
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError) as failure:
-        said = (failure.stderr if isinstance(failure, subprocess.CalledProcessError)
-                and failure.stderr else str(failure)).strip()
-        raise RuntimeError(f"what {sha[:7]} brings onto origin/{line} could not be read: {said}")
+        raise RuntimeError(f"what {sha[:7]} brings onto origin/{line} could not be read: "
+                           f"{git_said(failure)}")
+
+
+def line_carried(project, base, sha):
+    """`maintenance_line.carried` for `sha` onto origin/<base>, raising as `line_reading` does."""
+    try:
+        return maintenance_line.carried(project, base, sha, GIT_TIMEOUT)
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError) as failure:
+        raise RuntimeError(f"which lines {sha[:7]} carries past origin/{base} could not be read: "
+                           f"{git_said(failure)}")
 
 
 def release_commit(project, base):
@@ -796,6 +813,8 @@ def blocking_reasons(project, number, base=None, states=None, previous=()):
     long_lived_head = not before.fork and long_lived.is_long_lived(before.branch)
     line_head = (maintenance_line.head_reasons(target, line_reading(project, target, before.sha))
                  if maintenance_line.is_line(target) and not before.fork else [])
+    line_squash = (maintenance_line.squash_reasons(target, line_carried(project, target, before.sha))
+                   if not before.fork and not long_lived_head else [])
     holders = state.held.get(before.branch) or ()
     held = tuple((tree.path, holder_state(project, tree, after)) for tree in holders)
     runs_failed = expected_checks.failed(others, jobs, now)
@@ -818,7 +837,7 @@ def blocking_reasons(project, number, base=None, states=None, previous=()):
                                  stack_tangles=stack_tangles(project, target, members),
                                  line_pull_request=maintenance_line.pull_request_reasons(
                                      target, before.branch, before.title),
-                                 line_head=line_head),
+                                 line_head=line_head, line_squash=line_squash),
                     after, before.branch, results, target, before.sha, held,
                     # Read at `before`, so a moved head has none, as its reasons have none.
                     runs_failed if before.sha == after else (), stack,

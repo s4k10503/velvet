@@ -168,6 +168,15 @@ class HeadReasonTests(unittest.TestCase):
         # Assert
         self.assertEqual(said, [])
 
+    def test_Given_AHeadCarryingALinesCommits_When_ItsSquashIsReasoned_Then_TheyAreCountedAndTheFirstIsNamed(self):
+        # Act
+        said = maintenance_line.squash_reasons(
+            "main", [("2.x", [(SHA, "fix(velvet): the line's fix"), (OTHER, "fix(velvet): older")])])
+
+        # Assert
+        self.assertIn("it carries 2 commits of 2.x that main does not hold, starting with aaaaaaa",
+                      " ".join(said))
+
 
 def git(cwd, *args):
     return subprocess.run(["git", "-C", str(cwd), "-c", "user.email=t@velvet", "-c", "user.name=t",
@@ -197,12 +206,41 @@ class ReadTests(unittest.TestCase):
         self.feature = git(self.project, "rev-parse", "HEAD")
         git(self.project, "switch", "-q", "2.x")
         git(self.project, "commit", "-q", "--allow-empty", "-m", "fix(velvet): the line's own fix")
+        self.line_fix = git(self.project, "rev-parse", "HEAD")
         git(self.project, "push", "-q", "origin", "main", "2.x")
         git(self.project, "switch", "-q", "-c", "topic", "origin/2.x")
 
     def head(self):
-        git(self.project, "push", "-q", "origin", "topic")
+        git(self.project, "push", "-q", "origin", "HEAD:refs/heads/topic")
         return git(self.project, "rev-parse", "HEAD")
+
+    def carried(self):
+        """What `carried` reads of the checkout's head onto main, as `<line> <sha>` per commit."""
+        return [f"{line} {sha}" for line, commits
+                in maintenance_line.carried(self.project, "main", self.head(), 60)
+                for sha, _ in commits]
+
+    def test_Given_AHeadFromMainThatMergedTheLineIn_When_ItsLinesAreRead_Then_TheLinesFixIsCarried(self):
+        # Arrange — the shape of a forward merge made on a branch of its own.
+        git(self.project, "switch", "-q", "-c", "forward", "origin/main")
+        git(self.project, "merge", "-q", "--no-edit", "origin/2.x")
+
+        # Act
+        carried = self.carried()
+
+        # Assert
+        self.assertEqual(carried, [f"2.x {self.line_fix}"])
+
+    def test_Given_AHeadFromMainThatLeftTheLineAlone_When_ItsLinesAreRead_Then_NoneIsCarried(self):
+        # Arrange — the line still holds a fix main lacks, which this head does not carry.
+        git(self.project, "switch", "-q", "-c", "forward", "origin/main")
+        git(self.project, "commit", "-q", "--allow-empty", "-m", "fix(velvet): main's own fix")
+
+        # Act
+        carried = self.carried()
+
+        # Assert
+        self.assertEqual(carried, [])
 
     def test_Given_AHeadThatMergedMainIn_When_Read_Then_MainsCommitIsWhatItBringsOfMain(self):
         # Arrange

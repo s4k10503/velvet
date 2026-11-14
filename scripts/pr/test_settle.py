@@ -44,7 +44,7 @@ def reasons(before=GREEN, after=GREEN, results=None, branch="topic", base="main"
             held_by_worktree=False, unpublished_release=None, draft=False, merge_state="clean",
             fork=False, failing_runs=(), behind_release=None, long_lived_head=False, runs_unfinished=(),
             runs_failed=(), required=(), stack_below=(), stack_settings=None, stack_tangles=(),
-            line_pull_request=(), line_head=()):
+            line_pull_request=(), line_head=(), line_squash=()):
     if results is None:
         results = [{"name": "Required checks (Unity)", "bucket": "pass"}]
     return settle.reasons_from(before, after, results, branch, base,
@@ -55,7 +55,8 @@ def reasons(before=GREEN, after=GREEN, results=None, branch="topic", base="main"
                                runs_unfinished=runs_unfinished, runs_failed=runs_failed,
                                required=required, stack_below=stack_below,
                                stack_settings=stack_settings, stack_tangles=stack_tangles,
-                               line_pull_request=line_pull_request, line_head=line_head)
+                               line_pull_request=line_pull_request, line_head=line_head,
+                               line_squash=line_squash)
 
 
 def failing(workflow="test.yml", sha=BROKE):
@@ -211,7 +212,7 @@ class MergeDecisionTests(unittest.TestCase):
 Fabricated = collections.namedtuple(
     "Fabricated",
     "sha after branch base draft merge_state results holds held fork labels runs state jobs stack "
-    "tangled title line")
+    "tangled title line carried")
 
 PASSING = [{"name": "Required checks (Unity)", "bucket": "pass"}]
 
@@ -269,8 +270,9 @@ REQUIRED = ("Required checks (Unity)",)
 def fabricate(number, results=PASSING, draft=False, merge_state="clean", holds=(),
               held=False, moved=False, fork=False, base="main", branch=None, labels=(), runs=(),
               state="open", jobs=None, stack=None, tangled=None, title="fix(velvet): a fix",
-              line=None):
+              line=None, carried=()):
     """`line` is what `settle.line_reading` answers for the head, a line taking all of it unless a
+    case says otherwise, and `carried` what `settle.line_carried` answers, no line's commits unless a
     case says otherwise."""
     sha = str(number).rjust(40, "0")
     return Fabricated(sha=sha, after=MOVED if moved else sha, branch=branch or f"topic-{number}",
@@ -278,7 +280,8 @@ def fabricate(number, results=PASSING, draft=False, merge_state="clean", holds=(
                       draft=draft, merge_state=merge_state, results=results, holds=holds,
                       held=held, fork=fork, labels=frozenset(labels), runs=list(runs), state=state,
                       jobs=jobs or {}, stack=stack, tangled=tangled, title=title,
-                      line=line or settle.maintenance_line.Reading([], [], []))
+                      line=line or settle.maintenance_line.Reading([], [], []),
+                      carried=list(carried))
 
 
 def base_state(held, base, red=(RED,), releasing=(RELEASING,), required=None):
@@ -370,6 +373,7 @@ def fabricated_readings(states, red=(RED,), releasing=(RELEASING,), required=Non
                 fork=states[number].fork, labels=states[number].labels, state=states[number].state,
                 stack=states[number].stack, title=states[number].title)),
             ("line_reading", lambda _project, _line, sha: by_sha[sha].line),
+            ("line_carried", lambda _project, _base, sha: by_sha[sha].carried),
             ("stack_members", lambda _project, stack: members(states, stack)),
             ("stack_settings", lambda _project: settings),
             ("stack_tangles", lambda _project, base, listed: tangles(states, base, listed)),
@@ -1165,6 +1169,7 @@ def rest_readings(check_runs, workflow_runs, labels=(AUTOMERGE,), statuses=None)
             ("repository", lambda *_: "owner/name"),
             ("pull_request", lambda *_: state),
             ("head_sha", lambda *_: GREEN),
+            ("line_carried", lambda *_: []),
             ("project_state", lambda _project, base: base_state({}, base)),
             ("rest_json", lambda path: next(value for key, value in answers.items() if key in path)),
         ):
@@ -1688,7 +1693,7 @@ def line_reasons(base="2.x", **fabricated):
 
 
 class MaintenanceLineMergeTests(unittest.TestCase):
-    """A pull request onto a line, decided from what `maintenance_line` reads of it."""
+    """A pull request decided from what `maintenance_line` reads of it."""
 
     def test_Given_AHeadThatMergedMainIntoALine_When_TheMergeIsDecided_Then_WhatItBroughtIsTheReason(self):
         # Act
@@ -1721,6 +1726,25 @@ class MaintenanceLineMergeTests(unittest.TestCase):
         # Assert
         self.assertEqual(decided, settle.maintenance_line.pull_request_reasons(
             "main", "3.0.x", "fix(velvet): a fix") or [UNANSWERED])
+
+    def test_Given_AHeadOntoMainCarryingALinesCommits_When_TheMergeIsDecided_Then_ItsSquashIsTheReason(self):
+        # Arrange — the shape a forward merge made on a branch of its own takes.
+        carried = [("2.x", [("e" * 40, "fix(velvet): the line's fix")])]
+
+        # Act
+        decided = line_reasons(base="main", branch="chore/forward-merge-2x", carried=carried)
+
+        # Assert
+        self.assertEqual(decided, settle.maintenance_line.squash_reasons("main", carried)
+                         or [UNANSWERED])
+
+    def test_Given_TheLineItselfOntoMainCarryingItsCommits_When_TheMergeIsDecided_Then_OnlyItsLongLivedHeadIsTheReason(self):
+        # Act
+        decided = line_reasons(base="main", branch="2.x",
+                               carried=[("2.x", [("e" * 40, "fix(velvet): the line's fix")])])
+
+        # Assert
+        self.assertEqual(decided, [LONG_LIVED_REASON.format("2.x")])
 
     def test_Given_ATreeGitCannotRead_When_ALineIsReadThere_Then_WhatGitSaidIsRaised(self):
         # Arrange
@@ -2023,7 +2047,8 @@ class RedBaseMergeTests(unittest.TestCase):
         self.assertEqual(decided, [RED_REASON])
 
     # GREEN_ON_BASE(refactor): an unlabelled head behind a green base still merges.
-    # The pull request it arranges now carries a title, which the base does not read.
+    # The pull request it arranges now carries a title, and the case answers which lines the head
+    # carries, neither of which the base reads.
     def test_Given_ABranchBehindAGreenBase_When_TheMergeIsDecided_Then_NothingBlocksIt(self):
         # Arrange — `gh_git` answers that the branch is behind: the merge-base is not the base's tip.
         # That is what `contains_base` reads, so a decision asking it is told the branch is behind.
@@ -2039,6 +2064,7 @@ class RedBaseMergeTests(unittest.TestCase):
                 ("campaign_runs", lambda *_: []),
                 ("run_jobs", lambda *_: {}),
                 ("head_sha", lambda *_: GREEN),
+                ("line_carried", lambda *_: []),
                 ("project_state", lambda _project, base: base_state({}, base)),
                 ("gh_git", lambda _project, command, *_: answers[command]),
             ):
