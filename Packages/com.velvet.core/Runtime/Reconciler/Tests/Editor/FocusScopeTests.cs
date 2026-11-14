@@ -433,6 +433,41 @@ namespace Velvet.Tests
             Assert.That(_host.Panel.focusController.focusedElement, Is.EqualTo(in1));
         }
 
+        // GREEN_ON_BASE(characterization): the base already pulls focus back to the member last held.
+        [Test]
+        public void Given_AContainedScopeLastHeldOnItsSecondMember_When_FocusIsClearedToNothing_Then_ThatMemberRegainsFocusOnTheNextTick()
+        {
+            // Arrange
+            Mount(ContainedScopeHost);
+            var in2 = Q("in2");
+            in2.Focus();
+            in2.Blur();
+            var cleared = _host.Panel.focusController.focusedElement == null;
+
+            // Act
+            EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
+
+            // Assert
+            Assert.That(cleared ? _host.Panel.focusController.focusedElement : null, Is.EqualTo(in2));
+        }
+
+        // GREEN_ON_BASE(characterization): the base already falls back to the scope's first focusable element.
+        [Test]
+        public void Given_AContainedScopeWhoseFocusedMemberStoppedTakingFocus_When_FocusEscapesBesideTheScope_Then_TheScopesFirstFocusableTakesIt()
+        {
+            // Arrange
+            Mount(ContainedScopeHost);
+            var in1 = Q("in1");
+            in1.Focus();
+            in1.focusable = false;
+
+            // Act
+            Q("outside").Focus();
+
+            // Assert
+            Assert.That(_host.Panel.focusController.focusedElement, Is.EqualTo(Q("in2")));
+        }
+
         [Component]
         private static VNode StuckRingHost() => V.Div(children: new VNode[]
         {

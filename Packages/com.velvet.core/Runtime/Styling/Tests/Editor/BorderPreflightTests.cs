@@ -1052,6 +1052,41 @@ namespace Velvet.Tests
             Assert.That(face, Is.EqualTo(new Color(1f, 0f, 1f, 1f)));
         }
 
+        // GREEN_ON_BASE(characterization): the base hands a shadow a dashed face's inline colour as kept; deleting the copy of the side's kept flag from SilhouetteFaceStash.AdoptBorderFace reddens it.
+        [Test]
+        public void Given_ADashedLabelWithAnInlineBorderColourAndADefaultStylesheetColour_When_AShadowTakesTheFace_Then_TheFaceKeepsTheInlineColour()
+        {
+            // Arrange — the theme rule colours the border beneath the inline colour, which a face not keeping the side
+            // paints instead.
+            MountSwitchable("w-[40px] h-[40px] border-dashed border-[#00ff00] pf-theme");
+
+            // Act
+            var tag = Patch("w-[40px] h-[40px] border-dashed border-[#00ff00] pf-theme shadow-md");
+
+            // Assert — clear where no shadow face suppresses the left side.
+            Assert.That(SilhouetteFaceStash.TryReadFace(tag, DivideEdge.Left, out var face, out _) ? face : Color.clear,
+                Is.EqualTo(Color.green));
+        }
+
+        // GREEN_ON_BASE(characterization): the base hands a shadow a dashed face's preflight colour with its preflight flag; deleting the copy of that flag from SilhouetteFaceStash.AdoptBorderFace reddens it.
+        [Test]
+        public void Given_ADashedLabelWhosePreflightFaceAShadowTookOver_When_ItsBorderClassGoes_Then_TheFaceTakesTheDefaultStylesheetsColour()
+        {
+            // Arrange — the dashed face holds preflight's text colour, which the shadow the second render adds takes
+            // over; with `border` gone only the theme sheet widens the label, so preflight lets go of it.
+            var red = TextColourOf("text-red-500");
+            MountSwitchable("w-[40px] h-[40px] border border-dashed pf-theme pf-theme-width text-red-500");
+            var tag = Patch("w-[40px] h-[40px] border border-dashed pf-theme pf-theme-width shadow-md text-red-500");
+            SilhouetteFaceStash.TryReadFace(tag, DivideEdge.Left, out var takenOver, out _);
+
+            // Act
+            tag = Patch("w-[40px] h-[40px] border-dashed pf-theme pf-theme-width shadow-md text-red-500");
+            SilhouetteFaceStash.TryReadFace(tag, DivideEdge.Left, out var face, out _);
+
+            // Assert — clear where the shadow did not take preflight's colour over, which is the control.
+            Assert.That(takenOver == red ? face : Color.clear, Is.EqualTo(new Color(1f, 0f, 1f, 1f)));
+        }
+
         [Test]
         public void Given_ALabelListeningForARuleWidth_When_CodeWritesABorderWidthInline_Then_ItsBorderIsTheTextColour()
         {

@@ -103,10 +103,7 @@ namespace Velvet
 
         public static void Detach(ReconcilerContext ctx, VisualElement element, LeadingLengthProbe probe)
         {
-            // MUTANT_SURVIVES(equivalent, line removed): a callback left registered only re-resolves text
-            // the resolver then resolves to the same string and white-space.
             element.UnregisterCallback(probe._onStyleResolved);
-            // MUTANT_SURVIVES(equivalent, line removed): the geometry callback re-resolves the same way.
             element.UnregisterCallback(probe._onGeometryChanged);
             probe._tick?.Pause();
             probe._tick = null;

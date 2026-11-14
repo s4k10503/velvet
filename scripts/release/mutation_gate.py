@@ -11,7 +11,7 @@ section owns the rule and the way out; this holds the decision:
 - `mutation_check.py --gate` over the campaign's scope at the commit (`change_base.campaign_scope`),
   reading the record branch (`mutation_record.py`), which is refused where it holds a commit its
   writer did not make: every mutant of the scope's sample holds a standing verdict, every standing
-  survivor is answered, and no declaration is stale.
+  survivor of the sample is answered, and no declaration in the scope is stale.
 
 The mutation half reads git and the record alone: it runs in a worktree checked out from the release
 commit's objects, so nothing uncommitted in the dispatch's checkout reaches it, and it refuses a

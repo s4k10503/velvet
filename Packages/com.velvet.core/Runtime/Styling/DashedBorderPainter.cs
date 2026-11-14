@@ -317,6 +317,8 @@ namespace Velvet
                 return;
             }
             var twoDashes = 2f * dash + gap + (closed ? gap : 0f);
+            // MUTANT_SURVIVES(equivalent, boundary): where length equals twoDashes neither branch moves dash or gap.
+            // The scale below is 1 there, and the dashed arm's BestGap returns the preferred gap there.
             if (length <= twoDashes)
             {
                 var scale = length / twoDashes;

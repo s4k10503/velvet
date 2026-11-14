@@ -304,6 +304,32 @@ namespace Velvet.Tests
             Assert.That(p1.panel.focusController.focusedElement, Is.EqualTo(p1));
         }
 
+        // GREEN_ON_BASE(characterization): the base already takes the host out of the Tab order once its one appended portal re-renders as Isolated.
+        [UnityTest]
+        public IEnumerator Given_AnAppendedLayerPortalReRenderedAsIsolated_When_TabDispatchesFromTheDeclaringPanelsOnlyFocusable_Then_ItKeepsFocus()
+        {
+            // Arrange
+            _mounted = V.Mount(_panelGo.GetComponent<UIDocument>().rootVisualElement,
+                V.Component(SwitchableOrderPortalHost, key: "root"));
+            yield return null;
+            yield return null;
+            s_setSwitchableOrder.Invoke(PanelFocusOrder.Appended);
+            yield return null;
+            yield return null;
+            s_setSwitchableOrder.Invoke(PanelFocusOrder.Isolated);
+            yield return null;
+            yield return null;
+            var main1 = Main("main1");
+            main1.Focus();
+
+            // Act
+            SendMove(main1, NavigationMoveEvent.Direction.Next);
+            yield return null;
+
+            // Assert
+            Assert.That(main1.panel.focusController.focusedElement, Is.EqualTo(main1));
+        }
+
         // An appended host with nothing focusable in it: the declaring panel is the only one with an element.
         [Component]
         private static VNode UnfocusableAppendedPortalHost() => V.Div(children: new VNode[]
@@ -337,6 +363,208 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(focusIns, Is.EqualTo(0));
+        }
+
+        [Component]
+        private static VNode TwoAppendedHostsPortalHost() => V.Div(children: new VNode[]
+        {
+            V.Button(name: "main1"),
+            V.Portal(UILayer.Overlay, key: "first", children: new VNode[] { V.Button(name: "a1") }),
+            V.Portal(UILayer.Topmost, key: "second", children: new VNode[] { V.Button(name: "b1") }),
+        });
+
+        private VisualElement LayerElement(UILayer layer, string name)
+            => _mounted.Root.Reconciler.Context.LayerHosts[layer].Document.rootVisualElement.Q<VisualElement>(name);
+
+        // GREEN_ON_BASE(characterization): the base already hops to the host declared first.
+        [UnityTest]
+        public IEnumerator Given_TwoAppendedLayerHosts_When_TabDispatchesFromTheDeclaringPanelsOnlyFocusable_Then_FocusEntersTheHostDeclaredFirst()
+        {
+            // Arrange
+            _mounted = V.Mount(_panelGo.GetComponent<UIDocument>().rootVisualElement,
+                V.Component(TwoAppendedHostsPortalHost, key: "root"));
+            yield return null;
+            yield return null;
+            var main1 = Main("main1");
+            var a1 = LayerElement(UILayer.Overlay, "a1");
+            main1.Focus();
+
+            // Act
+            SendMove(main1, NavigationMoveEvent.Direction.Next);
+            yield return null;
+
+            // Assert
+            Assert.That(a1.panel.focusController.focusedElement, Is.EqualTo(a1));
+        }
+
+        // The isolated host is in no tree's order, and its only focusables are the group's members.
+        [Component]
+        private static VNode GroupFillingAnIsolatedHostBesideAnAppendedOne() => V.Div(children: new VNode[]
+        {
+            V.Button(name: "main1"),
+            V.Portal(UILayer.Overlay, key: "appended", children: new VNode[] { V.Button(name: "a1") }),
+            V.Portal(UILayer.Topmost, key: "isolated", focusOrder: PanelFocusOrder.Isolated, children: new VNode[]
+            {
+                FocusScopeElement.Div(name: "group", singleTabStop: true, children: new VNode[]
+                {
+                    V.Button(name: "g1"),
+                    V.Button(name: "g2"),
+                }),
+            }),
+        });
+
+        // GREEN_ON_BASE(characterization): the base already keeps focus on the member of a group in a host outside the order.
+        [UnityTest]
+        public IEnumerator Given_ASingleTabStopGroupFillingAnIsolatedHostBesideAnAppendedOne_When_TabDispatchesFromAMember_Then_TheMemberKeepsFocus()
+        {
+            // Arrange
+            _mounted = V.Mount(_panelGo.GetComponent<UIDocument>().rootVisualElement,
+                V.Component(GroupFillingAnIsolatedHostBesideAnAppendedOne, key: "root"));
+            yield return null;
+            yield return null;
+            var g1 = LayerElement(UILayer.Topmost, "g1");
+            g1.Focus();
+            var held = g1.panel.focusController.focusedElement == g1;
+
+            // Act
+            SendMove(g1, NavigationMoveEvent.Direction.Next);
+            yield return null;
+
+            // Assert — null where g1 never took focus, which g1 can never be
+            Assert.That(held ? g1.panel.focusController.focusedElement : null, Is.EqualTo(g1));
+        }
+
+        private static StateUpdater<int> s_setRenderPass;
+
+        // Renders again on demand, so the portal patches without anything else about it changing.
+        [Component(Compiler = false)]
+        private static VNode RerenderablePortalHost()
+        {
+            var (_, setPass) = Hooks.UseState(0);
+            s_setRenderPass = setPass;
+            return V.Div(children: new VNode[]
+            {
+                V.Button(name: "main1"),
+                V.Portal(UILayer.Overlay, key: "portal", focusOrder: s_focusOrder, children: new VNode[]
+                {
+                    V.Button(name: "p1"),
+                    V.Button(name: "p2"),
+                }),
+            });
+        }
+
+        // GREEN_ON_BASE(characterization): the base already attaches the navigator to the host's new panel when the portal patches.
+        [UnityTest]
+        [TestCase(PanelFocusOrder.Appended, ExpectedResult = null,
+            TestName = "Given_AnAppendedLayerPortalWhoseHostDocumentWasDisabledAndEnabled_When_ItPatchesAndTabDispatchesFromTheHostsLastFocusable_Then_FocusReturnsToTheDeclaringPanel")]
+        [TestCase(PanelFocusOrder.Chained, ExpectedResult = null,
+            TestName = "Given_AChainedLayerPortalWhoseHostDocumentWasDisabledAndEnabled_When_ItPatchesAndTabDispatchesFromTheHostsLastFocusable_Then_FocusReturnsToTheDeclaringPanel")]
+        public IEnumerator Given_ALayerPortalWhoseHostDocumentWasDisabledAndEnabled_When_ItPatchesAndTabDispatchesFromTheHostsLastFocusable_Then_FocusReturnsToTheDeclaringPanel(
+            PanelFocusOrder order)
+        {
+            // Arrange — the host document is off for two frames before it is enabled again and the declaring component
+            // renders again; `replaced` reads whether the host then has a new root in a new panel
+            s_focusOrder = order;
+            _mounted = V.Mount(_panelGo.GetComponent<UIDocument>().rootVisualElement,
+                V.Component(RerenderablePortalHost, key: "root"));
+            yield return null;
+            yield return null;
+            var document = _mounted.Root.Reconciler.Context.LayerHosts[UILayer.Overlay].Document;
+            var oldRoot = document.rootVisualElement;
+            var oldPanel = oldRoot.panel;
+            document.enabled = false;
+            yield return null;
+            yield return null;
+            document.enabled = true;
+            s_setRenderPass.Invoke(1);
+            yield return null;
+            yield return null;
+            var root = document.rootVisualElement;
+            var replaced = !ReferenceEquals(root, oldRoot) && root.panel != null && !ReferenceEquals(root.panel, oldPanel);
+            var p2 = HostElement("p2");
+            var main1 = Main("main1");
+            p2.Focus();
+            var held = p2.panel.focusController.focusedElement == p2;
+
+            // Act
+            SendMove(p2, NavigationMoveEvent.Direction.Next);
+            yield return null;
+            yield return null;
+            yield return null;
+
+            // Assert — null where the host kept its root or its panel, or p2 never took focus, which main1 can never be
+            Assert.That(replaced && held ? main1.panel.focusController.focusedElement : null, Is.EqualTo(main1));
+        }
+
+        [Component]
+        private static VNode GroupBeforeAnAppendedHost() => V.Div(children: new VNode[]
+        {
+            V.Button(name: "x"),
+            FocusScopeElement.Div(name: "group", singleTabStop: true, children: new VNode[]
+            {
+                V.Button(name: "g1"),
+                V.Button(name: "g2"),
+            }),
+            V.Portal(UILayer.Overlay, key: "portal", children: new VNode[] { V.Button(name: "p1") }),
+        });
+
+        // GREEN_ON_BASE(characterization): the base already ends the move at the hop.
+        [UnityTest]
+        public IEnumerator Given_ASingleTabStopGroupClosingTheDeclaringPanel_When_TabLeavesItPastThePanelsLastElement_Then_TheDeclaringPanelHoldsNoFocus()
+        {
+            // Arrange
+            _mounted = V.Mount(_panelGo.GetComponent<UIDocument>().rootVisualElement,
+                V.Component(GroupBeforeAnAppendedHost, key: "root"));
+            yield return null;
+            yield return null;
+            var g1 = Main("g1");
+            g1.Focus();
+
+            // Act
+            SendMove(g1, NavigationMoveEvent.Direction.Next);
+
+            // Assert
+            Assert.That(g1.panel.focusController.focusedElement, Is.Null);
+        }
+
+        [Component]
+        private static VNode GroupDeclaringAPortalHost() => V.Div(children: new VNode[]
+        {
+            V.Button(name: "main1"),
+            FocusScopeElement.Div(name: "group", singleTabStop: true, children: new VNode[]
+            {
+                V.Button(name: "g1"),
+                V.Button(name: "g2"),
+                V.Portal(UILayer.Overlay, key: "portal", focusOrder: PanelFocusOrder.Isolated, children: new VNode[]
+                {
+                    V.Button(name: "p1"),
+                }),
+            }),
+        });
+
+        // GREEN_ON_BASE(characterization): the base already keeps the group's last-focused member through a landing in a portal it declares.
+        [UnityTest]
+        public IEnumerator Given_AGroupLastLeftFromItsSecondMemberAndThenFromAPortalItDeclares_When_TabEntersItFromBefore_Then_TheSecondMemberRegainsFocus()
+        {
+            // Arrange
+            _mounted = V.Mount(_panelGo.GetComponent<UIDocument>().rootVisualElement,
+                V.Component(GroupDeclaringAPortalHost, key: "root"));
+            yield return null;
+            yield return null;
+            var g2 = Main("g2");
+            var p1 = HostElement("p1");
+            g2.Focus();
+            p1.Focus();
+            p1.Blur();
+            var main1 = Main("main1");
+            main1.Focus();
+
+            // Act
+            SendMove(main1, NavigationMoveEvent.Direction.Next);
+            yield return null;
+
+            // Assert
+            Assert.That(g2.panel.focusController.focusedElement, Is.EqualTo(g2));
         }
 
         [UnityTest]
