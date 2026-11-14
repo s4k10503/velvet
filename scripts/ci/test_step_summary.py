@@ -171,9 +171,8 @@ class MainTests(unittest.TestCase):
 
 # Each line is cut at every `;`, `&&`, `||` and `|`, quoted or not, and a piece naming the summary passes
 # only where it is step_summary.py writing straight to it; any other piece naming it is reported, an
-# assignment of it to a variable included. A line is all it reads, so three shapes can pass: a command a
-# `\` carries onto the next line, a separator inside quotes, and a summary reached without its name on
-# the line, as a heredoc's script reaching it through `os.environ` would.
+# assignment of it to a variable included. It reads one line's text, not the shell's commands, so an
+# unbounded write the shell would perform can still pass.
 SUMMARY_COMMAND_SEPARATOR = re.compile(r"\s*(?:;|&&|\|\||\|)\s*")
 BOUNDED_APPEND = re.compile(
     r'^(?:-\s*)?(?:run:\s*)?python3 scripts/ci/step_summary\.py (?:verdict|block|plain) .*'
