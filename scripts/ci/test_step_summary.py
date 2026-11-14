@@ -169,17 +169,62 @@ class MainTests(unittest.TestCase):
         self.assertLessEqual(size(out.getvalue()), summary.LIMIT_BYTES + 1)
 
 
+# Each line is cut at every `;`, `&&`, `||` and `|`, quoted or not, and a piece naming the summary passes
+# only where it is step_summary.py writing straight to it; any other piece naming it is reported, an
+# assignment of it to a variable included. It reads one line's text, not the shell's commands, so an
+# unbounded write the shell would perform can still pass.
+SUMMARY_COMMAND_SEPARATOR = re.compile(r"\s*(?:;|&&|\|\||\|)\s*")
+BOUNDED_APPEND = re.compile(
+    r'^(?:-\s*)?(?:run:\s*)?python3 scripts/ci/step_summary\.py (?:verdict|block|plain) .*'
+    r' >> "\$GITHUB_STEP_SUMMARY"$')
+
+
+def unbounded_appends(line):
+    """Each piece of `line`, cut as above, that names the job summary and is not step_summary.py
+    appending to it."""
+    return [command for command in SUMMARY_COMMAND_SEPARATOR.split(line.strip())
+            if "GITHUB_STEP_SUMMARY" in command and not BOUNDED_APPEND.match(command)]
+
+
 class WorkflowTests(unittest.TestCase):
-    def test_Given_TheWorkflows_When_Read_Then_NoStepAppendsAFileToTheSummaryWithoutTheBound(self):
+    # GREEN_ON_BASE(construction): the reading under test is this file's own helper, which a base run
+    # takes from the branch. Replacing `SUMMARY_COMMAND_SEPARATOR.split(line.strip())` with
+    # `[line.strip()]` is what reddens this case.
+    def test_Given_ABoundedAppendAndAnotherOnOneLine_When_Read_Then_TheOtherIsReported(self):
         # Arrange
-        unbounded = []
-        for name in ("mutation.yml", "kill-set.yml"):
-            for line in (ROOT / ".github" / "workflows" / name).read_text().splitlines():
-                if "GITHUB_STEP_SUMMARY" in line and "step_summary.py" not in line:
-                    unbounded.append((name, line.strip()))
+        line = 'python3 scripts/ci/step_summary.py plain s.md >> "$GITHUB_STEP_SUMMARY"; cat big.txt >> "$GITHUB_STEP_SUMMARY"'
+
+        # Act
+        reported = unbounded_appends(line)
 
         # Assert
-        self.assertEqual(unbounded, [])
+        self.assertEqual(reported, ['cat big.txt >> "$GITHUB_STEP_SUMMARY"'])
+
+    # GREEN_ON_BASE(construction): the reading under test is this file's own helper, which a base run
+    # takes from the branch. Replacing `not BOUNDED_APPEND.match(command)` with
+    # `"step_summary.py" not in command` is what reddens this case.
+    def test_Given_TheSummaryAssignedToAVariableBesideANoteNamingTheBound_When_Read_Then_TheAssignmentIsReported(self):
+        # Arrange — an append through the variable would then name the summary nowhere.
+        line = 'S="$GITHUB_STEP_SUMMARY"  # bounded by step_summary.py below'
+
+        # Act
+        reported = unbounded_appends(line)
+
+        # Assert
+        self.assertEqual(reported, [line])
+
+    def test_Given_TheWorkflows_When_Read_Then_NoStepAppendsAFileToTheSummaryWithoutTheBound(self):
+        # Arrange — every workflow, since a list of them left benchmarks.yml's append unread.
+        workflows = sorted(path for pattern in ("*.yml", "*.yaml")
+                           for path in (ROOT / ".github" / "workflows").glob(pattern))
+
+        # Act
+        unbounded = [(path.name, command) for path in workflows
+                     for line in path.read_text().splitlines()
+                     for command in unbounded_appends(line)]
+
+        # Assert — a directory that read empty reports itself, since it holds nothing unbounded either.
+        self.assertEqual(unbounded if workflows else [("no workflow under", ".github/workflows")], [])
 
 
 if __name__ == "__main__":

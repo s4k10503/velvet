@@ -197,16 +197,43 @@ class SplitJobTests(unittest.TestCase):
 # What a GitHub-hosted ubuntu-latest runner holds, which a limit on the editor's container is meant to
 # stay under: the runner's own agent and the daemon share the rest.
 RUNNER_MEMORY_GIB = 16
-CAMPAIGN_WORKFLOWS = ("mutation.yml", "kill-set.yml")
+EDITOR_IMAGE = "unityci/editor:"
+DOCKER_RUN = re.compile(r"docker (?:container )?run ")
+# A floor under the suite launches read rather than their count, since a reading that found none holds
+# every limit.
+SUITE_LAUNCH_FLOOR = 4
 
 
-def campaign_launches(name):
-    """The flags ahead of the image's command in each `docker run` of workflow `name` that runs
-    ci_mutation_shard.py, and the workflow's text."""
-    text = (REPO_ROOT / ".github/workflows" / name).read_text()
-    launches = [chunk.partition("ci_mutation_shard.py")[0]
-                for chunk in text.split("docker run ")[1:] if "ci_mutation_shard.py" in chunk]
-    return launches, text
+def docker_commands(text):
+    """Each `docker run` or `docker container run` a workflow's text spells, continuation lines joined."""
+    lines = text.splitlines()
+    for index, line in enumerate(lines):
+        if line.lstrip().startswith("#") or not DOCKER_RUN.search(line):
+            continue
+        parts, at = [DOCKER_RUN.split(line, 1)[1]], index
+        while parts[-1].rstrip().endswith("\\") and at + 1 < len(lines):
+            at += 1
+            parts.append(lines[at])
+        yield " ".join(part.strip().rstrip("\\").strip() for part in parts)
+
+
+def suite_launches():
+    """(workflow text, the flags ahead of the image) for each launch `docker_commands` reads that
+    spells the editor image, in any workflow, but one handing licensed_editor.py an editor command line
+    that spells no -runTests, which is read as running no case.
+
+    What a launch does not spell is not read: one naming the image through a variable is left out, and
+    so is a suite run through `-executeMethod` or a `-runTests` held in a variable.
+    """
+    found = []
+    for path in sorted(item for pattern in ("*.yml", "*.yaml")
+                       for item in (REPO_ROOT / ".github/workflows").glob(pattern)):
+        text = path.read_text()
+        for command in docker_commands(text):
+            flags, image, rest = command.partition(EDITOR_IMAGE)
+            if image and not ("licensed_editor.py" in rest and "-runTests" not in rest):
+                found.append((text, flags))
+    return found
 
 
 def flag_value(launch, flag):
@@ -215,52 +242,76 @@ def flag_value(launch, flag):
     return found.group(1) if found else None
 
 
+def memory_gibibytes(text, flags):
+    """The --memory a launch is given, resolved through the workflow's env, in GiB, or None."""
+    value = flag_value(flags, "--memory") or ""
+    if value.startswith("$"):
+        declared = re.search(r"^  {}: \"(\w+)\"".format(re.escape(value[1:])), text, re.MULTILINE)
+        value = declared.group(1) if declared else ""
+    found = re.fullmatch(r"([0-9]+)g", value)
+    return int(found.group(1)) if found else None
+
+
+class DockerCommandTests(unittest.TestCase):
+
+    # GREEN_ON_BASE(construction): the reading under test is this file's own helper, which a base run
+    # takes from the branch. Replacing `r"docker (?:container )?run "` with `r"docker run "` is what
+    # reddens this case.
+    def test_Given_ALaunchSpelledAsDockerContainerRun_When_TheWorkflowIsRead_Then_ItIsAmongTheCommands(self):
+        # Arrange
+        text = 'docker container run --rm \\\n  "unityci/editor:x" python3 -u scripts/ci/per_case_coverage.py\n'
+
+        # Act
+        commands = list(docker_commands(text))
+
+        # Assert
+        self.assertEqual(commands, ['--rm "unityci/editor:x" python3 -u scripts/ci/per_case_coverage.py'])
+
+
 class RunnerLimitTests(unittest.TestCase):
-    """What a shard's editor container may take of the runner it shares with the job's own agent."""
+    """What an editor container running a suite may take of the runner it shares with the job's own agent."""
 
-    def limits(self, flag):
-        return [flag_value(launch, flag) for name in CAMPAIGN_WORKFLOWS
-                for launch in campaign_launches(name)[0]]
+    def offending(self, holds):
+        """The launches `holds` is false of, or what was read where it is under the floor."""
+        launches = suite_launches()
+        if len(launches) < SUITE_LAUNCH_FLOOR:
+            return ["{} suite launch(es) read".format(len(launches))]
+        return [flags for text, flags in launches if not holds(text, flags)]
 
-    def test_Given_TheCampaignsLaunches_When_TheirSwapIsRead_Then_EachIsAsLargeAsItsMemory(self):
+    def test_Given_TheSuiteLaunches_When_TheirSwapIsRead_Then_EachIsAsLargeAsItsMemory(self):
         # Arrange — a swap beyond the memory lets the container thrash the runner before it is killed.
-        memory = self.limits("--memory")
+        def holds(_, flags):
+            swap = flag_value(flags, "--memory-swap")
+            return swap is not None and swap == flag_value(flags, "--memory")
 
         # Act
-        swap = self.limits("--memory-swap")
-        equal = [held is not None and held == allowed for held, allowed in zip(swap, memory)]
-
-        # Assert — the two measuring steps of mutation.yml and the one of kill-set.yml.
-        self.assertEqual(equal, [True] * 3)
-
-    def test_Given_TheCampaignsLaunches_When_TheirProcessLimitIsRead_Then_EachIsBounded(self):
-        # Arrange
-        launches = [launch for name in CAMPAIGN_WORKFLOWS for launch in campaign_launches(name)[0]]
-
-        # Act
-        bounded = [(flag_value(launch, "--pids-limit") or "").isdigit() for launch in launches]
+        offending = self.offending(holds)
 
         # Assert
-        self.assertEqual(bounded, [True] * 3)
+        self.assertEqual(offending, [])
 
-    def test_Given_TheCampaignsLaunches_When_TheirMemoryIsResolved_Then_EachIsBelowTheRunners(self):
+    def test_Given_TheSuiteLaunches_When_TheirProcessLimitIsRead_Then_EachIsBounded(self):
         # Arrange
-        gibibytes = []
-        for name in CAMPAIGN_WORKFLOWS:
-            launches, text = campaign_launches(name)
-            for launch in launches:
-                value = flag_value(launch, "--memory") or ""
-                if value.startswith("$"):
-                    declared = re.search(r"^  {}: \"(\w+)\"".format(re.escape(value[1:])), text, re.MULTILINE)
-                    value = declared.group(1) if declared else ""
-                found = re.fullmatch(r"([0-9]+)g", value)
-                gibibytes.append(int(found.group(1)) if found else None)
+        def holds(_, flags):
+            return (flag_value(flags, "--pids-limit") or "").isdigit()
 
         # Act
-        below = [size is not None and 0 < size < RUNNER_MEMORY_GIB for size in gibibytes]
+        offending = self.offending(holds)
 
         # Assert
-        self.assertEqual(below, [True] * 3)
+        self.assertEqual(offending, [])
+
+    def test_Given_TheSuiteLaunches_When_TheirMemoryIsResolved_Then_EachIsBelowTheRunners(self):
+        # Arrange
+        def holds(text, flags):
+            size = memory_gibibytes(text, flags)
+            return size is not None and 0 < size < RUNNER_MEMORY_GIB
+
+        # Act
+        offending = self.offending(holds)
+
+        # Assert
+        self.assertEqual(offending, [])
 
 
 class ShardPlatformTests(unittest.TestCase):

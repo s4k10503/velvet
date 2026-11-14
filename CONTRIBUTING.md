@@ -579,10 +579,10 @@ stopped at its own run's baseline times `TIMEOUT_FACTOR` plus `TIMEOUT_CONSTANT`
 `--timeout` bounds the baseline alone. `ShardCeilingTests` charges one hanging mutant at the bound
 of the baseline it charges.
 
-Each workflow launch of the campaign's editor image (`mutation.yml`'s two measuring steps and
-`kill-set.yml`'s) is given a memory limit, with swap at the same figure, and a process limit, so that a
-mutant whose editor outgrows the limit loses a process inside the container. `mutation_check.py` records that
-launch as `killed (the editor crashed)` ([`Generators~/README.md`](Packages/com.velvet.core/Generators~/README.md) owns the reading), and
+Each `docker run` of the editor image that a workflow spells out to run a suite (`mutation.yml`'s two
+measuring steps, `kill-set.yml`'s and `per-case-coverage.yml`'s) is given a memory limit, with swap at
+the same figure, and a process limit, so that an editor outgrowing the limit loses a process inside the
+container. `mutation_check.py` records a campaign's launch that does as `killed (the editor crashed)` ([`Generators~/README.md`](Packages/com.velvet.core/Generators~/README.md) owns the reading), and
 `RunnerLimitTests` holds the limits on every such launch and the memory below a hosted runner's.
 
 Each shard is measured on the head and on the base, in two jobs, by the default campaign: narrowed to an
@@ -599,6 +599,25 @@ the head makes that the base did not is reported and passes.
 Say in the pull request body which `files` and `assemblies` were measured, the run's link, and the summary
 line the diff job prints (`N mutant(s); killed on the base: …, lost on the head: 0, …`), beside the
 deleted cases.
+
+**Which lines only the deleted cases reach is read off per-case coverage.** The kill set measures the
+mutants the campaign places, and says nothing of a line where it places none.
+`.github/workflows/per-case-coverage.yml` runs both suites with each case's coverage recorded on its
+own, and its report job runs `scripts/test_quality/unique_coverage.py` over them: for each fixture, the
+lines no other fixture's cases reach, with the tests `group` names taken out of their fixtures and
+reported as one unit. Measure the tree that still holds the cases, the pull request's base, naming them
+in `group`:
+
+```bash
+gh workflow run per-case-coverage.yml --ref main -f ref=main \
+  -f group='pruned=^Velvet\.Tests\.FooTests::(Given_A|Given_B)_'
+```
+
+A group listed among those reaching no line alone reaches nothing, in the assemblies the report's
+second line names, that a case outside it does not. A group with lines of its own leaves them
+unreached unless the head adds a case that reaches them. Say in the pull request body the run's link, the `group` pattern and the report's line for it,
+beside the deleted cases. What the script counts as a case's line, and what no case's record holds, is
+its docstring's to say.
 
 Pruning trips two other checks as well:
 
