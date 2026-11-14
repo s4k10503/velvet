@@ -9,17 +9,11 @@ namespace Velvet.Tests
     /// Regression coverage for a reconciler bug: an
     /// ancestor component and a keyed descendant component both subscribe to the same <see cref="Store{TState}"/>,
     /// so one store update marks both dirty. The ancestor flushes first and re-expands the keyed child via
-    /// <c>SubsumeFiberIntoThisPass</c>. That nested render returned the child's OLD VNode tree to the pool
-    /// mid-pass, while the ancestor's reconcile still held it as the patch baseline; a later sibling render in
-    /// the same pass could rent and mutate those pooled nodes, emptying the baseline's children so
-    /// <c>PatchNode</c> re-inserted the child's whole subtree instead of patching it — the subtree visibly
-    /// duplicated (e.g. tapping a list item's "+" restacked its subtree). The reconciler walks top-down in one
-    /// pass and patches the keyed child in place; these tests assert Velvet does too.
-    /// <para>
-    /// The fix defers the pooled-object return of re-expanded inline children to the top-level reconcile
-    /// boundary (see <c>ReconcilerContext.DeferredInlineOldTreeReturns</c>), so the baseline stays intact for
-    /// the whole pass while pooling is preserved (no added GC pressure).
-    /// </para>
+    /// <c>SubsumeFiberIntoThisPass</c>, while the ancestor's reconcile still holds the child's old tree as the
+    /// patch baseline. A baseline emptied under it made <c>PatchNode</c> re-insert the child's whole subtree
+    /// instead of patching it — the subtree visibly duplicated (e.g. tapping a list item's "+" restacked its
+    /// subtree). The reconciler walks top-down in one pass and patches the keyed child in place; these tests
+    /// assert Velvet does too.
     /// <para>
     /// Each scenario below drives the store to one state through a shared private factory and then asserts
     /// exactly one invariant per test, so a failure names precisely which subtree stacked.

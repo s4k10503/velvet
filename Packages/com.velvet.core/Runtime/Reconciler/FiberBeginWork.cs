@@ -15,18 +15,21 @@ namespace Velvet
         // updates; an unconditional render-phase setState would otherwise loop forever.
         internal const int RenderPhaseUpdateLimit = 25;
 
-        // The body's invocation is the rental journal's window, which a memo hit in the body disowns.
-        internal static VNode Render(ComponentFiber fiber)
+        internal static VNode?[] NormalizeToArray(VNode node)
         {
-            VNodePool.BeginRentalJournal();
-            try
+            if (node == null)
             {
-                return fiber.Body!();
+                return Array.Empty<VNode>();
             }
-            finally
+
+            // Only an unkeyed Fragment unwraps, as React unwraps only an unkeyed top-level one: a keyed root
+            // stays a node, so its key opens the scope its children are matched and registered under.
+            if (node is FragmentNode { Key: null } fragment)
             {
-                VNodePool.EndRentalJournal();
+                return fragment.Children ?? Array.Empty<VNode>();
             }
+
+            return new[] { node };
         }
 
         internal static void ResetHookIndex(ComponentFiber fiber)
@@ -83,11 +86,6 @@ namespace Velvet
                 // Discard the effect registrations of this throwaway attempt so the next attempt
                 // compares its deps against the committed render, not against this attempt.
                 FiberHookCommit.DiscardRenderPhaseAttemptEffects(fiber, in committed);
-                // The throwaway attempt's tree is never reconciled, so this is its only retirement
-                // point; without it every discarded attempt strands its rented bags in the pool's
-                // rented-out set. The owner mark spares whatever a memo hit shared with committed
-                // state or staged slots.
-                FiberTreeReturn.ReturnRetiredTree(FiberTreeReturn.NormalizeToArray(rendered), fiber);
                 if (++fiber.RenderPhaseSetStateCounter >= RenderPhaseUpdateLimit)
                 {
                     throw new InvalidOperationException(
@@ -108,7 +106,7 @@ namespace Velvet
             fiber.IsInRenderPhase = true;
             try
             {
-                return Render(fiber);
+                return fiber.Body!();
             }
             finally
             {

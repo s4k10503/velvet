@@ -151,7 +151,7 @@ namespace Velvet
 
         // A child array holding one unkeyed Fragment and nothing else is reconciled as that Fragment's
         // children, one level deep, as React unwraps an unkeyed top-level Fragment under any parent. A
-        // component's output takes that unwrap in FiberTreeReturn.NormalizeToArray instead, so this is
+        // component's output takes that unwrap in FiberBeginWork.NormalizeToArray instead, so this is
         // applied where IReconcilerHost.ReconcileChildren or a Portal mount reconciles children, and by
         // FiberContextSpine wherever it walks those same children: a walk unwrapping where the other does not
         // places the components under the Fragment at two different positions.

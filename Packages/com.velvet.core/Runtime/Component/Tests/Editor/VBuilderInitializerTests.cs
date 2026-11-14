@@ -91,25 +91,6 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_PooledNodeArrayOnTop_When_BuilderBuildsChildren_Then_ReusesPooledArray()
-        {
-            // Arrange — seed the length-2 bucket so a known array instance sits on top of the pool stack.
-            // (track2) BuildChildren must rent this rather than allocating a fresh array via ToArray().
-            var seeded = VNodePool.RentNodeArray(2);
-            VNodePool.ReturnNodeArray(seeded);
-
-            // Act
-            VNode node = new VDiv("root")
-            {
-                V.Label(text: "a"),
-                V.Label(text: "b"),
-            };
-
-            // Assert
-            Assert.That(((ElementNode)node).Children, Is.SameAs(seeded));
-        }
-
-        [Test]
         public void Given_VScrollViewBuilder_When_Built_Then_ProducesScrollViewElementType()
         {
             VNode node = new VScrollView("grow");

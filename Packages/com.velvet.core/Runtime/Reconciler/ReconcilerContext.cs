@@ -2161,30 +2161,6 @@ namespace Velvet
         // one. ComponentFiber.SourceTree owns what reads it.
         internal VNode?[]? CurrentFiberTree { get; set; }
 
-        // Old VNode trees of inline children re-rendered via SubsumeFiberIntoThisPass during the
-        // current reconcile pass, queued for pooled-object return at the top-level boundary rather than
-        // immediately. A parent re-render reaches an existing inline child, captures that child's old tree
-        // as the patch baseline during its old-side expansion, then re-renders the child (overwriting its
-        // PreviousTree) on the new side. Returning the old tree to the VNode pool inside that nested
-        // render would let the same pass rent and mutate those very nodes while rendering later siblings —
-        // a use-after-return that empties the baseline's children so PatchNode re-inserts the child's
-        // subtree instead of patching it (the subtree visibly duplicates). Deferring the return to the
-        // top-level finally keeps the nodes alive for the whole pass (so the baseline stays intact and no
-        // renter can alias them) while still pooling them for the next pass — no added GC pressure.
-        // Each entry carries the owning fiber so the drain-time sweep can mark that fiber's committed
-        // tree (and memoized roots) live. Drained and cleared at the end of every top-level Reconcile;
-        // a fiber unmounting mid-pass takes its own entries with it (FiberRenderer.Unmount) so they are
-        // swept while its committed state and parent chain are still intact rather than after teardown
-        // emptied the mark roots.
-        public List<(VNode?[] Tree, ComponentFiber Owner)> DeferredInlineOldTreeReturns { get; } = new();
-
-        // Fibers whose time-sliced reconcile is parked with a PendingOldTree baseline. A paused pass
-        // keeps reading that baseline across frames, so every retirement sweep marks these baselines
-        // live — another fiber retiring in between must not recycle nodes a parked diff still reads
-        // (memo hits legitimately share instances across fibers' trees). Maintained by the park /
-        // resume / unmount paths; a stale leftover entry only over-spares (leak-safe direction).
-        internal HashSet<ComponentFiber> ParkedBaselineFibers { get; } = new();
-
         // The old instances of each general walk in progress, innermost last; OldSlotOccupants.ResolveAgain says
         // who resolves them again and why.
         internal List<OldSlotOccupants> OpenOldInstances { get; } = new();

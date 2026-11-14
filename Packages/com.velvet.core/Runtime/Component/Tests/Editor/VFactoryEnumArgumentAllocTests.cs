@@ -11,11 +11,10 @@ namespace Velvet.Tests.Performance
     /// own: <c>layer:</c> and <c>focusOrder:</c> on <c>V.Portal</c>, <c>focusOrder:</c> on
     /// <c>V.WorldSpace</c>, <c>playOn:</c> on <c>V.Particles</c>, <c>movement:</c> on
     /// <c>V.Draggable</c>, <c>mode:</c> on <c>V.AnimatePresence</c>, <c>loaderMode:</c> on
-    /// <c>V.Route</c> and <c>direction:</c> on <c>V.Slider</c>. <see cref="VNodePoolZeroAllocTests"/>
-    /// names an accidental boxing as what it exists to catch, but it measures <see cref="VNodePool"/>; a
-    /// factory allocates its node by design, so a bare zero-allocation assertion cannot be made about one.
-    /// Each case here measures the factory against building the same node directly and pins the
-    /// difference at zero, which is the refusal's own cost and nothing else.
+    /// <c>V.Route</c> and <c>direction:</c> on <c>V.Slider</c>. A factory allocates its node by design, so a
+    /// bare zero-allocation assertion cannot be made about one. Each case here measures the factory against
+    /// building the same node directly and pins the difference at zero, which is the refusal's own cost and
+    /// nothing else.
     /// </summary>
     /// <remarks>
     /// <c>Enum.IsDefined(Type, object)</c> boxes its argument, and netstandard 2.1 — this project's API
@@ -74,18 +73,14 @@ namespace Velvet.Tests.Performance
 
         #endregion
 
-        #region delegates that also rent a props bag
+        #region delegates that also allocate a props bag
 
-        // V.Particles, V.Draggable and V.Slider rent from VNodePool, so both sides of their pairs return the
-        // bag. Renting without returning would leave the pool empty at every call and grow the rented set
-        // across the two measurements, and a set that resizes between them charges one side and not
-        // the other.
         private static readonly Action ParticlesViaFactory = () =>
-            VNodePool.ReturnProps(V.Particles(effect: null, playOn: PlayTrigger.Mount).Props);
+            GC.KeepAlive(V.Particles(effect: null, playOn: PlayTrigger.Mount));
 
         private static readonly Action ParticlesViaInit = () =>
         {
-            var props = VNodePool.RentProps();
+            var props = new FiberElementProps();
             props.Particles = new ParticlesSettings(null, PlayTrigger.Mount, 100f);
             GC.KeepAlive(new ElementNode
             {
@@ -95,15 +90,14 @@ namespace Velvet.Tests.Performance
                 Children = NoChildren,
                 Events = Array.Empty<FiberEventBinding>(),
             });
-            VNodePool.ReturnProps(props);
         };
 
         private static readonly Action DraggableViaFactory = () =>
-            VNodePool.ReturnProps(V.Draggable("row", movement: DragMovement.Translate).Props);
+            GC.KeepAlive(V.Draggable("row", movement: DragMovement.Translate));
 
         private static readonly Action DraggableViaInit = () =>
         {
-            var props = VNodePool.RentProps();
+            var props = new FiberElementProps();
             props.Draggable = new DraggableSettings("row");
             GC.KeepAlive(new ElementNode
             {
@@ -113,15 +107,14 @@ namespace Velvet.Tests.Performance
                 Children = NoChildren,
                 Events = Array.Empty<FiberEventBinding>(),
             });
-            VNodePool.ReturnProps(props);
         };
 
         private static readonly Action SliderViaFactory = () =>
-            VNodePool.ReturnProps(V.Slider(direction: SliderDirection.Vertical).Props);
+            GC.KeepAlive(V.Slider(direction: SliderDirection.Vertical));
 
         private static readonly Action SliderViaInit = () =>
         {
-            var props = VNodePool.RentProps();
+            var props = new FiberElementProps();
             props.Slider = new SliderSettings(null, null, SliderDirection.Vertical, null);
             GC.KeepAlive(new ElementNode
             {
@@ -131,7 +124,6 @@ namespace Velvet.Tests.Performance
                 Children = NoChildren,
                 Events = Array.Empty<FiberEventBinding>(),
             });
-            VNodePool.ReturnProps(props);
         };
 
         #endregion
@@ -148,8 +140,7 @@ namespace Velvet.Tests.Performance
             return (factoryBlocks - initBlocks, initBlocks > 0);
         }
 
-        // GREEN_ON_BASE(characterization): the base already allocates what this case pins.
-        // This change reads it over three windows.
+        // GREEN_ON_BASE(refactor): this case is the base's own text; only the delegates beside it stopped handing a props bag back to a pool.
         [Test]
         public void Given_ANamedLayerAndFocusOrder_When_VPortalIsCalled_Then_ItsTwoRefusalsAllocateNothing()
         {
@@ -160,8 +151,7 @@ namespace Velvet.Tests.Performance
             Assert.That(cost, Is.EqualTo((0, true)));
         }
 
-        // GREEN_ON_BASE(characterization): the base already allocates what this case pins.
-        // This change reads it over three windows.
+        // GREEN_ON_BASE(refactor): this case is the base's own text; only the delegates beside it stopped handing a props bag back to a pool.
         [Test]
         public void Given_ANamedFocusOrder_When_VWorldSpaceIsCalled_Then_ItsRefusalAllocatesNothing()
         {
@@ -172,8 +162,7 @@ namespace Velvet.Tests.Performance
             Assert.That(cost, Is.EqualTo((0, true)));
         }
 
-        // GREEN_ON_BASE(characterization): the base already allocates what this case pins.
-        // This change reads it over three windows.
+        // GREEN_ON_BASE(refactor): this case is the base's own text; only the delegates beside it stopped handing a props bag back to a pool.
         [Test]
         public void Given_ANamedPlayOn_When_VParticlesIsCalled_Then_ItsRefusalAllocatesNothing()
         {
@@ -184,8 +173,7 @@ namespace Velvet.Tests.Performance
             Assert.That(cost, Is.EqualTo((0, true)));
         }
 
-        // GREEN_ON_BASE(characterization): the base already allocates what this case pins.
-        // This change reads it over three windows.
+        // GREEN_ON_BASE(refactor): this case is the base's own text; only the delegates beside it stopped handing a props bag back to a pool.
         [Test]
         public void Given_ANamedMovement_When_VDraggableIsCalled_Then_ItsRefusalAllocatesNothing()
         {
@@ -196,8 +184,7 @@ namespace Velvet.Tests.Performance
             Assert.That(cost, Is.EqualTo((0, true)));
         }
 
-        // GREEN_ON_BASE(characterization): the base already allocates what this case pins.
-        // This change reads it over three windows.
+        // GREEN_ON_BASE(refactor): this case is the base's own text; only the delegates beside it stopped handing a props bag back to a pool.
         [Test]
         public void Given_ANamedMode_When_VAnimatePresenceIsCalled_Then_ItsRefusalAllocatesNothing()
         {
@@ -208,8 +195,7 @@ namespace Velvet.Tests.Performance
             Assert.That(cost, Is.EqualTo((0, true)));
         }
 
-        // GREEN_ON_BASE(characterization): the base already allocates what this case pins.
-        // This change reads it over three windows.
+        // GREEN_ON_BASE(refactor): this case is the base's own text; only the delegates beside it stopped handing a props bag back to a pool.
         [Test]
         public void Given_ANamedLoaderMode_When_VRouteIsCalled_Then_ItsRefusalAllocatesNothing()
         {
@@ -220,6 +206,7 @@ namespace Velvet.Tests.Performance
             Assert.That(cost, Is.EqualTo((0, true)));
         }
 
+        // GREEN_ON_BASE(refactor): this case is the base's own text; only the delegates beside it stopped handing a props bag back to a pool.
         [Test]
         public void Given_ANamedDirection_When_VSliderIsCalled_Then_ItsRefusalAllocatesNothing()
         {

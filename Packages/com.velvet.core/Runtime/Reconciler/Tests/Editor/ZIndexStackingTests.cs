@@ -2063,6 +2063,7 @@ namespace Velvet.Tests
             return string.Join(",", names);
         }
 
+        // GREEN_ON_BASE(refactor): the parked-baseline term now reads the fiber's PendingOldTree, which the base sets with the registration it read before.
         [Test]
         public void Given_AFiberParkedAndRegisteredAcrossPasses_When_AnIndependentSiblingRelocatesTheSharedParentsFirstElementIntoItsBackBand_Then_TheParkedFiberResumesAtItsSlots()
         {
@@ -2074,16 +2075,15 @@ namespace Velvet.Tests
             using var mounted = V.Mount(root, V.Component(CrossParkSiblingHost, key: "root"));
             var host = root.Q<VisualElement>("cross-park-host");
             var noBackBandBeforeBTransition = !Band(host, front: false).Any;
-            var ctx = mounted.Root.Reconciler.Context;
 
             // Act — A re-renders under a tiny Transition budget and parks mid-commit; the pass is left
-            // parked (registered in ParkedBaselineFibers) here, deliberately NOT drained yet, while B's
+            // parked (holding its PendingOldTree baseline) here, deliberately NOT drained yet, while B's
             // own render below runs.
             s_crossParkACount = 60;
             s_crossParkAFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
             s_crossParkAFiber.FlushStateWithTinyBudgetForTest();
             var aParked = s_crossParkAFiber.HasPendingReconcileWorkForTest();
-            var aRegisteredAsParkedBaseline = ctx.ParkedBaselineFibers.Contains(s_crossParkAFiber);
+            var aHoldsAParkedBaseline = s_crossParkAFiber.PendingOldTree != null;
 
             // Act — B re-renders synchronously (Normal lane), turning its own first item z-managed: the
             // shared host's FIRST negative-z child, which B's pass relocates into the back band while A is
@@ -2103,11 +2103,12 @@ namespace Velvet.Tests
             var expected = new List<string>();
             for (var i = 0; i < 60; i++) { expected.Add("cpa" + i); }
             Assert.That(
-                (noBackBandBeforeBTransition, aParked, aRegisteredAsParkedBaseline,
+                (noBackBandBeforeBTransition, aParked, aHoldsAParkedBaseline,
                     bFilledTheBackBand, CrossParkAOrder(host)),
                 Is.EqualTo((true, true, true, true, string.Join(",", expected))));
         }
 
+        // GREEN_ON_BASE(refactor): the parked-baseline term now reads the fiber's PendingOldTree, which the base sets with the registration it read before.
         [Test]
         public void Given_AFiberParkedAndRegisteredAcrossPasses_When_AnIndependentSiblingReturnsTheSharedParentsOnlyBackBandElement_Then_TheParkedFiberResumesAtItsSlots()
         {
@@ -2120,16 +2121,15 @@ namespace Velvet.Tests
             using var mounted = V.Mount(root, V.Component(CrossParkSiblingHost, key: "root"));
             var host = root.Q<VisualElement>("cross-park-host");
             var backBandHeldBBeforeBTeardown = Band(host, front: false).Any;
-            var ctx = mounted.Root.Reconciler.Context;
 
             // Act — A re-renders under a tiny Transition budget and parks mid-commit; the pass is left
-            // parked (registered in ParkedBaselineFibers) here, deliberately NOT drained yet, while B's
+            // parked (holding its PendingOldTree baseline) here, deliberately NOT drained yet, while B's
             // own render below runs.
             s_crossParkACount = 60;
             s_crossParkAFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
             s_crossParkAFiber.FlushStateWithTinyBudgetForTest();
             var aParked = s_crossParkAFiber.HasPendingReconcileWorkForTest();
-            var aRegisteredAsParkedBaseline = ctx.ParkedBaselineFibers.Contains(s_crossParkAFiber);
+            var aHoldsAParkedBaseline = s_crossParkAFiber.PendingOldTree != null;
 
             // Act — B re-renders synchronously (Normal lane), flipping its own first item back to ordinary:
             // the shared host's ONLY back-band element returns to its slot while A is STILL parked — the
@@ -2147,7 +2147,7 @@ namespace Velvet.Tests
             var expected = new List<string>();
             for (var i = 0; i < 60; i++) { expected.Add("cpa" + i); }
             Assert.That(
-                (backBandHeldBBeforeBTeardown, aParked, aRegisteredAsParkedBaseline,
+                (backBandHeldBBeforeBTeardown, aParked, aHoldsAParkedBaseline,
                     bEmptiedTheBackBand, CrossParkAOrder(host)),
                 Is.EqualTo((true, true, true, true, string.Join(",", expected))));
         }
@@ -2201,6 +2201,7 @@ namespace Velvet.Tests
             return string.Join(",", names);
         }
 
+        // GREEN_ON_BASE(refactor): the parked-baseline term now reads the fiber's PendingOldTree, which the base sets with the registration it read before.
         [Test]
         public void Given_AKeyedFiberParkedAndRegisteredAcrossPasses_When_AnIndependentSiblingRelocatesTheSharedParentsFirstElementIntoItsBackBand_Then_TheParkedFiberResumesAtItsSlots()
         {
@@ -2213,16 +2214,15 @@ namespace Velvet.Tests
             using var mounted = V.Mount(root, V.Component(CrossParkKeyedSiblingHost, key: "root"));
             var host = root.Q<VisualElement>("cross-park-keyed-host");
             var noBackBandBeforeBTransition = !Band(host, front: false).Any;
-            var ctx = mounted.Root.Reconciler.Context;
 
             // Act — A re-renders under a tiny Transition budget and parks mid-commit; the pass is left
-            // parked (registered in ParkedBaselineFibers) here, deliberately NOT drained yet, while B's
+            // parked (holding its PendingOldTree baseline) here, deliberately NOT drained yet, while B's
             // own render below runs.
             s_crossParkKeyedACount = 60;
             s_crossParkKeyedAFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
             s_crossParkKeyedAFiber.FlushStateWithTinyBudgetForTest();
             var aParked = s_crossParkKeyedAFiber.HasPendingReconcileWorkForTest();
-            var aRegisteredAsParkedBaseline = ctx.ParkedBaselineFibers.Contains(s_crossParkKeyedAFiber);
+            var aHoldsAParkedBaseline = s_crossParkKeyedAFiber.PendingOldTree != null;
 
             // Act — B re-renders synchronously (Normal lane), turning its own first item z-managed: the
             // shared host's FIRST negative-z child, which B's pass relocates into the back band while A is
@@ -2239,11 +2239,12 @@ namespace Velvet.Tests
             var expected = new List<string>();
             for (var i = 0; i < 60; i++) { expected.Add("cpka" + i); }
             Assert.That(
-                (noBackBandBeforeBTransition, aParked, aRegisteredAsParkedBaseline,
+                (noBackBandBeforeBTransition, aParked, aHoldsAParkedBaseline,
                     bFilledTheBackBand, CrossParkKeyedAOrder(host)),
                 Is.EqualTo((true, true, true, true, string.Join(",", expected))));
         }
 
+        // GREEN_ON_BASE(refactor): the parked-baseline term now reads the fiber's PendingOldTree, which the base sets with the registration it read before.
         [Test]
         public void Given_AKeyedFiberParkedAndRegisteredAcrossPasses_When_AnIndependentSiblingReturnsTheSharedParentsOnlyBackBandElement_Then_TheParkedFiberResumesAtItsSlots()
         {
@@ -2256,7 +2257,6 @@ namespace Velvet.Tests
             using var mounted = V.Mount(root, V.Component(CrossParkKeyedSiblingHost, key: "root"));
             var host = root.Q<VisualElement>("cross-park-keyed-host");
             var backBandHeldBBeforeBTeardown = Band(host, front: false).Any;
-            var ctx = mounted.Root.Reconciler.Context;
 
             // Act — A re-renders under a tiny Transition budget and parks mid-commit; left parked while
             // B's own render below runs.
@@ -2264,7 +2264,7 @@ namespace Velvet.Tests
             s_crossParkKeyedAFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
             s_crossParkKeyedAFiber.FlushStateWithTinyBudgetForTest();
             var aParked = s_crossParkKeyedAFiber.HasPendingReconcileWorkForTest();
-            var aRegisteredAsParkedBaseline = ctx.ParkedBaselineFibers.Contains(s_crossParkKeyedAFiber);
+            var aHoldsAParkedBaseline = s_crossParkKeyedAFiber.PendingOldTree != null;
 
             // Act — B re-renders synchronously (Normal lane), flipping its own first item back to ordinary:
             // the shared host's ONLY back-band element returns to its slot while A is STILL parked.
@@ -2281,7 +2281,7 @@ namespace Velvet.Tests
             var expected = new List<string>();
             for (var i = 0; i < 60; i++) { expected.Add("cpka" + i); }
             Assert.That(
-                (backBandHeldBBeforeBTeardown, aParked, aRegisteredAsParkedBaseline,
+                (backBandHeldBBeforeBTeardown, aParked, aHoldsAParkedBaseline,
                     bEmptiedTheBackBand, CrossParkKeyedAOrder(host)),
                 Is.EqualTo((true, true, true, true, string.Join(",", expected))));
         }
@@ -2336,6 +2336,7 @@ namespace Velvet.Tests
 
         #region A resume tick that relocates an element and re-parks
 
+        // GREEN_ON_BASE(refactor): the parked-baseline term now reads the fiber's PendingOldTree, which the base sets with the registration it read before.
         [Test]
         public void Given_AParkedFibersOwnResumeTickRelocatesAnElementAndReParks_When_ItFinishes_Then_TrailingItemsLandAtCorrectIndices()
         {
@@ -2344,20 +2345,19 @@ namespace Velvet.Tests
             s_drainZManaged = false;
             var root = new VisualElement();
             using var mounted = V.Mount(root, V.Component(DrainZLayerHost, key: "root"));
-            var ctx = mounted.Root.Reconciler.Context;
             var noBackBandBeforeTheReRender = !Band(root, front: false).Any;
 
-            // Act — tick 1 (via FlushState): item0 parks first, which is what registers the fiber in
-            // ParkedBaselineFibers BEFORE its own later relocating tick runs.
+            // Act — tick 1 (via FlushState): item0 parks first, which is what gives the fiber its parked baseline
+            // BEFORE its own later relocating tick runs.
             s_drainZManaged = true;
             s_drainFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
             s_drainFiber.FlushStateWithTinyBudgetForTest();
             var parkedAfterItem0 = s_drainFiber.HasPendingReconcileWorkForTest();
-            var registeredAsParkedBaseline = ctx.ParkedBaselineFibers.Contains(s_drainFiber);
+            var holdsAParkedBaseline = s_drainFiber.PendingOldTree != null;
 
             // Act — tick 2 (a single manual resume, which continues at the tiny budget tick 1 captured on the
             // fiber): processes item1, relocating it into the shared parent's back band INSIDE this tick, then
-            // re-parks immediately after (item2..item9 remain), still registered in ParkedBaselineFibers.
+            // re-parks immediately after (item2..item9 remain), still holding its parked baseline.
             FiberWorkLoop.ContinueReconcile(s_drainFiber);
             var resumeTickFilledTheBackBand = Band(root, front: false).Names == "item1";
             var reParkedWhileStillRegistered = s_drainFiber.HasPendingReconcileWorkForTest();
@@ -2367,7 +2367,7 @@ namespace Velvet.Tests
 
             // Assert — item1 stands in the back band ahead of the trailing items, and each of item2..item9 lands at its slot.
             Assert.That(
-                (noBackBandBeforeTheReRender, parkedAfterItem0, registeredAsParkedBaseline,
+                (noBackBandBeforeTheReRender, parkedAfterItem0, holdsAParkedBaseline,
                     resumeTickFilledTheBackBand, reParkedWhileStillRegistered, TrailingItemOrder(root)),
                 Is.EqualTo((true, true, true, true, true, ExpectedTrailingItemOrder)));
         }

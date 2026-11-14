@@ -71,8 +71,6 @@ namespace Velvet
             // render-phase settle keeps them. (On a miss, Store stages the rebuilt result; without
             // this hit-side staging a discarded attempt's miss would otherwise be the last thing staged.)
             slot.NextDeps = slot.LastDeps;
-            // A hit drops what the body built ahead of its gate, which the cached tree's retirement never reaches.
-            VNodePool.DisownJournaledRentals();
             hit = slot;
             return true;
         }

@@ -64,17 +64,6 @@ namespace Velvet.Tests
             return noop.CreateDelegate(delegateType);
         }
 
-        // Hands back what a factory rented, since no reconcile retires these nodes; VFactoryRefusalRentalTests
-        // states what a rented-out set that grows across fixtures costs a later allocation measurement.
-        private static void Retire(object? node)
-        {
-            if (node is not BaseElementNode element) return;
-            var inner = ElementCarryingEvents(element);
-            if (!ReferenceEquals(inner, element)) Retire(inner);
-            VNodePool.ReturnProps(element.Props);
-            VNodePool.ReturnEventArray(element.Events);
-        }
-
         // V.Anchored renders a wrapper that positions the element and puts the element carrying the bindings
         // inside it, as drei's Html does.
         private static BaseElementNode ElementCarryingEvents(BaseElementNode node)
@@ -108,21 +97,14 @@ namespace Velvet.Tests
                 return factory.Name + ": threw " + ex.InnerException?.GetType().Name;
             }
 
-            try
+            var events = ElementCarryingEvents((BaseElementNode)node!).Events;
+            if (!withOwnCallback)
             {
-                var events = ElementCarryingEvents((BaseElementNode)node!).Events;
-                if (!withOwnCallback)
-                {
-                    return events.Contains(Sentinel) ? null : factory.Name + ": dropped the events array";
-                }
-                return events.Length == 2 && events[0] != null && events[0] != Sentinel && events[1] == Sentinel
-                    ? null
-                    : factory.Name + ": " + string.Join(" ", events.Select(binding => binding?.EventId ?? "null"));
+                return events.Contains(Sentinel) ? null : factory.Name + ": dropped the events array";
             }
-            finally
-            {
-                Retire(node);
-            }
+            return events.Length == 2 && events[0] != null && events[0] != Sentinel && events[1] == Sentinel
+                ? null
+                : factory.Name + ": " + string.Join(" ", events.Select(binding => binding?.EventId ?? "null"));
         }
 
         // GREEN_ON_BASE(refactor): only how this fixture reads a node's events changed. It looks through the wrapper V.Anchored renders, which the base's factory has none of.
@@ -159,7 +141,7 @@ namespace Velvet.Tests
             Assert.That((factories.Length >= 8, string.Join("\n", failures)), Is.EqualTo((true, string.Empty)));
         }
 
-        // GREEN_ON_BASE(refactor): only how this fixture reads a node's events changed. It looks through the wrapper V.Anchored renders, which the base's factory has none of.
+        // GREEN_ON_BASE(refactor): this case only stops handing back what a builder rented, since nothing rents parts now.
         [Test]
         public void Given_EveryInitializerBuilder_When_ItsEventsAreSet_Then_TheBuiltNodeCarriesThem()
         {
@@ -186,14 +168,13 @@ namespace Velvet.Tests
                 {
                     failures.Add(type.Name + ": dropped the events array");
                 }
-                Retire(node);
             }
 
             // Assert
             Assert.That((builders.Length > 1, string.Join("\n", failures)), Is.EqualTo((true, string.Empty)));
         }
 
-        // GREEN_ON_BASE(refactor): only how this fixture reads a node's events changed. It looks through the wrapper V.Anchored renders, which the base's factory has none of.
+        // GREEN_ON_BASE(refactor): this case only stops handing back what a factory rented, since nothing rents parts now.
         [Test]
         public void Given_EveryShorthandElementFactory_When_CalledWithAnEventsArray_Then_ItHasAnEventsFormThatCarriesThem()
         {
@@ -227,7 +208,6 @@ namespace Velvet.Tests
                 {
                     failures.Add(shorthand.Name + ": dropped the events array");
                 }
-                Retire(node);
             }
 
             // Assert

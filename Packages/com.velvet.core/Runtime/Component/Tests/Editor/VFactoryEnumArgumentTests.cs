@@ -18,8 +18,6 @@ namespace Velvet.Tests
     /// <see cref="ArgumentOutOfRangeException"/> that names the parameter, carries the value, and names
     /// the API and the enum in its message.</item>
     /// <item>Every member still reaches what the factory builds.</item>
-    /// <item><c>V.Slider</c> and <c>V.SliderInt</c>, which rent a props bag and an event array on their way
-    /// to the node, refuse before renting either.</item>
     /// </list>
     /// <see cref="VPortalFactoryTests"/> specifies the same of <c>V.Portal(layer:)</c>, whose check
     /// these follow.
@@ -471,41 +469,6 @@ namespace Velvet.Tests
             Assert.That(ex.ActualValue, Is.EqualTo(UnnamedDirection));
         }
 
-        [Test]
-        public void Given_ADirectionNamingNoMember_When_VSliderRefusesIt_Then_TheCallRentsNothing()
-        {
-            // Arrange — a value and a handler make the call rent a bag and an event array once it is past
-            // the check, and the same call with a member named is the control: a count that never moved
-            // would satisfy the refusal's zeroes on its own.
-            Action<float> onChanged = _ => { };
-            var before = VNodePoolTestAccess.RentedOutCountsForTest();
-            string? refusedParam = null;
-
-            // Act
-            try
-            {
-                V.Slider(value: 1f, onValueChanged: onChanged, direction: UnnamedDirection);
-            }
-            catch (ArgumentOutOfRangeException ex)
-            {
-                refusedParam = ex.ParamName;
-            }
-            var afterRefusal = VNodePoolTestAccess.RentedOutCountsForTest();
-            var accepted = V.Slider(value: 1f, onValueChanged: onChanged, direction: SliderDirection.Vertical);
-            var afterAccepted = VNodePoolTestAccess.RentedOutCountsForTest();
-            VNodePool.ReturnProps(accepted.Props);
-            VNodePool.ReturnEventArray(accepted.Events);
-
-            // Assert
-            Assert.That(
-                (refusedParam,
-                    afterRefusal.Props - before.Props,
-                    afterRefusal.EventArrays - before.EventArrays,
-                    afterAccepted.Props - afterRefusal.Props,
-                    afterAccepted.EventArrays - afterRefusal.EventArrays),
-                Is.EqualTo(("direction", 0, 0, 1, 1)));
-        }
-
         // What it answers for is the refusal: narrow that check to one member and this case goes red.
         [Test]
         public void Given_EveryMemberOfSliderDirection_When_VSliderIsCalled_Then_EachBuildsANodeCarryingIt()
@@ -528,41 +491,6 @@ namespace Velvet.Tests
 
         #region V.Slider(step:)
 
-        [Test]
-        public void Given_AStepOfZero_When_VSliderRefusesIt_Then_TheCallRentsNothing()
-        {
-            // Arrange — a value and a handler make the call rent a bag and an event array once it is past
-            // the check, and the same call with a step named is the control: a count that never moved
-            // would satisfy the refusal's zeroes on its own.
-            Action<float> onChanged = _ => { };
-            var before = VNodePoolTestAccess.RentedOutCountsForTest();
-            string? refusedParam = null;
-
-            // Act
-            try
-            {
-                V.Slider(value: 1f, onValueChanged: onChanged, step: 0f);
-            }
-            catch (ArgumentOutOfRangeException ex)
-            {
-                refusedParam = ex.ParamName;
-            }
-            var afterRefusal = VNodePoolTestAccess.RentedOutCountsForTest();
-            var accepted = V.Slider(value: 1f, onValueChanged: onChanged, step: 0.5f);
-            var afterAccepted = VNodePoolTestAccess.RentedOutCountsForTest();
-            VNodePool.ReturnProps(accepted.Props);
-            VNodePool.ReturnEventArray(accepted.Events);
-
-            // Assert
-            Assert.That(
-                (refusedParam,
-                    afterRefusal.Props - before.Props,
-                    afterRefusal.EventArrays - before.EventArrays,
-                    afterAccepted.Props - afterRefusal.Props,
-                    afterAccepted.EventArrays - afterRefusal.EventArrays),
-                Is.EqualTo(("step", 0, 0, 1, 1)));
-        }
-
         #endregion
 
         #region V.SliderInt(direction:, step:)
@@ -576,39 +504,6 @@ namespace Velvet.Tests
             // Assert
             Assert.That((ex.ParamName, ex.Message.Contains("V.SliderInt"), ex.Message.Contains("SliderDirection")),
                 Is.EqualTo(("direction", true, true)));
-        }
-
-        [Test]
-        public void Given_ADirectionNamingNoMember_When_VSliderIntRefusesIt_Then_TheCallRentsNothing()
-        {
-            // Arrange — the control is V.Slider's case of the same name, and for its reason.
-            Action<int> onChanged = _ => { };
-            var before = VNodePoolTestAccess.RentedOutCountsForTest();
-            string? refusedParam = null;
-
-            // Act
-            try
-            {
-                V.SliderInt(value: 1, onValueChanged: onChanged, direction: UnnamedDirection);
-            }
-            catch (ArgumentOutOfRangeException ex)
-            {
-                refusedParam = ex.ParamName;
-            }
-            var afterRefusal = VNodePoolTestAccess.RentedOutCountsForTest();
-            var accepted = V.SliderInt(value: 1, onValueChanged: onChanged, direction: SliderDirection.Vertical);
-            var afterAccepted = VNodePoolTestAccess.RentedOutCountsForTest();
-            VNodePool.ReturnProps(accepted.Props);
-            VNodePool.ReturnEventArray(accepted.Events);
-
-            // Assert
-            Assert.That(
-                (refusedParam,
-                    afterRefusal.Props - before.Props,
-                    afterRefusal.EventArrays - before.EventArrays,
-                    afterAccepted.Props - afterRefusal.Props,
-                    afterAccepted.EventArrays - afterRefusal.EventArrays),
-                Is.EqualTo(("direction", 0, 0, 1, 1)));
         }
 
         // What it answers for is the refusal: narrow that check to one member and this case goes red.
@@ -627,39 +522,6 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(string.Join(",", carried), Is.EqualTo(string.Join(",", members.Select(m => m.ToString()))));
-        }
-
-        [Test]
-        public void Given_AStepOfZero_When_VSliderIntRefusesIt_Then_TheCallRentsNothing()
-        {
-            // Arrange — same control, and for the same reason.
-            Action<int> onChanged = _ => { };
-            var before = VNodePoolTestAccess.RentedOutCountsForTest();
-            string? refusedParam = null;
-
-            // Act
-            try
-            {
-                V.SliderInt(value: 1, onValueChanged: onChanged, step: 0);
-            }
-            catch (ArgumentOutOfRangeException ex)
-            {
-                refusedParam = ex.ParamName;
-            }
-            var afterRefusal = VNodePoolTestAccess.RentedOutCountsForTest();
-            var accepted = V.SliderInt(value: 1, onValueChanged: onChanged, step: 2);
-            var afterAccepted = VNodePoolTestAccess.RentedOutCountsForTest();
-            VNodePool.ReturnProps(accepted.Props);
-            VNodePool.ReturnEventArray(accepted.Events);
-
-            // Assert
-            Assert.That(
-                (refusedParam,
-                    afterRefusal.Props - before.Props,
-                    afterRefusal.EventArrays - before.EventArrays,
-                    afterAccepted.Props - afterRefusal.Props,
-                    afterAccepted.EventArrays - afterRefusal.EventArrays),
-                Is.EqualTo(("step", 0, 0, 1, 1)));
         }
 
         #endregion

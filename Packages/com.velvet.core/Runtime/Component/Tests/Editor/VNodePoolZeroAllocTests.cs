@@ -1,40 +1,53 @@
 using System;
 using NUnit.Framework;
+using UnityEngine.UIElements;
 using Velvet.TestUtilities;
 
 namespace Velvet.Tests.Performance
 {
     /// <summary>
-    /// Zero-allocation regression guard for <see cref="VNodePool"/>.
-    ///
+    /// Pins what three <c>V.*</c> factory calls allocate: the node and each part it carries, built for that node,
+    /// so no part of a tree that was disposed is handed to them.
+    /// <list type="bullet">
+    /// <item><c>V.Label(text:)</c> allocates the node and a props bag.</item>
+    /// <item><c>V.Button(onClick:)</c> allocates the node, the click binding and the one-slot array holding it.</item>
+    /// <item><c>V.List</c> over nodes it has keyed before allocates the child array and nothing else.</item>
+    /// </list>
     /// <para>
-    /// Velvet uses an immutable virtual-DOM model: one node object (<see cref="ElementNode"/> etc.) is allocated
-    /// per element per render and is intentionally never pooled, so a *full* per-render zero-alloc is not a
-    /// goal. What <b>is</b> a hard contract — and what these specs pin with
-    /// <see cref="GCAllocationProbe"/> — is that the pooled, reusable
-    /// pieces (<see cref="FiberElementProps"/>, single-event arrays, and child <see cref="VNode"/>[] arrays)
-    /// cost <b>zero GC</b> on a warm rent/return cycle. A regression here (e.g. an accidental boxing or a
-    /// resize on the hot path) is exactly the kind of silent GC churn this guard is meant to catch.
-    /// </para>
-    ///
-    /// <para>
-    /// Each spec warms the relevant pool first (the first rent allocates the backing object and any dictionary /
-    /// stack capacity), then asserts the steady-state rent→return cycle allocates nothing. The measured
-    /// delegate captures no locals, so it binds to a cached static delegate and adds no closure allocation of
-    /// its own.
-    /// </para>
-    ///
-    /// <para>
-    /// Behavioral coverage of memoization bail (a bailed <c>[Component(Memoize = true)]</c> does not re-run its
-    /// body and therefore allocates no subtree) lives in <c>ComponentMemoPropsBailTests</c>; it is not
-    /// re-asserted here because a parent re-render that reaches the bail still allocates the child's
-    /// <c>ComponentNode</c>, so that path has a non-zero floor by design.
+    /// Each case but the canary first mounts and disposes a tree holding eight nodes of the kind it measures, so a pool of parts,
+    /// were one put back, would have that tree's parts to hand the measured call. <see cref="GCAllocationProbe"/>
+    /// counts the blocks one call charges; the canary is what shows that probe counting at all.
     /// </para>
     /// </summary>
     [TestFixture]
     [Category("Performance")]
     internal sealed class VNodePoolZeroAllocTests
     {
+        private const int HeldNodes = 8;
+        private const string LabelText = "held";
+
+        private static readonly Action OnClick = () => { };
+        private static readonly int[] Items = { 0, 1, 2, 3 };
+        private static readonly string[] Keys = { "a", "b", "c", "d" };
+        private static readonly VNode[] Rows = { V.Div(), V.Div(), V.Div(), V.Div() };
+
+        // Static, so the measured delegates capture nothing and allocate no closure of their own.
+        private static readonly Action BuildLabel = () => GC.KeepAlive(V.Label(text: LabelText));
+
+        private static readonly Action BuildButton = () => GC.KeepAlive(V.Button(onClick: OnClick));
+
+        private static readonly Action BuildList = () => GC.KeepAlive(V.List(Items, item => Keys[item], item => Rows[item]));
+
+        private static void MountAndDispose(Func<VNode> build)
+        {
+            var children = new VNode?[HeldNodes];
+            for (var i = 0; i < children.Length; i++)
+            {
+                children[i] = build();
+            }
+            V.Mount(new VisualElement(), V.Div(children: children)).Dispose();
+        }
+
         // A probe stuck at zero satisfies every guard below without measuring anything, and nothing else
         // in the repository would notice. This is the only case here that asserts a NON-zero count, and it
         // is what makes the three that follow mean something.
@@ -49,74 +62,50 @@ namespace Velvet.Tests.Performance
             Assert.That(blocks, Is.GreaterThan(0));
         }
 
-        // Warming must include the measured DELEGATE itself, not just the pool: the first execution
-        // of a code path can charge one-time runtime work (JIT, lazy statics) to the measuring
-        // scope, which surfaced as a rare order-sensitive false red on this guard.
-
-        // GREEN_ON_BASE(characterization): the base already allocates what this case pins.
-        // This change reads it over three windows.
-        [Test]
-        public void Given_WarmPropsPool_When_RentReturnCycle_Then_DoesNotAllocate()
-        {
-            // Warm: the first cycle populates the pool AND runs the measured delegate once.
-            Action cycle = () =>
-            {
-                var props = VNodePool.RentProps();
-                VNodePool.ReturnProps(props);
-            };
-            cycle();
-
-            Assert.That(GCAllocationProbe.MedianBlocksDuring(cycle), Is.Zero);
-        }
-
-        // GREEN_ON_BASE(characterization): the base already allocates what this case pins.
-        // This change reads it over three windows.
-        [Test]
-        public void Given_WarmSingleEventArrayPool_When_RentReturnCycle_Then_DoesNotAllocate()
-        {
-            Action cycle = () =>
-            {
-                var events = VNodePool.RentSingleEventArray();
-                VNodePool.ReturnEventArray(events);
-            };
-            cycle();
-
-            Assert.That(GCAllocationProbe.MedianBlocksDuring(cycle), Is.Zero);
-        }
+        // The cases below run the measured DELEGATE once before measuring it: the first execution of a code
+        // path can charge one-time runtime work (JIT, lazy statics) to the measuring scope, which
+        // surfaced as a rare order-sensitive false red on this guard.
 
         [Test]
-        public void Given_WarmMultiBindingEventArrayPool_When_RentReturnCycle_Then_DoesNotAllocate()
+        public void Given_ADisposedMountThatHeldLabelsWithText_When_AFactoryBuildsAnother_Then_ItAllocatesTheNodeAndAPropsBag()
         {
-            // Arrange — the length V.TextField rents for three handlers; the first cycle warms the pool and
-            // the delegate.
-            Action cycle = () =>
-            {
-                var events = VNodePool.RentEventArray(3);
-                VNodePool.ReturnEventArray(events);
-            };
-            cycle();
+            // Arrange
+            MountAndDispose(() => V.Label(text: LabelText));
+            BuildLabel();
 
             // Act
-            var blocks = GCAllocationProbe.MedianBlocksDuring(cycle);
+            var blocks = GCAllocationProbe.MedianBlocksDuring(BuildLabel);
 
             // Assert
-            Assert.That(blocks, Is.Zero);
+            Assert.That(blocks, Is.EqualTo(2));
         }
 
-        // GREEN_ON_BASE(characterization): the base already allocates what this case pins.
-        // This change reads it over three windows.
         [Test]
-        public void Given_WarmNodeArrayPool_When_RentReturnCycle_Then_DoesNotAllocate()
+        public void Given_ADisposedMountThatHeldClickHandlers_When_AFactoryBuildsAnotherButton_Then_ItAllocatesTheNodeTheBindingAndItsArray()
         {
-            // The first cycle also warms the length-keyed bucket (array, dictionary entry, stack).
-            Action cycle = () =>
-            {
-                var array = VNodePool.RentNodeArray(4);
-                VNodePool.ReturnNodeArray(array);
-            };
-            cycle();
+            // Arrange
+            MountAndDispose(() => V.Button(onClick: OnClick));
+            BuildButton();
 
-            Assert.That(GCAllocationProbe.MedianBlocksDuring(cycle), Is.Zero);
+            // Act
+            var blocks = GCAllocationProbe.MedianBlocksDuring(BuildButton);
+
+            // Assert
+            Assert.That(blocks, Is.EqualTo(3));
+        }
+
+        [Test]
+        public void Given_ADisposedMountThatHeldListsOfTheSameLength_When_VListMapsNodesItKeyedBefore_Then_ItAllocatesOnlyTheChildArray()
+        {
+            // Arrange
+            MountAndDispose(() => V.Div(children: V.List(Items, item => Keys[item], _ => V.Div())));
+            BuildList();
+
+            // Act
+            var blocks = GCAllocationProbe.MedianBlocksDuring(BuildList);
+
+            // Assert
+            Assert.That(blocks, Is.EqualTo(1));
         }
     }
 }

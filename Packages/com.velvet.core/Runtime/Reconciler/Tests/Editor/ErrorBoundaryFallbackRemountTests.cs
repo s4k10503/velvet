@@ -14,7 +14,6 @@ namespace Velvet.Tests
     /// <item>A component of the fallback with the type and key of one the boundary showed starts from its initial
     /// state, after either error.</item>
     /// <item>A row the boundary showed lets go of its ref where the fallback has a row with the same key.</item>
-    /// <item>Once the mount is disposed, no props bag of what the boundary showed is left rented out.</item>
     /// <item>Where a layout cleanup of a Suspense's hide throws inside the pass that hides, a fallback repeating the
     /// Suspense the boundary showed takes nothing that Suspense recorded: it keeps none of the children it never
     /// committed, whether the shown Suspense was hiding its children or showing them, and an AnimatePresence it
@@ -110,19 +109,6 @@ namespace Velvet.Tests
             });
         }
 
-        [Component(Compiler = false, IsErrorBoundary = true)]
-        private static VNode PooledLayoutBoundary()
-        {
-            var (tick, setTick) = Hooks.UseState(0);
-            s_setTick = setTick;
-            Hooks.UseFallback(_ => V.Label(text: "fallback"));
-            return V.Fragment(new VNode[]
-            {
-                V.Div(children: V.List(new[] { "open" }, id => id, id => V.Button(text: id, onClick: () => { }))),
-                V.Component(LayoutThrower, tick, key: "thrower"),
-            });
-        }
-
         private MountedTree MountWithCount(Func<VNode> boundary)
         {
             var mounted = V.Mount(_root, V.Component(boundary, key: "boundary"), CaughtErrors.Unlogged);
@@ -171,24 +157,6 @@ namespace Velvet.Tests
 
             // Assert — a boundary that did not catch keeps the row it had, which lets go of nothing
             Assert.That(s_rowDetaches, Is.EqualTo(1));
-        }
-
-        // GREEN_ON_BASE(characterization): the base retires what the boundary showed once the fallback has mounted.
-        // This pins that retiring it ahead of the fallback's own reconcile still returns its pooled parts.
-        [Test]
-        public void Given_AShownOutputHoldingPooledNodes_When_ALayoutEffectOfTheBoundarysUpdateThrowsAndTheMountIsDisposed_Then_ThePoolCountsNoPropsRentedOut()
-        {
-            // Arrange
-            var before = VNodePoolTestAccess.RentedOutCountsForTest().Props;
-            var mounted = V.Mount(_root, V.Component(PooledLayoutBoundary, key: "boundary"), CaughtErrors.Unlogged);
-            s_setTick.Invoke(1);
-            mounted.FlushStateForTest();
-
-            // Act
-            mounted.Dispose();
-
-            // Assert
-            Assert.That(VNodePoolTestAccess.RentedOutCountsForTest().Props - before, Is.EqualTo(0));
         }
 
         #region A swap a Suspense's hide runs

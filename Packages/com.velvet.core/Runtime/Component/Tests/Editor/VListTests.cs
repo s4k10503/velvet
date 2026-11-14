@@ -385,55 +385,6 @@ namespace Velvet.Tests
             Assert.That(s_refSetUps + " set up, " + s_refCleanUps + " cleaned up", Is.EqualTo("2 set up, 1 cleaned up"));
         }
 
-        // GREEN_ON_BASE(characterization): the base re-keys the held node in place and copies nothing.
-        // No second node shares its props bag there; a copy under the new key does, and this is what fails
-        // when the tree still holding the held node retires and hands that bag back to the pool.
-        [Test]
-        public void Given_AnElementNodeHeldAcrossRenders_When_ItsItemsKeyMovesOnAndTheOldTreeRetires_Then_ItKeepsItsProps()
-        {
-            // Arrange — the props pool starts empty, so a bag handed back to it is cleared rather than dropped
-            // for want of room.
-            var held = V.Label(text: "held");
-            ResetHeldNodeRecords(held);
-            using var mounted = V.Mount(_root, V.Component(HeldNodeForOneItemHostRender, key: "host"));
-            var propsPool = (Stack<FiberElementProps>)typeof(VNodePool)
-                .GetField("s_propsPool", BindingFlags.NonPublic | BindingFlags.Static)
-                .GetValue(null);
-            propsPool.Clear();
-
-            // Act
-            s_setHeldItem.Invoke(1);
-            mounted.FlushStateForTest();
-
-            // Assert
-            Assert.That(held.Props.Text, Is.EqualTo("held"));
-        }
-
-        // GREEN_ON_BASE(characterization): the base re-keys the held node in place and copies nothing.
-        // No second node shares its event array there; a copy under the new key does, and this is what
-        // fails when the tree still holding the held node retires and hands that array back to the pool.
-        [Test]
-        public void Given_AnElementNodeHeldAcrossRenders_When_ItsItemsKeyMovesOnAndTheOldTreeRetires_Then_ItKeepsItsEvents()
-        {
-            // Arrange — the props case above with a click handler, whose single-event array the pool rents; the
-            // pool starts empty for the reason that case gives.
-            var held = V.Button(text: "held", onClick: () => { });
-            var binding = held.Events[0];
-            ResetHeldNodeRecords(held);
-            using var mounted = V.Mount(_root, V.Component(HeldNodeForOneItemHostRender, key: "host"));
-            var eventPool = (Stack<FiberEventBinding[]>)typeof(VNodePool)
-                .GetField("s_singleEventPool", BindingFlags.NonPublic | BindingFlags.Static)
-                .GetValue(null);
-            eventPool.Clear();
-
-            // Act
-            s_setHeldItem.Invoke(1);
-            mounted.FlushStateForTest();
-
-            // Assert
-            Assert.That(held.Events[0], Is.SameAs(binding));
-        }
-
         #endregion
 
         #region Inline composition (V.ListFragment among siblings)

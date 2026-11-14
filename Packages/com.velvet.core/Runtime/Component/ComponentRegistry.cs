@@ -288,10 +288,6 @@ namespace Velvet
                 if (_ctx.SuspensePrimaryDepth == 0) fiber.IsDirty = true;
                 throw;
             }
-            // Dispose BEFORE any detach: Dispose's Unmount retires the committed tree with the parent
-            // chain intact (the recycle sweep marks ancestor-held memoized roots through it) and then
-            // detaches itself; detaching first would sever the chain and let the sweep recycle nodes
-            // a surviving ancestor's slot still owes to a comeback render.
             catch { FiberRenderer.Dispose(fiber); throw; }
             // A first render that threw, where a boundary outside this walk took the error rather than unwinding the
             // walk: React discards a component whose first render threw, so it is not registered, and the hooks it
@@ -456,18 +452,7 @@ namespace Velvet
         // already-disposed) — those differ per site and must stay outside this helper.
         private void DisposeFiberInternal(ComponentFiber fiber)
         {
-            if (fiber.IsInlineMounted && fiber.PreviousTree != null)
-            {
-                // Retire the tree's pooled objects HERE: nulling PreviousTree suppresses Unmount's
-                // DOM-side cleanup pass (correct — see above) but also its pool return, and no other
-                // path ever reaches this baseline again. Sweeping while the fiber's slots and parent
-                // chain are still intact keeps memo-shared nodes protected; the pass-scoped release
-                // staging keeps the rest un-rentable while the enclosing reconcile still reads its
-                // old-side captures of these nodes.
-                var retired = fiber.PreviousTree;
-                fiber.PreviousTree = null;
-                FiberTreeReturn.ReturnRetiredTree(retired, fiber);
-            }
+            if (fiber.IsInlineMounted) fiber.PreviousTree = null;
             FiberRenderer.Dispose(fiber);
             UnregisterFiber(fiber);
         }

@@ -1158,26 +1158,6 @@ namespace Velvet.Tests
         // GREEN_ON_BASE(refactor): this case reaches no focus scope, and its own code is the base's.
         // The lines changed around it are where the cases beside it build their scopes.
         [Test]
-        public void Given_APooledPropsBagThatCarriedFocusProps_When_ReturnedAndRentedAgain_Then_TheFocusPropsAreScrubbed()
-        {
-            // Arrange
-            var props = VNodePool.RentProps();
-            props.TabIndex = 3;
-            props.DelegatesFocus = true;
-            props.FocusScope = new FocusScopeSettings(Contain: true);
-
-            // Act
-            VNodePool.ReturnProps(props);
-            var reused = VNodePool.RentProps();
-
-            // Assert — a recycled bag must not ghost focus behavior onto an unrelated element.
-            Assert.That((reused.TabIndex, reused.DelegatesFocus, reused.FocusScope),
-                Is.EqualTo(((int?)null, (bool?)null, (FocusScopeSettings)null)));
-        }
-
-        // GREEN_ON_BASE(refactor): this case reaches no focus scope, and its own code is the base's.
-        // The lines changed around it are where the cases beside it build their scopes.
-        [Test]
         public void Given_APooledElementThatCarriedATabIndex_When_ResetForThePool_Then_ItsTabIndexIsZero()
         {
             // Arrange

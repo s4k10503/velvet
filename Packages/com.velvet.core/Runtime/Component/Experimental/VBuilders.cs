@@ -78,18 +78,15 @@ namespace Velvet.Experimental
 
         /// <summary>
         /// Materializes the collected children into the <see cref="VNode"/>[] shape the <c>V.*</c> factories
-        /// expect, then returns the scratch accumulator list to the pool. The produced array is rented from
-        /// <see cref="VNodePool"/>, so the reconciler reclaims it on the next diff exactly as it does for
-        /// <c>V.List</c> output — keeping the builder's only irreducible per-build cost the builder object itself.
+        /// expect, then returns the scratch accumulator list to the pool.
         /// </summary>
         /// <exception cref="ArgumentException">
-        /// Thrown when <see cref="Key"/> holds a NUL character, before this call takes anything from the pool.
+        /// Thrown when <see cref="Key"/> holds a NUL character, before this call returns the scratch list to the pool.
         /// </exception>
         protected VNode?[] BuildChildren()
         {
-            // Above the rent below: a Build() passes this call to its V.* factory as an argument, so the
-            // factory's own refusal of the same key comes too late. Same ordering rule as
-            // V.ListFragment's refusal above the mapping it feeds V.Fragment.
+            // Refused here rather than by the V.* factory a Build() hands this result to, which evaluates this
+            // call first.
             VNode.RequireKey(Key);
 
             if (_children == null)
@@ -105,7 +102,7 @@ namespace Velvet.Experimental
                 return Array.Empty<VNode>();
             }
 
-            var array = VNodePool.RentNodeArray(count);
+            var array = new VNode?[count];
             for (var i = 0; i < count; i++)
             {
                 array[i] = _children[i];
