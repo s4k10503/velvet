@@ -1,0 +1,451 @@
+# Styling notes: Fonts (family, weight, italic)
+
+Velvet's font utilities are Tailwind-inspired (`font-sans`, `font-bold`, `italic`, …) but they
+run on Unity UI Toolkit's text stack (TextCore / SDF Font Assets). UI Toolkit exposes only two
+font style properties:
+
+| Property | Type | What it can express |
+|---|---|---|
+| `-unity-font-definition` | a Font Asset | which **family** (and, if you register them, which **weight/italic** asset) |
+| `-unity-font-style` | `{ normal, bold, italic, bold-and-italic }` | a **binary** weight axis + italic, in one value |
+
+That single binary `-unity-font-style` is why raw USS can express neither a 100–900 weight scale
+nor a composed `font-bold italic`. Velvet closes the gap with `StyleFontResolver`, which resolves
+family + weight + italic **together** and writes them as inline style, plus the `VelvetFonts`
+registry that maps family names to Font Assets.
+
+## The utility classes
+
+| Class | Meaning |
+|---|---|
+| `font-sans`, `font-serif`, `font-mono`, `font-<name>` | Selects the family named `<name>` from the registry |
+| `font-[Inter]` / `font-[family-name:Inter]` / `font-[generic-name:serif]` | Arbitrary family by registered name; `_` is a space and `\_` an underscore, as Tailwind reads a bracket |
+| `font-[Inter,jp,sans-serif]` | A family list: the first registered family is assigned and the ones after it become its fallbacks ([Family lists](#family-lists)) |
+| `font-[addr:<key>]` | Arbitrary family loaded from Addressables (mirrors `bg-[addr:<key>]`), the key read as written, `\_` an underscore as `_` is |
+| `font-thin` … `font-black` | Weight scale (100…900) |
+| `font-[550]` / `font-[weight:550]` / `font-[number:550]` | Arbitrary weight |
+| `font-[weight:inherit]` / `font-[family-name:inherit]` | The parent's weight or family, over the element's own classes |
+| `italic` / `not-italic` | Italic axis |
+| `font-stretch-ultra-condensed` … `font-stretch-ultra-expanded`, `font-stretch-87.5%`, `font-stretch-[66.5%]` | Width axis (50–200%), matched against the `stretch` of the registered faces |
+| `font-bold italic` | **Composes** to bold-and-italic |
+| `bold-italic` | Single-class bold + italic (back-compat) |
+
+Of two classes of the same facet the one Tailwind emits last wins, whichever is written first
+(`font-bold font-light` and `font-light font-bold` → light; [the order](styling-arbitrary-lengths.md#utilities-a-c-resolver-folds-from-the-class-list)),
+and the four facets coexist on one element.
+
+## How resolution works
+
+For each element with a font class, `StyleFontResolver` computes one `(family, weight, italic)`
+intent and asks `VelvetFonts.Resolve`:
+
+1. **Family asset found** → assign it via `-unity-font-definition`. The entry is chosen the way
+   CSS's font matching chooses a face: by width first, from the entries whose `stretch` is the nearest the
+   request reaches (up to 100%, the widest at or under it, then the narrowest above; over 100%, the
+   narrowest at or over it, then the widest under; a request with no `font-stretch-*` class is 100%);
+   then by style, so an italic request takes an entry that
+   carries an italic face (and an upright request one that carries an upright face) at any weight
+   before the requested weight in the other style; then by weight, in CSS's search order — an exact
+   weight; for a request from 400 to 500, the lightest weight from the request up to 500, then the
+   heaviest below the request, then the lightest above 500; under 400, the heaviest at or below the
+   request, then the lightest above; over 500, the lightest at or above the request, then the
+   heaviest below. An upright request over a family whose entries all hold only italic faces takes
+   an italic face, as CSS does when no face of the requested style exists. Only the part the asset
+   can't satisfy is synthesized through `-unity-font-style`: bold for a request of 600 or more on a
+   face under 600, and italic when no italic face is available.
+2. **No family / no asset** → the same synthesis over the default face: weight `>= 600` renders
+   bold, below renders normal, combined with italic. That is what a browser does for a face that has no
+   bold or italic of its own (`font-synthesis`), and it matches the USS fallback classes in
+   `_typography.uss`, so output is sensible before any font is registered.
+
+Inline style wins over the USS classes, so the resolver is the authoritative font layer.
+
+## Registering fonts (production / master-data)
+
+`VelvetFonts` is **independent of how the master data is stored**. It only consumes
+`VelvetFontFamily` values through `VelvetFonts.Register`; turning a CSV row, MasterMemory entity, or
+any other source into those values is an adapter you own — the package ships no ScriptableObject (or
+any other) representation. A family holds one entry per weight, and each entry can reference the Font
+Asset **directly** or by an **Addressables key** (loaded and cached on first use).
+
+**From code** — the canonical, representation-agnostic path:
+
+```csharp
+VelvetFonts.Register(new VelvetFontFamily("sans",
+    new VelvetFontWeightEntry { weight = VelvetFontWeight.Normal, upright = interRegular, italic = interItalic },
+    new VelvetFontWeightEntry { weight = VelvetFontWeight.Bold,   uprightAddress = "Fonts/Inter-Bold" }));
+
+VelvetFonts.DefaultFamily = "sans"; // see What DefaultFamily reaches, below
+```
+
+**From CSV / MasterMemory / a ScriptableObject / any other source** — map your rows to
+`VelvetFontFamily` and call the batch entry point (raises `FontsChanged` once):
+
+```csharp
+IEnumerable<VelvetFontFamily> families = myMasterData.Select(row => new VelvetFontFamily(
+    row.Name,
+    new VelvetFontWeightEntry { weight = row.Weight, uprightAddress = row.Address }));
+
+VelvetFonts.Register(families, defaultFamily: "sans");
+```
+
+An entry's `stretch` is the width of its faces as a percentage of the normal width, as the `font-stretch`
+descriptor of an `@font-face` rule gives it, and is 100 where not set:
+
+```csharp
+VelvetFonts.Register(new VelvetFontFamily("sans",
+    new VelvetFontWeightEntry { upright = interRegular },
+    new VelvetFontWeightEntry { upright = interCondensed, stretch = 75f }));   // font-stretch-condensed
+```
+
+A width is never synthesised: with no entry of the requested width the nearest one is used, and a family
+with a single width renders every `font-stretch-*` class in it.
+
+With the `Bold` entry registered, `font-bold` renders a **true** bold asset rather than faux bold;
+`font-medium` with no `Medium` entry picks the registered weight CSS's search order reaches first
+(see [How resolution works](#how-resolution-works)).
+
+### What `DefaultFamily` reaches
+
+`DefaultFamily` is the family the elements Velvet renders start from, as the `font-family` Tailwind's preflight
+gives `html` is. Velvet writes it inline on the element a tree is mounted on, on each element
+`V.Portal(container, …)` or `V.Portal(id, …)` renders into its container ([portals.md](portals.md)) rather than on
+the container, whose other children keep their font, and on the root of each layer or world-space panel it creates.
+What is under them inherits it, a label with no font class included, down to an element given a font of its own;
+one of them inside another is given nothing of its own and inherits too. The asset written is the one a
+normal-weight, upright request of the family resolves to, and the write follows a change to the registry at once,
+with no render.
+
+An element whose font classes resolve to an asset has that asset written inline
+([How resolution works](#how-resolution-works)), and what is under it inherits that one instead; a font a
+stylesheet sets on an element below them decides there in the same way. Where the font that would show on one of
+them without Velvet's write is one an author's stylesheet rule or inline style gives it or an element above it,
+Velvet writes nothing on it and that font is inherited. That is a `-unity-font-definition`, or a legacy `-unity-font`
+where no definition applies or is inherited, since UI Toolkit draws a definition ahead of a legacy font; a rule of a
+panel's theme does not count, a theme being a default stylesheet. While a default family is set, Velvet
+reads this again at each update of the element's panel after the element or one above it moves, or changes its
+classes, name, stylesheets, matched rules or inline font. The value Velvet wrote is taken off when the tree is
+disposed or the element leaves the portal. `DefaultFamilyScopePanelTests` pins where the family is written, left
+out and taken off, on a panel with no theme stylesheet; `DefaultFamilyThemePlaybackTests` pins a label with no font
+class on the runtime theme this project ships.
+
+A weight, italic or width class on an element with no `font-<name>` of its own keeps the family it inherits,
+as in CSS: `font-bold` inside a `font-serif` container selects the registered `Bold` entry of `serif`.
+The family is the one named by the nearest ancestor carrying a `font-<name>` class that Velvet rendered;
+an ancestor that has only a weight class names none. `DefaultFamily` applies when no such ancestor
+exists. A root whose `font-<name>` class Velvet did not render (a portal target, layer root or
+world-space panel root, or the root of another `V.Mount`) is not seen, so under one register the same
+family as the default as well, or `font-bold` below it selects the default family's `Bold` entry.
+`InheritedFontFamilyPanelTests` pins the inheritance.
+
+Glyphs the assigned asset lacks still go through TextCore's fallback chain, which
+[Multilingual / CJK fallback](#multilingual--cjk-fallback) covers.
+
+## Multilingual / CJK fallback
+
+Per-glyph fallback is TextCore's. Configure it the standard way:
+
+- **Local fallback**: add a fallback table on the Font Asset itself.
+- **Global fallback**: assign a UITK **Text Settings** asset to the Panel Settings and list the
+  fallback fonts there (local fallback takes priority over global).
+
+A Latin family with a Japanese fallback asset therefore renders mixed text correctly while still
+being selected by `font-sans`. A font-family list writes the local fallback table for you.
+
+### Family lists
+
+`font-[Inter,jp,sans-serif]` (or `font-['jp',Inter]`, `font-[family-name:Inter,jp]`)
+names several families, as CSS's `font-family` does. Names are read as the arbitrary family form reads
+them, `_` a space, and quoted names are unquoted. Velvet resolves each name against the registry
+for the element's weight, italic and width, takes the first that has a Font Asset as the one it assigns
+(a name no family is registered under, such as `sans-serif`, is skipped), and appends the assets of the
+names after it to that asset's `fallbackFontAssetTable`, in list order, unless the asset already lists them
+or they would list it back. The list inherits as the family does, and the residual faux bold and italic
+are the assigned asset's.
+
+The fallback table belongs to the Font Asset, not to the label that named the list: every label showing
+that asset gets the fallbacks, and one already showing it builds its text again when a list adds some, and they stay until `VelvetFonts.Clear()`, which takes out those Velvet
+added and leaves a table you configured as it was. A list that starts with `addr:` is one Addressables key.
+
+## Swapping fonts at runtime (e.g. per-locale)
+
+Register the new locale's families, and set `DefaultFamily` if it changes. `VelvetFonts.FontsChanged` fires
+when a family is registered or unregistered, when `DefaultFamily` changes and when `Clear` empties the
+registry, and the family written on the roots ([What `DefaultFamily` reaches](#what-defaultfamily-reaches))
+follows it at once, with no render: a label that takes its font from there shows the new family straight away.
+An element created after the change, such as one a new `key` mounts afresh, resolves its font classes against the
+registry as it then is.
+
+## Tailwind text-utility parity vs. UI Toolkit
+
+Verified against the Unity 6000.3 USS *common properties* reference. The text utilities
+Velvet ships are listed below, with the ones it realises itself where UI Toolkit has no USS property.
+
+**Supported (shipped):** `font-<family>` / `font-thin`…`font-black` / `italic` / `not-italic` / `font-stretch-*` /
+`text-xs`…`text-9xl` (font-size and line-height) / `text-left|center|right|start|end` (`-unity-text-align`) /
+`tracking-*` (`letter-spacing`) / `leading-*` (`line-height`) /
+`whitespace-normal|nowrap|pre|pre-wrap|pre-line` /
+`text-wrap` / `text-nowrap` / `text-balance` / `text-pretty` / `truncate` / `text-ellipsis` / `text-clip`
+(`text-overflow: ellipsis | clip`) / `antialiased` `subpixel-antialiased` / `tabular-nums` `proportional-nums` `normal-nums` / text color / `uppercase` `lowercase` `capitalize` `normal-case`
+(text-transform) / `underline` `line-through` `overline` `no-underline` (text-decoration).
+
+**Text-transform / text-decoration are realised in the string a leaf shows** (UI Toolkit has no
+property for either): the string is upper/lower/title-cased, and underline / line-through wrap it in
+the `<u>` / `<s>` rich-text tags UITK renders (`enableRichText` is on by default). The leaf's `text` stays what
+the app gave, as the text content does in CSS: Velvet hands the engine the string to show through
+`TextElement.experimental.SetRenderedText`, so `label.text` reads `"hello"` under `uppercase`. Both **inherit** like CSS — put the class on an ancestor and
+the descendant text leaves pick it up (`StyleTextEffectResolver` walks ancestors; a change of the ancestor's
+classes re-resolves the text under it). The decoration and the line height (`leading-*`, below) are
+rich-text tags, so a leaf with `enableRichText = false` is shown without them, where it would otherwise show
+the markup as literal text; the text-transform, the white-space and the line breaks still apply. A change of
+`enableRichText` builds the shown string again the next time the leaf repaints.
+One leaf is the exception to `label.text` reading the original text: the engine elides a leaf's text, not
+the string it was handed, when `text-overflow: ellipsis` has `-unity-text-overflow-position` at `start` or
+`middle`, so under such a position the leaf holds the string it shows as its text (and the engine elides that),
+where the default `end` position elides the shown string in the engine's text generator.
+
+**`overline` is the one decoration value that cannot be a string rewrite:** UI Toolkit's rich text
+has no overline tag (only `<u>` / `<s>`), so `overline` **paints** a solid rule above the text via
+`generateVisualContent` on the leaf `TextElement` (`TextOverlinePainter` / `TextOverlineBinding`) and
+the string passes through unchanged.
+
+The stroke color tracks `resolvedStyle.color`, its thickness is
+~1/16th of the font size (floored at 1px, matching a typical browser ratio), and it follows
+`-unity-text-align`'s vertical component for where the FIRST line sits — top-aligned under an
+`upper-*` anchor, vertically centered under a `middle-*` anchor (the default for
+`text-left|center|right|start|end`, and UI Toolkit's own unstyled default), bottom-aligned under a
+`lower-*` anchor — then has its top edge on that line's top.
+
+`overline` joins the same decoration axis as `underline` / `line-through` / `no-underline`, so
+cascade and inheritance apply to it. `no-underline` ends the lines the element's own classes ask for; as in
+CSS, a line an ancestor draws still runs through the element's text, so `underline` on a container shows
+under a child that is `no-underline`. The axis stays single-valued.
+`underline overline` and `overline underline` render the underline, and `line-through no-underline`
+and `no-underline line-through` clear the decoration: those candidates sort later in Tailwind's order.
+CSS lets `text-decoration-line` list several lines. `[text-decoration-line:underline_overline]`
+and `[text-decoration-line:underline_line-through]` are not parsed, so those tokens leave the
+decoration unset and the lines do not combine (`ArbitraryDecorationLineTests`).
+
+The painted rule is one, above the first line, as wide as the text's single-line width clamped to
+the content width. A wrapped label shows that rule above its top line. `MeasureTextSize` returns
+one size per call, and those calls are what place the rule. `TextLineBoxSurfaceTests` fails if
+the text handle, its line info, or a public `TextElement` member that names or returns them
+becomes reachable.
+
+**`white-space`** has four native USS values, and `whitespace-normal`, `whitespace-nowrap`,
+`whitespace-pre`, and `whitespace-pre-wrap` map directly onto them — no C# involved.
+**`whitespace-pre-line`** is the exception: there is no matching engine value, so it is realised the
+same way as text-transform / text-decoration — a display-string rewrite (collapse runs of
+spaces/tabs to one space, keep newlines, and drop whitespace that sits right at a line edge) plus an
+inline `white-space: pre-wrap` write on every text leaf whose resolved whitespace axis is pre-line,
+so the preserved newlines still render as breaks.
+
+The write is per-leaf rather than once on the class-bearing element: an element's own matching rule
+beats an INHERITED value in the cascade, so a write on an ancestor reaches a Label only where no theme or
+sheet rule sets that Label's own `white-space`, which Velvet cannot know. It inherits and cascades the same
+way text-transform does: an explicit `whitespace-*` or `truncate` class always wins on the SAME element, and —
+exactly like how `normal-case` stops an inherited transform — it also blocks a farther
+ancestor's `whitespace-pre-line` from reaching that subtree at all, rather than merely leaving the
+collapse unapplied on that one element.
+
+**`leading-*` (line-height)** has no USS property either — UI Toolkit's style has no `line-height`, and
+`-unity-paragraph-spacing` only affects explicit `\n` breaks, not the per-line advance a real line-height
+changes — so it is realised through UI Toolkit's rich-text `<line-height=X>` tag instead. Both text engines (the standard
+generator and the Advanced Text Generator) implement the tag natively, feeding it into the
+line-advance math at every line-break site; a following `</line-height>` restores the natural
+metric.
+
+The tag only spaces lines apart, so the box is Velvet's: a `V.Label`, a text leaf or a `V.Button` measures one
+line box of its line height per line, as CSS does, single lines included and whether the line height is above or
+below the font's own content height — `text-base` is 24px tall, `text-4xl` 40px, and `text-sm/6` 24px. Text that
+no `leading-*` or `text-<size>` reaches takes the 1.5 Tailwind's preflight gives the root, so a 16px text is 24px
+tall. Once such text takes more than one line, by a newline, a `<br>` or wrapping, a word broken across lines
+included, its shown string carries the `1.5em` tag as a `leading-normal` one would, which spaces those lines; a
+single line is shown as written, which the tag would not change. Padding and border sit outside the line boxes,
+and `resolvedStyle.height` reads the result. The glyphs sit half the difference between the line height and the
+font's content height below the top of the first line box, whatever the box's height: a box its flex row
+stretches or an `h-*` sets, and one a `max-h-*` caps below its line boxes, whose text starts at its top and
+overflows below it. A `V.Button`'s lines are centred in the button instead, as a browser centres a button's
+content. CSS has no vertical alignment inside a line box, so such an element is aligned `middle-*` with the
+horizontal part its rules or its parent give it: `text-top-left` and a label with no alignment class read
+`middle-left`, a parent's `text-center` and a `-unity-text-align` in a sheet of the application's still reach it,
+and a button with no alignment class keeps its theme's `middle-center`. An alignment written inline by the
+application is left as it is. Rich text of the application's own keeps to these boxes: a `<voffset>` of its own
+moves with the text, its own `</voffset>` and `</line-height>` end only its own tag, and under markup of its own the
+box is the first line box and then each further line at the advance the generator gives it, which its own
+`<line-height>` or `<size>` changes. A
+single-line field's input text is UI Toolkit's own element: it is given one line box by an inline height of the
+line height plus its own padding and border, and is aligned the same way.
+
+A multiline field's input and a label or button with `enableRichText = false` show no rich text, so cannot carry
+the tag; their lines are spaced by their font instead: such text is drawn in a copy of its font asset whose ascent
+and descent are one line height apart, which both text generators lay out one line height per line. The
+copy is written as the element's inline `-unity-font-definition`, of the font asset a font class or the
+application wrote inline or else of the one its rules, its parent and an inline legacy `-unity-font` give it, as
+UI Toolkit picks among them, and given back when the element no
+longer needs it or goes back to its pool. The faces its weight table and its fallback table name, a font stack's
+included as the stack grows and is released, are copied the same way; under the standard generator a line drawn
+from a fallback face is then one line height too. A copy keeps its source's scale, sampling size, render mode, material and style weights; one whose
+source rasterises glyphs (from a font file, a file path or the OS) has an atlas of its own, one per font and line
+height. A copy no element holds is spread to the next line height its source is asked for rather than another made,
+so a source has no more copies than were held at once; one whose source is destroyed is destroyed the next time
+any copy is asked for or given back, and in the editor every copy is destroyed before the scripts reload. Such a label is aligned `upper-*` with
+its horizontal part, which places its lines from the top of its box as the line boxes are; a button's stay
+centred.
+
+The named presets (`leading-none` 1 · `leading-tight` 1.25 · `leading-snug` 1.375 ·
+`leading-normal` 1.5 · `leading-relaxed` 1.625 · `leading-loose` 2) emit their multiplier verbatim
+as `<line-height=1.625em>…</line-height>`. The bracket form takes CSS `line-height`'s values: a
+unitless number (`leading-[1.5]`), an `em` length (`leading-[1.5em]`), a percentage
+(`leading-[150%]`), and `px`, `rem` (1rem = 16px, as `w-[…]` takes it) or an absolute unit (`in`, `cm`,
+`mm`, `pt`, `pc`, `Q`), which emit an absolute `<line-height=Npx>`. `leading-[inherit]` takes the parent's
+line height over the element's own, and `leading-[normal]` is the font's own line advance: it writes no tag, sizes
+the box in the font's own lines, and
+takes an ancestor's line height away from the text. A math function is read where it
+comes to one of those pixel lengths or one percentage
+([styling-arbitrary-lengths.md](styling-arbitrary-lengths.md)). A length that reads more than the element's
+font size, a viewport unit (`leading-[10vw]`) or a math function mixing an em or a percentage with another
+length (`leading-[calc(1em+4px)]`), is measured on the element that declares it, like the other relative
+lengths, a percentage being of its font size and an `lh` of its parent's line height, as CSS takes it
+(`leading-[2lh]` under a 16px preflight parent is 48px), and measured again when that size or the panel changes;
+a result below zero is zero. Until it is measured the text carries no tag. A negative value, any other unit, or a
+malformed value is ignored. A bare spacing step (`leading-6`, `leading-13`, `leading-4.5`, `leading-px`) emits
+`<line-height=Npx>` at the px value the spacing scale gives that step, as Tailwind's
+spacing-based `leading-*` does (`leading-6` is 24px, as `p-6` is, and `leading-px` is 1px); its steps
+are that scale's ([styling-arbitrary-lengths.md](styling-arbitrary-lengths.md#bare-spacing-steps)), and a
+named preset is read before a step.
+
+A preset and a unitless value are numbers, as in CSS: they emit an em tag, which the **text engine
+itself** resolves against whichever font size is in effect at that point in the string, so a text
+under the class multiplies the size it displays at, unless a nearer element sets a line height of its own
+(a `leading-*` or a `text-<size>`). An `em` or percentage value is a length CSS computes on
+the element that declares it, from that element's computed font size, and a text under it gets
+that length in pixels unless a nearer element sets its own line height: `V.Div("text-[20px] leading-[150%]", V.Label("text-[40px]", …))` emits
+`<line-height=30px>`, whether the declaring element's size is inline, inherited or a `text-*` scale
+class. Velvet reads the size UI Toolkit resolves for the declaring element
+(`LeadingLengthProbe`, which the bundled stylesheet's `velvet-leading-length` rule arms) and
+re-resolves the text whenever that size changes. Until the panel has resolved it — a tree that is
+not yet on a panel — the text carries the em tag. `tracking-*` is the other em-based
+utility: USS `letter-spacing` has no `em` unit, so `tracking-tighter` (-0.05em) to `tracking-widest` (0.1em) are
+measured on the element's own font size, as a bracketed `tracking-[0.025em]` is
+([styling-arbitrary-lengths.md](styling-arbitrary-lengths.md)), and measured again when that size changes.
+`leading-*` inherits and cascades exactly like text-transform / text-decoration (a nearer
+ancestor's `leading-*` overrides a farther one's). Its reset is `leading-[normal]`: no named utility is one,
+since every preset — `leading-none`'s multiplier of 1 included — is a real value.
+
+**`text-<size>` pairs a line height with its font size**, as Tailwind v4's `--text-<size>--line-height` does,
+and emits it as the same em tag a preset does: `text-xs` 1.3333 · `text-sm` 1.4286 · `text-base` 1.5 ·
+`text-lg` 1.5556 · `text-xl` 1.4 · `text-2xl` 1.3333 · `text-3xl` 1.2 · `text-4xl` 1.1111 · `text-5xl`…`text-9xl` 1.
+The pair is the size class's own line height, so it replaces one an ancestor's `leading-*` set, and it
+inherits like any other leading. A bare size writes
+`line-height: var(--tw-leading, <pair>)` in Tailwind, so a `leading-*` on the same element beats it whichever
+class comes first and whether either carries `!`. When an element holds several sizes, the pair is the one of
+the size whose font size shows, which is the rule declared last in `_typography.uss` — the one Tailwind
+emits last, so `text-sm` over `text-lg` — or a slash form over any of them. `text-<size>/<leading>` takes the suffix of the matching `leading-*` utility, so `text-sm/6` is a 14px
+font with `leading-6`'s 24px line height, and `text-sm/loose` the 2 multiplier. The slash form is a
+direct `line-height`: an `!` one beats a plain `leading-*`, and otherwise the `leading-*` wins. A suffix that is
+no `leading-*` value leaves the class inert. A bracket size takes the slash too (`text-[14px]/6`,
+`text-[length:14px]/6`) and pairs nothing without it, as in Tailwind. The slash form works behind a variant
+(`hover:text-sm/6`).
+
+**`text-balance` and `text-pretty`** realise CSS `text-wrap: balance` and `text-wrap: pretty` by writing
+line breaks into the text a leaf *displays*, the way text-transform rewrites it. A box the cascade
+sizes keeps the width its classes and its parent give it, so `w-full text-balance` balances, as do a
+`max-w-*`, padding and a border. Velvet keeps the text it was given and rebuilds the displayed string from it, so a state value, a
+prop or an `onChange` payload carries no newline Velvet added, and neither does the text read off the element
+itself.
+
+Both inherit, as CSS's `text-wrap-style` does. Put the class on a container and every text leaf under it
+breaks its lines; a nearer `text-wrap` or `text-nowrap` resets it, and the nearest of the four
+classes decides. A leaf that cannot wrap (`text-nowrap`, `whitespace-nowrap`, `truncate`) is left
+alone.
+
+Where the lines break is Chromium's score line breaker (`score_line_breaker.cc`): the cheapest division
+by the squared slack of every line, with a penalty on breaking before the last word and a penalty per
+line, measured with `TextElement.MeasureTextSize`. Its limits carry over: nothing is changed below four
+words, a division with another number of lines than the greedy one is dropped, `text-balance` acts on
+paragraphs of up to six lines and `text-pretty` on up to four, and `text-pretty` acts when the
+last line is one word narrower than a third of the line (Chromium's other trigger, consecutive
+hyphenated lines, has no counterpart here). Text between newlines is a paragraph. A line may break at
+white space (a tab or any white space but a no-break space; the white space at a break is dropped), between
+CJK characters (ideographs, kana, hangul) with the basic kinsoku rule that no line begins with a closing
+mark, a stop or comma, a percent sign, an ellipsis, the prolonged sound mark or an iteration mark and none
+ends with an opening bracket, after a hyphen-minus that follows a letter or digit and does not precede a
+digit, after the hyphens U+2010, U+2012 and U+2013, and after a zero width space, which is a break
+opportunity and not a space. `TextBreakOpportunities` holds the table for every consumer of line
+breaking.
+
+A leaf is broken once it has a width, and again whenever the width its text is laid out in, its font
+(family, size, style or weight, spacing) or its text changes. Before its first layout, and until a layout
+pass has run since it was attached, it shows the text unbroken. What was measured of a text is kept
+across widths, so resizing re-runs only the choice of breaks.
+
+A leaf that gets breaks is written `white-space: pre-wrap` over a string whose white space Velvet has
+collapsed itself, as `white-space: normal` would, because the breaks it writes are newlines; text that
+inherits a preserving white-space keeps its spaces and newlines, and the style then balances each
+newline-separated paragraph. A leaf that gets no break, a text that fits one line included, keeps its
+white-space and its text as written.
+
+Deviations from CSS:
+
+- **A box UI Toolkit sizes from its text can be narrower.** A leaf with auto width in a row is measured
+  from the lines it displays, so it can end up narrower than the unbalanced text would make it. Such a
+  leaf is broken against the room its parent offers, as its text takes that room unbroken, rather than
+  against its own width, which is only its last longest line; a `max-width` bounds that width. The leaf
+  is re-broken when its parent's room has moved by more than two pixels from where it last was, so a
+  widening in smaller steps adds up. Only the leaf's direct parent is watched: a widening that reaches
+  the leaf through a parent sized by the leaf itself is not seen.
+- **Only part of UAX #14 is read**, where Chromium reads all of it through ICU. Quotation marks, the
+  numeric and symbol rules, emoji and Indic sequences, CJK symbols other than the marks named above and
+  the combining behaviour of the CJK classes are not, so a break one of those rules would allow beyond
+  the list above is not taken, and one it would prohibit can be. A tab's width is an estimate that the
+  engine's own layout of each line checks.
+- **`text-balance` stops at six lines and `text-pretty` at four**, the limits Chromium applies.
+
+**`antialiased` and `subpixel-antialiased`** write `-unity-editor-text-rendering-mode`, `sdf` and `bitmap`
+respectively; the property inherits, so the class on a container reaches the text under it.
+
+**Wrapping:** `text-wrap`, `text-nowrap`, `text-balance` and `text-pretty` are CSS's `text-wrap`
+shorthand, which sets the wrap mode (`wrap`, or `nowrap` for `text-nowrap`) and leaves the collapse
+alone. So text that inherits `whitespace-pre`, `whitespace-pre-wrap` or `whitespace-pre-line` keeps
+its spaces or newlines: it wraps as `pre-wrap`, or under `text-nowrap` stays on its lines as `pre`,
+while other text collapses as `normal` or `nowrap`. A white-space class (`whitespace-*` or
+`truncate`, whose `white-space: nowrap` resets the collapse as the CSS shorthand does) on the same
+element or on one nearer the text keeps its own value. Velvet writes this per text leaf as an inline
+`white-space`, the way it writes `whitespace-pre-line`. When several of the four meet on one element,
+the one Tailwind emits last wins, as they set the same CSS properties; that one decides which line
+breaking the text gets.
+
+**`tabular-nums`, `proportional-nums` and `normal-nums` (font-variant-numeric)** are realised in the string a
+leaf shows, like the text effects above: under `tabular-nums` each run of digits is wrapped in the rich-text
+`<mspace>` tag at the width of the widest digit of the leaf's font, measured with `TextElement.MeasureTextSize`
+(less the letter spacing, in em of the font size), so every digit takes the same room. The other two reset it, and
+the axis inherits. A leaf with `enableRichText = false`, or whose font cannot be measured yet, is shown
+without the tag, and a change of its font builds the string again. The `<mspace>` tag is read by both text generators UI Toolkit selects between, in `em` as written
+(UnityCsReference 6000.3, Modules/TextCoreTextEngine/Managed: the advanced generator in
+TextGenerator/RichTextTagParser.cs, TagsInfo and the Mspace case; the standard one in
+TextGenerator/TextGeneratorHtmlTagValidation.cs, MarkupTag.MONOSPACE, where a font-unit value is multiplied
+by the current font size).
+
+The glyphs are not swapped for a tabular design the font carries, as an OpenType `tnum` feature would, and the
+other variants cannot be written at all: `lining-nums` (`lnum`), `oldstyle-nums` (`onum`), `slashed-zero`
+(`zero`), `ordinal` (`ordn`), `diagonal-fractions` (`frac`) and `stacked-fractions` (`afrc`) each need a GSUB
+feature selected for one element's text, and the same source shows no way to select one:
+
+- the standard generator reads a single static, internal list of features, TextGenerationSettings.fontFeatures
+  (TextGenerator/TextGenerationSettings.cs), which holds `kern`, and TextGeneratorParsing.cs asks it only for
+  `kern`, `mark` and `mkmk`;
+- the advanced generator's settings carry one feature field, the boolean disableAdvancedFontFeatures
+  (TextGenerator/NativeTextGenerationSettings.bindings.cs);
+- the rich-text tags either generator reads (RichTextTagParser.TagsInfo) include none for a font feature;
+- a FontAsset's FontFeatureTable (FontFeatureTable.cs) holds pair, mark, multiple-substitution and ligature records, and
+  FontEngine's GSUB readers (TextCoreFontEngine/Managed/FontEngine.bindings.cs) are internal.
+
+The Modules/UIElements style has no font-feature property either (StylePropertyCache.cs lists none).
+
+Where such a look matters, register a purpose-built Font Asset for that face through the same `font-family`
+mechanism (`VelvetFonts.Register`) and select it with `font-<name>`.
+
+UI Toolkit *does* expose `word-spacing`, `-unity-paragraph-spacing`, and `-unity-text-outline-*`,
+but none has a standard Tailwind utility, so Velvet leaves them to arbitrary inline styles via
+`refCallback`.

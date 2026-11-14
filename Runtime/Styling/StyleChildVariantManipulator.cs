@@ -1,0 +1,342 @@
+using System.Collections.Generic;
+using UnityEngine.UIElements;
+
+namespace Velvet
+{
+    // Framework-level [&>*]:<utility> child-combinator variant: applies the wrapped utility to every direct
+    // child of the container — the CSS `& > *` "all direct children" rule. UI Toolkit has no `> *` selector,
+    // so this manipulator, attached to the CONTAINER (not the children), walks the container's child list and
+    // delegates each child to StyleVariantPayload.Apply — the same resolver the variant manipulators use to
+    // turn a payload into either an inline style (w-[8px]) or a toggled USS class (bg-red-500). Threading
+    // (ctx, this) through Apply means a state-variant payload (hover:bg-red-500, even dark:hover:bg-red-500)
+    // composes for free: each child gets its own per-child stacked manipulator gated open by this walk and
+    // ANDed with the child's own hover / theme state, torn down with the child by the element cleaner.
+    //
+    // Lifecycle mirrors StyleGapManipulator / StyleDivideManipulator: the reconciler attaches one per
+    // container carrying a [&>*]: token, keeps it in ReconcilerContext.ChildVariantManipulators, and removes
+    // it on cleanup / dispose. UnregisterCallbacksFromTarget clears what it still owns and still tracks —
+    // ReconcilerContext.ChildVariantOwners decides the first, and a child that went out of flow after being
+    // written to leaves the second, so it keeps the payload. Re-application has the same three sources as gap / divide: the
+    // reconciler's post-children pass (the panel-independent path that also covers EditMode), a
+    // GeometryChangedEvent (a child add / remove / reorder from an unrelated reconcile), and an
+    // AttachToPanelEvent. A signature makes a redundant Apply a no-op.
+    //
+    // Child container. Like gap / divide it resolves and iterates FiberNodePatcher.GetChildContainer(target).
+    // A widget that redirects children into an inner box (ScrollView) therefore has the payload land on the
+    // reconciled content; one that does not redirect answers with itself, so the children the walk finds are
+    // the widget's own parts and the payload lands on those. ChildVariantClassParityTests pins both sides and
+    // Documentation~/styling-variants.md states which widget is which for a caller.
+    //
+    // Out-of-flow children (position: absolute) are excluded from the walk via StyleOutOfFlowChild, the same
+    // way gap / divide exclude them. This is a deliberate deviation from literal CSS `> *` (which DOES match
+    // an absolute child): the wrapped utility is arbitrary and may target margin / position, the exact write
+    // that would corrupt a GeneralPathReconciler.PinExitingChildOutOfFlow ghost's frozen compensated position
+    // — the risk gap / divide were built to avoid. A mid-exit ghost keeps whatever [&>*]: payload it carried
+    // while still in flow, frozen through its exit.
+    //
+    // Precedence. On a SHARED style property (e.g. [&>*]:ml-[2px] alongside gap-x-4, both writing
+    // margin-left) gap / divide / grid win wherever they write, whichever runs first, and the payload's value
+    // returns once they give the slot up — see StyleArbitraryValueResolver.Hold / HandBack. [&>*]: is just
+    // another per-child margin / border / width source there rather than a special case.
+    internal sealed class StyleChildVariantManipulator : Manipulator
+    {
+        private readonly ReconcilerContext _ctx;
+        private string[] _payloads;
+        // Each payload's rule place among the CONTAINER's rules, aligned with _payloads.
+        private int[] _declarations;
+        // Aligned with _payloads: true for a payload only the input-box child takes. Empty when none is.
+        private bool[] _inputBoxOnly;
+
+        // Every child this manipulator has applied the payload to. On each Apply / Clear any tracked
+        // element no longer a current child is offered for release; whether it loses the payload is the
+        // claim's answer, not this list's — see ReconcilerContext.ChildVariantOwners.
+        private readonly List<VisualElement> _applied = new();
+
+        // Signature of the last successful Apply: the current in-flow child identity set. Apply() early-returns
+        // when unchanged, so a redundant reconcile pass (or the GeometryChanged feedback a class toggle may
+        // provoke) does no work. A payload-set swap invalidates the cache through _hasSignature instead.
+        private int _lastSignature;
+        private bool _hasSignature;
+
+        public StyleChildVariantManipulator(ReconcilerContext ctx, string[] payloads, int[]? declarations = null,
+            bool[]? inputBoxOnly = null)
+        {
+            _declarations = declarations ?? System.Array.Empty<int>();
+            _inputBoxOnly = inputBoxOnly ?? System.Array.Empty<bool>();
+            _ctx = ctx;
+            _payloads = payloads ?? System.Array.Empty<string>();
+        }
+
+        // Swaps the payload set and re-applies. When the set actually CHANGED, the OLD set is turned off on
+        // every currently-applied child first: Apply() only ever ADDS the current set, so a dropped / changed
+        // token would otherwise stay stuck on every child forever. An unchanged set skips the turn-off and
+        // lets Apply re-derive against the live child set through its signature. Mirrors
+        // StyleHasVariantManipulator.UpdatePayloads's pre-clear, NOT StyleGapManipulator.UpdateGap (gap never
+        // needs it — it always overwrites the SAME fixed property with a new scalar, not a variable class set).
+        public void UpdatePayloads(string[] payloads, int[]? declarations = null, bool[]? inputBoxOnly = null)
+        {
+            payloads ??= System.Array.Empty<string>();
+            declarations ??= System.Array.Empty<int>();
+            inputBoxOnly ??= System.Array.Empty<bool>();
+            if (SamePayloads(payloads) && SameDeclarations(declarations) && SameScopes(inputBoxOnly))
+            {
+                Apply();
+                return;
+            }
+            if (target != null)
+            {
+                foreach (var child in _applied)
+                {
+                    ReleasePayloads(child);
+                }
+            }
+            _payloads = payloads;
+            _declarations = declarations;
+            _inputBoxOnly = inputBoxOnly;
+            _applied.Clear();
+            _hasSignature = false;
+            Apply();
+        }
+
+        protected override void RegisterCallbacksOnTarget()
+        {
+            target.RegisterCallback<AttachToPanelEvent>(OnAttach);
+            target.RegisterCallback<GeometryChangedEvent>(OnGeometryChanged);
+            Apply();
+        }
+
+        protected override void UnregisterCallbacksFromTarget()
+        {
+            Clear();
+            target.UnregisterCallback<AttachToPanelEvent>(OnAttach);
+            target.UnregisterCallback<GeometryChangedEvent>(OnGeometryChanged);
+        }
+
+        private void OnAttach(AttachToPanelEvent evt)
+        {
+            _hasSignature = false;
+            Apply();
+        }
+
+        private void OnGeometryChanged(GeometryChangedEvent evt) => Apply();
+
+        // The container children are reconciled into (a composite widget's inner box; else self).
+        private VisualElement? ChildContainer
+            => target == null ? null : FiberNodePatcher.GetChildContainer(target);
+
+        // Applies the payload set to every in-flow direct child. Resets the payload on any tracked child no
+        // longer in the container first. Early-returns when the in-flow child set is unchanged.
+        public void Apply()
+        {
+            var container = ChildContainer;
+            if (container == null)
+            {
+                return;
+            }
+
+            var signature = ComputeSignature(container);
+            if (_hasSignature && signature == _lastSignature)
+            {
+                return;
+            }
+
+            // Must run before _applied.Clear() below: it reads the pre-clear _applied list to find children
+            // that left the container.
+            ResetStaleApplied(container);
+            _applied.Clear();
+
+            var count = container.childCount;
+            for (var i = 0; i < count; i++)
+            {
+                var child = container[i];
+                // An out-of-flow child (a PopLayout-pinned ghost, or an app-authored .absolute child) holds no
+                // slot in the flex line and its position is fragile — leave whatever payload it carried while
+                // in flow untouched rather than re-writing an arbitrary margin / position onto a pinned ghost.
+                if (StyleOutOfFlowChild.IsOutOfFlow(child))
+                {
+                    continue;
+                }
+                // A clipped child sits in the container as its clip wrapper; the payload is the child's.
+                var target = ClipPathLayoutBox.InnerOf(child);
+                ApplyPayloads(target, true);
+                StyleChildOwnership.Claim(_ctx.ChildVariantOwners, target, this);
+                _applied.Add(target);
+            }
+
+            _lastSignature = signature;
+            _hasSignature = true;
+        }
+
+        // Clears every payload this manipulator applied (invoked on detach / removal / token drop).
+        private void Clear()
+        {
+            foreach (var child in _applied)
+            {
+                ReleasePayloads(child);
+            }
+            _applied.Clear();
+            _hasSignature = false;
+        }
+
+        // The claim in ReconcilerContext.ChildVariantOwners decides this, not the tracked list, and every
+        // turn-off goes through here so no path can skip the question — FiberElementCleaner's, for a child the
+        // reconciler removes, included.
+        internal void ReleasePayloads(VisualElement child)
+        {
+            if (StyleChildOwnership.TryRelease(_ctx.ChildVariantOwners, child, this))
+            {
+                ApplyPayloads(child, false);
+            }
+        }
+
+        // Offers every tracked child that has left the container for release, then prunes it. A child the
+        // reconciler removed was released by its cleanup already, so what this reaches is a reparent. A clip
+        // wrapper inserted between container and child
+        // stands in for the child rather than taking it out of the container.
+        private void ResetStaleApplied(VisualElement container)
+        {
+            for (var i = _applied.Count - 1; i >= 0; i--)
+            {
+                var child = _applied[i];
+                if (ClipPathLayoutBox.Of(child).parent != container)
+                {
+                    ReleasePayloads(child);
+                    _applied.RemoveAt(i);
+                }
+            }
+        }
+
+        // Applies (on) or clears (off) the payload set on one child. owner == this is threaded through so a
+        // state-variant payload defers to a per-child stacked manipulator gated by this walk, exactly as the
+        // has- manipulator threads itself through for its own composed payloads.
+        //
+        // Passes each payload's place among the CONTAINER's rules. Those places are only ever compared with each
+        // other: every payload applied from here carries the child-combinator variant in its rank, a stacked
+        // one included (see StyleLayerPriority.Stack), and no payload the child declares does.
+        private void ApplyPayloads(VisualElement child, bool on)
+        {
+            if (HoldsOnlyParts)
+            {
+                ApplyToPart(child, on);
+                return;
+            }
+            if (_inputBoxOnly.Length == 0 || child.ClassListContains(StyleChildVariantClass.InputBoxClass))
+            {
+                StyleVariantPayload.Apply(child, _payloads, on, StyleLayerPriority.ChildVariant, _ctx, this,
+                    _declarations);
+                BorderPreflight.SetScoped(child, this, on && BorderPreflight.HasBorderWidth(_payloads));
+                return;
+            }
+
+            // A child that is not the input box takes only the payloads written for every child.
+            var kept = new List<string>();
+            var keptDeclarations = new List<int>();
+            for (var i = 0; i < _payloads.Length; i++)
+            {
+                if (i < _inputBoxOnly.Length && _inputBoxOnly[i])
+                {
+                    continue;
+                }
+                kept.Add(_payloads[i]);
+                keptDeclarations.Add(i < _declarations.Length ? _declarations[i] : StyleVariantPayload.NoDeclaration);
+            }
+            StyleVariantPayload.Apply(child, kept.ToArray(), on, StyleLayerPriority.ChildVariant, _ctx, this,
+                keptDeclarations.ToArray());
+            BorderPreflight.SetScoped(child, this, on && BorderPreflight.HasBorderWidth(kept.ToArray()));
+        }
+
+        // Whether the container is a composite control that redirects nothing, so that what it holds are the parts
+        // the control built for itself. `& > *` selects the children a tree placed, so a literal [&>*]: token
+        // leaves those parts alone; the input-box scope still names the one part a field's surface utilities paint.
+        private bool HoldsOnlyParts
+            => target != null && ReferenceEquals(ChildContainer, target)
+                && (target is BindableElement || target is TextElement);
+
+        private void ApplyToPart(VisualElement part, bool on)
+        {
+            if (!part.ClassListContains(StyleChildVariantClass.InputBoxClass))
+            {
+                return;
+            }
+            var scoped = new List<string>();
+            var scopedDeclarations = new List<int>();
+            for (var i = 0; i < _payloads.Length; i++)
+            {
+                if (i < _inputBoxOnly.Length && _inputBoxOnly[i])
+                {
+                    scoped.Add(_payloads[i]);
+                    scopedDeclarations.Add(i < _declarations.Length ? _declarations[i] : StyleVariantPayload.NoDeclaration);
+                }
+            }
+            if (scoped.Count != 0)
+            {
+                StyleVariantPayload.Apply(part, scoped.ToArray(), on, StyleLayerPriority.ChildVariant, _ctx, this,
+                    scopedDeclarations.ToArray());
+                BorderPreflight.SetScoped(part, this, on && BorderPreflight.HasBorderWidth(scoped.ToArray()));
+            }
+        }
+
+        private bool SameScopes(bool[] inputBoxOnly)
+        {
+            if (inputBoxOnly.Length != _inputBoxOnly.Length)
+            {
+                return false;
+            }
+            for (var i = 0; i < inputBoxOnly.Length; i++)
+            {
+                if (inputBoxOnly[i] != _inputBoxOnly[i])
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        private bool SameDeclarations(int[] declarations)
+        {
+            if (declarations.Length != _declarations.Length)
+            {
+                return false;
+            }
+            for (var i = 0; i < declarations.Length; i++)
+            {
+                if (declarations[i] != _declarations[i])
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        private bool SamePayloads(string[] payloads)
+        {
+            if (payloads.Length != _payloads.Length)
+            {
+                return false;
+            }
+            for (var i = 0; i < payloads.Length; i++)
+            {
+                if (payloads[i] != _payloads[i])
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        // Order-sensitive hash of the inputs that change what the walk applies: the current child identity
+        // sequence and each child's in-flow / out-of-flow state. Apply() early-returns when this matches the
+        // last application; a payload-set swap invalidates the cache through _hasSignature instead.
+        private int ComputeSignature(VisualElement container)
+        {
+            unchecked
+            {
+                var hash = 17;
+                var count = container.childCount;
+                hash = hash * 31 + count;
+                hash = StyleOutOfFlowChild.HashChildSequence(hash, container);
+                return hash;
+            }
+        }
+    }
+}

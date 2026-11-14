@@ -1,0 +1,43 @@
+using UnityEngine.UIElements;
+
+namespace Velvet
+{
+    // Facade the Patcher, the Factory and the patch walk reach ChildReconciler and FiberElementCleaner through,
+    // instead of referencing them directly. Every member here is called on one of their `_host` fields; a member
+    // nothing calls is reachable from nowhere else, because this interface is implemented explicitly and
+    // by one type.
+    internal interface IReconcilerHost
+    {
+        // Used by Patcher only, for a registry Portal whose id now names a different element.
+        void ReleasePortalRangeForRetarget(VisualElement placeholder);
+
+        // Used by Patcher only, to take back the rows a Portal's patch inserted before it unwound.
+        void RemoveRows(VisualElement target, int slotStart, int count);
+
+        // Operations provided by ChildReconciler (used by the patch walk)
+        // Refreshes context snapshots and force-renders consumers under FiberStack.Current
+        // for the given Provider's ContextProviderNode.ContextKey. Must be invoked while
+        // the new value is already pushed on the live ComponentContextStack so the
+        // propagated snapshot reflects it. Used by NodePatchWalk's
+        // ContextProviderNode case when the keyed Provider entry's value changes
+        // between renders (e.g. inside an AnimatePresence subtree, where the Provider stays in the
+        // keyed map rather than being inline-expanded by GeneralPathReconciler.ExpandInlineRecursive).
+        void NotifyContextValueChange(ContextProviderNode newProvider);
+
+        // Implementations must always invoke ChildReconciler.Reconcile with
+        // frameBudgetMs=0 (the default argument). Passing frameBudgetMs > 0
+        // causes the internal _stopwatch.Restart() to be invoked twice, which
+        // distorts the outer budget measurement.
+        // ComponentNode children are always inline-mounted (no wrapper VE) — the body's expanded
+        // VEs become direct children of parent. Function components emit no
+        // element of their own, so this inline-mount is the single canonical expansion strategy
+        // across initial mount and patch.
+        // slotStart:
+        // First child index in parent that this reconcile owns. Default 0
+        // is used when the caller owns the entire children list. Pass parent.childCount on
+        // initial mount to append a new range without disturbing children already placed by
+        // earlier reconcile passes — required when multiple fibers (e.g. several Portals targeting
+        // the same DOM node) share parent.
+        void ReconcileChildren(VisualElement parent, VNode?[] oldChildren, VNode?[] newChildren, int slotStart = 0);
+    }
+}

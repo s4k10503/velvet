@@ -1,0 +1,97 @@
+using System;
+using System.Threading;
+
+namespace Velvet
+{
+    /// <summary>
+    /// A directly constructed route that combines <see cref="RedirectTo"/> and <see cref="Guard"/> throws
+    /// <see cref="InvalidOperationException"/> when its redirect configuration is evaluated during navigation.
+    /// </summary>
+    public sealed class RouteDefinition
+    {
+        /// <summary>
+        /// Identifies this route among the matches: the key of its loader data, its action data and its error,
+        /// and what <c>Hooks.UseRouteLoaderData</c> takes. When null the route takes its position in the tree,
+        /// the indexes from the top-level array down joined by <c>-</c> (<c>"0"</c>, <c>"0-1"</c>). Two routes of
+        /// one tree sharing an id make the tree throw.
+        /// </summary>
+        public string? Id { get; init; }
+
+        /// <summary>
+        /// Route pattern matched against the URL, e.g. <c>"users/:id"</c> (<c>"/"</c> for the root). Supports
+        /// <c>:param</c>, optional <c>:param?</c> and <c>segment?</c>, and splat <c>*</c>. Null makes a
+        /// pathless route, which matches only through a child or as an <see cref="Index"/> route; <c>""</c>
+        /// matches its parent's path like any other path.
+        /// </summary>
+        public string? Path { get; init; }
+
+        /// <summary>
+        /// Whether this is an index route, React Router's <c>index: true</c>: it renders in its parent's
+        /// <c>Outlet</c> at the parent's own path, outranks a sibling of the same path, and is what a bare
+        /// <c>?index</c> in a submission's query targets. An index route declares no <see cref="Children"/>.
+        /// </summary>
+        public bool Index { get; init; }
+
+        /// <summary>
+        /// Function-type component to mount when this route matches.
+        /// Pass a <see cref="ComponentNode"/> built via V.Component(). Null renders the matched child route in its
+        /// place, as React Router renders the outlet.
+        /// </summary>
+        public ComponentNode? Element { get; init; }
+
+        /// <summary>Identifier for the per-route DI scope created via <see cref="IRouteScopeFactory"/>; null for no scope.</summary>
+        public string? ScopeId { get; init; }
+
+        /// <summary>Async data loader run when this route matches; its result is read via <c>UseLoaderData</c>. See <see cref="LoaderMode"/>.</summary>
+        public Func<RouteLoaderContext, CancellationToken, VelvetTask<object>>? Loader { get; init; }
+
+        /// <summary>How <see cref="Loader"/> is sequenced relative to the navigation commit. Defaults to <see cref="LoaderMode.Await"/>.</summary>
+        public LoaderMode LoaderMode { get; init; } = LoaderMode.Await;
+
+        /// <summary>
+        /// Called for a submission whose method is not <c>get</c>, when this is the route the submission targets:
+        /// React Router's route <c>action</c>. Its result is read via <c>UseActionData</c>.
+        /// </summary>
+        public Func<RouteActionContext, CancellationToken, VelvetTask<object>>? Action { get; init; }
+
+        /// <summary>
+        /// Component shown when the Loader or the Action fails.
+        /// </summary>
+        public ComponentNode? ErrorElement { get; init; }
+
+        /// <summary>
+        /// Component shown in place of this route while the router's initial load runs and a route at or below it,
+        /// down to the next route that has one, has an <see cref="LoaderMode.Await"/> loader with no data and no
+        /// error yet, as React Router's <c>hydrateFallbackElement</c>. Where no route above such a loader has one, the
+        /// routes render nothing until it settles.
+        /// </summary>
+        public ComponentNode? HydrateFallbackElement { get; init; }
+
+        /// <summary>Nested child routes rendered into this route's <c>Outlet</c>.</summary>
+        public RouteDefinition[]? Children { get; init; }
+
+        /// <summary>
+        /// Static redirect target without parameter interpolation. Use <see cref="Guard"/> to derive a target
+        /// from matched parameters.
+        /// </summary>
+        public string? RedirectTo { get; init; }
+
+        /// <summary>
+        /// Returning null continues navigation; returning a path redirects. Runs after the Blocker and matching,
+        /// and before the Action and Loaders.
+        /// </summary>
+        public Func<RouteLoaderContext, string>? Guard { get; init; }
+
+        /// <summary>
+        /// Application data this route carries for <c>Hooks.UseMatches</c> to surface with its match; never read
+        /// by the router itself.
+        /// </summary>
+        public object? Handle { get; init; }
+
+        /// <summary>
+        /// Whether this route's literal path segments match case-sensitively. Defaults to false
+        /// (case-insensitive). Set true for a case-sensitive route.
+        /// </summary>
+        public bool CaseSensitive { get; init; } = false;
+    }
+}

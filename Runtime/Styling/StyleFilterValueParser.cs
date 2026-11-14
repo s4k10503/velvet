@@ -1,0 +1,617 @@
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using UnityEngine;
+using UnityEngine.UIElements;
+
+namespace Velvet
+{
+    // Filter value parsers for the arbitrary-value dispatch (StyleArbitraryValueResolver): the filter-function
+    // bracket prefixes (blur / grayscale / invert / sepia / contrast / hue-rotate / brightness / saturate) and
+    // the non-bracket named presets (blur-sm, contrast-125, hue-rotate-90, ...), plus the dispatch gate that
+    // claims them. All resolve to the same Filter* properties that the resolver's compose-and-apply machinery
+    // (ApplyCombinedFilter) writes into a single list. The dispatch calls in; this group calls only the
+    // resolver's shared scalar grammar (TryParseValue / TryParseFloat / TryParseAngleDegrees) and its own
+    // exclusive preset tables, never back into the dispatch or another parser.
+    internal static class StyleFilterValueParser
+    {
+        // The canonical built-in filter family names — the utility prefixes this parser owns. Single
+        // source for VelvetFilters' reserved-name check, so filter-[blur:..] can never be registered to
+        // mean something different from the blur-* utilities defined here.
+        internal static readonly string[] BuiltInFamilyNames =
+        {
+            "blur", "brightness", "contrast", "grayscale", "hue-rotate", "invert", "saturate", "sepia", "drop-shadow",
+        };
+
+        // Tailwind's --blur-* theme, in px. No filter utility has a USS class: each routes to the same
+        // compose-and-apply filter path as the bracket forms (blur-[6px]).
+        private static readonly Dictionary<string, float> s_blurPreset = new()
+        {
+            ["none"] = 0f, ["xs"] = 4f, ["sm"] = 8f, ["md"] = 12f, ["lg"] = 16f, ["xl"] = 24f, ["2xl"] = 40f, ["3xl"] = 64f,
+        };
+
+        internal static bool TryGetBlurPreset(string suffix, out float px) => s_blurPreset.TryGetValue(suffix, out px);
+
+        // Tailwind v4's bare value for the amount filters: any whole number, read as a percentage (degrees for
+        // hue-rotate). Six digits is far past any amount a filter tells apart, and keeps the parse in range.
+        internal static bool TryParseWholeNumber(ReadOnlySpan<char> suffix, out int whole)
+        {
+            whole = 0;
+            return suffix.Length <= 6
+                && int.TryParse(suffix, NumberStyles.None, CultureInfo.InvariantCulture, out whole);
+        }
+
+        // The bracket prefixes whose value is a bare amount. A negative one is rejected. CSS leaves contrast(),
+        // brightness() and saturate() unclamped above 1, and the first-party shaders standing in for the last two
+        // multiply/lerp unclamped to match; it clamps grayscale(), invert() and sepia() to 1.
+        private static readonly Dictionary<string, ArbitraryProperty> s_amountFilterPrefixes = new()
+        {
+            ["contrast-"] = ArbitraryProperty.FilterContrast,
+            ["brightness-"] = ArbitraryProperty.FilterBrightness,
+            ["saturate-"] = ArbitraryProperty.FilterSaturate,
+        };
+
+        private static readonly Dictionary<string, ArbitraryProperty> s_unitAmountFilterPrefixes = new()
+        {
+            ["grayscale-"] = ArbitraryProperty.FilterGrayscale,
+            ["invert-"] = ArbitraryProperty.FilterInvert,
+            ["sepia-"] = ArbitraryProperty.FilterSepia,
+        };
+
+        // Filter-function bracket prefixes, routed here so all filter-* utilities share the one compose-and-
+        // apply path (ApplyCombinedFilter writes a single list). true (result set) on success; false to
+        // reject a matched-but-invalid value; null when not a filter prefix. Most filters reject the negated
+        // form (no '-' guard would let them fall through to the length path) — hue-rotate- accepts negation.
+        internal static bool? TryParseFilterValue(string prefix, ReadOnlySpan<char> valueSpan, bool negate, out ArbitraryStyle result)
+        {
+            result = default;
+
+            // Must precede the negate bail below: hue-rotate is the one filter that accepts a negated value.
+            if (prefix == "hue-rotate-")
+            {
+                if (!StyleArbitraryValueResolver.TryParseAngleDegrees(valueSpan, out var deg)) return false;
+                // CSS takes an angle here, and a number only where it is zero.
+                if (deg != 0f && StyleArbitraryValueResolver.IsUnitlessAngle(valueSpan))
+                {
+                    return false;
+                }
+                result = new ArbitraryStyle(ArbitraryProperty.FilterHueRotate, negate ? -deg : deg, LengthUnit.Pixel);
+                return true;
+            }
+            if (negate)
+            {
+                return null;
+            }
+            if (prefix == "blur-")
+            {
+                if (StyleArbitraryValueResolver.TryParseValue(valueSpan, out var blurPx, out var blurUnit))
+                {
+                    if (blurUnit != LengthUnit.Pixel) return false;
+                    result = new ArbitraryStyle(ArbitraryProperty.FilterBlur,
+                        StyleArbitraryValueResolver.ClampMathResult(valueSpan, blurPx, 0f), LengthUnit.Pixel);
+                    return true;
+                }
+                if (!TryParseMeasuredLength(valueSpan, out var measured)) return false;
+                if (IsNegativeLiteral(valueSpan)) return false;
+                result = new ArbitraryStyle(ArbitraryProperty.FilterBlur, measured!.AtLeast(0f));
+                return true;
+            }
+            if (prefix == null)
+            {
+                return null;
+            }
+            var ceiling = float.PositiveInfinity;
+            if (s_unitAmountFilterPrefixes.TryGetValue(prefix, out var property))
+            {
+                ceiling = 1f;
+            }
+            else if (!s_amountFilterPrefixes.TryGetValue(prefix, out property))
+            {
+                return null;
+            }
+            var amount = 0f;
+            if (!TryParseAmount(valueSpan, out amount)
+                || (amount = StyleArbitraryValueResolver.ClampMathResult(valueSpan, amount, 0f)) < 0f) return false;
+            result = new ArbitraryStyle(property, Mathf.Min(amount, ceiling), LengthUnit.Pixel);
+            return true;
+        }
+
+        // A length only the element can measure: an em, a viewport unit, or a math function reading one, which
+        // StyleRelativeLengths.TryMeasure measures. blur() and drop-shadow() take no percentage.
+        private static bool TryParseMeasuredLength(ReadOnlySpan<char> value, out StyleLengthExpression? expression)
+            => StyleLengthExpression.TryParse(value, out expression) && !expression!.ReadsPercentage;
+
+        // A length written with a minus sign and no math function around it, which the browser rejects where the property
+        // takes none below zero; one a math function comes to below zero is zero.
+        private static bool IsNegativeLiteral(ReadOnlySpan<char> value)
+        {
+            var trimmed = value.Trim("_ ".AsSpan());
+            return trimmed.Length > 0 && trimmed[0] == '-' && !StyleLengthExpression.OpensMathFunction(trimmed);
+        }
+
+        // A number, or a percentage of 1, as each of these CSS functions takes.
+        internal static bool TryParseAmount(ReadOnlySpan<char> valueSpan, out float amount)
+            => StyleArbitraryValueResolver.TryParseNumberOrPercentage(valueSpan, out amount);
+
+        // Tailwind's --drop-shadow-* theme, and the bare drop-shadow's deprecated --drop-shadow.
+        private static readonly Dictionary<string, DropShadowLayer[]> s_dropShadowPreset = new()
+        {
+            ["xs"] = new[] { Black(0f, 1f, 1f, 0.05f) },
+            ["sm"] = new[] { Black(0f, 1f, 2f, 0.15f) },
+            ["md"] = new[] { Black(0f, 3f, 3f, 0.12f) },
+            ["lg"] = new[] { Black(0f, 4f, 4f, 0.15f) },
+            ["xl"] = new[] { Black(0f, 9f, 7f, 0.1f) },
+            ["2xl"] = new[] { Black(0f, 25f, 25f, 0.15f) },
+        };
+
+        private static readonly DropShadowLayer[] s_bareDropShadow = { Black(0f, 1f, 2f, 0.1f), Black(0f, 1f, 1f, 0.06f) };
+
+        private static DropShadowLayer Black(float x, float y, float deviation, float alpha)
+            => new(x, y, deviation, new Color(0f, 0f, 0f, alpha));
+
+        // drop-shadow, drop-shadow-<size>, drop-shadow-none, drop-shadow-[<shadow>(,<shadow>)*], each but none
+        // taking a /N alpha, and drop-shadow-<color>(/N) or drop-shadow-[<color>](/N). Which of Tailwind's rules
+        // write their own colours follows its utility: the bare token and a theme size with no modifier do, an
+        // arbitrary shadow never.
+        internal static bool TryParseDropShadow(string className, out ArbitraryStyle result)
+        {
+            result = default;
+            const string family = "drop-shadow";
+            if (!className.StartsWith(family, StringComparison.Ordinal))
+            {
+                return false;
+            }
+            var slash = StyleColorValueParser.ColorModifierSlashIndex(className, family.Length);
+            var value = className.AsSpan(family.Length, (slash < 0 ? className.Length : slash) - family.Length);
+            float? alpha = null;
+            if (slash >= 0)
+            {
+                if (!StyleColorValueParser.TryParseAlphaModifier(className.AsSpan(slash + 1), out var modifier))
+                {
+                    return false;
+                }
+                alpha = modifier;
+            }
+            if (value.Length == 0)
+            {
+                result = DropShadowSize(s_bareDropShadow, true, alpha);
+                return true;
+            }
+            if (value.Length < 2 || value[0] != '-')
+            {
+                return false;
+            }
+            var suffix = value.Slice(1).ToString();
+            if (suffix == "none")
+            {
+                if (alpha != null)
+                {
+                    return false;
+                }
+                result = DropShadowSize(Array.Empty<DropShadowLayer>(), true, null);
+                return true;
+            }
+            if (s_dropShadowPreset.TryGetValue(suffix, out var preset))
+            {
+                result = DropShadowSize(preset, alpha == null, alpha);
+                return true;
+            }
+            Color color;
+            // currentcolor is no colour the shared grammar resolves, so it is read before the bracket would hand it
+            // to the shadow list.
+            if (suffix == "current" || suffix == "[currentcolor]")
+            {
+                color = DropShadowLayer.CurrentColor;
+            }
+            else if (StyleArbitraryValueResolver.TryStripBrackets(suffix, 0, out var inner)
+                && !StyleColorValueParser.TryParseColor(inner, out color))
+            {
+                if (!TryParseShadowList(inner, out var shadows))
+                {
+                    return false;
+                }
+                result = DropShadowSize(shadows, false, alpha);
+                return true;
+            }
+            else if (!VelvetPalette.TryResolveColorToken(suffix, out color))
+            {
+                return false;
+            }
+            // Tailwind mixes the colour with transparent at the modifier's percentage, which scales its alpha.
+            color.a *= alpha ?? 1f;
+            result = new ArbitraryStyle(ArbitraryProperty.FilterDropShadowColor, color);
+            return true;
+        }
+
+        private static ArbitraryStyle DropShadowSize(DropShadowLayer[] shadows, bool literal, float? alpha)
+            => new(ArbitraryProperty.FilterDropShadow, new DropShadowValue(shadows, literal, alpha));
+
+        // Comma-separated shadows, each two or three lengths and an optional colour, separated by '_'. A shadow
+        // with no colour takes currentcolor, as CSS's default, which DropShadowLayer.CurrentColor stands for.
+        private static bool TryParseShadowList(ReadOnlySpan<char> list, out DropShadowLayer[] shadows)
+        {
+            shadows = Array.Empty<DropShadowLayer>();
+            var parsed = new List<DropShadowLayer>();
+            foreach (var shadow in SplitOutsideParens(list, ','))
+            {
+                if (!TryParseShadow(shadow.AsSpan(), out var layer))
+                {
+                    return false;
+                }
+                parsed.Add(layer);
+            }
+            shadows = parsed.ToArray();
+            return true;
+        }
+
+        internal static bool TryParseShadow(ReadOnlySpan<char> shadow, out DropShadowLayer layer)
+        {
+            layer = default;
+            Span<float> lengths = stackalloc float[3];
+            var measured = new StyleLengthExpression?[3];
+            var lengthCount = 0;
+            Color? color = null;
+            foreach (var token in SplitOutsideParens(shadow, '_'))
+            {
+                if (token.Length == 0)
+                {
+                    continue;
+                }
+                if (StyleArbitraryValueResolver.TryParseValue(token.AsSpan(), out var length, out var unit))
+                {
+                    if (unit != LengthUnit.Pixel || lengthCount == 3)
+                    {
+                        return false;
+                    }
+                    lengths[lengthCount++] = length;
+                    continue;
+                }
+                if (TryParseMeasuredLength(token.AsSpan(), out var expression))
+                {
+                    // A deviation below zero as a literal rejects the shadow, as a literal deviation does.
+                    if (lengthCount == 3 || (lengthCount == 2 && IsNegativeLiteral(token.AsSpan())))
+                    {
+                        return false;
+                    }
+                    measured[lengthCount++] = expression;
+                    continue;
+                }
+                if (color != null || !StyleColorValueParser.TryParseColor(token.AsSpan(), out var parsed))
+                {
+                    return false;
+                }
+                color = parsed;
+            }
+            // A deviation the element measures is clamped at 0 when it is measured (AppendDropShadows).
+            if (lengthCount < 2 || lengths[2] < 0f)
+            {
+                return false;
+            }
+            layer = new DropShadowLayer(lengths[0], lengths[1], lengths[2], color ?? DropShadowLayer.CurrentColor,
+                Array.TrueForAll(measured, m => m == null) ? null : measured);
+            return true;
+        }
+
+        // The pieces of value between separators lying outside any parentheses.
+        private static List<string> SplitOutsideParens(ReadOnlySpan<char> value, char separator)
+        {
+            var pieces = new List<string>();
+            var depth = 0;
+            var start = 0;
+            for (var i = 0; i < value.Length; i++)
+            {
+                if (value[i] == '(')
+                {
+                    depth++;
+                }
+                else if (value[i] == ')')
+                {
+                    depth--;
+                }
+                else if (value[i] == separator && depth == 0)
+                {
+                    pieces.Add(value.Slice(start, i - start).ToString());
+                    start = i + 1;
+                }
+            }
+            pieces.Add(value.Slice(start).ToString());
+            return pieces;
+        }
+
+        // Warn-once bookkeeping for a filter-[name:...] token whose name was never registered with
+        // VelvetFilters: logging once per NAME (not once per resolve) keeps a class re-resolved on every
+        // re-render (e.g. toggled by a hover variant) from spamming the console. Reset on the same
+        // subsystem-registration hook that clears the registry itself, so the set starts empty whenever
+        // the registrations do (domain reload / play-mode entry); within one loaded domain an
+        // already-warned name stays silent, even if it is registered and unregistered in between.
+        private static readonly HashSet<string> s_warnedUnregistered = new();
+
+        // Set while a reader that orders tokens, and applies none, parses one: the warning belongs to the pass that applies it.
+        [ThreadStatic]
+        internal static bool QuietUnregistered;
+
+#if UNITY_EDITOR
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetWarnOnceState() => s_warnedUnregistered.Clear();
+#endif
+
+        // filter-[name] / filter-[name:arg(:arg)*] resolves a name registered via VelvetFilters.Register.
+        // The name is everything up to the first ':'; the definition's parameter DECLARATION drives the
+        // rest. Each colon-separated segment fills the next declared slot and is parsed by that slot's
+        // declared type — a float slot takes a signed float, a color slot the shared color grammar — and
+        // the missing tail is padded from the declared defaults, so the resolved argument list always
+        // carries the full declared parameter count. More segments than declared slots, a segment failing
+        // its slot's grammar, or an empty segment refuse the arguments, and the layer composes nothing — a
+        // registered name must not half-apply. A name nothing is registered under resolves to a reference
+        // with no definition, the url() to a missing filter that makes CSS ignore the whole chain. Either
+        // keeps its bracket body for a registration change to read again. A body whose name is not a name the
+        // registry accepts (CSS's own filter syntax: a function, url(), none) is not claimed, so it stays an
+        // inert class beside the rest of the chain. Never negated: "-filter-[..]" has
+        // no meaning for a named reference.
+        internal static bool? TryParseCustomFilter(string prefix, ReadOnlySpan<char> valueSpan, bool negate, out ArbitraryStyle result)
+        {
+            result = default;
+            if (negate || prefix != "filter-")
+            {
+                return null;
+            }
+
+            var colon = valueSpan.IndexOf(':');
+            var nameSpan = colon < 0 ? valueSpan : valueSpan.Slice(0, colon);
+            if (!VelvetFilters.IsNameShape(nameSpan))
+            {
+                return false;
+            }
+            var name = nameSpan.ToString();
+
+            if (!VelvetFilters.TryGet(name, out var definition))
+            {
+                if (!QuietUnregistered && s_warnedUnregistered.Add(name))
+                {
+                    Debug.LogWarning($"[VelvetFilters] \"{name}\" is not registered; an element carrying filter-[{name}:...] draws no filter until it is.");
+                }
+                result = new ArbitraryStyle(ArbitraryProperty.FilterCustom,
+                    new CustomFilterValue(name, null!, Array.Empty<FilterParameter>(), valueSpan.ToString()));
+                return true;
+            }
+
+            var token = valueSpan.ToString();
+            result = new ArbitraryStyle(ArbitraryProperty.FilterCustom, TryReadArguments(definition, valueSpan, colon, out var args)
+                ? new CustomFilterValue(name, definition, args, token)
+                : new CustomFilterValue(name, null!, Array.Empty<FilterParameter>(), token, rejected: true));
+            return true;
+        }
+
+        private static bool TryReadArguments(FilterFunctionDefinition definition, ReadOnlySpan<char> valueSpan, int colon,
+            out FilterParameter[] args)
+        {
+            args = Array.Empty<FilterParameter>();
+            var declarations = definition.parameters;
+            var declaredCount = declarations?.Length ?? 0;
+            // Registration rejects a declaration of more than the 4 parameters a filter function can
+            // carry, but `parameters` is a mutable array property on a live ScriptableObject, so re-guard
+            // here: composing past the cap would throw during style resolution.
+            if (declaredCount > 4)
+            {
+                return false;
+            }
+
+            // Count the supplied segments up front: over-supply rejects before any parsing (a segment
+            // with no declared slot has no type to parse against), and the count sizes the argument
+            // array exactly.
+            var suppliedCount = 0;
+            if (colon >= 0)
+            {
+                suppliedCount = 1;
+                for (var i = colon + 1; i < valueSpan.Length; i++)
+                {
+                    if (valueSpan[i] == ':') suppliedCount++;
+                }
+            }
+            if (suppliedCount > declaredCount)
+            {
+                return false;
+            }
+
+            var read = declaredCount == 0 ? Array.Empty<FilterParameter>() : new FilterParameter[declaredCount];
+            var remaining = colon < 0 ? ReadOnlySpan<char>.Empty : valueSpan.Slice(colon + 1);
+            for (var slot = 0; slot < suppliedCount; slot++)
+            {
+                var next = remaining.IndexOf(':');
+                var segment = next < 0 ? remaining : remaining.Slice(0, next);
+                if (!TryParseFilterArg(segment, declarations![slot].interpolationDefaultValue.type, out read[slot]))
+                {
+                    return false;
+                }
+                remaining = next < 0 ? ReadOnlySpan<char>.Empty : remaining.Slice(next + 1);
+            }
+            // Pad the unsupplied tail from the declared defaults — the same values the engine's USS
+            // parser pads with. The public FilterFunction construction path performs no padding of its
+            // own, and an under-filled function stops binding at its parameterCount at render time,
+            // leaving stale material-property state where the declared default should be.
+            for (var slot = suppliedCount; slot < declaredCount; slot++)
+            {
+                read[slot] = declarations![slot].interpolationDefaultValue;
+            }
+            args = read;
+            return true;
+        }
+
+        // A single filter-[name:...] argument segment, parsed against its declared slot type: a float
+        // slot takes a signed float (invariant culture), a color slot the shared color grammar
+        // (StyleColorValueParser.TryParseColor, the one bg-[#fff] uses). A segment failing its slot's grammar (or an
+        // empty segment — a double colon or trailing colon) rejects: binding a float where the shader
+        // declared a color (or vice versa) would only make the engine reset the parameter to its default
+        // with a warning at render time.
+        private static bool TryParseFilterArg(ReadOnlySpan<char> segment, FilterParameterType slotType, out FilterParameter parameter)
+        {
+            parameter = default;
+            if (segment.Length == 0)
+            {
+                return false;
+            }
+            if (slotType == FilterParameterType.Float)
+            {
+                if (!StyleArbitraryValueResolver.TryParseFloat(segment, out var f))
+                {
+                    return false;
+                }
+                parameter = new FilterParameter(f);
+                return true;
+            }
+            if (!StyleColorValueParser.TryParseColor(segment, out var color))
+            {
+                return false;
+            }
+            parameter = new FilterParameter(color);
+            return true;
+        }
+
+        // Cheap dispatch gate (prefix-only): true when cls MIGHT be a named filter preset, so the reconciler
+        // routes it to TryParseFilterPreset instead of the class list. Loose by design — an unrecognized
+        // suffix (blur-foo) fails the precise parse and falls through to the class list, same as any unknown
+        // utility. Only consulted for non-bracket tokens (the bracket form blur-[6px] is claimed by the
+        // dispatch's '[' check).
+        internal static bool IsFilterPreset(string cls) => cls != null && IsFilterPreset(cls.AsSpan());
+
+        private static bool IsFilterPreset(ReadOnlySpan<char> cls)
+        {
+            if (cls.SequenceEqual("blur".AsSpan()) || cls.SequenceEqual("grayscale".AsSpan())
+                || cls.SequenceEqual("invert".AsSpan()) || cls.SequenceEqual("sepia".AsSpan()))
+            {
+                return true;
+            }
+            return cls.StartsWith("drop-shadow".AsSpan(), StringComparison.Ordinal)
+                || cls.StartsWith("blur-".AsSpan(), StringComparison.Ordinal)
+                || cls.StartsWith("contrast-".AsSpan(), StringComparison.Ordinal)
+                || cls.StartsWith("hue-rotate-".AsSpan(), StringComparison.Ordinal)
+                || cls.StartsWith("-hue-rotate-".AsSpan(), StringComparison.Ordinal)
+                || cls.StartsWith("grayscale-".AsSpan(), StringComparison.Ordinal)
+                || cls.StartsWith("invert-".AsSpan(), StringComparison.Ordinal)
+                || cls.StartsWith("sepia-".AsSpan(), StringComparison.Ordinal)
+                || cls.StartsWith("brightness-".AsSpan(), StringComparison.Ordinal)
+                || cls.StartsWith("saturate-".AsSpan(), StringComparison.Ordinal);
+        }
+
+        // True when the leaf token is a filter utility — a named preset (blur-sm, -hue-rotate-90, bare
+        // blur/grayscale/…), a bracket form (blur-[6px], -hue-rotate-[30deg]), or a custom filter-[name:..].
+        // IsFilterPreset already matches every bracket form (each is "<family>-[..]" and its
+        // StartsWith("<family>-") check fires on the "<family>-" prefix), so the only case it misses is the
+        // custom filter-[..] token.
+        internal static bool IsFilterLeaf(string? leaf) => leaf != null && IsFilterLeaf(leaf.AsSpan());
+
+        private static bool IsFilterLeaf(ReadOnlySpan<char> leaf)
+            => IsFilterPreset(leaf) || leaf.StartsWith("filter-[".AsSpan(), StringComparison.Ordinal);
+
+        // Whether cls, or what follows one of its colons, is a filter leaf. A variant's payload is what follows a
+        // colon of its token, so a class this declines cannot peel to a filter and is passed over before the peel
+        // allocates (ClassReadAllocationTests). No filter leaf opens with a colon, so a run of them is skipped whole.
+        private static bool MayPeelToFilterLeaf(ReadOnlySpan<char> cls)
+        {
+            if (IsFilterLeaf(cls))
+            {
+                return true;
+            }
+            var colon = cls.IndexOf(':');
+            return colon != -1 && MayPeelToFilterLeaf(cls.Slice(colon).TrimStart(':'));
+        }
+
+        // True when ANY class resolves to a filter utility, INCLUDING one carried by a state variant
+        // (hover:blur-sm, dark:hue-rotate-90, sm:blur-md, group-hover:filter-[…], and stacked forms). A variant
+        // filter is applied by a manipulator at state time — outside the reconcile path that decides the
+        // bounds-spacer — so the spacer must exist whenever a filter COULD apply, not only when it is active;
+        // peeling the variant layers to the leaf utility mirrors StyleClipPathClass.WantsClipWrapper, which
+        // keeps its wrapper alive for a variant-only clip for the same reason. Loose like IsFilterPreset: a
+        // matched-but-invalid suffix still gates true, which is harmless for the consumer (the bounds-spacer
+        // reserves render bounds — over-reserving is invisible, under-reserving would clip the paint).
+        internal static bool HasFilterClass(string[] classNames)
+        {
+            if (classNames == null)
+            {
+                return false;
+            }
+            foreach (var cls in classNames)
+            {
+                if (cls != null && MayPeelToFilterLeaf(cls.AsSpan()) && IsFilterLeaf(StyleVariantClass.LeafOf(cls)))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        // Parses the non-bracket named filter presets (blur-sm, blur, grayscale, contrast-125,
+        // hue-rotate-90, grayscale-0, ...) to the same Filter* properties as the bracket forms, so they merge
+        // through ApplyCombinedFilter. hue-rotate is the only filter with a negative preset (-hue-rotate-90).
+        internal static bool TryParseFilterPreset(string className, out ArbitraryStyle result)
+        {
+            result = default;
+            if (string.IsNullOrEmpty(className))
+            {
+                return false;
+            }
+
+            var negate = className[0] == '-';
+            var body = negate ? className.Substring(1) : className;
+
+            // hue-rotate first: it is the one filter that accepts the negated form.
+            if (body.StartsWith("hue-rotate-", StringComparison.Ordinal))
+            {
+                if (!TryParseWholeNumber(body.AsSpan("hue-rotate-".Length), out var deg))
+                {
+                    return false;
+                }
+                result = new ArbitraryStyle(ArbitraryProperty.FilterHueRotate, negate ? -deg : deg, LengthUnit.Pixel);
+                return true;
+            }
+            if (negate)
+            {
+                return false; // no other filter has a negative preset
+            }
+
+            return TryParseKeywordPreset(body, out result) || TryParseFamilyPreset(body, out result);
+        }
+
+        private static bool TryParseKeywordPreset(string body, out ArbitraryStyle result)
+        {
+            result = default;
+            switch (body)
+            {
+                case "blur": result = new ArbitraryStyle(ArbitraryProperty.FilterBlur, 8f, LengthUnit.Pixel); return true;
+                case "grayscale": result = new ArbitraryStyle(ArbitraryProperty.FilterGrayscale, 1f, LengthUnit.Pixel); return true;
+                case "invert": result = new ArbitraryStyle(ArbitraryProperty.FilterInvert, 1f, LengthUnit.Pixel); return true;
+                case "sepia": result = new ArbitraryStyle(ArbitraryProperty.FilterSepia, 1f, LengthUnit.Pixel); return true;
+            }
+            return false;
+        }
+
+        // blur-<theme>, and <family>-<n> for the amount filters, n% clamped to 1 where CSS clamps the function.
+        private static bool TryParseFamilyPreset(string body, out ArbitraryStyle result)
+        {
+            result = default;
+            if (body.StartsWith("blur-", StringComparison.Ordinal))
+            {
+                if (!s_blurPreset.TryGetValue(body.Substring("blur-".Length), out var px))
+                {
+                    return false;
+                }
+                result = new ArbitraryStyle(ArbitraryProperty.FilterBlur, px, LengthUnit.Pixel);
+                return true;
+            }
+            var dash = body.IndexOf('-');
+            if (dash < 0)
+            {
+                return false;
+            }
+            var prefix = body.Substring(0, dash + 1);
+            var ceiling = s_unitAmountFilterPrefixes.TryGetValue(prefix, out var property) ? 1f : float.PositiveInfinity;
+            if ((ceiling > 1f && !s_amountFilterPrefixes.TryGetValue(prefix, out property))
+                || !TryParseWholeNumber(body.AsSpan(dash + 1), out var whole))
+            {
+                return false;
+            }
+            result = new ArbitraryStyle(property, Mathf.Min(whole / 100f, ceiling), LengthUnit.Pixel);
+            return true;
+        }
+    }
+}

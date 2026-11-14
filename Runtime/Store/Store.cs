@@ -1,0 +1,268 @@
+using System;
+using System.Collections.Generic;
+using System.Threading;
+
+namespace Velvet
+{
+    /// <summary>
+    /// State container for immutable state, collocated actions, and synchronous change notifications.
+    /// </summary>
+    /// <remarks>
+    /// Stores are single-threaded. Reads, mutations, and subscription changes must occur on the Unity
+    /// main thread.
+    /// <para>
+    /// Do not mutate the store from a state-change notification. The pass reads the current value per
+    /// listener rather than the one it started with, so a nested mutation leaves every listener after the
+    /// mutating one never called with the outer state and called twice with the inner one. Defer the
+    /// update until notification completes. Listener exceptions propagate and stop the current
+    /// notification pass.
+    /// </para>
+    /// </remarks>
+    /// <typeparam name="TState">Immutable state record type.</typeparam>
+    public abstract class Store<TState> : IStoreWriter<TState>, IDisposable
+    {
+        #region State
+
+        private readonly StoreStateNotifier<TState> _state;
+
+        public TState Current
+            => _state.Value;
+
+        /// <summary>
+        /// The construction value, unchanged when <see cref="Current"/> changes.
+        /// </summary>
+        public TState InitialState { get; }
+
+        #endregion
+
+        #region Infrastructure
+
+        /// <summary>
+        /// Logger captured from <see cref="StoreLogger.Default"/> at construction. See <see cref="StoreLogger"/>
+        /// to suppress output in tests.
+        /// </summary>
+        protected StoreLogger Logger { get; }
+
+        /// <summary>
+        /// Cancelled when the store is disposed. Subclasses can thread this through async work so
+        /// in-flight operations observe disposal.
+        /// </summary>
+        protected CancellationToken CancellationToken
+            => _cancellationTokenSource.Token;
+
+        private readonly CancellationTokenSource _cancellationTokenSource;
+
+        #endregion
+
+        #region Lifecycle
+
+        private bool _disposed;
+
+        #endregion
+
+        #region Constructor
+
+        protected Store(TState initial)
+        {
+            Logger = StoreLogger.Default;
+            InitialState = initial;
+            _state = new StoreStateNotifier<TState>(initial);
+            _cancellationTokenSource = new CancellationTokenSource();
+        }
+
+        #endregion
+
+        #region State Methods
+
+        /// <summary>
+        /// Updates state and returns whether the value actually changed (equality-checked).
+        /// Skips updates that would not change the state.
+        /// </summary>
+        bool IStoreWriter<TState>.SetState(Func<TState, TState> updater)
+            => SetState(updater);
+
+        /// <inheritdoc cref="IStoreWriter{TState}.SetState"/>
+        protected bool SetState(Func<TState, TState> updater)
+            => TryApply(updater, force: false);
+
+        // Both mutation modes share this disposal guard. ObjectIs preserves identity semantics for
+        // record classes while record structs retain value equality; StoreTests pins both branches.
+        private bool TryApply(Func<TState, TState> updater, bool force)
+        {
+            if (_disposed) return false;
+
+            var current = _state.Value;
+            var next = updater(current);
+            if (!force && ObjectIs.AreEqual(next, current))
+            {
+                return false;
+            }
+
+            _state.Notify(next);
+            return true;
+        }
+
+        /// <summary>
+        /// Updates state without the equality bailout used by <see cref="SetState"/>.
+        /// A live store notifies even when the reducer returns the current value.
+        /// </summary>
+        void IStoreWriter<TState>.Mutate(Func<TState, TState> reducer)
+            => Mutate(reducer);
+
+        /// <inheritdoc cref="IStoreWriter{TState}.Mutate"/>
+        protected void Mutate(Func<TState, TState> reducer)
+            => TryApply(reducer, force: true);
+
+        /// <summary>
+        /// Subscribes to state changes.
+        /// </summary>
+        /// <param name="listener">Callback for state-change notifications. Must not be null.</param>
+        /// <param name="fireImmediately">
+        /// When <c>true</c>, the listener is invoked synchronously with <see cref="Current"/> before
+        /// returning. Default is
+        /// <c>false</c> — the listener fires only on subsequent state changes.
+        /// </param>
+        public IDisposable Subscribe(Action<TState> listener, bool fireImmediately = false)
+        {
+            if (listener == null) throw new ArgumentNullException(nameof(listener));
+            // Give reused callbacks distinct registrations so their subscriptions remain independently disposable.
+            // Registration precedes the immediate callback so a nested mutation reaches this listener.
+            var subscription = _state.Subscribe(state => listener(state));
+            if (fireImmediately) listener(Current);
+            return subscription;
+        }
+
+        /// <summary>
+        /// Subscribes to state changes with a (current, previous) signature.
+        /// </summary>
+        /// <remarks>
+        /// Argument order note: <paramref name="listener"/> takes <c>(current, previous)</c>. This is the
+        /// reverse of the props comparator on <see cref="V.Memo{TProps}"/>, which takes
+        /// <c>(previous, next)</c> — the two areas settled on opposite conventions, so check the parameter
+        /// names at the call site rather than assuming one order.
+        /// </remarks>
+        /// <param name="listener">Callback receiving <c>(currentState, previousState)</c>. Must not be null.</param>
+        /// <param name="fireImmediately">
+        /// When <c>true</c>, fires the listener synchronously with <c>(Current, Current)</c> before returning
+        /// (both arguments equal — there is no previous state at subscribe time). Default is <c>false</c>.
+        /// </param>
+        public IDisposable Subscribe(Action<TState, TState> listener, bool fireImmediately = false)
+        {
+            if (listener == null) throw new ArgumentNullException(nameof(listener));
+            var prev = Current;
+            // Registration precedes the immediate callback for the same reason as the single-argument overload.
+            var subscription = _state.Subscribe(current =>
+            {
+                var oldPrev = prev;
+                prev = current;
+                listener(current, oldPrev);
+            });
+            if (fireImmediately) listener(Current, Current);
+            return subscription;
+        }
+
+        /// <summary>
+        /// Subscribes to a selected slice with a (currentSlice, previousSlice) signature. The listener
+        /// fires only when the selected slice changes under the given comparer.
+        /// </summary>
+        /// <remarks>
+        /// Argument order note: <paramref name="observer"/> takes <c>(current, previous)</c>. This is the
+        /// reverse of the props comparator on <see cref="V.Memo{TProps}"/>, which takes
+        /// <c>(previous, next)</c> — the two areas settled on opposite conventions, so check the parameter
+        /// names at the call site rather than assuming one order.
+        /// </remarks>
+        /// <typeparam name="T">Selected projection type.</typeparam>
+        /// <param name="selector">Pure projection from the store snapshot. Must not be null.</param>
+        /// <param name="observer">Callback receiving <c>(currentSlice, previousSlice)</c> when the slice changes. Must not be null.</param>
+        /// <param name="comparer">
+        /// Equality comparer that decides whether two consecutive slices are equal. Defaults to
+        /// <c>Object.is</c> equality, the same default used by <see cref="Hooks.UseStore{TStore,TSel}"/>.
+        /// Pass <see cref="StoreShallowEqualityComparer.Sequence{TItem}"/> to compare sequence slices
+        /// element-by-element instead.
+        /// </param>
+        /// <param name="fireImmediately">
+        /// When <c>true</c>, fires the observer synchronously with <c>(selector(Current), selector(Current))</c>
+        /// before returning. Default is <c>false</c>.
+        /// </param>
+        public IDisposable Select<T>(
+            Func<TState, T> selector,
+            Action<T, T> observer,
+            IEqualityComparer<T>? comparer = null,
+            bool fireImmediately = false)
+        {
+            if (selector == null) throw new ArgumentNullException(nameof(selector));
+            if (observer == null) throw new ArgumentNullException(nameof(observer));
+            var cmp = comparer ?? ObjectIsEqualityComparer<T>.Instance;
+            var prev = selector(Current);
+            // Registration precedes the immediate callback for the same reason as Subscribe.
+            var subscription = _state.Subscribe(snapshot =>
+            {
+                var current = selector(snapshot);
+                if (cmp.Equals(prev, current)) return;
+                var oldPrev = prev;
+                prev = current;
+                observer(current, oldPrev);
+            });
+            if (fireImmediately) observer(selector(Current), selector(Current));
+            return subscription;
+        }
+
+        /// <summary>
+        /// Resets state to the initial value unless the store has been disposed.
+        /// </summary>
+        public void Reset()
+        {
+            if (_disposed) return;
+            ResetCore();
+        }
+
+        protected abstract void ResetCore();
+
+        #endregion
+
+        #region Dispose
+
+        public void Dispose()
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            _disposed = true;
+
+            // Contained on RouteLoaderRunner.Retire's terms: this source is the store's own and its
+            // token is exposed to subclasses, so a callback firing here can be the application's.
+            try
+            {
+                _cancellationTokenSource.Cancel();
+            }
+            catch (Exception cancellationFailure)
+            {
+                Logger.LogError($"[{GetType().Name}] error while cancelling CancellationToken: {cancellationFailure.Message}");
+            }
+            finally
+            {
+                _cancellationTokenSource.Dispose();
+            }
+
+            try { _state.Dispose(); }
+            catch (Exception ex) { Logger.LogError($"[{GetType().Name}] error while disposing State: {ex.Message}"); }
+
+            // Uncontained, unlike the cancellation above: nothing follows it to be skipped.
+            OnDispose();
+        }
+
+        /// <summary>
+        /// Subclass-specific dispose logic (overridable). The state notifier is already disposed at
+        /// this point and must not be accessed. Subscriptions a subclass opened via
+        /// <see cref="Subscribe(Action{TState}, bool)"/> / <see cref="Select{T}(Func{TState, T}, Action{T, T}, IEqualityComparer{T}, bool)"/>
+        /// are owned by the subclass and should be disposed here.
+        /// </summary>
+        protected virtual void OnDispose()
+        {
+        }
+
+        #endregion
+    }
+}

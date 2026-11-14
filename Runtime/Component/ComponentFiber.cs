@@ -1,0 +1,1228 @@
+using System;
+using System.Collections.Generic;
+
+namespace Velvet
+{
+    /// <summary>
+    /// Bitmask over the three <see cref="FiberUpdatePriority"/> values, used as the per-fiber pending-lane
+    /// set. The priority space is fixed at exactly 3 members (Urgent=0 .. Transition=2), and this type sits
+    /// on the scheduler's hottest path (<see cref="FiberWorkLoop.ScheduleRerender"/> /
+    /// <see cref="FiberWorkLoop.FlushState"/> run on every hook-driven update), so membership is tracked with
+    /// a single byte rather than a general-purpose ordered-set container: no per-enrollment node allocation,
+    /// no comparer indirection.
+    /// </summary>
+    internal struct FiberLaneSet
+    {
+        private byte _mask;
+
+        /// <summary>Number of lanes currently enrolled (0-3).</summary>
+        internal readonly int Count
+        {
+            get
+            {
+                var count = 0;
+                // MUTANT_SURVIVES(equivalent): no lane maps to bit 3, so a scan one bit wider counts a
+                // bit Add never sets.
+                for (var bit = 0; bit < 3; bit++)
+                {
+                    if ((_mask & (1 << bit)) != 0)
+                    {
+                        count++;
+                    }
+                }
+                return count;
+            }
+        }
+
+        /// <summary>
+        /// The numerically-lowest (highest-priority) enrolled lane. Undefined on an empty set by contract —
+        /// every call site guards with <see cref="Count"/> or <see cref="Contains"/> before reading Min — but
+        /// resolves to <c>default</c> (Urgent) rather than throwing, so a caller that skips the guard fails
+        /// open into a plausible-looking value instead of an exception on the render hot path.
+        /// </summary>
+        internal readonly FiberUpdatePriority Min
+        {
+            get
+            {
+                // MUTANT_SURVIVES(equivalent): reaching bit 3 means bits 0-2 were all clear, and only a
+                // lane is ever added, so the mask is empty and a wider scan still falls through to default.
+                for (var bit = 0; bit < 3; bit++)
+                {
+                    if ((_mask & (1 << bit)) != 0)
+                    {
+                        return (FiberUpdatePriority)bit;
+                    }
+                }
+                return default;
+            }
+        }
+
+        internal readonly bool Contains(FiberUpdatePriority priority) => (_mask & (1 << (int)priority)) != 0;
+
+        /// <summary>
+        /// Enrolls <paramref name="priority"/>. Returns true iff it was not already enrolled — callers key
+        /// first-enrollment-vs-coalesced-re-add decisions (e.g. the transition-starvation clock reset in
+        /// <see cref="FiberWorkLoop.ScheduleRerender"/>) off this return value.
+        /// </summary>
+        internal bool Add(FiberUpdatePriority priority)
+        {
+            var bit = (byte)(1 << (int)priority);
+            if ((_mask & bit) != 0)
+            {
+                return false;
+            }
+            _mask |= bit;
+            return true;
+        }
+
+        /// <summary>Un-enrolls <paramref name="priority"/>. Returns true iff it had been enrolled.</summary>
+        internal bool Remove(FiberUpdatePriority priority)
+        {
+            var bit = (byte)(1 << (int)priority);
+            if ((_mask & bit) == 0)
+            {
+                return false;
+            }
+            _mask &= (byte)~bit;
+            return true;
+        }
+
+        /// <summary>
+        /// Un-enrolls everything outside <paramref name="lanes"/>. A caller that satisfied what was pending
+        /// cannot express that as a set difference against a before-image, because <see cref="Add"/> is
+        /// idempotent: a re-enrolment of an already-pending lane leaves the mask identical, so subtracting
+        /// the before-image would discard it. It states the survivors instead — see
+        /// <c>FiberRenderer.SubsumeFiberIntoThisPass</c>.
+        /// </summary>
+        internal void RetainAll(FiberLaneSet lanes) => _mask &= lanes._mask;
+
+        internal void Clear() => _mask = 0;
+    }
+
+    /// <summary>
+    /// Lazily allocated via <see cref="ComponentFiber.EnsureLanes"/> so a fiber that never enrolls in a
+    /// lane pays no allocation for it. Holds only this fiber's own pending-lane queue
+    /// (<see cref="FiberLaneSet"/>) and transition state — never a per-subtree aggregate.
+    /// </summary>
+    internal sealed class LaneState
+    {
+        public FiberLaneSet Queue;
+        // Which lanes an enrolment request named since the last reset, as opposed to which the queue gained.
+        // The two differ exactly when a request coalesces onto a lane already pending, and that is the case a
+        // subsuming render's settle has to keep — see FiberRenderer.SubsumeFiberIntoThisPass.
+        public FiberLaneSet LanesRequestedSinceReset;
+        public int TransitionStarvationCounter;
+        // The settle sweep keys off the Transition label's presence, which starvation promotion erases
+        // (relabelling the lane to Normal) while the promoted work may still be queued — e.g. parked
+        // behind a co-pending Urgent drain. Without this marker the sweep would read the erased label
+        // as "settled" and clear isPending before the promoted content commits.
+        public bool HasPromotedTransition;
+
+        public void Clear()
+        {
+            Queue.Clear();
+            LanesRequestedSinceReset.Clear();
+            TransitionStarvationCounter = 0;
+            HasPromotedTransition = false;
+        }
+    }
+
+    /// <summary>
+    /// Identity that persists across re-renders for one component instance.
+    /// Forms a parent/child linked-list tree via Parent / Child / Sibling pointers, and
+    /// holds hook slots / context dependencies / refs / error boundary / suspense boundary.
+    /// </summary>
+    /// <remarks>
+    /// Hook slots are aggregated on the Fiber. Render / commit / lane scheduling is driven by static method groups
+    /// on <see cref="FiberRenderer"/> that take a fiber as argument (module-level functions operating on a
+    /// fiber rather than instance methods).
+    /// </remarks>
+    public sealed class ComponentFiber
+    {
+        public ComponentFiber? Parent { get; private set; }
+        public ComponentFiber? Child { get; private set; }
+        public ComponentFiber? Sibling { get; private set; }
+
+        /// <summary>
+        /// Dispatch slot for re-render scheduling triggered by context value changes.
+        /// Used by <see cref="FiberTreeTraversal.NotifyContextChanged"/> to notify consumers; the production
+        /// handler queues the work on the Lane queue (<c>FiberUpdatePriority.Normal</c>) so context propagation
+        /// commits at the next schedule cycle alongside other hook updates.
+        /// </summary>
+        /// <remarks>
+        /// A cached static delegate is assigned via <see cref="FiberRenderer.CreateRoot"/>, eliminating per-fiber
+        /// delegate allocation (zero-allocation design). Tests assign a mock delegate directly to verify dispatch behavior.
+        /// </remarks>
+        public Action<ComponentFiber>? RequestRenderForContextHandler;
+
+        /// <summary>
+        /// The propagation generation in which <see cref="RequestRenderForContextHandler"/> was last dispatched
+        /// via <see cref="FiberTreeTraversal.NotifyContextChanged"/>.
+        /// Sentinel for deduping double render-request of a consumer that depends on multiple keys within the same
+        /// reconcile pass. The production path passes a positive generation from
+        /// <see cref="ReconcilerContext.ContextPropagationGeneration"/>, so the comparison with the initial value -1
+        /// (never fired) guarantees dispatch on the first invocation.
+        /// Tests that do not require dedup pass through the <see cref="int.MinValue"/> sentinel without updating this field.
+        /// </summary>
+        internal int LastForceRenderGeneration { get; set; } = -1;
+
+        /// <summary>
+        /// Render delegate for a function component (the function reference that produces this fiber's tree).
+        /// The wrapped tree from V.Mount or ComponentNode.Body via ComponentRegistry is stored here.
+        /// </summary>
+        internal Func<VNode>? Body { get; set; }
+
+        /// <summary>
+        /// Props value supplied by <c>V.Component&lt;TProps&gt;</c>. Re-assigned on each parent render
+        /// so the closure-captured props seen by <see cref="Body"/> stay current.
+        /// </summary>
+        internal object? Props { get; set; }
+
+        public bool IsErrorBoundary { get; internal set; }
+        public bool IsSuspenseBoundary { get; internal set; }
+
+        /// <summary>
+        /// The fiber whose read suspended a pass this fiber started on its own, where no Suspense boundary
+        /// caught it. Cleared where a pass of this fiber next commits its tree, and where a resource of that
+        /// fiber resolves and asks for the retry — see <c>FiberRenderer.NotifyAsyncResourceCompleted</c>.
+        /// </summary>
+        internal ComponentFiber? SuspendedOn
+        {
+            get => _suspendedOn;
+            set
+            {
+                _suspendedOn = value;
+                if (value != null) FiberPendingWork.MarkAncestors(this);
+            }
+        }
+
+        private ComponentFiber? _suspendedOn;
+
+        // Set on a fiber a suspended mount abandoned
+        // (ComponentRegistry.DiscardSuspendedMountUnder); it waits for its reader's resolve to ask for the retry,
+        // where FiberRenderer.NotifyAsyncResourceCompleted disposes it.
+        internal bool MountDiscarded { get; set; }
+
+        /// <summary>
+        /// Set where an abandoned pass discarded this fiber's render, until a render of it is kept: the next walk
+        /// that reaches the fiber renders it, as for a dirty one, though no flush does. Left off <c>IsDirty</c>
+        /// because a flush that visits dirty fibers would render a component the pass mounted before the parent
+        /// that places it has.
+        /// </summary>
+        internal bool RenderOwed
+        {
+            get => _renderOwed;
+            set
+            {
+                _renderOwed = value;
+                if (value) FiberPendingWork.MarkAncestors(this);
+            }
+        }
+
+        private bool _renderOwed;
+
+        // Set on each ancestor of a fiber that takes work of its own (FiberPendingWork.MarkAncestors), and cleared
+        // only by FiberPendingWork when it finds nothing pending below, as React clears childLanes. A set bit
+        // may be stale; a clear one is not: every ancestor of a fiber with pending work carries it.
+        internal bool PendingWorkBelow { get; set; }
+
+        // Whether the pass SuspendedOn names was a transition's, which the retry then renders on the Transition lane.
+        internal bool SuspendedInTransition { get; set; }
+
+        // Set while a time-sliced pass that suspended with no Suspense above it still has slices to place. Its
+        // scheduled resume does not run: the slices would commit a pass that has not, and the retry's render
+        // places them first (FiberCommitWork.DrainPendingWork), which clears this.
+        internal bool ParkedPassSuspended { get; set; }
+
+        /// <summary>
+        /// True while this fiber is a primary (hidden) child of a wrapper-less Suspense that is currently
+        /// showing its fallback. Written by <c>GeneralPathReconciler.ExpandSuspenseInline</c> over the
+        /// fibers that expansion created, less the ones a nested Suspense that suspended created: that
+        /// boundary owns its own primary subtree, so an enclosing one resolving leaves it
+        /// hidden. Where the Suspense keeps its committed primary hidden, the fibers mounted inside that
+        /// primary's elements are written too (<see cref="HiddenUnder"/>). <see cref="FiberWorkLoop.FlushState"/>'s
+        /// offscreen guard defers a lane flush for offscreen fibers until the render that reveals them. It is
+        /// per-fiber rather than per-boundary because one component fiber can render
+        /// several Suspense nodes: that Suspense's own visible fallback subtree, and a sibling Suspense's
+        /// children, sit under the same boundary and must still flush.
+        /// </summary>
+        internal bool IsOffscreen { get; set; }
+
+        // The hidden primary element whose Suspense made this fiber offscreen because the fiber is mounted inside
+        // it, rather than because that Suspense's own walk mounted it; null otherwise. GeneralPathReconciler's
+        // SetPrimaryHidden reveals the fiber only with that element, so an enclosing Suspense revealing leaves a
+        // nested one's fibers hidden.
+        internal UnityEngine.UIElements.VisualElement? HiddenUnder { get; set; }
+
+        // The fiber rendering the Suspense that keeps this fiber offscreen; null while it is shown, and under a
+        // Suspense no component renders. FiberRenderer.NotifyAsyncResourceCompleted takes it as the Suspense this
+        // fiber is inside, which the nearest boundary fiber above it need not be: that one can render a Suspense
+        // this fiber sits beside.
+        internal ComponentFiber? OffscreenUnder { get; set; }
+
+        // The fiber rendering the Suspense whose fallback this fiber was in when a walk last reached it, or null, as
+        // GeneralPathReconciler.ExpandComponentInline writes it. A walk reaches only fibers below the one it renders
+        // for, so the topmost fiber of a fallback is written only where a walk expands that Suspense, and keeps the
+        // mark. ComponentBoundarySearch.FindSuspenseBoundaryAbove reads the chain of them.
+        internal ComponentFiber? SuspenseFallbackOf { get; set; }
+
+        // Set while a Suspense keeps this fiber offscreen with its layout effects cleaned up — see
+        // FiberEffects.HideLayoutEffects.
+        internal bool LayoutEffectsHidden { get; set; }
+
+        internal List<ContextDependency> Dependencies { get; private set; } = new();
+
+        // Staging list for the render in progress: context reads land here and are swapped into
+        // Dependencies only when the render settles, so a render that throws partway cannot leave
+        // the committed list empty/partial (which would silently detach the fiber from future
+        // Provider-change notifications). Swapped by reference — no per-render allocation.
+        private List<ContextDependency> _stagedDependencies = new();
+        private bool _isStagingDependencies;
+
+        internal List<IFiberAsyncResource> AsyncSlots { get; } = new();
+        private int _asyncSlotCursor;
+
+        internal int AsyncSlotCursor => _asyncSlotCursor;
+
+        internal int NextAsyncSlotIndex() => _asyncSlotCursor++;
+
+        internal void ResetAsyncSlotCursor() => _asyncSlotCursor = 0;
+
+        // Pending resources a transition's render started, kept by slot index while a render of another lane shows
+        // the slot's other key. The transition's retry takes its resource back; a later transition presenting a
+        // different key, and an unmount, dispose it.
+        private Dictionary<int, IFiberAsyncResource>? _stashedAsync;
+
+        // Replaces the slot's resource, which presented another key than the one now asked for. Returns the stashed
+        // resource of that key when there is one; otherwise null, and the caller starts a new one.
+        internal FiberAsyncResource<T>? RestoreOrRetireAsync<T>(int index, IFiberAsyncResource? existing, object key)
+        {
+            var inTransition = FiberWorkLoop.IsRenderingTransitionLane;
+            FiberAsyncResource<T>? restored = null;
+            var stashed = TakeStashedAsync(index);
+            if (stashed != null)
+            {
+                restored = WhenKeyed<T>(stashed, key);
+                if (restored == null) RetainOrDisposeStashed(index, stashed, inTransition);
+            }
+            if (existing == null) return restored;
+            if (inTransition || !existing.StartedByTransition || existing.Status != FiberAsyncResourceStatus.Pending)
+            {
+                existing.Dispose();
+                return restored;
+            }
+            _stashedAsync ??= new Dictionary<int, IFiberAsyncResource>();
+            TakeStashedAsync(index)?.Dispose();
+            _stashedAsync[index] = existing;
+            return restored;
+        }
+
+        private IFiberAsyncResource? TakeStashedAsync(int index)
+        {
+            if (_stashedAsync == null) return null;
+            if (!_stashedAsync.TryGetValue(index, out var stashed)) return null;
+            _stashedAsync.Remove(index);
+            return stashed;
+        }
+
+        private void RetainOrDisposeStashed(int index, IFiberAsyncResource stashed, bool inTransition)
+        {
+            if (inTransition) stashed.Dispose();
+            else _stashedAsync![index] = stashed;
+        }
+
+        private static FiberAsyncResource<T>? WhenKeyed<T>(IFiberAsyncResource resource, object key)
+        {
+            var typed = resource as FiberAsyncResource<T>;
+            if (typed == null) return null;
+            return ObjectIs.AreEqualObjects(typed.ResourceKey, key) ? typed : null;
+        }
+
+        internal void DisposeAsyncSlots()
+        {
+            if (_stashedAsync != null)
+            {
+                foreach (var stashed in _stashedAsync.Values) stashed.Dispose();
+                _stashedAsync.Clear();
+            }
+            for (var i = 0; i < AsyncSlots.Count; i++)
+            {
+                AsyncSlots[i]?.Dispose();
+            }
+            AsyncSlots.Clear();
+            _asyncSlotCursor = 0;
+        }
+
+        #region Hook Slots
+
+        // Each List is lazily allocated (null treated as empty) since most components use only a subset of hooks.
+
+        internal List<HookStateSlot>? StateSlots;
+        internal List<HookStoreSlot>? StoreSlots;
+        internal List<HookEffectSlot>? Effects;
+        internal List<HookEffectSlot>? PendingEffects;
+        internal List<HookEffectSlot>? LayoutEffects;
+        internal List<HookEffectSlot>? PendingLayoutEffects;
+        internal List<HookEffectSlot>? InsertionEffects;
+        internal List<HookEffectSlot>? PendingInsertionEffects;
+        internal List<HookCallbackSlot>? CallbackSlots;
+        internal List<HookImperativeHandleSlot>? ImperativeHandleSlots;
+        internal List<HookRefSlot>? RefSlots;
+        internal List<HookBlockerSlot>? BlockerSlots;
+        internal List<HookMemoSlot>? MemoSlots;
+        internal List<HookMemoValueSlot>? MemoValueSlots;
+        internal List<HookMutationSlot>? MutationSlots;
+        internal List<HookIdSlot>? IdSlots;
+        internal List<HookDeferredValueSlot>? DeferredValueSlots;
+        internal List<HookOptimisticSlot>? OptimisticSlots;
+
+        // Never reset: only a difference between two readings in one render means anything, and
+        // Hooks.StoreMemoizedVNode takes it against the reading Hooks.TryGetMemoizedVNode took at the gate.
+        internal int HookCallCount;
+
+        /// <summary>
+        /// Cache field for the onCompleted callback of <see cref="Hooks.Use{T}"/> (Suspense) across re-renders,
+        /// reducing GC allocations from per-render to once per fiber (zero-allocation design).
+        /// </summary>
+        internal Action? AsyncResourceCompletedCallback;
+
+        /// <summary>
+        /// Per-call-position transition slots for <see cref="Hooks.UseTransition"/>. Each call gets its own
+        /// pending flag and a reference-stable starter, so two transitions in one component report independent
+        /// <c>isPending</c> values. Lazily allocated; null treated as empty.
+        /// </summary>
+        internal List<HookTransitionSlot>? TransitionSlots;
+
+        /// <summary>
+        /// The transition slots — on this fiber or on any other component's — whose callback enrolled the
+        /// Transition lane here, so the drain that commits this fiber's work reaches every slot waiting on it
+        /// without walking the tree. The reverse of <see cref="HookTransitionSlot.EnrolledFibers"/>. Lazily
+        /// allocated; null treated as empty.
+        /// </summary>
+        internal List<HookTransitionSlot>? EnrolledTransitionSlots;
+
+        /// <summary>Position cursors per hook kind within one render cycle.</summary>
+        internal HookIndexTable Indices;
+
+        /// <summary>
+        /// Whether the component is currently mounted (between Mount() completion and Unmount() start).
+        /// Used to guard effects / state updates against an unmounted fiber.
+        /// </summary>
+        public bool IsMounted { get; internal set; }
+
+        /// <summary>
+        /// Flag indicating that Render() is currently executing. Referenced by HookGuard to validate
+        /// the hook invocation context.
+        /// </summary>
+        public bool IsRendering { get; internal set; }
+
+        /// <summary>
+        /// True only while the component BODY is on the stack (a render-phase-loop attempt or the
+        /// StrictMode diagnostic invocation) — a strict subset of <see cref="IsRendering"/>, which
+        /// spans the whole render-and-commit flush. The distinction decides what a setter for this
+        /// fiber's own state means: inside the body it is a render-phase update (discard the
+        /// attempt and re-run), while later in the same flush (a callback ref invoked during the
+        /// patch, an event dispatched from a detach) it schedules an ordinary follow-up render —
+        /// treating commit-phase writes as render-phase ones silently discarded them, desyncing the
+        /// slot value from the committed UI and poisoning the setter's equality bail.
+        /// </summary>
+        internal bool IsInRenderPhase;
+
+#if UNITY_EDITOR
+        /// <summary>
+        /// Set only while the StrictMode diagnostic (throwaway second) render runs. Hooks consult this to
+        /// suppress writes that would otherwise corrupt the already-committed render: effect registration does
+        /// not overwrite the committed effect factory or re-queue pending effects, and externally visible writes
+        /// such as <c>UseImperativeHandle</c>'s ref set are skipped. Idempotent reads (UseState / UseMemo /
+        /// UseCallback with equal deps) are unaffected. Always cleared in the diagnostic pass's finally.
+        /// </summary>
+        internal bool IsStrictDiagnosticPass { get; set; }
+#endif
+
+        /// <summary>
+        /// Set when a hook setter for this fiber's own state fires while this fiber is rendering
+        /// (a render-phase setState on the currently rendering component). The render loop in
+        /// <see cref="FiberRenderer"/> discards the in-progress output and re-runs Render() until
+        /// no further render-phase update is requested, so render-phase updates are processed before
+        /// the render commits.
+        /// </summary>
+        internal bool HasRenderPhaseUpdate { get; set; }
+
+        /// <summary>
+        /// Number of consecutive render-phase re-runs in the current render loop. Incremented on
+        /// each synchronous re-run and reset once Render() settles without requesting another
+        /// render-phase update. Exceeding <see cref="FiberBeginWork.RenderPhaseUpdateLimit"/> throws
+        /// to surface an unconditional render-phase setState (a "too many re-renders" infinite loop).
+        /// </summary>
+        internal int RenderPhaseSetStateCounter { get; set; }
+
+        /// <summary>
+        /// Whether re-render is needed at the next FlushState (an update was requested via Hook setter / dispatch /
+        /// store subscription). Marks the fiber dirty so it is re-rendered on the next flush.
+        /// </summary>
+        public bool IsDirty
+        {
+            get => _isDirty;
+            internal set
+            {
+                _isDirty = value;
+                if (value) FiberPendingWork.MarkAncestors(this);
+            }
+        }
+
+        private bool _isDirty;
+
+        /// <summary>
+        /// Whether the component is already disposed. Used as a no-op guard on paths such as calling a setter
+        /// from within Render.
+        /// </summary>
+        public bool IsDisposed { get; internal set; }
+
+        /// <summary>
+        /// Scheduling state holding the Lane queue / Transition state.
+        /// Allocated only on demand (lazy init preserves zero-allocation for most components).
+        /// </summary>
+        internal LaneState? Lanes { get; set; }
+
+        internal LaneState EnsureLanes() => Lanes ??= new LaneState();
+
+        /// <summary>
+        /// Null-safe read of the pending-lane mask (used by FiberWorkLoop / FiberLane's query paths). An
+        /// unallocated <see cref="Lanes"/> (fiber currently clean) reads as an empty <see cref="FiberLaneSet"/>
+        /// without allocating, preserving the lazy-init invariant. This is a read-only view: FiberLaneSet's
+        /// Add/Remove/Clear mutate the struct in place and a property getter can only hand back a copy of it
+        /// (CS1612), so enrollment/removal call sites go through <see cref="EnsureLanes"/> / <see cref="Lanes"/>
+        /// directly against the backing <see cref="LaneState.Queue"/> field instead of through this accessor.
+        /// </summary>
+        internal FiberLaneSet LaneQueue => Lanes?.Queue ?? default;
+
+        /// <summary>
+        /// True while any <see cref="Hooks.UseTransition"/> slot on this fiber is pending. Derived from the
+        /// per-slot flags (each <c>useTransition()</c> tracks its own pending); this is the aggregate query.
+        /// </summary>
+        internal bool IsTransitionPending
+        {
+            get
+            {
+                if (TransitionSlots == null)
+                {
+                    return false;
+                }
+                foreach (var slot in TransitionSlots)
+                {
+                    if (slot.IsPending)
+                    {
+                        return true;
+                    }
+                }
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Records that a write made under <paramref name="slot"/>'s open transition scope enrolled the
+        /// Transition lane on this fiber, so that slot stays pending past its callback until this fiber
+        /// commits the write.
+        /// </summary>
+        internal void EnrolTransitionSlot(HookTransitionSlot slot)
+        {
+            slot.EnrolledFibers ??= new List<ComponentFiber>();
+            if (slot.EnrolledFibers.Contains(this))
+            {
+                return;
+            }
+            slot.EnrolledFibers.Add(this);
+            (EnrolledTransitionSlots ??= new List<HookTransitionSlot>()).Add(slot);
+        }
+
+        /// <summary>
+        /// Releases every transition slot waiting on this fiber's Transition work and clears the pending flag
+        /// on those left with nothing outstanding anywhere. Called where that work is established as
+        /// committed, and from the two places it will never commit from: unmount, and the scheduler dropping
+        /// a starvation-promoted lane at its update-depth cap.
+        /// </summary>
+        internal void DischargeTransitionEnrolments(bool requestLocalRender = false)
+        {
+            if (EnrolledTransitionSlots == null)
+            {
+                return;
+            }
+            foreach (var slot in EnrolledTransitionSlots)
+            {
+                slot.EnrolledFibers?.Remove(this);
+                if (!SettleIfNothingOutstanding(slot))
+                {
+                    continue;
+                }
+                // A pre-render settle needs no separate local render because this fiber's imminent render reads
+                // the clear. A post-commit settle does: its completed render read the flag while it was still lit.
+                if (ReferenceEquals(slot.DeclaringFiber, this))
+                {
+                    if (requestLocalRender)
+                    {
+                        RequestRenderForClearedPending(slot);
+                    }
+                    continue;
+                }
+                // Anywhere else nothing is left to take the indicator off the screen. Where this drain does
+                // reach the declaring fiber, its render subsumes the lane requested here and it retires
+                // unrendered — see FiberRenderer.SettleSubsumedFiber.
+                RequestRenderForClearedPending(slot);
+            }
+            EnrolledTransitionSlots.Clear();
+        }
+
+        /// <summary>
+        /// Asks the component that declared <paramref name="slot"/> for the render that observes its now-false
+        /// <c>isPending</c>. Clearing the flag renders nothing by itself, so a clear reached from a path
+        /// that renders nobody — a drain of some other component's tree, an async action's completion — leaves
+        /// the indicator on screen without this.
+        /// </summary>
+        internal static void RequestRenderForClearedPending(HookTransitionSlot slot)
+            => RequestRenderForSettledTransition(slot.DeclaringFiber);
+
+        /// <summary>
+        /// Shared by the two things a transition's settle leaves on screen with no render behind them: the
+        /// declaring component's lit <c>isPending</c>, and the optimistic entries the transition owned.
+        /// </summary>
+        internal static void RequestRenderForSettledTransition(ComponentFiber fiber)
+        {
+            if (fiber is not { IsMounted: true, IsDisposed: false })
+            {
+                return;
+            }
+            // Urgent inside a discrete handler, on the rule an ordinary state update made there follows: the
+            // clear belongs to the interaction being serviced and commits with it. Never the Transition lane,
+            // though, even where this is reached inside an open transition scope — this render is what takes
+            // the indicator down, and the delayed tier would hold it up until a later scheduler pass.
+            FiberWorkLoop.ScheduleRerender(
+                fiber,
+                FiberWorkLoop.IsInDiscreteEvent ? FiberUpdatePriority.Urgent : FiberUpdatePriority.Normal);
+        }
+
+        /// <summary>
+        /// Settles this fiber's transition bookkeeping where its Transition work is established as committed:
+        /// the slots that enrolled work here are released, and those of them — plus this fiber's own — left
+        /// with nothing outstanding anywhere clear their pending flag.
+        /// </summary>
+        internal void SettleTransitionPending()
+        {
+            DischargeTransitionEnrolments();
+            ClearSettledTransitionPending();
+        }
+
+        /// <summary>
+        /// Settles transition work after its terminal reconcile slice committed, then requests the render that
+        /// takes down any indicator whose last render observed it as pending.
+        /// </summary>
+        internal void SettleTransitionPendingAfterCommit()
+        {
+            DischargeTransitionEnrolments(requestLocalRender: true);
+            ClearSettledTransitionPending();
+        }
+
+        /// <summary>
+        /// Clears the pending flag on this fiber's own transition slots with nothing outstanding, leaving the
+        /// rest lit. Used where the pending Transition lane is not evidence either way: see
+        /// <c>FiberRenderer.SubsumeFiberIntoThisPass</c>, whose surviving lane may have been requested by a
+        /// different hook during the render it settles.
+        /// </summary>
+        internal void ClearSettledTransitionPending()
+        {
+            if (TransitionSlots == null)
+            {
+                return;
+            }
+            foreach (var slot in TransitionSlots)
+            {
+                SettleIfNothingOutstanding(slot);
+            }
+        }
+
+        // True when this cleared a flag that was lit, which is what a caller owing the declaring component a
+        // render keys off.
+        // A callback still on the stack settles at its own exit instead: it can enrol further fibers, and
+        // nothing would light the flag again after a clear here. An awaiting async action is the same case
+        // one await out — its updates have not been scheduled yet, so nothing outstanding does not mean
+        // settled, and its completion path is what clears the flag.
+        private static bool SettleIfNothingOutstanding(HookTransitionSlot slot)
+        {
+            if (slot.HasActiveOwner || slot.IsAsyncInFlight || slot.HasQueuedWork)
+            {
+                return false;
+            }
+            var wasPending = slot.IsPending;
+            slot.IsPending = false;
+            return wasPending;
+        }
+
+        /// <summary>
+        /// Opens the window the settle of <c>FiberRenderer.SubsumeFiberIntoThisPass</c> and of
+        /// <c>FiberRenderer.NotifyAsyncResourceCompleted</c> reads, resetting both records it consumes: which lanes
+        /// the render asks for again, and which transition slots enrolled work here.
+        /// Everything queued before the window is what that render satisfies, except the state updates its lane
+        /// skips, so the settle runs ahead of the render — as it does in <c>FiberWorkLoop.FlushState</c>, whose
+        /// commit render is likewise the one that observes <c>isPending</c> already false.
+        /// </summary>
+        /// <remarks>
+        /// <see cref="Lanes"/> is left unallocated on purpose — a fiber with no <see cref="LaneState"/> has
+        /// nothing pending, and <see cref="EnsureLanes"/> here would allocate one for the lane-less majority
+        /// of inline re-renders.
+        /// </remarks>
+        internal void OpenSubsumedRenderWindow()
+        {
+            Lanes?.LanesRequestedSinceReset.Clear();
+            // The render skips the state updates queued here beyond its lane, and a transition's write is one of
+            // them, so the enrolments are kept for the render that applies it.
+            if (!HoldsStateUpdateBeyond(FiberWorkLoop.RenderLane))
+            {
+                DischargeTransitionEnrolments();
+            }
+        }
+
+        private bool HoldsStateUpdateBeyond(FiberUpdatePriority lane)
+        {
+            if (StateSlots == null) return false;
+            foreach (var slot in StateSlots)
+            {
+                if (slot.HoldsUpdateBeyond(lane)) return true;
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// Hands every transition slot back to nobody, called from unmount. The slot list survives an unmount
+        /// so a remount reuses it, and an async action that outlives the unmount cannot run its own release —
+        /// so without this a remounted component's first <c>startTransition</c> would find the slot still
+        /// owned and join a transition that no longer exists.
+        /// </summary>
+        internal void ReleaseTransitionSlotOwnership()
+        {
+            if (TransitionSlots == null)
+            {
+                return;
+            }
+            foreach (var slot in TransitionSlots)
+            {
+                slot.OwnerGeneration++;
+                slot.OwnerDepth = 0;
+                slot.AsyncOwnerDepth = 0;
+                ClearTransitionEnrolments(slot);
+                slot.IsPending = false;
+                slot.PendingError = null;
+            }
+        }
+
+        internal void ClearOptimisticSlots()
+        {
+            if (OptimisticSlots == null)
+            {
+                return;
+            }
+            foreach (var slot in OptimisticSlots)
+            {
+                slot.DetachFromOwners();
+            }
+            OptimisticSlots.Clear();
+        }
+
+        // Unwinds both sides of the enrolment record, so no fiber is left holding a slot that has stopped
+        // waiting on it.
+        private static void ClearTransitionEnrolments(HookTransitionSlot slot)
+        {
+            if (slot.EnrolledFibers == null)
+            {
+                return;
+            }
+            foreach (var fiber in slot.EnrolledFibers)
+            {
+                fiber.EnrolledTransitionSlots?.Remove(slot);
+            }
+            slot.EnrolledFibers.Clear();
+        }
+
+        internal int TransitionStarvationCounter
+        {
+            get => Lanes?.TransitionStarvationCounter ?? 0;
+            set => EnsureLanes().TransitionStarvationCounter = value;
+        }
+
+        internal bool HasPromotedTransition
+        {
+            get => Lanes?.HasPromotedTransition ?? false;
+            set => EnsureLanes().HasPromotedTransition = value;
+        }
+
+        // The cursors (and AsyncSlotCursor) as the last render that passed HookCountSentinel.ValidateAndCommit
+        // left them, which the sentinel holds the next render to. Unmounting clears HasCommittedHookCounts,
+        // so a remount is not compared.
+        internal HookIndexTable CommittedHookCounts;
+        internal int CommittedAsyncSlotCount;
+        internal bool HasCommittedHookCounts;
+
+        /// <summary>Cumulative count of successful renders. Used for debugging / profiling.</summary>
+        public int RenderCount;
+
+        /// <summary>
+        /// The Reconciler instance responsible for reconciling this Fiber subtree. Currently per-Fiber
+        /// (each component has its own Reconciler).
+        /// </summary>
+        internal Reconciler? Reconciler { get; set; }
+
+        /// <summary>
+        /// Set on the top-level child fiber of a detached mount (a Portal's drained children, or a
+        /// VirtualList's controller-rendered items). Those subtrees mount outside the normal parent-walked
+        /// reconcile, so an isolated re-render's spine parent-walk cannot reach the host's enclosing
+        /// Providers. This carries the context that enclosed the detached mount so
+        /// <see cref="FiberContextSpine"/> can rebuild it directly. Null for every non-detached-top fiber.
+        /// </summary>
+        internal DetachedMountContext? DetachedMountContext { get; set; }
+
+        /// <summary>
+        /// The VisualElement into which this fiber's rendered output is committed as children.
+        /// In wrapper-mounted mode this is a dedicated wrapper VE owned by the fiber; in
+        /// inline-mounted mode (<see cref="IsInlineMounted"/>=true) it is a parent VE shared with
+        /// sibling fibers, with the sub-range
+        /// <c>[<see cref="MountSlotStart"/>, <see cref="MountSlotStart"/> + <see cref="MountSlotCount"/>)</c>
+        /// owned by this fiber.
+        /// </summary>
+        internal UnityEngine.UIElements.VisualElement? MountPoint { get; set; }
+
+        /// <summary>
+        /// Absolute starting index in <see cref="MountPoint"/>.children at which this fiber's
+        /// rendered output begins. Always 0 in wrapper-mounted mode; non-zero for inline-mounted
+        /// fibers that share <see cref="MountPoint"/> with sibling fibers.
+        /// A walk that re-places the fiber writes it where it places the rows,
+        /// <c>GeneralPathReconciler.FinalizeGeneralCommit</c>, rather than where it decides to: until then it
+        /// names the rows the container still holds, which is what a boundary catching inside that walk
+        /// rewrites, and a walk that aborts before placing leaves it naming them. Between placements it is
+        /// moved by <c>FiberCommitWork.PropagateInlineSlotShift</c> and
+        /// <c>FiberCommitWork.ShiftTenantsAfterPortalRange</c>.
+        /// </summary>
+        internal int MountSlotStart { get; set; }
+
+        /// <summary>
+        /// Number of slots in <see cref="MountPoint"/>.children currently owned by this fiber.
+        /// The sentinel <c>-1</c> means "owns the entire children list" (wrapper-mounted default);
+        /// non-negative values are used by inline-mounted fibers. Written beside
+        /// <see cref="MountSlotStart"/> where a walk places the rows, and changed by
+        /// <c>FiberCommitWork.PropagateInlineSlotShift</c> when this fiber's rows change or those of a fiber
+        /// they hold do.
+        /// </summary>
+        internal int MountSlotCount { get; set; } = -1;
+
+        /// <summary>
+        /// True when this fiber's output VEs sit directly in <see cref="MountPoint"/>.children at
+        /// the <see cref="MountSlotStart"/> sub-range (shared with sibling fibers). False when a
+        /// dedicated wrapper VE is used and the fiber owns the entire MountPoint's children.
+        /// </summary>
+        internal bool IsInlineMounted { get; set; }
+
+        /// <summary>
+        /// The Portal placeholder whose children reconcile last reached this fiber, or null for one
+        /// reached outside any Portal. A Portal's top-level Component child mounts inline with the portal
+        /// TARGET as its <see cref="MountPoint"/>, so it is a sibling of the elements a portal teardown
+        /// removes rather than a descendant of any of them; this is what tells the teardown which of the
+        /// several Portals sharing that target the fiber belongs to.
+        /// It is stamped rather than read off <see cref="MountSlotStart"/> because a fiber holding no rows can
+        /// start at the seam between two neighbouring Portals' ranges, where either could hold it.
+        /// Rewritten whenever a reconcile reaches the fiber rather than at creation only, so it names the
+        /// Portal of the last reconcile to reach it; a fiber the teardown must reach that carries none is
+        /// reached instead through the parent index (ComponentRegistry.DisposeInlineFibersOwnedByPortal owns
+        /// which is which).
+        /// </summary>
+        internal UnityEngine.UIElements.VisualElement? OwningPortalPlaceholder { get; set; }
+
+        // The presence and key of the AnimatePresence child this fiber was last expanded inside. A presence this
+        // fiber, or a fiber below it, first mounts in a render of its own has no emission of that child around
+        // it, and reads the child from here (GeneralPathReconciler.ReadEnclosingPresence).
+        internal ReconcilerContext.PresenceBoundaryState? EnclosingPresence { get; set; }
+
+        internal string? EnclosingPresenceKey { get; set; }
+
+        // Whether a Motion this fiber mounts outside every presence emission withholds its mount enter: what
+        // MotionContext.EntersBlocked said where the fiber was created, else its parent's answer.
+        internal bool BlocksInitialEnters { get; set; }
+
+        /// <summary>The VNode array fixed by the previous reconcile. Serves as the "old" side for the next reconcile.</summary>
+        internal VNode?[]? PreviousTree { get; set; }
+
+        // The output a reconcile of this fiber's own rows is writing ahead of PreviousTree, which takes it only once that
+        // reconcile has returned, for a FiberContextSpine rebuilt meanwhile to read in its place — the drains that end a
+        // pass run inside its reconcile. FiberCommitWork.ReconcileRows owns when it is set and cleared.
+        internal VNode?[]? ReconcilingTree { get; set; }
+
+        /// <summary>
+        /// The <see cref="ComponentNode"/> occurrence this fiber currently answers for: written on every
+        /// <c>ComponentRegistry.GetOrCreate</c> that reaches the fiber, beside <see cref="Body"/>, so it
+        /// names an occurrence of the most recent render to reach it — which is not always the render that
+        /// fixed the ancestor's <see cref="PreviousTree"/>, because a render whose output is discarded has
+        /// already written its nodes onto the children it reached. <see cref="SourceTree"/> is what pairs the
+        /// two, and <see cref="FiberContextSpine"/> compares nodes only where they pair and only while
+        /// descending the ancestor's own output; its <c>SpineWalk</c> owns the second of those conditions.
+        /// </summary>
+        internal ComponentNode? SourceNode { get; set; }
+
+        /// <summary>Whether <paramref name="method"/> is the method this fiber's node names as its identity.</summary>
+        internal bool RendersComponent(RuntimeMethodHandle method)
+            => SourceNode?.ResolvedIdentity is System.Reflection.MethodInfo identity
+                && identity.MethodHandle.Equals(method);
+
+        /// <summary>
+        /// The node array <see cref="SourceNode"/> was read from — the output of the render that was expanding
+        /// when this fiber was last reached. It is <see cref="PreviousTree"/> of the fiber above only where
+        /// that render's output was committed AND reached this fiber, which is what
+        /// <see cref="FiberContextSpine"/> tests before comparing nodes, against the array its OwnOutput picks
+        /// for this fiber: a render whose output was discarded
+        /// leaves the tree above at the array it kept while this names the discarded one, and a time-sliced
+        /// pass that parked before reaching this fiber leaves this naming the array the one above moved off.
+        /// </summary>
+        internal VNode?[]? SourceTree { get; set; }
+
+        /// <summary>
+        /// Set where <c>FiberErrorBoundary.TryShowFallback</c> writes the fallback over
+        /// <see cref="PreviousTree"/>, cleared at the top of every <c>FiberRenderer.RenderAndReconcile</c>
+        /// for this fiber. What it answers that the reconciler's own abort flag cannot is which fiber the
+        /// fallback belongs to: the abort is shared by every Reconciler on one context, so a descendant
+        /// boundary catching raises it for an ancestor whose committed tree is still the one in the DOM.
+        /// </summary>
+        internal bool FallbackReplacedPreviousTree { get; set; }
+
+        /// <summary>Reference to the previous tree retained during a pending time-sliced reconcile.</summary>
+        internal VNode?[]? PendingOldTree { get; set; }
+
+        /// <summary>
+        /// Frame budget (milliseconds) chosen for the in-flight reconcile by the lane that started it. A resume
+        /// (<c>FiberWorkLoop.ContinueReconcile</c>) reads it so the continuation runs at the same budget, keeping
+        /// a Transition slice time-sliced across frames. 0 for synchronous lanes.
+        /// </summary>
+        internal double PendingReconcileBudgetMs { get; set; }
+
+        /// <summary>
+        /// Whether the lane that started the in-flight reconcile was carrying transition work, so a resume
+        /// restores <c>FiberWorkLoop.IsRenderingTransitionLane</c> to the same answer. A parked slice can
+        /// still evaluate component bodies: <c>GeneralPathReconciler.NeedsExpansion</c> looks one level
+        /// down, so a container of host children whose own descendants are components takes the
+        /// time-sliced path and expands them on resume.
+        /// </summary>
+        internal bool PendingReconcileDrainsTransitionWork { get; set; }
+
+        /// <summary>Sentinel indicating whether the asynchronous effect flush has been scheduled via schedule.Execute.</summary>
+        internal bool EffectFlushScheduled { get; set; }
+
+#if UNITY_EDITOR
+        /// <summary>
+        /// Captured at async effect scheduling time: true only when the scheduled flush belongs to the mount
+        /// commit. The async effect runs after the scheduling site returns, so this carries the mount/update
+        /// distinction to <c>RunEffects</c> for the StrictMode effect double-cycle (which doubles on mount only).
+        /// </summary>
+        internal bool PendingEffectsAreMount { get; set; }
+#endif
+
+        /// <summary>
+        /// Ref passed by the parent via <c>V.Component&lt;TRef&gt;(componentRef:)</c>. Retrieved via the
+        /// <c>ForwardedRef&lt;T&gt;()</c> hook.
+        /// </summary>
+        internal IHookRefSetter? ExternalRef { get; set; }
+
+        /// <summary>
+        /// Fallback factory registered by a function-style Error Boundary via <see cref="Hooks.UseFallback"/>.
+        /// Called from the <see cref="FiberErrorBoundary.TryCatch"/> path when a child exception is caught,
+        /// returning a fallback VNode. Overwritten on each render (Hook rule: must always be called).
+        /// </summary>
+        internal Func<Exception, ErrorInfo, VNode>? FallbackFactory { get; set; }
+
+        /// <summary>
+        /// True while this boundary is in the middle of rendering/reconciling its own fallback UI. An
+        /// exception raised by that fallback content (rather than the original throw it is responding to)
+        /// re-enters <see cref="FiberErrorBoundary.TryCatch"/> for this SAME fiber via the normal
+        /// per-fiber render catch; the guard makes that re-entrant call decline immediately instead of
+        /// attempting to show the (already failing) fallback again, so propagation continues to the next
+        /// ancestor boundary instead of recursing without bound.
+        /// </summary>
+        internal bool IsShowingFallback { get; set; }
+
+        // Set while a frame that expands or reconciles this boundary's output is on the stack to catch a render
+        // error below it: GeneralPathReconciler.ExpandBoundaryInline and Reconciler.ReconcileCatching set it, and
+        // FiberErrorBoundary.TryCatch reads it.
+        internal bool CatchesInTheWalk { get; set; }
+
+        // What this boundary caught, set where the catch succeeds: React's boundary keeps its error state until it
+        // remounts, which here is a new fiber. FiberErrorBoundary.OutputOf reads it. Cleared by RouteErrorBoundary on
+        // a new location, as React Router's boundary resets there, by a reset FiberErrorBoundary.QueueReset
+        // queued, which is react-error-boundary's, and by a Suspense expansion whose primary
+        // suspends, which discards the render that caught, where that expansion's own walk reached the boundary.
+        internal (Exception Error, ErrorInfo Info)? CaughtError { get; set; }
+
+        // The onReset the last committed render of Hooks.UseErrorBoundaryReset passed, as the library calls this.props'.
+        internal Action<ErrorBoundaryResetDetails>? OnErrorBoundaryReset { get; set; }
+
+        internal QueuedErrorBoundaryReset QueuedReset { get; set; }
+
+        // A boundary the framework renders for its own purposes (RouteErrorBoundary, an Await's), which
+        // Hooks.UseErrorBoundary passes over as react-error-boundary's context passes over React Router's.
+        internal bool IsFrameworkErrorBoundary { get; set; }
+
+        // The fiber V.Mount creates. It takes an error no boundary below it caught by rendering nothing, as React's
+        // root renders null, and reports it to MountOptions.OnUncaughtError rather than OnCaughtError. It is not an
+        // IsErrorBoundary, which is public and which Hooks.UseErrorBoundary looks for.
+        internal bool IsMountRoot { get; set; }
+
+        internal bool CatchesErrors => IsErrorBoundary || IsMountRoot;
+
+        // Set on every fiber of a deletion before the first of their cleanups runs, so an error one of them throws
+        // passes over the rest of the deletion in the boundary search (ComponentBoundarySearch.PropagateFrom), to
+        // NearestAncestorOutsideTheDeletion. That is recorded for every fiber of the deletion once all of them are
+        // marked and before any is disposed: disposing one detaches it from its parent, so a search reaching it
+        // through the parent chain afterwards would stop there.
+        internal bool IsBeingDeleted { get; private set; }
+
+        internal ComponentFiber? NearestAncestorOutsideTheDeletion { get; private set; }
+
+        private void MarkBeingDeleted() => IsBeingDeleted = true;
+
+        private void RecordTheNearestAncestorOutsideTheDeletion()
+        {
+            var ancestor = Parent;
+            while (ancestor is { IsMountRoot: false } && (ancestor.IsBeingDeleted || ancestor.IsDisposed))
+            {
+                ancestor = ancestor.Parent;
+            }
+            NearestAncestorOutsideTheDeletion = ancestor;
+        }
+
+        // Every fiber of one deletion, marked and then given its nearest ancestor outside it.
+        internal static void BeginDeletion(List<ComponentFiber> fibers)
+        {
+            foreach (var fiber in fibers) fiber.MarkBeingDeleted();
+            foreach (var fiber in fibers) fiber.RecordTheNearestAncestorOutsideTheDeletion();
+        }
+
+        private ErrorBoundaryReset? _errorBoundaryReset;
+
+        internal ErrorBoundaryReset ResetHandle => _errorBoundaryReset ??= new ErrorBoundaryReset(this);
+
+        /// <summary>
+        /// Set when this boundary's own fallback content throws while <see cref="IsShowingFallback"/> is
+        /// true (the re-entrant <see cref="FiberErrorBoundary.TryCatch"/> call this triggers declines and
+        /// records it here instead of recursing). Read once, immediately after the fallback's Reconcile
+        /// call returns, to tell "the fallback rendered cleanly" apart from "the fallback's own content
+        /// failed and was logged or escalated elsewhere" — both leave the Reconcile call itself returning
+        /// normally, so nothing else observes the difference. Reset before each fallback attempt.
+        /// </summary>
+        internal bool FallbackContentFailed { get; set; }
+
+        /// <summary>
+        /// Calls <c>Set(null)</c> on every ref registered by <see cref="UseImperativeHandle"/>.
+        /// Responsible for resetting the parent-side <c>Ref&lt;T&gt;.Current</c> to null.
+        /// </summary>
+        internal void ClearImperativeHandleSlots()
+        {
+            if (ImperativeHandleSlots == null) return;
+            foreach (var entry in ImperativeHandleSlots)
+            {
+                entry.HandleRef?.Set(null);
+            }
+            ImperativeHandleSlots.Clear();
+        }
+
+        private static void DisposeAndClear<T>(List<T>? slots) where T : IDisposable
+        {
+            if (slots == null) return;
+            foreach (var slot in slots)
+            {
+                slot?.Dispose();
+            }
+            slots.Clear();
+        }
+
+        /// <summary>
+        /// Disposes all Store subscription slots. Called on Unmount.
+        /// </summary>
+        internal void DisposeStoreSlots() => DisposeAndClear(StoreSlots);
+
+        /// <summary>
+        /// Disposes all Blocker registration handles. Called on Unmount.
+        /// </summary>
+        internal void DisposeBlockerSlots() => DisposeAndClear(BlockerSlots);
+
+        /// <summary>
+        /// Releases all memoization slots. Called on Unmount; severs references to CachedResult (VNode) and LastDeps.
+        /// </summary>
+        internal void DisposeMemoSlots()
+        {
+            if (MemoSlots == null) return;
+            MemoSlots.Clear();
+        }
+
+        /// <summary>
+        /// Marks all memoization slots as stale so the next render takes the cache-miss path and rebuilds
+        /// its VNode subtree. The slot list (and per-slot index) is preserved so SG / ILPP emitted code
+        /// still maps slot index → slot correctly across the invalidation. The staged values go too: a scope
+        /// the next render does not reach stages nothing, and the settle would otherwise promote the stale
+        /// pair back over the invalidation.
+        /// </summary>
+        /// <remarks>
+        /// Use when a commit path needs the component's VNode subtree re-walked even though the component's
+        /// own hook inputs are unchanged (the caller is responsible for triggering the re-render).
+        /// </remarks>
+        internal void InvalidateMemoCache()
+        {
+            if (MemoSlots == null) return;
+            foreach (var slot in MemoSlots)
+            {
+                if (slot == null) continue;
+                slot.LastDeps = null;
+                slot.CachedResult = null;
+                slot.NextDeps = null;
+                slot.NextCachedResult = null;
+                slot.CachedValue = null;
+                slot.NextCachedValue = null;
+            }
+        }
+
+        /// <summary>
+        /// Drops the mutation slots on Unmount. A call in flight keeps running and is not cancelled; its
+        /// continuation checks <see cref="HookMutationSlot.Retired"/> before it writes the handle.
+        /// </summary>
+        internal void DisposeMutationSlots()
+        {
+            if (MutationSlots == null) return;
+            foreach (var slot in MutationSlots) slot.Retire();
+            MutationSlots.Clear();
+        }
+
+        #endregion
+
+        internal void RegisterContextDependency(object context)
+        {
+            var target = _isStagingDependencies ? _stagedDependencies : Dependencies;
+            for (var i = 0; i < target.Count; i++)
+            {
+                if (target[i].Context == context) return;
+            }
+            target.Add(new ContextDependency { Context = context });
+        }
+
+        internal bool HasDependencyOn(object context)
+        {
+            for (var i = 0; i < Dependencies.Count; i++)
+            {
+                if (Dependencies[i].Context == context) return true;
+            }
+            return false;
+        }
+
+        // Starts collecting this render attempt's context reads into the staging list, leaving the
+        // committed Dependencies untouched until the attempt settles.
+        internal void BeginDependencyStaging()
+        {
+            _stagedDependencies.Clear();
+            _isStagingDependencies = true;
+        }
+
+        // Promotes the settled attempt's reads to the committed list by swapping the two lists.
+        internal void CommitStagedDependencies()
+        {
+            if (!_isStagingDependencies) return;
+            (Dependencies, _stagedDependencies) = (_stagedDependencies, Dependencies);
+            _isStagingDependencies = false;
+        }
+
+        // Drops an unsettled attempt's reads (throw / suspend / diagnostic pass), keeping the
+        // committed list exactly as the last successful render left it.
+        internal void DiscardStagedDependencies()
+        {
+            if (!_isStagingDependencies) return;
+            _isStagingDependencies = false;
+            _stagedDependencies.Clear();
+        }
+
+        public object? Ref { get; set; }
+
+        // The last link of the Child chain, so an append is not a walk of the chain: a parent creating N inline
+        // children would otherwise cost N(N-1)/2 links. Null exactly when Child is.
+        private ComponentFiber? _lastChild;
+
+        // The link before this one in its parent's Child chain, so a removal is not a walk of the chain: a parent
+        // dropping N inline children would otherwise cost N(N-1)/2 links. Null exactly when this is a parent's Child
+        // or has no parent.
+        private ComponentFiber? _previousSibling;
+
+        public void AppendChild(ComponentFiber child)
+        {
+            child.Parent?.RemoveChild(child);
+
+            child.Parent = this;
+            child.Sibling = null;
+            child._previousSibling = _lastChild;
+            if (child.PendingWorkBelow || FiberPendingWork.IsPendingItself(child)) FiberPendingWork.MarkAncestors(child);
+
+            if (_lastChild == null)
+            {
+                Child = child;
+            }
+            else
+            {
+                _lastChild.Sibling = child;
+            }
+            _lastChild = child;
+        }
+
+        // The caller supplies the complete existing child set after its placement has committed.
+        internal void CommitChildOrder(IReadOnlyList<ComponentFiber> children)
+        {
+            // Every Sibling link is cleared before any is written, so no reordering can leave a sibling chain that
+            // loops back on itself.
+            Child = null;
+            foreach (var child in children)
+            {
+                child.Sibling = null;
+            }
+            ComponentFiber? previous = null;
+            foreach (var child in children)
+            {
+                if (previous == null)
+                    Child = child;
+                else
+                    previous.Sibling = child;
+                child._previousSibling = previous;
+                previous = child;
+            }
+            _lastChild = previous;
+        }
+
+        public void RemoveChild(ComponentFiber child)
+        {
+            if (Child == null || child.Parent != this)
+            {
+                return;
+            }
+
+            var previous = child._previousSibling;
+            var next = child.Sibling;
+            if (previous == null) Child = next;
+            else previous.Sibling = next;
+            if (next == null) _lastChild = previous;
+            else next._previousSibling = previous;
+
+            child.Parent = null;
+            child.Sibling = null;
+            child._previousSibling = null;
+        }
+
+        public void Detach()
+        {
+            Parent?.RemoveChild(this);
+        }
+    }
+
+    /// <summary>
+    /// Subscription entry pushed onto ComponentFiber.Dependencies on a UseContext call.
+    /// Used to determine whether the entry matches a given context when propagating Provider value changes to consumers.
+    /// </summary>
+    internal sealed class ContextDependency
+    {
+        public object? Context { get; set; }
+    }
+}

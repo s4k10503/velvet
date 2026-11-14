@@ -1,0 +1,313 @@
+#nullable enable
+using System;
+using System.Reflection;
+using UnityEngine.UIElements;
+
+namespace Velvet
+{
+    // The transitions UI Toolkit is running for an element, which its panel's StylePropertyAnimationSystem keeps in a
+    // running set per value type internal to it, and so are read through EngineMember: when one started, how long it runs,
+    // its curve, its eased progress, its start, current and end values, and what a reversal of it would run back to. Where
+    // that cannot be read, a carry taking the element's value over starts again from where it stands.
+    // Given_AMemberInsideTheDelayOfAFade_When_ANewLeadTakesTheId_Then_ItsOwnRunsAsTheEngineRunsIt fails when the read
+    // stops giving the running transition.
+    internal static class RunningStyleTransition
+    {
+        private static readonly PropertyInfo? s_system = EngineMember.PanelStyleAnimationSystem.ResolveProperty();
+        private static readonly FieldInfo? s_now = EngineMember.AnimationSystemTime.ResolveField();
+        private static readonly FieldInfo? s_floats = EngineMember.AnimationSystemFloats.ResolveField();
+        private static readonly FieldInfo? s_rotates = EngineMember.AnimationSystemRotates.ResolveField();
+        private static readonly FieldInfo? s_lengths = EngineMember.AnimationSystemLengths.ResolveField();
+        private static readonly FieldInfo? s_translates = EngineMember.AnimationSystemTranslates.ResolveField();
+        private static readonly FieldInfo? s_scales = EngineMember.AnimationSystemScales.ResolveField();
+        // Declared on the generic definitions; read through the members of the constructed type a value is (Close).
+        private static readonly FieldInfo? s_running = EngineMember.AnimationValuesRunning.ResolveField();
+        private static readonly MethodInfo? s_indexOf = EngineMember.AnimationDataSetIndexOf.ResolveMethod();
+        private static readonly FieldInfo? s_timings = EngineMember.AnimationDataSetTiming.ResolveField();
+        private static readonly FieldInfo? s_valuesByProperty = EngineMember.AnimationSystemValues.ResolveField();
+        private static readonly PropertyInfo? s_nameId = EngineMember.StylePropertyNameId.ResolveProperty();
+        private static readonly MethodInfo? s_updateValues = EngineMember.AnimationValuesUpdateValues.ResolveMethod();
+        private static readonly MethodInfo? s_updateComputedStyleAt = EngineMember.AnimationValuesUpdateComputedStyleAt.ResolveMethod();
+        private static readonly FieldInfo? s_styles = EngineMember.AnimationDataSetStyle.ResolveField();
+        private static readonly FieldInfo? s_startTime = EngineMember.AnimationTimingStart.ResolveField();
+        private static readonly FieldInfo? s_duration = EngineMember.AnimationTimingDuration.ResolveField();
+        private static readonly FieldInfo? s_curve = EngineMember.AnimationTimingEasing.ResolveField();
+        private static readonly FieldInfo? s_eased = EngineMember.AnimationTimingEased.ResolveField();
+        private static readonly FieldInfo? s_shortening = EngineMember.AnimationTimingReversingShortening.ResolveField();
+        private static readonly FieldInfo? s_from = EngineMember.AnimationStyleStart.ResolveField();
+        private static readonly FieldInfo? s_to = EngineMember.AnimationStyleEnd.ResolveField();
+        private static readonly FieldInfo? s_reversingStart = EngineMember.AnimationStyleReversingStart.ResolveField();
+        private static readonly FieldInfo? s_current = EngineMember.AnimationCurrentValue.ResolveField();
+        private static readonly object? s_opacityId = EngineMember.OpacityPropertyId.ResolveField()?.GetValue(null);
+        private static readonly object? s_rotateId = EngineMember.RotatePropertyId.ResolveField()?.GetValue(null);
+        private static readonly object? s_translateId = EngineMember.TranslatePropertyId.ResolveField()?.GetValue(null);
+        private static readonly object? s_scaleId = EngineMember.ScalePropertyId.ResolveField()?.GetValue(null);
+        // In LayoutIdLook's corner order.
+        private static readonly object?[] s_cornerIds =
+        {
+            EngineMember.BorderTopLeftRadiusPropertyId.ResolveField()?.GetValue(null),
+            EngineMember.BorderTopRightRadiusPropertyId.ResolveField()?.GetValue(null),
+            EngineMember.BorderBottomRightRadiusPropertyId.ResolveField()?.GetValue(null),
+            EngineMember.BorderBottomLeftRadiusPropertyId.ResolveField()?.GetValue(null),
+        };
+        private static readonly bool s_readable = Array.TrueForAll(
+            new MemberInfo?[]
+            {
+                s_system, s_now, s_floats, s_rotates, s_lengths, s_running, s_indexOf, s_timings, s_styles, s_startTime,
+                s_duration, s_curve, s_eased, s_shortening, s_from, s_to, s_reversingStart, s_current,
+            },
+            m => m != null);
+
+        private static readonly object?[] s_args = new object?[3];
+
+        // Each value a carry takes over, by the set its transitions are kept in, its id, and its name in a transition list.
+        private static readonly (FieldInfo? Set, object? Id, string Name)[] s_carried =
+        {
+            (s_floats, s_opacityId, "opacity"),
+            (s_rotates, s_rotateId, "rotate"),
+            (s_translates, s_translateId, "translate"),
+            (s_scales, s_scaleId, "scale"),
+            (s_lengths, s_cornerIds[0], "border-radius"),
+            (s_lengths, s_cornerIds[1], "border-radius"),
+            (s_lengths, s_cornerIds[2], "border-radius"),
+            (s_lengths, s_cornerIds[3], "border-radius"),
+        };
+
+        // The name and start of each transition of a value a carry takes over that the panel runs for the element now;
+        // null where it runs none of them.
+        public static System.Collections.Generic.List<(string Name, double StartSec)>? Running(VisualElement element)
+        {
+            System.Collections.Generic.List<(string Name, double StartSec)>? starts = null;
+            foreach (var (set, id, name) in s_carried)
+            {
+                if (Find(element, set, id) is not { } found) continue;
+                try
+                {
+                    (starts ??= new()).Add((name, (double)Read(s_startTime!, found.Timing)));
+                }
+                catch (Exception)
+                {
+                }
+            }
+            return starts;
+        }
+
+        // Has the carry run on from the element's running opacity transition, if it has one.
+        public static void TakeOverOpacity(VisualElement element, LayoutIdCarry carry) =>
+            TakeOver(element, carry, s_floats, s_opacityId, "opacity", value => ((float)value, 0));
+
+        public static void TakeOverRotate(VisualElement element, LayoutIdCarry carry) =>
+            TakeOver(element, carry, s_rotates, s_rotateId, "rotate", value => (((Rotate)value).angle.ToDegrees(), LayoutIdLook.Tag((Rotate)value)));
+
+        // The x and y axes, each carried in the given unit. UI Toolkit runs a transition in the unit of its end and keeps
+        // what a reversal runs back to as it was given, in its own unit or as none
+        // (Given_AMotionTranslatingOnATransition_When_ItTakesAHeldId_Then_ItsOwnTranslateRunsAsTheEngineRunsIt), so each
+        // value is taken into the carry's unit through the element's box.
+        public static void TakeOverTranslate(VisualElement element, LayoutIdCarry[] axes, LengthUnit[] units)
+        {
+            for (var axis = 0; axis < 2; axis++)
+            {
+                TakeOver(element, axes[axis], s_translates, s_translateId, "translate",
+                    value => (InUnit(axis == 0 ? ((Translate)value).x : ((Translate)value).y, units[axis], element.layout.size[axis]),
+                        MotionLayoutIdDriver.Tag((Translate)value, axis)));
+            }
+        }
+
+        public static void TakeOverScale(VisualElement element, LayoutIdCarry[] axes)
+        {
+            for (var axis = 0; axis < 2; axis++)
+            {
+                TakeOver(element, axes[axis], s_scales, s_scaleId, "scale", value => (((Scale)value).value[axis], 0));
+            }
+        }
+
+        // A length in the given unit, a percent being of size. On a box with no extent a percent is NaN, which AllNumbers
+        // refuses, or infinite, which no reversal matches; UI Toolkit runs no transition into a percent there.
+        private static float InUnit(Length length, LengthUnit unit, float size) =>
+            length.unit == unit ? length.value
+            : unit == LengthUnit.Percent ? length.value * 100f / size
+            : length.value / 100f * size;
+
+        // A corner, in LayoutIdLook's corner order, carried in the given unit, each value taken into it as a percent of the
+        // element's width, which UI Toolkit takes a radius's percent of; it keeps what a reversal runs back to as it was
+        // given, as TakeOverTranslate reads
+        // (Given_AMotionRoundingOnATransition_When_ItTakesAHeldIdAndMixesItsRadius_Then_ItsOwnRunsAsTheEngineRunsIt).
+        public static void TakeOverRadius(VisualElement element, int corner, LayoutIdCarry carry, LengthUnit unit) =>
+            TakeOver(element, carry, s_lengths, s_cornerIds[corner], "border-radius",
+                value => (InUnit((Length)value, unit, element.resolvedStyle.width), (int)((Length)value).unit));
+
+        // A corner, in LayoutIdLook's corner order, as UI Toolkit draws it now: where a transition of it runs in the given
+        // radius's unit, its current value, else that radius.
+        public static Length CurrentRadius(VisualElement element, int corner, Length radius)
+        {
+            if (!MayRun(element, corner)) return radius;
+            if (Find(element, s_lengths, s_cornerIds[corner]) is not { } found) return radius;
+            try
+            {
+                var current = (Length)Read(s_current!, found.Style);
+                return current.unit == radius.unit ? current : radius;
+            }
+            catch (Exception)
+            {
+                return radius;
+            }
+        }
+
+        // False where no transition of the corner runs for the element, read by an accessor compiled once over
+        // VisualElement.HasRunningAnimation, the test Find makes, so that the read every pass makes of a holder whose radii
+        // run on no transition boxes nothing (Given_AHolderRoundedByItsRules_When_ItsRadiiAreReadAgain_Then_NothingIsAllocated).
+        // True, leaving the answer to Find, where that cannot be compiled, as under IL2CPP, which compiles nothing at run time.
+        private static bool MayRun(VisualElement element, int corner)
+        {
+#if !ENABLE_IL2CPP
+            if (s_runs != null) return s_runs(element, s_cornerIdValues[corner]);
+#endif
+            return true;
+        }
+
+        private static readonly int[] s_cornerIdValues = Array.ConvertAll(s_cornerIds, id => id == null ? 0 : Convert.ToInt32(id));
+
+#if !ENABLE_IL2CPP
+        private static readonly Func<VisualElement, int, bool>? s_runs = CompileRuns();
+
+        private static Func<VisualElement, int, bool>? CompileRuns()
+        {
+            if (EngineMember.HasRunningStyleAnimation.ResolveMethod() is not { } hasRunning || Array.IndexOf(s_cornerIds, null) >= 0) return null;
+            try
+            {
+                var element = System.Linq.Expressions.Expression.Parameter(typeof(VisualElement), "element");
+                var id = System.Linq.Expressions.Expression.Parameter(typeof(int), "id");
+                var call = System.Linq.Expressions.Expression.Call(element, hasRunning,
+                    System.Linq.Expressions.Expression.Convert(id, hasRunning.GetParameters()[0].ParameterType));
+                return System.Linq.Expressions.Expression.Lambda<Func<VisualElement, int, bool>>(call, element, id).Compile();
+            }
+            catch (Exception)
+            {
+                return null;
+            }
+        }
+#endif
+
+        // name: the property's, as a transition list names it. read: a value of the transition as the carry holds it, and
+        // its LayoutIdCarry.TargetTag.
+        private static void TakeOver(VisualElement element, LayoutIdCarry carry, FieldInfo? set, object? property, string name,
+            Func<object, (float Value, int Tag)> read)
+        {
+            if (Find(element, set, property) is not { } found) return;
+            // A member whose type or shape has changed under the read fails it as one gone does.
+            try
+            {
+                var (system, timing, style) = found;
+                var (from, to, reversingStart) = (read(Read(s_from!, style)), read(Read(s_to!, style)), read(Read(s_reversingStart!, style)));
+                if (!AllNumbers(from.Value, to.Value, reversingStart.Value)) return;
+                var startSec = (double)Read(s_startTime!, timing);
+                var elapsedSec = (double)s_now!.GetValue(system) - startSec;
+                carry.TakeOver((from.Value, to.Value, (float)Read(s_duration!, timing), (float)elapsedSec),
+                    StyleEaseCurve.TakenOver(element, name, startSec, (Func<float, float>)Read(s_curve!, timing)),
+                    (reversingStart.Value, (float)Read(s_shortening!, timing), (float)Read(s_eased!, timing)), (to.Tag, reversingStart.Tag));
+            }
+            catch (Exception)
+            {
+            }
+        }
+
+        // Has the transition the panel runs for the element's property ease along the curve replace gives for the one it
+        // runs on, and leaves it on its own where replace gives none. Its current frame is eased again on the new curve
+        // and written, so the frame on screen is on that curve whether or not the engine eased one before this ran. A
+        // member that does not resolve leaves the transition as it started. StyleEaseCurveTransitionTests fails when the
+        // swap stops reaching the transition, and MotionNamedEaseTransitionTests' first-frame cases when the frame is not
+        // written again.
+        public static void Retime(VisualElement element, StylePropertyName property,
+            Func<Func<float, float>, Func<float, float>?> replace)
+        {
+            if (!s_readable || s_valuesByProperty == null || s_nameId == null || s_updateValues == null
+                || s_updateComputedStyleAt == null || element.panel == null)
+            {
+                return;
+            }
+            try
+            {
+                var system = s_system!.GetValue(element.panel);
+                if (system == null || !s_now!.DeclaringType!.IsInstanceOfType(system)
+                    || s_valuesByProperty.GetValue(system) is not System.Collections.IDictionary byProperty
+                    || s_nameId.GetValue(property) is not { } id || byProperty[id] is not { } values)
+                {
+                    return;
+                }
+                var running = Read(s_running!, values);
+                (s_args[0], s_args[1], s_args[2]) = (element, id, null);
+                if (Close(s_indexOf!, running.GetType()) is not MethodInfo indexOf || indexOf.Invoke(running, s_args) is not true)
+                {
+                    return;
+                }
+                var index = (int)s_args[2]!;
+                var timings = (Array)Read(s_timings!, running);
+                var timing = timings.GetValue(index)!;
+                var curveField = (FieldInfo)Close(s_curve!, timing.GetType());
+                if (curveField.GetValue(timing) is not Func<float, float> current || replace(current) is not { } curve)
+                {
+                    return;
+                }
+                curveField.SetValue(timing, curve);
+                var elapsedSec = (double)s_now.GetValue(system) - (double)Read(s_startTime!, timing);
+                if (elapsedSec >= 0.0)
+                {
+                    ((FieldInfo)Close(s_eased!, timing.GetType()))
+                        .SetValue(timing, curve((float)elapsedSec / (float)Read(s_duration!, timing)));
+                }
+                timings.SetValue(timing, index);
+                s_updateValues.Invoke(values, null);
+                s_updateComputedStyleAt.Invoke(values, new object[] { index });
+            }
+            catch (Exception)
+            {
+            }
+        }
+
+        // The element's running transition of a property: the animation system, and the transition's timing and values.
+        // Null where none runs or it cannot be read.
+        private static (object System, object Timing, object Style)? Find(VisualElement element, FieldInfo? set, object? property)
+        {
+            if (!s_readable || set == null || property == null || element.panel == null) return null;
+            try
+            {
+                var system = s_system!.GetValue(element.panel);
+                // MUTANT_SURVIVES(unreachable): the panels the tests mount run a StylePropertyAnimationSystem, whose members
+                // all resolve on the editor this package declares.
+                if (system == null || !s_now!.DeclaringType!.IsInstanceOfType(system)) return null;
+                var values = set.GetValue(system);
+                // None until the panel first runs a transition of that value type.
+                if (values == null) return null;
+                var running = Read(s_running!, values);
+                (s_args[0], s_args[1], s_args[2]) = (element, property, null);
+                if (Close(s_indexOf!, running.GetType()) is not MethodInfo indexOf || indexOf.Invoke(running, s_args) is not true) return null;
+                var index = (int)s_args[2]!;
+                return (system, ((Array)Read(s_timings!, running)).GetValue(index), ((Array)Read(s_styles!, running)).GetValue(index));
+            }
+            catch (Exception)
+            {
+                return null;
+            }
+        }
+
+        internal static bool AllNumbers(float from, float to, float reversingStart) =>
+            !float.IsNaN(from) && !float.IsNaN(to) && !float.IsNaN(reversingStart);
+
+        private static object Read(FieldInfo field, object owner) => ((FieldInfo)Close(field, owner.GetType())).GetValue(owner);
+
+        // The member as the constructed type the value is, or one it derives from, declares it. Every member read here is
+        // declared on a generic definition (EngineMember).
+        private static MemberInfo Close(MemberInfo member, Type type)
+        {
+            var definition = member.DeclaringType!;
+            for (var constructed = type; constructed != null; constructed = constructed.BaseType)
+            {
+                if (!constructed.IsGenericType || constructed.GetGenericTypeDefinition() != definition) continue;
+                return member is FieldInfo field
+                    ? NativeTransitionVelocity.Closed(field, constructed)
+                    : NativeTransitionVelocity.Closed((MethodInfo)member, constructed);
+            }
+            throw new InvalidOperationException($"{type} is not constructed from {definition}");
+        }
+    }
+}

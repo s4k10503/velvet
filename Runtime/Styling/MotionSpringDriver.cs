@@ -1,0 +1,1153 @@
+using System.Collections.Generic;
+using UnityEngine;
+using UnityEngine.UIElements;
+
+namespace Velvet
+{
+    /// <summary>
+    /// One spring-animated channel: the spring Framer Motion would run for it — the value it was released at, the
+    /// velocity it was released with and the value it heads toward — the value it last showed, and the value it
+    /// rested at before the play (<see cref="RestingTarget"/>, which an exit-cancel hand-off heads back to).
+    /// </summary>
+    internal sealed class SpringChannel : IGestureMaskable
+    {
+        // Deliberately NOT readonly: SpringIntegrator is a mutable struct embedded inline (see its own doc), and
+        // every Set call mutates it in place through this field. Marking the field readonly would make the
+        // compiler silently invoke Set on a defensive COPY instead — the channel would only ever report its
+        // initial value.
+        public SpringIntegrator Integrator;
+        public float Target;
+        // The unit the channel's values are in; only a translate takes another than pixels.
+        public LengthUnit Unit;
+        // Set while a gesture channel holds the property (GestureChannelMask.MaskChannels): the spring runs on and
+        // writes nothing.
+        public bool Masked { get; set; }
+        // Not readonly: a play continuing from one it interrupts (MotionSpringDriver.ContinueFrom) starts elsewhere.
+        public float RestingTarget;
+        // The spring's start, in the channel's own units, and its start velocity on the scale below.
+        public float Origin;
+        public float StartVelocity;
+        // The length of one pass, and the factor that puts the channel on the scale Framer's spring measures its rest
+        // against.
+        public float PassSec;
+        public float Scale = 1f;
+        // A color's progress, which Framer Motion springs over a fixed travel of 100 with no velocity of its own,
+        // an interrupted color's included, since Framer mixes from the color it was showing.
+        public bool Normalized;
+        // A value Framer Motion animates on the browser's own animation where the repeat allows it: an opacity or a
+        // background color. Framer's x, y, scale and rotate are values of their own, which it keeps on its main
+        // thread.
+        public bool Acceleratable;
+        // The physics a spring its duration describes solves for this channel's start velocity, and for the
+        // opposite one a mirrored pass is released with; null where the state's own apply.
+        public (float Stiffness, float Damping)? Physics;
+        public (float Stiffness, float Damping)? MirroredPhysics;
+        // Set on a channel a PropertyOverrides entry names (MotionSpringDriver.WithOverrides): it runs that entry's
+        // delay, duration and easing once, as Framer Motion runs a value given a transition of its own, and the
+        // state's spring does not move it.
+        public TweenChannelTiming? Timing;
+        // Set by MotionSpringDriver.Create for a play on StyleTransitionConfig.PerValueDefaults: a channel Framer runs
+        // on an ease has the length of that ease here, and one it runs on a spring its own physics and rest speed.
+        public float EaseSec;
+        public (float Stiffness, float Damping)? FixedPhysics;
+        public float? RestSpeed;
+        // How long after the driver starts the channel's spring or ease begins (MotionSpringDriver.WithOverrides),
+        // and whether it plays once whatever the play repeats, as a value given a transition of its own does.
+        public float DelaySec;
+        public bool Once;
+
+        public SpringChannel(float initialValue, float target)
+        {
+            Integrator = new SpringIntegrator(initialValue);
+            Target = target;
+            RestingTarget = initialValue;
+            Origin = initialValue;
+        }
+    }
+
+    /// <summary>
+    /// One spring-driven color channel. A single scalar 0→1 PROGRESS spring drives a
+    /// <see cref="Color.LerpUnclamped"/> between the endpoints rather than four independent per-component
+    /// springs: four springs sharing one stiffness/damping/mass but different distances settle at different
+    /// times, so the color would drift off the straight line between the two endpoints and arrive channel by
+    /// channel. Interpolation stays in straight RGBA — the space UI Toolkit's own color transition uses — so
+    /// switching a config between Tween and Spring cannot change which colors the element passes through.
+    /// </summary>
+    internal sealed class SpringColorChannel : IPropertyChannel
+    {
+        public readonly ArbitraryProperty Property;
+        public readonly Color From;
+        public readonly Color To;
+        public readonly SpringChannel Progress;
+
+        ArbitraryProperty IPropertyChannel.Property => Property;
+        IGestureMaskable IPropertyChannel.Channel => Progress;
+
+        public SpringColorChannel(ArbitraryProperty property, Color from, Color to)
+        {
+            Property = property;
+            From = from;
+            To = to;
+            // Framer Motion springs a color from 0 to 100 and mixes the endpoints at that percentage.
+            Progress = new SpringChannel(0f, 1f)
+            {
+                Normalized = true, Acceleratable = property == ArbitraryProperty.BackgroundColor,
+            };
+        }
+    }
+
+    /// <summary>
+    /// One spring-driven length channel: the property to write, the unit both endpoints share (see
+    /// <see cref="MotionSpringClassParser.LengthChannelPlan"/>), and the magnitude spring itself.
+    /// </summary>
+    internal sealed class SpringLengthChannel : IPropertyChannel
+    {
+        public readonly ArbitraryProperty Property;
+        public readonly LengthUnit Unit;
+        public readonly SpringChannel Value;
+
+        ArbitraryProperty IPropertyChannel.Property => Property;
+        IGestureMaskable IPropertyChannel.Channel => Value;
+
+        public SpringLengthChannel(ArbitraryProperty property, float from, float to, LengthUnit unit)
+        {
+            Property = property;
+            Unit = unit;
+            Value = new SpringChannel(from, to);
+        }
+    }
+
+    /// <summary>
+    /// Running state for one spring-driven Motion variant enter/exit: the five fixed axes (see
+    /// <see cref="SpringAxis"/>; translate x/y are always present together, never alone — see
+    /// <see cref="MotionSpringClassParser.Resolve"/>) plus any color/length property channels the delta
+    /// resolved, the shared stiffness/damping/mass, the recurring tick handle, and the completion callback.
+    /// Owned by <c>StyleAnimationScheduler</c>'s <c>PendingAnimation</c>.
+    /// </summary>
+    internal sealed class MotionSpringState : IGestureMaskableState
+    {
+        bool IGestureMaskableState.IsExit { set => Exit = value; }
+
+        (IGestureMaskable? Opacity, IGestureMaskable? TranslateX, IGestureMaskable? TranslateY, IGestureMaskable? Scale,
+            IGestureMaskable? Rotate) IGestureMaskableState.Scalars => (Opacity, TranslateX, TranslateY, Scale, Rotate);
+
+        IGestureMaskable? IGestureMaskableState.ScaleY => ScaleY;
+
+        IReadOnlyList<IPropertyChannel>? IGestureMaskableState.ColorChannels => Colors;
+        IReadOnlyList<IPropertyChannel>? IGestureMaskableState.LengthChannels => Lengths;
+
+        // Whether an exit plays this, whose driven writes outrank a gesture channel (StyleLayerPriority.Exit).
+        public bool Exit;
+        public SpringChannel? Opacity;
+        public SpringChannel? TranslateX;
+        public SpringChannel? TranslateY;
+        public SpringChannel? Scale;
+        // The y factor when the play's scale differs per axis; Scale is then the x factor.
+        public SpringChannel? ScaleY;
+        public SpringChannel? Rotate;
+        public SpringChannel? SkewX;
+        public SpringChannel? SkewY;
+        // Draws the skew channels, which no style slot holds; null where the scheduler has no reconciler to write to.
+        public FiberSkewApplier? Skew;
+        public List<SpringColorChannel>? Colors;
+        public List<SpringLengthChannel>? Lengths;
+        // The progress the paint layers are drawn at, and the hold it draws them under.
+        public SpringChannel? PaintProgress;
+        public IMotionPaintLease? Paint;
+        public VisualElement? NativeLayoutOwner;
+
+        public float Stiffness;
+        public float Damping;
+        public float Mass;
+        // StyleTransitionConfig.SpringSettleSec: where set, each pass ends on its target once this long has run and
+        // the rest thresholds are not consulted, as Framer Motion's spring resolved from a duration ends. 0 for an
+        // instant spring, which lands once its delay has run.
+        public double? SettleSec;
+        // StyleTransitionConfig.SpringDescription: where set, a channel released with a velocity solves its own
+        // physics (SpringChannel.Physics), as Framer's findSpring reads the value's velocity.
+        public DurationSpringDescription? Description;
+
+        // A play samples each channel's spring by the time since it started, as Framer Motion's generator does. A
+        // double, since an endless repeat adds to it for as long as the play runs.
+        public MotionRepeat Repeat;
+        public double ElapsedSec;
+
+        // The recurring tick, scheduled on the panel root. Paused (and nulled) once every channel has settled,
+        // or on cancel.
+        public IVisualElementScheduledItem? Tick;
+
+        // Runs once every channel has settled (after the driver has already cleared the inline overrides).
+        // The natural-completion caller sets this to its onComplete; an exit-cancel hand-off (see
+        // StyleAnimationScheduler.CancelPending) clears it to null — a reversal settling is not "finishing"
+        // anything the original caller asked for.
+        public System.Action? OnSettled;
+    }
+
+    /// <summary>
+    /// Pure(ish) mechanics for a spring-driven Motion variant enter/exit: builds the per-channel state from a
+    /// resolved <see cref="MotionSpringClassParser.SpringPlan"/>, applies/steps/clears the inline styles a
+    /// channel owns, and retargets on a cancel hand-off. Takes no dependency on scheduling, panels, or the
+    /// enter/exit bookkeeping maps — see <see cref="StyleAnimationScheduler"/> for the piece that decides WHEN to
+    /// start/stop/retarget one of these and owns the actual recurring <c>schedule.Execute</c> tick.
+    /// </summary>
+    internal static class MotionSpringDriver
+    {
+        /// <summary>
+        /// Builds the running state from a resolved plan, or null when the plan animates nothing (the caller
+        /// should treat this exactly like a zero-duration tween: land the classes and complete immediately).
+        /// </summary>
+        public static MotionSpringState? Create(MotionSpringClassParser.SpringPlan plan, float stiffness, float damping,
+            float mass, MotionRepeat repeat = default, double? settleSec = null,
+            DurationSpringDescription? description = null, bool perValueDefaults = false)
+        {
+            if (plan.IsEmpty)
+            {
+                return null;
+            }
+            var state = new MotionSpringState
+            {
+                Stiffness = stiffness, Damping = damping, Mass = mass, Repeat = repeat, SettleSec = settleSec,
+                Description = description,
+            };
+            if (plan.Opacity is { } o) state.Opacity = new SpringChannel(o.from, o.to) { Acceleratable = true };
+            if (plan.TranslateX is { } tx) state.TranslateX = new SpringChannel(tx.from, tx.to) { Unit = plan.TranslateXUnit };
+            if (plan.TranslateY is { } ty) state.TranslateY = new SpringChannel(ty.from, ty.to) { Unit = plan.TranslateYUnit };
+            if (plan.Scale is { } s) state.Scale = new SpringChannel(s.from, s.to);
+            if (plan.ScaleY is { } sy) state.ScaleY = new SpringChannel(sy.from, sy.to);
+            if (plan.Rotate is { } r) state.Rotate = new SpringChannel(r.from, r.to);
+            if (plan.Paint != null)
+            {
+                state.Paint = plan.Paint;
+                state.PaintProgress = new SpringChannel(0f, 1f) { Normalized = true };
+            }
+            if (plan.SkewX is { } kx) state.SkewX = new SpringChannel(kx.from, kx.to);
+            if (plan.SkewY is { } ky) state.SkewY = new SpringChannel(ky.from, ky.to);
+            if (plan.Colors != null)
+            {
+                var colors = new List<SpringColorChannel>(plan.Colors.Count);
+                foreach (var c in plan.Colors)
+                {
+                    colors.Add(new SpringColorChannel(c.Property, c.From, c.To));
+                }
+                state.Colors = colors;
+            }
+            if (plan.Lengths != null)
+            {
+                var lengths = new List<SpringLengthChannel>(plan.Lengths.Count);
+                foreach (var l in plan.Lengths)
+                {
+                    lengths.Add(new SpringLengthChannel(l.Property, l.From, l.To, l.Unit));
+                }
+                state.Lengths = lengths;
+            }
+            if (perValueDefaults)
+            {
+                AssignFramerDefaults(state);
+            }
+            ForEachActiveChannel(state, c => Release(state, c, c.Origin, 0f));
+            return state;
+        }
+
+        // The ease Framer runs a value that is no transform on.
+        internal const float DefaultEaseSec = 0.3f;
+        internal const float DefaultEaseX1 = 0.25f;
+        internal const float DefaultEaseY1 = 0.1f;
+        internal const float DefaultEaseX2 = 0.35f;
+        internal const float DefaultEaseY2 = 1f;
+
+        internal const float TransformSpringStiffness = 500f;
+        internal const float TransformSpringDamping = 25f;
+        internal const float ScaleSpringStiffness = 550f;
+        internal const float DefaultSpringRestSpeed = 10f;
+
+        internal static float ScaleSpringDamping(float target)
+            => target == 0f ? 2f * Mathf.Sqrt(ScaleSpringStiffness) : 30f;
+
+        internal static readonly BezierCurve DefaultEase = new(DefaultEaseX1, DefaultEaseY1, DefaultEaseX2, DefaultEaseY2);
+
+        internal static (float Stiffness, float Damping, float Mass) DefaultSpringOf(ValueDefault kind, float target)
+            => kind == ValueDefault.Scale
+                ? (ScaleSpringStiffness, ScaleSpringDamping(target), 1f)
+                : (TransformSpringStiffness, TransformSpringDamping, 1f);
+
+        internal static float DefaultSpringRestSec((float Stiffness, float Damping, float Mass) spring, float travel)
+            => SpringRestSec(spring, DefaultSpringRestSpeed, travel);
+
+        // Where a spring a value runs on alone comes to rest; Framer's defaults rest well within PassDurationSec's 20 s.
+        internal static float SpringRestSec((float Stiffness, float Damping, float Mass) spring, float? restSpeed, float travel)
+            => PassDurationSec(travel, spring.Stiffness, spring.Damping, spring.Mass, 0f, restSpeed);
+
+        // Whether a spring released at `from` toward `to` has come to rest t seconds in, by Framer's rest test.
+        internal static bool SpringRestsAt(float from, float to, double t, (float Stiffness, float Damping, float Mass) spring,
+            float? restSpeed)
+        {
+            var delta = to - from;
+            var (displacement, speed) = SpringIntegrator.Solve(-delta, 0f, t, spring);
+            return Rests(delta, displacement, speed, restSpeed);
+        }
+
+        // A transform value runs on a spring, scale on a critically damped one that is stiffer, and any other value
+        // on the ease above.
+        private static void AssignFramerDefaults(MotionSpringState state)
+        {
+            foreach (var (channel, kind) in DefaultKinds(state))
+            {
+                AssignFramerDefault(channel, kind);
+            }
+        }
+
+        private static void AssignFramerDefault(SpringChannel channel, ValueDefault kind)
+        {
+            channel.Timing = null;
+            if (kind == ValueDefault.Ease)
+            {
+                channel.EaseSec = DefaultEaseSec;
+                return;
+            }
+            var (stiffness, damping, _) = DefaultSpringOf(kind, channel.Target);
+            channel.FixedPhysics = (stiffness, damping);
+            channel.RestSpeed = DefaultSpringRestSpeed;
+        }
+
+        private static IEnumerable<(SpringChannel Channel, ValueDefault Kind)> DefaultKinds(MotionSpringState state)
+        {
+            if (state.Opacity != null) yield return (state.Opacity, ValueDefault.Ease);
+            if (state.PaintProgress != null) yield return (state.PaintProgress, ValueDefault.Ease);
+            if (state.TranslateX != null) yield return (state.TranslateX, ValueDefault.Transform);
+            if (state.TranslateY != null) yield return (state.TranslateY, ValueDefault.Transform);
+            if (state.Rotate != null) yield return (state.Rotate, ValueDefault.Transform);
+            if (state.SkewX != null) yield return (state.SkewX, ValueDefault.Transform);
+            if (state.SkewY != null) yield return (state.SkewY, ValueDefault.Transform);
+            if (state.Scale != null) yield return (state.Scale, ValueDefault.Scale);
+            if (state.ScaleY != null) yield return (state.ScaleY, ValueDefault.Scale);
+            foreach (var c in state.Colors ?? s_noColors) yield return (c.Progress, ValueDefault.Ease);
+            foreach (var l in state.Lengths ?? s_noLengths) yield return (l.Value, ValueDefault.Ease);
+        }
+
+        // The settle time a channel's spring takes from the play: none for one on physics of its own.
+        private static double? SettleOf(MotionSpringState state, SpringChannel channel)
+            => channel.FixedPhysics != null ? null : state.SettleSec;
+
+        // Releases the channel's spring at `origin` with `velocity`, in the channel's own units per second, toward its
+        // Target, as Framer Motion starts a value's animation. Framer runs each value as an animation of its own, so
+        // each channel's pass lasts as long as its own spring takes to rest. One it can hand to the browser — an
+        // acceleratable value whose repeat neither mirrors nor waits — becomes an easing over a travel of 100 cut at
+        // 20 s, onto which the value's velocity is carried unscaled; any other is measured over its own travel, a
+        // color's progress over 100.
+        private static void Release(MotionSpringState state, SpringChannel c, float origin, float velocity)
+        {
+            c.Origin = origin;
+            if (c.Timing is { } own)
+            {
+                c.PassSec = own.DelaySec + own.DurationSec;
+                return;
+            }
+            if (c.EaseSec > 0f)
+            {
+                c.Scale = 1f;
+                // MUTANT_SURVIVES(equivalent, line removed): StartVelocity is read only by this method's spring path and SamplePass's spring branch, both behind EaseSec > 0 being false, and a channel's EaseSec is never set back to 0 once AssignFramerDefault gives it the ease.
+                c.StartVelocity = 0f;
+                c.Physics = null;
+                c.MirroredPhysics = null;
+                c.PassSec = c.EaseSec;
+                return;
+            }
+            var travel = c.Target - origin;
+            var accelerated = c.Acceleratable && state.Repeat.Type != TransitionRepeatType.Mirror
+                && state.Repeat.DelaySec == 0f;
+            c.Scale = (c.Normalized || accelerated) && travel != 0f ? 100f / System.Math.Abs(travel) : 1f;
+            c.StartVelocity = c.Normalized ? 0f : accelerated ? System.Math.Sign(travel) * velocity : velocity * c.Scale;
+            // Framer hands the spring the motion value's own velocity on either path, the browser's travel of 100
+            // included, and a mirrored pass the opposite one; a color's progress has none.
+            var valueVelocity = c.Normalized ? 0f : velocity;
+            c.Physics = c.FixedPhysics ?? PhysicsAt(state, valueVelocity);
+            c.MirroredPhysics = c.FixedPhysics ?? PhysicsAt(state, -valueVelocity);
+            // A spring with a settle time runs exactly that long on the main thread, and on the browser for the
+            // easing Framer samples from it, which ends at the first sample at or past it.
+            var pass = SettleOf(state, c) is { } settleSec
+                ? accelerated ? SampledEndSec(settleSec) : (float)settleSec
+                : PassDurationSec(travel * c.Scale, c.FixedPhysics?.Stiffness ?? state.Stiffness,
+                    c.FixedPhysics?.Damping ?? state.Damping, state.Mass, c.StartVelocity, c.RestSpeed);
+            c.PassSec = accelerated ? System.Math.Min(pass, MaxPassMs / 1000f) : pass;
+        }
+
+        // Framer Motion's calcGeneratorDuration over its spring generator: the first 50 ms sample at which a spring
+        // released `delta` from its target with `velocity` has come to rest, or infinity when none before 20 s does.
+        internal static float PassDurationSec(float delta, float stiffness, float damping, float mass, float velocity = 0f,
+            float? restSpeed = null)
+        {
+            for (var ms = 0; ms < MaxPassMs; ms += PassSampleMs)
+            {
+                var (displacement, speed) = SpringIntegrator.Solve(-delta, velocity, ms / 1000.0,
+                    (stiffness, damping, mass));
+                if (Rests(delta, displacement, speed, restSpeed))
+                {
+                    return ms / 1000f;
+                }
+            }
+            return float.PositiveInfinity;
+        }
+
+        // The physics a spring its duration describes solves for when released with `velocity`, the motion value's
+        // velocity in its units per second: Framer's spring hands findSpring that negated and in thousandths (its
+        // getSpringOptions call). At rest the state's own physics are already that solution.
+        private static (float Stiffness, float Damping)? PhysicsAt(MotionSpringState state, float velocity)
+        {
+            if (state.Description is not { } description || velocity == 0f)
+            {
+                return null;
+            }
+            var spring = description.At(-velocity / 1000.0);
+            return (spring.Stiffness, spring.Damping);
+        }
+
+        // Framer Motion's calcGeneratorDuration over a spring resolved from a duration, which reports done at that
+        // duration: the first 50 ms sample at or past it.
+        internal static float SampledEndSec(double settleSec)
+        {
+            var ms = 0;
+            while (ms < settleSec * 1000.0)
+            {
+                ms += PassSampleMs;
+            }
+            return ms / 1000f;
+        }
+
+        // The time from a play's start to the end of its slowest channel's last pass, which is when Framer Motion's
+        // animation of every value has finished; a channel on a transition of its own counts its entry once.
+        internal static double SpanSec(MotionSpringState? state, MotionRepeat repeat)
+        {
+            if (state == null)
+            {
+                return 0.0;
+            }
+            var span = 0.0;
+            ForEachActiveChannel(state, c => span = System.Math.Max(span,
+                c.Timing != null ? c.PassSec : c.DelaySec + (c.Once ? c.PassSec : repeat.TotalSec(c.PassSec))));
+            return span;
+        }
+
+        private const int PassSampleMs = 50;
+        private const int MaxPassMs = 20000;
+
+        // Framer Motion's rest test, with its thresholds for a travel under 5 and for any other.
+        private static bool Rests(double delta, double displacement, double velocity, float? restSpeed = null)
+        {
+            var granular = System.Math.Abs(delta) < 5.0;
+            return System.Math.Abs(velocity) <= (restSpeed ?? (granular ? 0.01 : 2.0))
+                && System.Math.Abs(displacement) <= (granular ? 0.005 : 0.5);
+        }
+
+        /// <summary>
+        /// Writes each channel's CURRENT integrator value as an inline style, synchronously — so the element
+        /// shows the from-pose on the very first rendered frame instead of flashing at the (already-applied)
+        /// resting classes' value until the first tick runs — after suspending the element's native transitions
+        /// when this play drives a property one of them could intercept (see
+        /// <see cref="MotionNativeTransitionGuard"/>).
+        /// </summary>
+        /// <remarks>
+        /// The suspension goes up with this FIRST write rather than with the recurring tick, because this write
+        /// is itself one a live native transition would animate into instead of landing on. A play parked behind
+        /// a delay is already holding its from-pose over that whole window, so there is no earlier moment the
+        /// driver does not own the slots.
+        /// </remarks>
+        public static void ApplyCurrentValues(VisualElement element, MotionSpringState state)
+        {
+            MotionNativeTransitionGuard.NarrowIfIntercepted(element, state, DrivenSlots(state),
+                MotionNativeTransitionGuard.LengthLonghands(element, element, state.Lengths, static channel => channel.Property));
+            StyleAnimateDriver.HoldAgainstLoop(element, state, DrivenSlots(state));
+            WriteChannelValues(element, state);
+        }
+
+        private static void SyncLayoutOwner(VisualElement element, MotionSpringState state)
+            => state.NativeLayoutOwner = MotionNativeTransitionGuard.SyncLayoutOwner(element, state,
+                state.NativeLayoutOwner, state.Lengths, static channel => channel.Property, DrivenSlots(state));
+
+        // The slot groups this play writes, for the guard's intersection against what the element's own
+        // transition utilities declare.
+        // The slots the play writes: a channel a gesture state holds writes nothing (GestureChannelMask).
+        private static MotionTransitionSlots DrivenSlots(MotionSpringState state)
+            => GestureChannelMask.DrivenSlots(state);
+
+        private static void WriteChannelValues(VisualElement element, MotionSpringState state)
+        {
+            SyncLayoutOwner(element, state);
+            if (state.Opacity is { Masked: false })
+            {
+                MotionOpacity.Write(element, state.Opacity.Integrator.Value);
+            }
+            if ((state.TranslateX != null || state.TranslateY != null) && state.TranslateX?.Masked != true)
+            {
+                element.style.translate = new Translate(
+                    new Length(state.TranslateX?.Integrator.Value ?? 0f, state.TranslateX?.Unit ?? LengthUnit.Pixel),
+                    new Length(state.TranslateY?.Integrator.Value ?? 0f, state.TranslateY?.Unit ?? LengthUnit.Pixel));
+            }
+            if (state.Scale is { Masked: false })
+            {
+                var v = state.Scale.Integrator.Value;
+                AuthoredTransform.SetScale(element, new Scale(new Vector2(v, state.ScaleY?.Integrator.Value ?? v)));
+            }
+            if (state.Rotate is { Masked: false })
+            {
+                AuthoredTransform.SetRotate(element, new Rotate(Angle.Degrees(state.Rotate.Integrator.Value)));
+            }
+            state.Paint?.Apply(state.PaintProgress!.Integrator.Value);
+            if (state.SkewX != null || state.SkewY != null)
+            {
+                state.Skew?.Drive(element, state.SkewX?.Integrator.Value, state.SkewY?.Integrator.Value);
+            }
+            if (state.Colors != null)
+            {
+                foreach (var c in state.Colors)
+                {
+                    if (c.Progress.Masked) continue;
+                    StyleArbitraryValueResolver.ApplyDriven(element,
+                        new ArbitraryStyle(c.Property, MotionPropertyInterpolation.LerpColor(c.From, c.To, c.Progress.Integrator.Value)),
+                        state.Exit);
+                }
+            }
+            if (state.Lengths != null)
+            {
+                foreach (var l in state.Lengths)
+                {
+                    if (l.Value.Masked) continue;
+                    // The integrator already holds the spring's true position, overshoot included; the emitter
+                    // is what saturates a property with no negative meaning.
+                    var v = MotionPropertyInterpolation.ClampLength(l.Property, l.Value.Integrator.Value);
+                    StyleArbitraryValueResolver.ApplyDriven(element, new ArbitraryStyle(l.Property, v, l.Unit), state.Exit);
+                }
+            }
+            StyleAnimateDriver.ReassertLoop(element, DrivenSlots(state));
+        }
+
+        /// <summary>
+        /// Steps every active channel by <paramref name="dtSec"/> and re-applies the inline styles. Returns true
+        /// once EVERY channel has settled at its (possibly retargeted) target.
+        /// </summary>
+        public static bool Step(VisualElement element, MotionSpringState state, float dtSec)
+        {
+            state.ElapsedSec += dtSec;
+            return SampleAll(element, state, dtSec, seekScale: null);
+        }
+
+        // dtSec is the time since the channels were last sampled, which a stepped play's velocity divides by.
+        // seekScale is set for a play sampled at a time: its velocity is then the curve's slope at that time,
+        // times seekScale.
+        private static bool SampleAll(VisualElement element, MotionSpringState state, float dtSec, float? seekScale)
+        {
+            var settled = true;
+            if (state.Opacity != null) settled &= SampleRepeating(state, state.Opacity, dtSec, seekScale);
+            if (state.TranslateX != null) settled &= SampleRepeating(state, state.TranslateX, dtSec, seekScale);
+            if (state.TranslateY != null) settled &= SampleRepeating(state, state.TranslateY, dtSec, seekScale);
+            if (state.Scale != null) settled &= SampleRepeating(state, state.Scale, dtSec, seekScale);
+            if (state.ScaleY != null) settled &= SampleRepeating(state, state.ScaleY, dtSec, seekScale);
+            if (state.Rotate != null) settled &= SampleRepeating(state, state.Rotate, dtSec, seekScale);
+            if (state.PaintProgress != null) settled &= SampleRepeating(state, state.PaintProgress, dtSec, seekScale);
+            if (state.SkewX != null) settled &= SampleRepeating(state, state.SkewX, dtSec, seekScale);
+            if (state.SkewY != null) settled &= SampleRepeating(state, state.SkewY, dtSec, seekScale);
+            if (state.Colors != null)
+            {
+                foreach (var color in state.Colors) settled &= SampleRepeating(state, color.Progress, dtSec, seekScale);
+            }
+            if (state.Lengths != null)
+            {
+                foreach (var length in state.Lengths) settled &= SampleRepeating(state, length.Value, dtSec, seekScale);
+            }
+
+            // Every channel's Integrator.Value was just sampled above; re-applying them is exactly what the initial
+            // (pre-tick) write already does, so the style writes live in exactly one place instead of being
+            // duplicated here.
+            WriteChannelValues(element, state);
+            return settled;
+        }
+
+        // Framer Motion's main-thread animation over a spring, repeating or not: each pass samples the channel's
+        // spring at the time MotionRepeat gives, a mirrored pass a spring from the to-value back to the from-value
+        // released with the opposite velocity, and a channel past its last pass holds the value
+        // MotionRepeat.EndsAtFrom names, so a play that does not repeat ends when its pass does, as its play span
+        // says. Every channel reaching that end is the play's settle. The integrator takes each sample, with the
+        // velocity on screen, which is what an interruption releases the next spring with; the scheduler's tick
+        // and pre-roll step by a positive time, which that velocity divides by.
+        private static bool SampleRepeating(MotionSpringState state, SpringChannel channel, float dtSec, float? seekScale)
+        {
+            var previous = channel.Integrator.Value;
+            var value = ValueAt(state, channel, state.ElapsedSec, out var ended);
+            float velocity;
+            if (ended)
+            {
+                // A finished value has stopped, so an interruption after its end releases the next spring at rest.
+                velocity = 0f;
+            }
+            else if (seekScale is { } scale)
+            {
+                // The slope at the time, in the units of the clock the play is shown on: a step across the seek
+                // itself would average the whole jump, and a pause or a rate of zero leaves the value still.
+                var step = SeekSlopeStepSec;
+                // MUTANT_SURVIVES(equivalent, boundary): SeekTo is the only path here and stores a float widened to a double,
+                // and no float equals 1/1000, so the elapsed time is never exactly the step.
+                var from = state.ElapsedSec >= step ? state.ElapsedSec - step : state.ElapsedSec;
+                // MUTANT_SURVIVES(equivalent, boundary): the same comparison as the line above.
+                var to = state.ElapsedSec >= step ? state.ElapsedSec : state.ElapsedSec + step;
+                velocity = (ValueAt(state, channel, to, out _) - ValueAt(state, channel, from, out _))
+                    / (float)(to - from) * scale;
+            }
+            else
+            {
+                velocity = dtSec > 0f ? (value - previous) / dtSec : 0f;
+            }
+            channel.Integrator.Set(value, velocity);
+            return ended;
+        }
+
+        private const double SeekSlopeStepSec = 1.0 / 1000.0;
+
+        private static float ValueAt(MotionSpringState state, SpringChannel channel, double elapsedSec, out bool ended)
+        {
+            if (channel.Timing is { } own)
+            {
+                return TweenValueAt(channel, own, elapsedSec, out ended);
+            }
+            var localSec = elapsedSec - channel.DelaySec;
+            if (channel.DelaySec > 0f && localSec < 0.0)
+            {
+                ended = false;
+                return channel.Origin;
+            }
+            var repeat = channel.Once ? default : state.Repeat;
+            // An instant spring (SettleSec 0) has not ended at time 0, which a play on a playback is sampled at
+            // through its delay: Framer leaves the value where it is until that delay ends.
+            ended = localSec >= repeat.TotalSec(channel.PassSec) && !(SettleOf(state, channel) == 0.0 && localSec <= 0.0);
+            if (ended)
+            {
+                return repeat.EndsAtFrom ? channel.Origin : channel.Target;
+            }
+            // A spring that does not rest within 20 s has no pass to repeat, so it plays its first pass on.
+            var mirrored = false;
+            var passTime = float.IsPositiveInfinity(channel.PassSec)
+                ? localSec
+                : repeat.PassTime(localSec, channel.PassSec, out mirrored);
+            return SamplePass(state, channel, passTime, mirrored);
+        }
+
+        // A channel on a transition of its own: its target once the entry has run, its origin until the delay has.
+        private static float TweenValueAt(SpringChannel channel, TweenChannelTiming own, double elapsedSec, out bool ended)
+        {
+            ended = elapsedSec >= own.DelaySec + own.DurationSec;
+            if (ended)
+            {
+                return channel.Target;
+            }
+            var progress = own.DurationSec > 0f ? Mathf.Clamp01((float)((elapsedSec - own.DelaySec) / own.DurationSec)) : 0f;
+            return Mathf.LerpUnclamped(channel.Origin, channel.Target, MotionEasing.Evaluate(own.Easing, progress, own.Accelerated));
+        }
+
+        /// <summary>
+        /// Gives each channel a <see cref="StylePropertyTransition"/> names that entry's timing in place of the state's
+        /// spring, the last entry naming a channel winning: a tween of its delay, duration and easing, or the default
+        /// transition Framer Motion gives the value where it names neither duration nor easing.
+        /// <paramref name="playDelaySec"/> is the delay the play waits, which an entry's own delay replaces. The driver
+        /// starts at the earliest of them (<see cref="StylePropertyTransition.EarliestAfterSec"/> before the play's
+        /// delay ends), so every channel's delay counts from there.
+        /// </summary>
+        public static MotionSpringState? WithOverrides(MotionSpringState? state,
+            IReadOnlyList<StylePropertyTransition>? overrides, float playDelaySec, float orchestrationSec = 0f)
+        {
+            if (state == null || overrides == null || overrides.Count == 0)
+            {
+                return state;
+            }
+            var earliestSec = StylePropertyTransition.EarliestAfterSec(overrides, playDelaySec, orchestrationSec);
+            ForEachActiveChannel(state, c => c.DelaySec = -earliestSec);
+            foreach (var (channel, longhands, kind) in DrivenTweenTiming.OverridableChannels<SpringChannel>(state))
+            {
+                if (DrivenTweenTiming.LastNaming(overrides, longhands) is not { } entry)
+                {
+                    continue;
+                }
+                var delaySec = entry.DelayAfterSec(playDelaySec, orchestrationSec) - earliestSec;
+                if (entry.IsDefined)
+                {
+                    channel.Timing = entry.TimingFor(delaySec, kind, channel.Origin, channel.Target,
+                        DrivenTweenTiming.Accelerated(longhands));
+                }
+                else
+                {
+                    // A spring of the value's own, or its ease, run once after the entry's delay, as Framer runs a value
+                    // whose transition names none.
+                    AssignFramerDefault(channel, kind);
+                    channel.DelaySec = delaySec;
+                    channel.Once = true;
+                }
+                Release(state, channel, channel.Origin, 0f);
+            }
+            return state;
+        }
+
+        private static readonly List<SpringColorChannel> s_noColors = new();
+        private static readonly List<SpringLengthChannel> s_noLengths = new();
+
+        private static float SamplePass(MotionSpringState state, SpringChannel channel, double passTime, bool mirrored)
+        {
+            if (channel.EaseSec > 0f)
+            {
+                var progress = CubicBezierEvaluator.Evaluate(DefaultEaseX1, DefaultEaseY1, DefaultEaseX2, DefaultEaseY2,
+                    Mathf.Clamp01((float)passTime / channel.EaseSec));
+                return mirrored
+                    ? Mathf.LerpUnclamped(channel.Target, channel.Origin, progress)
+                    : Mathf.LerpUnclamped(channel.Origin, channel.Target, progress);
+            }
+            var physics = mirrored ? channel.MirroredPhysics : channel.Physics;
+            var spring = physics is { } own
+                ? (own.Stiffness, own.Damping, state.Mass)
+                : (state.Stiffness, state.Damping, state.Mass);
+            return mirrored
+                ? SampleSpring(channel.Target, channel.Origin, channel.Scale, -channel.StartVelocity, passTime, spring,
+                    SettleOf(state, channel), channel.RestSpeed)
+                : SampleSpring(channel.Origin, channel.Target, channel.Scale, channel.StartVelocity, passTime, spring,
+                    SettleOf(state, channel), channel.RestSpeed);
+        }
+
+        // Framer Motion's spring generator released at `from` toward `to` with `velocity` on the scaled travel: the
+        // target once it rests, or, for one resolved from a duration (settleSec), once that duration has run.
+        internal static float SampleSpring(float from, float to, float scale, float velocity, double t,
+            (float Stiffness, float Damping, float Mass) spring, double? settleSec = null, float? restSpeed = null)
+        {
+            var delta = (to - from) * scale;
+            var (displacement, speed) = SpringIntegrator.Solve(-delta, velocity, t, spring);
+            var done = settleSec is { } settle ? t >= settle : Rests(delta, displacement, speed, restSpeed);
+            return done ? to : (float)(to + displacement / scale);
+        }
+
+        /// <summary>
+        /// What each channel of <paramref name="state"/> shows and the velocity it is moving at, which a color
+        /// carries none of, as Framer tracks none for one.
+        /// </summary>
+        public static MotionDrawnValues Drawn(MotionSpringState state)
+        {
+            static (float, float)? Of(SpringChannel? c) => c == null ? null : (c.Integrator.Value, c.Integrator.Velocity);
+            var drawn = MotionDrawnValues.Of(
+                new MotionDrawnValues.Channels(
+                    Of(state.Opacity), Of(state.TranslateX), Of(state.TranslateY), Of(state.Scale), Of(state.Rotate)),
+                state.Colors,
+                c => (c.Property, MotionPropertyInterpolation.LerpColor(c.From, c.To, c.Progress.Integrator.Value)),
+                state.Lengths,
+                l => (l.Property, l.Unit, l.Value.Integrator.Value, l.Value.Integrator.Velocity));
+            drawn.ScaleY = Of(state.ScaleY);
+            drawn.TranslateXUnit = state.TranslateX?.Unit ?? LengthUnit.Pixel;
+            drawn.TranslateYUnit = state.TranslateY?.Unit ?? LengthUnit.Pixel;
+            drawn.SkewX = Of(state.SkewX);
+            drawn.SkewY = Of(state.SkewY);
+            return drawn;
+        }
+
+        /// <summary>
+        /// Releases each channel of <paramref name="next"/> that <paramref name="interrupted"/> draws with the
+        /// velocity it is moving at, as Framer Motion starts a value's new animation with the motion value's
+        /// velocity, and, where <paramref name="fromDrawn"/>, from the value drawn too, as Framer starts it from the
+        /// motion value. A color starts at the color drawn, with no velocity. A length in another unit keeps its
+        /// own start.
+        /// </summary>
+        /// <remarks>
+        /// An exit passes <paramref name="fromDrawn"/> false: its channels' <see cref="SpringChannel.RestingTarget"/>
+        /// is the pose a cancelled exit heads back to, which a continued start would replace.
+        /// </remarks>
+        public static void ContinueFrom(MotionSpringState next, MotionDrawnValues interrupted, bool fromDrawn)
+        {
+            Continue(next, next.Opacity, interrupted.Opacity, fromDrawn);
+            Continue(next, next.TranslateX, interrupted.TranslateXUnit == next.TranslateX?.Unit ? interrupted.TranslateX : null,
+                fromDrawn);
+            Continue(next, next.TranslateY, interrupted.TranslateYUnit == next.TranslateY?.Unit ? interrupted.TranslateY : null,
+                fromDrawn);
+            Continue(next, next.Scale, interrupted.Scale, fromDrawn);
+            Continue(next, next.ScaleY, interrupted.ScaleY ?? interrupted.Scale, fromDrawn);
+            Continue(next, next.Rotate, interrupted.Rotate, fromDrawn);
+            Continue(next, next.SkewX, interrupted.SkewX, fromDrawn);
+            Continue(next, next.SkewY, interrupted.SkewY, fromDrawn);
+            if (next.Lengths != null)
+            {
+                foreach (var length in next.Lengths)
+                {
+                    if (interrupted.LengthOf(length.Property, length.Unit) is { } drawn)
+                    {
+                        Continue(next, length.Value, (drawn.Value, drawn.Velocity), fromDrawn && drawn.SameUnit);
+                    }
+                }
+            }
+            if (!fromDrawn)
+            {
+                return;
+            }
+            interrupted.ContinueColors(next.Colors, color => color.Property, (color, drawn) =>
+            {
+                var continued = new SpringColorChannel(color.Property, drawn, color.To);
+                Release(next, continued.Progress, 0f, 0f);
+                return continued;
+            });
+        }
+
+        private static void Continue(MotionSpringState next, SpringChannel? channel,
+            (float Value, float Velocity)? interrupted, bool fromDrawn)
+        {
+            if (channel == null || interrupted is not { } drawn)
+            {
+                return;
+            }
+            if (fromDrawn)
+            {
+                // Where the play starts, which a cancel holding it returns to (StartValues), and what the first
+                // write before the tick shows (ApplyCurrentValues).
+                channel.RestingTarget = drawn.Value;
+                channel.Integrator.Set(drawn.Value, drawn.Velocity);
+            }
+            Release(next, channel, fromDrawn ? drawn.Value : channel.Origin, drawn.Velocity);
+        }
+
+        /// <summary>
+        /// Releases each channel of <paramref name="next"/> that a native transition is moving at that transition's
+        /// rate, as <see cref="ContinueFrom"/> does for a play; <paramref name="nativeVelocity"/> reads it for a slot
+        /// in a unit.
+        /// </summary>
+        public static void InheritVelocity(MotionSpringState next, System.Func<ArbitraryProperty, LengthUnit, float?> nativeVelocity)
+        {
+            InheritNative(next, next.Opacity, nativeVelocity, ArbitraryProperty.Opacity, LengthUnit.Pixel);
+            InheritNative(next, next.TranslateX, nativeVelocity, ArbitraryProperty.TranslateX,
+                next.TranslateX?.Unit ?? LengthUnit.Pixel);
+            InheritNative(next, next.TranslateY, nativeVelocity, ArbitraryProperty.TranslateY,
+                next.TranslateY?.Unit ?? LengthUnit.Pixel);
+            InheritNative(next, next.Scale, nativeVelocity, ArbitraryProperty.Scale, LengthUnit.Pixel);
+            InheritNative(next, next.Rotate, nativeVelocity, ArbitraryProperty.Rotate, LengthUnit.Pixel);
+            if (next.Lengths != null)
+            {
+                foreach (var length in next.Lengths)
+                {
+                    InheritNative(next, length.Value, nativeVelocity, length.Property, length.Unit);
+                }
+            }
+        }
+
+        private static void InheritNative(MotionSpringState next, SpringChannel? channel, System.Func<ArbitraryProperty, LengthUnit, float?> nativeVelocity,
+            ArbitraryProperty slot, LengthUnit unit)
+        {
+            if (channel != null && nativeVelocity(slot, unit) is { } velocity)
+            {
+                Release(next, channel, channel.Origin, velocity);
+            }
+        }
+
+        // Whether the play ends on its from-values rather than its to-values (MotionRepeat.EndsAtFrom).
+        public static bool EndsAtFrom(MotionSpringState state) => state.Repeat.EndsAtFrom;
+
+        // A play that landed leaves each axis it moved at the value it ended on; one cut short leaves the lot to the
+        // element's classes.
+        private static void ReleaseSkew(VisualElement element, MotionSpringState state, bool landed)
+        {
+            if (state.SkewX == null && state.SkewY == null)
+            {
+                return;
+            }
+            var x = landed ? EndValue(state, state.SkewX) : null;
+            var y = landed ? EndValue(state, state.SkewY) : null;
+            state.Skew?.EndDrive(element, x, y);
+        }
+
+        private static float? EndValue(MotionSpringState state, SpringChannel? channel)
+            => channel == null ? null : state.Repeat.EndsAtFrom ? channel.Origin : channel.Target;
+
+        /// <summary>
+        /// Releases every inline slot this state ever wrote — and the transition suspension
+        /// <see cref="ApplyCurrentValues"/> put in place — letting the (already-resting) classes take back over.
+        /// </summary>
+        /// <remarks>
+        /// The slots are nulled first and the element's surviving arbitrary-value layers, then the holds on its slots,
+        /// re-asserted afterwards,
+        /// in that order: a driven shorthand owns a whole fan-out (a `padding` channel writes all four edges)
+        /// while an authored longhand (`pt-[2px]`) is registered against ONE of them, so per-property
+        /// interleaving would let a later null wipe a value an earlier re-assert had just restored.
+        /// </remarks>
+        public static void ClearInlineOverrides(VisualElement element, MotionSpringState state, bool landed = false)
+        {
+            if (state.Opacity != null) MotionOpacity.Write(element, StyleKeyword.Null);
+            if (state.TranslateX != null || state.TranslateY != null) element.style.translate = StyleKeyword.Null;
+            if (state.Scale != null) AuthoredTransform.SetScale(element, StyleKeyword.Null);
+            if (state.Rotate != null) AuthoredTransform.SetRotate(element, StyleKeyword.Null);
+            state.Paint?.Release();
+            ReleaseSkew(element, state, landed);
+            if (state.Colors != null)
+            {
+                foreach (var c in state.Colors) StyleArbitraryValueResolver.ReleaseDriven(element, c.Property);
+            }
+            if (state.Lengths != null)
+            {
+                foreach (var l in state.Lengths) StyleArbitraryValueResolver.ReleaseDriven(element, l.Property);
+            }
+            StyleArbitraryValueResolver.ReapplyLayeredValues(element);
+            StyleAnimateDriver.HoldAgainstLoop(element, state, MotionTransitionSlots.None);
+            StyleAnimateDriver.ReassertLoop(element, DrivenSlots(state));
+            MotionNativeTransitionGuard.Release(element, state);
+            if (state.NativeLayoutOwner != null) MotionNativeTransitionGuard.Release(state.NativeLayoutOwner, state);
+            state.NativeLayoutOwner = null;
+        }
+
+        /// <summary>
+        /// Stops driving every channel that writes one of <paramref name="named"/> and hands its inline slot back to
+        /// the element's variant layers, as <see cref="ClearInlineOverrides"/> does, leaving the rest running.
+        /// </summary>
+        public static void ReleaseChannels(VisualElement element, MotionSpringState state, StyleLonghandSet named)
+        {
+            if (state.Opacity != null && named.Contains(StyleLonghand.Opacity))
+            {
+                state.Opacity = null;
+                MotionOpacity.Write(element, StyleKeyword.Null);
+            }
+            // X and Y are created together, so they are dropped together.
+            if (state.TranslateX != null && named.Contains(StyleLonghand.Translate))
+            {
+                state.TranslateX = null;
+                state.TranslateY = null;
+                element.style.translate = StyleKeyword.Null;
+            }
+            if (state.Scale != null && named.Contains(StyleLonghand.Scale))
+            {
+                state.Scale = null;
+                state.ScaleY = null;
+                AuthoredTransform.SetScale(element, StyleKeyword.Null);
+            }
+            if (state.Rotate != null && named.Contains(StyleLonghand.Rotate))
+            {
+                state.Rotate = null;
+                AuthoredTransform.SetRotate(element, StyleKeyword.Null);
+            }
+            state.Colors?.RemoveAll(c => ReleasesProperty(element, c.Property, named));
+            state.Lengths?.RemoveAll(l => ReleasesProperty(element, l.Property, named));
+            StyleArbitraryValueResolver.ReapplyLayeredValues(element, named);
+            StyleAnimateDriver.HoldAgainstLoop(element, state, DrivenSlots(state));
+            StyleAnimateDriver.ReassertLoop(element, DrivenSlots(state));
+            SyncLayoutOwner(element, state);
+            GestureChannelMask.ResyncNarrowing(element, state);
+        }
+
+        /// <summary>
+        /// Hands the channels <see cref="GestureChannelMask.MaskChannels"/> held for a gesture, among <paramref name="named"/>, back to
+        /// the play, each from what <paramref name="shown"/> reads the element showing, released again from there toward
+        /// the play's target, as Framer Motion animates a value a gesture state let go of back to its animate target.
+        /// Every other channel carries on untouched.
+        /// </summary>
+        public static void ReturnChannels(VisualElement element, MotionSpringState state, StyleLonghandSet named,
+            MotionSlotContext shown)
+        {
+            var back = new HashSet<SpringChannel>();
+            Reorigin(state.Opacity, named, StyleLonghand.Opacity, ArbitraryProperty.Opacity, shown, back);
+            Reorigin(state.TranslateX, named, StyleLonghand.Translate, ArbitraryProperty.TranslateX, shown, back);
+            Reorigin(state.TranslateY, named, StyleLonghand.Translate, ArbitraryProperty.TranslateY, shown, back);
+            Reorigin(state.Scale, named, StyleLonghand.Scale, ArbitraryProperty.Scale, shown, back);
+            Reorigin(state.ScaleY, named, StyleLonghand.Scale, ArbitraryProperty.Scale, shown, back);
+            Reorigin(state.Rotate, named, StyleLonghand.Rotate, ArbitraryProperty.Rotate, shown, back);
+            if (state.Colors != null)
+            {
+                for (var i = 0; i < state.Colors.Count; i++)
+                {
+                    var c = state.Colors[i];
+                    if (!GestureChannelMask.ReturnsProperty(c.Progress, c.Property, named, shown))
+                    {
+                        continue;
+                    }
+                    var from = shown.TryReadShown(c.Property, LengthUnit.Pixel, out var color) ? color.Color
+                        : MotionPropertyInterpolation.LerpColor(c.From, c.To, c.Progress.Integrator.Value);
+                    var returned = new SpringColorChannel(c.Property, from, c.To);
+                    // The fresh channel keeps the timing the play gave the colour: an entry's tween or the default
+                    // ease, fixed physics, and whether it plays once, as the bezier driver's ContinueFrom keeps it.
+                    var (was, now) = (c.Progress, returned.Progress);
+                    (now.Timing, now.EaseSec, now.FixedPhysics, now.RestSpeed, now.Once) =
+                        (was.Timing, was.EaseSec, was.FixedPhysics, was.RestSpeed, was.Once);
+                    state.Colors[i] = returned;
+                    back.Add(now);
+                }
+            }
+            if (state.Lengths != null)
+            {
+                foreach (var l in state.Lengths)
+                {
+                    if (GestureChannelMask.ReturnsProperty(l.Value, l.Property, named, shown))
+                    {
+                        PutAtShown(l.Value, l.Property, l.Unit, shown);
+                        back.Add(l.Value);
+                    }
+                }
+            }
+            if (back.Count == 0)
+            {
+                return;
+            }
+            // Only the channels the gesture held start again, from now on the play's clock; every other one is left
+            // on its own animation, as Framer leaves a value no gesture state touches.
+            var nowSec = (float)state.ElapsedSec;
+            foreach (var c in back)
+            {
+                c.DelaySec = nowSec;
+                if (c.Timing is { } own)
+                {
+                    c.Timing = own with { DelaySec = nowSec };
+                }
+                Release(state, c, c.Integrator.Value, c.Integrator.Velocity);
+            }
+            GestureChannelMask.ResyncNarrowing(element, state);
+            WriteChannelValues(element, state);
+        }
+
+        private static void Reorigin(SpringChannel? channel, StyleLonghandSet named, StyleLonghand longhand,
+            ArbitraryProperty slot, MotionSlotContext shown, HashSet<SpringChannel> back)
+        {
+            if (GestureChannelMask.Returns(channel, named, longhand, slot, shown))
+            {
+                PutAtShown(channel!, slot, channel!.Unit, shown);
+                back.Add(channel!);
+            }
+        }
+
+        // Puts the channel at what the element shows on slot, at rest; leaves it where it is where that cannot be read.
+        private static void PutAtShown(SpringChannel channel, ArbitraryProperty slot, LengthUnit unit, MotionSlotContext shown)
+        {
+            if (shown.TryReadShown(slot, unit, out var value))
+            {
+                channel.Integrator.Set(value.Value, 0f);
+            }
+        }
+
+        // Holds translate at (x, y) from its next write on, the start values of a play CancelPlay holds.
+        public static void HoldTranslate(MotionSpringState state, Length x, Length y)
+        {
+            state.TranslateX = new SpringChannel(x.value, x.value) { Unit = x.unit };
+            state.TranslateY = new SpringChannel(y.value, y.value) { Unit = y.unit };
+        }
+
+        internal static bool ReleasesProperty(VisualElement element, ArbitraryProperty property, StyleLonghandSet named)
+        {
+            if (!StyleArbitraryLonghands.Of(property).Overlaps(named))
+            {
+                return false;
+            }
+            StyleArbitraryValueResolver.ReleaseDriven(element, property);
+            return true;
+        }
+
+        /// <summary>
+        /// Re-targets every active channel toward the value it STARTED from (see
+        /// <see cref="SpringChannel.RestingTarget"/>) — the exit-cancel hand-off — releasing a new spring from the
+        /// value and velocity it was last sampled at, as Framer Motion starts an interrupted value's new animation.
+        /// The reversal plays once, whatever the play repeated.
+        /// </summary>
+        public static void Retarget(MotionSpringState state)
+        {
+            state.Repeat = default;
+            state.ElapsedSec = 0.0;
+            ForEachActiveChannel(state, c =>
+            {
+                c.Target = c.RestingTarget;
+                StartsNow(c);
+                Release(state, c, c.Integrator.Value, c.Integrator.Velocity);
+            });
+        }
+
+        // A channel released again starts now: the delay an entry or the earliest entry's start gave it is spent.
+        private static void StartsNow(SpringChannel channel)
+        {
+            channel.DelaySec = 0f;
+            if (channel.Timing is { } own)
+            {
+                channel.Timing = own with { DelaySec = 0f };
+            }
+        }
+
+        /// <summary>
+        /// Puts the play at <paramref name="timeSec"/> into its run, earlier or later than where it stands, writes
+        /// every channel there, and reports whether that is settled — Framer Motion's spring generator sampled at a
+        /// time. A play on a <c>MotionPlayback</c> is driven by this. The velocity the channels keep is the curve's
+        /// slope there times <paramref name="timeScale"/>, the playback's seconds per second on screen.
+        /// </summary>
+        public static bool SeekTo(VisualElement element, MotionSpringState state, float timeSec, float timeScale = 1f)
+        {
+            state.ElapsedSec = Mathf.Max(0f, timeSec);
+            return SampleAll(element, state, 0f, timeScale);
+        }
+
+        /// <summary>
+        /// Leaves every channel still: what a play on a paused or stopped <c>MotionPlayback</c> shows, so an
+        /// interruption releases the next spring at rest.
+        /// </summary>
+        public static void Halt(MotionSpringState state)
+        {
+            HaltChannel(state.Opacity);
+            HaltChannel(state.TranslateX);
+            HaltChannel(state.TranslateY);
+            HaltChannel(state.Scale);
+            HaltChannel(state.ScaleY);
+            HaltChannel(state.Rotate);
+            HaltChannel(state.PaintProgress);
+            HaltChannel(state.SkewX);
+            HaltChannel(state.SkewY);
+            if (state.Colors != null)
+            {
+                foreach (var c in state.Colors) HaltChannel(c.Progress);
+            }
+            if (state.Lengths != null)
+            {
+                foreach (var l in state.Lengths) HaltChannel(l.Value);
+            }
+        }
+
+        private static void HaltChannel(SpringChannel? channel)
+        {
+            if (channel != null)
+            {
+                channel.Integrator.Set(channel.Integrator.Value, 0f);
+            }
+        }
+
+        /// <summary>
+        /// The values a play started from on each channel, as a plan of from-to pairs that both hold them: what
+        /// <c>StyleAnimationScheduler</c> starts the next play on a held element from.
+        /// </summary>
+        public static MotionSpringClassParser.SpringPlan StartValues(MotionSpringState state)
+        {
+            var plan = MotionSpringClassParser.Holding(
+                (state.Opacity?.RestingTarget, state.TranslateX?.RestingTarget, state.TranslateY?.RestingTarget,
+                    state.Scale?.RestingTarget, state.Rotate?.RestingTarget),
+                state.Colors, static c => new MotionSpringClassParser.ColorChannelPlan(c.Property, c.From, c.From),
+                state.Lengths, static l => new MotionSpringClassParser.LengthChannelPlan(l.Property,
+                    l.Value.RestingTarget, l.Value.RestingTarget, l.Unit));
+            plan.TranslateXUnit = state.TranslateX?.Unit ?? LengthUnit.Pixel;
+            plan.TranslateYUnit = state.TranslateY?.Unit ?? LengthUnit.Pixel;
+            if (state.ScaleY != null) plan.ScaleY = (state.ScaleY.RestingTarget, state.ScaleY.RestingTarget);
+            return plan;
+        }
+
+        /// <summary>
+        /// Runs <paramref name="action"/> against every active <see cref="SpringChannel"/> on <paramref
+        /// name="state"/> — the five optional axes plus each property channel's own integrator — the single
+        /// place that walks the channel set for the callers (like <see cref="Retarget"/>) whose per-channel
+        /// action does not otherwise depend on WHICH channel it is. Not used by the write/step/clear paths,
+        /// where each element.style write is channel-specific (and translate x/y compose onto one shared
+        /// inline style), which stay hand-written.
+        /// </summary>
+        private static void ForEachActiveChannel(MotionSpringState state, System.Action<SpringChannel> action)
+        {
+            if (state.Opacity != null) action(state.Opacity);
+            if (state.TranslateX != null) action(state.TranslateX);
+            if (state.TranslateY != null) action(state.TranslateY);
+            if (state.Scale != null) action(state.Scale);
+            if (state.ScaleY != null) action(state.ScaleY);
+            if (state.Rotate != null) action(state.Rotate);
+            if (state.PaintProgress != null) action(state.PaintProgress);
+            if (state.SkewX != null) action(state.SkewX);
+            if (state.SkewY != null) action(state.SkewY);
+            if (state.Colors != null)
+            {
+                foreach (var c in state.Colors) action(c.Progress);
+            }
+            if (state.Lengths != null)
+            {
+                foreach (var l in state.Lengths) action(l.Value);
+            }
+        }
+    }
+}

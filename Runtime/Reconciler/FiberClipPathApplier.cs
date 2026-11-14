@@ -1,0 +1,346 @@
+using System.Collections.Generic;
+using UnityEngine;
+using UnityEngine.UIElements;
+
+namespace Velvet
+{
+    // The structural-WRAPPER layer for clip-path-* utilities. UI Toolkit (6000.3) has no USS clip-path;
+    // the supported arbitrary-shape mask is an overflow-hidden element whose background-image is a VECTOR
+    // image (UIR stencil-clips the subtree to the vector geometry). The wrapper carries that baked
+    // VectorImage (ClipPathVectorImageBaker), so the inner element's own background, borders, text and
+    // children are ALL clipped to the shape — CSS clip-path's "clips everything, including descendants"
+    // semantics. Limitations vs CSS: pointer picking is unchanged (the clipped-away corners still
+    // hit-test), and world-space panels (which only support rectangle clipping) ignore the mask.
+    internal sealed class FiberClipPathApplier
+    {
+        private readonly ReconcilerContext _ctx;
+        private readonly WrapperInfrastructure _wrappers;
+
+        public FiberClipPathApplier(ReconcilerContext ctx, WrapperInfrastructure wrappers)
+        {
+            _ctx = ctx;
+            _wrappers = wrappers;
+        }
+
+        // Create-time entry point: when classNames carries an active clip-path-* utility (and the
+        // element was not already wrapped by a user wrapElement), wraps element in a clip container
+        // and returns the wrapper; otherwise returns element unchanged. Mirrors ApplyShadowOnCreate.
+        // TryExtract alone is the gate; StyleClipPathClass' own remarks own why there is no cheaper one.
+        internal VisualElement ApplyClipPathOnCreate(VisualElement element, string[] classNames)
+        {
+            // Wrap whenever a clip can EVER apply — base OR a variant (hover:clip-*) — so the stencil wrapper
+            // persists and a hover never has to wrap/unwrap (which would mutate the parent mid-event). The
+            // at-rest shape is resolved from the live class list (base clip; a variant-only clip is null here
+            // and lights up on its state via ReResolveClipPathLive).
+            if (!StyleClipPathClass.WantsClipWrapper(classNames))
+            {
+                return element;
+            }
+            StyleClipPathClass.TryExtractLive(element, out var spec);
+            return BuildClipPathWrapper(element, spec);
+        }
+
+        // Patch-time reconciliation of an element's clip state against its new class list. Same four
+        // cases as the other effect layers: update the existing clip's spec, wrap a newly-clipped element
+        // in place, unwrap one whose clip class was removed, or do nothing. Runs BEFORE the shadow patch
+        // (see PatchElementPost): clip-path clips the box-shadow (CSS), so the shadow patch reads this result
+        // and suppresses its paint while a clip is active.
+        // Returns whether a clip WRAPPER owns this element after the patch (PatchElementPost forwards it so the
+        // shadow and ring layers self-suppress). KNOWN LIMITATION: this is "a clip can apply" (base or any
+        // variant), not "a clip is applied right now" — both suppressions key off this one gate, so a clip
+        // VARIANT on an element that also has a base shadow-* /
+        // ring-* suppresses that shadow / ring at ALL times, not only while the variant's state is on. The
+        // (rare) combo `shadow-lg hover:clip-*` therefore shows no shadow even at rest. Pure base clip-path
+        // and pure shadow/ring are unaffected.
+        internal bool ApplyClipPathOnPatch(VisualElement element, string[] classNames)
+        {
+            var wrapped = _ctx.ClipPathBindings.TryGetValue(element, out var binding);
+            // Wrap whenever a clip can apply (base OR a variant) — the wrapper is persistent so a hover toggle
+            // never wraps/unwraps; the active shape is the live cascade, resolved below.
+            var wantWrap = StyleClipPathClass.WantsClipWrapper(classNames);
+            if (wrapped && binding!.Correction)
+            {
+                // The correction wrapper takes the one binding slot and is no clip:
+                // FiberNodePatcher.ReconcileLayoutIdCorrection owns it while no clip applies, and a clip that now
+                // applies replaces it.
+                if (!wantWrap)
+                {
+                    return false;
+                }
+                MotionLayoutIdDriver.BeforeReseat(element, _ctx);
+                UnwrapClipPathInPlace(element, binding);
+                wrapped = false;
+            }
+            if (!wrapped && !wantWrap)
+            {
+                return false;
+            }
+
+            // The at-rest shape from the live class list (base clip; a variant-only clip is null here and is
+            // applied transiently by ReResolveClipPathLive on its state). A null spec = no mask, wrapper kept.
+            StyleClipPathClass.TryExtractLive(element, out var spec);
+
+            if (wantWrap && wrapped)
+            {
+                if ((binding.Spec?.Source) != (spec?.Source))
+                {
+                    binding.Spec = spec;
+                    // Force the next sync to re-evaluate even at the same box size (cached if seen before).
+                    binding.BakedWidth = -1f;
+                    binding.BakedHeight = -1f;
+                    SyncClipPathGeometry(element, binding);
+                }
+                ClipPathLayoutBox.SyncClasses(element);
+                return true;
+            }
+            if (wantWrap)
+            {
+                // Neither the shadow nor the ring needs tearing down here: both are wrapper-less and both run
+                // AFTER this pass, see the now-active clip (clipActive) and detach themselves.
+                // Honor the user wrapElement opt-out on patch too.
+                if (_wrappers.IsAlreadyWrapped(element))
+                {
+                    return true;
+                }
+                WrapClipPathInPlace(element, spec);
+                return true;
+            }
+            // Wrapped, but no clip token (base or variant) remains: unwrap.
+            UnwrapClipPathInPlace(element, binding);
+            return false;
+        }
+
+        // Re-resolves a clipped element's mask from its LIVE class list — invoked when a variant manipulator
+        // toggles a clip-path payload (hover/focus/dark/…), since a clip class toggle alone does nothing (UITK
+        // has no clip-path property). The wrapper already exists (WantsClipWrapper wrapped it), so this only
+        // swaps the mask — the per-binding bake cache makes a return to a previously-seen shape re-bake-free.
+        internal void ReResolveClipPathLive(VisualElement element)
+        {
+            if (!_ctx.ClipPathBindings.TryGetValue(element, out var binding) || binding.Correction)
+            {
+                return;
+            }
+            StyleClipPathClass.TryExtractLive(element, out var spec);
+            if ((binding.Spec?.Source) == (spec?.Source))
+            {
+                return;
+            }
+            binding.Spec = spec;
+            binding.BakedWidth = -1f;
+            binding.BakedHeight = -1f;
+            SyncClipPathGeometry(element, binding);
+        }
+
+        // Builds the clip wrapper around element: a container that stands in for the element in its parent's
+        // layout (ClipPathLayoutBox), hides overflow and carries the baked vector shape as its background — the
+        // combination UIR stencil-clips descendants to.
+        // Does NOT touch any parent — the caller inserts the returned wrapper.
+        private VisualElement BuildClipPathWrapper(VisualElement element, ClipPathSpec? spec, bool correction = false)
+        {
+            var wrapper = WrapperInfrastructure.CreatePassthroughWrapper(FiberWrapperElementAppliers.ClipPathWrapperClass);
+            // overflow:hidden + vector background-image = UIR stencil mask of the subtree. A variant-only clip
+            // (spec null at rest) leaves overflow visible so the unclipped element is not rectangle-clipped;
+            // SyncClipPathGeometry toggles overflow as the mask comes and goes.
+            wrapper.style.overflow = spec != null ? Overflow.Hidden : Overflow.Visible;
+            wrapper.Add(element); // reparents element from its current parent (if any) into the wrapper
+
+            var binding = new ClipPathBinding(wrapper) { Spec = spec, Inner = element, Correction = correction };
+            if (!correction)
+            {
+                binding.OnGeometry = _ => SyncClipPathGeometry(element, binding);
+                element.RegisterCallback(binding.OnGeometry);
+            }
+
+            _ctx.ClipPathBindings[element] = binding;
+            _ctx.WrapperToInnerMap[wrapper] = element;
+            ClipPathLayoutBox.Adopt(element, binding);
+
+            // Off-panel / pre-layout the size is unknown (NaN) and the sync no-ops; on a patch-time
+            // wrap of an already-laid-out element it bakes immediately.
+            if (!correction) SyncClipPathGeometry(element, binding);
+            return wrapper;
+        }
+
+        // Wraps an already-mounted element in place, inserting the wrapper at the element's slot.
+        private void WrapClipPathInPlace(VisualElement element, ClipPathSpec? spec, bool correction = false)
+        {
+            var parent = element.parent;
+            if (parent == null)
+            {
+                // Not in the hierarchy (defensive): build the binding but there is no slot to insert into.
+                BuildClipPathWrapper(element, spec, correction);
+                return;
+            }
+            var index = parent.IndexOf(element);
+            var wrapper = BuildClipPathWrapper(element, spec, correction); // removes element from parent
+            parent.Insert(index, wrapper);
+        }
+
+        // The wrapper a rotated layoutId Motion inside a stretching one is drawn through, so the counter-scale
+        // MotionLayoutIdDriver writes on it sits outside the Motion's own rotate. It carries no mask, and
+        // ClipPathBinding.Correction keeps the shadow, the ring and the clip-path rules from reading it as a clip.
+        internal VisualElement WrapLayoutIdCorrection(VisualElement element)
+            => BuildClipPathWrapper(element, null, correction: true);
+
+        internal void WrapLayoutIdCorrectionInPlace(VisualElement element)
+        {
+            if (!_ctx.ClipPathBindings.ContainsKey(element)) WrapClipPathInPlace(element, null, correction: true);
+        }
+
+        internal void UnwrapLayoutIdCorrectionInPlace(VisualElement element)
+        {
+            if (_ctx.ClipPathBindings.TryGetValue(element, out var binding) && binding.Correction)
+            {
+                UnwrapClipPathInPlace(element, binding);
+            }
+        }
+
+        internal bool HasLayoutIdCorrection(VisualElement element)
+            => _ctx.ClipPathBindings.TryGetValue(element, out var binding) && binding.Correction;
+
+        // Removes the clip wrapper, destroying the baked VectorImage, and restores the inner at the
+        // same slot.
+        private void UnwrapClipPathInPlace(VisualElement element, ClipPathBinding binding)
+        {
+            var wrapper = binding.Wrapper;
+            binding.DisposeImage();
+            if (binding.OnGeometry != null)
+            {
+                element.UnregisterCallback(binding.OnGeometry);
+            }
+            _ctx.ClipPathBindings.Remove(element);
+            _ctx.WrapperToInnerMap.Remove(wrapper);
+            ClipPathLayoutBox.Release(element, binding);
+            WrapperInfrastructure.RemoveWrapperRestoreInner(element, wrapper);
+        }
+
+        private static readonly List<StylePropertyName> s_noTransition = new() { new StylePropertyName("none") };
+
+        // The wrapper carries the element's transition classes for its layout; left on for the mask writes
+        // they would start the new mask from the old one rather than show it
+        // (ClipPathLayoutParityPanelTests pins it). A spring exit on a presence anchor that is a clip wrapper
+        // suspends the wrapper's transitions inline too, so what was there is restored rather than cleared; the
+        // saved list is copied because the getter returns the slot's own list, which the suspending write
+        // refills in place.
+        private static void SyncClipPathGeometry(VisualElement element, ClipPathBinding binding)
+        {
+            var ws = binding.Wrapper.style;
+            var saved = ws.transitionProperty;
+            if (saved.keyword == StyleKeyword.Undefined)
+            {
+                saved = new List<StylePropertyName>(saved.value);
+            }
+            ws.transitionProperty = s_noTransition;
+            try
+            {
+                SyncMask(element, binding);
+            }
+            finally
+            {
+                ws.transitionProperty = saved;
+            }
+        }
+
+        // Keeps the mask tracking its target: (re)bakes the vector shape at the inner's resolved box. The baked
+        // VectorImage stores TIGHT bounds, so the background is explicitly positioned and sized by
+        // the analytic path bounds, anchored at the wrapper's origin, where the inner sits (ClipPathLayoutBox).
+        private static void SyncMask(VisualElement element, ClipPathBinding binding)
+        {
+            // No active clip (a variant-only clip at rest, e.g. an element carrying only hover:clip-path-[…]
+            // while not hovered): the persistent wrapper shows the subtree unclipped. Drop the mask but KEEP
+            // the wrapper + the bake cache, so a later state change re-applies a cached shape with no re-bake.
+            if (binding.Spec == null)
+            {
+                StyleRelativeLengths.SyncPoll(ref binding.Poll, element, false, () => { });
+                binding.DetachBackground();
+                binding.Wrapper.style.visibility = StyleKeyword.Null;
+                // No mask ⇒ no clipping at all: drop overflow:hidden so an unclipped (e.g. hover-only) element
+                // is not rectangle-clipped at rest.
+                binding.Wrapper.style.overflow = Overflow.Visible;
+                return;
+            }
+
+            var width = element.resolvedStyle.width;
+            var height = element.resolvedStyle.height;
+            if (float.IsNaN(width) || float.IsNaN(height) || width <= 0 || height <= 0)
+            {
+                // Pre-layout: bake on the first GeometryChangedEvent instead.
+                return;
+            }
+
+            // A shape with lengths the element measures is baked as measured, and again once they move.
+            var spec = binding.Spec;
+            StyleRelativeLengths.SyncPoll(ref binding.Poll, element, spec.HasMeasured, (Element: element, Binding: binding),
+                static moved => SyncMask(moved.Element, moved.Binding));
+            if (spec.HasMeasured)
+            {
+                if (!StyleRelativeLengths.TryBasisOf(element, out var basis))
+                {
+                    return;
+                }
+                spec = spec.MeasuredOn(basis);
+            }
+
+            var sizeUnchanged = Mathf.Abs(width - binding.BakedWidth) < 0.5f
+                && Mathf.Abs(height - binding.BakedHeight) < 0.5f
+                && (!binding.Spec.HasMeasured || spec.Source == binding.MeasuredSource);
+            if (sizeUnchanged)
+            {
+                return;
+            }
+            binding.MeasuredSource = binding.Spec.HasMeasured ? spec.Source : null;
+
+            // Stretch-invariant (all-percentage) shapes scale linearly with the box: rescale the
+            // existing bake via background-size instead of re-tessellating a new VectorImage —
+            // a size animation then re-bakes zero times instead of once per frame.
+            if (binding.Image != null && spec.StretchInvariant
+                && ClipPathVectorImageBaker.TryComputeBounds(spec, width, height, out var stretched))
+            {
+                binding.Bounds = stretched;
+                binding.BakedWidth = width;
+                binding.BakedHeight = height;
+                ApplyClipPathBackgroundRect(binding);
+                return;
+            }
+
+            // GetOrBake reuses a cached VectorImage for this (spec, size) — so toggling a state variant back
+            // to a previously-seen shape is an O(1) lookup, not a re-tessellation. The cache owns the image
+            // (destroyed on teardown), so a switch never destroys the outgoing shape.
+            if (!binding.GetOrBake(spec, width, height, out var image, out var bounds))
+            {
+                // CSS: an empty basic shape clips EVERYTHING (css-shapes-1 even reduces over-100%
+                // inset() offsets to a zero-area box). Hide the subtree rather than dropping the
+                // mask — a crossing inset must render nothing, not everything. Record the attempted
+                // size so the next identical geometry event does not re-attempt the bake.
+                binding.Image = null;
+                binding.Wrapper.style.backgroundImage = StyleKeyword.None;
+                binding.BakedWidth = width;
+                binding.BakedHeight = height;
+                binding.Wrapper.style.visibility = Visibility.Hidden;
+                return;
+            }
+            binding.Wrapper.style.visibility = StyleKeyword.Null;
+            // Active mask ⇒ stencil-clip the subtree (a prior variant-only rest state left overflow visible).
+            binding.Wrapper.style.overflow = Overflow.Hidden;
+
+            binding.Image = image;
+            binding.Bounds = bounds;
+            binding.BakedWidth = width;
+            binding.BakedHeight = height;
+            var ws = binding.Wrapper.style;
+            ws.backgroundImage = Background.FromVectorImage(image);
+            ws.backgroundRepeat = new BackgroundRepeat(Repeat.NoRepeat, Repeat.NoRepeat);
+            ApplyClipPathBackgroundRect(binding);
+        }
+
+        // Writes the background anchor (and, for the stretch path, the rescaled size) from the
+        // binding's current analytic bounds.
+        private static void ApplyClipPathBackgroundRect(ClipPathBinding binding)
+        {
+            var ws = binding.Wrapper.style;
+            ws.backgroundPositionX = new BackgroundPosition(BackgroundPositionKeyword.Left, binding.Bounds.x);
+            ws.backgroundPositionY = new BackgroundPosition(BackgroundPositionKeyword.Top, binding.Bounds.y);
+            TransformOriginSparing.SetBackgroundSize(binding.Wrapper, new BackgroundSize(binding.Bounds.width, binding.Bounds.height));
+        }
+    }
+}

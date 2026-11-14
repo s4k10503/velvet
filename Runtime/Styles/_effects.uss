@@ -1,0 +1,110 @@
+/* Effect Utilities - opacity, cursor, transition */
+
+/* Opacity (Tailwind 5-step scale) */
+.opacity-0 { opacity: 0; }
+.opacity-5 { opacity: 0.05; }
+.opacity-10 { opacity: 0.1; }
+.opacity-15 { opacity: 0.15; }
+.opacity-20 { opacity: 0.2; }
+.opacity-25 { opacity: 0.25; }
+.opacity-30 { opacity: 0.3; }
+.opacity-35 { opacity: 0.35; }
+.opacity-40 { opacity: 0.4; }
+.opacity-45 { opacity: 0.45; }
+.opacity-50 { opacity: 0.5; }
+.opacity-55 { opacity: 0.55; }
+.opacity-60 { opacity: 0.6; }
+.opacity-65 { opacity: 0.65; }
+.opacity-70 { opacity: 0.7; }
+.opacity-75 { opacity: 0.75; }
+.opacity-80 { opacity: 0.8; }
+.opacity-85 { opacity: 0.85; }
+.opacity-90 { opacity: 0.9; }
+.opacity-95 { opacity: 0.95; }
+.opacity-100 { opacity: 1; }
+
+/* Visibility */
+.invisible { visibility: hidden; }
+.visible { visibility: visible; }
+
+/*
+ * Cursor
+ *
+ * No keyword-cursor utilities (`cursor: link` / `cursor: arrow`, etc.):
+ * USS cursor keywords only take effect in Editor UI. At runtime a cursor must
+ * be a texture, so keyword utilities are silently inert in player builds.
+ * For runtime cursors use a texture via `cursor: resource(...)` / `url(...)`
+ * in a dedicated stylesheet, or `UnityEngine.Cursor.SetCursor` from C#.
+ */
+
+/* Transition
+ *
+ * UITK 6.x cannot transition the `transform` property; the animatable transform
+ * is split into the independent `translate` / `scale` / `rotate` properties, so
+ * those are what we enumerate here (see _transforms.uss for the plain utilities).
+ * Listing `transform` would silently animate nothing.
+ *
+ * Each property utility bundles a default duration + curve (Tailwind ships
+ * transition-duration/timing-function inside each utility setting a transition-property other than none) so the
+ * class works standalone — UI Toolkit's initial transition-duration is 0s, which would otherwise snap.
+ * The default curve is the ease-in-out keyword, which Velvet runs along Tailwind's default,
+ * cubic-bezier(0.4, 0, 0.2, 1) (StyleEaseCurve). The explicit .duration-* / .ease-* classes in _state_variants.uss are declared later and override.
+ *
+ * The family runs in Tailwind's order, `transition-none` last because it writes `transition-property` alone.
+ * Of two of them, the one Tailwind emits later holds the property.
+ */
+.transition-all {
+    transition-property: all;
+    transition-duration: var(--duration-normal);
+    transition-timing-function: ease-in-out;
+}
+.transition-colors {
+    transition-property: background-color, border-color, color;
+    transition-duration: var(--duration-normal);
+    transition-timing-function: ease-in-out;
+}
+.transition-colors-scale {
+    transition-property: background-color, border-color, color, scale;
+    transition-duration: var(--duration-normal);
+    transition-timing-function: ease-in-out;
+}
+.transition-colors-scale-opacity {
+    transition-property: background-color, border-color, color, scale, opacity;
+    transition-duration: var(--duration-normal);
+    transition-timing-function: ease-in-out;
+}
+
+/* transition-filter — hands filter-* changes (blur-*, brightness-*, ...) to Velvet's own tween rather
+ * than to the engine's native filter animation, which transition-all / a bare duration-* would get.
+ *
+ * transition-property is pinned to `filter` so the entry that runs for filter is not an `all` the engine
+ * animates the inline filter by; StyleFilterTransitionDriver says which lists the tween runs under.
+ * Pinning one property also means this class transitions ONLY filter, and it does not combine with
+ * another transition-* utility: they set the same property, so the one Tailwind emits later wins outright.
+ * duration-* / ease-* still override, declared later.
+ */
+.transition-filter {
+    transition-property: filter;
+    transition-duration: var(--duration-normal);
+    transition-timing-function: ease-in-out;
+}
+.transition-opacity {
+    transition-property: opacity;
+    transition-duration: var(--duration-normal);
+    transition-timing-function: ease-in-out;
+}
+.transition-transform {
+    transition-property: translate, scale, rotate;
+    transition-duration: var(--duration-normal);
+    /* ease-in-out: Velvet runs it along Tailwind's default cubic-bezier(0.4, 0, 0.2, 1). */
+    transition-timing-function: ease-in-out;
+}
+.transition-none { transition-property: none; }
+
+/* object-fit (Tailwind) — for an element showing an image as background-image. Mapped onto background-size
+   (the modern, non-deprecated property; keywords match the Tailwind names). object-contain / object-cover
+   also center the image to match CSS object-fit's 50% 50% default object-position (UITK's background default
+   is top-left). object-none / object-scale-down have no UI Toolkit equivalent and are intentionally absent. */
+.object-contain { background-size: contain; background-position: center; }
+.object-cover { background-size: cover; background-position: center; }
+.object-fill { background-size: 100% 100%; }

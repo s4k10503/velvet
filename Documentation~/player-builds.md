@@ -1,0 +1,173 @@
+# Player builds
+
+What the package adds to a build, and what it costs you.
+
+## Shaders
+
+Four of Velvet's paints are drawn by first-party shaders rather than by UI Toolkit's own: the shadow behind
+`shadow-*`, the `brightness-*` /
+`saturate-*` / `hue-rotate-*` / `drop-shadow-*` filters and the `backdrop-*` filters ([styling-filters.md](styling-filters.md) owns
+what those do), and the additive, multiply and VFX Graph layers of `V.Particles` ([particles.md](particles.md)
+owns those). The shader files live in `Runtime/Styles/Shaders/` and are looked up by name from C# alone.
+
+Unity's manual states that a build strips shader variants the scenes in it do not use, and none of these is
+in a scene. So the package adds them to **Graphics Settings ▸ Always Included Shaders** in an
+`IPreprocessBuildWithReport` step and removes them again in the matching post-process step. There is nothing
+to install, no list to maintain and no build step to run.
+
+That the seven names are in Always Included Shaders while the build runs is pinned by
+`BundledShaderInclusionTests`. If a shader-backed paint draws nothing in your build, the player log carries a
+`Shader not found` warning naming it, and that is a bug report worth filing.
+
+**What that costs.**
+
+- All seven shaders are compiled into every player build unless the project opts out. **Project Settings ▸
+  Velvet** lists each one; untick a shader and the build leaves it out of Always Included Shaders. The choice
+  is saved in the project's ProjectSettings folder, so it travels with the project. A paint whose
+  shader reaches the player by no other route draws nothing there and logs the warning described at the
+  end of this section; the editor still resolves the shader, so only a player shows the difference.
+- The entries exist only while the build runs. `ProjectSettings/GraphicsSettings.asset` is written back
+  byte for byte afterwards, so nothing lands in your diff, and an entry you had listed yourself is left
+  alone. A build that dies before it can undo the injection leaves the entries on disk; the next time the
+  editor starts, they are removed.
+- A read-only `ProjectSettings/GraphicsSettings.asset` **fails the build** before anything is written when
+  the build would have to write it, because the injection has to be undone afterwards and a write that
+  cannot land would leave you the diff. Check the file out of version control and build again. A build with
+  nothing to add and nothing left over to undo writes nothing there, so a project that keeps the file
+  read-only can list the shaders in Always Included Shaders itself, or opt out of them, and build.
+- If the injection does not take for any other reason, the build **fails** and names the shaders and the
+  settings file, rather than producing a player whose shader-backed paints silently draw nothing.
+
+If a shader is missing at runtime anyway, the paint draws nothing rather than throwing, and names the
+missing shader in one warning for the run rather than one per element the paint was due on.
+
+## The utility stylesheet
+
+`Runtime/Styles/StyleUtilities.uss` and its partials reach a build through
+`Runtime/Assets/VelvetRuntimeAssets.asset`, a small holder the package adds to **PlayerSettings' preloaded
+assets** in an `IPreprocessBuildWithReport` step and removes again in the matching post-process step.
+[setup.md](setup.md) owns what the sheet is and how to put it on a panel.
+
+The holder exists because the two environments answer different questions. A player has no asset database,
+so the sheet has to arrive as a reference something already holds; preloading loads an object but gives no
+way to look one up, so the preloaded object publishes itself as it loads. An editor resolves the sheet
+through the holder too when one is loaded, and falls back to reading the file whenever it is not or its
+reference no longer resolves — so no editor run can see a broken holder, which is why
+`BundledStyleSheetInclusionTests` pins the reference against the sheet rather than waiting for a failure.
+
+**What it costs, measured in built players rather than argued.** Three StandaloneOSX builds of this
+repository's own sample scene, differing only in how the sheet reaches them:
+
+| | engine startup | over the sheet-absent build |
+|---|---|---|
+| preloaded holder (what ships) | 0.106 / 0.105 / 0.105 s | ~21 ms |
+| a `Resources` folder (what shipped before) | 0.133 / 0.131 / 0.130 s | ~46 ms |
+| neither, so the sheet is absent | 0.084 / 0.084 / 0.086 s | — |
+
+Startup is `Time.realtimeSinceStartup` read from a `[RuntimeInitializeOnLoadMethod]`, three runs each, one
+to two milliseconds of spread inside each arm. What the two mechanisms cost is the third column: having the
+sheet at all is ~21 ms, and the `Resources` folder was ~46 ms for the same sheet. Why the folder cost more
+was not measured, and is not claimed here.
+
+**What it costs you.**
+
+- The sheet is in every player build unless the project opts out under **Project Settings ▸ Velvet**, by
+  unticking the holder. A player built without it has no sheet for `AttachTo` to find, so
+  `VelvetStyleUtilities.Sheet` throws there, naming the opt-out; opt out only when the sheet reaches your
+  panels some other way, such as the scene reference [setup.md](setup.md) describes, or not at all. Opting
+  out also silences the warning `V.Mount` gives for a panel without the sheet, in the editor as well.
+- The entry exists only while the build runs. `ProjectSettings/ProjectSettings.asset` is written back byte
+  for byte afterwards, so nothing lands in your diff; an entry you added yourself is left alone, and the
+  rest of your preloaded assets — including an empty slot — go back exactly as they were. A build that dies
+  before it can undo the injection leaves the entry on disk; the next time the editor starts, it is removed.
+- A `ProjectSettings/ProjectSettings.asset` that cannot be opened for writing **fails the build** before
+  anything is written when the build would have to write it, for the reason given for Graphics Settings
+  above. A project that preloads the holder itself, or opts out of it, and has no leftover to undo builds
+  from a read-only file.
+- If the injection does not take for any other reason, the build **fails** and names the holder and what its
+  absence would cost, rather than producing a player in which every utility the sheet declares resolves to
+  nothing. The families Velvet realises from C# hold without it, so the symptom is
+  partial styling rather than none — [setup.md](setup.md) carries the command that answers it per class,
+  and the warning `V.Mount` raises for a panel without the sheet.
+
+**Why not `Resources`, given it needs no build step.** Unity documents the folder as the thing to avoid, and
+it measured at more than twice the added startup. **Why not Addressables**, which is the documented
+replacement: it asks the consumer to create a group and run an Addressables build, and a package cannot
+assume either has happened — a first-run failure there is worse than either number here.
+
+## Engine members read by name
+
+Some engine members Velvet depends on have no public API, so it reaches them by name: what a panel's
+focus controller still holds of an element leaving it, an element's focus pseudo-state and composite-root
+flag, UI Toolkit's internal property-change event, a text input's record of an open IME composition, the
+font asset an element's text is drawn in, whose metrics the font-relative units read
+([styling-arbitrary-lengths.md](styling-arbitrary-lengths.md)), the `@import`s of a stylesheet, the rules of a stylesheet that declare a scale, a rotate or a transform origin and their
+selectors, the cached opacity, rotate, corner radii and transition lists, the transitions a panel
+is running and which longhands a shorthand covers, used by
+[layoutId moves](motion.md#shared-element-layout-animation-layoutid), native transition activity, and the timing and
+values of a running one, used by [current-value starts](motion.md#driven-channels-spring-and-bezier), a spring's
+inherited velocity and the opacity, rotate, translate and scale a layoutId move carries on
+(`RunningStyleTransition.TakeOverRotate` reads the running rotate), the cancel of an element's filter transition, used
+to write a filter change past a running transform-origin transition ([styling-filters.md](styling-filters.md#transitions)),
+the border colors an element's matching style
+rules give it, which a [dashed divider](styling-flexbox-and-gap.md) paints in,
+and a panel's version, hierarchy version, layout-phase flag, style updater and that updater's traversal flag, an
+element's layout node, last layout and version increment, and the node's layout computation, dirty flag, new-layout
+flag and copy of another node's style, which a commit uses to lay the panel out before its layout effects and
+callback refs read it
+([react-migration.md](react-migration.md)), the custom properties a stylesheet declares on an element, with
+the stylesheet reads that spell their values ([styling-custom-properties.md](styling-custom-properties.md)), a
+panel's hierarchy-change event with the kinds of change it announces, on which a `group-*:` or `peer-*:` consumer
+hears a source that code outside a render adds ([styling-variants.md](styling-variants.md)), a layout node's
+clear and insert of its children, which lay a relocated `z-*` or `order-*` element out at its place in flex order
+([styling-z-index.md](styling-z-index.md)), and the viewport, projection, clip rectangle, stencil reference and mask
+depth the renderer draws an immediate-mode element under, which place a
+[backdrop filter](styling-filters.md#backdrop-filters) on the pixels beneath its element, and whether an element clips
+what it holds, with a panel's hierarchy version, which decide where an `outline-*` paints
+([styling-variants.md](styling-variants.md)), and the screen-space runtime panels in their sorting order, the
+update, repaint and render `VelvetPreviewPanel.Render` calls on those of them drawing into its texture, the end of
+the repaint pass, and the function a panel reads its time through with the time it reads without one, with which it
+draws a frame into that texture
+([preview-tooling.md](preview-tooling.md#headless-screenshot-capture)).
+`EngineMember` declares these members. `EngineMemberRegistryTests` checks direct `GetField` / `GetProperty` / `GetMethod`
+and related named-reflection calls, non-generic `Enum.Parse` / `Enum.TryParse`, literal-name delegate
+creation, and fluent member selections comparing `Name` to a literal outside the registry. Whole
+`nameof` arguments are allowed. The guard checks these source spellings; it does not follow aliases or
+values through variables.
+
+Managed code stripping can remove a member that only a lookup by name reaches, so the package hands the
+linker a link.xml keeping those members, from an `IUnityLinkerProcessor` step; a method is kept with every
+overload of its name. There is nothing to configure; the file is written under the project's Temp folder
+while the build runs.
+
+A member that no longer resolves leaves the feature reading it undone rather than throwing, except in
+`VelvetPreviewPanel.Render`, which throws `NotSupportedException` naming each member of its frame that does not
+resolve.
+`EngineMemberResolutionTests` resolves every declaration, with its member kind and type, against the
+editor running the suite, so a Unity upgrade that renames or retypes one fails there and names it.
+Shape matching checks type metadata, generic arguments, vector elements and by-ref parameters rather
+than a type's display string. Method declarations include their return and parameter types; focus
+pseudo-state declarations also require an enum. A member of a generic engine type is declared on the type's
+definition, with the shape `*` where its type is one of the type's parameters, and read on the constructed type the
+value it is read from is.
+
+`ImportedStyleSheetPlayerTests` checks the `@import` lookup from a macOS IL2CPP player with High managed
+stripping. It mounts a target carrying an importing USS, then a real asset-bundle copy, then a bare control, and
+checks their warning phases alongside the USS-owned utility's resolved style. The bundle copy must be a
+distinct object with the original sheet's name and nonempty import names. Shader lookup and support are
+checked against names read from the package's shader files, without serialized shader references. Editor and in-editor PlayMode runs
+skip the player-only fixture.
+
+For a standalone scene that calls the same assertion directly, set VELVET_IMPORT_PLAYER_OUTPUT to the
+output `.app` path and VELVET_IMPORT_PLAYER_EVIDENCE to a log directory, then launch the editor with
+`-batchmode -debugCodeOptimization -quit -executeMethod Velvet.Tests.ImportedStyleSheetPlayerSetup.BuildProbe`.
+This requires the editor's Mac IL2CPP support. The scoped builder temporarily preloads the test assets,
+builds the stylesheet bundle, creates a test scene, and selects ARM64, IL2CPP and High stripping; cleanup restores those settings and removes
+the scene and assets. Run the built app's executable with `-batchmode` and `--velvet-import-result` followed by an absolute
+JSON output path. The probe writes its runtime platform, compiled backend, and assertion result, then
+exits with status zero on success.
+
+Set VELVET_IMPORT_PLAYER_NATIVE_ONLY=1 to use the same builder for the native-transition current-value
+assertion without the shader and bundle checks. It checks idle, running and naturally completed native
+activity, then takes over from a displayed intermediate width and checks the custom start and next
+frame. The result includes those measurements and cleanup success.

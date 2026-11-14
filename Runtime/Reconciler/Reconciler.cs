@@ -1,0 +1,1175 @@
+using System;
+using System.Collections.Generic;
+
+using Unity.Profiling;
+using UnityEngine.UIElements;
+
+namespace Velvet
+{
+    /// <summary>
+    /// VNode diffing engine.
+    /// Compares the old and new VNode arrays and updates the VisualElement tree with minimal mutations.
+    /// </summary>
+    internal sealed class Reconciler : IDisposable, IReconcilerBridge, IReconcilerHost
+    {
+        private static readonly ProfilerMarker s_reconcileMarker = new("Velvet.Reconcile");
+        private static readonly ProfilerMarker s_continueReconcileMarker = new("Velvet.ContinueReconcile");
+
+        private readonly ReconcilerContext _ctx;
+        // Built by the first member that needs them (BuildParts) for a Reconciler that does not own its context:
+        // a component mounted inline, whose render its parent's pass reconciles, reaches none of them
+        // (ReconcilerLazyPartsTests).
+        private ChildReconciler? _childReconciler;
+        private FiberNodeFactory? _factory;
+        private FiberNodePatcher? _patcher;
+        private NodePatchWalk? _patchWalk;
+        private FiberElementCleaner? _cleaner;
+
+        private ChildReconciler ChildPass
+        {
+            get
+            {
+                if (_childReconciler == null) BuildParts();
+                return _childReconciler!;
+            }
+        }
+
+        private FiberNodeFactory NodeFactory
+        {
+            get
+            {
+                if (_factory == null) BuildParts();
+                return _factory!;
+            }
+        }
+
+        private FiberNodePatcher NodePatcher
+        {
+            get
+            {
+                if (_patcher == null) BuildParts();
+                return _patcher!;
+            }
+        }
+
+        private NodePatchWalk PatchWalk
+        {
+            get
+            {
+                if (_patchWalk == null) BuildParts();
+                return _patchWalk!;
+            }
+        }
+
+        private FiberElementCleaner ElementCleaner
+        {
+            get
+            {
+                if (_cleaner == null) BuildParts();
+                return _cleaner!;
+            }
+        }
+
+        /// <summary>
+        /// True when this Reconciler created the <see cref="_ctx"/> itself (root Reconciler).
+        /// False when the ctx was inherited from a parent fiber's Reconciler (inline-mounted
+        /// descendants share the root's registries / stacks so cross-fiber lookups in
+        /// <see cref="ComponentRegistry"/> resolve to the same fiber instance across renders).
+        /// Only the owner disposes the ctx; non-owners only dispose their own Reconciler-local
+        /// resources (e.g. pending time-sliced state).
+        /// </summary>
+        private readonly bool _ownsContext;
+
+        /// <summary>
+        /// Whether the most recent top-level Reconcile was aborted by an Error Boundary fallback.
+        /// The caller (the render path of <c>FiberRenderer</c>) reads this immediately after Reconcile
+        /// completes to decide whether <c>_previousTree</c> may be overwritten with the new tree.
+        /// On abort, <c>TryShowFallback</c> has already updated <c>_previousTree</c> to the fallback tree,
+        /// so overwriting it with newTree would diverge the fallback from the DOM.
+        /// </summary>
+        internal bool LastTopLevelWasAborted { get; private set; }
+
+        internal ReconcilerContext Context => _ctx;
+
+        internal bool OwnsContext => _ownsContext;
+
+        public Reconciler()
+            : this(new ReconcilerContext(), ownsContext: true)
+        {
+        }
+
+        /// <summary>
+        /// Inline-mounted descendants share the root Reconciler's <see cref="ReconcilerContext"/>
+        /// so that <see cref="ComponentRegistry"/> lookups resolve to the same fiber instance
+        /// regardless of which fiber's Reconciler is currently
+        /// running. Each fiber still has its own Reconciler (and ChildReconciler) so per-fiber
+        /// time-sliced pause/resume state is independent, but the registries / stacks
+        /// (ComponentRegistry / FiberStack / ComponentContextStack / BufferPool / element-keyed
+        /// side maps) are unified at the root.
+        /// </summary>
+        internal Reconciler(ReconcilerContext sharedContext)
+            : this(sharedContext ?? throw new ArgumentNullException(nameof(sharedContext)), ownsContext: false)
+        {
+        }
+
+        private Reconciler(ReconcilerContext ctx, bool ownsContext)
+        {
+            _ctx = ctx;
+            _ownsContext = ownsContext;
+            // The root builds its parts now rather than at first use: constructing them is what assigns the
+            // context's PaintLeases, ClipPathReResolve and VariantGatedReSync.
+            if (ownsContext) BuildParts();
+            // The root Reconciler owns the bridge so internal elements (FiberVirtualListController etc.)
+            // can re-enter the reconciler via _ctx.ReconcilerBridge. Inherited contexts already have a
+            // bridge assigned; skipping the set avoids the fail-fast double-call check.
+            if (ownsContext)
+            {
+                _ctx.SetReconcilerBridge(this);
+                // Lets the batch scheduler block a synchronous discrete-event flush while any reconcile
+                // pass (including a time-sliced resume that runs outside the batch Drain) is on the stack.
+                _ctx.BatchScheduler.SetReconcileActiveProbe(() => _ctx.SharedReconcileDepth > 0);
+                _ctx.BatchScheduler.SetPassiveEffectFlush(() => FiberEffects.FlushPendingPassiveEffects(_ctx));
+                // Brackets each drain to drive (1) the UseStore tearing guard — pinning is active only inside a
+                // drain, and each drain pass is a wave of its own — and (2) the layout-effect commit phase:
+                // fibers defer their effect commit during the drain so all renders precede any layout effect,
+                // flushed at drain end (before the wave ends, so a layout effect still reads the pinned snapshot).
+                _ctx.BatchScheduler.SetStoreSnapshotWaveCallbacks(
+                    () =>
+                    {
+                        _ctx.BeginStoreSnapshotWave();
+                        _ctx.DeferDrainLayoutEffects = true;
+                    },
+                    () =>
+                    {
+                        // End the snapshot wave even if a deferred layout effect throws, so the tearing guard is
+                        // not left permanently active.
+                        try
+                        {
+                            FlushDrainEndCommitWork();
+                        }
+                        finally
+                        {
+                            _ctx.EndStoreSnapshotWave();
+                            MotionLayoutIdDriver.EndRender(_ctx);
+                        }
+                    });
+            }
+        }
+
+        // The fiber whose output this instance reconciles; FiberRenderer writes it when the fiber mounts.
+        internal ComponentFiber? Owner { get; set; }
+
+        private void MarkOwnerParked()
+        {
+            if (Owner != null) FiberPendingWork.MarkAncestors(Owner);
+        }
+
+        private void BuildParts()
+        {
+            var cleaner = new FiberElementCleaner(_ctx);
+            var patcher = new FiberNodePatcher(_ctx);
+            var factory = new FiberNodeFactory(_ctx, patcher, cleaner);
+            var patchWalk = new NodePatchWalk(_ctx, patcher);
+            var childReconciler = new ChildReconciler(_ctx, patcher, patchWalk, factory, cleaner) { Parked = MarkOwnerParked };
+
+            factory.SetHost(this);
+            patcher.SetHost(this);
+            patchWalk.SetHost(this);
+            _cleaner = cleaner;
+            _patcher = patcher;
+            _patchWalk = patchWalk;
+            _factory = factory;
+            _childReconciler = childReconciler;
+        }
+
+        // The drag session's overlay join follows the layout effects but does not depend on them completing.
+        private void FlushDrainEndCommitWork()
+        {
+            try
+            {
+                // Ahead of the layout effects, which read the tree the drain committed.
+                try
+                {
+                    PointerEventsScope.OnDrainEnd(_ctx);
+                }
+                finally
+                {
+                    FiberEffects.FlushDeferredDrainLayoutEffects(_ctx);
+                }
+            }
+            finally
+            {
+                _ctx.ActiveDrag?.JoinOverlaysAfterCommit();
+            }
+        }
+
+        /// <summary>
+        /// Whether frame-budget-controlled work remains pending.
+        /// When true, call <see cref="ContinueReconcile"/> to resume.
+        /// True when either the Indexed or Keyed path was suspended.
+        /// </summary>
+        public bool HasPendingWork
+            => _childReconciler != null
+               && (_childReconciler.PendingIndexedState.HasValue || _childReconciler.PendingKeyedState != null);
+
+        /// <summary>
+        /// Diff-updates the direct children of <paramref name="parent"/> within the slot range
+        /// <c>[slotStart, slotStart + newChildren.Length)</c>. The default <paramref name="slotStart"/>
+        /// of 0 reconciles the entire children list and is the canonical entry from V.Mount and
+        /// IReconcilerHost.ReconcileChildren.
+        /// </summary>
+        /// <param name="parent">Parent element to update.</param>
+        /// <param name="oldChildren">Previous VNode array.</param>
+        /// <param name="newChildren">New VNode array.</param>
+        /// <param name="frameBudgetMs">
+        /// Frame budget in milliseconds. Zero or below disables budgeting (fully synchronous).
+        /// When the budget is exceeded, work is suspended and <see cref="HasPendingWork"/> becomes true.
+        /// </param>
+        /// <param name="slotStart">
+        /// Zero-based offset into <c>parent.children</c> at which this reconciliation operates. The
+        /// virtual mount range is <c>[slotStart, slotStart + newChildren.Length)</c>, leaving slots
+        /// outside this range untouched. Used by wrapper-less Component / Provider / Outlet fibers
+        /// that share a parent VE with sibling slots.
+        /// </param>
+        public void Reconcile(VisualElement? parent, VNode?[] oldChildren, VNode?[] newChildren,
+            double frameBudgetMs = 0, int slotStart = 0, int slotLimit = int.MaxValue)
+            => ReconcileCatching(parent, oldChildren, newChildren, frameBudgetMs, slotStart, slotLimit, catchingBoundary: null);
+
+        // As Reconcile, for an error boundary reconciling its own rows: a render error below it is caught inside
+        // this reconcile and handed back, for the boundary to show its fallback once the reconcile has returned.
+        // The catch sits in the try whose finally ends a top-level pass, ahead of that finally: it completes the enters
+        // the pass queued and drains the Portal mounts it deferred, and neither may run under the catch.
+        internal BoundaryCaughtSignal? ReconcileCatching(VisualElement? parent, VNode?[] oldChildren,
+            VNode?[] newChildren, double frameBudgetMs, int slotStart, int slotLimit,
+            ComponentFiber? catchingBoundary = null)
+        {
+            if (_ctx.IsDisposed) { return null; }
+
+            var isTopLevel = _ctx.SharedReconcileDepth == 0;
+
+            ProfilerMarker.AutoScope profilerScope = default;
+            if (isTopLevel)
+            {
+                profilerScope = s_reconcileMarker.Auto();
+                // Stage pooled-object releases for the span of the pass so nothing retired mid-pass
+                // (a boundary fallback swap, a mid-pass unmount) can be re-rented by a later factory
+                // call in the SAME pass — see VNodePool's staging region.
+                VNodePool.BeginReleaseScope();
+            }
+
+            // Put back rather than cleared, and held across FinishTopLevelPass below: that boundary runs
+            // after the depth is decremented, so the setups its portal drain queues still have to carry
+            // this pass — and a re-render a ref setup commits from the same place opens its own bracket
+            // over the top of this one and has to hand it back.
+            var enclosingPass = _ctx.CurrentPass;
+            _ctx.CurrentPass = this;
+            _ctx.SharedReconcileDepth++;
+            BoundaryCaughtSignal? caught;
+            var walked = false;
+            try
+            {
+                caught = ReconcileChildren(parent, oldChildren, newChildren, frameBudgetMs, slotStart, slotLimit,
+                    catchingBoundary);
+                // A parent that no CreateElement or PatchNode is running for (the mount host, or one only a
+                // wrapper-less component re-renders into) gets no post-children structural pass of its own.
+                NodePatcher.ApplyStructuralVariants(parent);
+                walked = true;
+            }
+            finally
+            {
+                _ctx.SharedReconcileDepth--;
+                try
+                {
+                    if (isTopLevel)
+                    {
+                        try
+                        {
+                            FinishTopLevelPass(parent ?? _ctx.MainPanelRoot, walked);
+                        }
+                        finally
+                        {
+                            // Flush releases staged during the pass (AFTER the drain above, which stages
+                            // more). Guaranteed even if the drain throws (its mark pass can execute a user
+                            // IReadOnlyList via the slot probes): a skipped flush would wedge the pool in
+                            // staging mode for the process lifetime — every later return staged, never
+                            // flushed, pools starving — with no recovery outside the editor's domain reload.
+                            VNodePool.EndReleaseScope();
+                            // MUTANT_SURVIVES(equivalent): AutoScope.Dispose ends the profiler sample its
+                            // Auto() opened and writes nothing else, so no tree, element or pool this pass
+                            // touched reads differently without it.
+                            profilerScope.Dispose();
+                        }
+                    }
+                    else
+                    {
+                        TakeAbortAtTheRangeBracket();
+                    }
+                }
+                finally
+                {
+                    _ctx.CurrentPass = enclosingPass;
+                }
+            }
+            return caught;
+        }
+
+        private BoundaryCaughtSignal? ReconcileChildren(VisualElement? parent, VNode?[] oldChildren,
+            VNode?[] newChildren, double frameBudgetMs, int slotStart, int slotLimit,
+            ComponentFiber? catchingBoundary = null)
+        {
+            if (catchingBoundary == null)
+            {
+                ChildPass.Reconcile(parent, oldChildren, newChildren, frameBudgetMs, slotStart, slotLimit);
+                return null;
+            }
+            var completionsBefore = _ctx.PendingCompletions.Count;
+            catchingBoundary.CatchesInTheWalk = true;
+            try
+            {
+                ChildPass.Reconcile(parent, oldChildren, newChildren, frameBudgetMs, slotStart, slotLimit);
+                return null;
+            }
+            catch (BoundaryCaughtSignal signal) when (ReferenceEquals(signal.Boundary, catchingBoundary))
+            {
+                // React runs nothing for work that never committed. Counted rather than read off the parent
+                // chain, which the failed walk's disposal of what it mounted has already cut.
+                _ctx.PendingCompletions.RemoveRange(
+                    completionsBefore, _ctx.PendingCompletions.Count - completionsBefore);
+                return signal;
+            }
+            finally
+            {
+                catchingBoundary.CatchesInTheWalk = false;
+            }
+        }
+
+        // Ends a top-level pass's shared bookkeeping: consumes IsAborted, drains pending portal
+        // mounts, clears the per-pass registries, and drains deferred inline old-tree returns. Called
+        // from both Reconcile's and ContinueReconcile's own top-level finally — a resumed slice IS a
+        // pass's genuine top-level boundary just as much as a fresh Reconcile call. Any new per-pass
+        // reset belongs here, or it leaks on the shared context until some unrelated fiber's next
+        // top-level Reconcile happens to run.
+        // A Portal child that suspended ends the pass with a signal once the rest of this has run, and walked picks
+        // which: the drain follows a walk that returned, or one that threw and is still unwinding.
+        private void FinishTopLevelPass(VisualElement? reconciledInto, bool walked)
+        {
+            TakeAbort();
+            FinishPass(reconciledInto, walked);
+        }
+
+        private void TakeAbort()
+        {
+            LastTopLevelWasAborted = _ctx.IsAborted;
+            _ctx.IsAborted = false;
+        }
+
+        // Called once a Reconcile or a resume that is not top-level has put its own depth back, which is then the depth
+        // it was entered at (ReconcilerContext.RangeBracketDepth).
+        private void TakeAbortAtTheRangeBracket()
+        {
+            if (_ctx.SharedReconcileDepth == _ctx.RangeBracketDepth) TakeAbort();
+        }
+
+        // FinishTopLevelPass less the aborted-pass reading its callers take of the pass they ran: a VirtualList range
+        // rendered outside a pass ends with this (EndRangeForController), and can end inside the end of one of those
+        // passes.
+        private void FinishPass(VisualElement? reconciledInto, bool walked)
+        {
+            _ctx.PointerEventsWalkHeld++;
+            // The abort flag stops sibling work inside the pass that just ended; the deferred
+            // host mounts below are commit work for placeholders that SURVIVED it. A boundary
+            // rollback detaches its failed subtree's placeholders (the drain's per-entry
+            // liveness check skips those), while the fallback the boundary swapped in may have
+            // enqueued live portals of its own in this same pass — so the flag is consumed
+            // here rather than used to discard the queue wholesale, and the drain's nested
+            // reconciles run unimpeded. Consuming it here, before the drain call below, also
+            // matters for a resumed slice (ContinueReconcile): a boundary caught earlier in that
+            // slice must not leave IsAborted true when the drain makes its own nested, fresh
+            // top-level Reconcile calls — those would otherwise see it already true and silently
+            // no-op via ChildReconciler.Reconcile's own entry guard.
+            _ctx.IsAborted = false;
+            try
+            {
+                try
+                {
+                    var suspended = ChildPass.DrainPendingPortalMounts();
+                    // After the drain, whose own reconciles can tear down a Portal too.
+                    foreach (var target in _ctx.PortalTargetsToRestyle)
+                    {
+                        NodePatcher.ApplyStructuralVariants(target);
+                    }
+                    if (suspended) throw walked ? FiberSuspendSignal.AfterTheWalk : FiberSuspendSignal.Instance;
+                }
+                finally
+                {
+                    // After the drain, which places the relocated elements this pass deferred, and in a finally of
+                    // its own so a drain that throws still leaves neither a retired child standing nor a parent
+                    // pending into the next pass, and a coordinator call that throws still reaches the resets below.
+                    ElementCleaner.ReleaseRetiredZLayerReals();
+                    FiberZLayerCoordinator.DrainTeardowns(_ctx);
+                    FiberZLayerCoordinator.ResortLayers(_ctx);
+                }
+            }
+            finally
+            {
+                _ctx.PortalTargetsToRestyle.Clear();
+                // Always clear the queue at top-level boundary so partially drained passes do
+                // not leak placeholders into the next reconcile; an abort raised DURING the
+                // drain (a boundary inside a portal's children) is consumed at this boundary
+                // the same way.
+                _ctx.PendingPortalMounts.Clear();
+                // MUTANT_SURVIVES(equivalent): the set is read only for a placeholder the drain has just dequeued,
+                // and each placeholder is queued once, where FiberNodeFactory creates it, so an entry outliving
+                // the queue cleared above is never read again; what keeping it costs is holding the element.
+                _ctx.PendingHostPlaceholders.Clear();
+                _ctx.IsAborted = false;
+                // Declaring-resolution misses are scoped to one top-level pass: retrying the
+                // scan next pass is what lets a late-arriving declaring panel resolve.
+                _ctx.DeclaringResolveMisses.Clear();
+                // After the portal drain, whose reconciles can restore a rotate. Inside a batch drain the drain's
+                // end does this instead: its passes are one render.
+                if (!_ctx.DeferDrainLayoutEffects) MotionLayoutIdDriver.EndRender(_ctx);
+                // After the portal drain, whose reconciles insert elements of their own.
+                StyleRelationalVariantManipulator.RetargetAll(_ctx);
+                // After the portal drain for the same reason: a Portal's target can sit inside a scope. Every walk
+                // requested since the pass started was held for this one.
+                _ctx.PointerEventsWalkHeld--;
+                PointerEventsScope.OnPassEnd(_ctx, reconciledInto);
+                // Scoped to one top-level pass because that is the span holding both readings it
+                // compares, and placed after the portal drain above so a wrapper the drain's own nested
+                // reconciles rendered is marked before the marks are read.
+                _ctx.RetireBoundaryStatesNotReRendered();
+                // Return the inline children's old trees (queued by SubsumeFiberIntoThisPass) to the
+                // VNode pool now that the whole pass is done using them as patch baselines — deferred
+                // to here to avoid a mid-pass use-after-return that duplicates re-expanded subtrees.
+                FiberTreeReturn.DrainDeferredInlineOldTreeReturns(_ctx);
+                // A ring overlay is hosted beside the element it rings, so it can only be placed once that
+                // element is in its final parent. At create time it is not — the factory builds the element
+                // and the caller inserts it afterwards, and a z-* element is relocated again by the portal
+                // drain just above. Draining here, at the top-level boundary, is the first point where every
+                // element created in this pass has its final parent.
+                RingOverlay.DrainPendingPlacements(_ctx);
+                BackdropFilterLayer.DrainPendingPlacements(_ctx);
+                // Same reason: an inherited family is read off the final parent chain (FiberFontScope).
+                _ctx.FontScope.Drain(_ctx.BatchScheduler.Anchor);
+                _ctx.SyncPortalRowFamilies();
+                // Last, so a ref setup sees the element where the pass finally put it and every cleanup
+                // this pass owed has already run — the portal drain above included, which reconciles a
+                // Portal's children through ChildReconciler directly and so reaches no boundary of its
+                // own. Attaching where the walk creates the element instead would put an arriving
+                // element's setup ahead of a departing element's cleanup, because the general path
+                // creates before it removes.
+                // A parked pass reaches this boundary as well, and the drain leaves the entries it queued
+                // where they are: the keyed machine processes every arrival before Pass2Remove reaches
+                // any departure, so a slice yielding between the two would attach into that same
+                // create-before-remove order, with Pass2Reorder not having placed anything yet either.
+                // Which pass ends last is not this one's to know, so the call is unconditional and
+                // DrainRefAttaches asks each entry's own pass instead. A pass whose caller commits layout work
+                // leaves the cleanups of the refs it replaces and its setups to that commit.
+                _ctx.DrainRefAttaches();
+                // A setup the drain left to the layout commit attaches before the enters complete, as a ref is
+                // set by the time an enter that plays nothing reports; the commit's end completes them
+                // (FiberEffects.CommitStrandedLayoutWork).
+                if (!_ctx.HasAttachableRefs()) _ctx.RunPendingCompletions();
+            }
+        }
+
+        /// <summary>
+        /// Called when an Error Boundary switches to its fallback.
+        /// Signal to abort Reconcile of the remaining sibling nodes in the same batch.
+        /// </summary>
+        internal void SetAborted() => _ctx.IsAborted = true;
+
+        /// <summary>
+        /// Resumes time-sliced reconciliation from a suspended state.
+        /// Call this when <see cref="HasPendingWork"/> is true.
+        /// </summary>
+        /// <remarks>
+        /// Returns immediately (no-op) when <see cref="HasPendingWork"/> is false.
+        /// Verifying <see cref="HasPendingWork"/> beforehand is recommended.
+        /// </remarks>
+        /// <param name="frameBudgetMs">
+        /// Frame budget in milliseconds. Because <c>ReconcileIndexedFrom</c> internally restarts the
+        /// <c>Stopwatch</c>, this acts as a "new budget" rather than "remaining budget."
+        /// Zero or below disables budgeting (the remaining work runs synchronously to completion).
+        /// </param>
+        public void ContinueReconcile(double frameBudgetMs = 0)
+        {
+            if (_ctx.IsDisposed || !HasPendingWork) { return; }
+            using var _ = s_continueReconcileMarker.Auto();
+
+            // A resume continues the same pass an earlier time-slice suspended, so while genuinely
+            // nested inside an ancestor's still-unwinding pass (e.g. FiberCommitWork.DrainPendingWork
+            // force-completing a parked inline fiber from inside another fiber's live expansion) it must
+            // not run the top-level reset (abort / DeclaringResolveMisses / portal drain)
+            // that Reconcile's own isTopLevel finally performs — clearing those mid-pass would discard
+            // state sibling subtrees still need, and the ancestor's own eventual top-level finally runs
+            // them once already. But a resume driven by the scheduler tick (FiberWorkLoop.ContinueReconcile,
+            // on its own frame-boundary callback) is NOT nested in anything, and any Portal / z-layer mount
+            // THIS slice enqueued needs the exact same safe post-pass drain a fresh top-level Reconcile call
+            // already gets — leaving it queued until some unrelated fiber's next top-level Reconcile happens
+            // to run would strand a z-managed element's real content (or a Portal's children) unattached
+            // for however long that takes. isTopLevel is the SAME "genuinely outermost" test Reconcile.
+            // Reconcile uses (SharedReconcileDepth read before this call's own increment), so the drain
+            // below is gated identically: it fires once per genuine completion and never while nested,
+            // so DrainPendingWork's own force-drain cannot double-fire it ahead of the ancestor's finally.
+            // The bracket around SharedReconcileDepth itself is unconditional regardless (both branches
+            // need it): it is what lets the reconcile-active probe (FiberBatchScheduler.FlushImmediate)
+            // report SharedReconcileDepth > 0 while a resume is on the stack — a resume is scheduled via
+            // schedule.Execute, not through the batch Drain, so _draining is false during it, and without
+            // the probe a discrete event dispatched synchronously inside a slice would re-enter the
+            // reconciler on the stack.
+            var isTopLevel = _ctx.SharedReconcileDepth == 0;
+
+            // A resume continues the pass an earlier slice suspended, so a setup it queues carries that
+            // pass — see Reconcile's own bracket for why the stamp is put back rather than cleared.
+            var enclosingPass = _ctx.CurrentPass;
+            _ctx.CurrentPass = this;
+            _ctx.SharedReconcileDepth++;
+            // A resume slice rents and returns pooled objects like the original pass, so it gets the
+            // same release staging bracket (nested entries are depth-counted inside VNodePool).
+            VNodePool.BeginReleaseScope();
+            var resumed = false;
+            try
+            {
+                // Indexed and Keyed never become pending simultaneously (the other is cleared when a new
+                // Reconcile starts), so resuming whichever path is pending is sufficient.
+                if (ChildPass.PendingIndexedState.HasValue)
+                {
+                    ChildPass.ContinueIndexed(frameBudgetMs);
+                }
+                else
+                {
+                    ChildPass.ContinueKeyed(frameBudgetMs);
+                }
+                resumed = true;
+            }
+            finally
+            {
+                _ctx.SharedReconcileDepth--;
+                // Mirrors Reconcile's own top-level finally (see FinishTopLevelPass for why IsAborted
+                // must be consumed before the drain it runs). Left unset (false) on a nested resume —
+                // the ancestor's own eventual top-level finally is what consumes it — except on one entered at a
+                // VirtualList range's bracket (ReconcilerContext.RangeBracketDepth).
+                try
+                {
+                    if (isTopLevel)
+                    {
+                        // A resume keeps no record of the element its pass reconciles into; the tree's own
+                        // mount target is above every element the resume can insert outside a Portal.
+                        FinishTopLevelPass(_ctx.MainPanelRoot, resumed);
+                    }
+                    else
+                    {
+                        TakeAbortAtTheRangeBracket();
+                    }
+                }
+                finally
+                {
+                    VNodePool.EndReleaseScope();
+                    _ctx.CurrentPass = enclosingPass;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Re-bases the captured slot offset of an in-flight time-sliced reconcile by <paramref name="delta"/>.
+        /// </summary>
+        /// <remarks>
+        /// Called when the rows ahead of this fiber's on the parent VE they share change count while this
+        /// fiber's reconcile is suspended (<see cref="HasPendingWork"/> is true), from
+        /// <c>FiberCommitWork</c> as it moves this fiber's recorded start by the same delta. That insert /
+        /// remove physically shifts this fiber's already-committed rows within the shared parent, so the
+        /// suspended <c>slotStart</c> — a captured absolute offset into the parent's children — must move
+        /// by the same delta. Without it the resume would write the remaining rows at stale absolute
+        /// indices.
+        /// No-op when no work is pending or <paramref name="delta"/> is zero.
+        /// </remarks>
+        internal void RebasePendingSlotStart(int delta)
+        {
+            if (_ctx.IsDisposed || !HasPendingWork) { return; }
+            ChildPass.RebasePendingSlotStart(delta);
+        }
+
+        #region IReconcilerBridge
+
+        // The row is what the controller keeps: the element a placeholder stands for where the creation relocated it.
+        VisualElement IReconcilerBridge.CreateElementForController(VNode node)
+        {
+            var created = NodeFactory.CreateElement(node);
+            return _ctx.ZLayerPlaceholders.TryGetValue(created, out var row) ? row : created;
+        }
+
+        void IReconcilerBridge.CleanupElementForController(VisualElement row)
+            => ElementCleaner.CleanupElement(SlotOccupantOf(row));
+
+        // What holds the row's slot now: its placeholder while FiberZLayerCoordinator relocates it, which a patch, the
+        // arrangement at the end of a range or pass, and a variant toggled outside any pass each decide afresh, so it
+        // is asked where the controller acts on the slot rather than kept.
+        VisualElement IReconcilerBridge.SlotOccupantForController(VisualElement row) => SlotOccupantOf(row);
+
+        private VisualElement SlotOccupantOf(VisualElement row) => FiberZLayerCoordinator.PlaceholderOf(_ctx, row) ?? row;
+
+        void IReconcilerBridge.FlushPendingPassiveEffectsForController() => _ctx.BatchScheduler.FlushPendingPassiveEffects();
+
+        void IReconcilerBridge.HoldRowLayoutEffects()
+            => _ctx.HeldRowLayoutEffects.Push(new List<(ComponentFiber fiber, bool mountDoubleInvoke)>());
+
+        // The rows are placed, so their commits attach their elements' refs among their layout effects, as a
+        // pass's commit does. A setup no held row owns is left to the commit that ends the range render
+        // (CommitStrandedLayoutWorkForController).
+        void IReconcilerBridge.CommitHeldRowLayoutEffects()
+        {
+            var held = _ctx.HeldRowLayoutEffects.Pop();
+            _ctx.FontScope.Drain(_ctx.BatchScheduler.Anchor);
+            FiberEffects.CommitHeldRowLayoutEffects(_ctx, held);
+        }
+
+        // Every range render ends here, ahead of the layout work, which reads the rows it placed.
+        void IReconcilerBridge.CommitStrandedLayoutWorkForController()
+        {
+            PointerEventsScope.RequestSyncAll(_ctx);
+            FiberEffects.CommitStrandedLayoutWork(_ctx);
+        }
+
+        VisualElement IReconcilerBridge.PatchNodeForController(VisualElement row, VNode oldNode, VNode newNode)
+        {
+            // Patched through the slot's occupant, as ChildReconciler patches it: a shadow-*/clip-path-* row's
+            // occupant is its structural WRAPPER, and a relocated one's its placeholder, through which a patch that
+            // wraps or unwraps it carries the relocation over.
+            var inner = NodePatcher.ResolveWrapped(row);
+            PatchWalk.PatchNode(NodePatcher.ResolveWrapped(SlotOccupantOf(row)), oldNode, newNode);
+            // A class change can wrap or unwrap the row during the patch; return its outermost element now.
+            return NodePatcher.ResolveOuter(inner);
+        }
+
+        // Ahead of a rewrite of the rows by index, as FiberZLayerCoordinator.NoteChildrenReconciled is ahead of a diff.
+        void IReconcilerBridge.BeginRowPlacementForController(VisualElement container)
+            => FiberZLayerCoordinator.NoteChildrenReconciled(_ctx, container);
+
+        // A range rendered inside a pass is that pass's to end. One rendered outside a pass is bracketed by
+        // SharedReconcileDepth, as an in-pass range already is: a Component row's mount is then no top-level pass of
+        // its own, whose end would drain the mounts the rows ahead of it deferred before the range has placed them,
+        // and the range's end drains them all, in the order they were queued, once the rows are in the list. Returns
+        // whether this range opened the bracket, which EndRangeForController closes.
+        bool IReconcilerBridge.BeginRangeForController()
+        {
+            if (_ctx.SharedReconcileDepth > 0) return false;
+            _ctx.SharedReconcileDepth++;
+            _ctx.RangeBracketDepth = _ctx.SharedReconcileDepth;
+            return true;
+        }
+
+        // Closes the bracket BeginRangeForController opened and ends the range with FinishPass: what the rows'
+        // creation deferred, a relocated element or a Portal's or WorldSpace's host, is placed here.
+        void IReconcilerBridge.EndRangeForController(VisualElement container, bool opened)
+        {
+            if (!opened) return;
+            _ctx.SharedReconcileDepth--;
+            _ctx.RangeBracketDepth = 0;
+            // MUTANT_SURVIVES(equivalent, literal): FiberVirtualListController.PlaceRange is the only catch of what this
+            // throws, and it hands either signal to the list's host alike.
+            FinishPass(container, walked: true);
+        }
+
+        // What a detached item scope hands from Begin to Stamp and End: the host's children before the scope, which tells
+        // the item fibers it adds, and the spine Begin pushed.
+        private sealed class DetachedItemScope
+        {
+            public readonly HashSet<ComponentFiber> Before = new();
+            public FiberContextSpine Spine;
+            public VisualElement? EnclosingPortal;
+        }
+
+        object? IReconcilerBridge.BeginDetachedItemScope(
+            ComponentFiber? host, List<KeyValuePair<object, object>>? enclosingContext, VisualElement? enclosingPortal,
+            bool outsidePass)
+        {
+            var stack = _ctx.ComponentContextStack;
+            if (enclosingContext != null)
+            {
+                for (var i = 0; i < enclosingContext.Count; i++)
+                {
+                    stack.PushRaw(enclosingContext[i].Key, enclosingContext[i].Value);
+                }
+            }
+            if (host == null) return null;
+            var scope = new DetachedItemScope();
+            // Outside a pass no walk names the Portal the list sits in, which the rows the loop creates or patches are
+            // stamped with (ComponentRegistry.ReconcileExistingFiber); inside one the walk reconciling the list has.
+            scope.EnclosingPortal = _ctx.CurrentPortalPlaceholder;
+            if (outsidePass) _ctx.CurrentPortalPlaceholder = enclosingPortal;
+            // Outside a pass no walk has pushed the Providers that enclose the host, and the snapshot holds the values
+            // they had when the host last created or patched the list, which a memoized host need not have done since
+            // one changed; their committed values go on top. Inside a pass, including a row's walk in a range rendered outside one, the
+            // walk around the list has pushed them, and a spine read there would give the committed values that walk
+            // may be replacing.
+            if (outsidePass) scope.Spine = FiberContextSpine.Push(host);
+            // Item fibers created during the scope AppendChild onto FiberStack.Current; making it the host
+            // links them under the host (so they share the host's ReconcilerContext / context cursor) and
+            // lets the spine's parent-walk reach the host on an isolated re-render.
+            _ctx.FiberStack.Push(host);
+            // Snapshot the host's current children so End can identify the item fibers added by this scope.
+            // A fresh set per call supports nested VirtualLists (an item that itself renders a VirtualList).
+            for (var f = host.Child; f != null; f = f.Sibling)
+            {
+                scope.Before.Add(f);
+            }
+            return scope;
+        }
+
+        void IReconcilerBridge.StampDetachedItemFibers(
+            ComponentFiber? host, List<KeyValuePair<object, object>>? enclosingContext, VNode itemVnode, object? scopeToken)
+        {
+            if (host == null || scopeToken is not DetachedItemScope scope) return;
+            var seen = scope.Before;
+            // Stamp each fiber newly added under host since the prior call (set diff via Add). DescendantNodes is
+            // THIS item's rendered vnode so the spine can re-push a Provider the renderer placed above the item's
+            // consumer; anchor is the host the item fibers parent under (the registry-lookup parent the walk
+            // matches the consumer against). seen also marks them so End's fallback does not re-stamp them.
+            DetachedMountContext? detached = null;
+            for (var f = host.Child; f != null; f = f.Sibling)
+            {
+                if (!seen.Add(f)) continue;
+                detached ??= new DetachedMountContext(
+                    enclosingContext, itemVnode != null ? new[] { itemVnode } : null, host,
+                    rootProviderChildrenStartAtWalkRoot: true);
+                f.DetachedMountContext = detached;
+            }
+        }
+
+        void IReconcilerBridge.EndDetachedItemScope(
+            ComponentFiber? host, List<KeyValuePair<object, object>>? enclosingContext, object? scopeToken)
+        {
+            if (host != null)
+            {
+                _ctx.FiberStack.Pop();
+                if (scopeToken is DetachedItemScope scope)
+                {
+                    // Fallback for any item fiber not stamped per-item (StampDetachedItemFibers marks the ones it
+                    // handled in Before): only the enclosing snapshot is replayed, with no item-vnode walk.
+                    DetachedMountContext? detached = null;
+                    for (var f = host.Child; f != null; f = f.Sibling)
+                    {
+                        if (scope.Before.Contains(f)) continue;
+                        detached ??= new DetachedMountContext(enclosingContext, descendantNodes: null, anchor: host);
+                        f.DetachedMountContext = detached;
+                    }
+                    scope.Spine.Unwind();
+                    _ctx.CurrentPortalPlaceholder = scope.EnclosingPortal;
+                }
+            }
+            var stack = _ctx.ComponentContextStack;
+            if (enclosingContext != null)
+            {
+                for (var i = enclosingContext.Count - 1; i >= 0; i--)
+                {
+                    stack.PopRaw(enclosingContext[i].Key);
+                }
+            }
+        }
+
+        #endregion
+
+        #region IReconcilerHost
+
+        void IReconcilerHost.ReleasePortalRangeForRetarget(VisualElement placeholder)
+            => ElementCleaner.ReleasePortalRangeForRetarget(placeholder);
+
+        void IReconcilerHost.RemoveRows(VisualElement target, int slotStart, int count)
+            => ChildPass.RemoveRows(target, slotStart, count);
+
+        void IReconcilerHost.ReconcileChildren(VisualElement parent, VNode?[] oldChildren, VNode?[] newChildren, int slotStart)
+            => ChildPass.Reconcile(
+                parent, FiberKeying.UnwrapLoneFragment(oldChildren), FiberKeying.UnwrapLoneFragment(newChildren),
+                slotStart: slotStart);
+
+        void IReconcilerHost.NotifyContextValueChange(ContextProviderNode newProvider)
+            => ChildPass.NotifyContextValueChange(newProvider);
+
+        #endregion
+
+        public void Dispose()
+        {
+            // Per-Reconciler pending state always needs releasing — even non-owners may have
+            // suspended their own run while sharing the root's registries, and a parked run's old instances stay
+            // on the shared pool's rented list until they go back (ReconcilerBufferPool.RentedOldSlotOccupants).
+            _childReconciler?.DiscardPendingIndexedState();
+            _childReconciler?.DiscardPendingKeyedState();
+
+            // Owner-only teardown: ctx-level state is the root's responsibility. Disposing it from
+            // a child Reconciler would invalidate sibling fibers that still share the same ctx.
+            if (!_ownsContext) return;
+
+            _ctx.MarkDisposed();
+            _ctx.BatchScheduler.Clear();
+            _ctx.StyleAnimationScheduler.CancelAll();
+            _ctx.StyleAnimationScheduler.ReleaseClock();
+            _ctx.EventManager.Clear();
+            _ctx.ComponentRegistry.Dispose();
+            _ctx.PendingCaughtErrorReports.Clear();
+            _ctx.FiberMemoCache.DisposeAndReturnCachedTrees();
+            _ctx.WrapperToInnerMap.Clear();
+            // Hosts go last: destroying a layer or world-space host takes its runtime-created panel with
+            // it, and every pass above detaches from elements that may be mounted inside one.
+            ReleaseRefCallbacks();
+            ReleasePaintBindings();
+            ReleaseDriverBindings();
+            ReleaseDragAndDrop();
+            ReleaseManipulators();
+            ReleaseHostsAndScopes();
+        }
+
+        private void ReleaseRefCallbacks()
+        {
+            // Detach every still-installed callback ref: an element the unmount reconcile skipped (a
+            // parked time-sliced baseline diverged from the DOM, an aborted teardown) never passes
+            // through the element cleaner, and the ref contract is that every attached ref detaches
+            // when its root goes away — Ref<T>.Current must not keep pointing at a dead element and a
+            // user cleanup releasing external resources must run. Best-effort per entry: one throwing
+            // cleanup must not strand the rest.
+            foreach (var (_, installedRef) in _ctx.RefCallbacks)
+            {
+                try
+                {
+                    installedRef.Cleanup?.Invoke();
+                }
+                catch (System.Exception ex)
+                {
+                    FiberLogger.LogException("Reconciler", ex);
+                }
+            }
+            _ctx.RefCallbacks.Clear();
+        }
+
+        private void ReleasePaintBindings()
+        {
+            // Shadowed elements hold paint + re-bake callbacks: detach so a still-mounted element released at
+            // root disposal carries no Velvet residue. Then dispose the shared bake Material once (the baked
+            // shadow textures are cached process-wide and outlive the reconciler, like the gradient bakes).
+            foreach (var (element, binding) in _ctx.ShadowBindings)
+            {
+                BoxShadowSilhouette.Detach(element, binding);
+            }
+            _ctx.ShadowBindings.Clear();
+            BoxShadowBaker.DisposeMaterial();
+            // Clip wrappers hold a baked VectorImage (a ScriptableObject): still-mounted clipped
+            // elements never pass through FiberElementCleaner at root disposal, so release here —
+            // symmetric with the ShadowBindings Material teardown above.
+            foreach (var binding in _ctx.ClipPathBindings.Values)
+            {
+                binding.DisposeImage();
+            }
+            _ctx.ClipPathBindings.Clear();
+            // A ring binding owns a band in its element's parent and a per-frame tick on the element: detach so
+            // a still-mounted element released at root disposal carries no Velvet residue.
+            foreach (var (element, binding) in _ctx.RingBindings)
+            {
+                RingOverlay.Detach(element, binding);
+            }
+            _ctx.RingBindings.Clear();
+            foreach (var (element, binding) in _ctx.BackdropBindings)
+            {
+                BackdropFilterLayer.Detach(element, binding);
+            }
+            _ctx.BackdropBindings.Clear();
+            // Skewed elements hold the composite in their rotate and scale slots: hand them back so a
+            // still-mounted element released at root disposal carries no Velvet residue.
+            foreach (var element in _ctx.SkewTransformed.Keys)
+            {
+                AuthoredTransform.Release(element);
+            }
+            _ctx.SkewTransformed.Clear();
+            _ctx.SkewDriven.Clear();
+            // border-dashed / border-dotted elements hold a paint/stash callback and a border-color
+            // suppression: detach so a still-mounted element released at root disposal carries no residue.
+            foreach (var (element, binding) in _ctx.BorderStyleBindings)
+            {
+                BorderStyleSilhouette.Detach(element, binding);
+            }
+            _ctx.BorderStyleBindings.Clear();
+            // Detach each so a still-mounted divider at root disposal leaves no live delegate.
+            foreach (var (element, binding) in _ctx.DivideDashBindings)
+            {
+                DivideDashPainter.Detach(element, binding);
+            }
+            _ctx.DivideDashBindings.Clear();
+            // Detach each so a still-mounted text leaf at root disposal leaves no live delegate.
+            foreach (var (element, binding) in _ctx.TextOverlineBindings)
+            {
+                TextOverlineSilhouette.Detach(element, binding);
+            }
+            _ctx.TextOverlineBindings.Clear();
+            foreach (var (element, probe) in new List<KeyValuePair<VisualElement, LeadingLengthProbe>>(_ctx.LeadingLengthProbes))
+            {
+                LeadingLengthProbe.Detach(_ctx, element, probe);
+            }
+            foreach (var element in new List<VisualElement>(_ctx.TextShownWatches.Keys))
+            {
+                TextShownWatch.Detach(_ctx, element);
+            }
+            // Gradient elements hold an inline background-image referencing a shared baked texture: clear
+            // the inline image so a still-mounted element released at root disposal carries no residue
+            // (the cached textures themselves are shared and outlive the reconciler).
+            foreach (var (element, binding) in _ctx.GradientBackgrounds)
+            {
+                GradientBackground.Detach(element, binding);
+                GradientBackground.Clear(element);
+            }
+            _ctx.GradientBackgrounds.Clear();
+        }
+
+        private void ReleaseDriverBindings()
+        {
+            // animate-* motions hold a recurring scheduled tick: pause each (and restore the styles it drove)
+            // so a still-mounted animated element released at root disposal stops ticking and carries no residue.
+            foreach (var (element, binding) in _ctx.AnimationBindings)
+            {
+                StyleAnimateDriver.Detach(element, binding);
+            }
+            _ctx.AnimationBindings.Clear();
+            // filter-* transitions hold a one-shot scheduled tick: pause + unregister each binding transition-filter made,
+            // so a still-mounted element released at root disposal stops ticking its in-flight filter tween. A tween
+            // the write hook bound runs to its end and settles on its own target.
+            foreach (var (element, binding) in _ctx.FilterTransitionBindings)
+            {
+                StyleFilterTransitionDriver.Detach(element, binding);
+            }
+            _ctx.FilterTransitionBindings.Clear();
+            // SceneView bindings own a live RenderTexture with a camera rendering into it: release both
+            // ends so a still-mounted scene view at root disposal leaves no orphaned texture and no
+            // camera left targeting one.
+            foreach (var (element, binding) in _ctx.SceneViewBindings)
+            {
+                SceneViewDriver.Detach(element, binding);
+            }
+            _ctx.SceneViewBindings.Clear();
+            // Particles bindings own a live GameObject (the hidden simulation host): destroy each so a
+            // still-mounted particles element at root disposal leaves no orphaned system simulating.
+            foreach (var (element, binding) in _ctx.ParticlesBindings)
+            {
+                ParticlesDriver.Detach(element, binding);
+            }
+            _ctx.ParticlesBindings.Clear();
+            // Anchored bindings own a recurring projection tick: pause each so a still-mounted anchored
+            // element at root disposal leaves nothing still ticking.
+            foreach (var (element, binding) in _ctx.AnchoredBindings)
+            {
+                AnchoredDriver.Detach(element, binding);
+            }
+            _ctx.AnchoredBindings.Clear();
+            // Focus-scope bindings own a registered attach callback each; the navigator's listeners
+            // (and any still-pending attach hooks) sit on elements that outlive this reconciler, so both
+            // are released explicitly.
+            foreach (var (element, binding) in _ctx.FocusScopeBindings)
+            {
+                FocusScopeDriver.Detach(element, binding);
+            }
+            _ctx.FocusScopeBindings.Clear();
+            _ctx.ChainedPlaceholders.Clear();
+            _ctx.ChainedHostRoots.Clear();
+            _ctx.AppendedPlaceholders.Clear();
+            _ctx.AppendedHosts.Clear();
+            FiberFocusNavigator.DetachAll(_ctx);
+        }
+
+        private void ReleaseDragAndDrop()
+        {
+            // An active session scrubs first (it holds pointer capture, inline styles and
+            // classes on elements that outlive this reconciler), then the registries release their
+            // bindings (the draggable armer and the overlay's forced inline state are the two that own
+            // registered/forced element state).
+            // Inline (not deferred) user cancel: a deferred item would fire against the disposed tree,
+            // or never fire when the panel dies with it.
+            _ctx.ActiveDrag?.CancelForTeardown(deferUserCallback: false);
+            foreach (var (element, binding) in _ctx.DraggableBindings)
+            {
+                DndDraggableDriver.Detach(element, binding, _ctx);
+            }
+            _ctx.DraggableBindings.Clear();
+            foreach (var (element, _) in _ctx.DragOverlayBindings)
+            {
+                DndOverlayDriver.Detach(element, _ctx);
+            }
+            _ctx.DragOverlayBindings.Clear();
+            _ctx.DndScopeBindings.Clear();
+            _ctx.DroppableBindings.Clear();
+            // MUTANT_SURVIVES(equivalent, line removed): the set is read only by DndActiveDrag.Offer and the walk
+            // it calls, reached only from a draggable's sensor offers; the loop above detaches every offer still registered, and
+            // Reconcile returns on the context marked disposed at the top of Dispose, so none attaches
+            // again. The clear only drops references to elements the unmount cleaner did not reach.
+            _ctx.NoDragElements.Clear();
+        }
+
+        private void ReleaseManipulators()
+        {
+            // First, and before any manipulator below turns a payload off: while VariantGateClasses holds
+            // state, moving a gate token signals the variant re-sync, which re-derives an element's passes
+            // into the paint and driver tables — and those were emptied before this method ran, so the
+            // re-derivation re-runs the whole pass tail against those tables; the paint and driver ones
+            // are the cost that lasts, nothing sweeping them again.
+            // Emptying it here makes every turn-off below inert on that path. A width token still re-derives
+            // the layout manipulators through the re-sync's other trigger, which the loops at the end of this
+            // method sweep.
+            _ctx.VariantGateClasses.Clear();
+            foreach (var (element, manipulator) in _ctx.GestureManipulators)
+            {
+                element.RemoveManipulator(manipulator);
+            }
+
+            _ctx.GestureManipulators.Clear();
+            foreach (var (element, manipulator) in _ctx.VariantManipulators)
+            {
+                element.RemoveManipulator(manipulator);
+            }
+
+            _ctx.VariantManipulators.Clear();
+            foreach (var (element, manipulator) in _ctx.ConditionalVariantManipulators)
+            {
+                element.RemoveManipulator(manipulator);
+            }
+
+            _ctx.ConditionalVariantManipulators.Clear();
+            foreach (var (element, manipulator) in _ctx.ContainerVariantManipulators)
+            {
+                element.RemoveManipulator(manipulator);
+            }
+
+            _ctx.ContainerVariantManipulators.Clear();
+            foreach (var (element, manipulator) in _ctx.RelationalVariantManipulators)
+            {
+                element.RemoveManipulator(manipulator);
+            }
+
+            _ctx.RelationalVariantManipulators.Clear();
+            _ctx.RelationalTreeWatch.UnwatchAll();
+            foreach (var (element, manipulator) in _ctx.HasVariantManipulators)
+            {
+                element.RemoveManipulator(manipulator);
+            }
+
+            _ctx.HasVariantManipulators.Clear();
+            foreach (var (element, manipulator) in _ctx.ChildVariantManipulators)
+            {
+                element.RemoveManipulator(manipulator);
+            }
+
+            _ctx.ChildVariantManipulators.Clear();
+            // Over a copy: a detach closes its leaf through GateStackedVariant, which can remove from this table.
+            foreach (var stacked in new List<StyleStackedVariantManipulator>(_ctx.StackedVariantManipulators.Values))
+            {
+                stacked.target?.RemoveManipulator(stacked);
+            }
+
+            _ctx.ClearStackedVariants();
+            foreach (var (element, manipulator) in _ctx.GapManipulators)
+            {
+                element.RemoveManipulator(manipulator);
+            }
+
+            _ctx.GapManipulators.Clear();
+            foreach (var (element, manipulator) in _ctx.CompositeFlowManipulators)
+            {
+                element.RemoveManipulator(manipulator);
+            }
+
+            _ctx.CompositeFlowManipulators.Clear();
+            foreach (var (element, manipulator) in _ctx.DivideManipulators)
+            {
+                element.RemoveManipulator(manipulator);
+            }
+
+            _ctx.DivideManipulators.Clear();
+            foreach (var (element, manipulator) in _ctx.GridManipulators)
+            {
+                element.RemoveManipulator(manipulator);
+            }
+
+            _ctx.GridManipulators.Clear();
+            foreach (var (element, manipulator) in _ctx.TextBalanceManipulators)
+            {
+                element.RemoveManipulator(manipulator);
+            }
+
+            _ctx.TextBalanceManipulators.Clear();
+            foreach (var (element, manipulator) in _ctx.FlexMinSizeManipulators)
+            {
+                element.RemoveManipulator(manipulator);
+            }
+
+            _ctx.FlexMinSizeManipulators.Clear();
+
+            foreach (var scope in _ctx.PointerEventsScopes.Values)
+            {
+                // MUTANT_SURVIVES(unreachable): no case leaves a scope in the table by now, since the unmount
+                // reconcile ahead of Dispose releases the scope of each element it tears down; this loop is for an
+                // element that reconcile skipped, a shape no fixture builds.
+                scope.Release();
+            }
+
+            // MUTANT_SURVIVES(equivalent): a disposed context runs no pass that walks the table, and a second
+            // Release of a scope still listed drops nothing.
+            _ctx.PointerEventsScopes.Clear();
+            // Empties every pure side-table in one call, mirroring the per-element ClearElementSideTables
+            // used on cleanup: the structural / has-[.class]: / data- / aria- rules and their attribute
+            // store, supports-, the Motion applied-classes, child label and node, the presence-child roots,
+            // the layout-id map, the four text tables, the per-child claims, the variant gate classes, and
+            // the z-layer host and member maps — ReconcilerContext's own enrolment list is the set, and this reaches all of it.
+            // It runs last, after every loop above, for the claims specifically: the child-variant, gap,
+            // divide and grid manipulators each turn a value off only on a child whose claim is still
+            // their own, so emptying those tables ahead of a loop would make every release in it a no-op.
+            _ctx.ClearAllSideTables();
+        }
+
+        private void ReleaseHostsAndScopes()
+        {
+            _ctx.ClearSuspenseState();
+            _ctx.PortalState.Clear();
+            _ctx.PendingPortalMounts.Clear();
+            // MUTANT_SURVIVES(equivalent): as at the pass boundary, an entry outliving its queue is never read.
+            _ctx.PendingHostPlaceholders.Clear();
+            // ZLayerHosts/ZLayerMembers/StackingFacts are pure side-tables (dropped by ClearAllSideTables); these
+            // are not — a placeholder->real entry always accompanies a live relocation, and a retired child may
+            // still be attached — so they are dropped explicitly here, mirroring PortalState/PendingPortalMounts
+            // above.
+            _ctx.ZLayerPlaceholders.Clear();
+            _ctx.PendingZLayerRemovals.Clear();
+            _ctx.PendingZLayerDeadReals.Clear();
+            _ctx.PendingZLayerResorts.Clear();
+            _ctx.ParkedDiffParents.Clear();
+            // Detached explicitly rather than left to die with a GameObject, unlike the framework-owned
+            // hosts destroyed wholesale below — ReconcilerContext.SamePanelPortalBridges owns why.
+            foreach (var bridge in _ctx.SamePanelPortalBridges.Values)
+            {
+                bridge.Release();
+            }
+            _ctx.SamePanelPortalBridges.Clear();
+            // MUTANT_SURVIVES(unreachable, line removed): no fixture leaves a row in the table by now, for the reason
+            // ReconcilerContext.ReleasePortalRowFamilies gives.
+            _ctx.ReleasePortalRowFamilies();
+            // Layer and world-space hosts are framework-owned GameObjects with runtime-created
+            // panel assets: destroy them so a disposed tree leaves no hidden panels behind. The
+            // unmount reconcile already removed their children; a still-live layer host with zero
+            // children (layers persist across child removals) dies here too. World-space hosts are
+            // normally destroyed per placeholder by the cleaner — this sweep catches any still
+            // live at root disposal.
+            foreach (var record in _ctx.LayerHosts.Values)
+            {
+                PanelHostFactory.Destroy(record);
+            }
+            _ctx.LayerHosts.Clear();
+            foreach (var record in _ctx.WorldSpaceBindings.Values)
+            {
+                PanelHostFactory.Destroy(record);
+            }
+            _ctx.WorldSpaceBindings.Clear();
+            foreach (var controller in _ctx.VirtualListControllers.Values)
+            {
+                controller.Dispose();
+            }
+
+            _ctx.VirtualListControllers.Clear();
+            _ctx.RetireAllPresenceStates();
+        }
+    }
+}

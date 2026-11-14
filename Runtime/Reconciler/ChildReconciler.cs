@@ -1,0 +1,2073 @@
+#nullable enable
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using UnityEngine.UIElements;
+
+namespace Velvet
+{
+    // Diff algorithm for child-node arrays.
+    // Matches old and new child nodes by key (or position when unkeyed) and emits the minimal set of
+    // mount / patch / move / remove operations to transform one array into the other.
+    // Parent ownership precondition:
+    // Reconcile / ReconcileIndexed / ReconcileKeyed own the slot range
+    // [slotStart, slotStart + oldNodes.Length) of parent's children. The
+    // invariant is parent.childCount >= slotStart + oldNodes.Length; slots outside this
+    // range (siblings owned by other fibers or static children) are not touched. With the default
+    // slotStart = 0 the reconciler owns the entire children list as the single tenant.
+    // External code must not mutate slots inside the reconciler's range, otherwise oldNodes
+    // indices diverge from DOM indices and the wrong element gets patched or removed. Velvet
+    // provides separate-target management via FiberVirtualListController and
+    // FiberPortalRegistry.
+    internal sealed class ChildReconciler
+    {
+        // Sentinel marking the initial start of the Remove phase.
+        // When IndexedReconcileState.ResumeIndex equals this value, the Remove phase
+        // begins reverse traversal from oldNodes.Length - 1.
+        private const int RemovePhaseStartSentinel = -1;
+
+        private readonly ReconcilerContext _ctx;
+        private readonly FiberNodePatcher _patcher;
+        private readonly NodePatchWalk _patchWalk;
+        private readonly FiberNodeFactory _factory;
+        private readonly FiberElementCleaner _cleaner;
+        private readonly HostCommitQueue _host;
+        // LIS anchor computation + non-anchor re-placement for the keyed/general commit.
+        private readonly ChildElementPlacement _placement;
+        // Identity-key resolution shared with the general path.
+        private readonly ReconcileKeying _keying;
+        // Inline-expansion + live-context commit path (Component/Provider/Fragment/Suspense/Memo/
+        // AnimatePresence containers). The fast Indexed/Keyed diff below handles flat host-leaf lists.
+        private readonly GeneralPathReconciler _general;
+        // Stopwatch for frame-budget measurement.
+        // Recursive invocations through IReconcilerHost.ReconcileChildren always run with
+        // frameBudgetMs=0, so Restart() is never called twice. Violating this assumption distorts
+        // the outer budget measurement.
+        private Stopwatch? _stopwatch;
+
+        // Suspended state of time-sliced reconciliation.
+        // null indicates no suspension (the normal state).
+        internal IndexedReconcileState? PendingIndexedState
+        {
+            get => _parkSetAside ? null : _pendingIndexedState;
+            private set
+            {
+                _pendingIndexedState = value;
+                NoteParkedParent();
+            }
+        }
+
+        // Suspended state of keyed reconciliation. null indicates no suspension.
+        // The intermediate buffers used by Pass 2 are owned by this state (not returned to the
+        // Pool while suspended).
+        internal KeyedReconcileState? PendingKeyedState
+        {
+            get => _parkSetAside ? null : _pendingKeyedState;
+            private set
+            {
+                _pendingKeyedState = value;
+                NoteParkedParent();
+            }
+        }
+
+        private IndexedReconcileState? _pendingIndexedState;
+        private KeyedReconcileState? _pendingKeyedState;
+        // True while DrainPendingPortalMounts mounts a Portal over a parked state: the two properties above read
+        // null, and the fields keep the state, its ParkedDiffParents registration and the rows ReplaceParkedRow reaches.
+        private bool _parkSetAside;
+
+        // Tells the context which parent this instance's diff is parked over, if any (ReconcilerContext.ParkedDiffParents).
+        private void NoteParkedParent()
+        {
+            var parent = _pendingIndexedState?.Parent ?? _pendingKeyedState?.Parent;
+            if (parent == null)
+            {
+                _ctx.ParkedDiffParents.Remove(this);
+            }
+            else
+            {
+                _ctx.ParkedDiffParents[this] = parent;
+                Parked?.Invoke();
+            }
+        }
+
+        // Told when this instance parks a diff, so the fiber owning it marks its ancestors (FiberPendingWork).
+        internal Action? Parked { get; init; }
+
+        // The boundary reproductions the state above still owes a removal pass, carried until the slice
+        // that resumes it runs them. Instance state rather than context state like the lists it feeds,
+        // because the park it answers for is this instance's own while the context is shared.
+        private readonly List<ReconcilerContext.BoundaryReproductionKey> _boundaryOwedByThisPark = new();
+
+        public ChildReconciler(ReconcilerContext ctx, FiberNodePatcher patcher, NodePatchWalk patchWalk,
+            FiberNodeFactory factory, FiberElementCleaner cleaner)
+        {
+            _ctx = ctx;
+            _patcher = patcher;
+            _patchWalk = patchWalk;
+            _factory = factory;
+            _cleaner = cleaner;
+            _host = ctx.HostCommit;
+            _placement = new ChildElementPlacement(ctx.BufferPool, _host);
+            _keying = new ReconcileKeying();
+            _general = new GeneralPathReconciler(ctx, patchWalk, factory, cleaner, _placement, _keying);
+        }
+
+        // Applies the CanPatch-gated patch-or-replace decision at one DOM slot: patches the existing
+        // element in place when the pair is patch-compatible, otherwise removes the existing element
+        // (when slotExists) and inserts a freshly created one at the same slot. Shared by the
+        // Common-phase indexed loop and both keyed Pass-1 linear-scan implementations (sync and
+        // time-sliced) so this eager remove-then-create sequence cannot independently drift the way
+        // FiberVirtualListController's own separately hand-rolled copy did — it skipped the CanPatch
+        // gate entirely, patching a same-key type flip onto a stale element.
+        //   slotExists: false only for the indexed diff's DOM-desync recovery, where a transient
+        //     AnimatePresence overlap can leave the live range shorter than the baseline; the keyed
+        //     prefix scan's slot always exists by construction (Pass 1 never changes childCount ahead
+        //     of index i).
+        //   newElement is ALWAYS inserted, abort or not: _ctx.IsAborted only ever becomes true
+        //     via FiberErrorBoundary.TryCatch -> SetAborted, which fires exclusively on TryShowFallback's
+        //     SUCCESS path (fiber.Reconciler.Reconcile(fiber.MountPoint, ..., fallbackTree) returned
+        //     without throwing and FallbackContentFailed is false) — i.e. by the time CreateElement
+        //     returns, newElement already holds a fully, successfully rendered subtree (the boundary's
+        //     fallback content in place of whatever threw beneath it), not a half-built one. Discarding
+        //     it and leaving the slot empty would be strictly worse: an error boundary that catches must
+        //     never leave the DOM with nothing where its fallback should be. Velvet has no render/commit
+        //     phase split that could defer this decision, so the nearest equivalent is "don't throw away
+        //     content the boundary already finished building".
+        // Returns true when the caller must stop scanning further siblings, which is narrower than
+        // discarding anything: the boundary already resolved the failure, so any later slot's
+        // patch/replace would be racing a reconcile the caller no longer owns end-to-end.
+        private bool PatchOrReplaceAtSlot(
+            in ChildSlot slot, VNode? oldNode, VNode? newNode, bool slotExists, OldSlotOccupants occupants,
+            ref LogicalSlotCursor slots)
+        {
+            var parent = slot.Parent;
+            // LOGICAL, converted per DOM touch. It is deliberately not pre-converted into a physical index:
+            // the removal below shifts every physical index after it, so a value captured before it would be
+            // stale by the insert.
+            var logicalIndex = slot.SlotStart + slot.Index;
+            if (slotExists && ReconcileKeying.CanPatch(oldNode, newNode))
+            {
+                _patchWalk.PatchNode(occupants.Resolved(slot.Index)!, oldNode, newNode);
+                return false;
+            }
+
+            if (slotExists)
+            {
+                _host.Remove(parent, occupants.Occupant(slot.Index)!, occupants.PhysicalAtEntry(slot.Index));
+            }
+            var newElement = _factory.CreateElement(newNode);
+            // ToPhysical clamps by construction — a slot past the last rendered child resolves to the
+            // position just after it — so the caller no longer chooses between two index formulas.
+            slots.Insert(_host, parent, logicalIndex, newElement);
+            return _ctx.IsAborted;
+        }
+
+        // One child's address inside its parent. The range start stays separate from the sibling index
+        // rather than being pre-summed: the keyed path reconciles an unkeyed node by its raw index while
+        // addressing the DOM at the sum, so collapsing the two would lose the keying coordinate.
+        internal readonly struct ChildSlot
+        {
+            internal VisualElement Parent { get; init; }
+            internal int SlotStart { get; init; }
+            internal int Index { get; init; }
+        }
+
+        // The old-key map, the two consumed-key sets, the result list and the old instances that one keyed Pass 2
+        // threads through every node it processes. Bundled because the per-node step is shared by the synchronous
+        // loop and by the time-sliced one, which restores the same five from its parked state — and a
+        // combination mixing one pass's tables with another's would silently misplace a row.
+        internal readonly struct KeyedPassTables
+        {
+            internal Dictionary<ChildKey, (int index, VNode? node)> OldKeyMap { get; init; }
+            internal HashSet<ChildKey> UsedKeys { get; init; }
+            internal HashSet<ChildKey> ReplacedKeys { get; init; }
+            internal List<(VisualElement? element, bool isExisting)> NewElements { get; init; }
+            internal OldSlotOccupants OldOccupants { get; init; }
+        }
+
+        public void Reconcile(VisualElement? parent, VNode?[] oldChildren, VNode?[] newChildren,
+            double frameBudgetMs = 0, int slotStart = 0, int slotLimit = int.MaxValue)
+        {
+            var enclosing = _ctx.ReconcileParent;
+            _ctx.ReconcileParent = parent;
+            try
+            {
+                using var host = _ctx.OpenChildVariantHost(_ctx.HostsChildVariant(parent));
+                ReconcileUnder(parent, oldChildren, newChildren, frameBudgetMs, slotStart, slotLimit);
+            }
+            finally
+            {
+                _ctx.ReconcileParent = enclosing;
+            }
+        }
+
+        private void ReconcileUnder(VisualElement? parent, VNode?[] oldChildren, VNode?[] newChildren,
+            double frameBudgetMs, int slotStart, int slotLimit)
+        {
+            if (_ctx.IsAborted) return;
+            FiberZLayerCoordinator.NoteChildrenReconciled(_ctx, parent);
+
+            // Slot indices are LOGICAL throughout: a slot counts rendered children only, and the
+            // reconciler-invisible ones (a relocated z-* element, a filter bounds spacer, a ring band)
+            // are skipped by the one conversion applied where the DOM is actually touched — see
+            // LogicalChildSlots. This entry used to fold a back band's leading offset into
+            // slotStart instead, which worked only while every invisible child was pinned to one end of the
+            // list; a band that must sit beside its own element cannot be. Nothing is corrected here now,
+            // and the parked-slot rebasing that existed to keep those baked-in offsets true across a
+            // container appearing or disappearing is gone with it: a logical slot does not move when an
+            // invisible child does.
+
+            // New entries discard any prior suspended state. ContinueXxx calls ReconcileXxxFrom
+            // directly and bypasses this path, so discarding here does not break a Continue run.
+            // Nested calls entered via PatchNode during ContinueXxx also pass through here, but at
+            // that point ContinueXxx has already taken ownership of pending (= null), so this is a no-op.
+            // The boundary reproductions that state owed go with it, since no slice will run its removals
+            // now — gated on the state so that stays a no-op too: the owed span is still in flight during
+            // a ContinueXxx, and dropping it there would strand the entry.
+            if (PendingIndexedState != null || PendingKeyedState != null)
+            {
+                _ctx.SettleBoundaryReproductionsOwedByAPark(
+                    ReconcilerContext.BoundaryRemovalOutcome.Skipped, _boundaryOwedByThisPark);
+            }
+            DiscardPendingIndexedState();
+            DiscardPendingKeyedState();
+
+            // ContextProviderNode / ComponentNode are expanded inline (no wrapper VE
+            // emitted). Old-side expansion is structural-only (no context push, no fiber render).
+            // New-side expansion pushes each Provider's value onto the stack and, while it is
+            // still pushed, notifies dependent fibers if the value changed vs the old Provider that
+            // held the same tree position (see ProviderPairKey), then pops — so propagation snapshots
+            // include the new value. ComponentNode children render synchronously during new-side
+            // expansion via ComponentRegistry.GetOrCreateInline; the fiber's PreviousTree is
+            // expanded recursively in place of the ComponentNode.
+            //
+            // oldFibers and newFibers accumulate inline-mounted ComponentFiber references seen
+            // during each side's expansion. The diff (oldFibers \ newFibers) identifies orphan
+            // fibers whose ComponentNode disappeared from the new tree; they are disposed after
+            // the reconcile so fiber-side resources are released. This pairing is scoped to a
+            // single Reconcile call, so a sibling fiber's setState re-render (which calls
+            // Reconcile with a different parent/slotStart) does not falsely orphan unrelated
+            // siblings under the same anchor.
+            var oldProviders = _ctx.BufferPool.RentProviderTable();
+            var oldFibers = _ctx.BufferPool.RentFiberList();
+            var newFibers = _ctx.BufferPool.RentFiberSet();
+            var oldOwners = _ctx.BufferPool.RentFiberOwnerList();
+            var oldKeys = _ctx.BufferPool.RentLeafKeyList();
+            var pairing = new GeneralPathReconciler.InlinePairing
+            {
+                OldFibers = oldFibers,
+                NewFibers = newFibers,
+                OldProviders = oldProviders,
+                OldOwners = oldOwners,
+                OldKeys = oldKeys,
+            };
+            VNode?[] oldNodes;
+            // The boundary reproductions this container's own walk takes, retirable only once the removal
+            // pass below has run — see ReconcilerContext.EndBoundaryReproductionScope.
+            var boundaryScope = _ctx.BeginBoundaryReproductionScope();
+            // Only an exception unwinding out of the try below reads this, since both branches assign first.
+            var removals = ReconcilerContext.BoundaryRemovalOutcome.Skipped;
+            try
+            {
+                // Old side is always expanded structurally into the flat leaf array used for matching.
+                // (No context push, no render — it reproduces the previously committed leaf order.)
+                oldNodes = _general.ExpandInlineForReconcile(oldChildren, isNewSide: false, parent, slotStart, oldFibers, newFibers, oldProviders, owners: oldOwners, keys: oldKeys);
+
+                // oldFibers is non-empty wherever the old side reached a descendant fiber, so a leaf of
+                // this container may have been emitted by one. That pairing is what the fast path cannot
+                // read: its diff carries no owner, and its parked state outlives the rented list that would
+                // carry one. The general walk takes such a container instead — it holds the owners for the
+                // whole of its own pass and never parks.
+                if (GeneralPathReconciler.NeedsExpansion(newChildren) || oldFibers.Count > 0
+                    || _general.EmitsLeavingChildHoldingPropagatingPresence())
+                {
+                    // General path: a single live-context walk commits each emitted leaf
+                    // (CreateElement / PatchNode) while its ancestor Providers are still pushed, so
+                    // element descendants render in-scope without a pre-captured snapshot. Orphan
+                    // effect-cleanup + sweep and the LIS reorder are performed inside.
+                    removals = _general.ReconcileGeneral(parent, oldNodes, newChildren, slotStart, in pairing)
+                        ? ReconcilerContext.BoundaryRemovalOutcome.Ran
+                        : ReconcilerContext.BoundaryRemovalOutcome.Skipped;
+                }
+                else
+                {
+                    // Fast path: the container is a flat list of host leaves (no ComponentNode /
+                    // ContextProviderNode / FragmentNode / SuspenseNode / MemoNode / null). This
+                    // retains the time-sliced Indexed/Keyed diff state machine unchanged. The keyed
+                    // path is selected if either side carries a key (unifying keyed/unkeyed transitions),
+                    // or an old leaf's slot is not its flat index.
+                    var newNodes = newChildren ?? Array.Empty<VNode>();
+                    // Null where the old side needed no expansion; OldKey says what that stands for.
+                    var scopedOldKeys = oldKeys.Count == 0 ? null : oldKeys;
+                    if (_keying.HasAnyKey(newNodes)
+                        || (scopedOldKeys == null ? _keying.HasAnyKey(oldNodes) : _keying.AnyKeyOffItsFlatIndex(scopedOldKeys)))
+                    {
+                        ReportRepeatedKeys(newNodes);
+                        ReconcileKeyed(parent, oldNodes, newNodes, scopedOldKeys, frameBudgetMs, slotStart, slotLimit);
+                    }
+                    else
+                    {
+                        ReconcileIndexed(parent, oldNodes, newNodes, frameBudgetMs, slotStart, slotLimit);
+                    }
+                    _host.DisposeOrphans(oldFibers, newFibers);
+                    removals = FastPathRemovalOutcome();
+                }
+            }
+            finally
+            {
+                _ctx.EndBoundaryReproductionScope(boundaryScope, removals, _boundaryOwedByThisPark);
+                _ctx.BufferPool.ReturnProviderTable(oldProviders);
+                _ctx.BufferPool.ReturnFiberList(oldFibers);
+                _ctx.BufferPool.ReturnFiberSet(newFibers);
+                _ctx.BufferPool.ReturnFiberOwnerList(oldOwners);
+                _ctx.BufferPool.ReturnLeafKeyList(oldKeys);
+            }
+        }
+
+        // Drains what the pass that just finished deferred: each Portal's and WorldSpace node's children, and
+        // each relocated z-* element's arrival in its parent. A Portal's children reconcile can queue more;
+        // they join the same queue, drained FIFO until empty, so a Portal mounts at the logical slot
+        // (LogicalChildSlots.Count) after every earlier-drained Portal's children in the same target.
+        // Called only from Reconciler.FinishTopLevelPass, which Reconcile's and ContinueReconcile's top-level
+        // finally both reach, so the single-top-level-loop invariant holds across nested Portal-patch recursion.
+        //
+        // A child of a Portal that suspends does not stop the drain, since the entries behind it are the same pass's
+        // and would be lost to the clear that follows it. The Portal is recorded with its children pending and the
+        // result says one was, for the caller to end the pass with once the rest is done: its walk has committed, so
+        // the render that owns the pass keeps its tree (FiberRenderer.RenderAndReconcile) and the retry mounts what
+        // suspended by patching this Portal.
+        internal bool DrainPendingPortalMounts()
+        {
+            HashSet<ComponentFiber>? childFibersBefore = null;
+            var suspended = false;
+            while (_ctx.PendingPortalMounts.Count > 0)
+            {
+                var (placeholder, node, target, contextSnapshot, logicalParent) = _ctx.PendingPortalMounts.Dequeue();
+                // A queue entry can outlive its placeholder: a Suspense primary that suspends rolls
+                // its created elements back as ORPHANS before this drain runs (the entry survives
+                // the rollback), and an ErrorBoundary abort mid-drain reaches the later entries
+                // with the pass already dead. Mounting would create — or populate — a host for a
+                // subtree that no longer exists, so skip without touching any host.
+                if (_ctx.IsAborted || placeholder.parent == null)
+                {
+                    continue;
+                }
+                if (node is ZLayerMountNode zLayerMount)
+                {
+                    // Not a host mount: the real element is already fully built (CreateElement ran its whole
+                    // child reconcile inline, under live context, like any ordinary sibling) — only its arrival
+                    // in the parent was deferred, because placeholder.parent is only knowable now. No target
+                    // resolution, no nested Reconcile, no PortalState entry.
+                    // Ahead of the containment below rather than inside it: that catch answers for a failed
+                    // target resolution and this arm resolves none — it performs the whole placement, and
+                    // the insert that lands the element runs the panel-attach callbacks a V.Custom<T>
+                    // subclass registered on it (PortalLayersTests pins that the insert reaches them).
+                    // Leaving that application throw on the render's own escape path is the decision here.
+                    FiberZLayerCoordinator.ResolveQueuedMount(_ctx, placeholder, zLayerMount);
+                    continue;
+                }
+                if (!_ctx.PendingHostPlaceholders.Remove(placeholder)) continue;
+                // Resolve the deferred targets: a same-panel portal (a registered id, or the container
+                // the caller passed) arrived with its target resolved at enqueue; a layer portal
+                // creates (or reuses) the per-layer framework host here, and a world-space node
+                // creates its per-instance host here — the placeholder is attached by now, so the
+                // declaring panel whose settings/theme the host copies is known.
+                VNode?[] children;
+                try
+                {
+                    switch (node)
+                    {
+                        case PortalNode { Layer: { } layer } layerPortal:
+                            (target, children) = ResolveLayerPortalTarget(placeholder, layerPortal, layer);
+                            break;
+                        case WorldSpaceNode worldSpaceNode:
+                            (target, children) = ResolveWorldSpacePortalTarget(placeholder, worldSpaceNode);
+                            break;
+                        case PortalNode samePanelPortal:
+                            (target, children) = ResolveSamePanelPortalTarget(target, samePanelPortal);
+                            break;
+                        default:
+                            // The three kinds this queue holds are PortalNode, WorldSpaceNode
+                            // (FiberNodeFactory.EnqueueDeferredHostMount has no third caller) and the
+                            // ZLayerMountNode left above, so a node arriving here is a missing branch for a
+                            // new kind and must fail loudly rather than mount nothing in silence.
+                            FiberLogger.LogWarning("Portal",
+                                $"Unsupported deferred host mount node: {node.GetType().Name}. Entry skipped.");
+                            continue;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    // Per-entry, for the same reason Reconciler.ReleaseRefCallbacks is. The queue is FIFO
+                    // and shared, so whatever this pass deferred after this entry — another Portal, a
+                    // WorldSpace host, a z-* placement — is still in it, and an escape loses every one of
+                    // them to the caller's own finally clear. Nor is an escape a clean abort of the render
+                    // that queued it: it unwinds the top-level Reconcile of whichever fiber began the pass,
+                    // discarding that fiber's newly rendered tree while the DOM keeps what the pass
+                    // already committed, so every later render diffs against a baseline short by all of
+                    // it and appends the difference again. Scoped to resolution, ahead of the nested
+                    // Reconcile below: that one mounts children through the fiber machinery, which
+                    // already routes a component's throw to its own Error Boundary.
+                    FiberLogger.LogException("Portal", ex);
+                    continue;
+                }
+                var resolvedTarget = target!;
+                // Append after the target's existing rendered children: LogicalChildSlots.Count is the
+                // logical slot the next child takes, and the conversion at each DOM touch is what keeps a
+                // trailing filter bounds-spacer last and skips a leading back-band z-* element. Stored logical,
+                // which is the basis every consumer of PortalState.SlotStart now shares — it no longer has to
+                // be re-derived against the target's live physical structure, so a container appearing or
+                // disappearing between this mount and a later patch cannot move it.
+                var slotStart = LogicalChildSlots.Count(resolvedTarget);
+                // Restore the context that enclosed the Portal's tree position (captured at enqueue) so the
+                // children mount under their enclosing Providers / MotionContext rather than an empty cursor.
+                // The children's own reconcile pushes/pops on top of these and balances out, so popping the
+                // snapshot afterwards returns the cursor to empty.
+                var stack = _ctx.ComponentContextStack;
+                if (contextSnapshot != null)
+                {
+                    for (var s = 0; s < contextSnapshot.Count; s++)
+                    {
+                        stack.PushRaw(contextSnapshot[s].Key, contextSnapshot[s].Value);
+                    }
+                }
+                // A Portal child registers in ComponentRegistry under whatever fiber is current
+                // while it mounts, and a later patch of the same Portal reaches
+                // NodePatchWalk.ReconcilePortalRange from the reconcile of the tree the declaring
+                // component itself returned — with that component's own fiber current. So the declaring
+                // fiber is the half of the registry key a patch looks the child up by, and the mount has
+                // to agree or the first patch misses its own fiber and builds a second one. This drain
+                // runs from the top-level reconcile finally instead, long after that fiber came off the
+                // stack, so it pushes the one captured at enqueue (LogicalParent) back for the nested
+                // reconcile below. Same push, for the same registry-parent reason, as the VirtualList
+                // detached-item scope (Reconciler.BeginDetachedItemScope). A Portal reconciled outside any
+                // component body has no declaring fiber, and then neither side has one to key on.
+                var declaringFiber = logicalParent is { IsDisposed: false } ? logicalParent : null;
+                // Snapshot the anchor's direct children before, so the fibers added by this Portal's
+                // reconcile can be identified afterwards and stamped with the context needed to reconstruct
+                // their enclosing Providers on an isolated re-render (the spine cannot otherwise reach them).
+                var drainAnchor = declaringFiber ?? _ctx.FiberStack.Current;
+                CaptureAnchorChildren(drainAnchor, ref childFibersBefore);
+                // The nested Reconcile below re-enters ChildReconciler.Reconcile on THIS SAME instance, whose
+                // entry unconditionally discards PendingIndexedState/PendingKeyedState as stale state left by a
+                // finished pass — correct for a genuine fresh top-level call, but wrong here: this drain runs
+                // from the OUTER pass's own top-level finally (Reconciler.Reconcile / Reconciler.ContinueReconcile),
+                // so when that outer pass just parked (budget exhausted mid-list, with a Portal enqueued right
+                // before parking), the entry-clear below would destroy the park before the caller ever observes
+                // HasPendingWork — the continuation then never resumes and the remaining rows silently never
+                // commit. Set the parked state aside first (_parkSetAside) — never through
+                // DiscardPendingKeyedState, which returns PendingKeyedState's pooled buffers to the shared pool;
+                // a nested keyed Pass 2 below can rent the exact same pool types and would be handed back, and
+                // mutate, the very buffers this parked state still owns — so the nested entry-clear finds nothing to
+                // discard. Moving the state out of the fields instead would also drop the parent from
+                // ParkedDiffParents for the length of the mount, which is what lets Arrange convert a parent's slots
+                // (FiberZLayerCoordinator.ResortLayers). Nothing the nested call does is lost by this: the call
+                // below never carries a frameBudgetMs argument (defaults to 0), and at budget 0
+                // ReconcileIndexedFrom's `budgeted` gate is false while ReconcileKeyed routes to the fully synchronous
+                // ReconcileKeyedSync — neither can ever set new pending state of its own.
+                var setAside = _parkSetAside;
+                _parkSetAside = true;
+                // Same set-and-restore as NodePatchWalk.ReconcilePortalRange, and for the same reason:
+                // this is the mount half of the pair that stamps the fibers a Portal's own children
+                // reconcile creates. A nested Portal enqueued here is drained by a later turn of this loop,
+                // with the field already restored, so its own entry sets its own placeholder.
+                var enclosingPortal = _ctx.CurrentPortalPlaceholder;
+                _ctx.CurrentPortalPlaceholder = placeholder;
+                // Pushing the declaring fiber gives this Portal's children the registry parent that
+                // fiber's own in-tree children already have, so the two would otherwise collide on a
+                // whole key. The scope is the member that separates them —
+                // ReconcilerContext.PortalChildKeyScope owns it. Entered after the push, so the nesting
+                // it records is the one the children below reconcile at.
+                if (declaringFiber != null) _ctx.FiberStack.Push(declaringFiber);
+                var enclosingChildScope = _ctx.EnterPortalChildKeyScope(placeholder);
+                // A presence in the Portal's children expands with no emission of its enclosing presence child
+                // around it, so the child is read off where the placeholder sits.
+                var enclosingPresenceChild = _ctx.EnclosingPresenceChild;
+                _ctx.EnclosingPresenceChild = _ctx.PresenceChildOf(placeholder);
+                var mountSuspended = false;
+                try
+                {
+                    PointerEventsScope.NoteReconciledInto(_ctx, resolvedTarget);
+                    Reconcile(resolvedTarget, Array.Empty<VNode>(), FiberKeying.UnwrapLoneFragment(children),
+                        slotStart: slotStart);
+                    // The mount half of the structural pass FiberNodePatcher.PatchSelfPost runs for a Portal.
+                    _patcher.ApplyStructuralVariants(resolvedTarget);
+                }
+                catch (FiberSuspendSignal)
+                {
+                    mountSuspended = true;
+                    RemoveRowsFrom(resolvedTarget, slotStart);
+                }
+                finally
+                {
+                    _ctx.EnclosingPresenceChild = enclosingPresenceChild;
+                    _ctx.ExitPortalChildKeyScope(enclosingChildScope);
+                    if (declaringFiber != null) _ctx.FiberStack.Pop();
+                    _ctx.CurrentPortalPlaceholder = enclosingPortal;
+                    if (contextSnapshot != null)
+                    {
+                        for (var s = contextSnapshot.Count - 1; s >= 0; s--)
+                        {
+                            stack.PopRaw(contextSnapshot[s].Key);
+                        }
+                    }
+                    _parkSetAside = setAside;
+                }
+                StampDrainedChildren(drainAnchor, childFibersBefore, contextSnapshot, children, logicalParent);
+                // The growth this mount contributed, in logical slots — the same basis as slotStart.
+                var slotLength = LogicalChildSlots.Count(resolvedTarget) - slotStart;
+                _ctx.PortalState[placeholder] = new PortalSlotInfo(
+                    resolvedTarget, slotStart, slotLength, (node as PortalNode)?.TargetId, logicalParent,
+                    ChildrenPending: mountSuspended);
+                _ctx.PortalState.Anchor(placeholder);
+                suspended |= mountSuspended;
+                HideMountUnderHiddenSuspense(placeholder, resolvedTarget, slotStart, slotLength, declaringFiber);
+            }
+            return suspended;
+        }
+
+        // A Portal a render created inside children its Suspense hides was hidden with them before this
+        // drain mounted its own, so they are hidden here; the reveal finds them through PortalState. The
+        // boundary's hide pass has already run, so the ref setups it takes back from ordinary elements are
+        // taken back here.
+        private void HideMountUnderHiddenSuspense(
+            VisualElement placeholder, VisualElement target, int slotStart, int slotLength, ComponentFiber? declaringFiber)
+        {
+            if (!SuspenseHiddenElements.IsAtOrUnderHidden(placeholder)) return;
+            // MUTANT_SURVIVES(equivalent, boundary): the slot after this Portal's own holds no child.
+            // The children it mounted are the last of target's, so TryGetPhysical declines that slot.
+            for (var slot = slotStart; slot < slotStart + slotLength; slot++)
+            {
+                if (LogicalChildSlots.TryGetPhysical(target, slot, out var physical))
+                {
+                    // A relocated row is hidden as the element it stands for, as
+                    // GeneralPathReconciler.AddWithPortalChildren hides it.
+                    var row = target[physical];
+                    if (_ctx.ZLayerPlaceholders.TryGetValue(row, out var relocated)) row = relocated;
+                    _host.Hide(row);
+                }
+            }
+            _general.HideFibersMountedUnder(placeholder, declaringFiber);
+        }
+
+        // An unkeyed flat run of host children inserts each row as it creates it, so the ones ahead of the child that
+        // suspended are on the target while the Portal is recorded as holding none.
+        private void RemoveRowsFrom(VisualElement target, int slotStart)
+            => RemoveRows(target, slotStart, LogicalChildSlots.Count(target) - slotStart);
+
+        // The rows of one range, taken back from the last: the patch of a Portal's pending children reaches the
+        // range's rows and no further, since the ranges of other Portals on the same target can follow it.
+        internal void RemoveRows(VisualElement target, int slotStart, int count)
+        {
+            var rows = _ctx.BufferPool.RentOldSlotOccupants();
+            try
+            {
+                rows.Resolve(target, slotStart, count, int.MaxValue, _patcher);
+                for (var i = count - 1; i >= 0; i--)
+                {
+                    var row = rows.Occupant(i);
+                    if (row != null) _host.Remove(target, row, rows.PhysicalAtEntry(i));
+                }
+            }
+            finally
+            {
+                _ctx.BufferPool.ReturnOldSlotOccupants(rows);
+            }
+        }
+
+        // Taken by ref so one set serves the whole drain loop: each entry's snapshot is consumed by its own
+        // StampDrainedChildren call before the next entry clears it.
+        private static void CaptureAnchorChildren(ComponentFiber? anchor, ref HashSet<ComponentFiber>? before)
+        {
+            if (anchor == null) return;
+            (before ??= new HashSet<ComponentFiber>()).Clear();
+            for (var f = anchor.Child; f != null; f = f.Sibling)
+            {
+                before.Add(f);
+            }
+        }
+
+        // Stamps the fibers this drain entry just added under anchor with what an isolated re-render needs
+        // to rebuild their enclosing Providers — the same diff-against-a-before-set that
+        // FiberNodePatcher.StampNewTopLevelChildren applies on the patch half of the pair.
+        private static void StampDrainedChildren(
+            ComponentFiber? anchor, HashSet<ComponentFiber>? before,
+            List<KeyValuePair<object, object>>? contextSnapshot, VNode?[] children, ComponentFiber? logicalParent)
+        {
+            if (anchor == null) return;
+            DetachedMountContext? detachedContext = null;
+            for (var f = anchor.Child; f != null; f = f.Sibling)
+            {
+                if (before!.Contains(f)) continue;
+                detachedContext ??= new DetachedMountContext(contextSnapshot, children, anchor, logicalParent);
+                f.DetachedMountContext = detachedContext;
+            }
+        }
+
+        private (VisualElement Target, VNode?[] Children) ResolveLayerPortalTarget(
+            VisualElement placeholder, PortalNode layerPortal, UILayer layer)
+        {
+            if (!_ctx.LayerHosts.TryGetValue(layer, out var layerHost)
+                || layerHost.Document == null)
+            {
+                // Also lands here when a scene unload killed a previously created host:
+                // the dead record is replaced so new portals mount into a live panel.
+                layerHost = PanelHostFactory.ReplaceLayerHost(layer, placeholder.panel, _ctx);
+            }
+            else
+            {
+                // Recurring re-sync point for late declaring resolution and runtime
+                // drift (see SyncDeclaring).
+                PanelHostFactory.SyncDeclaring(layerHost, layer, placeholder.panel, _ctx);
+            }
+            var target = layerHost.Document.rootVisualElement;
+            VelvetStyleUtilities.CarryToHost(_ctx.BatchScheduler.Anchor ?? placeholder, target);
+            var children = layerPortal.Children ?? Array.Empty<VNode>();
+            FiberFocusNavigator.ConfigurePortalFocusOrder(placeholder, layerHost,
+                layerPortal.FocusOrder, _ctx);
+            return (target, children);
+        }
+
+        private (VisualElement Target, VNode?[] Children) ResolveWorldSpacePortalTarget(
+            VisualElement placeholder, WorldSpaceNode worldSpaceNode)
+        {
+            var record = PanelHostFactory.CreateWorldSpaceHost(worldSpaceNode, placeholder.panel, _ctx);
+            _ctx.WorldSpaceBindings[placeholder] = record;
+            var target = record.Document.rootVisualElement;
+            VelvetStyleUtilities.CarryToHost(_ctx.BatchScheduler.Anchor ?? placeholder, target);
+            var children = worldSpaceNode.Children ?? Array.Empty<VNode>();
+            FiberFocusNavigator.ConfigurePortalFocusOrder(placeholder, record,
+                worldSpaceNode.FocusOrder, _ctx);
+            return (target, children);
+        }
+
+        private (VisualElement Target, VNode?[] Children) ResolveSamePanelPortalTarget(
+            VisualElement? target, PortalNode samePanelPortal)
+        {
+            // The target was resolved (non-null) at enqueue: the create path never queues a registry
+            // portal without one, and an element-valued portal arrives already holding its container.
+            var children = samePanelPortal.Children ?? Array.Empty<VNode>();
+            // Same-panel synthetic-bubbling bridge: attached here, at resolution, ONCE per resolved target
+            // through BindPortalTarget's guard — unlike a layer/world-space host, a same-panel target is an
+            // ordinary, already-existing element with no one-time "just created it" moment to hook. Never
+            // attached from FiberPortalRegistry.Register itself: that registry is a bare global
+            // static with no ReconcilerContext to guard duplicate attaches with or later
+            // dispose the bridge through.
+            var samePanelTarget = target!;
+            _ctx.BindPortalTarget(samePanelTarget);
+            return (samePanelTarget, children);
+        }
+
+        // Neither time-sliced strategy finishes its removals in one gated call the way the general path
+        // does, so returning from it is not proof they ran: an abort raised while a descendant of a patched
+        // leaf rendered stops the state machine between phases, and an exhausted frame budget parks it. The
+        // two differ in who pays the debt — the abort's next pass expands both sides again, while a park is
+        // resumed from the old side this one already expanded — which is why the outcome is three-valued.
+        private ReconcilerContext.BoundaryRemovalOutcome FastPathRemovalOutcome()
+            => PendingIndexedState != null || PendingKeyedState != null
+                ? ReconcilerContext.BoundaryRemovalOutcome.OwedByAContinuation
+                : _ctx.IsAborted
+                    ? ReconcilerContext.BoundaryRemovalOutcome.Skipped
+                    : ReconcilerContext.BoundaryRemovalOutcome.Ran;
+
+        // The structural pass of the Reconciler entry that parked, which ran over the children committed so far
+        // and cannot see the rest; a resume that parks again leaves it to the one that finishes.
+        private void ApplyStructuralVariantsOnceSettled(VisualElement? parent)
+        {
+            if (PendingIndexedState == null && PendingKeyedState == null)
+            {
+                _patcher.ApplyStructuralVariants(parent!);
+            }
+        }
+
+        // Resumes a suspended IndexedReconcile.
+        // Does nothing when PendingIndexedState is null.
+        internal void ContinueIndexed(double frameBudgetMs)
+        {
+            if (PendingIndexedState == null) return;
+
+            var state = PendingIndexedState.Value;
+            PendingIndexedState = null;
+            FiberZLayerCoordinator.NoteChildrenReconciled(_ctx, state.Parent);
+            // Read only when the resume unwinds, for the reason Reconcile's own initialiser carries.
+            // Deriving the outcome inside the finally instead is what this shape rejects: measured, the
+            // unwound resume then retires an entry whose slots the unfinished diff never emptied.
+            var removals = ReconcilerContext.BoundaryRemovalOutcome.Skipped;
+            try
+            {
+                ReconcileIndexedFrom(state.Parent, state.OldNodes, state.NewNodes,
+                    state.ResumePhase, state.ResumeIndex, frameBudgetMs, state.SlotStart, state.SlotLimit,
+                    state.OldOccupants);
+                removals = FastPathRemovalOutcome();
+                ApplyStructuralVariantsOnceSettled(state.Parent);
+            }
+            finally
+            {
+                _ctx.SettleBoundaryReproductionsOwedByAPark(removals, _boundaryOwedByThisPark);
+            }
+        }
+
+        // Resumes a suspended KeyedReconcile.
+        // Does nothing when PendingKeyedState is null.
+        internal void ContinueKeyed(double frameBudgetMs)
+        {
+            if (PendingKeyedState == null) return;
+
+            var state = PendingKeyedState;
+            PendingKeyedState = null;
+            FiberZLayerCoordinator.NoteChildrenReconciled(_ctx, state.Parent);
+            // Same initialiser discipline as ContinueIndexed.
+            var removals = ReconcilerContext.BoundaryRemovalOutcome.Skipped;
+            try
+            {
+                ReconcileKeyedFrom(state, frameBudgetMs);
+                removals = FastPathRemovalOutcome();
+                ApplyStructuralVariantsOnceSettled(state.Parent);
+            }
+            finally
+            {
+                _ctx.SettleBoundaryReproductionsOwedByAPark(removals, _boundaryOwedByThisPark);
+            }
+        }
+
+        // Shifts the captured SlotStart of whichever time-sliced state is currently parked by delta;
+        // Reconciler.RebasePendingSlotStart owns when and why. No-op when nothing is parked.
+        internal void RebasePendingSlotStart(int delta)
+        {
+            if (delta == 0) return;
+
+            if (PendingIndexedState.HasValue)
+            {
+                var s = PendingIndexedState.Value;
+                PendingIndexedState = new IndexedReconcileState(
+                    s.Parent, s.OldNodes, s.NewNodes, s.ResumePhase, s.ResumeIndex, s.OldOccupants,
+                    s.SlotStart + delta, ShiftSlotLimit(s.SlotLimit, delta));
+            }
+            else if (PendingKeyedState != null)
+            {
+                PendingKeyedState.SlotStart += delta;
+                PendingKeyedState.SlotLimit = ShiftSlotLimit(PendingKeyedState.SlotLimit, delta);
+            }
+        }
+
+        // SlotLimit is the next inline sibling's MountSlotStart (an absolute parent index), which
+        // PropagateInlineSlotShift moves by the same delta when a preceding sibling resizes — so a parked
+        // limit must shift in lockstep with SlotStart or the resumed Common-phase boundary check
+        // (slotStart + i < Math.Min(childCount, slotLimit)) would test against a stale end and patch/create
+        // the wrong row at the seam. The int.MaxValue sentinel (this fiber is the last tenant, unbounded)
+        // is preserved unshifted.
+        private static int ShiftSlotLimit(int slotLimit, int delta)
+            => slotLimit == int.MaxValue ? slotLimit : slotLimit + delta;
+
+
+        // Discards a suspended IndexedReconcile state and returns the old instances it held. Invoked on a new
+        // Reconcile or during Dispose.
+        internal void DiscardPendingIndexedState()
+        {
+            if (PendingIndexedState is not { } state) return;
+            PendingIndexedState = null;
+            _ctx.BufferPool.ReturnOldSlotOccupants(state.OldOccupants);
+        }
+
+        // ReconcilerContext.NoteSlotOccupantChanged, for the old rows a parked keyed Pass 2 already took.
+        internal void ReplaceParkedRow(VisualElement from, VisualElement to)
+        {
+            var rows = _pendingKeyedState?.NewElements;
+            if (rows == null) return;
+            for (var i = 0; i < rows.Count; i++)
+            {
+                if (rows[i].isExisting && ReferenceEquals(rows[i].element, from)) rows[i] = (to, true);
+            }
+        }
+
+        // Discards a suspended KeyedReconcile state and returns the held Pool buffers.
+        // Invoked on a new Reconcile or during Dispose.
+        internal void DiscardPendingKeyedState()
+        {
+            if (PendingKeyedState == null) return;
+            ReleaseKeyedBuffers(PendingKeyedState);
+            PendingKeyedState = null;
+        }
+
+        #region Reconciliation Strategies
+
+        // Entry point — placed outside the region to make the strategy-selection (indexed / keyed)
+        // entry visible.
+        // Index-based reconciliation. Used when no keys are present.
+        // When frameBudgetMs > 0, frame-budget control is enabled and the work suspends on overrun.
+        private void ReconcileIndexed(VisualElement? parent, VNode?[] oldNodes, VNode?[] newNodes,
+            double frameBudgetMs, int slotStart = 0, int slotLimit = int.MaxValue)
+        {
+            ReconcileIndexedFrom(parent, oldNodes, newNodes,
+                IndexedReconcilePhase.Common, startIndex: 0, frameBudgetMs, slotStart, slotLimit);
+        }
+
+        // Recovers from a baseline/DOM desync where the live container is SHORTER than this fiber's keyed
+        // baseline claims (a transient AnimatePresence exit-ghost overlap under rapid re-key / nav). When the
+        // fiber's range [slotStart, slotStart + oldNodes.Length) does not fit in the live children, the keyed
+        // diff's positional invariant is broken, so rebuild the range from the authoritative new tree: remove the
+        // shortened live range, then create + insert every new node. Returns true when it handled the desync
+        // (the caller must then skip the normal diff). A no-op (false) on the normal path.
+        //
+        // slotLimit bounds the END of THIS fiber's slot range (the next inline-mount sibling's MountSlotStart, or
+        // int.MaxValue when this fiber is the last/only tenant of the parent). Several inline fibers share one
+        // parent, so the rebuild must rebuild ONLY [slotStart, slotLimit) — deleting to parent.childCount would
+        // destroy a following sibling's committed rows (its keyed range was over-deleted, then its elements pooled
+        // and rented back into this fiber's rebuild). Bounding by slotLimit also makes the desync detection more
+        // precise: the diff names an old leaf with no row whenever the baseline exceeds THIS fiber's live rows (the
+        // rows past slotLimit are a sibling's), even when trailing siblings would otherwise pad the
+        // raw childCount past the baseline.
+        private bool TryRebuildDesyncedSlotRange(
+            VisualElement? parent, VNode?[]? oldNodes, VNode?[]? newNodes, int slotStart, int slotLimit)
+        {
+            if (parent == null || oldNodes == null || newNodes == null) return false;
+            // The LOGICAL count, not raw childCount: a filter bounds-spacer on a skewed / shadowed +
+            // filtered parent is not a keyed row, so it must not pad `available` (masking a real desync) nor be
+            // the first element the removal loop below tears out.
+            var rangeEnd = Math.Min(LogicalChildSlots.Count(parent), slotLimit);
+            var available = rangeEnd - slotStart;
+            if (available < 0) available = 0;
+            if (oldNodes.Length <= available) return false;
+
+            // The range's rows are read before any goes, past an invisible child interleaved in them, and removed
+            // from the last.
+            var rows = _ctx.BufferPool.RentOldSlotOccupants();
+            try
+            {
+                rows.Resolve(parent, slotStart, available, slotLimit, _patcher);
+                for (var i = available - 1; i >= 0; i--)
+                {
+                    var row = rows.Occupant(i);
+                    if (row != null) _host.Remove(parent, row, rows.PhysicalAtEntry(i));
+                    if (_ctx.IsAborted) return true;
+                }
+            }
+            finally
+            {
+                _ctx.BufferPool.ReturnOldSlotOccupants(rows);
+            }
+            var slots = new LogicalSlotCursor();
+            for (var i = 0; i < newNodes.Length; i++)
+            {
+                var element = _factory.CreateElement(newNodes[i]);
+                if (_ctx.IsAborted) ReleaseUnplacedElement(element);
+                if (_ctx.IsAborted) return true;
+                slots.Insert(_host, parent, slotStart + i, element);
+            }
+            return true;
+        }
+
+        #region Indexed Pass
+
+        // Inputs fixed for the whole indexed reconcile. A readonly struct passed `in`, NOT a heap state
+        // object like the keyed path's KeyedReconcileState: the unkeyed diff is the framework's hottest
+        // list update and almost always runs at a zero budget with nothing to park, so a per-reconcile
+        // allocation here would be paid by every plain list render. The resumable cursor (phase + index)
+        // deliberately stays out of this struct — it lives in the dispatcher's locals while running and in
+        // IndexedReconcileState while parked.
+        private readonly struct IndexedPassInputs
+        {
+            public readonly VisualElement Parent;
+            public readonly VNode?[] OldNodes;
+            public readonly VNode?[] NewNodes;
+            public readonly int SlotStart;
+            public readonly int SlotLimit;
+            public readonly OldSlotOccupants OldOccupants;
+
+            public IndexedPassInputs(
+                VisualElement parent, VNode?[] oldNodes, VNode?[] newNodes, int slotStart, int slotLimit,
+                OldSlotOccupants oldOccupants)
+            {
+                Parent = parent;
+                OldNodes = oldNodes;
+                NewNodes = newNodes;
+                SlotStart = slotStart;
+                SlotLimit = slotLimit;
+                OldOccupants = oldOccupants;
+            }
+
+            // Derived on demand rather than stored, so the shared-prefix length has exactly one definition
+            // for the dispatcher and all three phases.
+            public int CommonLength => Math.Min(OldNodes.Length, NewNodes.Length);
+        }
+
+        // State-machine dispatcher for indexed reconciliation, mirroring ReconcileKeyedFrom: each phase is
+        // its own method, the successor phase and its start index are assigned here, and a phase that
+        // yields has already parked its own resume point.
+        private void ReconcileIndexedFrom(
+            VisualElement? parent,
+            VNode?[] oldNodes,
+            VNode?[] newNodes,
+            IndexedReconcilePhase startPhase,
+            int startIndex,
+            double frameBudgetMs,
+            int slotStart = 0,
+            int slotLimit = int.MaxValue,
+            OldSlotOccupants? resumedOccupants = null)
+        {
+            // Normally a no-op because `Reconcile()` already cleared the state on entry, but kept as
+            // a safety net for future internal callers that invoke `ReconcileIndexedFrom` directly.
+            // Resumption via ContinueIndexed (startPhase != Common or startIndex != 0) must not
+            // overwrite the saved state, so leave it untouched.
+            if (startPhase == IndexedReconcilePhase.Common && startIndex == 0)
+            {
+                DiscardPendingIndexedState();
+                DiscardPendingKeyedState();
+            }
+
+            if (parent == null) return;
+
+            var occupants = resumedOccupants;
+            if (occupants == null)
+            {
+                occupants = _ctx.BufferPool.RentOldSlotOccupants();
+                occupants.Defer(parent, slotStart, oldNodes.Length, slotLimit, _patcher);
+            }
+            var inputs = new IndexedPassInputs(parent, oldNodes, newNodes, slotStart, slotLimit, occupants);
+
+            if (frameBudgetMs > 0)
+            {
+                _stopwatch ??= new Stopwatch();
+                _stopwatch.Restart();
+            }
+
+            // A phase that parked handed the occupants to the parked state.
+            var parked = false;
+            try
+            {
+                var phase = startPhase;
+                var index = startIndex;
+                while (phase != IndexedReconcilePhase.Done)
+                {
+                    switch (phase)
+                    {
+                        case IndexedReconcilePhase.Common:
+                            parked = !CommonPhase(in inputs, index, frameBudgetMs);
+                            if (parked) return;
+                            phase = IndexedReconcilePhase.Remove;
+                            index = RemovePhaseStartSentinel;
+                            break;
+                        case IndexedReconcilePhase.Remove:
+                            parked = !RemovePhase(in inputs, index, frameBudgetMs);
+                            if (parked) return;
+                            phase = IndexedReconcilePhase.Add;
+                            index = inputs.CommonLength;
+                            break;
+                        case IndexedReconcilePhase.Add:
+                            parked = !AddPhase(in inputs, index, frameBudgetMs);
+                            if (parked) return;
+                            phase = IndexedReconcilePhase.Done;
+                            break;
+                        default:
+                            throw new InvalidOperationException(
+                                $"[ChildReconciler] Unhandled IndexedReconcilePhase: {phase}");
+                    }
+                    // An error-boundary abort parks nothing and must end the pass here — unlike a yield, which
+                    // already parked its own resume point, an aborted phase reports completion so this is the
+                    // only place that can stop the machine before it advances into the next phase's work.
+                    if (_ctx.IsAborted) return;
+                }
+            }
+            finally
+            {
+                if (!parked) _ctx.BufferPool.ReturnOldSlotOccupants(occupants);
+            }
+        }
+
+        // Parks the resume point for a phase that ran out of budget. Only ever called where the caller has
+        // proven another iteration remains, so HasPendingWork never reports a resume that has nothing left.
+        private void ParkIndexedResume(
+            in IndexedPassInputs inputs, IndexedReconcilePhase resumePhase, int resumeIndex)
+        {
+            inputs.OldOccupants.EnsureResolved();
+            PendingIndexedState = new IndexedReconcileState(
+                inputs.Parent, inputs.OldNodes, inputs.NewNodes,
+                resumePhase, resumeIndex, inputs.OldOccupants, slotStart: inputs.SlotStart, slotLimit: inputs.SlotLimit);
+            _stopwatch!.Stop();
+        }
+
+        // Skipping a node the parent handed back by instance leaves every component in its subtree unreached, which
+        // drops the render this pass owes one with work pending. Where the reconciling fiber is marked
+        // (FiberPendingWork), this reconcile skips only a node nothing below can be rendered by a fiber, and patches
+        // every other.
+        private bool SkipsIdentical(VNode? node)
+            => _ctx.FiberStack.Current is not { PendingWorkBelow: true } || !FiberPendingWork.MayHoldFiber(node);
+
+        // Returns false only on a yield (this phase parked its resume point); true when the phase is done
+        // with the range — including when an abort cut it short, which the dispatcher detects separately.
+        private bool CommonPhase(in IndexedPassInputs inputs, int startIndex, double frameBudgetMs)
+        {
+            var parent = inputs.Parent;
+            var oldNodes = inputs.OldNodes;
+            var newNodes = inputs.NewNodes;
+            var slotStart = inputs.SlotStart;
+            var slotLimit = inputs.SlotLimit;
+            var commonLength = inputs.CommonLength;
+            var budgeted = frameBudgetMs > 0;
+            var slots = new LogicalSlotCursor();
+
+            for (var i = startIndex; i < commonLength; i++)
+            {
+                if (_ctx.IsAborted) return true;
+
+                // Identical VNode instances are guaranteed to be diff-free. Skipping the DOM
+                // lookup and DiffProps invocation suppresses outlier GC allocations on the
+                // no-change path.
+                if (ReferenceEquals(oldNodes[i], newNodes[i]) && SkipsIdentical(newNodes[i]))
+                {
+                    if (budgeted && _stopwatch!.Elapsed.TotalMilliseconds > frameBudgetMs)
+                    {
+                        ParkIndexedResume(in inputs, IndexedReconcilePhase.Common, resumeIndex: i + 1);
+                        return false;
+                    }
+                    continue;
+                }
+
+                // DOM-desync recovery: the baseline (oldNodes) is a positional prefix of the live children,
+                // but a transient AnimatePresence overlap (an exit ghost whose VE was dropped, or a key
+                // re-entered mid-exit) can leave the live container SHORTER than the baseline claims, so the
+                // slot this index expects no longer exists. Rather than patch a slot that is not there, create the
+                // model's child to converge the DOM toward the (authoritative) new tree; the missing tail is
+                // built the same way and the Remove phase skips the absent slots.
+                // Bound by slotLimit (this fiber's range end), not just childCount: for a non-last inline
+                // tenant childCount includes the following sibling's rows, so an unbounded check would treat a
+                // sibling row as this fiber's and PATCH it. Out of range → create within this fiber's range.
+                // One walk answers both "is the slot occupied" and "where is it", where a Count bound
+                // check would scan the whole child list per element on a phase that mutates nothing.
+                var slotExists = slotStart + i < slotLimit
+                    && slots.TryGetPhysical(parent, slotStart + i, out _);
+                var slot = new ChildSlot { Parent = parent, SlotStart = slotStart, Index = i };
+                if (PatchOrReplaceAtSlot(in slot, oldNodes[i], newNodes[i], slotExists, inputs.OldOccupants, ref slots))
+                {
+                    return true;
+                }
+
+                if (budgeted && _stopwatch!.Elapsed.TotalMilliseconds > frameBudgetMs)
+                {
+                    ParkIndexedResume(in inputs, IndexedReconcilePhase.Common, resumeIndex: i + 1);
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        // Removal proceeds from the tail, so the resume index is "the tail index to process" and
+        // RemovePhaseStartSentinel means "begin at oldNodes.Length - 1". Decoding the sentinel and the
+        // guard against re-encoding it (below) describe the same encoding and must move together.
+        private bool RemovePhase(in IndexedPassInputs inputs, int startIndex, double frameBudgetMs)
+        {
+            var parent = inputs.Parent;
+            var commonLength = inputs.CommonLength;
+            var budgeted = frameBudgetMs > 0;
+
+            var removeStart = startIndex == RemovePhaseStartSentinel ? inputs.OldNodes.Length - 1 : startIndex;
+            for (var i = removeStart; i >= commonLength; i--)
+            {
+                if (_ctx.IsAborted) return true;
+
+                // DOM-desync recovery (see the Common phase): a tail slot that had no old instance when the
+                // container was entered — the live range was shorter than the baseline claims — is skipped.
+                var old = inputs.OldOccupants.Occupant(i);
+                if (old == null)
+                {
+                    continue;
+                }
+                _host.Remove(parent, old, inputs.OldOccupants.PhysicalAtEntry(i));
+
+                if (budgeted && _stopwatch!.Elapsed.TotalMilliseconds > frameBudgetMs)
+                {
+                    var nextRemoveIndex = i - 1;
+                    if (nextRemoveIndex >= commonLength)
+                    {
+                        // Park only when another iteration remains. nextRemoveIndex ==
+                        // RemovePhaseStartSentinel (-1) is this phase's own "begin at the tail" encoding,
+                        // so parking that value would restart the whole phase instead of resuming it —
+                        // the nextRemoveIndex >= commonLength test is what keeps the two apart.
+                        ParkIndexedResume(in inputs, IndexedReconcilePhase.Remove, nextRemoveIndex);
+                        return false;
+                    }
+                    // nextRemoveIndex < commonLength: no Remove iterations remain, so nothing is parked and
+                    // the pass falls into Add already over budget. Deliberate, not an oversight — Add runs a
+                    // budget check after its first element, bounding the overrun to one element. Do not
+                    // "fix" this into a yield.
+                }
+            }
+
+            return true;
+        }
+
+        private bool AddPhase(in IndexedPassInputs inputs, int startIndex, double frameBudgetMs)
+        {
+            var parent = inputs.Parent;
+            var newNodes = inputs.NewNodes;
+            var slotStart = inputs.SlotStart;
+            var budgeted = frameBudgetMs > 0;
+
+            var slots = new LogicalSlotCursor();
+            for (var i = startIndex; i < newNodes.Length; i++)
+            {
+                if (_ctx.IsAborted) return true;
+
+                var newElement = _factory.CreateElement(newNodes[i]);
+                if (_ctx.IsAborted) ReleaseUnplacedElement(newElement);
+                if (_ctx.IsAborted) return true;
+                // Insert at the absolute slot to avoid colliding with siblings outside this fiber's
+                // range when slotStart > 0. When the range covers the entire children list, this is
+                // equivalent to Add (slotStart + i == parent.childCount at this point). Clamp to childCount so a
+                // DOM-desync resume directly into this phase (the live range shrank since the slice was parked)
+                // appends rather than over-indexing — symmetric with the Common-phase create-on-missing guard.
+                slots.Insert(_host, parent, slotStart + i, newElement);
+
+                if (budgeted && _stopwatch!.Elapsed.TotalMilliseconds > frameBudgetMs)
+                {
+                    var nextAddIndex = i + 1;
+                    if (nextAddIndex < newNodes.Length)
+                    {
+                        // Park only when another iteration remains.
+                        // No pending is needed when the final element has already been processed.
+                        ParkIndexedResume(in inputs, IndexedReconcilePhase.Add, nextAddIndex);
+                        return false;
+                    }
+                    // nextAddIndex >= newNodes.Length: all Add iterations done → fall through.
+                }
+            }
+
+            return true;
+        }
+
+        #endregion
+
+        // Entry point — placed outside the region; routes the Keyed path to sync or time-sliced execution.
+        // Key-based reconciliation (two passes + time-slicing support).
+        // Pass 1: linear scan from the head, fast-patching the prefix where keys match.
+        // Pass 2: handle the remainder via map lookup.
+        // A two-pass keyed-children diff (prefix fast-patch then map lookup); because Velvet yields per VNode
+        // at the ChildReconciler layer, every VNode within each phase can suspend on a budget check.
+        // When frameBudgetMs > 0, the suspendable state-machine path is taken.
+        // When 0 or below, execution is fully synchronous as before (no state object allocation).
+        private void ReconcileKeyed(VisualElement? parent, VNode?[] oldNodes, VNode?[] newNodes,
+            List<ChildKey>? oldKeys, double frameBudgetMs, int slotStart = 0, int slotLimit = int.MaxValue)
+        {
+            if (frameBudgetMs <= 0)
+            {
+                ReconcileKeyedSync(parent, oldNodes, newNodes, oldKeys, slotStart, slotLimit);
+                return;
+            }
+
+            var state = new KeyedReconcileState
+            {
+                Parent = parent,
+                OldNodes = oldNodes,
+                OldKeys = oldKeys?.ToArray(),
+                NewNodes = newNodes,
+                Phase = KeyedReconcilePhase.Pass1Linear,
+                LinearEnd = 0,
+                ResumeIndex = 0,
+                SlotStart = slotStart,
+                SlotLimit = slotLimit,
+            };
+            ReconcileKeyedFrom(state, frameBudgetMs);
+        }
+
+        #region Keyed Pass — Sync
+
+        // Fully synchronous version of keyed reconciliation, run when frameBudgetMs == 0: walks the diff to
+        // completion inline instead of allocating and driving a KeyedReconcileState, since a zero budget
+        // means there is nothing to resume later and the state machine's buffers would be pure overhead.
+        private void ReconcileKeyedSync(VisualElement? parent, VNode?[] oldNodes, VNode?[] newNodes,
+            List<ChildKey>? oldKeys, int slotStart = 0, int slotLimit = int.MaxValue)
+        {
+            // DOM-desync recovery: the keyed diff relies on "oldNodes index == live DOM index" (Pass 1 scans
+            // and Pass 2 takes the element at slotStart + index). A transient AnimatePresence ghost overlap
+            // can leave the live range SHORTER than the baseline, breaking that invariant. Per-site index guards
+            // here would mis-patch by stale index, so instead rebuild this fiber's slot range from the
+            // authoritative new tree (crash-free, immediately convergent; the next clean reconcile runs the normal
+            // keyed diff). See ReconcilerDesyncRecoveryTests for the deterministic guard-contract regression.
+            if (TryRebuildDesyncedSlotRange(parent, oldNodes, newNodes, slotStart, slotLimit)) return;
+            if (parent == null) return;
+
+            var occupants = _ctx.BufferPool.RentOldSlotOccupants();
+            try
+            {
+                occupants.Defer(parent, slotStart, oldNodes.Length, slotLimit, _patcher);
+                var pass = new KeyedSyncPass
+                {
+                    Parent = parent,
+                    OldNodes = oldNodes,
+                    NewNodes = newNodes,
+                    OldKeys = oldKeys,
+                    SlotStart = slotStart,
+                    OldOccupants = occupants,
+                };
+                if (!RunLinearPrefixPass(in pass, out var linearEnd)) return;
+                if (TrySuffixTrimFastPath(in pass, linearEnd)) return;
+                ReconcileKeyedRemainder(in pass, linearEnd);
+            }
+            finally
+            {
+                _ctx.BufferPool.ReturnOldSlotOccupants(occupants);
+            }
+        }
+
+        // The inputs one synchronous keyed reconcile hands each of its passes.
+        private readonly struct KeyedSyncPass
+        {
+            internal VisualElement Parent { get; init; }
+            internal VNode?[] OldNodes { get; init; }
+            internal VNode?[] NewNodes { get; init; }
+            internal List<ChildKey>? OldKeys { get; init; }
+            internal int SlotStart { get; init; }
+            internal OldSlotOccupants OldOccupants { get; init; }
+        }
+
+        // False when this pass finished the whole reconcile on its own — aborted mid-patch, every entry
+        // matched, or what remained was a pure tail insert or tail remove.
+        // Invariants:
+        //   Advance only while keys match (break on oldKey != newKey).
+        //   Each iteration permits only the following operations:
+        //     1. In-place patch (CanPatch=true).
+        //     2. Remove + insert at the same index (CanPatch=false).
+        //   Both keep parent.childCount unchanged and do not move elements at indices below i.
+        //   Therefore, after this pass completes, the DOM state
+        //     parent.ElementAt(slotStart + j) == newNodes[j]
+        //   holds for the range 0..linearEnd-1.
+        //   Indices outside [slotStart, slotStart + max(old.Length, new.Length)) are untouched,
+        //   so the invariant
+        //     oldNodes[i].index == slotStart + i
+        //   continues to hold in ReconcileKeyedRemainder (for i ≥ linearEnd).
+        private bool RunLinearPrefixPass(in KeyedSyncPass pass, out int linearEnd)
+        {
+            var parent = pass.Parent;
+            var oldNodes = pass.OldNodes;
+            var newNodes = pass.NewNodes;
+            var oldKeys = pass.OldKeys;
+            var slotStart = pass.SlotStart;
+            var occupants = pass.OldOccupants;
+            var commonLength = Math.Min(oldNodes.Length, newNodes.Length);
+            linearEnd = 0;
+            var prefixSlots = new LogicalSlotCursor();
+            for (var i = 0; i < commonLength; i++)
+            {
+                // A scoped old key is compared even for the same node: the node may have been emitted under a
+                // scope the new side no longer gives it. A node emitted under its own key takes that key again.
+                if ((oldKeys != null || !ReferenceEquals(oldNodes[i], newNodes[i]))
+                    && !OldKey(oldKeys, oldNodes, i).Equals(_keying.ReconcileKey(newNodes[i], i)))
+                {
+                    break;
+                }
+                // Reference-identical VNodes are diff-free (immutable per render; auto-memoization hands
+                // back the cached instance). Where SkipsIdentical allows, skip the DOM lookup and PatchNode, so
+                // the prefix advances and the in-place DOM slot stays valid.
+                if (!ReferenceEquals(oldNodes[i], newNodes[i]) || !SkipsIdentical(newNodes[i]))
+                {
+                    var slot = new ChildSlot { Parent = parent, SlotStart = slotStart, Index = i };
+                    if (PatchOrReplaceAtSlot(in slot, oldNodes[i], newNodes[i],
+                            slotExists: true, occupants, ref prefixSlots))
+                    {
+                        return false;
+                    }
+                }
+                // Update only when an operation succeeded; left unchanged on break.
+                linearEnd = i + 1;
+            }
+
+            // All entries matched linearly.
+            if (linearEnd == oldNodes.Length && linearEnd == newNodes.Length) return false;
+
+            // Tail-add only.
+            if (linearEnd == oldNodes.Length)
+            {
+                var slots = new LogicalSlotCursor();
+                for (var i = linearEnd; i < newNodes.Length; i++)
+                    slots.Insert(_host, parent, slotStart + i, _factory.CreateElement(newNodes[i]));
+                return false;
+            }
+
+            // Tail-remove only.
+            if (linearEnd == newNodes.Length)
+            {
+                for (var i = oldNodes.Length - 1; i >= linearEnd; i--)
+                    _host.Remove(parent, occupants.Occupant(i)!, occupants.PhysicalAtEntry(i));
+                return false;
+            }
+
+            return true;
+        }
+
+        // True when the whole remaining diff was committed here.
+        // Symmetric counterpart to the linear head scan: match key-equal, patch-compatible pairs from the
+        // TAIL inward (count only — no mutation yet). The win this targets is pure-prepend (and a leading
+        // change with an unchanged tail): the whole map build + LIS reorder is skipped when the
+        // middle that remains after trimming both ends collapses to a single contiguous insert OR remove.
+        // A reorder (both middles non-empty) genuinely needs the LIS, so it falls through to the remainder
+        // pass with NO mutation having happened here. Guards baked into the conditions:
+        //   - unkeyed parity: ReconcileKey is Positional(index) for an unkeyed node, so an unkeyed tail
+        //     matches only when its old and new indices coincide (length unchanged) — never across the
+        //     index shift a prepend introduces, where pure-LIS would remount by position.
+        //   - patch-in-place only: a CanPatch=false tail would need remove+insert (shifting absolute DOM
+        //     indices and stranding an AnimatePresence exit timer), so it stops the trim and defers to LIS.
+        //   - the desync rebuild in the caller still runs first (this prepass never sees a short live range).
+        private bool TrySuffixTrimFastPath(in KeyedSyncPass pass, int linearEnd)
+        {
+            var oldNodes = pass.OldNodes;
+            var newNodes = pass.NewNodes;
+            var oldKeys = pass.OldKeys;
+            var suffix = CountTrimmableSuffix(oldNodes, newNodes, oldKeys, linearEnd);
+            var oldMidEnd = oldNodes.Length - suffix; // exclusive end of the old middle window
+            var newMidEnd = newNodes.Length - suffix; // exclusive end of the new middle window
+            // Repeated keys must reach the remainder map so suffix reuse cannot change which old element
+            // they claim; FlatPathDuplicateKeyTests pins both repeated-side shapes.
+            if (suffix == 0 || (oldMidEnd != linearEnd && newMidEnd != linearEnd)
+                || !(oldKeys == null ? AllReconcileKeysUnique(oldNodes) : AllOldKeysUnique(oldKeys))
+                || !AllReconcileKeysUnique(newNodes))
+            {
+                return false;
+            }
+
+            CommitSuffixTrim(in pass, linearEnd, suffix);
+            return true;
+        }
+
+        // How many key-equal, patch-compatible pairs the tails share, counted inward and without mutating
+        // anything — the caller decides whether the shape that remains is worth the fast path.
+        private int CountTrimmableSuffix(VNode?[] oldNodes, VNode?[] newNodes, List<ChildKey>? oldKeys,
+            int linearEnd)
+        {
+            var suffix = 0;
+            while (oldNodes.Length - suffix > linearEnd && newNodes.Length - suffix > linearEnd)
+            {
+                var oi = oldNodes.Length - 1 - suffix;
+                var ni = newNodes.Length - 1 - suffix;
+                var o = oldNodes[oi];
+                var n = newNodes[ni];
+                // A scoped old key is compared even for the same node, as RunLinearPrefixPass compares it. An old
+                // side that needed no expansion keeps the identity skip, under which the same unkeyed node counts
+                // even where its index moved.
+                if ((oldKeys != null || !ReferenceEquals(o, n))
+                    && !OldKey(oldKeys, oldNodes, oi).Equals(_keying.ReconcileKey(n, ni)))
+                {
+                    break;
+                }
+                if (!ReferenceEquals(o, n) && !ReconcileKeying.CanPatch(o, n)) break;
+                suffix++;
+            }
+
+            return suffix;
+        }
+
+        // Stops on abort mid-way like every other commit here: the caller has already reported the diff as
+        // handled, and the aborted pass leaves the DOM for the next reconcile to converge.
+        private void CommitSuffixTrim(in KeyedSyncPass pass, int linearEnd, int suffix)
+        {
+            var parent = pass.Parent;
+            var oldNodes = pass.OldNodes;
+            var newNodes = pass.NewNodes;
+            var slotStart = pass.SlotStart;
+            var occupants = pass.OldOccupants;
+            var oldMidEnd = oldNodes.Length - suffix;
+            var newMidEnd = newNodes.Length - suffix;
+            // Patch the matched suffix in place (Pass 1 left the tail untouched). The middle insert/remove
+            // below then shifts these elements to their final positions via UI Toolkit's auto-shift.
+            for (var k = 0; k < suffix; k++)
+            {
+                var oi = oldMidEnd + k;
+                var ni = newMidEnd + k;
+                if (ReferenceEquals(oldNodes[oi], newNodes[ni]) && SkipsIdentical(newNodes[ni])) continue;
+                _patchWalk.PatchNode(occupants.Resolved(oi)!, oldNodes[oi], newNodes[ni]);
+                if (_ctx.IsAborted) return;
+            }
+
+            if (oldMidEnd == linearEnd)
+            {
+                // Old middle empty → pure insert of new[linearEnd, newMidEnd) ahead of the suffix.
+                var slots = new LogicalSlotCursor();
+                for (var i = linearEnd; i < newMidEnd; i++)
+                {
+                    slots.Insert(_host, parent, slotStart + i, _factory.CreateElement(newNodes[i]));
+                    if (_ctx.IsAborted) return;
+                }
+            }
+            else
+            {
+                // New middle empty → pure remove of old[linearEnd, oldMidEnd). Reverse so each removal
+                // leaves the not-yet-removed indices intact.
+                for (var i = oldMidEnd - 1; i >= linearEnd; i--)
+                {
+                    _host.Remove(parent, occupants.Occupant(i)!, occupants.PhysicalAtEntry(i));
+                    if (_ctx.IsAborted) return;
+                }
+            }
+        }
+
+        private void ReconcileKeyedRemainder(in KeyedSyncPass pass, int linearEnd)
+        {
+            var parent = pass.Parent;
+            var oldNodes = pass.OldNodes;
+            var newNodes = pass.NewNodes;
+            var oldKeys = pass.OldKeys;
+            var slotStart = pass.SlotStart;
+            var pool = _ctx.BufferPool;
+            var oldKeyMap = pool.RentOldKeyMap();
+            var usedKeys = pool.RentKeySet();
+            var replacedKeys = pool.RentReplacedKeySet();
+            var newElements = pool.RentElementList();
+            var tables = new KeyedPassTables
+            {
+                OldKeyMap = oldKeyMap,
+                UsedKeys = usedKeys,
+                ReplacedKeys = replacedKeys,
+                NewElements = newElements,
+                OldOccupants = pass.OldOccupants,
+            };
+            // Records indices of old elements overwritten by a duplicate key.
+            // Normally empty; only used when a duplicate-key warning is triggered.
+            var orphanedOldIndices = pool.RentOrphanedIndexSet();
+
+            try
+            {
+                // The i in oldNodes[i] is the index in the oldNodes array. Because Pass 1
+                // updated 0..linearEnd-1 in place, the invariant
+                //   oldNodes index == DOM index
+                // holds at this point. An unkeyed node reconciles by its full sibling index i so the
+                // same array slot patches across renders; the new-side walk below looks up the same
+                // index.
+                for (var i = linearEnd; i < oldNodes.Length; i++)
+                {
+                    ReconcileKeying.RegisterOldKey(OldKey(oldKeys, oldNodes, i), oldNodes[i], i, oldKeyMap, orphanedOldIndices);
+                }
+
+                var slots = new LogicalSlotCursor();
+                for (var i = linearEnd; i < newNodes.Length; i++)
+                {
+                    if (_ctx.IsAborted) return;
+                    var slot = new ChildSlot { Parent = parent, SlotStart = slotStart, Index = i };
+                    if (ProcessKeyedNode(in slot, newNodes[i], in tables, ref slots)) return;
+                }
+
+                // Reverse walk so each RemoveElement leaves not-yet-visited indices intact. An
+                // unkeyed node's key is its full sibling index i, the same value the build loop used.
+                for (var i = oldNodes.Length - 1; i >= linearEnd; i--)
+                {
+                    if (ShouldRemoveOldKeyedEntry(OldKey(oldKeys, oldNodes, i), i, usedKeys, replacedKeys, orphanedOldIndices))
+                    {
+                        _host.Remove(parent, pass.OldOccupants.Occupant(i)!, pass.OldOccupants.PhysicalAtEntry(i));
+                    }
+                }
+
+                // After the removal phase the DOM holds only the retained isExisting elements (their
+                // element.parent == parent; created/replaced orphans have parent == null). Compute the
+                // LIS over their current positions — the anchors that stay put — then re-place the rest.
+                // The region starts at slotStart + linearEnd (the linear-prefix matches are in place).
+                var range = new ChildElementPlacement.PlacementRange
+                {
+                    SlotStart = slotStart,
+                    ScanStart = slotStart + linearEnd,
+                    OldLen = oldNodes.Length,
+                    LogicalNewLen = newNodes.Length,
+                };
+                if (_placement.ComputeAnchorsAndReorder(parent, newElements, in range) && parent != null)
+                {
+                    _ctx.ComponentRegistry.CommitChildOrderToRows(parent, newElements, placements: null);
+                }
+            }
+            finally
+            {
+                pool.Return(oldKeyMap);
+                pool.ReturnKeySet(usedKeys);
+                pool.ReturnReplacedKeySet(replacedKeys);
+                ReleaseUnplacedElements(newElements);
+                pool.Return(newElements);
+                pool.ReturnOrphanedIndexSet(orphanedOldIndices);
+            }
+        }
+
+        // The key old leaf i was emitted under. Null keys stand for an old side that needed no expansion, where
+        // each leaf was emitted under its own key.
+        private ChildKey OldKey(List<ChildKey>? keys, VNode?[] oldNodes, int i)
+            => keys == null ? _keying.ReconcileKey(oldNodes[i], i) : keys[i];
+
+        private ChildKey OldKey(ChildKey[]? keys, VNode?[] oldNodes, int i)
+            => keys == null ? _keying.ReconcileKey(oldNodes[i], i) : keys[i];
+
+        // Report before keyed shortcuts so a matched linear prefix cannot bypass the warning.
+        private void ReportRepeatedKeys(VNode?[] newNodes)
+        {
+            var seen = _ctx.BufferPool.RentKeySet();
+            try
+            {
+                for (var i = 0; i < newNodes.Length; i++)
+                {
+                    var key = _keying.ReconcileKey(newNodes[i], i);
+                    if (seen.Add(key)) continue;
+                    FiberLogger.LogWarning("ChildReconciler",
+                        $"Duplicate key detected among new siblings: {key}. " +
+                        "Both siblings render; give each sibling a unique key.");
+                }
+            }
+            finally
+            {
+                _ctx.BufferPool.ReturnKeySet(seen);
+            }
+        }
+
+        private bool AllOldKeysUnique(List<ChildKey> keys)
+        {
+            var seen = _ctx.BufferPool.RentKeySet();
+            try
+            {
+                for (var i = 0; i < keys.Count; i++)
+                {
+                    if (!seen.Add(keys[i])) return false;
+                }
+                return true;
+            }
+            finally
+            {
+                _ctx.BufferPool.ReturnKeySet(seen);
+            }
+        }
+
+        private bool AllReconcileKeysUnique(VNode?[] nodes)
+        {
+            if (nodes.Length < 2) return true;
+            var seen = _ctx.BufferPool.RentKeySet();
+            try
+            {
+                for (var i = 0; i < nodes.Length; i++)
+                {
+                    if (!seen.Add(_keying.ReconcileKey(nodes[i], i))) return false;
+                }
+                return true;
+            }
+            finally
+            {
+                _ctx.BufferPool.ReturnKeySet(seen);
+            }
+        }
+
+        #endregion
+
+        #region Keyed Pass — Time-sliced
+
+        // State-machine dispatcher for keyed reconciliation.
+        // Transitions through phases and returns buffers on yield (budget overrun) or bailout (exception).
+        // Pass2BuildMap resumes indexing from state.LinearEnd rather than 0: the common prefix Pass1Linear
+        // already matched 1:1 by position, so those entries need no key-map lookup in Pass 2.
+        private void ReconcileKeyedFrom(KeyedReconcileState state, double frameBudgetMs)
+        {
+            // DOM-desync recovery at a fresh start (see ReconcileKeyedSync): when the live range is shorter than
+            // the keyed baseline, rebuild from the new tree rather than diff by a broken positional invariant.
+            // Only on the un-resumed entry — mid-pass resume already holds DOM-consistent state.
+            if (state.Phase == KeyedReconcilePhase.Pass1Linear && state.LinearEnd == 0 && state.ResumeIndex == 0
+                && TryRebuildDesyncedSlotRange(state.Parent, state.OldNodes, state.NewNodes, state.SlotStart, state.SlotLimit))
+            {
+                return;
+            }
+            if (state.OldOccupants == null && state.Parent != null)
+            {
+                state.OldOccupants = _ctx.BufferPool.RentOldSlotOccupants();
+                state.OldOccupants.Defer(state.Parent, state.SlotStart, state.OldNodes.Length, state.SlotLimit, _patcher);
+            }
+
+            if (frameBudgetMs > 0)
+            {
+                _stopwatch ??= new Stopwatch();
+                _stopwatch.Restart();
+            }
+
+            try
+            {
+                while (state.Phase != KeyedReconcilePhase.Done)
+                {
+                    var completed = state.Phase switch
+                    {
+                        KeyedReconcilePhase.Pass1Linear => Pass1Linear(state, frameBudgetMs),
+                        KeyedReconcilePhase.TailAdd => Pass1TailAdd(state, frameBudgetMs),
+                        KeyedReconcilePhase.TailRemove => Pass1TailRemove(state, frameBudgetMs),
+                        KeyedReconcilePhase.Pass2BuildMap => Pass2BuildMap(state, frameBudgetMs),
+                        KeyedReconcilePhase.Pass2Process => Pass2Process(state, frameBudgetMs),
+                        KeyedReconcilePhase.Pass2Remove => Pass2Remove(state, frameBudgetMs),
+                        KeyedReconcilePhase.Pass2Reorder => Pass2Reorder(state, frameBudgetMs),
+                        _ => throw new InvalidOperationException(
+                            $"[ChildReconciler] Unhandled KeyedReconcilePhase: {state.Phase}"),
+                    };
+                    if (!completed) return; // yielded: PendingKeyedState set
+                }
+                ReleaseKeyedBuffers(state);
+            }
+            catch
+            {
+                // On exception, discard pending and ensure buffers are returned.
+                PendingKeyedState = null;
+                ReleaseKeyedBuffers(state);
+                throw;
+            }
+        }
+
+        #region Pass 1
+
+        private bool Pass1Linear(KeyedReconcileState state, double frameBudgetMs)
+        {
+            var parent = state.Parent!;
+            var oldNodes = state.OldNodes!;
+            var newNodes = state.NewNodes!;
+            var slotStart = state.SlotStart;
+            var commonLength = Math.Min(oldNodes.Length, newNodes.Length);
+            var slots = new LogicalSlotCursor();
+
+            for (var i = state.ResumeIndex; i < commonLength; i++)
+            {
+                if (AbortIfCanceled(state)) return true;
+
+                // Keys first, then the identity skip, as RunLinearPrefixPass orders them.
+                if ((state.OldKeys != null || !ReferenceEquals(oldNodes[i], newNodes[i]))
+                    && !OldKey(state.OldKeys, oldNodes, i).Equals(_keying.ReconcileKey(newNodes[i], i)))
+                {
+                    break;
+                }
+                if (!ReferenceEquals(oldNodes[i], newNodes[i]) || !SkipsIdentical(newNodes[i]))
+                {
+                    var slot = new ChildSlot { Parent = parent, SlotStart = slotStart, Index = i };
+                    if (PatchOrReplaceAtSlot(in slot, oldNodes[i], newNodes[i],
+                            slotExists: true, state.OldOccupants!, ref slots))
+                    {
+                        state.Phase = KeyedReconcilePhase.Done;
+                        return true;
+                    }
+                }
+                state.LinearEnd = i + 1;
+
+                var next = i + 1;
+                if (next < commonLength && TryYield(state, next, frameBudgetMs)) return false;
+            }
+
+            // Branch after Pass 1 completes.
+            var linearEnd = state.LinearEnd;
+            if (linearEnd == oldNodes.Length && linearEnd == newNodes.Length)
+            {
+                state.Phase = KeyedReconcilePhase.Done;
+                return true;
+            }
+            if (linearEnd == oldNodes.Length)
+            {
+                state.Phase = KeyedReconcilePhase.TailAdd;
+                state.ResumeIndex = linearEnd;
+                return true;
+            }
+            if (linearEnd == newNodes.Length)
+            {
+                state.Phase = KeyedReconcilePhase.TailRemove;
+                state.ResumeIndex = oldNodes.Length - 1;
+                return true;
+            }
+            RentPass2Buffers(state);
+            state.Phase = KeyedReconcilePhase.Pass2BuildMap;
+            state.ResumeIndex = linearEnd;
+            return true;
+        }
+
+        private bool Pass1TailAdd(KeyedReconcileState state, double frameBudgetMs)
+        {
+            var parent = state.Parent!;
+            var newNodes = state.NewNodes!;
+            var slotStart = state.SlotStart;
+
+            var slots = new LogicalSlotCursor();
+            for (var i = state.ResumeIndex; i < newNodes.Length; i++)
+            {
+                if (AbortIfCanceled(state)) return true;
+
+                var newElement = _factory.CreateElement(newNodes[i]);
+                if (_ctx.IsAborted) ReleaseUnplacedElement(newElement);
+                if (AbortIfCanceled(state)) return true;
+                slots.Insert(_host, parent, slotStart + i, newElement);
+
+                var next = i + 1;
+                if (next < newNodes.Length && TryYield(state, next, frameBudgetMs)) return false;
+            }
+            state.Phase = KeyedReconcilePhase.Done;
+            return true;
+        }
+
+        private bool Pass1TailRemove(KeyedReconcileState state, double frameBudgetMs)
+        {
+            var parent = state.Parent!;
+
+            for (var i = state.ResumeIndex; i >= state.LinearEnd; i--)
+            {
+                if (AbortIfCanceled(state)) return true;
+
+                _host.Remove(parent, state.OldOccupants!.Occupant(i)!, state.OldOccupants.PhysicalAtEntry(i));
+
+                var next = i - 1;
+                if (next >= state.LinearEnd && TryYield(state, next, frameBudgetMs)) return false;
+            }
+            state.Phase = KeyedReconcilePhase.Done;
+            return true;
+        }
+
+        #endregion
+
+        #region Pass 2
+
+        private bool Pass2BuildMap(KeyedReconcileState state, double frameBudgetMs)
+        {
+            var oldNodes = state.OldNodes!;
+            var oldKeyMap = state.OldKeyMap!;
+            var orphanedOldIndices = state.OrphanedOldIndices!;
+
+            for (var i = state.ResumeIndex; i < oldNodes.Length; i++)
+            {
+                if (AbortIfCanceled(state)) return true;
+
+                ReconcileKeying.RegisterOldKey(OldKey(state.OldKeys, oldNodes, i), oldNodes[i], i, oldKeyMap, orphanedOldIndices);
+
+                var next = i + 1;
+                if (next < oldNodes.Length && TryYield(state, next, frameBudgetMs)) return false;
+            }
+
+            state.Phase = KeyedReconcilePhase.Pass2Process;
+            state.ResumeIndex = state.LinearEnd;
+            return true;
+        }
+
+        private bool Pass2Process(KeyedReconcileState state, double frameBudgetMs)
+        {
+            var parent = state.Parent!;
+            var newNodes = state.NewNodes!;
+            var oldKeyMap = state.OldKeyMap!;
+            var usedKeys = state.UsedKeys!;
+            var replacedKeys = state.ReplacedKeys!;
+            var newElements = state.NewElements!;
+            var tables = new KeyedPassTables
+            {
+                OldKeyMap = oldKeyMap,
+                UsedKeys = usedKeys,
+                ReplacedKeys = replacedKeys,
+                NewElements = newElements,
+                OldOccupants = state.OldOccupants!,
+            };
+            var slotStart = state.SlotStart;
+            var slots = new LogicalSlotCursor();
+
+            for (var i = state.ResumeIndex; i < newNodes.Length; i++)
+            {
+                if (AbortIfCanceled(state)) return true;
+
+                // ProcessKeyedNode checks _ctx.IsAborted internally and returns true mid-node on abort; the
+                // time-sliced loop owns the state.Phase = Done transition (what AbortIfCanceled does for the
+                // loop-boundary checks).
+                var slot = new ChildSlot { Parent = parent, SlotStart = slotStart, Index = i };
+                if (ProcessKeyedNode(in slot, newNodes[i], in tables, ref slots))
+                {
+                    state.Phase = KeyedReconcilePhase.Done;
+                    return true;
+                }
+
+                var next = i + 1;
+                if (next < newNodes.Length && TryYield(state, next, frameBudgetMs)) return false;
+            }
+
+            state.Phase = KeyedReconcilePhase.Pass2Remove;
+            state.ResumeIndex = state.OldNodes!.Length - 1;
+            return true;
+        }
+
+        // The LIS is computed synchronously right after this pass finishes, not time-sliced alongside it:
+        // ComputeLisAnchors maps each retained element onto its post-removal live DOM position, so every
+        // removal in this pass must have already happened or the mapped indices would reflect elements
+        // still occupying slots they are about to vacate.
+        private bool Pass2Remove(KeyedReconcileState state, double frameBudgetMs)
+        {
+            var parent = state.Parent!;
+            var oldNodes = state.OldNodes!;
+            var orphanedOldIndices = state.OrphanedOldIndices!;
+            var usedKeys = state.UsedKeys!;
+            var replacedKeys = state.ReplacedKeys!;
+
+            for (var i = state.ResumeIndex; i >= state.LinearEnd; i--)
+            {
+                if (AbortIfCanceled(state)) return true;
+
+                if (ShouldRemoveOldKeyedEntry(OldKey(state.OldKeys, oldNodes, i), i, usedKeys, replacedKeys, orphanedOldIndices))
+                {
+                    _host.Remove(parent, state.OldOccupants!.Occupant(i)!, state.OldOccupants.PhysicalAtEntry(i));
+                }
+
+                var next = i - 1;
+                if (next >= state.LinearEnd && TryYield(state, next, frameBudgetMs)) return false;
+            }
+
+            // Remove completed → compute the LIS synchronously and store lisIndices in state.
+            ComputeLis(state);
+            state.Phase = KeyedReconcilePhase.Pass2Reorder;
+            state.ResumeIndex = 0;
+            return true;
+        }
+
+        // Pass 2 Reorder: re-places only the non-LIS-anchor elements, in ONE indivisible slice, via the same
+        // order-faithful right→left neighbour-anchored walk the synchronous paths use (ReorderToNewElementOrder).
+        //
+        // Anchoring each moved element on its already-placed right-neighbour ELEMENT (not an absolute slot) is
+        // what makes a fully ROTATED list reorder correctly: an LIS anchor block stranded at the wrong absolute
+        // slots no longer mis-slots a moved element among the anchors. The old time-sliced reorder used an
+        // absolute parent.Insert(slotStart + LinearEnd + i, e) walk and reproduced that rotation bug under
+        // frame pressure.
+        //
+        // Unlike the linear/match/remove passes, the reorder runs to completion without yielding. The walk
+        // anchors each placement on the element placed just before it (or, for the right-most, on the first
+        // sibling past this range), and it inserts freshly created elements that are not yet in the parent —
+        // both of which change this fiber's live row count as they go. Yielding mid-reorder would let a sibling
+        // fiber sharing the same parent reconcile against a half-rebuilt range, and would require propagating
+        // each partial insertion as a slot rebase to every other parked sibling. Completing the reorder
+        // atomically sidesteps that entirely (no two siblings are ever parked mid-reorder at once); the
+        // linear/remove passes — where the bulk of a large diff's create/patch work lives — still time-slice, so
+        // the budget is honoured for the expensive part, and the reorder is pure DOM repositioning of the
+        // already-built elements. regionStart = SlotStart + LinearEnd (the keyed region begins after the linear
+        // prefix), matching the sync keyed path's ReorderToNewElementOrder(..., slotStart + linearEnd).
+        private bool Pass2Reorder(KeyedReconcileState state, double frameBudgetMs)
+        {
+            if (AbortIfCanceled(state)) return true;
+
+            var regionStart = state.SlotStart + state.LinearEnd;
+            if (_placement.ReorderToNewElementOrder(state.Parent, state.NewElements!, state.LisIndices!, regionStart))
+            {
+                _ctx.ComponentRegistry.CommitChildOrderToRows(state.Parent!, state.NewElements!, placements: null);
+            }
+
+            state.Phase = KeyedReconcilePhase.Done;
+            return true;
+        }
+
+        #endregion
+
+        #region Buffer Management
+
+        // Computes the LIS synchronously and stores it in state.LisIndices, the only buffer that
+        // outlives this call — it is retained until the Reorder phase and returned by
+        // ReleaseKeyedBuffers. The scan starts after the linear prefix (slotStart + LinearEnd).
+        // One-shot O(N log N) computation; the runtime is short relative to N, so per-VNode yields
+        // are unnecessary. Run as a single batch immediately after Pass2Remove completes to finalize
+        // the input to the Reorder phase.
+        private void ComputeLis(KeyedReconcileState state)
+        {
+            var parent = state.Parent;
+            var slotStart = state.SlotStart;
+
+            var lisIndices = _ctx.BufferPool.RentIntSet();
+            state.LisIndices = lisIndices;
+
+            var range = new ChildElementPlacement.PlacementRange
+            {
+                SlotStart = slotStart,
+                ScanStart = slotStart + state.LinearEnd,
+                OldLen = state.OldNodes!.Length,
+                LogicalNewLen = state.NewNodes!.Length,
+            };
+            _placement.ComputeLisAnchors(parent!, state.NewElements!, in range, lisIndices);
+        }
+
+
+
+        // Rents Pass 2's intermediate buffers from the Pool and stores them on state.
+        // Called only at the end of Pass1Linear when transition to Pass 2 is confirmed.
+        // Skipped when Pass 1 ends via TailAdd / TailRemove / full match, avoiding unnecessary Pool
+        // operations in lightweight cases.
+        private void RentPass2Buffers(KeyedReconcileState state)
+        {
+            var pool = _ctx.BufferPool;
+            state.OldKeyMap = pool.RentOldKeyMap();
+            state.UsedKeys = pool.RentKeySet();
+            state.ReplacedKeys = pool.RentReplacedKeySet();
+            state.NewElements = pool.RentElementList();
+            state.OrphanedOldIndices = pool.RentOrphanedIndexSet();
+        }
+
+        // Pass 2 places what it built only in its reorder, its last step, so a pass that throws, aborts, or is
+        // discarded while parked leaves built elements that no parent holds. Both callers run on completion
+        // as well, where the reorder has placed every one of them; the parent test is what leaves those alone.
+        private void ReleaseUnplacedElements(List<(VisualElement? element, bool isExisting)> elements)
+        {
+            foreach (var (element, isExisting) in elements)
+            {
+                if (isExisting || element!.parent != null) continue;
+                ReleaseUnplacedElement(element);
+            }
+        }
+
+        private void ReleaseUnplacedElement(VisualElement element)
+        {
+            _ctx.ComponentRegistry.DisposeFibersUnder(element);
+            _cleaner.ReturnRolledBackOrphan(element);
+        }
+
+        private void ReleaseKeyedBuffers(KeyedReconcileState state)
+        {
+            var pool = _ctx.BufferPool;
+            if (state.OldKeyMap != null) { pool.Return(state.OldKeyMap); state.OldKeyMap = null; }
+            if (state.UsedKeys != null) { pool.ReturnKeySet(state.UsedKeys); state.UsedKeys = null; }
+            if (state.ReplacedKeys != null) { pool.ReturnReplacedKeySet(state.ReplacedKeys); state.ReplacedKeys = null; }
+            if (state.NewElements != null) ReleaseUnplacedElements(state.NewElements);
+            if (state.NewElements != null) { pool.Return(state.NewElements); state.NewElements = null; }
+            if (state.OrphanedOldIndices != null) { pool.ReturnOrphanedIndexSet(state.OrphanedOldIndices); state.OrphanedOldIndices = null; }
+            if (state.LisIndices != null) { pool.ReturnIntSet(state.LisIndices); state.LisIndices = null; }
+            if (state.OldOccupants != null) { pool.ReturnOldSlotOccupants(state.OldOccupants); state.OldOccupants = null; }
+        }
+
+        #endregion
+
+        #region State Machine Helpers
+
+        // If the Abort flag is set, advances phase to Done and returns true.
+        // Buffer release runs only once at the dispatcher tail (the abort site only updates phase
+        // to avoid the null-guarded ReleaseKeyedBuffers being invoked multiple times from various sites).
+        private bool AbortIfCanceled(KeyedReconcileState state)
+        {
+            if (!_ctx.IsAborted) return false;
+            state.Phase = KeyedReconcilePhase.Done;
+            return true;
+        }
+
+        // On budget overrun, saves pending state and returns true.
+        // Callers guarantee that nextResumeIndex stays within the processed range (a pending entry
+        // outside the range would spuriously set HasPendingWork to true).
+        private bool TryYield(KeyedReconcileState state, int nextResumeIndex, double frameBudgetMs)
+        {
+            if (frameBudgetMs <= 0) return false;
+            // Precondition: ReconcileKeyedFrom initialized _stopwatch when frameBudgetMs > 0.
+            // The early return above ensures we only reach this point with frameBudgetMs > 0, so it is non-null.
+            if (_stopwatch!.Elapsed.TotalMilliseconds <= frameBudgetMs) return false;
+            state.OldOccupants?.EnsureResolved();
+            state.ResumeIndex = nextResumeIndex;
+            PendingKeyedState = state;
+            _stopwatch.Stop();
+            return true;
+        }
+
+        #endregion
+
+        #endregion
+
+        #endregion
+
+        #region Helpers
+
+        // IReconcilerHost entry for a Provider value change observed outside inline expansion (a Provider
+        // patched in place by FiberNodePatcher). Forwards to the general path, which owns the live
+        // context-propagation walk shared with the inline-expansion Provider push.
+        internal void NotifyContextValueChange(ContextProviderNode newProvider)
+            => _general.NotifyContextValueChange(newProvider);
+
+        // Keyed Pass 2 reads the existing DOM element for a reused key at slotStart + old.index. That holds
+        // because Pass 1 only performs in-place updates and never changes parent's child order, so old.index
+        // (the oldNodes array index) equals the DOM index minus slotStart; Pass 2's PatchNode recursion adds
+        // or removes no direct children of parent, so the mapping stays stable. The boundary check below is
+        // all that needs asserting — type consistency between the DOM element and oldNodes[old.index] is
+        // guaranteed because a same-key replacement (Pass 1 CanPatch=false) remove+inserts at the same index,
+        // and a Pass-2 CanPatch=false routes through replacedKeys + CreateElement rather than patching the
+        // stale element as the new type. Both the synchronous and time-sliced keyed paths gate on this.
+        // The bound asks whether a rendered child holds the slot, so an invisible child cannot loosen it and mask a real
+        // Pass-1 ordering violation. It is asked of the caller's cursor, which walks from the slot the row before asked:
+        // a LogicalChildSlots.Count of its own walked the whole child list twice for each row matched to an old key in
+        // the editor, since Debug.Assert's message was built before the bound was read. Conditional as Debug.Assert is,
+        // so a player build compiles the call out with the walk.
+        [Conditional("UNITY_ASSERTIONS")]
+        private static void AssertDomIndexInvariant(ref LogicalSlotCursor slots, int slotStart, int oldIndex, VisualElement parent)
+        {
+            if (!slots.TryGetPhysical(parent, slotStart + oldIndex, out _))
+            {
+                UnityEngine.Debug.LogAssertion(
+                    $"[ChildReconciler] DOM index invariant violated: slotStart + old.index={slotStart + oldIndex} "
+                    + $">= renderedChildCount={LogicalChildSlots.Count(parent)}. "
+                    + "Pass 1 may have modified parent's child order.");
+            }
+        }
+
+        // Processes one new-side keyed node: matches it against oldKeyMap and patches the existing element in
+        // place, or creates a replacement (CanPatch=false) / a brand-new element (no match), appending the
+        // result to newElements. Returns true when the reconcile was aborted mid-node (after a patch/create) so
+        // the caller must stop. Shared by the synchronous (ReconcileKeyedSync) and time-sliced (Pass2Process)
+        // keyed Pass-2 loops so their per-node match/patch/create semantics cannot drift; each loop keeps only
+        // its own abort-handling and TryYield scaffolding around this call.
+        // NOT folded into PatchOrReplaceAtSlot despite the same CanPatch gate: Pass 2 defers old-element
+        // removal (recorded in replacedKeys, actually removed by a later reverse pass) instead of removing
+        // eagerly, appends to a newElements list instead of inserting at a live DOM index, and records what
+        // the patch left at the slot — three real differences in shape, not just
+        // naming, so forcing this through the same helper would need as many bool flags as it has callers.
+        private bool ProcessKeyedNode(in ChildSlot slot, VNode? newNode, in KeyedPassTables tables,
+            ref LogicalSlotCursor slots)
+        {
+            var parent = slot.Parent;
+            var slotStart = slot.SlotStart;
+            var newElements = tables.NewElements;
+            var key = _keying.ReconcileKey(newNode, slot.Index);
+
+            if (tables.OldKeyMap.TryGetValue(key, out var old))
+            {
+                if (!tables.UsedKeys.Add(key))
+                {
+                    // A second new-side sibling resolved the same old entry. Re-matching would alias
+                    // two logical rows onto one element (the reorder pass then collapses them,
+                    // silently dropping a row) or, on a type swap, retroactively remove the element
+                    // the first occurrence patched. Mount a fresh element so every declared row commits.
+                    var duplicateElement = _factory.CreateElement(newNode);
+                    newElements.Add((duplicateElement, false));
+                    if (_ctx.IsAborted) return true;
+                    UnityEngine.Debug.Assert(duplicateElement.parent == null,
+                        "[ChildReconciler] _factory.CreateElement must return an orphaned VisualElement (no parent).");
+                    return false;
+                }
+                AssertDomIndexInvariant(ref slots, slotStart, old.index, parent);
+                var occupants = tables.OldOccupants;
+                var existingDomElement = occupants.Occupant(old.index)!;
+
+                if (ReconcileKeying.CanPatch(old.node, newNode))
+                {
+                    // Reference-identical VNodes are diff-free; where SkipsIdentical allows, reuse the existing
+                    // element without patching.
+                    if (!ReferenceEquals(old.node, newNode) || !SkipsIdentical(newNode))
+                    {
+                        existingDomElement = _patchWalk.PatchNode(occupants.Resolved(old.index)!, old.node, newNode);
+                        if (_ctx.IsAborted) return true;
+                    }
+                    newElements.Add((existingDomElement, true));
+                }
+                else
+                {
+                    tables.ReplacedKeys.Add(key);
+                    var newElement = _factory.CreateElement(newNode);
+                    newElements.Add((newElement, false));
+                    if (_ctx.IsAborted) return true;
+                    UnityEngine.Debug.Assert(newElement.parent == null,
+                        "[ChildReconciler] _factory.CreateElement must return an orphaned VisualElement (no parent).");
+                }
+            }
+            else
+            {
+                var newElement = _factory.CreateElement(newNode);
+                newElements.Add((newElement, false));
+                if (_ctx.IsAborted) return true;
+                UnityEngine.Debug.Assert(newElement.parent == null,
+                    "[ChildReconciler] _factory.CreateElement must return an orphaned VisualElement (no parent).");
+            }
+
+            return false;
+        }
+
+        // True when the old entry at index i is not retained by the new tree and must be removed: it was
+        // orphaned by a duplicate key, its key was consumed by no new node, or its key was consumed but
+        // replaced because CanPatch returned false. Shared by both keyed Pass-2 reverse-removal loops.
+        private static bool ShouldRemoveOldKeyedEntry(
+            ChildKey key, int i, HashSet<ChildKey> usedKeys, HashSet<ChildKey> replacedKeys,
+            HashSet<int> orphanedOldIndices)
+        {
+            return orphanedOldIndices.Contains(i)
+                || !usedKeys.Contains(key)
+                || replacedKeys.Contains(key);
+        }
+
+        #endregion
+    }
+}

@@ -1,0 +1,165 @@
+#if UNITY_EDITOR
+#nullable enable
+using System;
+using System.Collections.Generic;
+using UnityEngine.UIElements;
+
+namespace Velvet
+{
+    /// <summary>
+    /// Mounts a preview story and its assembly environment onto a target <see cref="VisualElement"/>.
+    /// </summary>
+    public sealed class VelvetPreviewHost : IDisposable
+    {
+        private readonly VisualElement _target;
+        private readonly MountOptions _options;
+        private const int SettleRounds = 100;
+        private VelvetPreviewEnvironment? _environment;
+        private MountedTree? _mounted;
+        private readonly List<StyleSheet> _appliedStyleSheets = new();
+        private bool _disposed;
+
+        /// <summary>The currently mounted story, or <c>null</c> before a successful mount and after failure.</summary>
+        public VelvetPreviewStory? Story { get; private set; }
+
+        /// <summary>
+        /// The exception raised by the latest mount or args update, or <c>null</c> when it succeeded. Lets a
+        /// window surface a failing story without throwing out of its layout pass.
+        /// </summary>
+        public Exception? MountError { get; private set; }
+
+        public VelvetPreviewHost(VisualElement target) : this(target, new MountOptions())
+        {
+        }
+
+        internal VelvetPreviewHost(VisualElement target, MountOptions options)
+        {
+            _target = target ?? throw new ArgumentNullException(nameof(target));
+            _options = options;
+        }
+
+        /// <summary>
+        /// Tears down the previous story and environment, then mounts <paramref name="story"/> with its default
+        /// args. Build and render failures are captured in <see cref="MountError"/> and leave
+        /// <see cref="Story"/> null.
+        /// </summary>
+        public void Mount(VelvetPreviewStory story) => Mount(story, useArgs: false, args: null);
+
+        /// <summary>
+        /// Mounts <paramref name="story"/> with <paramref name="args"/>. Parameterless stories ignore the args.
+        /// Failures are handled as in <see cref="Mount(VelvetPreviewStory)"/>.
+        /// </summary>
+        public void Mount(VelvetPreviewStory story, object args) => Mount(story, useArgs: true, args: args);
+
+        /// <summary>
+        /// Re-renders the mounted story with new <paramref name="args"/> without restarting its environment or
+        /// replacing its stylesheet. The new tree is reconciled against the mounted one, so a component keeping its
+        /// type and position keeps its state. Returns <c>false</c> when no story can be updated. A failed update
+        /// unmounts the story, records <see cref="MountError"/> and returns <c>true</c> because the update path
+        /// was taken.
+        /// </summary>
+        public bool UpdateArgs(object args)
+        {
+            if (_disposed) throw new ObjectDisposedException(nameof(VelvetPreviewHost));
+            if (Story == null || _mounted == null) return false;
+
+            MountError = null;
+            try
+            {
+                var tree = Story.Build(args);
+                if (tree == null) throw new InvalidOperationException("Story returned a null VNode.");
+                _mounted.Render(tree);
+            }
+            catch (Exception ex)
+            {
+                MountError = ex;
+                Story = null;
+                _mounted.Dispose();
+                _mounted = null;
+            }
+
+            return true;
+        }
+
+        private void Mount(VelvetPreviewStory story, bool useArgs, object? args)
+        {
+            if (_disposed) throw new ObjectDisposedException(nameof(VelvetPreviewHost));
+
+            Unmount();
+            Story = null;
+            MountError = null;
+            if (story == null) return;
+
+            try
+            {
+                _environment = VelvetPreviewRegistry.RunSetupFor(story.Assembly);
+                if (_environment != null)
+                {
+                    foreach (var sheet in _environment.StyleSheets) Attach(sheet);
+                }
+
+                // A hint published outside any setup is still this mount's to take, setups or none.
+                Attach(VelvetStyleHints.Take());
+                var tree = useArgs ? story.Build(args) : story.Build();
+                if (tree == null)
+                {
+                    MountError = new InvalidOperationException("Story returned a null VNode.");
+                    Unmount();
+                    return;
+                }
+
+                _mounted = V.Mount(_target, tree, _options);
+                // Publish Story only after V.Mount succeeds so failure remains distinguishable from a live mount.
+                Story = story;
+            }
+            catch (Exception ex)
+            {
+                MountError = ex;
+                Unmount();
+            }
+        }
+
+        // Runs pending passive effects, then the renders and transitions they scheduled, round after round, so a
+        // smoke run sees an error any of them raises without waiting for the panel scheduler. A fixed count rather
+        // than a pending check: a round with nothing queued renders nothing, and the count bounds a story whose
+        // effects keep scheduling one another.
+        internal void Settle()
+        {
+            var scheduler = _mounted?.Root.Reconciler?.Context.BatchScheduler;
+            for (var round = 0; round != SettleRounds; round++)
+            {
+                scheduler?.FlushPendingPassiveEffects();
+                scheduler?.FlushImmediate();
+                scheduler?.DrainDelayed();
+            }
+        }
+
+        // Track only a sheet this host added; Unmount must not remove a sheet the target already owned.
+        private void Attach(StyleSheet? sheet)
+        {
+            if (sheet == null || _target.styleSheets.Contains(sheet)) return;
+            _target.styleSheets.Add(sheet);
+            _appliedStyleSheets.Add(sheet);
+        }
+
+        private void Unmount()
+        {
+            _mounted?.Dispose();
+            _mounted = null;
+            foreach (var sheet in _appliedStyleSheets) _target.styleSheets.Remove(sheet);
+            _appliedStyleSheets.Clear();
+
+            _environment?.Dispose();
+            _environment = null;
+        }
+
+        public void Dispose()
+        {
+            if (_disposed) return;
+            _disposed = true;
+            Unmount();
+            Story = null;
+        }
+    }
+}
+#endif

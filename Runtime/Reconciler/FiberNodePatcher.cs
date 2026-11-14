@@ -1,0 +1,4189 @@
+#nullable enable
+using System;
+using System.Collections.Generic;
+using UnityEngine.UIElements;
+
+namespace Velvet
+{
+    // VNode diff engine.
+    // Compares oldNode and newNode and updates the VisualElement with minimal DOM operations.
+    internal sealed class FiberNodePatcher
+    {
+        private readonly ReconcilerContext _ctx;
+        private readonly WrapperInfrastructure _wrappers;
+        private readonly FiberWrapperElementAppliers _appliers;
+        private IReconcilerHost _host = null!;
+
+        public FiberNodePatcher(ReconcilerContext ctx)
+        {
+            _ctx = ctx;
+            _wrappers = new WrapperInfrastructure(ctx);
+            _appliers = new FiberWrapperElementAppliers(ctx, _wrappers);
+            // Let the variant manipulators (via StyleVariantPayload) re-resolve a clip-path mask when a
+            // hover:/focus:/dark: clip payload toggles — the class toggle alone does nothing in UITK.
+            _ctx.ClipPathReResolve ??= _appliers.ReResolveClipPathLive;
+            // Same seam for every other class-driven pass a variant can change — the layout manipulators and
+            // the paint layers (gradient / animate / shadow / border-style) and the skew. A variant that toggles
+            // one of their gate tokens changes what the element should carry, and that toggle never reaches
+            // the reconciled class array those passes are otherwise configured from.
+            _ctx.VariantGatedReSync ??= ReSyncVariantGatedPasses;
+        }
+
+        // The className-driven effect appliers (skew/gradient/motion/shadow/ring/clip-path/gesture).
+        // Exposed so the node factory can run the create-time appliers; the patch halves call the patch-time
+        // ones directly through _appliers.
+        internal FiberWrapperElementAppliers Appliers => _appliers;
+
+        internal void SetHost(IReconcilerHost host)
+        {
+            // Throw an exception (not Assert) so that release builds detect the issue.
+            // Double invocation indicates a Reconciler wiring-order bug, so fail fast.
+            if (_host != null)
+            {
+                throw new System.InvalidOperationException("[FiberNodePatcher] SetHost called twice");
+            }
+            _host = host;
+        }
+
+        #region Node Patching
+
+        internal enum SelfPatchKind : byte
+        {
+            Leaf,
+            Element,
+            Motion,
+            VirtualList,
+            Portal,
+            Provider,
+            Component,
+        }
+
+        // One node's patch from PatchSelfPre to PatchSelfPost: the children the walk reconciles between the two,
+        // what the walk opens around them, and what the second half reads of the first.
+        internal struct SelfPatch
+        {
+            internal SelfPatch(VisualElement element, VNode? oldNode, VNode? newNode)
+            {
+                this = default;
+                Element = element;
+                OldNode = oldNode;
+                NewNode = newNode;
+                OldChildren = Array.Empty<VNode>();
+                NewChildren = Array.Empty<VNode>();
+            }
+
+            internal VisualElement Element { get; }
+            internal VNode? OldNode { get; }
+            internal VNode? NewNode { get; }
+            internal SelfPatchKind Kind;
+            // The element a z-layer slot stands for, and the element whose own classes and props are written.
+            internal VisualElement Slot;
+            internal VisualElement Self;
+            internal VisualElement? Container;
+            internal VNode?[] OldChildren;
+            internal VNode?[] NewChildren;
+            internal int SlotStart;
+            internal bool HostsChildVariant;
+            internal MotionSelfPatch Motion;
+            internal PortalSelfPatch Portal;
+            internal FiberVirtualListController? VirtualList;
+        }
+
+        internal struct MotionSelfPatch
+        {
+            internal string[] AppliedOld;
+            internal string[] AppliedNew;
+            internal string[] OldVariantClasses;
+            internal string[] NewVariantClasses;
+            internal StyleTransitionConfig? PlayedTransition;
+            internal Action? OnSwap;
+            internal float ExtraDelaySec;
+            internal float ClaimWaitSec;
+            internal MotionPlayback? Playback;
+            internal MotionOrchestrationFrame? Ambient;
+            internal MotionOrchestrationFrame? ChildOrchestration;
+            internal string? ChildLabel;
+            internal string? InitialLabel;
+        }
+
+        internal struct PortalSelfPatch
+        {
+            internal ComponentFiber? DeclaringFiber;
+            internal HashSet<ComponentFiber>? ChildFibersBefore;
+            internal PortalSlotInfo PrevState;
+            internal int BeforeTailCount;
+            internal InlineTenancy? Tenancy;
+            internal int ShiftedBefore;
+            internal VNode?[]? StampedChildren;
+        }
+
+        // The half of the oldNode → newNode diff that runs before the node's children are reconciled.
+        internal void PatchSelfPre(ref SelfPatch patch)
+        {
+            var element = patch.Element;
+            switch (patch.OldNode)
+            {
+                case ElementNode oldElem when patch.NewNode is ElementNode newElem:
+                    // A relocated slot holds a PLACEHOLDER (FiberZLayerCoordinator), and whether a slot is
+                    // relocated depends on the element's siblings as well as its own classes, so the patch
+                    // always reads the slot through the registry rather than deciding from either class list.
+                    PatchZLayerElementPre(ref patch, oldElem, newElem);
+                    break;
+                case TextNode oldText when patch.NewNode is TextNode newText:
+                    // Invariant: TextNode is always mapped to Label by CreateElement.
+                    // Assert (rather than silently ignore) if `element is Label` does not hold.
+                    UnityEngine.Debug.Assert(
+                        element is Label,
+                        $"[FiberNodePatcher] TextNode is expected to be mapped to Label, but got {element.GetType().Name}.");
+                    if (element is Label label)
+                    {
+                        PatchText(label, oldText, newText);
+                    }
+                    break;
+                case MotionNode oldMotion when patch.NewNode is MotionNode newMotion:
+                    PatchMotionSlotPre(ref patch, oldMotion, newMotion);
+                    break;
+                // AnimatePresence is DOM-less (inline-expanded by ChildReconciler), so it is never a
+                // patchable leaf — no case here.
+                case VirtualListNode when patch.NewNode is VirtualListNode:
+                    if (element is ScrollView scrollView && _ctx.VirtualListControllers.TryGetValue(scrollView, out var controller))
+                    {
+                        patch.Kind = SelfPatchKind.VirtualList;
+                        patch.VirtualList = controller;
+                    }
+                    else
+                    {
+                        FiberLogger.LogWarning("FiberNodePatcher", "Controller not found for ScrollView during patch. This should not happen.");
+                    }
+                    break;
+                default:
+                    PatchIndirectPre(ref patch);
+                    break;
+            }
+        }
+
+        // The node kinds whose VisualElement is a placeholder (Portal / WorldSpace: the children live in
+        // another panel) or a fiber anchor (Provider / Component), rather than the
+        // node's own rendered surface.
+        private void PatchIndirectPre(ref SelfPatch patch)
+        {
+            switch (patch.OldNode)
+            {
+                case PortalNode oldPortal when patch.NewNode is PortalNode newPortal:
+                    PatchPortalPre(ref patch, oldPortal, newPortal);
+                    break;
+                case WorldSpaceNode oldWorldSpace when patch.NewNode is WorldSpaceNode newWorldSpace:
+                    PatchWorldSpacePre(ref patch, oldWorldSpace, newWorldSpace);
+                    break;
+                case ContextProviderNode oldProvider when patch.NewNode is ContextProviderNode newProvider:
+                    patch.Kind = SelfPatchKind.Provider;
+                    patch.Container = patch.Element;
+                    patch.OldChildren = oldProvider.Children ?? Array.Empty<VNode>();
+                    patch.NewChildren = newProvider.Children ?? Array.Empty<VNode>();
+                    break;
+                case ComponentNode when patch.NewNode is ComponentNode:
+                    patch.Kind = SelfPatchKind.Component;
+                    break;
+            }
+        }
+
+        // The half of the diff that runs once the walk has reconciled the node's children. Returns what occupies the
+        // element's slot once the patch is done, which a wrapper added or removed and a z-layer relocation in either
+        // direction change; the diff names the old leaf by it from then on.
+        internal VisualElement PatchSelfPost(ref SelfPatch patch)
+        {
+            switch (patch.Kind)
+            {
+                case SelfPatchKind.Element:
+                    return SlotOccupantOf(PatchZLayerElementPost(ref patch,
+                        (ElementNode)patch.OldNode!, (ElementNode)patch.NewNode!));
+                case SelfPatchKind.Motion:
+                    return SlotOccupantOf(PatchMotionSlotPost(ref patch,
+                        (MotionNode)patch.OldNode!, (MotionNode)patch.NewNode!));
+                case SelfPatchKind.VirtualList:
+                {
+                    var scrollView = (ScrollView)patch.Element;
+                    var oldVirtualList = (VirtualListNode)patch.OldNode!;
+                    var newVirtualList = (VirtualListNode)patch.NewNode!;
+                    RebindEvents(scrollView, newVirtualList.Events);
+
+                    // The ScrollView persists across patches, so re-sync its class-driven styling the
+                    // same way ElementNode does. DiffClassList (inside the helper) is non-destructive —
+                    // delta only, never ClearClassList — so the ScrollView's built-in USS classes survive.
+                    SyncClassDrivenStyling(scrollView, oldVirtualList.ClassNames, newVirtualList.ClassNames);
+                    break;
+                }
+                case SelfPatchKind.Portal:
+                    // The target's other children count as siblings too, other portals' among them.
+                    ApplyStructuralVariants(patch.Container!);
+                    break;
+                case SelfPatchKind.Provider:
+                    ApplyStructuralVariants(patch.Element);
+                    break;
+            }
+            return ResolveOuter(patch.Element);
+        }
+
+        // The placeholder standing at real's slot while real is relocated, else real.
+        private VisualElement SlotOccupantOf(VisualElement real)
+            => FiberZLayerCoordinator.PlaceholderOf(_ctx, real) ?? real;
+
+        // Base-element patch using explicit APPLIED class arrays for the class-driven styling diff (the Motion
+        // path passes base + ancestor-propagated variant classes here; everything else passes raw ClassNames).
+        private void PatchBaseElement(ref SelfPatch patch, BaseElementNode oldNode, BaseElementNode newNode,
+            string[] appliedOldClasses, string[] appliedNewClasses)
+        {
+            var element = patch.Self;
+            SyncClassDrivenStyling(element, appliedOldClasses, appliedNewClasses);
+            DiffProps(element, oldNode.Props, newNode.Props);
+            // Track an element's own Text prop as raw so the text-effect pass (run post-children) transforms the
+            // current value rather than an already-transformed one. When the Text prop is removed, drop the raw
+            // entry so the effect pass does not re-apply a stale value over the just-cleared text.
+            if (element is TextElement)
+            {
+                if (newNode.Props != null && newNode.Props.Text != null)
+                {
+                    StyleTextEffectResolver.CaptureRaw(_ctx, element, newNode.Props.Text);
+                }
+                else
+                {
+                    _ctx.TextRawText.Remove(element);
+                    _ctx.TextRendered.Remove(element);
+                    // The element stays MOUNTED across this transition (no pool cycle), so
+                    // ReconcilerContext.ClearElementSideTables never runs for it, and with no raw text left
+                    // to resolve from, StyleTextEffectResolver.ApplyToElement can never run for it again
+                    // either — nothing would otherwise clear a resolver-owned inline PreWrap this element
+                    // was carrying, leaking it forever. Mirrors FiberElementPoolReset's unconditional
+                    // whiteSpace null on the pool-RETURN path, scoped to just the element the resolver
+                    // actually wrote to (see StyleTextEffectResolver's type comment for the ownership rule).
+                    if (_ctx.TextWhitespaceOwned.Remove(element))
+                    {
+                        element.style.whiteSpace = StyleKeyword.Null;
+                    }
+                    // Same leak, same fix, for the Overline paint binding (see StyleTextEffectResolver's
+                    // type comment): with no raw text left, ApplyToElement can never run again to detach it,
+                    // so a generateVisualContent subscription this element carried would otherwise survive
+                    // forever on an element that no longer has any text to decorate at all.
+                    if (_ctx.TextOverlineBindings.TryGetValue(element, out var overlineBinding))
+                    {
+                        TextOverlineSilhouette.Detach(element, overlineBinding);
+                        _ctx.TextOverlineBindings.Remove(element);
+                    }
+                    TextShownWatch.Detach(_ctx, element);
+                    // Likewise the line-breaking manipulator, whose events would otherwise keep re-deriving
+                    // a leaf the resolver can no longer resolve.
+                    if (_ctx.TextBalanceManipulators.Remove(element, out var balanceBreaker))
+                    {
+                        element.RemoveManipulator(balanceBreaker);
+                    }
+                }
+            }
+            // After DiffProps (and the class-driven config it follows): re-sync the data-/aria- attribute
+            // store and re-evaluate its variants, so a changed Data / Aria prop re-derives the payload even
+            // when the class list is unchanged (SyncClassDrivenStyling re-registers the rules when the class
+            // list DID change, and this runs after, so the rules exist either way).
+            ApplyAttributes(element, newNode.Props);
+            RebindEvents(element, newNode.Events);
+
+            // Sync the name to the new value, INCLUDING clearing it when the prop is removed (null / empty) — an
+            // attribute that disappears from the VNode must disappear from the element (parity with className /
+            // text / etc.). On in-place reuse (esp. positional, no key) a stale name would otherwise make a later
+            // Q("old") mis-hit the reused element. Compare against the live element.name so the set is idempotent.
+            var resolvedName = newNode.Name ?? string.Empty;
+            if (element.name != resolvedName)
+            {
+                element.name = resolvedName;
+            }
+
+            patch.Container = GetChildContainer(element);
+            patch.OldChildren = oldNode.Children ?? Array.Empty<VNode>();
+            patch.NewChildren = newNode.Children ?? Array.Empty<VNode>();
+            patch.HostsChildVariant = StyleChildVariantClass.HasChildVariantClass(newNode.ClassNames);
+        }
+
+        private void PatchBaseElementPost(in SelfPatch patch, BaseElementNode oldNode, BaseElementNode newNode)
+        {
+            var element = patch.Self;
+            if (oldNode.WhileHoverClass != newNode.WhileHoverClass || oldNode.WhileTapClass != newNode.WhileTapClass
+                || oldNode.WhileFocusClass != newNode.WhileFocusClass)
+            {
+                _appliers.ApplyGestureManipulator(element, newNode.WhileHoverClass, newNode.WhileTapClass, newNode.WhileFocusClass);
+            }
+        }
+
+        // Re-syncs every class-driven styling mechanism for an element whose class list may have changed:
+        // the USS class list (and the arbitrary-value inline styles it carries) via
+        // DiffClassList, the state / responsive / relational variant manipulators, and the
+        // inline font layer. Both PatchBaseElement and the VirtualList patch path call this,
+        // so the full set of class-driven mechanisms lives in one place and the two paths cannot drift.
+        // Gap is intentionally excluded: it is re-applied separately by the per-node patch methods
+        // (PatchElementPost / PatchMotionPost) AFTER the walk reconciles the children, so it sees the
+        // final child list. The variant work is gated on DiffClassList's own verdict of whether the
+        // class list actually changed CONTENT (not merely array identity) — every variant manipulator this
+        // derives from (ApplyVariantManipulators and its callees) reads ONLY the classNames array, so a
+        // freshly-allocated array with the same tokens carries no new information and re-deriving from it
+        // would just rebuild the same payloads. A component that rebuilds its VNode tree every render
+        // (no ILPP memoization, or a Motion resolving the same active variant label — MotionVariantResolver
+        // .ResolveApplied always concatenates a fresh array) hits this path on every patch.
+        internal void SyncClassDrivenStyling(VisualElement element, string[] oldClasses, string[] newClasses)
+        {
+            (oldClasses, newClasses) = (AsWritten(element, oldClasses), AsWritten(element, newClasses));
+            var changed = DiffClassList(element, oldClasses, newClasses);
+            if (changed)
+            {
+                ApplyVariantManipulators(element, newClasses);
+                StyleResponsiveScope.OnClassesChanged(oldClasses ?? Array.Empty<string>(), newClasses ?? Array.Empty<string>());
+            }
+            StyleResponsiveScope.ObserveMarkers(element);
+            // The font layer reads the COMPOSED source, so the class diff answers only half of whether its
+            // input moved: applying a variant's payload moves the token set without moving either class
+            // array, and a [&>*]: one moves nothing on the child at all. Lit tokens are the other half.
+            // Its place here, ahead of ApplyPostChildrenClassPasses, is the order the variant re-sync
+            // mirrors.
+            if (changed || HasLitVariantGateTokens(element))
+            {
+                // Font family / weight / italic are resolved together (so font-bold + italic compose)
+                // and written as inline style that overrides the USS fallback classes.
+                ApplyFontLayer(element, oldClasses, newClasses);
+            }
+        }
+
+        // A field control's class list as written onto it: a field Motion's pose classes are merged in unrouted, and
+        // routed here rather than in the merged set, whose callers look its classes up by name
+        // (RemoveStaleInlineTokens). A list a field factory already routed comes back as it is.
+        internal static string[] AsWritten(VisualElement element, string[] classes)
+            => classes != null && StyleInputBoxSurface.IsControl(element) ? StyleInputBoxSurface.Route(classes) : classes!;
+
+        // The condition under which ResolveGateClasses hands back something other than the reconciled
+        // array, which is what the class diff cannot answer for.
+        private bool HasLitVariantGateTokens(VisualElement element)
+            => _ctx.VariantGateClasses.Count != 0
+                && _ctx.VariantGateClasses.TryGetValue(element, out var state)
+                && state.Composes;
+
+        private void PatchElementPost(in SelfPatch patch, ElementNode oldNode, ElementNode newNode)
+        {
+            var element = patch.Self;
+            PatchBaseElementPost(patch, oldNode, newNode);
+            DiffStyles(element, oldNode.Styles, newNode.Styles);
+            // clip-path decides a structural WRAPPER, which is parent surgery, so only a reconcile pass may
+            // run it — hence its place here rather than inside the shared, re-runnable pass sequence. It runs
+            // BEFORE the shadow paint: a clip clips the box-shadow too (CSS), so the shadow reads this verdict
+            // (clipActive) and suppresses the paint while a clip is active.
+            var clipActive = _appliers.ApplyClipPathOnPatch(element, newNode.ClassNames);
+            // The shared post-children passes run after the children are reconciled AND DiffStyles — keeping
+            // gap after DiffStyles preserves the ordering invariant that the manipulator's container-margin
+            // writes are never clobbered by a later inline-style diff on the same element. (No StyleOverrides
+            // member writes a margin today, but the invariant must hold if one is ever added.)
+            _ctx.ExpectPlayGates(element, null);
+            ApplyPostChildrenClassPasses(element, oldNode.ClassNames, newNode.ClassNames, clipActive);
+        }
+
+        // Patches the element a slot stands for — the slot's element itself, or the real element its placeholder
+        // stands for — and hands the result to FiberZLayerCoordinator, which relocates it or returns it to its slot
+        // when its own z or flex order says so. Contract-preserving, exactly like an ElementNode's own patch: the net
+        // effect on the slot's parent's logical children is zero — a placeholder inserted at the element's physical
+        // index with the element turned invisible, or the two exchanged by a sort — so what PatchSelfPost returns for
+        // it is what holds the slot.
+        private void PatchZLayerElementPre(ref SelfPatch patch, ElementNode oldNode, ElementNode newNode)
+        {
+            var element = patch.Element;
+            patch.Kind = SelfPatchKind.Element;
+            patch.Slot = _ctx.ZLayerPlaceholders.TryGetValue(element, out var placed) ? placed : element;
+            patch.Self = _wrappers.ResolveWrapped(patch.Slot);
+            PatchBaseElement(ref patch, oldNode, newNode, oldNode.ClassNames, newNode.ClassNames);
+        }
+
+        private VisualElement PatchZLayerElementPost(ref SelfPatch patch, ElementNode oldNode, ElementNode newNode)
+        {
+            var classElement = patch.Self;
+            PatchElementPost(patch, oldNode, newNode);
+            var real = OuterOfPatched(patch.Slot, patch.Element, classElement);
+            var resolved = ResolveGateClasses(classElement, newNode.ClassNames);
+            if (NoteHeldZ(classElement, resolved))
+            {
+                return real;
+            }
+            FiberZLayerCoordinator.OnPatched(_ctx, real, classElement, newNode.ClassNames, resolved,
+                newNode.Props?.Anchored != null);
+            return real;
+        }
+
+        // The element occupying the slot after a patch, which a clip-path wrapper added or removed by that patch
+        // changed from slot when element was a placeholder; the coordinator follows it there.
+        private VisualElement OuterOfPatched(VisualElement slot, VisualElement element, VisualElement inner)
+        {
+            var outer = ResolveOuter(inner);
+            if (!ReferenceEquals(slot, element) && !ReferenceEquals(outer, slot))
+            {
+                FiberZLayerCoordinator.Rehome(_ctx, slot, outer);
+            }
+            return outer;
+        }
+
+        // PatchZLayerElementPre's Motion counterpart.
+        private void PatchMotionSlotPre(ref SelfPatch patch, MotionNode oldNode, MotionNode newNode)
+        {
+            var element = patch.Element;
+            patch.Kind = SelfPatchKind.Motion;
+            patch.Slot = _ctx.ZLayerPlaceholders.TryGetValue(element, out var placed) ? placed : element;
+            patch.Self = _wrappers.ResolveWrapped(patch.Slot);
+            PatchMotionPre(ref patch, oldNode, newNode);
+        }
+
+        // PatchZLayerElementPost's Motion counterpart. A Motion's applied classes depend on the label its patch
+        // resolves, so the new side is read once the patch ran.
+        private VisualElement PatchMotionSlotPost(ref SelfPatch patch, MotionNode oldNode, MotionNode newNode)
+        {
+            var motion = patch.Self;
+            PatchMotionPost(patch, oldNode, newNode);
+            var applied = RestingClassSet(motion, newNode.ClassNames).Merged;
+            var real = OuterOfPatched(patch.Slot, patch.Element, motion);
+            var resolved = ResolveGateClasses(motion, applied);
+            if (NoteHeldZ(motion, resolved))
+            {
+                return real;
+            }
+            FiberZLayerCoordinator.OnPatched(_ctx, real, motion, applied, resolved, newNode.Props?.Anchored != null);
+            return real;
+        }
+
+        // Whether a Motion play holds classElement's stack position, in which case the z this patch resolved is left
+        // for the play to apply when it lets go (FiberPaintLeases).
+        private bool NoteHeldZ(VisualElement classElement, string[] resolved)
+        {
+            if (!_ctx.PaintLeases!.Holds(classElement, FiberPaintLeases.Layer.Z))
+            {
+                return false;
+            }
+            var classified = FiberZLayerCoordinator.TryClassify(resolved, out var z);
+            var stacked = FiberZLayerCoordinator.Stacks(_ctx, classElement, classified, ref z);
+            _ctx.PaintLeases.NoteZ(classElement, stacked, z);
+            return true;
+        }
+
+        // The class source an element's stacking is read from: the reconciled array with the gate tokens a variant
+        // currently lights appended (ResolveGateClasses).
+        internal string[] ResolveStackingClasses(VisualElement element, string[] classNames)
+            => ResolveGateClasses(element, classNames);
+
+        // The ordered post-children effect-pass sequence shared by PatchElementPost and PatchMotionPost, kept in
+        // one place so the two patch paths cannot drift (a pass added here reaches both). The ORDER is
+        // load-bearing:
+        // - The [&>*]: child-combinator variant runs first so gap / divide / grid (next) win a shared child
+        //   edge — [&>*]:ml-[2px] behaves like a child's own margin, which gap already overwrites. It too runs
+        //   AFTER the children's reconcile so it sees the final child set.
+        // - The layout manipulators (gap, divide and grid, with the pointer-events scope —
+        //   ApplyResolvedLayoutManipulators owns the order among them) run next but still
+        //   AFTER the children's reconcile so gap's margin writes are the final word on the
+        //   element — the wrap path writes the container's OWN margins (-gap/2) — and so they re-apply
+        //   against the current child set (a child add / remove re-spaces even when the className did not
+        //   change).
+        // - Structural variants (first:/last:/nth) re-derive every child's position-based match from the
+        //   final sibling order.
+        // - has-[.class]: re-evaluated with the element AS subject (its descendants drive its own payload),
+        //   at the same post-children timing — a child added / removed re-derives the match.
+        // - has-[:checked]: / has-[:focus]: re-scanned at the same timing — a checked / focused descendant
+        //   added or removed fires no event, so the manipulator must re-derive from the live subtree.
+        // - text-transform / -decoration cascade (post-children so it reaches descendant text leaves).
+        // - The paint sequence last, from a class source resolved HERE rather than at the top: the has- /
+        //   attribute / supports passes just above apply payloads to this very element, so a gate token they
+        //   toggle has to be in the source the paint layers read, and an array resolved before them would not
+        //   carry it. The re-sync those passes raise also runs, a few lines earlier, against the same
+        //   composition — so the two agree instead of the later one undoing the earlier.
+        // The clip-path wrapper stays with the callers: it is parent surgery on the element's own slot, which
+        // only a reconcile pass may perform.
+        private void ApplyPostChildrenClassPasses(VisualElement element, string[] oldClassNames,
+            string[] newClassNames, bool clipActive)
+        {
+            (oldClassNames, newClassNames) = (AsWritten(element, oldClassNames), AsWritten(element, newClassNames));
+            // Before gap / divide / grid: on a SHARED style property ([&>*]:ml-[2px] alongside gap-x-4) those
+            // three own the edge and must win, exactly as they already win over a child's own explicit margin
+            // — running [&>*]: first makes it behave as if the child itself carried the wrapped class.
+            ApplyChildVariantManipulator(element, newClassNames);
+            // A field's input box decides its bounds-spacers from the payloads routed to it, applied or not
+            // (WrapperInfrastructure.CarriesFilter), and a routed payload that is not applied re-syncs nothing.
+            if (!ReferenceEquals(oldClassNames, newClassNames) && StyleInputBoxSurface.IsControl(element)
+                && StyleInputBoxSurface.TryGetBox(element, out var box) && _ctx.VariantGateClasses.ContainsKey(box))
+            {
+                ReSyncVariantGatedPasses(box);
+            }
+            ApplyLayoutManipulators(element, newClassNames);
+            ApplyStructuralVariants(element);
+            ApplyHasClassVariants(element);
+            ApplyHasVariantManipulators(element);
+            ApplyTextEffects(element, newClassNames);
+            var resolved = ResolveVariantClasses(element, oldClassNames, newClassNames, out var classesChanged);
+            ApplyResolvedClassPasses(element, resolved, classesChanged, clipActive);
+        }
+
+        // The ordered paint-pass sequence, shared by the reconcile path and the variant re-sync so the two
+        // cannot drift and so a re-run produces exactly what a full pass would. Every pass here reads its
+        // class source and nothing else about the element's position, which is what makes it re-runnable
+        // outside a reconcile — unlike the clip-path wrapper layer, which swaps which element occupies the
+        // element's own slot and is therefore forbidden inside a pointer / focus callback or a breakpoint
+        // notification. The ring layer's overlay is a TRAILING, spacer-marked sibling, which occupies no slot
+        // (LogicalChildSlots.IsInvisible skips it), so adding and removing it here is safe — and
+        // that is precisely what makes focus:ring-* render instead of toggling an inert class.
+        // The ORDER is load-bearing:
+        // - Gradient runs after the node-style diff so its sizing reads whether an image override from that
+        //   diff shows over its bake; the two images themselves are ranked by StyleArbitraryValueResolver.
+        // - animate-* motion runs after the gradient (a pan mode reads the live gradient) and reconciles
+        //   its own restart/attach/detach against the new class list.
+        // - Skew composes into the inline rotate and scale slots, which the passes that apply the class
+        //   styling also write, so it follows them.
+        // - The shadow paint reads the caller's clipActive verdict.
+        // - border-dashed / border-dotted runs strictly AFTER shadow so it reads its final
+        //   ownership — while the shadow owns the face the dashed layer defers (the border stays solid), so an
+        //   add/remove of skew/shadow in the same pass resolves without a race.
+        // - The ring overlay and the backdrop layer run last. Neither owns any part of the element's face or contends
+        //   with the layers above, so their position here is not load-bearing; they sit at the end because both
+        //   touch the element's PARENT rather than the element.
+        // The particles spacer is here, not in the Particles-settings diff, because it follows the CLASS list
+        // (a filter comes and goes via a class swap or a variant).
+        private void ApplyResolvedClassPasses(VisualElement element, string[] classNames, bool classesChanged,
+            bool clipActive)
+        {
+            if (classesChanged)
+            {
+                // A rule can match a descendant by this element's classes, so the loops beneath read theirs again.
+                StyleAnimateDriver.NotifySubtreeStyleChanged(element);
+                _ctx.StyleAnimationScheduler.ResyncTransitions(element);
+            }
+            _ctx.PaintLeases!.Note(element, classNames);
+            _appliers.ApplyGradientOnPatch(element, classNames);
+            _appliers.ApplyAnimateOnPatch(element, classNames);
+            _appliers.ApplyFilterTransitionOnPatch(element, classNames);
+            _appliers.ApplyEaseCurveOnPatch(element, classNames);
+            _appliers.ApplyParticlesSpacer(element, classNames);
+            _appliers.ApplySkewOnPatch(element, classNames, classesChanged);
+            _appliers.ApplyShadowOnPatch(element, classNames, clipActive);
+            _appliers.ApplyBorderStyleOnPatch(element, classNames, classesChanged);
+            BorderPreflight.OnClassesResolved(element, classNames, classesChanged);
+            _appliers.ApplyRingOnPatch(element, classNames, clipActive);
+            _appliers.ApplyBackdropOnPatch(element, classNames);
+        }
+
+        private void PatchText(Label label, TextNode oldNode, TextNode newNode)
+        {
+            if (oldNode.Text != newNode.Text)
+            {
+                // OnTextSet captures the new raw AND applies the cascade-resolved effect, so an isolated leaf
+                // re-render (its text changed via an inner component's state while the effect-bearing ancestor
+                // did not re-render) still shows the inherited transform; a whole-component render also re-applies
+                // via the ancestor's post-children pass (idempotent).
+                StyleTextEffectResolver.OnTextSet(_ctx, label, newNode.Text);
+                ApplyFlexMinSizeManipulator(label, System.Array.Empty<string>());
+            }
+        }
+
+        private void RebindEvents(VisualElement element, FiberEventBinding[] newEvents)
+        {
+            if (!_ctx.EventManager.HasSameBindings(element, newEvents))
+            {
+                _ctx.EventManager.UnbindAll(element);
+                if (newEvents != null)
+                {
+                    foreach (var evt in newEvents)
+                    {
+                        _ctx.EventManager.Bind(element, evt);
+                    }
+                }
+                _ctx.EventManager.Rebound(element);
+            }
+        }
+
+        // Draws a rotated layoutId Motion inside another through a correction wrapper, and takes the wrapper off
+        // again once it no longer is one. The Motion's layout and projection are read through the box its parent
+        // lays out (MotionLayoutIdDriver.Box), so the swap hands them to the driver first.
+        private void ReconcileLayoutIdCorrection(VisualElement element, MotionNode node, string[] appliedClasses)
+        {
+            var clipped = _ctx.ClipPathBindings.TryGetValue(element, out var clip) && !clip.Correction;
+            var wants = !clipped && node.LayoutId != null && MotionLayoutIdDriver.Corrects(appliedClasses)
+                && MotionLayoutIdDriver.HasLayoutIdAncestor(element.hierarchy.parent, _ctx);
+            if (wants == _appliers.HasLayoutIdCorrection(element))
+            {
+                if (wants) ClipPathLayoutBox.SyncClasses(element);
+                return;
+            }
+            MotionLayoutIdDriver.BeforeReseat(element, _ctx);
+            if (wants) _appliers.WrapLayoutIdCorrectionInPlace(element);
+            else _appliers.UnwrapLayoutIdCorrectionInPlace(element);
+        }
+
+        private void PatchMotionPre(ref SelfPatch patch, MotionNode oldNode, MotionNode newNode)
+        {
+            var element = patch.Self;
+            _ctx.MotionNodes[element] = newNode;
+            // Effective label = own Animate, else the inherited MotionContext label (read BEFORE we push this
+            // node's label for its own children).
+            var motionAmbient = _ctx.ComponentContextStack.Get(MotionContext.ActiveLabel);
+            var ambientOrchestration = _ctx.ComponentContextStack.Get(MotionContext.Orchestration);
+            // swapTransition is what this node's own swap into the resolved pose plays on (see
+            // ResolveApplied). The swap below and the orchestration frame this node establishes for its
+            // children read the same value because they must be measured against the SAME span — When =
+            // BeforeChildren computes the children's wait from DelaySec and the play's span, so a frame built off
+            // the node's config while the swap ran on the pose's would let children start before their
+            // parent finished.
+            // A Motion a presence mounted already leaving keeps resting at its initial pose while it exits.
+            string[] newVariantClasses;
+            StyleTransitionConfig? swapTransition;
+            var appliedNew = _ctx.PresenceMountsLeaving
+                ? MotionVariantResolver.ResolveAppliedAt(newNode,
+                    MotionVariantResolver.InitialLabel(newNode, _ctx.ComponentContextStack.Get(MotionContext.InitialLabel)),
+                    out newVariantClasses, out swapTransition)
+                : MotionVariantResolver.ResolveApplied(newNode, motionAmbient,
+                    out newVariantClasses, out swapTransition);
+            // Diff against the previously-APPLIED set (base + resolved variant), not the raw ClassNames — so a
+            // changed effective label swaps the variant classes even when this node's base classes are equal.
+            // When no entry exists (variant-less, never stored) the baseline is the node's base classes with no
+            // variant classes — an explicit pair (MotionAppliedClassSet), not something re-derived from the
+            // merged array's tail by position (see ResolveApplied's own doc for why that would be fragile).
+            var previous = RestingClassSet(element, oldNode.ClassNames);
+            var variantApplied = newVariantClasses.Length > 0;
+            // staggerChildren/delayChildren propagation (plain variant-tree orchestration — no AnimatePresence
+            // required): this node FOLLOWS the ambient label (no own Animate opting it out) and an ancestor
+            // Motion is currently orchestrating THIS render (its own active label just changed and its
+            // Transition declared the knobs) — claim the next sequential slot. The claim rides along as the
+            // runtime-swap play's additionalDelaySec further below (delaying the SWAP itself, not a parked CSS
+            // transition-delay for utilities this element may not even declare), layered on top of whatever
+            // this node's own Transition.DelaySec the play's own config already carries. Declared OUTSIDE the
+            // `if` (0f when this node claims nothing) so it can be folded into a fresh orchestration frame THIS
+            // node establishes below for its OWN children (see ResolveChildOrchestration): this node's own swap
+            // does not start until extraDelaySec has elapsed, so a child frame it establishes must measure its
+            // claims from that same origin, not from render-commit time as if this node's swap were immediate.
+            // Claimed before the class-driven sync, since whether an instant spring swap lands at once depends on
+            // it (StyleTransitionConfig.SpringLandsAtOnceAfter).
+            var extraDelaySec = 0f;
+            var claimWaitSec = 0f;
+            if (MotionVariantResolver.IsVariantChild(newNode) && ambientOrchestration != null)
+            {
+                extraDelaySec = ambientOrchestration.ClaimNextChildDelaySec();
+                claimWaitSec = ambientOrchestration.WaitSec;
+            }
+            // Decided before the class-driven sync rather than beside the play below, because a tween swap
+            // changes what that sync may write (ResolveInlineHold), and a zero-duration one what the element's
+            // running play still animates as the sync writes (LandNamedProperties).
+            var playedTransition = ResolvePlayedSwap(element, swapTransition, previous.VariantClasses,
+                newVariantClasses);
+            var old = OldSet(previous, newVariantClasses);
+            var appliedOld = old.Merged;
+            var oldVariantClasses = old.VariantClasses;
+            if (playedTransition != null)
+            {
+                _ctx.StyleAnimationScheduler.LandNamedProperties(element, newVariantClasses, playedTransition,
+                    extraDelaySec);
+            }
+            var (syncOld, syncNew, onSwap) = ResolveInlineHold(element, newNode.ClassNames,
+                new MotionAppliedClassSet(appliedOld, oldVariantClasses),
+                new MotionAppliedClassSet(appliedNew, newVariantClasses), playedTransition, extraDelaySec);
+            // Keep an entry only while a variant is applied; drop it when a variant→no-variant transition happens
+            // (the diff above still uses the stored old classes to REMOVE the now-stale variant utilities).
+            if (variantApplied)
+            {
+                _ctx.MotionAppliedClasses[element] = new MotionAppliedClassSet(appliedNew, newVariantClasses,
+                    old.Carried);
+            }
+            else
+            {
+                _ctx.MotionAppliedClasses.Remove(element);
+            }
+
+            var childLabel = MotionVariantResolver.LabelForChildren(newNode, motionAmbient);
+            var playback = MotionVariantResolver.PlaybackForChildren(newNode,
+                _ctx.ComponentContextStack.Get(MotionContext.Playback));
+            // Compare against the label THIS element propagated to children last time (not merely whether ITS
+            // OWN classes changed — a "coordinator" Motion may propagate a label while carrying no Variants of
+            // its own) to detect an ACTUAL change before (re-)establishing a fresh orchestration frame: a
+            // re-render that keeps the same label must not re-trigger the stagger.
+            var previousChildLabel = _ctx.MotionChildLabel.TryGetValue(element, out var prevChildLabel) ? prevChildLabel : null;
+            var childLabelChanged = childLabel != previousChildLabel;
+            // Only touch the map when the label actually changed: an unchanged null already has no entry (the
+            // else branch below already removed it last time), and an unchanged non-null value is already
+            // stored under this exact key — re-writing/re-removing it every render would just be a wasted
+            // Dictionary op on the (overwhelming) common "same label" re-render.
+            if (childLabelChanged)
+            {
+                if (childLabel != null)
+                {
+                    _ctx.MotionChildLabel[element] = childLabel;
+                }
+                else
+                {
+                    _ctx.MotionChildLabel.Remove(element);
+                }
+            }
+
+            var initialLabel = MotionVariantResolver.InitialLabel(newNode,
+                _ctx.ComponentContextStack.Get(MotionContext.InitialLabel));
+            // Resolved ahead of PatchBaseElement's class sync, which writes the class list the frame's span reads
+            // (MotionSlotContext.CarriesTarget).
+            var childOrchestration = childLabel != null
+                ? ResolveChildOrchestration(newNode, swapTransition, childLabelChanged, ambientOrchestration,
+                    extraDelaySec, oldVariantClasses, newVariantClasses, element, _ctx.StyleAnimationScheduler,
+                    claimWaitSec)
+                : null;
+            patch.Motion = new MotionSelfPatch
+            {
+                AppliedOld = appliedOld, AppliedNew = appliedNew,
+                OldVariantClasses = oldVariantClasses, NewVariantClasses = newVariantClasses,
+                PlayedTransition = playedTransition, OnSwap = onSwap,
+                ExtraDelaySec = extraDelaySec, ClaimWaitSec = claimWaitSec, Playback = playback,
+                Ambient = ambientOrchestration, ChildOrchestration = childOrchestration,
+                ChildLabel = childLabel, InitialLabel = initialLabel,
+            };
+            PatchBaseElement(ref patch, oldNode, newNode, syncOld, syncNew);
+        }
+
+        private void PatchMotionPost(in SelfPatch patch, MotionNode oldNode, MotionNode newNode)
+        {
+            var element = patch.Self;
+            var motion = patch.Motion;
+            var appliedOld = motion.AppliedOld;
+            var appliedNew = motion.AppliedNew;
+            var oldVariantClasses = motion.OldVariantClasses;
+            var newVariantClasses = motion.NewVariantClasses;
+            var playedTransition = motion.PlayedTransition;
+            var extraDelaySec = motion.ExtraDelaySec;
+            PatchBaseElementPost(patch, oldNode, newNode);
+
+            // An AfterChildren Motion starts its swap when the plays below it have ended, which the children's
+            // patches above have reported by now.
+            var playDelaySec = MotionOrchestrationWait.PlayStartSec(motion.ChildOrchestration, extraDelaySec);
+            ReportPlayEnd(element, newNode, motion.Ambient, motion.ChildOrchestration, playedTransition, playDelaySec,
+                oldVariantClasses, newVariantClasses);
+
+            // Runtime variant swap: PatchBaseElement already synced the class list to the final resting
+            // state (appliedNew) via a plain, instant diff, less the inline-resolved tokens ResolveInlineHold
+            // holds for the swap to write. When the effective label actually changed WHICH
+            // variant classes are applied, replay that same swap on the scheduler on the destination pose's
+            // transition (ResolvePlayedSwap) — a transition should apply to every animate update, not just the
+            // first. V.Motion gives a Motion that declares none StyleTransition.Fade; a swap whose transition
+            // lands at once (StyleAnimationScheduler.LandsAtOnce), StyleTransitionConfig.None among them, plays
+            // nothing.
+            // Gated off an element the scheduler already treats as EXITING (not off PresenceAnchorMotion
+            // identity — that field is set for every current AnimatePresence child, including a plain
+            // PERSISTING one this swap must still drive when its ambient label changes, e.g. a coordinator
+            // orchestrating a presence-managed child). A Motion's own resolved variant only actually changes
+            // (the precondition above) while it carries Variants of its own — the shape whose enter/exit
+            // GeneralPathReconciler dispatches explicitly against this very element (isVariantMotion; a
+            // wrapped anchor Motion's dispatch also lands here, on the Motion's own element, not on its
+            // wrapper) — and that explicit dispatch either runs on a fresh CREATE (never reaches a patch)
+            // or, for a still-exiting / cancelled-exit reproduction, plays no competing animation of its own
+            // (CancelExit's reversal, or no-op) — so the one real overlap is a GHOST re-patched on a LATER
+            // render while still exiting (skipping the ghost dispatch's own CancelEnter, which only runs the
+            // FIRST time state.Exiting.Add(key) succeeds): IsExiting catches exactly that window.
+            // The play below starts ahead of the class pass that names the pose it ends on; the paint leases are told
+            // so, since a play started anywhere else has no such pass to wait for.
+            _ctx.PaintLeases!.PassFollows = true;
+            try
+            {
+                if (playedTransition != null)
+                {
+                    _ctx.StyleAnimationScheduler.PlayVariantEnter(element, oldVariantClasses, newVariantClasses,
+                        playedTransition, onComplete: null, additionalDelaySec: playDelaySec, onSwap: motion.OnSwap,
+                        appliedClasses: appliedNew, playback: motion.Playback,
+                        waitSec: motion.ClaimWaitSec + playDelaySec - extraDelaySec);
+                }
+                RemoveStaleInlineTokens(element, playedTransition, extraDelaySec, oldVariantClasses,
+                    new MotionAppliedClassSet(appliedNew, newVariantClasses));
+
+                // MotionNode has no Styles diff, so the shared passes follow the children's reconcile directly. A
+                // clip wrapper, where the classes call for one, suppresses the paints a clip clips.
+                var clipActive = _appliers.ApplyClipPathOnPatch(element, appliedNew);
+                _ctx.ExpectPlayGates(element, newNode);
+                ApplyPostChildrenClassPasses(element, appliedOld, appliedNew, clipActive);
+            }
+            finally
+            {
+                _ctx.PaintLeases.PassFollows = false;
+            }
+
+            // Shared-element layout animation (layoutId): independent of the variant swap
+            // above — runs from the ACTUAL resolved-rect delta, not a class-defined from/to pair — so
+            // it fires whether or not this patch also changed Variants/Animate.
+            ReconcileLayoutIdCorrection(element, newNode, appliedNew);
+            if (newNode.LayoutId != null)
+            {
+                MotionLayoutIdDriver.OnPatched(element, newNode.LayoutId, LayoutIdTiming.From(newNode.LayoutTransition), _ctx);
+            }
+            else
+            {
+                MotionLayoutIdDriver.Forget(element, _ctx);
+            }
+        }
+
+        // A play that moves classes puts its pose's inline-resolved tokens on the class list, and the class sync
+        // writes them as inline style without touching that list, so a label change whose swap moves none leaves
+        // the old pose's there. A spring or bezier settle re-applies what the list names
+        // (ReapplyMotionOwnedInlineValues), so each one comes off here, except one for a property the new applied
+        // set leaves unnamed while a spring or bezier still drives it: that play's settle re-applying it is what
+        // ends the property at the play's target (MotionZeroDurationLandingTests). It is carried instead, so the
+        // next label change diffs it and its layer away as the old pose's (MotionAppliedClassSet.Carried).
+        private void RemoveStaleInlineTokens(VisualElement element, StyleTransitionConfig? playedTransition,
+            float extraDelaySec, string[] oldVariantClasses, MotionAppliedClassSet next)
+        {
+            if (playedTransition != null && !StyleAnimationScheduler.LandsAtOnce(playedTransition, extraDelaySec))
+            {
+                return;
+            }
+            bool? driving = null;
+            StyleLonghandSet? written = null;
+            List<string>? carried = null;
+            foreach (var cls in oldVariantClasses)
+            {
+                if (!IsInlineResolved(cls) || Array.IndexOf(next.Merged, cls) >= 0)
+                {
+                    continue;
+                }
+                driving ??= _ctx.StyleAnimationScheduler.IsDriving(element);
+                written ??= LonghandsOf(next.Merged);
+                if (driving.Value && !LonghandsOf(new[] { cls }).Overlaps(written.Value))
+                {
+                    (carried ??= new List<string>()).Add(cls);
+                    continue;
+                }
+                element.RemoveFromClassList(cls);
+            }
+            if (carried != null)
+            {
+                _ctx.MotionAppliedClasses[element] = new MotionAppliedClassSet(next.Merged, next.VariantClasses,
+                    carried.ToArray());
+            }
+        }
+
+        // The set a patch diffs from: on a label change, with the classes the element was left resting at counted as
+        // the old pose's, else as stored, still carrying them.
+        private static MotionAppliedClassSet OldSet(MotionAppliedClassSet previous, string[] newVariantClasses)
+            => SequenceEqual(previous.VariantClasses, newVariantClasses)
+                ? previous
+                : new MotionAppliedClassSet(Concat(previous.Carried, previous.Merged),
+                    Concat(previous.Carried, previous.VariantClasses));
+
+        private static string[] Concat(string[] first, string[] second)
+        {
+            var joined = new string[first.Length + second.Length];
+            first.CopyTo(joined, 0);
+            second.CopyTo(joined, first.Length);
+            return joined;
+        }
+
+        // A class's parsed value where the resolver parses one, else the class itself, so two spellings of one
+        // value (translate-x-4, translate-x-[16px]) share a key.
+        internal static string ValueKey(string rawCls)
+            => TryGetInlineResolvedCore(rawCls, out var core, out var important)
+                && StyleArbitraryValueResolver.TryParse(core, out var style)
+                ? $"{important}|{style.Property}|{style.Value}|{style.Unit}|{style.Value2}|{style.Unit2}|{style.Value3}|{style.Value4}|{style.PercentEdges}|{style.Color}|{style.Auto}"
+                    + $"|{(style.Custom == null && style.Expression == null && style.DropShadow == null ? string.Empty : rawCls)}"
+                : rawCls;
+
+        private StyleTransitionConfig? ResolvePlayedSwap(VisualElement element, StyleTransitionConfig? swapTransition,
+            string[] oldVariantClasses, string[] newVariantClasses)
+            // A label change with no transition lands like one on StyleTransitionConfig.None, so a play still running
+            // on the element is handled the same way under both.
+            => !_ctx.StyleAnimationScheduler.IsExiting(element) && !SequenceEqual(oldVariantClasses, newVariantClasses)
+                ? swapTransition ?? StyleTransitionConfig.None
+                : null;
+
+        // The class sets the class-driven sync diffs this render, and the onSwap that writes what it holds back.
+        // A tween swap's inline-resolved pose tokens are held until the swap: an inline style write animates on
+        // the transition the element carries at the moment of the write (InlineStyleTransitionTimingTests pins
+        // that), and the swap's transition is written only by the play after this sync, so a pose written here
+        // would animate on the transition the element carried before this render rather than the swap's. Held,
+        // rather than moved behind a transition written ahead of them, so they land at the swap itself: with
+        // the pose's USS classes, and in the stagger slot, which delays the swap and not the transition. The
+        // enters hold the same way (HoldInlineForEnter) and the exit writes at its swap too (PlanInlineExit).
+        // swapTransition is null when no swap plays this render; extraDelaySec is the stagger the swap is played with.
+        private (string[] syncOld, string[] syncNew, Action? onSwap) ResolveInlineHold(VisualElement element,
+            string[]? baseClasses, MotionAppliedClassSet previous, MotionAppliedClassSet next,
+            StyleTransitionConfig? swapTransition, float extraDelaySec)
+        {
+            var oldVariantClasses = previous.VariantClasses;
+            var newVariantClasses = next.VariantClasses;
+            var appliedNew = next.Merged;
+            var syncOld = previous.Merged;
+            MotionHeldInline? kept = null;
+            if (_ctx.MotionHeldInline.Remove(element, out var hold))
+            {
+                syncOld = hold.Applied;
+                if (SequenceEqual(oldVariantClasses, newVariantClasses)
+                    && _ctx.StyleAnimationScheduler.IsSwapPending(element, hold.Release))
+                {
+                    // A re-render inside the window before the swap: the swap still owes the held tokens.
+                    kept = hold;
+                }
+            }
+
+            if (swapTransition != null && StyleAnimationScheduler.RunsOnSwap(swapTransition, extraDelaySec))
+            {
+                // The pose this swap starts from, not a hold's HeldTokens: where this swap interrupts one that
+                // had not swapped, that pose was never written, and this sync writes it so the new swap starts
+                // there, as the class path's cancel restores the interrupted pose's classes.
+                var created = TryHoldInline(element, baseClasses, oldVariantClasses, next);
+                return (syncOld, created?.Applied ?? appliedNew, created?.Release);
+            }
+            if (kept == null)
+            {
+                return (syncOld, appliedNew, null);
+            }
+
+            kept.Applied = ComposeWithHeldTokens(baseClasses ?? Array.Empty<string>(), newVariantClasses,
+                kept.HeldTokens);
+            kept.Target = appliedNew;
+            _ctx.MotionHeldInline[element] = kept;
+            return (syncOld, kept.Applied, null);
+        }
+
+        // Registers a hold keeping fromVariantClasses' inline-resolved tokens in place of target's, or returns
+        // null when the two carry the same ones. The caller syncs the element to the hold's Applied.
+        private MotionHeldInline? TryHoldInline(VisualElement element, string[]? baseClasses,
+            string[] fromVariantClasses, MotionAppliedClassSet target)
+        {
+            var heldTokens = CollectInlineResolved(fromVariantClasses);
+            if (SameTokens(heldTokens, CollectInlineResolved(target.VariantClasses)))
+            {
+                return null;
+            }
+            var hold = new MotionHeldInline(heldTokens,
+                ComposeWithHeldTokens(baseClasses ?? Array.Empty<string>(), target.VariantClasses, heldTokens),
+                target.Merged);
+            hold.Release = () =>
+            {
+                if (ReferenceEquals(_ctx.MotionHeldInline.GetValueOrDefault(element), hold))
+                {
+                    _ctx.MotionHeldInline.Remove(element);
+                    SyncClassDrivenStyling(element, hold.Applied, hold.Target);
+                }
+            };
+            _ctx.MotionHeldInline[element] = hold;
+            return hold;
+        }
+
+        // The set the element rests at: its MotionAppliedClasses entry, else its base classes alone.
+        internal MotionAppliedClassSet RestingClassSet(VisualElement element, string[]? baseClasses)
+            => _ctx.MotionAppliedClasses.TryGetValue(element, out var resting)
+                ? resting
+                : new MotionAppliedClassSet(baseClasses ?? Array.Empty<string>(), Array.Empty<string>());
+
+        // A variant enter's counterpart of ResolveInlineHold: the element rests at animate, so the enter's
+        // initial pose is written now, before the play puts the enter's transition on the element, and
+        // animate's inline-resolved tokens are held for the swap. Returns the play's onSwap, or null when the
+        // enter holds nothing.
+        internal Action? HoldInlineForEnter(VisualElement element, string[]? baseClasses, string[] fromVariantClasses,
+            StyleTransitionConfig transition)
+        {
+            if (!StyleAnimationScheduler.RunsOnSwap(transition))
+            {
+                return null;
+            }
+            var resting = RestingClassSet(element, baseClasses);
+            var hold = TryHoldInline(element, baseClasses, fromVariantClasses, resting);
+            if (hold == null)
+            {
+                return null;
+            }
+            SyncClassDrivenStyling(element, resting.Merged, hold.Applied);
+            return hold.Release;
+        }
+
+        // Writes the resting inline-resolved tokens a hold keeps off the element, on whatever transition the
+        // element carries at that moment.
+        internal void LandInlineHold(VisualElement element)
+        {
+            if (_ctx.MotionHeldInline.Remove(element, out var hold))
+            {
+                SyncClassDrivenStyling(element, hold.Applied, hold.Target);
+            }
+        }
+
+        // A variant exit's counterpart of ResolveInlineHold: the exit pose's inline-resolved tokens are written
+        // at the exit's swap, after the play has put the exit's transition on the element, and
+        // RestoreInlineAfterExit writes the resting ones back. Returns the play's onSwap, or null when the exit
+        // moves no such token. The onSwap writes the record, so a play that never runs it leaves
+        // RestoreInlineAfterExit nothing to write back; PlayVariantEnter's onSwap says which plays those are.
+        internal Action? PlanInlineExit(VisualElement element, string[]? baseClasses, string[] exitVariantClasses)
+        {
+            var exitTokens = CollectInlineResolved(exitVariantClasses);
+            if (SameTokens(exitTokens, CollectInlineResolved(RestingClassSet(element, baseClasses).VariantClasses)))
+            {
+                return null;
+            }
+            return () =>
+            {
+                var resting = RestingClassSet(element, baseClasses);
+                SyncClassDrivenStyling(element, resting.Merged, WithExitTokens(baseClasses, resting, exitTokens));
+                _ctx.MotionInlineExits[element] = exitTokens;
+            };
+        }
+
+        // Writes the element's resting inline-resolved tokens back over an exit's, for an exit cancelled by its key
+        // coming back and for one that completed before the render that would drop it. Both callers run after the
+        // re-added node has been reconciled onto the element, so the resting set is the one that reconcile
+        // recorded, and baseClasses are the re-added node's.
+        internal void RestoreInlineAfterExit(VisualElement element, string[]? baseClasses)
+        {
+            if (_ctx.MotionInlineExits.Remove(element, out var exitTokens))
+            {
+                var resting = RestingClassSet(element, baseClasses);
+                SyncClassDrivenStyling(element, WithExitTokens(baseClasses, resting, exitTokens), resting.Merged);
+            }
+        }
+
+        private static string[] WithExitTokens(string[]? baseClasses, MotionAppliedClassSet resting,
+            string[] exitTokens)
+            => ComposeWithHeldTokens(baseClasses ?? Array.Empty<string>(), resting.VariantClasses, exitTokens);
+
+        private static string[] CollectInlineResolved(string[] classes)
+        {
+            List<string>? tokens = null;
+            foreach (var cls in classes)
+            {
+                if (TryGetInlineResolvedCore(cls, out _, out _))
+                {
+                    (tokens ??= new List<string>()).Add(cls);
+                }
+            }
+            return tokens?.ToArray() ?? Array.Empty<string>();
+        }
+
+        private static bool SameTokens(string[] a, string[] b)
+            => ContainsAll(a, b) && ContainsAll(b, a);
+
+        private static bool ContainsAll(string[] container, string[] tokens)
+        {
+            foreach (var token in tokens)
+            {
+                // MUTANT_SURVIVES(equivalent): a flip at index 0 only reports equal token sets unequal, and each
+                // SameTokens caller then holds or writes the same tokens the element already carries.
+                if (Array.IndexOf(container, token) < 0)
+                {
+                    return false;
+                }
+            }
+            // MUTANT_SURVIVES(equivalent): false here only reports equal token sets unequal, and each SameTokens
+            // caller then holds or writes the same tokens the element already carries.
+            return true;
+        }
+
+        // The base classes, then the variant's classes other than its inline-resolved ones, then the held
+        // tokens: the variant tail stays last, where MotionVariantResolver.ResolveApplied puts it.
+        //
+        // A base spacing token a pose or a held token overrides stays out, as it does in
+        // MotionVariantResolver.ResolveApplied, so a hold neither restores it under the held pose nor plays the
+        // swap from it. Every hold composes here, which is the one place that has to say so.
+        internal static string[] ComposeWithHeldTokens(string[] baseClasses, string[] variantClasses,
+            string[] heldTokens)
+        {
+            var composed = new List<string>();
+            composed.AddRange(StyleSpacingPrecedence.WithoutOverriddenBase(baseClasses, variantClasses, heldTokens));
+            foreach (var cls in variantClasses)
+            {
+                if (!TryGetInlineResolvedCore(cls, out _, out _))
+                {
+                    composed.Add(cls);
+                }
+            }
+            composed.AddRange(heldTokens);
+            return composed.ToArray();
+        }
+
+        // Resolves the MotionOrchestrationFrame this node exposes to its OWN inheriting children, the way Framer
+        // Motion orchestrates each variant node's own variant children rather than every descendant.
+        // swapTransition is the config this node's own swap into the resolved pose plays on (see PatchMotionPre),
+        // so a pose that carries its own transition orchestrates from the span it actually takes:
+        // - A FRESH frame when this node's propagated label just changed AND swapTransition declares
+        //   StaggerChildrenSec / DelayChildrenSec / a non-Together When — establishing a new stagger sequence.
+        //   The frame's base offset is this node's own delay and play span (MotionPlaySpan) when
+        //   When == BeforeChildren (children wait for the delay AND the swap, not just the swap), PLUS
+        //   extraDelaySec — the delay this node's own swap, enter or exit waits out: a slot it claimed from a
+        //   FURTHER-OUT orchestration, or the slot a presence plays its anchor's enter in. Folding extraDelaySec in
+        //   regardless of When matters because this node's
+        //   own swap does not start at render-commit time when extraDelaySec > 0 — without it, a claim from the
+        //   fresh frame below would be measured as if this node's (already-delayed) swap started immediately,
+        //   letting a grandchild start animating before its own parent does. When == AfterChildren starts the
+        //   children at that offset too, and the frame collects when their plays end (MotionOrchestrationWait).
+        // - The ambient frame, UNCHANGED, through a Motion with neither variants nor a label of its own:
+        //   Framer registers the variant children under it with the variant node above it, which numbers them.
+        // - Otherwise a frame with no stagger whose base is extraDelaySec, so the node's children start with
+        //   it and are numbered from zero; an ambient frame never reaches past a node with variants or a label
+        //   of its own. Under an AfterChildren Motion that frame is made even over a zero base, so the plays
+        //   below this node reach the Motion waiting for them.
+        // fromClasses / toClasses: the pose classes this node's own play moves between, from which a spring's span is
+        // measured; element and scheduler: where it plays, read for the span before the play's swap lands.
+        internal static MotionOrchestrationFrame? ResolveChildOrchestration(
+            MotionNode newNode, StyleTransitionConfig? swapTransition, bool childLabelChanged,
+            MotionOrchestrationFrame? ambientOrchestration, float extraDelaySec,
+            string[]? fromClasses = null, string[]? toClasses = null,
+            VisualElement? element = null, StyleAnimationScheduler? scheduler = null, float extraWaitSec = 0f)
+        {
+            var hasOwnOrchestration = swapTransition != null
+                && (swapTransition.StaggerChildrenSec > 0f || swapTransition.DelayChildrenSec > 0f
+                    || swapTransition.When != TransitionWhen.Together);
+            var tracksEnds = ambientOrchestration is { TracksEnds: true };
+            if (childLabelChanged && hasOwnOrchestration)
+            {
+                var extraBeforeChildrenSec = swapTransition.When == TransitionWhen.BeforeChildren
+                    ? (float)MotionPlaySpan.HeldBy(swapTransition, fromClasses, toClasses,
+                        element != null ? scheduler?.SlotContext(element, fromClasses, toClasses) : null)
+                    : 0f;
+                // Framer starts a BeforeChildren Motion's children once its play has ended, delayed by delayChildren
+                // and the stagger alone: everything before that is the wait.
+                return new MotionOrchestrationFrame(swapTransition.DelayChildrenSec,
+                    swapTransition.StaggerChildrenSec, extraBeforeChildrenSec + extraDelaySec,
+                    swapTransition.When, tracksEnds,
+                    reversedOver: swapTransition.StaggerDirection != 1
+                        ? MotionOrchestrationWait.CountVariantChildren(newNode.Children)
+                        : 0,
+                    waitSec: swapTransition.When == TransitionWhen.BeforeChildren
+                        ? extraBeforeChildrenSec + extraDelaySec
+                        : extraWaitSec);
+            }
+            if (newNode.Variants == null && !MotionVariantResolver.IsControlling(newNode))
+            {
+                return ambientOrchestration;
+            }
+            // A frame with no stagger over a zero base hands each claim the zero no frame hands it, so the
+            // allocation is spared, unless a play above waits on the ends the claims report.
+            return extraDelaySec == 0f && !tracksEnds
+                ? null
+                : new MotionOrchestrationFrame(0f, 0f, extraDelaySec, TransitionWhen.Together, tracksEnds, 0, extraWaitSec);
+        }
+
+        internal readonly struct MotionChildScope
+        {
+            internal MotionNode Node { get; init; }
+            internal VisualElement Element { get; init; }
+            internal string? ChildLabel { get; init; }
+            internal string? InitialLabel { get; init; }
+            internal MotionPlayback? Playback { get; init; }
+            internal StyleTransitionConfig? Transition { get; init; }
+            internal bool Resolved { get; init; }
+            // The part of DelaySec a wait above makes up (MotionOrchestrationFrame.WaitSec).
+            internal float WaitSec { get; init; }
+            internal MotionOrchestrationFrame? Ambient { get; init; }
+            internal float DelaySec { get; init; }
+            internal string[]? From { get; init; }
+            internal string[]? To { get; init; }
+        }
+
+        // Runs body, which reconciles a Motion's children, under the labels and the orchestration the Motion hands
+        // them, and returns the frame its inheriting children claimed from. A Motion that plays no mount enter
+        // withholds the enters of the Motions below it as well. The body is a static lambda over a value state so
+        // that the create path allocates no closure; a patch opens the same scope from the walk
+        // (EnterMotionChildren), around children whose frame its first half resolved.
+        internal MotionOrchestrationFrame? ReconcileUnderMotion<TState>(in MotionChildScope scope, TState state,
+            Action<TState> body)
+        {
+            var childOrchestration = scope.ChildLabel != null
+                ? ResolveChildOrchestration(scope.Node, scope.Transition, scope.Resolved, scope.Ambient, scope.DelaySec,
+                    scope.From, scope.To, scope.Element, _ctx.StyleAnimationScheduler, scope.WaitSec)
+                : null;
+            EnterMotionChildren(scope.Node, scope.ChildLabel, scope.InitialLabel, childOrchestration, scope.Playback);
+            try
+            {
+                body(state);
+            }
+            finally
+            {
+                ExitMotionChildren(scope.Node, scope.ChildLabel);
+            }
+            return childOrchestration;
+        }
+
+        internal void EnterMotionChildren(MotionNode node, string? childLabel, string? initialLabel,
+            MotionOrchestrationFrame? orchestration, MotionPlayback? playback)
+        {
+            if (!node.EnterOnMount) _ctx.ComponentContextStack.Push(MotionContext.EntersWithheld, true);
+            if (childLabel != null)
+            {
+                MotionContext.PushForChildren(_ctx.ComponentContextStack, childLabel, initialLabel, orchestration,
+                    playback);
+            }
+        }
+
+        internal void ExitMotionChildren(MotionNode node, string? childLabel)
+        {
+            if (childLabel != null) MotionContext.PopForChildren(_ctx.ComponentContextStack);
+            if (!node.EnterOnMount) _ctx.ComponentContextStack.Pop(MotionContext.EntersWithheld);
+        }
+
+        // Reports to the frame a variant child claimed from when the play it starts at playStartSec ends, read before
+        // the play changes what its span is measured against. A Motion that is no variant child, or whose frame no
+        // AfterChildren Motion sits above, reports nothing.
+        internal void ReportPlayEnd(VisualElement element, MotionNode node, MotionOrchestrationFrame? ambientFrame,
+            MotionOrchestrationFrame? ownFrame, StyleTransitionConfig? played, float playStartSec,
+            string[]? fromClasses = null, string[]? toClasses = null)
+        {
+            if (ambientFrame is not { TracksEnds: true } || !MotionVariantResolver.IsVariantChild(node))
+            {
+                return;
+            }
+            var context = _ctx.StyleAnimationScheduler.SlotContext(element, fromClasses, toClasses);
+            MotionOrchestrationWait.ReportEnd(ambientFrame, ownFrame,
+                MotionOrchestrationWait.PlayEndSec(played, playStartSec, fromClasses, toClasses, context));
+        }
+
+        // A PortalNode's patch reconciles only this Portal's own slot range
+        // (PortalState.slotStart .. slotStart + slotLength) against the target,
+        // preserving children placed by other Portals sharing the same target. When the slot
+        // range grows or shrinks, downstream Portals whose ranges sit after this one have their
+        // slotStart shifted by the delta so subsequent patches stay correctly addressed.
+        // A Portal declared among its own target's children patches from inside the reconcile of those
+        // children, behind every row that reconcile addresses. Each of Velvet's child reconciles inserts and
+        // removes rows only after it has reached every element it keeps; what it does before is replace an
+        // element at its slot, which takes one row out and puts one in, so the rows ahead of a later Portal
+        // keep their count and its range still addresses its children here. The reconcile's close follows
+        // the rows it placed (FiberCommitWork.OpenOwnRows).
+        private void PatchPortalPre(ref SelfPatch patch, PortalNode oldNode, PortalNode newNode)
+        {
+            var target = ResolvePortalTarget(patch.Element, oldNode, newNode, out var describe);
+            if (target == null)
+            {
+                return;
+            }
+            PatchPortalChildrenPre(ref patch, target, oldNode.Children, newNode.Children, describe);
+        }
+
+        // Resolves the target VisualElement a Portal patch reconciles its slot range against, across the
+        // four ways a Portal can address one: an explicit Layer (host table lookup, plus re-chaining the
+        // placeholder when FocusOrder changed), the element the caller passed (already resolved, and
+        // ReconcileKeying.CanPatch has refused the patch unless it is the one this Portal mounted into),
+        // an id whose element is still the one this Portal mounted into, or an id with no children of
+        // this Portal on it yet — either because the mount warned and recorded no target, or because a
+        // re-registration just moved this Portal off the element it had. Both of those go through the
+        // same tail, which also attaches the same-panel synthetic-bubbling bridge the mount-time drain
+        // never got to run for this target. Returns a null target when
+        // resolution fails (already warned); the caller bails without patching.
+        private VisualElement? ResolvePortalTarget(
+            VisualElement placeholder, PortalNode oldNode, PortalNode newNode, out string describe)
+        {
+            if (newNode.Layer is { } layer)
+            {
+                describe = layer.ToString();
+                // A layer whose host was never created is one whose mount failed, which repeats here: only a
+                // record whose GameObject died is replaced.
+                if (!_ctx.LayerHosts.ContainsKey(layer))
+                {
+                    FiberLogger.LogWarning("Portal", $"Layer host for \"{describe}\" is missing. Children will not be rendered.");
+                    return null;
+                }
+                return ResolveLayerTarget(placeholder, oldNode, newNode, layer);
+            }
+
+            if (newNode.TargetElement is { } held)
+            {
+                describe = "an element the caller holds";
+                var container = GetChildContainer(held);
+                var heldRange = default(PortalSlotInfo);
+                if (!_ctx.PortalState.TryGetValue(placeholder, out heldRange)
+                    || ReferenceEquals(heldRange.Target, container))
+                {
+                    return container;
+                }
+                // The element the caller holds now puts its children elsewhere — its contentContainer changed —
+                // which moves the children as a different container would.
+                _host.ReleasePortalRangeForRetarget(placeholder);
+                return RebaseOnto(placeholder, container);
+            }
+
+            describe = newNode.TargetId!;
+            if (_ctx.PortalState.TryGetValue(placeholder, out var recorded) && recorded.Target != null)
+            {
+                var registered = PortalContainerOf(FiberPortalRegistry.Get(describe));
+                if (registered == null || ReferenceEquals(registered, recorded.Target))
+                {
+                    // Nothing to follow: an unregistered id names no element to move to, so the children
+                    // keep being patched where they live rather than being stranded.
+                    return recorded.Target;
+                }
+                // The id now names a different element. The children leave the old one and are created
+                // into the new one rather than being reparented into it, which is what createPortal does
+                // when its container changes and the route V.Portal(container:) takes through
+                // ReconcileKeying.CanPatch — state, refs and effects under the portal do not survive.
+                // Patching the existing children into the replacement is what is not available: this
+                // portal's slot range addresses positions in the element it mounted into, and reusing it
+                // against another element's children would diff one portal's range against another's.
+                _host.ReleasePortalRangeForRetarget(placeholder);
+            }
+
+            // Mounted before the id was registered (the mount warned and recorded no
+            // target), or released by the retarget just above: resolve fresh so this patch mounts the
+            // children into the element the id names now.
+            var resolvedTarget = PortalContainerOf(FiberPortalRegistry.Get(describe));
+            if (resolvedTarget == null)
+            {
+                FiberLogger.LogWarning("Portal", $"Target \"{describe}\" is not registered. Its children mount once an element is registered under that id.");
+                return null;
+            }
+            return RebaseOnto(placeholder, resolvedTarget);
+        }
+
+        // A layer portal's host is looked up in the table, and replaced as ChildReconciler.ResolveLayerPortalTarget
+        // replaces one at mount when a scene unload killed its GameObject. Children that mounted into the dead
+        // host unmount and mount again into the replacement, as they do when an id names another element.
+        private VisualElement ResolveLayerTarget(
+            VisualElement placeholder, PortalNode oldNode, PortalNode newNode, UILayer layer)
+        {
+            var known = _ctx.LayerHosts.TryGetValue(layer, out var held);
+            var alive = known && held!.Document != null;
+            var layerHost = alive ? held! : PanelHostFactory.ReplaceLayerHost(layer, placeholder.panel, _ctx);
+            if (alive)
+            {
+                // Recurring re-sync point for late declaring resolution and runtime drift.
+                PanelHostFactory.SyncDeclaring(layerHost, layer, placeholder.panel, _ctx);
+            }
+            var target = layerHost.Document.rootVisualElement;
+            VelvetStyleUtilities.CarryToHost(_ctx.BatchScheduler.Anchor ?? placeholder, target);
+            // Another portal on the layer may have replaced the host already, which leaves this one's range
+            // addressing the dead root.
+            var hasRange = _ctx.PortalState.TryGetValue(placeholder, out var recorded);
+            var leftDeadHost = hasRange && recorded.Target != null && !ReferenceEquals(recorded.Target, target);
+            if (leftDeadHost)
+            {
+                _host.ReleasePortalRangeForRetarget(placeholder);
+                RebaseRangeOnto(placeholder, target);
+            }
+            if (!alive || leftDeadHost || oldNode.FocusOrder != newNode.FocusOrder)
+            {
+                FiberFocusNavigator.ConfigurePortalFocusOrder(placeholder, layerHost, newNode.FocusOrder, _ctx);
+            }
+            return target;
+        }
+
+        private VisualElement RebaseOnto(VisualElement placeholder, VisualElement resolvedTarget)
+        {
+            RebaseRangeOnto(placeholder, resolvedTarget);
+            // The mount-time attach (ChildReconciler's same-panel drain branch) never ran for this
+            // target — a mount while the id was unregistered enqueued no drain entry at all, and a
+            // retarget resolves an element that mount never saw — so this patch is where the same-panel
+            // synthetic-bubbling bridge gets attached.
+            _ctx.BindPortalTarget(resolvedTarget);
+            return resolvedTarget;
+        }
+
+        // Each caller hands this a range that addresses nothing on resolvedTarget — the unregistered mount
+        // recorded slot 0 against no element at all, a retarget emptied the range it held on a different
+        // one — so the range is rebased to the end of whatever resolvedTarget already holds, the slot
+        // ChildReconciler's deferred-mount pass would have taken. Patching from an unrebased slot 0 instead
+        // diffs this Portal's first child against the container's own.
+        private void RebaseRangeOnto(VisualElement placeholder, VisualElement resolvedTarget)
+        {
+            if (_ctx.PortalState.TryGetValue(placeholder, out var released))
+            {
+                _ctx.PortalState[placeholder] = released with
+                {
+                    SlotStart = LogicalChildSlots.Count(resolvedTarget),
+                    SlotLength = 0,
+                    First = null,
+                    Last = null,
+                };
+            }
+        }
+
+        // Captures declaringFiber's current direct children, in a set rented from the shared pool, so a later
+        // diff against its children after a patch can tell which ones are new (see StampNewTopLevelChildren).
+        private ComponentFiber? CaptureDeclaringChildFibers(out HashSet<ComponentFiber>? childFibersBefore)
+        {
+            var declaringFiber = _ctx.FiberStack.Current;
+            childFibersBefore = null;
+            if (declaringFiber != null)
+            {
+                childFibersBefore = _ctx.BufferPool.RentFiberSet();
+                for (var f = declaringFiber.Child; f != null; f = f.Sibling)
+                {
+                    childFibersBefore.Add(f);
+                }
+            }
+            return declaringFiber;
+        }
+
+        // Stamps DetachedMountContext on every top-level child of declaringFiber NOT present in
+        // childFibersBefore — the fibers this patch's reconcile of its children just created — with what an
+        // isolated re-render of them needs to rebuild their enclosing Providers, as the drain's
+        // StampDrainedChildren does for a mount. Shared by every patch of a mounted Portal and WorldSpace.
+        private void StampNewTopLevelChildren(
+            ComponentFiber declaringFiber, HashSet<ComponentFiber> childFibersBefore, VNode?[]? descendantNodes)
+        {
+            DetachedMountContext? detached = null;
+            for (var f = declaringFiber.Child; f != null; f = f.Sibling)
+            {
+                if (childFibersBefore.Contains(f)) continue;
+                detached ??= new DetachedMountContext(_ctx.ComponentContextStack.SnapshotTops(),
+                    descendantNodes, declaringFiber, declaringFiber);
+                f.DetachedMountContext = detached;
+            }
+        }
+
+        private PanelHostRecord ReplaceWorldSpaceHost(VisualElement placeholder, PanelHostRecord dead, WorldSpaceNode node)
+        {
+            _host.ReleasePortalRangeForRetarget(placeholder);
+            PanelHostFactory.Destroy(dead);
+            var fresh = PanelHostFactory.CreateWorldSpaceHost(node, placeholder.panel, _ctx);
+            _ctx.WorldSpaceBindings[placeholder] = fresh;
+            RebaseRangeOnto(placeholder, fresh.Document.rootVisualElement);
+            FiberFocusNavigator.ConfigurePortalFocusOrder(placeholder, fresh, node.FocusOrder, _ctx);
+            return fresh;
+        }
+
+        // Applies the diff for a WorldSpaceNode: the host transform and virtual panel size follow
+        // the node, and the children reconcile through the same slot bookkeeping every portal
+        // flavor uses (the world-space host root is the recorded target).
+        private void PatchWorldSpacePre(ref SelfPatch patch, WorldSpaceNode oldNode, WorldSpaceNode newNode)
+        {
+            var placeholder = patch.Element;
+            if (!_ctx.WorldSpaceBindings.TryGetValue(placeholder, out var record))
+            {
+                FiberLogger.LogError("WorldSpace", "Host record missing for a world-space placeholder. Patch skipped.");
+                return;
+            }
+            if (record.Document == null)
+            {
+                // A scene unload can kill the host GameObject while the owning fiber tree survives (a
+                // persistent root anchoring per-scene world-space UI). The children that mounted into it unmount
+                // and mount again into a fresh host, as they do when an id names another element.
+                record = ReplaceWorldSpaceHost(placeholder, record, newNode);
+            }
+            // Recurring re-sync point for late declaring resolution and runtime drift (null layer:
+            // world-space panels depth-sort in the scene, not by sorting order).
+            PanelHostFactory.SyncDeclaring(record, null, placeholder.panel, _ctx);
+            VelvetStyleUtilities.CarryToHost(_ctx.BatchScheduler.Anchor ?? placeholder, record.Document.rootVisualElement);
+
+            if (oldNode.Position != newNode.Position || oldNode.Rotation != newNode.Rotation)
+            {
+                record.Document.transform.SetPositionAndRotation(newNode.Position, newNode.Rotation);
+            }
+            if (oldNode.PanelSize != newNode.PanelSize)
+            {
+                record.Document.worldSpaceSize = newNode.PanelSize;
+            }
+            if (oldNode.FocusOrder != newNode.FocusOrder)
+            {
+                FiberFocusNavigator.ConfigurePortalFocusOrder(placeholder, record,
+                    newNode.FocusOrder, _ctx);
+            }
+
+            PatchPortalChildrenPre(ref patch, record.Document.rootVisualElement, oldNode.Children, newNode.Children,
+                "world-space");
+        }
+
+        // The shared slot-range child patch for every portal flavor (registry, held element, layer,
+        // world-space): the walk reconciles only this placeholder's own slot range against the target, and
+        // ClosePortalRange shifts the downstream ranges on the same target by the growth delta. describe names the
+        // target in diagnostics only.
+        private void PatchPortalChildrenPre(
+            ref SelfPatch patch, VisualElement target, VNode?[]? oldChildrenRaw, VNode?[]? newChildrenRaw,
+            string describe)
+        {
+            var placeholder = patch.Element;
+            if (!_ctx.PortalState.TryGetValue(placeholder, out var prevState))
+            {
+                // PortalState missing means CreateElement never recorded this Portal's slot range
+                // (mounting was skipped or state was cleared mid-patch). Appending blindly would
+                // alias another Portal's slot, so skip patch and surface the inconsistency.
+                FiberLogger.LogError("Portal", $"PortalState missing for placeholder targeting \"{describe}\". Patch skipped to avoid corrupting other Portals' slot ranges.");
+                return;
+            }
+
+            patch.Kind = SelfPatchKind.Portal;
+            patch.Container = target;
+            patch.SlotStart = prevState.SlotStart;
+            // Children the drain of the mount suspended on are in the node the owner committed and nowhere on the
+            // target, so there is nothing to diff them from.
+            patch.OldChildren = prevState.ChildrenPending
+                ? Array.Empty<VNode>()
+                : oldChildrenRaw ?? Array.Empty<VNode>();
+            patch.NewChildren = newChildrenRaw ?? Array.Empty<VNode>();
+            patch.Portal.PrevState = prevState;
+            patch.Portal.StampedChildren = newChildrenRaw;
+        }
+
+        // Called by the walk rather than by the patch halves, so a mode deferring the halves' writes leaves here the
+        // parts that read the walk's state: the record rebases an own-row frame on the target only while a walk holds
+        // it open (FiberCommitWork.RebaseOwnRows), and the stamp reads the fiber and context stacks current at the
+        // call. The rows they shift and take back go through HostCommitQueue.
+        internal void OpenPortalRange(ref SelfPatch patch)
+        {
+            var target = patch.Container!;
+            // The rows this patch is about to add, remove and replace are not read as the range until it records
+            // them again, since a row put ahead of the first one would otherwise move the start under the patch.
+            _ctx.PortalState.Unanchor(patch.Element);
+            // LOGICAL counts on both sides of the reconcile, matching the basis SlotStart and SlotLength are
+            // stored in. Measuring this physically let an invisible child arriving on the target — a portal
+            // child gaining a filter, or a negative z — inflate the recorded length by one, which then
+            // shifted every downstream portal's SlotStart and made the cleanup walk over-remove.
+            patch.Portal.BeforeTailCount = LogicalChildSlots.Count(target);
+            // What a reconcile nested in this one already moved the starts on target for is left out of the
+            // shift below, for the reason FiberCommitWork.RowCountWindow gives.
+            patch.Portal.Tenancy = _ctx.ComponentRegistry.TenancyOf(target);
+            patch.Portal.ShiftedBefore = patch.Portal.Tenancy?.ShiftedRows ?? 0;
+            // Every patch stamps DetachedMountContext on the top-level children it creates, as
+            // DrainPendingPortalMounts stamps a mount's: a Portal or a world-space panel can drain its first mount
+            // with ZERO top-level children (e.g. `V.Portal(id, children: isOpen ? real : Array.Empty<VNode>())`) and
+            // gain its first ones on a LATER patch, and a Portal that heals onto a target registered after it
+            // mounted creates them here. FiberStack.Current is the declaring fiber (RenderAndReconcile keeps it
+            // pushed for the whole patch of its own returned tree), the parent those children register under. The
+            // "before" snapshot is rented from the shared pool, since this runs on every patch of a mounted Portal,
+            // and rented last: the walk calls this right before the try whose finally returns it (ClosePortalRange).
+            patch.Portal.DeclaringFiber = CaptureDeclaringChildFibers(out patch.Portal.ChildFibersBefore);
+        }
+
+        // Runs whether or not the children's reconcile returned: one that unwinds — a boundary above catching a
+        // render below, or a suspend — leaves on the target what it inserted before the throw, and the range recorded
+        // is what the Portal's cleanup removes.
+        internal void ClosePortalRange(ref SelfPatch patch, bool mounted)
+        {
+            var placeholder = patch.Element;
+            var target = patch.Container!;
+            var portal = patch.Portal;
+            try
+            {
+                RecordPatchedPortalRange(placeholder, target,
+                    mounted ? portal.PrevState with { ChildrenPending = false } : portal.PrevState,
+                    portal.BeforeTailCount, portal.Tenancy, portal.ShiftedBefore);
+                if (!mounted && portal.PrevState.ChildrenPending)
+                {
+                    TakeBackPendingPortalRows(placeholder, target);
+                }
+                if (mounted && portal.DeclaringFiber != null)
+                {
+                    StampNewTopLevelChildren(portal.DeclaringFiber, portal.ChildFibersBefore!, portal.StampedChildren);
+                }
+            }
+            finally
+            {
+                if (portal.ChildFibersBefore != null)
+                {
+                    _ctx.BufferPool.ReturnFiberSet(portal.ChildFibersBefore);
+                }
+            }
+        }
+
+        // The patch of children nothing had mounted inserted the rows it got to before it unwound, and the
+        // next patch diffs from nothing again, so a row left here would be created twice. The range is taken
+        // back to the empty one the drain recorded (ChildReconciler.DrainPendingPortalMounts), through the
+        // same record as any other change in its length so the ranges behind it move back with it.
+        private void TakeBackPendingPortalRows(VisualElement placeholder, VisualElement target)
+        {
+            var inserted = _ctx.PortalState[placeholder];
+            if (inserted.SlotLength == 0) return;
+            _ctx.PortalState.Unanchor(placeholder);
+            var tenancy = _ctx.ComponentRegistry.TenancyOf(target);
+            var shiftedBefore = tenancy?.ShiftedRows ?? 0;
+            var beforeTailCount = LogicalChildSlots.Count(target);
+            _host.RemoveRows(target, inserted.SlotStart, inserted.SlotLength);
+            RecordPatchedPortalRange(placeholder, target, inserted, beforeTailCount, tenancy, shiftedBefore);
+        }
+
+        private void RecordPatchedPortalRange(
+            VisualElement placeholder, VisualElement target, PortalSlotInfo prevState, int beforeTailCount,
+            InlineTenancy? tenancy, int shiftedBefore)
+        {
+            // (beforeTailCount - prevState.SlotLength) is the count of target children that do NOT belong to
+            // this Portal's slot — unchanged by the reconcile above. Subtracting it from the new total
+            // isolates this Portal's new slot length without re-counting the foreign children.
+            var newSlotLength = LogicalChildSlots.Count(target) - (beforeTailCount - prevState.SlotLength);
+            var delta = newSlotLength - prevState.SlotLength;
+
+            // The RESOLVED target is written back: a portal that mounted before its id registered
+            // recorded no target, and the first healing patch must fill it in so the slot-shift
+            // grouping, the eventual cleanup, and the has-variant portal-target sweep all see where
+            // the children actually live. For an already-recorded portal this rewrites the same
+            // reference.
+            _ctx.PortalState[placeholder] = prevState with { Target = target, SlotLength = newSlotLength };
+            _ctx.PortalState.Anchor(placeholder);
+
+            var unshifted = delta - ((tenancy?.ShiftedRows ?? 0) - shiftedBefore);
+            _ctx.HostCommit.ShiftBehindPortalRange(target, placeholder, prevState, unshifted);
+            FiberCommitWork.RebaseOwnRows(_ctx, target);
+        }
+
+        #endregion
+
+        #region Diff Helpers
+
+        // ClassList diff. Skips work via fast paths using ReferenceEquals and SequenceEqual.
+        // Uses linear comparison for sizes ≤ 8 and a HashSet otherwise.
+        // Returns whether the class list changed content (false when either fast path hit), so the caller
+        // can gate variant/font re-derivation on real change rather than array identity — a
+        // content-identical but freshly-allocated array must not re-derive anything.
+        internal bool DiffClassList(VisualElement element, string[] oldClasses, string[] newClasses)
+        {
+            oldClasses ??= Array.Empty<string>();
+            newClasses ??= Array.Empty<string>();
+            if (ReferenceEquals(oldClasses, newClasses))
+            {
+                return false;
+            }
+
+            if (SequenceEqual(oldClasses, newClasses))
+            {
+                return false;
+            }
+
+            const int linearThreshold = 8;
+            var removedArbitrary = oldClasses.Length <= linearThreshold && newClasses.Length <= linearThreshold
+                ? DiffClassListLinear(element, oldClasses, newClasses, out var removedFilterFamily)
+                : DiffClassListWithHashSet(element, oldClasses, newClasses, out removedFilterFamily);
+
+            if (removedArbitrary)
+            {
+                ReapplyArbitraryValues(element, newClasses, skipFilterFamily: !removedFilterFamily);
+            }
+            else if (!InlineValuesEqual(oldClasses, newClasses))
+            {
+                ReapplyOrderedInlineValues(element, oldClasses, newClasses);
+            }
+            // Last: the readers of the live list (StyleClipPathClass.TryExtractLive, LiveClasses) end on the last
+            // token of a family, and a token added by this diff sits behind the ones already there.
+            StyleFamilyOrder.RestoreLiveOrder(element, newClasses);
+            return true;
+        }
+
+        private static bool InlineValuesEqual(string[] oldClasses, string[] newClasses)
+        {
+            var oldIndex = 0;
+            var newIndex = 0;
+            while (true)
+            {
+                while (oldIndex < oldClasses.Length && !Participates(oldClasses[oldIndex])) oldIndex++;
+                while (newIndex < newClasses.Length && !Participates(newClasses[newIndex])) newIndex++;
+                if (oldIndex == oldClasses.Length || newIndex == newClasses.Length)
+                {
+                    return oldIndex == oldClasses.Length && newIndex == newClasses.Length;
+                }
+                if (oldClasses[oldIndex++] != newClasses[newIndex++])
+                {
+                    return false;
+                }
+            }
+
+            static bool Participates(string raw)
+                => TryGetInlineResolvedCore(raw, out var core, out _)
+                    && !StyleArbitraryValueResolver.IsFilterFamilyToken(core);
+        }
+
+        private static void ReapplyOrderedInlineValues(VisualElement element, string[] oldClasses, string[] newClasses)
+        {
+            var writers = new List<(StyleLonghandSet Longhands, int OldIndex)>();
+            var affected = StyleLonghandSet.Empty;
+            foreach (var raw in newClasses)
+            {
+                if (!TryGetInlineResolvedCore(raw, out var core, out _)
+                    || StyleArbitraryValueResolver.IsFilterFamilyToken(core))
+                {
+                    continue;
+                }
+                var longhands = InlineLonghandsOf(core);
+                if (longhands.IsEmpty)
+                {
+                    continue;
+                }
+                var oldIndex = Array.LastIndexOf(oldClasses, raw);
+                if (oldIndex < 0)
+                {
+                    affected = affected.Union(longhands);
+                }
+                else
+                {
+                    foreach (var earlier in writers)
+                    {
+                        if (earlier.OldIndex > oldIndex && earlier.Longhands.Overlaps(longhands))
+                        {
+                            affected = affected.Union(earlier.Longhands).Union(longhands);
+                        }
+                    }
+                }
+                writers.Add((longhands, oldIndex));
+            }
+            // Rewriting a shorthand also reaches its other edges and their connected writers.
+            // MUTANT_SURVIVES(equivalent, boundary): each productive pass absorbs a previously unabsorbed writer; N passes close N writers, so one more pass cannot change the mask.
+            for (var pass = 0; pass < writers.Count; pass++)
+            {
+                var before = affected;
+                foreach (var writer in writers)
+                {
+                    if (writer.Longhands.Overlaps(affected))
+                    {
+                        affected = affected.Union(writer.Longhands);
+                    }
+                }
+                if (before == affected)
+                {
+                    break;
+                }
+            }
+            if (!affected.IsEmpty)
+            {
+                ReapplyArbitraryValues(element, newClasses, skipFilterFamily: true, affectedLonghands: affected);
+            }
+        }
+
+        private static StyleLonghandSet InlineLonghandsOf(string core)
+        {
+            if (StyleArbitraryValueResolver.TryParseComposed(core, out var style))
+            {
+                return StyleArbitraryLonghands.Of(style.Property);
+            }
+            return StyleBackgroundImageResolver.TryParse(core, out _)
+                ? StyleLonghandSet.Of(StyleLonghand.BackgroundImage)
+                : StyleLonghandSet.Empty;
+        }
+
+        // Re-asserts the class list's inline-resolved (arbitrary / preset) values. Shared with the
+        // wrapper element appliers, which call it after detaching a motion that owned a shared inline
+        // slot. skipFilterFamily exempts composed-filter tokens for callers that know no filter layer
+        // was disturbed (the class-diff reapply); full-scrub callers keep the default full pass.
+        internal static void ReapplyArbitraryValues(VisualElement element, string[] classes, bool skipFilterFamily = false,
+            StyleLonghandSet? affectedLonghands = null)
+        {
+            foreach (var rawCls in classes)
+            {
+                // The important bang is stripped so the token reapplies on the same Important layer AddClass used.
+                if (!TryGetInlineResolvedCore(rawCls, out var cls, out var important))
+                {
+                    continue;
+                }
+                if (skipFilterFamily && StyleArbitraryValueResolver.IsFilterFamilyToken(cls))
+                {
+                    continue;
+                }
+                if (affectedLonghands is { } affected
+                    && !InlineLonghandsOf(cls).Overlaps(affected))
+                {
+                    continue;
+                }
+                var priority = important
+                    ? StyleLayerPriority.ImportantOf(StyleLayerPriority.Base)
+                    : StyleLayerPriority.Base;
+
+                // No class-list fallback: an inline-classified token unresolvable here is owned by another
+                // resolver (e.g. font-[..] by StyleFontResolver) and must not enter the USS class list.
+                StyleArbitraryValueResolver.ApplyClassToken(element, cls, priority, addToClassListFallback: false);
+            }
+            // A custom-property reader on the base layer shares it with the tokens just re-applied.
+            StyleCustomProperties.ReassertBase(element, affectedLonghands);
+        }
+
+        // The longhands the classes write whatever state the element is in: an inline-resolved token's arbitrary
+        // property, else the USS rule of a utility that carries no gate.
+        internal static StyleLonghandSet LonghandsOf(string[] classes)
+        {
+            var longhands = StyleLonghandSet.Empty;
+            foreach (var rawCls in classes)
+            {
+                if (TryGetInlineResolvedCore(rawCls, out var core, out _))
+                {
+                    if (StyleArbitraryValueResolver.TryParseComposed(core, out var style))
+                    {
+                        longhands = longhands.Union(StyleArbitraryLonghands.Of(style.Property));
+                    }
+                }
+                else if (StyleUtilityProperties.TryGet(core, out var rule) && rule.Gate == StyleUtilityGate.None)
+                {
+                    longhands = longhands.Union(rule.Properties);
+                }
+            }
+            return longhands;
+        }
+
+        internal static bool IsInlineResolved(string rawCls) => TryGetInlineResolvedCore(rawCls, out _, out _);
+
+        private static bool TryGetInlineResolvedCore(string rawCls, out string core, out bool important)
+        {
+            core = StyleArbitraryValueResolver.StripImportant(rawCls, out important);
+            return !IsEmptyOrVariantToken(rawCls) && StyleArbitraryValueResolver.IsInlineResolved(core)
+                && !StyleCustomPropertyClass.IsCustomPropertyToken(core);
+        }
+
+        private static bool IsEmptyOrVariantToken(string rawCls)
+            => string.IsNullOrEmpty(rawCls) || StyleVariantClass.IsVariant(rawCls)
+                || StyleStructuralVariantClass.IsStructural(rawCls)
+                || StyleHasVariantClass.IsHas(rawCls)
+                || StyleAttributeVariantClass.IsAttribute(rawCls)
+                || StyleSupportsVariantClass.IsSupports(rawCls)
+                || StyleChildVariantClass.IsChildVariant(rawCls);
+
+        private static bool SequenceEqual(string[] a, string[] b)
+        {
+            if (a.Length != b.Length)
+            {
+                return false;
+            }
+
+            for (var i = 0; i < a.Length; i++)
+            {
+                if (a[i] != b[i])
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        private static bool DiffClassListLinear(VisualElement element, string[] oldClasses, string[] newClasses, out bool removedFilterFamily)
+        {
+            var removedArbitrary = false;
+            removedFilterFamily = false;
+            foreach (var cls in oldClasses)
+            {
+                if (string.IsNullOrEmpty(cls))
+                {
+                    continue;
+                }
+
+                var found = false;
+                foreach (var newCls in newClasses)
+                {
+                    if (cls == newCls) { found = true; break; }
+                }
+                if (!found)
+                {
+                    var core = StyleArbitraryValueResolver.StripImportant(cls, out _);
+                    if (StyleArbitraryValueResolver.IsInlineResolved(core))
+                    {
+                        removedArbitrary = true;
+                        removedFilterFamily |= StyleArbitraryValueResolver.IsFilterFamilyToken(core);
+                    }
+
+                    RemoveOutgoingClass(element, cls, newClasses);
+                }
+            }
+            foreach (var cls in newClasses)
+            {
+                if (string.IsNullOrEmpty(cls))
+                {
+                    continue;
+                }
+
+                var found = false;
+                foreach (var oldCls in oldClasses)
+                {
+                    if (cls == oldCls) { found = true; break; }
+                }
+                if (!found)
+                {
+                    AddClass(element, cls);
+                }
+            }
+            return removedArbitrary;
+        }
+
+        private bool DiffClassListWithHashSet(VisualElement element, string[] oldClasses, string[] newClasses, out bool removedFilterFamily)
+        {
+            var removedArbitrary = false;
+            removedFilterFamily = false;
+
+            // Rent from the pool to make this re-entrant-safe.
+            var oldSet = _ctx.BufferPool.RentClassSet();
+            var newSet = _ctx.BufferPool.RentClassSet();
+            try
+            {
+                oldSet.UnionWith(oldClasses);
+                newSet.UnionWith(newClasses);
+
+                foreach (var cls in oldClasses)
+                {
+                    if (!string.IsNullOrEmpty(cls) && !newSet.Contains(cls))
+                    {
+                        var core = StyleArbitraryValueResolver.StripImportant(cls, out _);
+                        if (StyleArbitraryValueResolver.IsInlineResolved(core))
+                        {
+                            removedArbitrary = true;
+                            removedFilterFamily |= StyleArbitraryValueResolver.IsFilterFamilyToken(core);
+                        }
+
+                        RemoveOutgoingClass(element, cls, newClasses);
+                    }
+                }
+                foreach (var cls in newClasses)
+                {
+                    if (!string.IsNullOrEmpty(cls) && !oldSet.Contains(cls))
+                    {
+                        AddClass(element, cls);
+                    }
+                }
+                return removedArbitrary;
+            }
+            finally
+            {
+                _ctx.BufferPool.ReturnClassSet(oldSet);
+                _ctx.BufferPool.ReturnClassSet(newSet);
+            }
+        }
+
+        // An inline-resolved class leaving while another class in the incoming list writes the same property
+        // (w-[300px] to w-[10px]) gives up its layer without the property being resolved. DiffClassList's
+        // reapply applies every incoming inline class afterwards, which resolves it. Pinned by
+        // ArbitraryWidthSwapTransitionTests.
+        private static void RemoveOutgoingClass(VisualElement element, string cls, string[] newClasses)
+        {
+            if (InlineWriteOf(cls) is { } outgoing)
+            {
+                if (WritesInlineProperty(newClasses, outgoing.Property))
+                {
+                    StyleArbitraryValueResolver.Withdraw(element, outgoing.Property, outgoing.Priority);
+                    return;
+                }
+            }
+            RemoveClass(element, cls);
+        }
+
+        private static bool WritesInlineProperty(string[] classes, ArbitraryProperty property)
+        {
+            foreach (var cls in classes)
+            {
+                if (InlineWriteOf(cls)?.Property == property)
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        // The property and layer an inline-resolved class writes, or null for one that writes none or whose
+        // layers are not keyed by property (filter-[name:...]).
+        private static (ArbitraryProperty Property, long Priority)? InlineWriteOf(string raw)
+        {
+            if (!TryGetInlineResolvedCore(raw, out var core, out var important))
+            {
+                return null;
+            }
+            if (!StyleArbitraryValueResolver.TryParseComposed(core, out var style))
+            {
+                return null;
+            }
+            if (style.Property == ArbitraryProperty.FilterCustom)
+            {
+                return null;
+            }
+            return (style.Property, important
+                ? StyleLayerPriority.ImportantOf(StyleLayerPriority.Base)
+                : StyleLayerPriority.Base);
+        }
+
+        // Token families a manipulator (or a side-table config pass) owns outright: none of them ever
+        // enters the USS class list, on either the add or the remove side (see AddClass / RemoveClass).
+        private static bool IsManipulatorOwnedClass(string cls)
+        {
+            // State-variant tokens (hover:/focus:/active:) are not real classes; the variant
+            // manipulator (configured separately) owns them.
+            if (StyleVariantClass.IsVariant(cls))
+            {
+                return true;
+            }
+
+            // [&>*]: child-combinator tokens style the CONTAINER's children, never the container itself; the
+            // child-variant manipulator owns them. Guarded here (before the inline-resolved branch) because the
+            // token starts with '[' and would otherwise be mis-routed as an arbitrary value.
+            if (StyleChildVariantClass.IsChildVariant(cls))
+            {
+                return true;
+            }
+
+            // Structural variants (first:/last:/[&:nth-child(N)]:) are owned by the reconciler's structural
+            // pass (evaluated against sibling position); never added as classes.
+            if (StyleStructuralVariantClass.IsStructural(cls))
+            {
+                return true;
+            }
+
+            // has-[...] variants (parent styled by a descendant condition) are owned by the has-variant
+            // manipulator / the has-class post-children pass; never added as classes.
+            if (StyleHasVariantClass.IsHas(cls))
+            {
+                return true;
+            }
+
+            // data-[...] / aria-[...] variants (element styled by its own carried attribute) are owned by
+            // the attribute side-table; never added as classes.
+            if (StyleAttributeVariantClass.IsAttribute(cls))
+            {
+                return true;
+            }
+
+            // supports-[...] feature-query variants (element styled when the engine supports a declaration)
+            // are owned by the supports side-table (static / always-applied in UITK); never added as classes.
+            if (StyleSupportsVariantClass.IsSupports(cls))
+            {
+                return true;
+            }
+
+            // Custom-property tokens resolve on the element (ApplyCustomPropertyConfig) and never enter the class
+            // list.
+            if (StyleCustomPropertyClass.IsCustomPropertyToken(StyleArbitraryValueResolver.StripImportant(cls, out _)))
+            {
+                return true;
+            }
+
+            // font-[...] arbitrary font classes are resolved from the whole class array by
+            // StyleFontResolver and applied as inline style; like other arbitrary values they must not
+            // enter the USS class list.
+            if (StyleFontClass.IsArbitraryFontClass(cls))
+            {
+                return true;
+            }
+
+            // leading-[...] arbitrary line-height classes are resolved from the whole class array by
+            // StyleTextEffectResolver and folded into the rich-text tag it wraps the display string in;
+            // like font-[...] they must not enter the USS class list, regardless of whether the bracket
+            // value itself parses.
+            if (StyleTextEffectClass.IsArbitraryLeadingClass(cls))
+            {
+                return true;
+            }
+
+            return false;
+        }
+
+        private static void AddClass(VisualElement element, string cls)
+        {
+            if (FiberElementFactory.IsPlainClassToken(cls))
+            {
+                AddPlainClass(element, cls, StyleLayerPriority.Base);
+                return;
+            }
+
+            if (IsManipulatorOwnedClass(cls))
+            {
+                return;
+            }
+
+            // Important modifier (!utility / utility!): strip the bang; when present, elevate the utility
+            // into the important band, on whichever of the two layers below carries it.
+            var core = StyleArbitraryValueResolver.StripImportant(cls, out var important);
+            if (string.IsNullOrEmpty(core))
+            {
+                return;
+            }
+            var priority = important
+                ? StyleLayerPriority.ImportantOf(StyleLayerPriority.Base)
+                : StyleLayerPriority.Base;
+
+            AddPlainClass(element, core, priority);
+        }
+
+        // Plain classes (the common case) go to the USS class list through the projection, which decides
+        // whether a higher-priority payload has already taken every property they write; inline-value
+        // tokens (bracketed, color-opacity, static-scale) resolve to inline style.
+        private static void AddPlainClass(VisualElement element, string core, long priority)
+        {
+            if (!StyleArbitraryValueResolver.IsInlineResolved(core))
+            {
+                StyleClassProjection.Add(element, core, priority);
+                return;
+            }
+
+            StyleArbitraryValueResolver.ApplyClassToken(element, core, priority);
+        }
+
+        // None of IsManipulatorOwnedClass's token families ever entered the class list (see AddClass), so
+        // there is nothing here to remove for them; each family's applied payload is cleared elsewhere by
+        // its own owning pass on the class change instead (the variant manipulator; the child-variant /
+        // structural / has-variant / attribute / supports / custom-property config passes; StyleFontResolver; or
+        // StyleTextEffectResolver re-resolving) — never by this method.
+        private static void RemoveClass(VisualElement element, string cls)
+        {
+            if (FiberElementFactory.IsPlainClassToken(cls))
+            {
+                RemovePlainClass(element, cls, StyleLayerPriority.Base);
+                return;
+            }
+
+            if (IsManipulatorOwnedClass(cls))
+            {
+                return;
+            }
+
+            // Important modifier: strip the bang and clear the same layer AddClass applied it on.
+            var core = StyleArbitraryValueResolver.StripImportant(cls, out var important);
+            if (string.IsNullOrEmpty(core))
+            {
+                return;
+            }
+            var priority = important
+                ? StyleLayerPriority.ImportantOf(StyleLayerPriority.Base)
+                : StyleLayerPriority.Base;
+
+            RemovePlainClass(element, core, priority);
+        }
+
+        // Plain classes (the common case) leave the USS class list through the projection, which may
+        // hand the properties they held back to a payload it had suppressed; inline-value tokens
+        // (bracketed, color-opacity, static-scale) clear the inline style they applied.
+        private static void RemovePlainClass(VisualElement element, string core, long priority)
+        {
+            if (!StyleArbitraryValueResolver.IsInlineResolved(core))
+            {
+                StyleClassProjection.Remove(element, core, priority);
+                return;
+            }
+
+            StyleArbitraryValueResolver.ClearClassToken(element, core, priority);
+        }
+
+        // Applies the diff of element props between renders.
+        // Maintenance note: this method (with DiffBindingProps) diffs each property of FiberElementProps
+        // individually, so any new property added to FiberElementProps must also receive a matching
+        // branch in one of the two. Missing the addition causes the new property's diff to be silently
+        // ignored (the prop applies on the initial mount but never updates on a re-render) without a
+        // compile error.
+        // Exception: the Data / Aria attribute props are NOT diffed here — they drive the data-/aria- variant
+        // side-table (no direct VisualElement property to set), so PatchBaseElement re-syncs them via
+        // ApplyAttributes right after this call (which rebuilds the store unconditionally, so a change is
+        // always observed).
+        internal void DiffProps(VisualElement element, FiberElementProps? oldProps, FiberElementProps? newProps)
+        {
+            oldProps ??= FiberElementProps.Empty;
+            newProps ??= FiberElementProps.Empty;
+
+            if (oldProps.Text != newProps.Text)
+            {
+                FiberPropApplier.ApplyText(element, newProps.Text);
+            }
+
+            if (oldProps.Tooltip != newProps.Tooltip)
+            {
+                FiberPropApplier.ApplyTooltip(element, newProps.Tooltip);
+            }
+
+            if (oldProps.Enabled != newProps.Enabled)
+            {
+                FiberPropApplier.ApplyEnabled(element, newProps.Enabled);
+            }
+
+            if (oldProps.Visible != newProps.Visible)
+            {
+                FiberPropApplier.ApplyVisible(element, newProps.Visible);
+            }
+
+            if (oldProps.Focusable != newProps.Focusable)
+            {
+                FiberPropApplier.ApplyFocusable(element, newProps.Focusable);
+                // Ownership of the flag moves with the declaration, in both directions — the branch also
+                // fires when the prop goes away, which is the moment the anchor has to take it back.
+                // Ordering: after the applier, whose write is what the session reads.
+                _ctx.ActiveDrag?.OnSourceFocusableDeclarationChanged(element, newProps.Focusable.HasValue);
+            }
+
+            if (oldProps.TabIndex != newProps.TabIndex)
+            {
+                FiberPropApplier.ApplyTabIndex(element, newProps.TabIndex);
+            }
+
+            if (oldProps.DelegatesFocus != newProps.DelegatesFocus)
+            {
+                FiberPropApplier.ApplyDelegatesFocus(element, newProps.DelegatesFocus);
+            }
+
+            var fieldValueChanged = !Equals(oldProps.FieldValue, newProps.FieldValue);
+            if (oldProps.Slider != newProps.Slider)
+            {
+                FiberPropApplier.ApplySlider(
+                    element, oldProps.Slider, newProps.Slider, fieldValueChanged ? newProps.FieldValue : null);
+            }
+
+            if (oldProps.SliderInt != newProps.SliderInt)
+            {
+                FiberPropApplier.ApplySliderInt(
+                    element, oldProps.SliderInt, newProps.SliderInt, fieldValueChanged ? newProps.FieldValue : null);
+            }
+
+            if (fieldValueChanged)
+            {
+                FiberPropApplier.ApplyFieldValue(element, newProps.FieldValue);
+                RaiseCheckedSignal(element);
+            }
+
+            if (oldProps.ScrollView != newProps.ScrollView)
+            {
+                FiberPropApplier.ApplyScrollView(element, newProps.ScrollView);
+            }
+
+            if (oldProps.TextField != newProps.TextField)
+            {
+                FiberPropApplier.ApplyTextField(element, newProps.TextField);
+            }
+
+            if (oldProps.Choices != newProps.Choices)
+            {
+                FiberPropApplier.ApplyChoices(element, newProps.Choices);
+            }
+
+            DiffBindingProps(element, oldProps, newProps);
+        }
+
+        // A controlled value reaches the control through SetValueWithoutNotify, so the ChangeEvent the
+        // checked: and peer-checked: variants listen for never arrives — the same suppression
+        // RefreshHasVariants compensates for on the has- side. Reads the control back instead of re-deriving
+        // the value from the prop: a FieldValue cleared to null resets a bool control through
+        // ApplyFieldValue's own branch, and the control is where both branches land.
+        // Two sweeps because the two families are keyed opposite ways (see IRelationalSettleTarget): the
+        // element-local one visits what is registered against this element, the relational one offers the
+        // edge to every consumer so each can recognise its own source.
+        private void RaiseCheckedSignal(VisualElement element)
+        {
+            if (element is not INotifyValueChanged<bool> boolField)
+            {
+                return;
+            }
+
+            var value = boolField.value;
+            VariantSettleSweep.ForEach(element, _ctx, value, static (consumer, checkedValue) => consumer.SettleChecked(checkedValue));
+            VariantSettleSweep.SettleCheckedFromSource(element, _ctx, value);
+        }
+
+        // The props that wire a binding onto the element rather than writing a VisualElement property; the
+        // create-path counterpart is FiberNodeFactory.ApplyOptionalCreateBindings.
+        private void DiffBindingProps(VisualElement element, FiberElementProps oldProps, FiberElementProps newProps)
+        {
+            // Record (value) equality: a re-render carrying the same camera + scale in a fresh record is
+            // not a change, so a camera swap / removal is the only thing that lands here — a class-driven
+            // RESIZE arrives through the binding's geometry callback instead, never through this diff.
+            if (oldProps.SceneView != newProps.SceneView)
+            {
+                _appliers.ApplySceneView(element, newProps.SceneView);
+            }
+
+            // Record (value) equality, like SceneView above: only an effect swap / removal (or a
+            // trigger / pixel-scale change) lands here — a re-render carrying identical settings in a
+            // fresh record is not a change.
+            if (oldProps.Particles != newProps.Particles)
+            {
+                _appliers.ApplyParticles(element, newProps.Particles);
+            }
+
+            // Record (value) equality, like SceneView/Particles above: a re-render carrying the same
+            // target/camera/offset in a fresh record is not a change — the position itself updates every
+            // tick regardless (AnchoredDriver's own recurring Sync), not through this diff.
+            if (oldProps.Anchored != newProps.Anchored)
+            {
+                _appliers.ApplyAnchored(element, newProps.Anchored);
+            }
+
+            // Record (value) equality, like the bindings above: only an actual scope-behavior change (or a
+            // scope arriving/leaving) lands here.
+            if (oldProps.FocusScope != newProps.FocusScope)
+            {
+                _appliers.ApplyFocusScope(element, newProps.FocusScope);
+            }
+
+            // Record (value) equality for all four drag-and-drop slots: fresh-but-equal settings never
+            // re-attach, and delegate-bearing records refresh their binding in place on any inequality.
+            if (oldProps.DndContext != newProps.DndContext)
+            {
+                _appliers.ApplyDndContext(element, newProps.DndContext);
+            }
+            if (oldProps.Draggable != newProps.Draggable)
+            {
+                _appliers.ApplyDraggable(element, newProps.Draggable);
+            }
+            if (oldProps.Droppable != newProps.Droppable)
+            {
+                _appliers.ApplyDroppable(element, newProps.Droppable);
+            }
+            if (oldProps.DragOverlay != newProps.DragOverlay)
+            {
+                _appliers.ApplyDragOverlay(element, newProps.DragOverlay);
+            }
+            if (oldProps.NoDrag != newProps.NoDrag)
+            {
+                _appliers.ApplyNoDrag(element, newProps.NoDrag);
+            }
+        }
+
+        // Applies the StyleOverrides diff. StyleOverridesLayer.Diff writes each member on its own, so a member
+        // added to StyleOverrides needs a branch there; StyleOverridesInlineWriteTests fails until it has one.
+        internal void DiffStyles(VisualElement element, StyleOverrides? oldStyles, StyleOverrides? newStyles)
+            => StyleOverridesLayer.Diff(element, oldStyles ?? StyleOverrides.Empty, newStyles ?? StyleOverrides.Empty);
+
+        #endregion
+
+        #region Wrapper Resolution
+
+        // Reconciler-facing wrapper<->inner resolution. The mechanics live in WrapperInfrastructure
+        // (shared with the wrapper element appliers); the patcher fronts them for the reconciler,
+        // which talks to the patcher rather than reaching into the shared collaborator.
+
+        // Returns the inner real element when the input is a wrapper container; else the input.
+        internal VisualElement ResolveWrapped(VisualElement domElement)
+            => _wrappers.ResolveWrapped(domElement);
+
+        // The inverse of ResolveWrapped: the element's current top-level DOM node — its
+        // wrapper when it is the inner of one, else itself. Callers that hold a pre-patch element
+        // reference (the VirtualList bridge) use this after a patch, because a class-driven
+        // wrap/unwrap during the patch swaps which element occupies the slot.
+        internal VisualElement ResolveOuter(VisualElement element)
+            => _wrappers.ResolveOuter(element);
+
+        #endregion
+
+        #region Component Handling
+
+        internal void HandleComponentMount(VisualElement wrapper, ComponentNode? componentNode)
+        {
+            if (componentNode == null) return;
+            // The wrapper-mounted Component is mounted during the reconcile walk's commit while its
+            // enclosing Providers are live on the ComponentContextStack. UseContext reads that live
+            // cursor, so no snapshot is captured here; an isolated re-render reconstructs the enclosing
+            // Providers via FiberContextSpine.
+            componentNode.Mount(_ctx.ComponentRegistry, wrapper);
+        }
+
+        #endregion
+
+        #region Manipulator Configure
+
+        // One manipulator family's tracking table, constructor and update call. Implementations must be
+        // structs: Configure is constrained to a struct so every instantiation is specialized and each
+        // member below binds to a direct call. A class implementation, or a delegate parameter in place of
+        // this interface, would allocate once per element per patch on a path that runs for every styled
+        // element in the tree.
+        // Create takes the context because every family's manipulator reaches it — to resolve its payloads,
+        // or (gap, grid, divide) to claim the children it writes to.
+        private interface IManipulatorOp<TManip> where TManip : Manipulator
+        {
+            Dictionary<VisualElement, TManip> Table(ReconcilerContext ctx);
+            TManip Create(ReconcilerContext ctx);
+            void Update(TManip manipulator);
+        }
+
+        // Creates, updates or tears down element's manipulator of the family described by op. wanted is
+        // the family's own verdict on whether the current class list still asks for the manipulator;
+        // each caller computes it from its own token scan (an emptiness check, a parse result, or the
+        // prefix scan it already ran to early-out).
+        // The table entry is dropped only AFTER the element has released the manipulator. These tables
+        // are the index FiberElementCleaner detaches from, so an entry cleared ahead of a detach that
+        // throws or re-enters would strand an attached manipulator nothing can reach.
+        // `default` is a legal op ONLY where wanted is statically false: a default op carries zeroed
+        // fields, so a computed wanted that turns out true would build a manipulator out of them.
+        // op is taken by value. `where TOp : struct` does not promise the concrete type is readonly, so
+        // an `in` parameter would make each member call below copy defensively rather than copying once
+        // at the call site.
+        private void Configure<TOp, TManip>(VisualElement element, bool wanted, TOp op)
+            where TOp : struct, IManipulatorOp<TManip>
+            where TManip : Manipulator
+        {
+            var table = op.Table(_ctx);
+            if (table.TryGetValue(element, out var existing))
+            {
+                if (wanted)
+                {
+                    // Keep this unconditional — never gate it on "the spec is unchanged". Gap, divide and
+                    // grid re-derive against the CURRENT child set, which moves without any class token
+                    // changing.
+                    op.Update(existing);
+                }
+                else
+                {
+                    element.RemoveManipulator(existing);
+                    table.Remove(element);
+                    // The stacked manipulators existing gated are keyed by it, so no gate of theirs opens again.
+                    _ctx.DropStackedVariants(existing);
+                }
+            }
+            else if (wanted)
+            {
+                var manipulator = op.Create(_ctx);
+                element.AddManipulator(manipulator);
+                table[element] = manipulator;
+            }
+        }
+
+        private readonly struct VariantOp : IManipulatorOp<StyleVariantManipulator>
+        {
+            private readonly VariantPayloads _payloads;
+            private readonly VariantDeclarations _declarations;
+
+            internal VariantOp(VariantPayloads payloads, VariantDeclarations declarations)
+            {
+                _payloads = payloads;
+                _declarations = declarations;
+            }
+
+            public Dictionary<VisualElement, StyleVariantManipulator> Table(ReconcilerContext ctx)
+                => ctx.VariantManipulators;
+
+            public StyleVariantManipulator Create(ReconcilerContext ctx)
+                => new StyleVariantManipulator(ctx, _payloads, _declarations);
+
+            public void Update(StyleVariantManipulator manipulator)
+                => manipulator.UpdatePayloads(_payloads, _declarations);
+        }
+
+        private readonly struct ConditionalVariantOp : IManipulatorOp<StyleConditionalVariantManipulator>
+        {
+            private readonly string[][] _responsive;
+            private readonly string[] _dark;
+
+            private readonly int[][] _responsiveDeclarations;
+            private readonly int[] _darkDeclarations;
+
+            internal ConditionalVariantOp(string[][] responsive, string[] dark,
+                int[][] responsiveDeclarations, int[] darkDeclarations)
+            {
+                _responsive = responsive;
+                _dark = dark;
+                _responsiveDeclarations = responsiveDeclarations;
+                _darkDeclarations = darkDeclarations;
+            }
+
+            public Dictionary<VisualElement, StyleConditionalVariantManipulator> Table(ReconcilerContext ctx)
+                => ctx.ConditionalVariantManipulators;
+
+            public StyleConditionalVariantManipulator Create(ReconcilerContext ctx)
+                => new StyleConditionalVariantManipulator(ctx, _responsive, _dark,
+                    _responsiveDeclarations, _darkDeclarations);
+
+            public void Update(StyleConditionalVariantManipulator manipulator)
+                => manipulator.UpdatePayloads(_responsive, _dark, _responsiveDeclarations, _darkDeclarations);
+        }
+
+        private readonly struct ContainerVariantOp : IManipulatorOp<StyleContainerVariantManipulator>
+        {
+            private readonly ContainerBinding[] _bindings;
+
+            internal ContainerVariantOp(ContainerBinding[] bindings)
+            {
+                _bindings = bindings;
+            }
+
+            public Dictionary<VisualElement, StyleContainerVariantManipulator> Table(ReconcilerContext ctx)
+                => ctx.ContainerVariantManipulators;
+
+            public StyleContainerVariantManipulator Create(ReconcilerContext ctx)
+                => new StyleContainerVariantManipulator(ctx, _bindings);
+
+            public void Update(StyleContainerVariantManipulator manipulator)
+                => manipulator.UpdateBindings(_bindings);
+        }
+
+        private readonly struct RelationalVariantOp : IManipulatorOp<StyleRelationalVariantManipulator>
+        {
+            private readonly List<RelationalBindingConfig>? _configs;
+
+            internal RelationalVariantOp(List<RelationalBindingConfig>? configs)
+            {
+                _configs = configs;
+            }
+
+            public Dictionary<VisualElement, StyleRelationalVariantManipulator> Table(ReconcilerContext ctx)
+                => ctx.RelationalVariantManipulators;
+
+            public StyleRelationalVariantManipulator Create(ReconcilerContext ctx)
+                => new StyleRelationalVariantManipulator(ctx, _configs);
+
+            public void Update(StyleRelationalVariantManipulator manipulator)
+                => manipulator.UpdatePayloads(_configs);
+        }
+
+        private readonly struct HasVariantOp : IManipulatorOp<StyleHasVariantManipulator>
+        {
+            private readonly string[] _checked;
+            private readonly string[] _focus;
+            private readonly int[] _checkedDeclarations;
+            private readonly int[] _focusDeclarations;
+
+            internal HasVariantOp(string[] @checked, string[] focus,
+                int[] checkedDeclarations, int[] focusDeclarations)
+            {
+                _checked = @checked;
+                _focus = focus;
+                _checkedDeclarations = checkedDeclarations;
+                _focusDeclarations = focusDeclarations;
+            }
+
+            public Dictionary<VisualElement, StyleHasVariantManipulator> Table(ReconcilerContext ctx)
+                => ctx.HasVariantManipulators;
+
+            public StyleHasVariantManipulator Create(ReconcilerContext ctx)
+                => new StyleHasVariantManipulator(ctx, _checked, _focus,
+                    _checkedDeclarations, _focusDeclarations);
+
+            public void Update(StyleHasVariantManipulator manipulator)
+                => manipulator.UpdatePayloads(_checked, _focus, _checkedDeclarations, _focusDeclarations);
+        }
+
+        private readonly struct ChildVariantOp : IManipulatorOp<StyleChildVariantManipulator>
+        {
+            private readonly string[] _payloads;
+            private readonly int[] _declarations;
+            private readonly bool[] _inputBoxOnly;
+
+            internal ChildVariantOp(string[] payloads, int[] declarations, bool[] inputBoxOnly)
+            {
+                _payloads = payloads;
+                _declarations = declarations;
+                _inputBoxOnly = inputBoxOnly;
+            }
+
+            public Dictionary<VisualElement, StyleChildVariantManipulator> Table(ReconcilerContext ctx)
+                => ctx.ChildVariantManipulators;
+
+            public StyleChildVariantManipulator Create(ReconcilerContext ctx)
+                => new StyleChildVariantManipulator(ctx, _payloads, _declarations, _inputBoxOnly);
+
+            public void Update(StyleChildVariantManipulator manipulator)
+                => manipulator.UpdatePayloads(_payloads, _declarations, _inputBoxOnly);
+        }
+
+        private readonly struct GapOp : IManipulatorOp<StyleGapManipulator>
+        {
+            private readonly GapSpec _spec;
+
+            internal GapOp(GapSpec spec)
+            {
+                _spec = spec;
+            }
+
+            public Dictionary<VisualElement, StyleGapManipulator> Table(ReconcilerContext ctx)
+                => ctx.GapManipulators;
+
+            public StyleGapManipulator Create(ReconcilerContext ctx)
+                => new StyleGapManipulator(ctx, _spec);
+
+            public void Update(StyleGapManipulator manipulator)
+                => manipulator.UpdateGap(_spec);
+        }
+
+        private readonly struct CompositeFlowOp : IManipulatorOp<StyleCompositeFlowManipulator>
+        {
+            public Dictionary<VisualElement, StyleCompositeFlowManipulator> Table(ReconcilerContext ctx)
+                => ctx.CompositeFlowManipulators;
+
+            public StyleCompositeFlowManipulator Create(ReconcilerContext ctx)
+                => new StyleCompositeFlowManipulator(ctx);
+
+            public void Update(StyleCompositeFlowManipulator manipulator)
+                => manipulator.Forward();
+        }
+
+        private readonly struct DivideOp : IManipulatorOp<StyleDivideManipulator>
+        {
+            private readonly DivideSpec _spec;
+
+            internal DivideOp(DivideSpec spec)
+            {
+                _spec = spec;
+            }
+
+            public Dictionary<VisualElement, StyleDivideManipulator> Table(ReconcilerContext ctx)
+                => ctx.DivideManipulators;
+
+            public StyleDivideManipulator Create(ReconcilerContext ctx)
+                => new StyleDivideManipulator(_spec, ctx);
+
+            public void Update(StyleDivideManipulator manipulator)
+                => manipulator.UpdateSpec(_spec);
+        }
+
+        private readonly struct GridOp : IManipulatorOp<StyleGridManipulator>
+        {
+            private readonly GridSpec _spec;
+
+            internal GridOp(GridSpec spec)
+            {
+                _spec = spec;
+            }
+
+            public Dictionary<VisualElement, StyleGridManipulator> Table(ReconcilerContext ctx)
+                => ctx.GridManipulators;
+
+            public StyleGridManipulator Create(ReconcilerContext ctx)
+                => new StyleGridManipulator(ctx, _spec);
+
+            public void Update(StyleGridManipulator manipulator)
+                => manipulator.UpdateSpec(_spec);
+        }
+
+        #endregion
+
+        #region Variant Manipulator
+
+        // Configures (creates / updates / removes) the element's StyleVariantManipulator
+        // from the state-variant tokens (hover:/focus:/active:/disabled:) found in classNames.
+        internal void ApplyVariantManipulator(VisualElement element, string[] classNames)
+        {
+            var hover = ExtractVariant(classNames, StyleVariantKind.Hover, out var hoverDecl);
+            var focus = ExtractVariant(classNames, StyleVariantKind.Focus, out var focusDecl);
+            var focusVisible = ExtractVariant(classNames, StyleVariantKind.FocusVisible, out var focusVisibleDecl);
+            var active = ExtractVariant(classNames, StyleVariantKind.Active, out var activeDecl);
+            var @checked = ExtractVariant(classNames, StyleVariantKind.Checked, out var checkedDecl);
+            var disabled = ExtractVariant(classNames, StyleVariantKind.Disabled, out var disabledDecl);
+            var hasAny = hover.Length > 0 || focus.Length > 0 || focusVisible.Length > 0
+                || active.Length > 0 || @checked.Length > 0 || disabled.Length > 0
+                || StacksElementLocalInner(classNames);
+
+            Configure<VariantOp, StyleVariantManipulator>(element, hasAny,
+                new VariantOp(
+                    new VariantPayloads(hover, focus, focusVisible, active, @checked, disabled),
+                    new VariantDeclarations(hoverDecl, focusDecl, focusVisibleDecl, activeDecl, checkedDecl,
+                        disabledDecl)));
+        }
+
+        // A stacked element-local inner (dark:hover:, has-[:checked]:hover:) is created when its outer gate opens
+        // and seeds itself from the element's own manipulator (ReconcilerContext.GateStackedVariant), so an element
+        // carrying one keeps that manipulator tracking its state even with no payload of its own. A has- token's
+        // own payload is its first inner, so the chain is read from there.
+        private static bool StacksElementLocalInner(string[] classNames)
+        {
+            foreach (var className in classNames ?? Array.Empty<string>())
+            {
+                // The outer layer ends at a ':' and the inner holds one of its own, so a class with fewer than two is
+                // passed over before either parse cuts out a payload.
+                if (className == null || className.IndexOf(':') == className.LastIndexOf(':'))
+                {
+                    continue;
+                }
+                string? rest = null;
+                if (!StyleVariantClass.TryParse(className, out _, out rest)
+                    && !StyleHasVariantClass.TryParse(className, out _, out _, out rest))
+                {
+                    continue;
+                }
+                while (StyleVariantClass.TryParse(rest, out var inner, out var next))
+                {
+                    if (StyleStackedVariantManipulator.IsElementLocalInner(inner))
+                    {
+                        return true;
+                    }
+                    rest = next;
+                }
+            }
+            return false;
+        }
+
+        private static string[] ExtractVariant(string[] classNames, StyleVariantKind kind, out int[] declarations)
+        {
+            declarations = Array.Empty<int>();
+            if (classNames == null || classNames.Length == 0)
+            {
+                return Array.Empty<string>();
+            }
+
+            List<string>? payloads = null;
+            List<int>? positions = null;
+            for (var i = 0; i < classNames.Length; i++)
+            {
+                if (StyleVariantClass.TryParseFor(classNames[i], kind, out var k, out _, out var payload) && k == kind)
+                {
+                    (payloads ??= new List<string>()).Add(payload ?? string.Empty);
+                    (positions ??= new List<int>()).Add(StyleRuleOrder.OrdinalOf(classNames, i));
+                }
+            }
+
+            declarations = positions?.ToArray() ?? Array.Empty<int>();
+            return payloads?.ToArray() ?? Array.Empty<string>();
+        }
+
+        // Configures the element's StyleConditionalVariantManipulator from the responsive
+        // (sm:/md:/lg:/xl:/2xl:) and dark: tokens in classNames.
+        internal void ApplyConditionalVariantManipulator(VisualElement element, string[] classNames)
+        {
+            var responsiveKinds = new[]
+            {
+                StyleVariantKind.Sm, StyleVariantKind.Md, StyleVariantKind.Lg,
+                StyleVariantKind.Xl, StyleVariantKind.Xxl,
+            };
+            var responsive = new string[responsiveKinds.Length][];
+            var responsiveDeclarations = new int[responsiveKinds.Length][];
+            for (var i = 0; i < responsiveKinds.Length; i++)
+            {
+                responsive[i] = ExtractVariant(classNames, responsiveKinds[i], out var breakpointDecl);
+                responsiveDeclarations[i] = breakpointDecl;
+            }
+            var dark = ExtractVariant(classNames, StyleVariantKind.Dark, out var darkDecl);
+
+            var hasAny = dark.Length > 0;
+            for (var i = 0; i < responsive.Length && !hasAny; i++)
+            {
+                hasAny = responsive[i].Length > 0;
+            }
+
+            Configure<ConditionalVariantOp, StyleConditionalVariantManipulator>(element, hasAny,
+                new ConditionalVariantOp(responsive, dark, responsiveDeclarations, darkDecl));
+        }
+
+        // Configures the element's StyleContainerVariantManipulator from the container query tokens
+        // (@md:/@max-lg:/@min-[475px]:/@md/main:) in classNames.
+        internal void ApplyContainerVariantManipulator(VisualElement element, string[] classNames)
+        {
+            var bindings = BuildContainerBindings(classNames);
+
+            Configure<ContainerVariantOp, StyleContainerVariantManipulator>(element, bindings.Length > 0,
+                new ContainerVariantOp(bindings));
+        }
+
+        // One binding per distinct prefix spelling, holding every payload written under it. Returns the shared
+        // empty array when no token is a container query.
+        private static ContainerBinding[] BuildContainerBindings(string[] classNames)
+        {
+            if (classNames == null || classNames.Length == 0)
+            {
+                return Array.Empty<ContainerBinding>();
+            }
+
+            Dictionary<string, (StyleContainerQuery Query, List<string> Payloads, List<int> Positions)>? bySpelling = null;
+            for (var i = 0; i < classNames.Length; i++)
+            {
+                if (!TryReadContainerToken(classNames[i], out var spelling, out var query, out var payload))
+                {
+                    continue;
+                }
+                bySpelling ??= new Dictionary<string, (StyleContainerQuery, List<string>, List<int>)>();
+                if (!bySpelling.TryGetValue(spelling, out var entry))
+                {
+                    entry = (query, new List<string>(), new List<int>());
+                    bySpelling[spelling] = entry;
+                }
+                entry.Payloads.Add(payload);
+                entry.Positions.Add(StyleRuleOrder.OrdinalOf(classNames, i));
+            }
+
+            if (bySpelling == null)
+            {
+                return Array.Empty<ContainerBinding>();
+            }
+
+            var bindings = new ContainerBinding[bySpelling.Count];
+            var next = 0;
+            foreach (var (spelling, entry) in bySpelling)
+            {
+                bindings[next++] = new ContainerBinding(spelling, entry.Query, entry.Payloads.ToArray(),
+                    entry.Positions.ToArray());
+            }
+            return bindings;
+        }
+
+        private static bool TryReadContainerToken(string token, out string spelling, out StyleContainerQuery query,
+            out string payload)
+        {
+            spelling = string.Empty;
+            query = default;
+            payload = string.Empty;
+            if (!StyleVariantClass.TryParseFor(token, StyleVariantKind.Container, out var kind, out var name, out var rest)
+                || kind != StyleVariantKind.Container)
+            {
+                return false;
+            }
+            spelling = name ?? string.Empty;
+            payload = rest ?? string.Empty;
+            return StyleContainerQuery.TryParse(spelling, out query);
+        }
+
+        // Configures the element's StyleRelationalVariantManipulator from the group-*/peer- tokens (incl. the
+        // named group-*/name · peer-*/name forms) in classNames.
+        internal void ApplyRelationalVariantManipulator(VisualElement element, string[] classNames)
+        {
+            var configs = BuildRelationalConfigs(classNames);
+            var hasAny = configs != null && configs.Count > 0;
+
+            Configure<RelationalVariantOp, StyleRelationalVariantManipulator>(element, hasAny,
+                new RelationalVariantOp(configs));
+        }
+
+        // Groups the relational tokens by (relation, name) into one binding config each — so the unnamed
+        // group/peer and every distinct named source (group-hover/sidebar:, peer-checked/email:, …) become
+        // separate bindings the manipulator resolves independently. Returns null when no relational token is
+        // present (the common case), so a non-relational element pays nothing.
+        private static List<RelationalBindingConfig>? BuildRelationalConfigs(string[] classNames)
+        {
+            if (classNames == null || classNames.Length == 0)
+            {
+                return null;
+            }
+
+            // (isPeer, name) -> per-state payload lists, indexed by (int)RelationalState, and the rule place (see
+            // VariantDeclarations) of each of those payloads in the parallel list beside it.
+            Dictionary<(bool IsPeer, string Name), List<string>[]>? map = null;
+            Dictionary<(bool IsPeer, string Name), List<int>[]>? positions = null;
+            for (var i = 0; i < classNames.Length; i++)
+            {
+                if (!StyleVariantClass.TryParseForRelational(classNames[i], out var kind, out var name, out var payload)
+                    || StyleVariantClass.RelationalOf(kind) is not { } relational)
+                {
+                    continue;
+                }
+                var key = (relational.IsPeer, name ?? string.Empty);
+                map ??= new Dictionary<(bool, string), List<string>[]>();
+                positions ??= new Dictionary<(bool, string), List<int>[]>();
+                if (!map.TryGetValue(key, out var states))
+                {
+                    states = new List<string>[StyleVariantClass.RelationalStateCount];
+                    map[key] = states;
+                    positions[key] = new List<int>[StyleVariantClass.RelationalStateCount];
+                }
+                var slot = (int)relational.State;
+                (states[slot] ??= new List<string>()).Add(payload ?? string.Empty);
+                (positions![key][slot] ??= new List<int>()).Add(StyleRuleOrder.OrdinalOf(classNames, i));
+            }
+
+            if (map == null)
+            {
+                return null;
+            }
+
+            var configs = new List<RelationalBindingConfig>(map.Count);
+            foreach (var kv in map)
+            {
+                var s = kv.Value;
+                var d = positions![kv.Key];
+                configs.Add(new RelationalBindingConfig(
+                    kv.Key.IsPeer, kv.Key.Name,
+                    new VariantPayloads(
+                        ToPayloadArray(s[(int)StyleVariantClass.RelationalState.Hover]),
+                        ToPayloadArray(s[(int)StyleVariantClass.RelationalState.Focus]),
+                        ToPayloadArray(s[(int)StyleVariantClass.RelationalState.FocusWithin]),
+                        ToPayloadArray(s[(int)StyleVariantClass.RelationalState.Active]),
+                        ToPayloadArray(s[(int)StyleVariantClass.RelationalState.Checked]),
+                        ToPayloadArray(s[(int)StyleVariantClass.RelationalState.Disabled])),
+                    new VariantDeclarations(
+                        ToPositionArray(d[(int)StyleVariantClass.RelationalState.Hover]),
+                        ToPositionArray(d[(int)StyleVariantClass.RelationalState.Focus]),
+                        ToPositionArray(d[(int)StyleVariantClass.RelationalState.FocusWithin]),
+                        ToPositionArray(d[(int)StyleVariantClass.RelationalState.Active]),
+                        ToPositionArray(d[(int)StyleVariantClass.RelationalState.Checked]),
+                        ToPositionArray(d[(int)StyleVariantClass.RelationalState.Disabled]))));
+            }
+            return configs;
+        }
+
+        private static int[] ToPositionArray(List<int>? positions)
+            => positions?.ToArray() ?? Array.Empty<int>();
+
+        private static string[] ToPayloadArray(List<string> payloads)
+            => payloads?.ToArray() ?? Array.Empty<string>();
+
+        // Remembers the element when a class of its list has the shape of one a theme variable makes, which
+        // StyleThemeTokens configures again once the sheets declare other variables.
+        private void TrackThemed(VisualElement element, string[] classNames)
+        {
+            foreach (var className in classNames ?? Array.Empty<string>())
+            {
+                if (!string.IsNullOrEmpty(className) && StyleThemeClass.MayBeFamilyShapedAsWritten(className)
+                    && StyleThemeClass.MayBecomeThemeClass(StyleArbitraryValueResolver.StripImportant(className, out _)))
+                {
+                    StyleThemeTokens.Track(_ctx, element, classNames!);
+                    return;
+                }
+            }
+            StyleThemeTokens.Untrack(element);
+        }
+
+        // Withdraws the element's custom-property tokens, so a configure that follows binds them again against the
+        // variables the sheets declare now.
+        internal void ReleaseCustomPropertyTokens(VisualElement element)
+            => ApplyCustomPropertyConfig(element, Array.Empty<string>());
+
+        // Applies the className-driven variant manipulators (pseudo-class hover:/focus:/
+        // active:, conditional dark:/sm:…, container @md:…, relational group-/peer-) in one
+        // call. The gap manipulator is deliberately excluded — it must run AFTER children are reconciled.
+        internal void ApplyVariantManipulators(VisualElement element, string[] classNames)
+        {
+            using var themeScope = StyleThemeTokens.Use(_ctx);
+            TrackThemed(element, classNames);
+            RecordVariantGateSource(element, classNames);
+            if (!MayDeclareVariantState(classNames) && !HoldsVariantState(element))
+            {
+                return;
+            }
+            ApplyVariantManipulator(element, classNames);
+            ApplyConditionalVariantManipulator(element, classNames);
+            ApplyContainerVariantManipulator(element, classNames);
+            ApplyRelationalVariantManipulator(element, classNames);
+            ApplyStructuralVariantConfig(element, classNames);
+            ApplyHasVariantManipulator(element, classNames);
+            ApplyHasClassVariantConfig(element, classNames);
+            ApplyAttributeVariantConfig(element, classNames);
+            ApplySupportsVariantConfig(element, classNames);
+            ApplyCustomPropertyConfig(element, classNames);
+        }
+
+        // Every token the passes of ApplyVariantManipulators read is a variant (its prefix ends in ':') or a
+        // custom-property token (StyleCustomPropertyClass.IsCustomPropertyToken: leading '[', or a '(' or '_') or a theme class
+        // (StyleThemeClass), so a list with none of those characters and no theme class configures nothing. The '[' covers the arbitrary-property form.
+        private static bool MayDeclareVariantState(string[] classNames)
+        {
+            if (classNames == null)
+            {
+                return false;
+            }
+            foreach (var className in classNames)
+            {
+                if (className != null && (className.IndexOfAny(s_variantStateChars) >= 0
+                    || (StyleThemeClass.MayBeFamilyShapedAsWritten(className)
+                        && StyleThemeClass.Normalize(StyleArbitraryValueResolver.StripImportant(className, out _)) != null)))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        private static readonly char[] s_variantStateChars = { ':', '[', '(', '_' };
+
+        // The tables ApplyVariantManipulators' passes write, so an element a previous render configured is still
+        // visited by the passes that take its entries out.
+        private bool HoldsVariantState(VisualElement element)
+            => _ctx.VariantManipulators.ContainsKey(element)
+                || _ctx.ConditionalVariantManipulators.ContainsKey(element)
+                || _ctx.ContainerVariantManipulators.ContainsKey(element)
+                || _ctx.RelationalVariantManipulators.ContainsKey(element)
+                || _ctx.HasVariantManipulators.ContainsKey(element)
+                || _ctx.StructuralVariants.ContainsKey(element)
+                || _ctx.HasClassVariants.ContainsKey(element)
+                || _ctx.AttributeVariants.ContainsKey(element)
+                || _ctx.SupportsVariants.ContainsKey(element)
+                || _ctx.CustomPropertyClasses.ContainsKey(element);
+
+        // A class of the element's own, no variant, that may be a custom-property token once StripImportant has copied it.
+        private static bool MayBeOwnCustomPropertyToken(string cls)
+            => !IsEmptyOrVariantToken(cls) && StyleCustomPropertyClass.MayBeCustomPropertyClassAsWritten(cls);
+
+        // The element's own custom-property tokens (StyleCustomPropertyClass), applied as payloads at the base
+        // layer, or the important one for a token with the bang. Only the tokens that changed are toggled, the
+        // ones leaving first, since a declaration changing value leaves and arrives at the same layer.
+        private void ApplyCustomPropertyConfig(VisualElement element, string[] classNames)
+        {
+            List<(string Core, long Priority, int Declaration, int Order)>? tokens = null;
+            if (classNames != null)
+            {
+                for (var i = 0; i < classNames.Length; i++)
+                {
+                    var cls = classNames[i];
+                    if (!MayBeOwnCustomPropertyToken(cls))
+                    {
+                        continue;
+                    }
+                    var core = StyleArbitraryValueResolver.StripImportant(cls, out var important);
+                    if (!string.IsNullOrEmpty(core) && StyleCustomPropertyClass.IsCustomPropertyToken(core))
+                    {
+                        // A reader takes the layer the literal base utilities share, where its rule place ranks it
+                        // against them (StyleCustomProperties.Settle); a declaration ranks only against declarations,
+                        // by rule place.
+                        var order = StyleRuleOrder.OrdinalOf(classNames, i);
+                        var declares = StyleCustomPropertyClass.TryDeclaration(core, out _, out _);
+                        (tokens ??= new List<(string, long, int, int)>()).Add((core,
+                            important ? StyleLayerPriority.ImportantOf(StyleLayerPriority.Base) : StyleLayerPriority.Base,
+                            declares ? order : StyleVariantPayload.NoDeclaration, order));
+                    }
+                }
+            }
+            _ctx.CustomPropertyClasses.TryGetValue(element, out var previous);
+            if (previous == null && tokens == null)
+            {
+                return;
+            }
+            var leaving = new List<(string Core, long Priority, int Declaration, int Order)>();
+            var arriving = new List<(string Core, long Priority, int Declaration, int Order)>();
+            foreach (var token in previous ?? new List<(string, long, int, int)>())
+            {
+                if (tokens == null || !tokens.Contains(token))
+                {
+                    leaving.Add(token);
+                }
+            }
+            foreach (var token in tokens ?? new List<(string, long, int, int)>())
+            {
+                if (previous == null || !previous.Contains(token))
+                {
+                    arriving.Add(token);
+                }
+            }
+            if (tokens == null)
+            {
+                _ctx.CustomPropertyClasses.Remove(element);
+            }
+            else
+            {
+                _ctx.CustomPropertyClasses[element] = tokens;
+            }
+            // Recorded before a reader leaves, since what it hands its layer back to is this render's literals.
+            StyleCustomProperties.RecordClasses(element, classNames ?? Array.Empty<string>());
+            StyleCustomProperties.Hold();
+            try
+            {
+                ToggleCustomPropertyTokens(element, leaving, on: false);
+                ToggleCustomPropertyTokens(element, arriving, on: true);
+                StyleCustomProperties.RerankSplit(element);
+            }
+            finally
+            {
+                StyleCustomProperties.ReleaseHeld();
+            }
+        }
+
+        // Declarations before consumers, so a consumer arriving with the declaration it reads resolves once.
+        private void ToggleCustomPropertyTokens(VisualElement element,
+            List<(string Core, long Priority, int Declaration, int Order)> tokens, bool on)
+        {
+            for (var pass = 0; pass < 2; pass++)
+            {
+                foreach (var (core, priority, declaration, order) in tokens)
+                {
+                    if (StyleCustomPropertyClass.TryDeclaration(core, out _, out _) == (pass == 0))
+                    {
+                        StyleCustomProperties.Toggle(element, core, on, priority, declaration, _ctx, order);
+                    }
+                }
+            }
+        }
+
+        // Configures (creates / updates / removes) the element's StyleHasVariantManipulator from the
+        // event-driven has- tokens (has-[:checked]: / has-[:focus]:) in classNames. The has-[.class]:
+        // form is handled separately by ApplyHasClassVariantConfig (a side-table, not an event
+        // manipulator).
+        internal void ApplyHasVariantManipulator(VisualElement element, string[] classNames)
+        {
+            var @checked = ExtractHas(classNames, StyleHasKind.Checked, out var checkedDeclarations);
+            var focus = ExtractHas(classNames, StyleHasKind.Focus, out var focusDeclarations);
+            var hasAny = @checked.Length > 0 || focus.Length > 0;
+
+            Configure<HasVariantOp, StyleHasVariantManipulator>(element, hasAny,
+                new HasVariantOp(@checked, focus, checkedDeclarations, focusDeclarations));
+        }
+
+        // Collects the payloads of every has-[:checked]: / has-[:focus]: token of the given kind. A payload
+        // that is itself a structural / has variant is skipped (it would have no gating owner on this path),
+        // mirroring the structural-config skip.
+        private static string[] ExtractHas(string[] classNames, StyleHasKind kind, out int[] declarations)
+        {
+            declarations = Array.Empty<int>();
+            if (classNames == null || classNames.Length == 0)
+            {
+                return Array.Empty<string>();
+            }
+
+            List<string>? payloads = null;
+            List<int>? positions = null;
+            for (var i = 0; i < classNames.Length; i++)
+            {
+                var cls = classNames[i];
+                if (StyleHasVariantClass.TryParse(cls, out var k, out _, out var payload)
+                    && k == kind
+                    && !StyleStructuralVariantClass.IsStructural(payload)
+                    && !StyleHasVariantClass.IsHas(payload)
+                    && !StyleAttributeVariantClass.IsAttribute(payload)
+                    && !StyleSupportsVariantClass.IsSupports(payload))
+                {
+                    (payloads ??= new List<string>()).Add(payload ?? string.Empty);
+                    (positions ??= new List<int>()).Add(StyleRuleOrder.OrdinalOf(classNames, i));
+                }
+            }
+
+            declarations = positions?.ToArray() ?? Array.Empty<int>();
+            return payloads?.ToArray() ?? Array.Empty<string>();
+        }
+
+        // Registers (or clears) the element's has-[.class]: rules in the context side-table, re-deriving them
+        // from classNames. Clears any previously-applied has-class payloads first (the rule set may have
+        // changed). If the element already has children (a patch / child-only re-render) it is evaluated
+        // immediately against its current descendants; on initial mount its children are not placed yet, so
+        // the element's post-children pass (ApplyHasClassVariants) applies it once they are.
+        private void ApplyHasClassVariantConfig(VisualElement element, string[] classNames)
+        {
+            if (_ctx.HasClassVariants.TryGetValue(element, out var oldRules))
+            {
+                foreach (var rule in oldRules)
+                {
+                    StyleVariantPayload.Apply(element, rule.Payloads, false, StyleLayerPriority.Has, _ctx,
+                        declarations: rule.Declarations);
+                }
+                _ctx.HasClassVariants.Remove(element);
+            }
+
+            List<(string? ClassName, string?[] Payloads, int[] Declarations)>? rules = null;
+            if (classNames != null)
+            {
+                for (var i = 0; i < classNames.Length; i++)
+                {
+                    var cls = classNames[i];
+                    if (StyleHasVariantClass.TryParse(cls, out var kind, out var className, out var payload)
+                        && kind == StyleHasKind.Class
+                        // A has-[.foo]: payload has no gating owner on this side-table path, so a nested
+                        // variant / structural / has / attribute / supports payload would only become a dead
+                        // token — skip it.
+                        && !StyleVariantClass.IsVariant(payload)
+                        && !StyleStructuralVariantClass.IsStructural(payload)
+                        && !StyleHasVariantClass.IsHas(payload)
+                        && !StyleAttributeVariantClass.IsAttribute(payload)
+                        && !StyleSupportsVariantClass.IsSupports(payload))
+                    {
+                        (rules ??= new List<(string? ClassName, string?[] Payloads, int[] Declarations)>())
+                            .Add((className, new[] { payload }, new[] { StyleRuleOrder.OrdinalOf(classNames, i) }));
+                    }
+                }
+            }
+
+            if (rules == null)
+            {
+                return;
+            }
+            _ctx.HasClassVariants[element] = rules;
+
+            // Evaluate now when children are already placed — the normal create / patch paths reconcile
+            // children BEFORE this class pass, so the just-registered rule lights up in the same pass. The
+            // element's own post-children pass re-derives again (idempotent) to catch a later child-set change,
+            // and the settled-flush sweep (RefreshHasVariants) covers a deep independent re-render. A childless
+            // element has nothing to scan yet.
+            if (element.childCount > 0)
+            {
+                EvaluateHasClass(_ctx, element, rules);
+            }
+        }
+
+        // Applies / clears each has-[.class]: rule's payload by scanning the element's descendants for the
+        // named class. Stateless and idempotent. The scan starts at the direct children, never the element
+        // itself — :has() is descendant-only, and a self-match would also latch when the payload class equals
+        // the queried class.
+        private static void EvaluateHasClass(ReconcilerContext ctx, VisualElement element,
+            List<(string? ClassName, string?[] Payloads, int[] Declarations)> rules)
+        {
+            foreach (var rule in rules)
+            {
+                var on = false;
+                foreach (var child in element.Children())
+                {
+                    if (SubtreeCarriesClass(child, rule.ClassName!))
+                    {
+                        on = true;
+                        break;
+                    }
+                }
+                StyleVariantPayload.Apply(element, rule.Payloads, on, StyleLayerPriority.Has, ctx,
+                    declarations: rule.Declarations);
+            }
+        }
+
+        // :has(.foo) tests the class attribute, which the cascade never edits: a class the projection took off
+        // an element to let a variant win still matches, and one a variant payload put on it does not.
+        private static bool SubtreeCarriesClass(VisualElement root, string cls)
+        {
+            if ((root.ClassListContains(cls) && !StyleClassProjection.IsHeldOnlyByPayload(root, cls))
+                || StyleClassProjection.SuppressesOwnClass(root, cls))
+            {
+                return true;
+            }
+            for (var i = 0; i < root.hierarchy.childCount; i++)
+            {
+                if (SubtreeCarriesClass(root.hierarchy[i], cls))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        // Element-as-subject post-children pass for has-[.class]:. Re-derives every has-class rule on the
+        // element from a fresh descendant query, so a child carrying / dropping the class (added / removed)
+        // re-derives the element's payload. Runs at the same hook as ApplyStructuralVariants (after the
+        // element's children reconcile). Idempotent, with a cheap global early-out when no has-class rule
+        // exists anywhere. A deep INDEPENDENT re-render that never re-renders this element is covered
+        // separately by the settled-flush sweep (RefreshHasVariants).
+        internal void ApplyHasClassVariants(VisualElement element)
+        {
+            if (element == null || _ctx.HasClassVariants.Count == 0)
+            {
+                return;
+            }
+            if (_ctx.HasClassVariants.TryGetValue(element, out var rules))
+            {
+                EvaluateHasClass(_ctx, element, rules);
+            }
+        }
+
+        // Element-as-subject post-children pass for the event-driven has-[:checked]: / has-[:focus]: forms.
+        // Their state lives in the manipulator and is otherwise touched only by a discrete bubbling event, so a
+        // descendant added / removed by reconciliation (which fires no ChangeEvent / FocusEvent) would leave
+        // the payload stale. Re-scanning the subtree here re-derives it, mirroring how ApplyHasClassVariants /
+        // ApplyStructuralVariants re-derive on every child-set change. Runs at the same post-children hook,
+        // right after ApplyHasClassVariants. Idempotent, with a cheap global early-out when no event-driven
+        // has- manipulator exists anywhere.
+        internal void ApplyHasVariantManipulators(VisualElement element)
+        {
+            if (element == null || _ctx.HasVariantManipulators.Count == 0)
+            {
+                return;
+            }
+            if (_ctx.HasVariantManipulators.TryGetValue(element, out var manipulator))
+            {
+                manipulator.Rescan();
+            }
+        }
+
+        // Re-derives the has- elements a just-committed flush could have affected, decoupling has- reactivity
+        // from the has- element's OWN reconcile. The per-element post-children passes above only fire when the
+        // has- element itself reconciles, so a has- condition driven by an INDEPENDENT nested re-render — a
+        // child component's own state toggling a descendant's class, or applying a controlled FieldValue via
+        // SetValueWithoutNotify (which fires no ChangeEvent the manipulator could catch) — would otherwise leave
+        // the payload stale. The reconciler is the one mutating those descendants, so it re-derives here once a
+        // flush has committed its DOM changes (FiberWorkLoop drives this at every settled flush).
+        //
+        // Dirty-scoped: a flush mutates only its OWN region — the elements committed as children of regionRoot
+        // (the flushing fiber's MountPoint) and their subtrees — plus any Portal target it (re)mounted children
+        // into. A has- element matches on its DESCENDANTS, so its match can change only if a mutation landed
+        // inside its subtree; that means the has- element is regionRoot itself or one of its ANCESTORS (a has-
+        // element strictly BELOW regionRoot whose descendant changed was reconciled in this same flush, so its
+        // own post-children pass already covered it). So rather than re-scan EVERY registered has- element each
+        // flush, walk up from regionRoot — and from each active Portal target, whose children live outside
+        // regionRoot's subtree — and re-derive only the registered has- elements found on those chains. This is
+        // O(depth) instead of O(registered has- elements x subtree scan), the win the sweep needs under many
+        // has- elements x frequent flushes. A null regionRoot (region unknown) falls back to re-deriving all so
+        // a stale payload is never missed. Idempotent (each evaluation reads the current subtree); no has- map
+        // is mutated by an evaluation (payloads resolve to USS classes / inline styles / stacked manipulators,
+        // not has- registrations), so walking and re-deriving in place is safe.
+        internal static void RefreshHasVariants(ReconcilerContext? ctx, VisualElement? regionRoot)
+        {
+            if (ctx == null)
+            {
+                return;
+            }
+            var hasClass = ctx.HasClassVariants.Count > 0;
+            var hasManip = ctx.HasVariantManipulators.Count > 0;
+            if (!hasClass && !hasManip)
+            {
+                // Zero-cost when has- is unused anywhere (the common case): both maps empty.
+                return;
+            }
+
+            if (regionRoot == null)
+            {
+                // Region unknown — re-derive every registered has- element so a stale payload is never missed.
+                if (hasClass)
+                {
+                    foreach (var kv in ctx.HasClassVariants)
+                    {
+                        EvaluateHasClass(ctx, kv.Key, kv.Value);
+                    }
+                }
+                if (hasManip)
+                {
+                    foreach (var kv in ctx.HasVariantManipulators)
+                    {
+                        kv.Value.Rescan();
+                    }
+                }
+                return;
+            }
+
+            ReevaluateHasOnAncestorChain(ctx, regionRoot, hasClass, hasManip);
+
+            // A Portal commits its children into a target OUTSIDE regionRoot's subtree, so a has- ancestor of
+            // that target is not on regionRoot's chain. Portals are rare (this map is empty otherwise); when any
+            // is mounted, also walk up from each target. Re-deriving a target this flush did not touch is merely
+            // idempotent, so seeding from every active target stays correct without tracking which one changed.
+            if (ctx.PortalState.Count > 0)
+            {
+                foreach (var info in ctx.PortalState.Values)
+                {
+                    // The resolved target recorded at mount covers every portal flavor; null only for
+                    // the never-mounted missing-registry path.
+                    if (info.Target != null)
+                    {
+                        ReevaluateHasOnAncestorChain(ctx, info.Target, hasClass, hasManip);
+                    }
+                }
+            }
+        }
+
+        // Re-derives every registered has- element on the ancestor chain from root (inclusive) up to the DOM
+        // root. O(depth) with O(1) lookups — see RefreshHasVariants for why only this chain can be affected.
+        private static void ReevaluateHasOnAncestorChain(
+            ReconcilerContext ctx, VisualElement root, bool hasClass, bool hasManip)
+        {
+            for (var e = root; e != null; e = e.parent)
+            {
+                if (hasClass && ctx.HasClassVariants.TryGetValue(e, out var rules))
+                {
+                    EvaluateHasClass(ctx, e, rules);
+                }
+                if (hasManip && ctx.HasVariantManipulators.TryGetValue(e, out var manipulator))
+                {
+                    manipulator.Rescan();
+                }
+            }
+        }
+
+        // Prefixes that namespace the data / aria families inside the single DataAttributes store map, so one
+        // dictionary holds both without a key collision (a data-key and an aria-key of the same name stay
+        // distinct). Match the variant's namespace to a prefix when resolving a rule.
+        private const string DataStorePrefix = "data:";
+        private const string AriaStorePrefix = "aria:";
+
+        private static string StorePrefix(StyleAttributeNamespace ns)
+            => ns == StyleAttributeNamespace.Aria ? AriaStorePrefix : DataStorePrefix;
+
+        // Registers (or clears) the element's data-[...] / aria-[...] rules in the context side-table,
+        // re-deriving them from classNames. Clears any previously-applied attribute payloads first (the rule
+        // set may have changed), then evaluates the new rules against the element's current attribute store.
+        // Mirrors ApplyHasClassVariantConfig: there is no UI-Toolkit attribute-changed signal, so reactivity
+        // comes from this config pass (a class change) and from ApplyAttributes (an attribute-store change).
+        private void ApplyAttributeVariantConfig(VisualElement element, string[] classNames)
+        {
+            if (_ctx.AttributeVariants.TryGetValue(element, out var oldRules))
+            {
+                foreach (var rule in oldRules)
+                {
+                    StyleVariantPayload.Apply(element, rule.Payloads, false, StyleLayerPriority.AttributeOf(rule.Ns), _ctx,
+                        declarations: rule.Declarations);
+                }
+                _ctx.AttributeVariants.Remove(element);
+            }
+
+            List<(StyleAttributeNamespace Ns, string Key, string? ExpectedValue, string[] Payloads,
+                int[] Declarations)>? rules = null;
+            if (classNames != null)
+            {
+                for (var i = 0; i < classNames.Length; i++)
+                {
+                    var cls = classNames[i];
+                    if (StyleAttributeVariantClass.TryParse(cls, out var ns, out var key, out var value, out var payload)
+                        // An attribute payload has no gating owner on this side-table path (the side-table is
+                        // re-evaluated as a whole, not by a per-payload manipulator), so a nested state /
+                        // structural / has- / attribute / supports payload would only become a dead token —
+                        // skip it, mirroring the has-[.class]: side-table.
+                        && !StyleVariantClass.IsVariant(payload)
+                        && !StyleStructuralVariantClass.IsStructural(payload)
+                        && !StyleHasVariantClass.IsHas(payload)
+                        && !StyleAttributeVariantClass.IsAttribute(payload)
+                        && !StyleSupportsVariantClass.IsSupports(payload))
+                    {
+                        if (payload == null) continue;
+                        (rules ??= new List<(StyleAttributeNamespace, string, string?, string[], int[])>())
+                            .Add((ns, key ?? string.Empty, value, new[] { payload },
+                                new[] { StyleRuleOrder.OrdinalOf(classNames, i) }));
+                    }
+                }
+            }
+
+            if (rules == null)
+            {
+                return;
+            }
+            _ctx.AttributeVariants[element] = rules;
+            _ctx.DataAttributes.TryGetValue(element, out var store);
+            EvaluateAttributes(_ctx, element, store, rules);
+        }
+
+        // Rebuilds the element's attribute store from props (Data + Aria, folded into one namespaced map)
+        // and re-evaluates its attribute-variant rules so a changed Data/Aria prop re-derives the payload.
+        // Called on mount (FiberNodeFactory) and on the props patch path (PatchBaseElement). When the element
+        // carries no attribute variant rule this is a cheap early-out (no store is kept for it), so only an
+        // element actually styled by data-/aria- pays the store-tracking cost.
+        internal void ApplyAttributes(VisualElement element, FiberElementProps? props)
+        {
+            // Only an element with attribute-variant rules needs a store: the store exists solely to be
+            // matched against those rules. An element that carries Data/Aria props but no data-/aria- variant
+            // has nothing to evaluate, so skip building a store for it (and drop any stale one).
+            if (!_ctx.AttributeVariants.TryGetValue(element, out var rules))
+            {
+                _ctx.DataAttributes.Remove(element);
+                return;
+            }
+
+            var store = BuildAttributeStore(props);
+            if (store == null)
+            {
+                _ctx.DataAttributes.Remove(element);
+            }
+            else
+            {
+                _ctx.DataAttributes[element] = store;
+            }
+            EvaluateAttributes(_ctx, element, store, rules);
+        }
+
+        // Folds props.Data and props.Aria into a single namespaced map (data:<key> / aria:<key>), or null
+        // when neither is present. Static + allocation-free in the common (no-attribute) case.
+        private static Dictionary<string, string>? BuildAttributeStore(FiberElementProps? props)
+        {
+            if (props == null)
+            {
+                return null;
+            }
+            Dictionary<string, string>? store = null;
+            if (props.Data != null)
+            {
+                foreach (var kv in props.Data)
+                {
+                    (store ??= new Dictionary<string, string>())[DataStorePrefix + kv.Key] = kv.Value;
+                }
+            }
+            if (props.Aria != null)
+            {
+                foreach (var kv in props.Aria)
+                {
+                    (store ??= new Dictionary<string, string>())[AriaStorePrefix + kv.Key] = kv.Value;
+                }
+            }
+            return store;
+        }
+
+        // Applies / clears each attribute rule's payload by matching it against the element's store. A null
+        // store means the element carries no attributes, so every presence / equality rule is off. Stateless
+        // and idempotent (StyleVariantPayload.Apply is a no-op when the layer is already in the target state).
+        private static void EvaluateAttributes(
+            ReconcilerContext ctx, VisualElement element, Dictionary<string, string>? store,
+            List<(StyleAttributeNamespace Ns, string Key, string? ExpectedValue, string[] Payloads,
+                int[] Declarations)> rules)
+        {
+            foreach (var rule in rules)
+            {
+                var present = false;
+                string? actual = null;
+                if (store != null)
+                {
+                    present = store.TryGetValue(StorePrefix(rule.Ns) + rule.Key, out actual);
+                }
+                var on = StyleAttributeVariantClass.Matches(rule.ExpectedValue, present, actual);
+                StyleVariantPayload.Apply(element, rule.Payloads, on, StyleLayerPriority.AttributeOf(rule.Ns), ctx,
+                    declarations: rule.Declarations);
+            }
+        }
+
+        // Registers the element's supports-[prop:value]: payloads in the context side-table and applies them.
+        // A feature query is STATIC in UI Toolkit (one fixed engine, no runtime feature variation), so a
+        // well-formed token is ALWAYS-APPLIED and a malformed one never parses — there is no reactive signal
+        // and no post-children / props re-evaluation to schedule (unlike the structural / has-class /
+        // attribute side-tables). The side-table is kept only so a class-list change can clear the prior
+        // payload before re-deriving: clear any previously-applied supports payloads first, then apply the
+        // new rule set on (always-on). Idempotent — re-running with the same class list re-applies the same
+        // always-on layer (StyleVariantPayload.Apply is a no-op when the layer is unchanged).
+        private void ApplySupportsVariantConfig(VisualElement element, string[] classNames)
+        {
+            if (_ctx.SupportsVariants.TryGetValue(element, out var oldRules))
+            {
+                foreach (var rule in oldRules)
+                {
+                    StyleVariantPayload.Apply(element, rule.Payloads, false, StyleLayerPriority.Supports, _ctx,
+                        declarations: rule.Declarations);
+                }
+                _ctx.SupportsVariants.Remove(element);
+            }
+
+            List<(string[] Payloads, int[] Declarations)>? rules = null;
+            if (classNames != null)
+            {
+                for (var i = 0; i < classNames.Length; i++)
+                {
+                    var cls = classNames[i];
+                    if (StyleSupportsVariantClass.TryParse(cls, out _, out _, out var payload)
+                        // A supports- payload has no gating owner on this side-table path (the layer is
+                        // applied unconditionally, not driven by a per-payload manipulator), so a nested
+                        // state / structural / has / attribute / supports payload would only become a dead
+                        // token — skip it, mirroring the data-/aria- and has-[.class]: side-tables.
+                        && !StyleVariantClass.IsVariant(payload)
+                        && !StyleStructuralVariantClass.IsStructural(payload)
+                        && !StyleHasVariantClass.IsHas(payload)
+                        && !StyleAttributeVariantClass.IsAttribute(payload)
+                        && !StyleSupportsVariantClass.IsSupports(payload))
+                    {
+                        (rules ??= new List<(string[], int[])>())
+                            .Add((new string[] { payload ?? string.Empty }, new[] { StyleRuleOrder.OrdinalOf(classNames, i) }));
+                    }
+                }
+            }
+
+            if (rules == null)
+            {
+                return;
+            }
+            _ctx.SupportsVariants[element] = rules;
+
+            // Always-applied: the property is, by construction, one the author is using on a fixed engine.
+            foreach (var rule in rules)
+            {
+                StyleVariantPayload.Apply(element, rule.Payloads, true, StyleLayerPriority.Supports, _ctx,
+                    declarations: rule.Declarations);
+            }
+        }
+
+        // Registers (or clears) the element's structural-variant rules (first:/last:/odd:/nth-N:/[&:nth-child(N)]:)
+        // in the context side-table, re-deriving them from classNames. Clears any previously-applied
+        // structural payloads first (the rule set may have changed). If the element is already parented (a
+        // patch / child-only re-render) it is evaluated immediately against its current position; on initial
+        // mount it is not parented yet, so the container's post-children pass applies it once placed.
+        private void ApplyStructuralVariantConfig(VisualElement element, string[] classNames)
+        {
+            if (_ctx.StructuralVariants.TryGetValue(element, out var oldRules))
+            {
+                foreach (var rule in oldRules)
+                {
+                    StyleVariantPayload.Apply(element, rule.Payloads, false, rule.Priority, _ctx,
+                        declarations: rule.Declarations);
+                }
+                _ctx.StructuralVariants.Remove(element);
+            }
+
+            List<(StyleStructuralKind Kind, int N, string[] Payloads, int[] Declarations, long Priority)>? rules = null;
+            if (classNames != null)
+            {
+                for (var i = 0; i < classNames.Length; i++)
+                {
+                    var cls = classNames[i];
+                    if (StyleStructuralVariantClass.TryParse(cls, out var kind, out var n, out var payload)
+                        // Structural variants do not compose with a nested variant (first:hover:…), a has-
+                        // variant (first:has-[:checked]:…), an attribute variant (first:data-[x]:…), or a
+                        // supports- variant (first:supports-[…]:…): there is no gating owner on this path, so
+                        // such a payload would only become a dead class. Skip it rather than add a no-op token.
+                        && !StyleVariantClass.IsVariant(payload)
+                        && !StyleStructuralVariantClass.IsStructural(payload)
+                        && !StyleHasVariantClass.IsHas(payload)
+                        && !StyleAttributeVariantClass.IsAttribute(payload)
+                        && !StyleSupportsVariantClass.IsSupports(payload))
+                    {
+                        (rules ??= new List<(StyleStructuralKind Kind, int N, string[] Payloads,
+                                int[] Declarations, long Priority)>())
+                            .Add((kind, n, new string[] { payload ?? string.Empty }, new[] { StyleRuleOrder.OrdinalOf(classNames, i) },
+                                StyleStructuralVariantClass.PriorityOf(cls, kind)));
+                    }
+                }
+            }
+
+            if (rules == null)
+            {
+                return;
+            }
+            _ctx.StructuralVariants[element] = rules;
+
+            // Evaluate immediately if already placed (a patch / child-only re-render). Resolve the OUTER slot
+            // element (the wrapper, when this element is shadow-/clip-wrapped) so the position is the real
+            // sibling index, not the wrapper's 1-child interior. On initial mount the element is not parented
+            // yet, so the container post-children pass applies it once placed.
+            var outer = ResolveOuter(element);
+            // A relocated outer's PHYSICAL index is its band position, not its declared one — TryGetLogicalPosition
+            // resolves to the placeholder's slot instead; an ordinary outer resolves to its own parent/index
+            // unchanged, same as the previous outer.parent / outer.parent.IndexOf(outer).
+            if (!FiberZLayerCoordinator.TryGetLogicalPosition(_ctx, outer, out var logicalParent, out var logicalIndex))
+            {
+                return;
+            }
+            // Exclude the reconciler-invisible children (LogicalChildSlots.IsInvisible) from the sibling count:
+            // none is part of the logical child list a first:/last:/nth match sees.
+            EvaluateStructural(_ctx, element, LogicalChildSlots.ToLogical(logicalParent!, logicalIndex),
+                LogicalChildSlots.Count(logicalParent!), rules);
+        }
+
+        // Applies / clears each structural rule's payload for an element at the given sibling position.
+        private static void EvaluateStructural(
+            ReconcilerContext ctx, VisualElement element, int index, int count,
+            List<(StyleStructuralKind Kind, int N, string[] Payloads, int[] Declarations, long Priority)> rules)
+        {
+            foreach (var rule in rules)
+            {
+                var on = StyleStructuralVariantClass.Matches(rule.Kind, rule.N, index, count);
+                StyleVariantPayload.Apply(element, rule.Payloads, on, rule.Priority, ctx,
+                    declarations: rule.Declarations);
+            }
+        }
+
+        // Container post-children pass: re-derives every structural child's position-based match from the
+        // live sibling order, so a child added / removed / reordered updates first:/last:/odd:/even: across
+        // the whole list. Runs at the same hook as gap/divide (after children reconcile). Stateless and
+        // idempotent, with a cheap global early-out when no structural variant exists anywhere.
+        internal void ApplyStructuralVariants(VisualElement container)
+        {
+            if (container == null || _ctx.StructuralVariants.Count == 0)
+            {
+                return;
+            }
+
+            // The reconciler-invisible children — a filter bounds spacer, a relocated z-* element, a ring
+            // band — are not logical siblings, so first:/last:/nth must neither count them nor
+            // land on one. Walking logical slots and converting each to a physical index does both, wherever
+            // in the child list they happen to sit.
+            // One walk over the physical children, collecting the ruled ones before any payload is written:
+            // a payload can add an invisible sibling (a filter bounds spacer), which would shift a walk
+            // still reading the child list. Logical slot is the running count of non-invisible children, the
+            // inverse of LogicalChildSlots.ToPhysical, so no per-slot conversion rescans the list.
+            List<(VisualElement Element, int Index, List<(StyleStructuralKind Kind, int N, string[] Payloads,
+                int[] Declarations, long Priority)> Rules)>? ruled = null;
+            var count = 0;
+            for (var physical = 0; physical < container.childCount; physical++)
+            {
+                var slotOccupant = container[physical];
+                if (LogicalChildSlots.IsInvisible(slotOccupant))
+                {
+                    continue;
+                }
+                // A z-managed child's slot holds its PLACEHOLDER, not the element the rules were registered
+                // against (ApplyStructuralVariantConfig keys by the real element / its own wrapper) — resolve
+                // through the z-registry first, then the ordinary wrapper unwrap (the slot may ALSO hold a
+                // shadow / clip-path WRAPPER either way).
+                var inner = ResolveWrapped(
+                    _ctx.ZLayerPlaceholders.TryGetValue(slotOccupant, out var real) ? real : slotOccupant);
+                if (_ctx.StructuralVariants.TryGetValue(inner, out var rules))
+                {
+                    (ruled ??= new()).Add((inner, count, rules));
+                }
+                count++;
+            }
+            if (ruled == null)
+            {
+                return;
+            }
+            foreach (var (element, index, rules) in ruled)
+            {
+                EvaluateStructural(_ctx, element, index, count, rules);
+            }
+        }
+
+        // Configures the element's StyleChildVariantManipulator from the [&>*]:<utility> tokens in classNames
+        // and (re-)applies it so every direct child carries the wrapped payload. Mirrors ApplyGapManipulator —
+        // call AFTER the container's children have been reconciled so the manipulator sees the final child set.
+        internal void ApplyChildVariantManipulator(VisualElement element, string[] classNames)
+        {
+            // Fast early-out for the ~99% of elements with no [&>*]: class and no existing manipulator.
+            if (!StyleChildVariantClass.HasChildVariantClass(classNames))
+            {
+                Configure<ChildVariantOp, StyleChildVariantManipulator>(element, wanted: false, default);
+                return;
+            }
+
+            // A [&>*]: token can still resolve to no payload (every wrapped payload was a dead-token kind —
+            // structural / has- / attribute- / supports-), so the real gate is TryExtract, not the prefix scan.
+            var hasPayloads = StyleChildVariantClass.TryExtract(classNames, out var payloads, out var declarations,
+                out var inputBoxOnly);
+
+            Configure<ChildVariantOp, StyleChildVariantManipulator>(element, hasPayloads,
+                new ChildVariantOp(payloads, declarations, inputBoxOnly));
+        }
+
+        // Configures the three manipulators whose existence is gated purely on a layout utility class being
+        // present: gap, divide, grid; and the pointer-events scope, which rides the same sequence
+        // (ApplyResolvedLayoutManipulators) because the variant re-sync runs it too. The three are configured as
+        // a unit because gap and grid share one ownership rule — a grid owns its children's margins, so the gap
+        // manipulator must be suppressed for exactly the class lists that produce a grid manipulator. Call AFTER
+        // the container's children have been reconciled so each sees the final child list.
+        // Resolves its own class source rather than taking the one the paint passes use: those resolve after
+        // the structural / has- passes (see ApplyPostChildrenClassPasses), and gap has to run before them.
+        internal void ApplyLayoutManipulators(VisualElement element, string[] classNames)
+            => ApplyResolvedLayoutManipulators(element, ResolveGateClasses(element, classNames));
+
+        // The composed source (see ResolveGateClasses) rather than the reconciled array: the bare class
+        // `dark:font-mono` puts on the live list carries no rule of its own, so nothing but this resolver
+        // realises the payload. TypographyHasNoStylesheetRuleTests fails if a sheet ever declares one.
+        internal void ApplyFontLayer(VisualElement element, string[] oldClassNames, string[] newClassNames)
+            => StyleFontResolver.ApplyOnClassChange(element, oldClassNames,
+                ResolveGateClasses(element, newClassNames), _ctx.FontScope);
+
+        internal void ApplyFontLayerOnCreate(VisualElement element, string[] classNames)
+            => StyleFontResolver.ApplyIfPresent(element, ResolveGateClasses(element, classNames), _ctx.FontScope);
+
+        internal void ApplyTextEffectsOnCreate(VisualElement element, string[] classNames)
+            => StyleTextEffectResolver.ApplyOnCreate(_ctx, element, ResolveGateClasses(element, classNames));
+
+        // Same rule as ApplyFontLayer, over the same guard's other half.
+        internal void ApplyTextEffects(VisualElement element, string[] classNames)
+            => StyleTextEffectResolver.Apply(_ctx, element, ResolveGateClasses(element, classNames));
+
+        // Re-runs every class-driven pass a variant payload can change, for an element a variant just
+        // toggled a gate token on (wired to ReconcilerContext.VariantGatedReSync). Runs the same bodies the
+        // reconcile path runs, against the same composed source, so a toggle lands where a full patch would
+        // put it — bar the two wrapper layers, whose parent surgery is forbidden in the pointer / focus
+        // callback or breakpoint notification this is called from.
+        private void ReSyncVariantGatedPasses(VisualElement element)
+        {
+            _ctx.VariantGateClasses.TryGetValue(element, out var state);
+            // The array the element's own reconcile pass last applied, or none when no pass ever recorded one: the
+            // trigger was a width payload, which gates nothing and so never earns an entry. A child of a [&>*]:
+            // container is recorded as it is created or patched (RecordVariantGateSource), so its payload paints
+            // from the first frame. A TextNode's element applies no class of its own at any render, so an empty
+            // array is its reconciled one rather than a stand-in, and the passes below read it as recorded.
+            var isTextNode = _ctx.TextNodeElements.ContainsKey(element);
+            var reconciled = state?.Reconciled ?? (isTextNode ? System.Array.Empty<string>() : null);
+            var previous = state?.Resolved;
+            var resolved = reconciled == null ? LiveClasses(element)
+                : state == null ? reconciled
+                : ComposeVariantClasses(element, reconciled, state, state.Resolved);
+            var classesChanged = !ReferenceEquals(previous, resolved);
+            if (state != null)
+            {
+                state.Resolved = resolved;
+            }
+            // Font and text effects run only from a RECORDED array, never from the live-list stand-in the
+            // layout gates accept above. Both resolvers rewrite unconditionally, and the live list is not a
+            // narrower version of their source but a different one: the reconciler keeps a DECLARED font-[…]
+            // / leading-[…] off it, since those two are resolver-owned. Handing it over would not lose the
+            // payload, it would resolve some other answer over the element's correct one with nothing left to
+            // put it back.
+            // Their order is the reconcile path's own (SyncClassDrivenStyling ahead of
+            // ApplyPostChildrenClassPasses), so a re-sync cannot resolve a pass against a different
+            // predecessor than a patch would.
+            if (reconciled != null)
+            {
+                StyleFontResolver.ApplyOnClassChange(element, previous ?? resolved, resolved, _ctx.FontScope);
+                // No pass boundary follows a variant toggle, so the inheritors it queued are settled here.
+                _ctx.FontScope.Drain(_ctx.BatchScheduler.Anchor);
+            }
+            ApplyResolvedLayoutManipulators(element, resolved);
+            if (reconciled != null)
+            {
+                StyleTextEffectResolver.Apply(_ctx, element, resolved);
+                FiberZLayerCoordinator.OnResolved(_ctx, FiberZLayerCoordinator.SlotOf(_ctx, element), element,
+                    reconciled, resolved, _ctx.AnchoredBindings.ContainsKey(element));
+            }
+            if (state == null || !(state.PaintTail || isTextNode))
+            {
+                return;
+            }
+            // The clip verdict is the same one the reconcile path forwards from its own clip patch: that call
+            // returns exactly its own wantWrap answer, so reading the predicate here cannot disagree.
+            ApplyResolvedClassPasses(element, resolved, classesChanged, StyleClipPathClass.WantsClipWrapper(resolved));
+        }
+
+        // Records the class array an element that DECLARES a variant-gated payload will need if that payload
+        // ever fires. The re-sync has no reconciled array of its own to compose from, and the toggle that
+        // wakes it can arrive with no reconcile anywhere in sight (a breakpoint crossing, a theme flip), so
+        // the array has to be put aside while a pass still holds it. Runs where the variant manipulators are
+        // configured, which is exactly the create + class-content-changed pair; a class list whose content
+        // did not change leaves an equivalent array already recorded.
+        private void RecordVariantGateSource(VisualElement element, string[] classNames)
+        {
+            if (_ctx.VariantGateClasses.TryGetValue(element, out var state))
+            {
+                state.Reconciled = classNames;
+                return;
+            }
+            // A child of a [&>*]: container declares nothing itself, yet the container's payload reaches it, so
+            // the array is put aside for the re-sync that payload raises.
+            if (_ctx.ChildVariantHostDepth > 0 || StyleVariantPayload.DeclaresGatePayload(classNames))
+            {
+                _ctx.VariantGateClasses[element] = new VariantGateState { Reconciled = classNames };
+            }
+        }
+
+        // The ordered configure sequence, shared by the reconcile path and the variant re-sync so the two
+        // cannot drift.
+        // Gap and grid are mutually exclusive owners of the children's margins — a grid class suppresses
+        // the gap manipulator — so a class change that flips ownership creates one and removes the other in
+        // the SAME pass. Each clears the margins it wrote as it detaches, so the DEPARTING one has to run
+        // first: the reverse order lets that clear wipe the arriving manipulator's fresh writes, leaving
+        // the children unspaced until something unrelated forces a re-apply. Which one departs is exactly
+        // the grid-class verdict, so it selects the order — and is forwarded so the gap gate does not
+        // re-scan for it.
+        // Divide is in no such handoff: it writes only the border width and color of the one edge it draws
+        // on (and hands that same pair back on teardown), and neither gap nor grid writes a border at all —
+        // so the write sets are disjoint and its position in the sequence is not load-bearing.
+        // The pointer-events scope writes only pickingMode, which none of the three writes, so its place is not
+        // load-bearing either.
+        private void ApplyResolvedLayoutManipulators(VisualElement element, string[] classNames)
+        {
+            // Ahead of gap, which reads the direction and wrap this writes onto the inner box.
+            ApplyCompositeFlowManipulator(element);
+            if (StyleGridClass.HasGridClass(classNames))
+            {
+                ApplyGapManipulator(element, classNames, gridSuppressed: true);
+                ApplyGridManipulator(element, classNames);
+            }
+            else
+            {
+                ApplyGridManipulator(element, classNames);
+                ApplyGapManipulator(element, classNames, gridSuppressed: false);
+            }
+            ApplyDivideManipulator(element, classNames);
+            ApplyFlexMinSizeManipulator(element, classNames);
+            ApplyPointerEvents(element, classNames);
+        }
+
+        // The widget's live classes are what it forwards (StyleCompositeFlowManipulator), so it takes no class array.
+        private void ApplyCompositeFlowManipulator(VisualElement element)
+            => Configure<CompositeFlowOp, StyleCompositeFlowManipulator>(element,
+                !ReferenceEquals(GetChildContainer(element), element), default);
+
+        // Every Label and Button gets one, unlike the class-gated manipulators beside it: the automatic
+        // minimum size applies to a text flex item whatever classes it carries, and the manipulator decides
+        // for itself whether a class has taken the axis over.
+        internal void ApplyFlexMinSizeManipulator(VisualElement element, string[] classNames)
+        {
+            if (element is not TextElement)
+            {
+                return;
+            }
+            if (_ctx.FlexMinSizeManipulators.TryGetValue(element, out var existing))
+            {
+                existing.Refresh(classNames);
+                return;
+            }
+            var manipulator = new StyleFlexMinSizeManipulator(_ctx, classNames);
+            element.AddManipulator(manipulator);
+            _ctx.FlexMinSizeManipulators[element] = manipulator;
+        }
+
+        // The class source every gate-driven pass reads: the reconciled array, followed by each gate token a
+        // variant currently has applied, weakest payload first.
+        //
+        // A variant payload is realized by writing its bare utility onto the live class list, and the bare
+        // form is the only one the gates recognize — `md:shadow-lg` is not a shadow token, `shadow-lg` is —
+        // so the reconciled array alone can never see it. The live list alone cannot stand in for the
+        // reconciled array either: it structurally cannot hold a variant token, a bracket or static-scale
+        // value (those resolve to inline style), or a class the projection has suppressed, and the passes
+        // read all three (the bounds spacer parses border-[8px], the gradient teardown asks whether a
+        // bg-[addr:…] owns the background-image, the animate teardown re-asserts every inline-resolved
+        // token). Appending rather than substituting keeps both, which is what lets every pass here take one
+        // array and lets a pass be added later without auditing which source it needs.
+        //
+        // Appending the payloads LAST is what ranks them above the base utilities: each of these families
+        // resolves last-token-wins, and a payload outranks the base it overrides. Composing them that way
+        // makes it structural rather than a property of the live list's own append order, which the class
+        // diff can invert by re-adding a base token after a payload that is already lit. Two payloads of one
+        // family rank against each other by the priority each was applied at, which VariantGateState keeps
+        // the token order in.
+        //
+        // changed reports whether the result differs from what this element was last resolved to.
+        //
+        // PaintTail records that a pass of the element's own resolved it (VariantGateState.PaintTail).
+        //
+        // The global Count check keeps a tree that uses no variant-gated class on the reconciled-array path
+        // entirely, at one int compare per element per patch.
+        private string[] ResolveVariantClasses(VisualElement element, string[] oldClassNames,
+            string[] newClassNames, out bool changed)
+        {
+            if (_ctx.VariantGateClasses.Count == 0
+                || !_ctx.VariantGateClasses.TryGetValue(element, out var state))
+            {
+                changed = !ReferenceEquals(oldClassNames, newClassNames);
+                return newClassNames;
+            }
+
+            // An element that DECLARES a gated payload but has none applied right now reads its reconciled
+            // array unchanged — there is no token to append — so the common `hover:shadow-lg` element pays
+            // the composition only while it is actually hovered, and a dictionary probe the rest of the time.
+            var resolved = !state.Composes
+                ? newClassNames
+                : ComposeVariantClasses(element, newClassNames, state, state.Resolved);
+            changed = !ReferenceEquals(oldClassNames, newClassNames)
+                || !ReferenceEquals(state.Resolved, resolved);
+            state.Reconciled = newClassNames;
+            state.Resolved = resolved;
+            state.PaintTail = true;
+            return resolved;
+        }
+
+        // The same source for the CREATE path, which has no previous array to compare against — every layer
+        // is being attached for the first time, so the change verdict has no reader. Call it at the same
+        // point in the create sequence the patch path resolves at: AFTER the structural / has- passes, whose
+        // payloads land on this very element.
+        internal string[] ResolveVariantClassesOnCreate(VisualElement element, string[] classNames)
+            => ResolveVariantClasses(element, classNames, classNames, out _);
+
+        // The same source for the gates that resolve at their own point in the sequence — the three layout
+        // manipulators and the pointer-events scope (ApplyLayoutManipulators), the font layer (ApplyFontLayer)
+        // and the text-effect cascade (ApplyTextEffects). It reads the cached array but does not REPLACE it: the
+        // paint resolve a few passes later answers "did the classes change" by comparing against that same record,
+        // and advancing it here would swallow a payload one of the has- / attribute passes in between had just
+        // toggled.
+        private string[] ResolveGateClasses(VisualElement element, string[] classNames)
+            => _ctx.VariantGateClasses.Count == 0
+                || !_ctx.VariantGateClasses.TryGetValue(element, out var state)
+                || !state.Composes
+                    ? classNames
+                    : ComposeVariantClasses(element, classNames, state, state.Resolved);
+
+        // Builds classNames plus every variant-applied gate token, handing back reuse unchanged when the
+        // result would match it token for token, and classNames itself when no payload is lit.
+        //
+        // The tracked tokens rather than the element's live class list: they are the same set for every
+        // family these passes read, they are already ranked by the priority each payload was applied at, and
+        // reading them costs no enumerator — where walking the live list costs one per element per patch,
+        // plus a membership test per class on it. The narrowing that buys is deliberate: a utility on the live
+        // list drives a gate only when its writer signals it, as StyleVariantPayload.Apply and
+        // ReconcilerContext.TrackPlayGate do, and a writer with no signal could not keep a pass correct across
+        // the toggle back off anyway.
+        //
+        // A token the reconciled array ALREADY names is appended again rather than left where it sits.
+        // Declaring one literally and behind a variant is legal (gap-4 md:gap-4), and the duplicate is inert
+        // to every last-token-wins reader here — but leaving the literal occurrence to stand for the payload
+        // ranks it below every appended token, so `shadow-lg dark:shadow-sm hover:shadow-lg` would paint the
+        // dark preset even though the hover layer outranks it.
+        //
+        // The reuse compare runs before anything is built, withheld tokens included, so a patch whose composition
+        // matches the cached one builds no array. This runs on every patch of every element a variant has a gate
+        // token applied to.
+        //
+        // A token a play withheld (VariantGateState.Withheld) is left out of the head.
+        private static string[] ComposeVariantClasses(VisualElement element, string[] classNames, VariantGateState state,
+            string[]? reuse)
+        {
+            var tokens = state.Tokens;
+            var withheld = state.Withheld;
+            if (tokens.Count == 0 && withheld.Count == 0)
+            {
+                return classNames;
+            }
+            if (StyleCustomProperties.AnyPlaced(element))
+            {
+                return ComposePlacedClasses(element, classNames, tokens, withheld, reuse);
+            }
+            var head = withheld.Count == 0 ? classNames.Length : CountKept(classNames, withheld);
+            var total = head + tokens.Count;
+            if (reuse != null && reuse.Length == total && TailEquals(reuse, head, tokens)
+                && HeadEquals(reuse, classNames, withheld))
+            {
+                return reuse;
+            }
+
+            var composed = new string[total];
+            var at = 0;
+            foreach (var cls in classNames)
+            {
+                if (Kept(cls, withheld))
+                {
+                    composed[at++] = cls;
+                }
+            }
+            for (var i = 0; i < tokens.Count; i++)
+            {
+                composed[head + i] = tokens[i];
+            }
+            return composed;
+        }
+
+        private static bool Kept(string cls, List<string> withheld)
+            => withheld.Count == 0 || string.IsNullOrEmpty(cls)
+                || !withheld.Contains(StyleArbitraryValueResolver.StripImportant(cls, out _));
+
+        private static int CountKept(string[] classNames, List<string> withheld)
+        {
+            var kept = classNames.Length;
+            foreach (var cls in classNames)
+            {
+                if (!Kept(cls, withheld))
+                {
+                    kept--;
+                }
+            }
+            return kept;
+        }
+
+        private static readonly List<string> s_placedScratch = new();
+        private static readonly List<int> s_placedAt = new();
+
+        // ComposeVariantClasses for an element whose custom-property readers apply payloads at the base layer: a
+        // reader's payload sits before the first reconciled token Tailwind orders after the reader (the reader
+        // ties after an equal one), so a family reading the last token of the composed array ranks it against the
+        // element's literal utilities as Tailwind does. A payload no reader owns follows them all, as it does
+        // without readers, and a token a play withheld is left out as ComposeVariantClasses leaves it.
+        private static string[] ComposePlacedClasses(VisualElement element, string[] classNames, List<string> tokens,
+            List<string> withheld, string[]? reuse)
+        {
+            s_placedScratch.Clear();
+            s_placedAt.Clear();
+            foreach (var token in tokens)
+            {
+                s_placedAt.Add(StyleCustomProperties.PlaceOf(element, token));
+            }
+            for (var j = 0; j < classNames.Length; j++)
+            {
+                if (!Kept(classNames[j], withheld))
+                {
+                    continue;
+                }
+                var ordinal = StyleRuleOrder.OrdinalOf(classNames, j);
+                for (var i = 0; i < tokens.Count; i++)
+                {
+                    if (s_placedAt[i] >= 0 && s_placedAt[i] < ordinal)
+                    {
+                        s_placedScratch.Add(tokens[i]);
+                        s_placedAt[i] = -2;
+                    }
+                }
+                s_placedScratch.Add(classNames[j]);
+            }
+            for (var i = 0; i < tokens.Count; i++)
+            {
+                if (s_placedAt[i] >= 0)
+                {
+                    s_placedScratch.Add(tokens[i]);
+                }
+            }
+            for (var i = 0; i < tokens.Count; i++)
+            {
+                if (s_placedAt[i] == -1)
+                {
+                    s_placedScratch.Add(tokens[i]);
+                }
+            }
+            if (reuse != null && reuse.Length == s_placedScratch.Count)
+            {
+                var same = true;
+                for (var i = 0; i < reuse.Length && same; i++)
+                {
+                    same = reuse[i] == s_placedScratch[i];
+                }
+                if (same)
+                {
+                    return reuse;
+                }
+            }
+            return s_placedScratch.ToArray();
+        }
+
+        // Whether array carries exactly tokens from start on.
+        private static bool TailEquals(string[] array, int start, List<string> tokens)
+        {
+            for (var i = 0; i < tokens.Count; i++)
+            {
+                if (array[start + i] != tokens[i])
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        // Whether array opens with exactly head's tokens, less those withheld. The reconciled array can be a fresh
+        // instance carrying the same tokens on every render, so the cached composition is still reusable then — but
+        // only once its head is confirmed.
+        private static bool HeadEquals(string[] array, string[] head, List<string> withheld)
+        {
+            var at = 0;
+            foreach (var cls in head)
+            {
+                if (Kept(cls, withheld) && array[at++] != cls)
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        // Materializes the element's live USS class list, for the one caller that has no recorded array to
+        // compose on (see ReSyncVariantGatedPasses). Allocates a fresh list per call rather than reusing a
+        // shared buffer, because a patch can re-enter this path through a nested reconcile.
+        private static string[] LiveClasses(VisualElement element)
+        {
+            var classes = new List<string>();
+            foreach (var cls in element.GetClasses())
+            {
+                classes.Add(cls);
+            }
+            return classes.ToArray();
+        }
+
+        // Configures the element's StyleGapManipulator from the gap-* and space-* tokens in classNames and
+        // (re-)applies it so the inter-child margins reflect the current child set. Call this AFTER the
+        // container's children have been reconciled so the manipulator sees the final child list.
+        // gridSuppressed is the caller's grid-class verdict: a grid container routes its gap and space
+        // through StyleGridManipulator (the grid owns the children's widths AND their margins, so the two
+        // must never both write the margin edges), and the caller already needs that verdict to order the
+        // two calls.
+        private void ApplyGapManipulator(VisualElement element, string[] classNames, bool gridSuppressed)
+        {
+            if (gridSuppressed)
+            {
+                Configure<GapOp, StyleGapManipulator>(element, wanted: false, default);
+                return;
+            }
+
+            // Fast early-out for the ~99% of elements with no gap class and no existing manipulator: a
+            // cheap prefix scan (no dictionary lookup, no substring) before the full TryExtract parse.
+            if (!StyleGapClass.HasGapClass(classNames))
+            {
+                Configure<GapOp, StyleGapManipulator>(element, wanted: false, default);
+                return;
+            }
+
+            var spec = StyleGapClass.Extract(classNames);
+
+            Configure<GapOp, StyleGapManipulator>(element, spec.IsActive, new GapOp(spec));
+        }
+
+        // Configures the element's StyleDivideManipulator from the divide-x / divide-y (+ width / color /
+        // reverse marker) tokens in classNames and (re-)applies it so the inter-child borders reflect the
+        // current child set. Mirrors ApplyGapManipulator — call AFTER the container's children have been
+        // reconciled so the manipulator sees the final child list.
+        private void ApplyDivideManipulator(VisualElement element, string[] classNames)
+        {
+            // Fast early-out for the ~99% of elements with no divide class and no existing manipulator.
+            if (!StyleDivideClass.HasDivideClass(classNames))
+            {
+                Configure<DivideOp, StyleDivideManipulator>(element, wanted: false, default);
+                return;
+            }
+
+            var hasDivide = StyleDivideClass.TryExtract(classNames, out var spec);
+
+            Configure<DivideOp, StyleDivideManipulator>(element, hasDivide, new DivideOp(spec));
+        }
+
+        // Configures the element's StyleGridManipulator from the grid-cols-* token (and the gap-* it owns) in
+        // classNames and (re-)applies it so the column sizing reflects the current child set. Mirrors
+        // ApplyGapManipulator — call AFTER the container's children have been reconciled so the manipulator
+        // sees the final child list.
+        private void ApplyGridManipulator(VisualElement element, string[] classNames)
+        {
+            // Fast early-out for the ~99% of elements with no grid-cols class and no existing manipulator.
+            if (!StyleGridClass.HasGridClass(classNames))
+            {
+                Configure<GridOp, StyleGridManipulator>(element, wanted: false, default);
+                return;
+            }
+
+            var hasGrid = StyleGridClass.TryExtract(classNames, out var columns);
+            StyleGridClass.ExtractGaps(classNames, out var columnGap, out var rowGap, out var columnMeasured, out var rowMeasured);
+            var space = StyleGapClass.ExtractSpaceSpec(classNames);
+
+            Configure<GridOp, StyleGridManipulator>(element, hasGrid,
+                new GridOp(new GridSpec(columns, columnGap, rowGap, space, columnMeasured, rowMeasured)));
+        }
+
+        // A scope whose mode moved, or that came or went, can change what an enclosing scope's walk reaches, so
+        // every scope is walked again rather than this one alone.
+        private void ApplyPointerEvents(VisualElement element, string[] classNames)
+        {
+            var mode = StylePointerEventsClass.Read(classNames);
+            var scopes = _ctx.PointerEventsScopes;
+            if (scopes.TryGetValue(element, out var existing))
+            {
+                if (existing.Mode == mode)
+                {
+                    return;
+                }
+                if (mode == PointerEventsMode.Inherit)
+                {
+                    existing.Release();
+                    scopes.Remove(element);
+                }
+                else
+                {
+                    existing.Mode = mode;
+                }
+            }
+            else if (mode == PointerEventsMode.Inherit)
+            {
+                return;
+            }
+            else
+            {
+                scopes[element] = new PointerEventsScope(element, mode);
+            }
+            PointerEventsScope.RequestSyncAll(_ctx);
+        }
+
+        #endregion
+
+        #region Helpers
+
+        // The element a child added to this one actually lands under — the rule VisualElement.Add follows.
+        // Keyed on the redirect, not on a widget type: V.Custom<T> mounts ANY VisualElement subclass with
+        // children, so the composites that redirect are not a set Velvet gets to choose. Every caller that
+        // names "the children's container" must name this same element — the reconcile target, and the box
+        // the layout manipulators read direction / wrap from and write a container margin to.
+        //
+        // A null contentContainer (the collection views, which build their rows themselves) answers with the
+        // element. Not a crash guard: VisualElement is null-safe throughout — childCount reads 0, the indexer
+        // yields nothing. Insert quietly does nothing there, so nothing should be reconciled into one.
+        internal static VisualElement GetChildContainer(VisualElement element)
+        {
+            var content = element.contentContainer;
+            return content ?? element;
+        }
+
+        // The element a Portal handed target puts its children in, so every range, own-row frame and component
+        // of the portal keys on it rather than on target.
+        internal static VisualElement? PortalContainerOf(VisualElement? target)
+            => target == null ? null : GetChildContainer(target);
+
+        #endregion
+    }
+}

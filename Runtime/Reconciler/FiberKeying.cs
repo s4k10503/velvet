@@ -1,0 +1,421 @@
+#nullable enable
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using UnityEngine.UIElements;
+
+namespace Velvet
+{
+    // Single source of truth for the tree-position keying conventions used when a fiber's committed
+    // output is walked: position keys for unkeyed inline ComponentNodes, the Fragment / Provider /
+    // Memo / Suspense / element scope chain, and the Memo / Suspense state-cache keys.
+    // Two walkers traverse a fiber's committed tree and must derive identical keys for the same node:
+    // ChildReconciler's inline-expansion (which mounts / diffs fibers and emits DOM) and
+    // FiberContextSpine's spine-rewalk (which re-pushes the Providers enclosing a spine child
+    // for an isolated re-render). They perform different actions per node but must agree bit-for-bit
+    // on the derived keys — otherwise a registry lookup misses and either the spine reconstruction
+    // fails to recognize a child or a fiber's state is reset. Centralizing the derivation here makes that lockstep structural: changing a
+    // keying rule changes both walkers at once.
+
+    // The construct one contribution to the structural path below comes from. Every member but Suspense names
+    // how the child array a node sits in was opened, so two arrays opened at the same node index by different
+    // constructs — a Suspense's primary vs its fallback, a Memo's resolved inner vs a Fragment's children —
+    // never compose to the same path. Suspense opens no array: it is the contribution SuspenseAt places a
+    // boundary's fallback row with.
+    internal enum WalkPathKind : byte
+    {
+        Fragment = 1,
+        Provider = 2,
+        Component = 3,
+        Memo = 4,
+        SuspensePrimary = 5,
+        SuspenseFallback = 6,
+        Presence = 7,
+        PresenceChild = 8,
+        Suspense = 9,
+    }
+
+    // The position coordinates the inline-expansion walk carries down one descent. Every construct below has
+    // one factory deriving all of them together, so a keying rule is changed for all of them in one place.
+    //
+    // Scope is the fiber-keying scope chain, and deliberately COLLAPSES: a Fragment / Provider / Component
+    // contributes nothing while no enclosing keyed boundary has established a scope, which is what lets a
+    // keyed leaf under unkeyed wrappers be matched by its own key alone; an unkeyed one is placed by SlotPath
+    // instead. ReconcileKeying.ScopedKey depends on that exact rule. Scope runs on into a component's output on its parent's walk and starts
+    // afresh at WalkRoot on the component's own render, so it can spell one node two ways across those two
+    // entry points: nothing recorded in one walk and read back in another may be placed by it.
+    //
+    // Path never collapses: every construct the descent passes through contributes, starting at the walk root.
+    // Provider pairing needs that. Under Scope alone, a Provider nested directly inside another one is
+    // indistinguishable from its parent at the top level (both null scope, both node index 0), and so are two
+    // Providers at index 0 of two different unkeyed Fragments — pairing either against the wrong side's node
+    // silently compares against a value that was never theirs.
+    //
+    // Path is a 64-bit rolling hash of those contributions rather than the composed string Scope is: composing
+    // a string per level would allocate on the walk's hottest path, which today allocates nothing at all in
+    // the scope-less regime. The cost of that choice is stated rather than hidden — two DIFFERENT paths that
+    // hash alike pair the wrong Providers, which is usually a spurious notification but is a stale consumer
+    // when the Provider wrongly paired against carries the same context and an equal value. Every
+    // contribution, an explicit key's characters included, is folded into the full 64-bit accumulator, so the
+    // bound is uniform: ~1e-16 for the ~100 Provider positions one walk can hold. Folding a key through its
+    // 32-bit string hash instead would make sibling keys the dominant term at ~1e-6 for a 100-item keyed
+    // list — and, string hashing being deterministic within a process, a colliding pair would collide on
+    // every render rather than being a per-reconcile roll of the dice.
+    //
+    // A Provider whose path is NOT found does not guess: it falls back to the walk-order pairing that
+    // predates position pairing (see GeneralPathReconciler.ProviderPairTable).
+    //
+    // SlotPath is the same fold over the same contributions as Path, restarting at every ComponentNode
+    // boundary where Path does not. An unkeyed leaf's ChildKey is derived from it. So is an inline
+    // Component's registry position, which has to name the same fiber from two entry points: an outer walk,
+    // which reaches a component's body through its ancestors, and that component's own isolated re-render,
+    // which starts the walk at WalkRoot. Path carries the levels above the fiber and so differs between the
+    // two.
+    internal readonly struct WalkPosition
+    {
+        internal readonly string? Scope;
+        internal readonly long Path;
+        internal readonly long SlotPath;
+
+        internal WalkPosition(string? scope, long path, long slotPath)
+        {
+            Scope = scope;
+            Path = path;
+            SlotPath = slotPath;
+        }
+    }
+
+    // The part of a memo's dep-cache key FiberContextSpine can derive; FiberMemoCache's position index owns why
+    // the element the memo's output lands in is not part of it. Owner and PortalScope are members for the reason
+    // ComponentRegistry's _inlineInstances key carries the same two.
+    internal readonly record struct MemoPosition(
+        ComponentFiber? Owner, VisualElement? PortalScope, string? Key, long SlotPath);
+
+    // Tree position of one inline-expanded ContextProviderNode, used to pair a new-side Provider with the
+    // Provider that held the same position on the old side (whose value it must be compared against to decide
+    // whether consumers need notifying). Position — not order of appearance: the two sides emit different
+    // numbers of Providers whenever a Suspense swaps primary for fallback or a conditional Provider appears,
+    // and an order-based pairing then compares every following Provider against a stranger's value.
+    //
+    // Equality and hashing are spelled out rather than left to a record struct: this is a dictionary key on the
+    // inline-expansion walk, hashed once per Provider per side, and the compiler-generated members route every
+    // field through EqualityComparer<T>.Default — a virtual call per field that Mono does not devirtualize.
+    internal readonly struct ProviderPairKey : IEquatable<ProviderPairKey>
+    {
+        private readonly ComponentFiber? _fiber;
+        private readonly long _path;
+        private readonly string? _key;
+        private readonly int _index;
+
+        internal ProviderPairKey(ComponentFiber? fiber, long path, string? key, int index)
+        {
+            _fiber = fiber;
+            _path = path;
+            _key = key;
+            _index = index;
+        }
+
+        public bool Equals(ProviderPairKey other)
+            => _index == other._index
+                && _path == other._path
+                && ReferenceEquals(_fiber, other._fiber)
+                && string.Equals(_key, other._key, StringComparison.Ordinal);
+
+        public override bool Equals(object? obj) => obj is ProviderPairKey other && Equals(other);
+
+        public override int GetHashCode()
+        {
+            unchecked
+            {
+                var hash = _fiber?.GetHashCode() ?? 0;
+                hash = (hash * 397) ^ (int)_path;
+                hash = (hash * 397) ^ (int)(_path >> 32);
+                hash = (hash * 397) ^ (_key?.GetHashCode() ?? 0);
+                return (hash * 397) ^ _index;
+            }
+        }
+    }
+
+    internal static class FiberKeying
+    {
+        // FNV-1a 64 offset basis and prime. Chosen for being a one-multiply-per-contribution mix with no
+        // table and no state beyond the accumulator, which is what keeps extending the path at every
+        // recursion level off the walk's cost profile.
+        private const ulong PathSeed = 14695981039346656037UL;
+        private const ulong PathPrime = 1099511628211UL;
+        // Folded in ahead of a key so an explicit key of "3" and a node index of 3 cannot compose alike.
+        private const ulong KeyedContributionMarker = 0x9E3779B97F4A7C15UL;
+
+        // The SlotPath of a child array no wrapper encloses.
+        internal const long RootSlotPath = unchecked((long)PathSeed);
+
+        // A child array holding one unkeyed Fragment and nothing else is reconciled as that Fragment's
+        // children, one level deep, as React unwraps an unkeyed top-level Fragment under any parent. A
+        // component's output takes that unwrap in FiberTreeReturn.NormalizeToArray instead, so this is
+        // applied where IReconcilerHost.ReconcileChildren or a Portal mount reconciles children, and by
+        // FiberContextSpine wherever it walks those same children: a walk unwrapping where the other does not
+        // places the components under the Fragment at two different positions.
+        internal static VNode?[] UnwrapLoneFragment(VNode?[] children)
+        {
+            var lone = children is { Length: 1 } ? children[0] as FragmentNode : null;
+            return lone != null && lone.Key == null ? lone.Children ?? System.Array.Empty<VNode?>() : children;
+        }
+
+        // The position an outer walk starts from. Scope-less (nothing has established a keyed boundary yet)
+        // with both path accumulators at their seed.
+        internal static WalkPosition WalkRoot => new(null, RootSlotPath, RootSlotPath);
+
+        // One level's contribution to the structural path. An explicit key replaces the positional index —
+        // mirroring the Scope rule — so a keyed node keeps this ONE level's contribution when its siblings
+        // shift around it. It does not pin the levels above: an unkeyed Fragment or Component that moves
+        // changes the parent path, and the key below it moves with it.
+        //
+        // The key is folded CHARACTER BY CHARACTER into the 64-bit accumulator, not through its 32-bit
+        // string hash: two keyed siblings differ only by their key's contribution, and routing that through
+        // 32 bits would leave a ~1e-6 collision for a 100-item keyed list — deterministic per process, so a
+        // colliding pair would mispair on every render rather than once in a blue moon.
+        private static long ExtendPath(long parentPath, WalkPathKind kind, string? key, int nodeIndex)
+        {
+            unchecked
+            {
+                var hash = ((ulong)parentPath ^ (byte)kind) * PathPrime;
+                if (key != null)
+                {
+                    hash = (hash ^ KeyedContributionMarker) * PathPrime;
+                    foreach (var ch in key)
+                    {
+                        hash = (hash ^ ch) * PathPrime;
+                    }
+                }
+                else
+                {
+                    hash = (hash ^ (uint)nodeIndex) * PathPrime;
+                }
+                return (long)hash;
+            }
+        }
+
+        // The position a FragmentNode opens for its children.
+        internal static WalkPosition FragmentChild(WalkPosition parent, string? fragmentKey, int nodeIndex)
+            => new(FragmentChildScope(parent.Scope, fragmentKey, nodeIndex),
+                ExtendPath(parent.Path, WalkPathKind.Fragment, fragmentKey, nodeIndex),
+                ExtendPath(parent.SlotPath, WalkPathKind.Fragment, fragmentKey, nodeIndex));
+
+        // The position a ContextProviderNode opens for its children.
+        internal static WalkPosition ProviderChild(WalkPosition parent, string? providerKey, int nodeIndex)
+            => new(ProviderChildScope(parent.Scope, providerKey, nodeIndex),
+                ExtendPath(parent.Path, WalkPathKind.Provider, providerKey, nodeIndex),
+                ExtendPath(parent.SlotPath, WalkPathKind.Provider, providerKey, nodeIndex));
+
+        // The position an inline ComponentNode opens when its committed PreviousTree is descended. The only
+        // factory that restarts SlotPath, for the reason WalkPosition states.
+        internal static WalkPosition ComponentChild(WalkPosition parent, string? componentKey, int nodeIndex)
+            => new(ComponentChildScope(parent.Scope, componentKey, nodeIndex),
+                ExtendPath(parent.Path, WalkPathKind.Component, componentKey, nodeIndex),
+                RootSlotPath);
+
+        // The position a MemoNode opens for its resolved inner. A keyed memo's key replaces its index in both
+        // paths, as for a keyed Fragment, so what it renders keeps its registry position when it moves among
+        // keyed siblings. MemoAt places the memo's own dep-cache entry.
+        internal static WalkPosition MemoInner(WalkPosition parent, string? memoKey, int nodeIndex)
+            => new(MemoScope(parent.Scope, nodeIndex),
+                ExtendPath(parent.Path, WalkPathKind.Memo, memoKey, nodeIndex),
+                ExtendPath(parent.SlotPath, WalkPathKind.Memo, memoKey, nodeIndex));
+
+        // Where a Suspense's fallback row is recorded; SlotPath for the reason WalkPosition gives.
+        internal static long SuspenseAt(WalkPosition parent, string? suspenseKey, int nodeIndex)
+            => ExtendPath(parent.SlotPath, WalkPathKind.Suspense, suspenseKey, nodeIndex);
+
+        // The position a Suspense's primary or fallback subtree renders under. The two branches contribute
+        // different kinds, so a Provider in the fallback is never paired against one in the primary.
+        internal static WalkPosition SuspenseSubtree(
+            WalkPosition parent, string suspenseKey, string? ownKey, int nodeIndex, bool isFallback)
+            => new(SuspenseSubtreeScope(suspenseKey, isFallback),
+                ExtendPath(parent.Path,
+                    isFallback ? WalkPathKind.SuspenseFallback : WalkPathKind.SuspensePrimary,
+                    ownKey, nodeIndex),
+                ExtendPath(parent.SlotPath,
+                    isFallback ? WalkPathKind.SuspenseFallback : WalkPathKind.SuspensePrimary,
+                    ownKey, nodeIndex));
+
+        // The position of a DOM-less AnimatePresence itself; its SlotPath places the boundary's state.
+        internal static WalkPosition Presence(WalkPosition parent, string? presenceKey, int nodeIndex)
+            => new(PresenceKey(parent.Scope, presenceKey, nodeIndex),
+                ExtendPath(parent.Path, WalkPathKind.Presence, presenceKey, nodeIndex),
+                ExtendPath(parent.SlotPath, WalkPathKind.Presence, presenceKey, nodeIndex));
+
+        // The position one keyed AnimatePresence child renders under. Keyed by the child's own key, which is
+        // stable across renders, so a Provider inside it pairs across a reorder.
+        internal static WalkPosition PresenceChild(WalkPosition presence, string? childKey)
+            => new(PresenceChildScope(presence.Scope, childKey),
+                ExtendPath(presence.Path, WalkPathKind.PresenceChild, childKey, 0),
+                ExtendPath(presence.SlotPath, WalkPathKind.PresenceChild, childKey, 0));
+
+        // The position of a ContextProviderNode found at nodeIndex of the child array currently being walked
+        // under fiber. An explicit key replaces the positional index so a keyed Provider keeps its identity
+        // when siblings shift around it.
+        internal static ProviderPairKey ProviderPosition(
+            ComponentFiber? fiber, WalkPosition position, string? providerKey, int nodeIndex)
+            => new(fiber, position.Path, providerKey, providerKey != null ? -1 : nodeIndex);
+
+        // Returns the position key for an unkeyed inline ComponentNode: the slot it occupies in the child
+        // array it sits in, under that array's SlotPath. A slot rather than a count of how many components
+        // of its identity the walk has passed, so a sibling that renders null costs the slot it held
+        // instead of shifting the components of that identity after it onto their predecessors' keys.
+        //
+        // The boxed key is interned per position via boxCache, so repeated reconciles reuse one box
+        // instead of allocating a fresh one on every walk. The box is only ever compared by content (the
+        // registry never reference-compares position keys), so sharing it across renders, walk passes and
+        // identities is equality-safe; identity is a separate member of the registry's key.
+        internal static object ResolveInlinePositionKey(
+            WalkPosition position, int nodeIndex,
+            Dictionary<(long slotPath, int nodeIndex), object> boxCache)
+        {
+            var cacheKey = (position.SlotPath, nodeIndex);
+            if (!boxCache.TryGetValue(cacheKey, out var boxed))
+            {
+                boxed = cacheKey;
+                boxCache[cacheKey] = boxed;
+            }
+            return boxed;
+        }
+
+        // The ComponentRegistry position shared by the expansion and spine walks. SlotPath retains wrapper
+        // structure and restarts at a ComponentChild boundary, so outer and isolated walks spell a keyed child
+        // alike. An unkeyed component retains the (SlotPath, nodeIndex) scheme above.
+        internal static object ResolveInlineRegistryPositionKey(
+            WalkPosition position, string? componentKey, int nodeIndex,
+            Dictionary<(long slotPath, int nodeIndex), object> unkeyedBoxCache,
+            Dictionary<(long slotPath, string key), (object box, int registrations)> explicitBoxCache)
+        {
+            if (componentKey is null)
+            {
+                return ResolveInlinePositionKey(position, nodeIndex, unkeyedBoxCache);
+            }
+
+            var cacheKey = (position.SlotPath, componentKey);
+            if (explicitBoxCache.TryGetValue(cacheKey, out var entry))
+            {
+                return entry.box;
+            }
+            return cacheKey;
+        }
+
+        // Occurrence 0 is the position ResolveInlineRegistryPositionKey returns. A later occurrence is its
+        // own position: expanding the first fiber again would emit that fiber's output twice and record one slot.
+        internal static object ResolveInlineComponentPosition(
+            int occurrence,
+            WalkPosition position,
+            string? componentKey,
+            int nodeIndex,
+            Dictionary<(long slotPath, int nodeIndex), object> unkeyedBoxCache,
+            Dictionary<(long slotPath, string key), (object box, int registrations)> explicitBoxCache)
+        {
+            if (occurrence == 0 || componentKey is null)
+            {
+                return ResolveInlineRegistryPositionKey(
+                    position, componentKey, nodeIndex, unkeyedBoxCache, explicitBoxCache);
+            }
+            return (position.SlotPath, componentKey, occurrence);
+        }
+
+        // Composes a new scope by extending parentScope with
+        // contribution. The NUL byte (U+0000) delimits scope segments;
+        // VNode.Key refuses a key holding one, so a user-supplied key contributes a whole segment
+        // instead of splitting into more than one. A null parentScope means the outermost
+        // keyed boundary — the contribution becomes the entire scope.
+        internal static string ComposeFragmentScope(string? parentScope, string contribution)
+            => parentScope == null ? contribution : parentScope + "\0" + contribution;
+
+        // An explicit Fragment, Provider, Component, Suspense, AnimatePresence or leaf key is prefixed with its
+        // construct's tag, so it cannot spell the segment another construct's key or a positional contribution
+        // spells at the same level. No tag may be a digit or the 'm' MemoScope prefixes its index with.
+        private const char FragmentKeyTag = 'F';
+        private const char ProviderKeyTag = 'P';
+        private const char ComponentKeyTag = 'C';
+        private const char SuspenseKeyTag = 'S';
+        private const char PresenceKeyTag = 'A';
+        private const char LeafKeyTag = 'L';
+
+        private static string TaggedKey(char tag, string key) => string.Concat(tag.ToString(), key);
+
+        // The scope a FragmentNode opens for its children. A keyed Fragment establishes (or extends)
+        // the scope chain. An unkeyed Fragment contributes its positional index only when an enclosing
+        // keyed Fragment already established a scope; otherwise it stays scope-less and its children
+        // participate in the parent's keyed/indexed list under their own keys.
+        internal static string? FragmentChildScope(string? parentScope, string? fragmentKey, int nodeIndex)
+            => fragmentKey is { } key
+                ? ComposeFragmentScope(parentScope, TaggedKey(FragmentKeyTag, key))
+                : (parentScope == null ? null : ComposeFragmentScope(parentScope, Index(nodeIndex)));
+
+        // The scope a ContextProviderNode opens for its children: null while scope-less, otherwise the
+        // parent scope extended by the Provider's tagged key (or its positional index when unkeyed).
+        internal static string? ProviderChildScope(string? parentScope, string? providerKey, int nodeIndex)
+            => parentScope == null
+                ? null
+                : ComposeFragmentScope(
+                    parentScope, providerKey is { } key ? TaggedKey(ProviderKeyTag, key) : Index(nodeIndex));
+
+        // The scope a MemoNode opens for its resolved inner. Distinct "m"-prefixed index so a
+        // nested Memo's position key cannot collide with an unkeyed Component at the same node index.
+        internal static string MemoScope(string? parentScope, int nodeIndex)
+            => ComposeFragmentScope(parentScope, "m" + Index(nodeIndex));
+
+        // The terminal contribution under a non-null wrapper scope. ChildKey owns the same explicit-vs-positional
+        // distinction at an unscoped sibling list; this preserves that distinction after string composition.
+        internal static string LeafScope(string parentScope, string? key, int nodeIndex)
+            => ComposeFragmentScope(
+                parentScope, key is { } explicitKey ? TaggedKey(LeafKeyTag, explicitKey) : Index(nodeIndex));
+
+        // An unkeyed memo is placed by the SlotPath its inner opens, SlotPath rather than Path or Scope for the
+        // reason WalkPosition gives. A keyed memo is placed by its key under the SlotPath of the array it is
+        // written in: the key stands in for its own index, and the levels above count as they do for an unkeyed
+        // one.
+        internal static MemoPosition MemoAt(
+            ComponentFiber? owner, VisualElement? portalScope, string? memoKey, WalkPosition position,
+            WalkPosition innerPosition)
+            => memoKey != null
+                ? new MemoPosition(owner, portalScope, memoKey, position.SlotPath)
+                : new MemoPosition(owner, portalScope, null, innerPosition.SlotPath);
+
+        // The scope a SuspenseNode's two branches extend through SuspenseSubtreeScope: the parent scope extended
+        // by the Suspense's own key (or its positional index when unkeyed).
+        internal static string SuspenseKey(string? parentScope, string? suspenseKey, int nodeIndex)
+            => ComposeFragmentScope(
+                parentScope,
+                suspenseKey is { } key ? TaggedKey(SuspenseKeyTag, key) : Index(nodeIndex));
+
+        // The scope a DOM-less AnimatePresence opens: its parent scope extended by the AnimatePresence's own
+        // key (or its positional index when unkeyed).
+        internal static string PresenceKey(string? parentScope, string? presenceKey, int nodeIndex)
+            => ComposeFragmentScope(
+                parentScope,
+                presenceKey is { } key ? TaggedKey(PresenceKeyTag, key) : Index(nodeIndex));
+
+        // The scope a single keyed AnimatePresence child renders under: the AnimatePresence's own scoped
+        // key extended by the child's key, so each keyed child's descendant fibers stay in a disjoint,
+        // render-stable scope (the child key is stable across renders, unlike a visitation index).
+        internal static string PresenceChildScope(string? presenceScope, string? childKey)
+            => ComposeFragmentScope(presenceScope, childKey ?? string.Empty);
+
+        // The scope a Suspense's committed subtree renders under: its boundary key extended by
+        // "p" for the primary children or "f" for the fallback, keeping primary and
+        // fallback fibers in disjoint scopes.
+        internal static string SuspenseSubtreeScope(string suspenseKey, bool isFallback)
+            => ComposeFragmentScope(suspenseKey, isFallback ? "f" : "p");
+
+        // The scope an inline ComponentNode opens when its committed PreviousTree is descended:
+        // null while scope-less, otherwise the parent scope extended by the Component's own key (or its
+        // positional index when unkeyed).
+        internal static string? ComponentChildScope(string? parentScope, string? componentKey, int nodeIndex)
+            => parentScope == null
+                ? null
+                : ComposeFragmentScope(
+                    parentScope,
+                    componentKey is { } key ? TaggedKey(ComponentKeyTag, key) : Index(nodeIndex));
+
+        // Invariant-culture stringification of a node index (the unkeyed scope contribution).
+        internal static string Index(int nodeIndex)
+            => nodeIndex.ToString(CultureInfo.InvariantCulture);
+    }
+}

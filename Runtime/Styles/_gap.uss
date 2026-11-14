@@ -1,0 +1,23 @@
+/*
+ * Gap Utilities - CSS-`gap` parity at the framework level (no USS rules here)
+ *
+ * Unity UI Toolkit (6000.3) has NO native flex `gap` / `row-gap` / `column-gap`
+ * and NO `:first-child` / `:last-child` USS selectors, so a child-margin rule
+ * (`.gap-* > *`) cannot follow `flex-direction` and cannot cancel the margin on
+ * the last child (a trailing gap). Velvet therefore implements `gap-*` at the
+ * FRAMEWORK level instead: it owns the ordered child list, so a per-container
+ * `StyleGapManipulator` writes the inter-child margin on every child EXCEPT the
+ * first — spacing strictly BETWEEN children, matching CSS `gap`. That margin
+ * lands on the LEADING edge of the resolved axis (margin-left for a row,
+ * margin-top for a column) normally, or the TRAILING edge (margin-right /
+ * margin-bottom) on a `flex-row-reverse` / `flex-col-reverse` container — see
+ * "Reversed containers" in the guide below. See:
+ *   - Runtime/Styling/StyleGapManipulator.cs (the polyfill)
+ *   - Runtime/Styling/StyleGapClass.cs (class → pixel scale, mirrors _tokens.uss)
+ *   - Documentation~/styling-flexbox-and-gap.md
+ *
+ * The `gap-*` / `gap-x-*` / `gap-y-*` class names and the numeric scale are
+ * unchanged from the old emulation, so existing call sites are unaffected — they
+ * are just recognized in C# now rather than matched by USS selectors. No rules
+ * are emitted from this file; the classes carry no USS payload of their own.
+ */

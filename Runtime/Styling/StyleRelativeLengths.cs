@@ -1,0 +1,428 @@
+using System;
+using System.Collections.Generic;
+using UnityEngine.UIElements;
+
+namespace Velvet
+{
+    // What CSS takes a percentage of for one longhand, and what an em is.
+    internal enum RelativeLengthAxis : byte
+    {
+        // The width of the parent's content box.
+        Width,
+        // The height of the parent's content box.
+        Height,
+        // The parent's content box along the parent's flex direction: flex-basis.
+        MainAxis,
+        // font-size: an em and a percentage are both the parent's font size.
+        ParentFont,
+        // letter-spacing: a percentage is the element's own font size, as an em is.
+        OwnFont,
+    }
+
+    // Measures a StyleLengthExpression on the element it is written to. An em is the element's own font size
+    // except on font-size, the viewport is the panel (an editor window's content, in an editor panel), and a
+    // percentage is taken of the box of the parent the element is laid out in: a clip wrapper's parent for a
+    // clipped element, whichever of the two boxes the value is written to (ClipPathLayoutBox). The box is the
+    // content box, and the padding box for an absolute element; RelativeLengthPanelTests holds both to the
+    // ones UI Toolkit takes its own percentages of.
+    internal static class StyleRelativeLengths
+    {
+        private static readonly StyleList<TimeValue> s_noTime = new(new List<TimeValue> { new(0f) });
+
+        // What expression comes to on element, or false while the element is on no panel or has not been laid
+        // out (RelativeLengthPanelTests' before-any-frame cases); the caller then leaves the longhand as it is. A
+        // percentage of an indefinite size comes to indefinite, the longhand's stand-in for one, or, where the
+        // longhand has none (PropertySetters), is taken as zero beside the expression's other terms.
+        public static bool TryResolve(VisualElement element, StyleLengthExpression expression, RelativeLengthAxis axis,
+            StyleKeyword? indefinite, out StyleLength length)
+        {
+            length = default;
+            var outer = ClipPathLayoutBox.Of(element);
+            if (element.panel == null || float.IsNaN(element.layout.width))
+            {
+                return false;
+            }
+            // On a panel, only its root has no parent, and Velvet writes no length to it.
+            var parent = outer.hierarchy.parent!;
+            var font = UnitsOf(axis == RelativeLengthAxis.ParentFont ? parent : element);
+            var em = font.Em;
+            // Null on the two font axes, whose percentage is the em.
+            bool? vertical = axis == RelativeLengthAxis.Width ? false
+                : axis == RelativeLengthAxis.Height ? true
+                : axis == RelativeLengthAxis.MainAxis ? !IsRow(parent)
+                : null;
+            // An absolute box's containing block has been laid out by the time it is.
+            var definite = vertical == null || !expression.ReadsPercentage
+                || outer.resolvedStyle.position == Position.Absolute || IsDefinite(parent, vertical.Value);
+            if (!definite && indefinite is { } keyword)
+            {
+                length = keyword;
+                return true;
+            }
+            var box = PercentBox(parent, outer.resolvedStyle.position == Position.Absolute);
+            var percent = !definite ? 0f : vertical is { } across ? (across ? box.y : box.x) : em;
+            var viewport = ViewportOf(element);
+            var px = expression.Evaluate(new RelativeLengthBasis(font, RootUnitsOf(element), percent, viewport.width, viewport.height));
+            length = new StyleLength(new Length(px, LengthUnit.Pixel));
+            return true;
+        }
+
+        // What expression reading no percentage comes to on element, an em being its own font size, as blur() and
+        // drop-shadow() take one; false where TryResolve would be.
+        public static bool TryMeasure(VisualElement element, StyleLengthExpression expression, out float px)
+        {
+            px = 0f;
+            if (element.panel == null || float.IsNaN(element.layout.width) || !TryBasisOf(element, out var basis))
+            {
+                return false;
+            }
+            px = expression.Evaluate(basis);
+            return true;
+        }
+
+        // What expression comes to as a line height: an em and a percentage are both the element's own font size,
+        // as they are for letter-spacing. False while the element is on no panel or has no font size yet.
+        public static bool TryMeasureLineHeight(VisualElement element, StyleLengthExpression expression, out float px)
+        {
+            px = 0f;
+            if (element.panel == null)
+            {
+                return false;
+            }
+            // A leading cannot be measured against the line height it is itself, so `lh` takes the parent's, as CSS
+            // takes it, and the font's own at the root.
+            var parent = element.hierarchy.parent;
+            var font = StyleFontUnits.Of(element, element.resolvedStyle.fontSize,
+                parent != null ? StyleTextEffectResolver.LineHeightOf(parent) : float.NaN);
+            var viewport = ViewportOf(element);
+            px = expression.Evaluate(new RelativeLengthBasis(font, RootUnitsOf(element), font.Em, viewport.width,
+                viewport.height));
+            return true;
+        }
+
+        // What a length is measured against on element, its percentage taken of percent, or false while the element
+        // is on no panel.
+        public static bool TryBasisOf(VisualElement element, out RelativeLengthBasis basis, float percent = 0f)
+        {
+            if (element.panel == null)
+            {
+                basis = default;
+                return false;
+            }
+            var viewport = ViewportOf(element);
+            basis = new RelativeLengthBasis(UnitsOf(element), RootUnitsOf(element), percent, viewport.width, viewport.height);
+            return true;
+        }
+
+        // What expression comes to on element, its percentage taken of percent; false while the element is on no
+        // panel, or has not been laid out where the percentage is of its own box.
+        public static bool TryMeasure(VisualElement element, StyleLengthExpression expression, float percent,
+            out float pixels)
+        {
+            pixels = 0f;
+            if (float.IsNaN(percent) || !TryBasisOf(element, out var basis, percent))
+            {
+                return false;
+            }
+            pixels = expression.Evaluate(basis);
+            return true;
+        }
+
+        // length snapped as the browser snaps a border width to element's device pixels: under one device pixel
+        // to one, any other down to a whole number of them, the sign kept. Unsnapped off a panel.
+        public static float SnapAsBorderWidth(VisualElement element, float length)
+            => element.panel == null ? length : SnapToDevicePixels(length, element.panel.scaledPixelsPerPoint);
+
+        // length snapped to a grid of perPixel device pixels a point: under one device pixel to one, any other down to a
+        // whole number of them, the sign kept.
+        public static float SnapToDevicePixels(float length, float perPixel)
+        {
+            if (length == 0f)
+            {
+                return length;
+            }
+            var devicePixels = Math.Abs(length) * perPixel;
+            return Math.Sign(length) * (devicePixels < 1f ? 1f : (float)Math.Floor(devicePixels)) / perPixel;
+        }
+
+        // A reading of what container's children measure their lengths against, for a poll over a container whose
+        // children hold a measured length (a space margin, a divide width): their count, font sizes and font assets. The
+        // container's own reading is the poll's, so no child is walked up the tree here.
+        public static int ChildrenReading(VisualElement? container)
+        {
+            if (container == null)
+            {
+                return 0;
+            }
+            var reading = container.hierarchy.childCount;
+            for (var i = 0; i < container.hierarchy.childCount; i++)
+            {
+                var child = container.hierarchy[i];
+                reading = unchecked((reading * 31) + child.resolvedStyle.fontSize.GetHashCode());
+                reading = unchecked((reading * 31) + (StyleFontUnits.AssetOf(child)?.GetEntityId().GetHashCode() ?? 0));
+            }
+            return reading;
+        }
+
+        // written, or what element measures expression to (no percentage), which is 0 until it can.
+        public static float MeasureOr(VisualElement element, StyleLengthExpression? expression, float written)
+            => expression == null ? written : TryMeasure(element, expression, 0f, out var px) ? px : 0f;
+
+        // Keeps a poll on element while wanted, calling onMoved whenever what a measured length reads has moved.
+        // A manipulator not yet on its element (a null element) keeps none.
+        public static void SyncPoll(ref RelativeLengthPoll? poll, VisualElement? element, bool wanted, Action onMoved)
+            => SyncPoll(ref poll, element, wanted, onMoved, static moved => moved());
+
+        // As above, with onMoved and extraReading handed state, so that a caller passing static lambdas builds no delegate
+        // on a call that starts no poll.
+        public static void SyncPoll<TState>(ref RelativeLengthPoll? poll, VisualElement? element, bool wanted,
+            TState state, Action<TState> onMoved, Func<TState, int>? extraReading = null)
+        {
+            if (!wanted || element == null)
+            {
+                poll?.Stop();
+                poll = null;
+                return;
+            }
+            if (poll != null)
+            {
+                return;
+            }
+            poll = StartPoll(element, state, onMoved, extraReading);
+        }
+
+        // Kept out of SyncPoll: inlined there, its closure is built on every call rather than on one that starts a poll
+        // (RelativeLengthPollAllocationTests).
+        private static RelativeLengthPoll StartPoll<TState>(VisualElement element, TState state, Action<TState> onMoved,
+            Func<TState, int>? extraReading)
+        {
+            RelativeLengthPoll? created = null;
+            created = new RelativeLengthPoll(element, _ =>
+            {
+                if (created!.Moved())
+                {
+                    onMoved(state);
+                }
+            }, extraReading == null ? null : () => extraReading(state));
+            return created;
+        }
+
+        // The font-relative units on element, at its computed font size and line height.
+        private static FontUnitPixels UnitsOf(VisualElement element)
+            => StyleFontUnits.Of(element, element.resolvedStyle.fontSize, StyleTextEffectResolver.LineHeightOf(element));
+
+        // The root-relative units: the panel root's font, at the font size a rem is taken at, and the preflight's line
+        // height at that size.
+        private static FontUnitPixels RootUnitsOf(VisualElement element)
+            => StyleFontUnits.Of(element.panel.visualTree, StyleLengthExpression.RootFontSize,
+                StyleTextEffectResolver.PreflightLeading.Value * StyleLengthExpression.RootFontSize);
+
+        private static UnityEngine.Vector2 PercentBox(VisualElement parent, bool absolute)
+        {
+            var content = parent.contentRect.size;
+            var style = parent.resolvedStyle;
+            return absolute
+                ? content + new UnityEngine.Vector2(style.paddingLeft + style.paddingRight, style.paddingTop + style.paddingBottom)
+                : content;
+        }
+
+        // An editor window places its root on the panel absolutely, inset by the window's tab and borders, so in
+        // an editor panel that root is the viewport (ViewportWindowTests); content placed on the panel some other
+        // way, and every runtime panel, takes the panel itself.
+        private static UnityEngine.Rect ViewportOf(VisualElement element)
+        {
+            var root = element.panel.visualTree;
+            for (var top = element; ; top = top.hierarchy.parent!)
+            {
+                if (top.hierarchy.parent == root)
+                {
+                    return element.panel.contextType == ContextType.Editor && top.resolvedStyle.position == Position.Absolute
+                        ? top.layout
+                        : root.layout;
+                }
+            }
+        }
+
+        // Whether box's size along the axis is one a percentage can be taken of — CSS's definite size. Read from
+        // what is declared rather than from the layout, which is what a percentage of an indefinite size would
+        // feed back into.
+        private static bool IsDefinite(VisualElement box, bool vertical)
+        {
+            var parent = box.hierarchy.parent;
+            // The panel root, and a document root the panel sizes.
+            if (parent?.hierarchy.parent == null)
+            {
+                return true;
+            }
+            var size = vertical
+                ? DeclaredKind(box, StyleLonghand.Height, box.style.height)
+                : DeclaredKind(box, StyleLonghand.Width, box.style.width);
+            var style = box.resolvedStyle;
+            // A percentage of an absolute box's containing block is definite, as that block is.
+            if (size != Declared.Nothing && size != Declared.Keyword)
+            {
+                return size == Declared.Length || style.position == Position.Absolute || IsDefinite(parent, vertical);
+            }
+            // An absolute box is sized by its content unless an inset on each side pins it to its containing block,
+            // which is always definite. Stretched across a parent's cross axis, or grown along its main
+            // axis, a box in flow is as definite as the parent.
+            if (style.position == Position.Absolute)
+            {
+                return vertical
+                    ? Pins(box, StyleLonghand.Top, box.style.top) && Pins(box, StyleLonghand.Bottom, box.style.bottom)
+                    : Pins(box, StyleLonghand.Left, box.style.left) && Pins(box, StyleLonghand.Right, box.style.right);
+            }
+            var sized = IsRow(parent) == vertical
+                ? (style.alignSelf == Align.Auto ? parent.resolvedStyle.alignItems : style.alignSelf) == Align.Stretch
+                : style.flexGrow > 0f;
+            return sized && IsDefinite(parent, vertical);
+        }
+
+        private static bool Pins(VisualElement box, StyleLonghand inset, StyleLength inline)
+            => DeclaredKind(box, inset, inline) is Declared.Length or Declared.Percentage;
+
+        private enum Declared : byte
+        {
+            Nothing,
+            Length,
+            Percentage,
+            Keyword,
+        }
+
+        // What the box itself declares for longhand: the inline value, else the bundled class latest in the cascade
+        // among those writing it, whose value's kind the stylesheets give (StyleUtilityRule). A variant reaches
+        // this through the class list, which StyleClassProjection rewrites while the variant is on
+        // (RelativeLengthPanelTests' hover case). A rule gated on a pseudo-state would count while the state is
+        // off as well; BundledStyleSheetCensusTests fails when a bundled one first writes a size or an inset. The
+        // class list is indexed rather than enumerated, whose boxed enumerator would allocate on every poll tick
+        // for every ancestor walked (RelativeLengthPanelTests' allocation case).
+        private static Declared DeclaredKind(VisualElement box, StyleLonghand longhand, StyleLength inline)
+        {
+            if (inline.keyword != StyleKeyword.Null)
+            {
+                return inline.keyword != StyleKeyword.Undefined ? Declared.Keyword
+                    : inline.value.unit == LengthUnit.Percent ? Declared.Percentage
+                    : Declared.Length;
+            }
+            var classes = box.GetClasses() as IList<string> ?? new List<string>(box.GetClasses());
+            var (kind, position) = (Declared.Nothing, -1);
+            for (var i = 0; i < classes.Count; i++)
+            {
+                // MUTANT_SURVIVES(equivalent, boundary): a tie needs two classes at one cascade position, and the table gives each class a position of its own (RelativeLengthDefinitenessTests' distinct-positions case).
+                if (StyleUtilityProperties.TryGet(classes[i], out var rule) && rule.Properties.Contains(longhand)
+                    && rule.CascadePosition > position)
+                {
+                    position = rule.CascadePosition;
+                    kind = rule.Percentages.Contains(longhand) ? Declared.Percentage
+                        : rule.Keywords.Contains(longhand) ? Declared.Keyword
+                        : Declared.Length;
+                }
+            }
+            return kind;
+        }
+
+        private static bool IsRow(VisualElement element)
+            => element.resolvedStyle.flexDirection is FlexDirection.Row or FlexDirection.RowReverse;
+
+        // Holds the transitions of an element and of the box it is laid out as at zero duration and delay until
+        // Release, so a re-measure lands rather than animating. GeneralPathReconciler.RestorePopLayoutChildToFlow
+        // suspends the same way; zero rather than Null, so a transition a class declares is held as well as an
+        // inline one. The saved lists are copies, so nothing the engine does to the list an inline value was read
+        // from reaches what is restored (RelativeLengthPanelTests' inline-duration case).
+        internal readonly struct TransitionHold
+        {
+            private readonly IStyle _inner;
+            private readonly IStyle _outer;
+            private readonly (StyleList<TimeValue> Duration, StyleList<TimeValue> Delay) _innerSaved;
+            private readonly (StyleList<TimeValue> Duration, StyleList<TimeValue> Delay) _outerSaved;
+
+            public TransitionHold(VisualElement element)
+            {
+                (_inner, _outer) = (element.style, ClipPathLayoutBox.Of(element).style);
+                _innerSaved = (MotionTweenTiming.Copy(_inner.transitionDuration), MotionTweenTiming.Copy(_inner.transitionDelay));
+                _outerSaved = (MotionTweenTiming.Copy(_outer.transitionDuration), MotionTweenTiming.Copy(_outer.transitionDelay));
+                (_outer.transitionDuration, _outer.transitionDelay) = (s_noTime, s_noTime);
+                (_inner.transitionDuration, _inner.transitionDelay) = (s_noTime, s_noTime);
+            }
+
+            public void Release()
+            {
+                (_inner.transitionDuration, _inner.transitionDelay) = _innerSaved;
+                (_outer.transitionDuration, _outer.transitionDelay) = _outerSaved;
+            }
+        }
+
+        // Everything TryResolve reads for element, whichever longhand and axis it is asked about.
+        internal static Snapshot Capture(VisualElement element)
+        {
+            var outer = ClipPathLayoutBox.Of(element);
+            var parent = outer.hierarchy.parent;
+            var onPanel = element.panel != null;
+            return new Snapshot(UnitsOf(element), outer.resolvedStyle.position,
+                new ElementBox(element.layout.size, float.IsNaN(element.layout.width)),
+                parent == null ? default : Read(parent),
+                new PanelReading(onPanel ? ViewportOf(element).size : default, onPanel ? RootUnitsOf(element) : default,
+                    onPanel ? element.panel.scaledPixelsPerPoint : 0f));
+        }
+
+        private static ParentReading Read(VisualElement parent)
+        {
+            var style = parent.resolvedStyle;
+            return new ParentReading(UnitsOf(parent), parent.layout.size,
+                new UnityEngine.Vector4(style.borderLeftWidth, style.borderTopWidth, style.borderRightWidth, style.borderBottomWidth),
+                new UnityEngine.Vector4(style.paddingLeft, style.paddingTop, style.paddingRight, style.paddingBottom),
+                IsRow(parent), (IsDefinite(parent, false), IsDefinite(parent, true)));
+        }
+
+        internal readonly record struct ParentReading(FontUnitPixels Font, UnityEngine.Vector2 Size, UnityEngine.Vector4 Border,
+            UnityEngine.Vector4 Padding, bool Row, (bool Width, bool Height) Definite);
+
+        // The element's own box, which a translate's and a transform-origin's percentage is taken of, and whether it
+        // has been laid out.
+        internal readonly record struct ElementBox(UnityEngine.Vector2 Size, bool Unlaid);
+
+        // What the panel gives every element on it: the viewport, the root's font units and the device pixels a point.
+        internal readonly record struct PanelReading(UnityEngine.Vector2 Viewport, FontUnitPixels RootFont, float PixelsPerPoint);
+
+        internal readonly record struct Snapshot(FontUnitPixels OwnFont, Position Position, ElementBox Box,
+            ParentReading Parent, PanelReading Panel);
+    }
+
+    // Re-resolves an element's relative lengths on the panel's scheduler tick after anything they measure has
+    // moved, comparing a Capture each tick. Rejected: LeadingLengthProbe's style-resolved event, which needs the
+    // bundled sheet on the panel, and would still leave the parent's and the panel's sizes to listen for.
+    internal sealed class RelativeLengthPoll
+    {
+        // The tick StyleAnimateDriver and AnchoredDriver poll at.
+        private const long TickMs = 16;
+
+        private readonly VisualElement _element;
+        private readonly IVisualElementScheduledItem _item;
+        private StyleRelativeLengths.Snapshot? _last;
+        private readonly Func<int>? _extra;
+        private int _lastExtra;
+
+        public RelativeLengthPoll(VisualElement element, Action<VisualElement> reresolve, Func<int>? extraReading = null)
+        {
+            _element = element;
+            _extra = extraReading;
+            _item = element.schedule.Execute(() => reresolve(element)).Every(TickMs);
+        }
+
+        // Whether what the element's relative lengths measure has changed since the last call; true on the first.
+        public bool Moved()
+        {
+            // The last capture, compared before this one replaces it.
+            var moved = _last != (_last = StyleRelativeLengths.Capture(_element));
+            if (_extra != null)
+            {
+                var extra = _extra();
+                moved |= extra != _lastExtra;
+                _lastExtra = extra;
+            }
+            return moved;
+        }
+
+        public void Stop() => _item.Pause();
+    }
+}

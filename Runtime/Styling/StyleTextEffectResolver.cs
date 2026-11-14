@@ -1,0 +1,688 @@
+using System;
+using System.Collections.Generic;
+using System.Runtime.CompilerServices;
+using UnityEngine.UIElements;
+
+namespace Velvet
+{
+    // Realises text-transform (uppercase / lowercase / capitalize / normal-case), text-decoration
+    // (underline / line-through / overline), whitespace-pre-line, and leading-* (line-height) in the string a
+    // text leaf shows — Unity UI Toolkit has no property for any of the four axes, so that string is
+    // upper/lower/title-cased, wrapped in the <u>/<s>/<line-height=X> rich-text tags UITK renders, and/or has
+    // its space/tab runs collapsed. The leaf's text stays what the app gave: the shown string goes in
+    // through the engine's rendered-text hook (ShowText). Overline is the one value with no tag to wrap
+    // with (UI Toolkit's rich text vocabulary is <u>/<s> only), so instead of a string rewrite it attaches a
+    // PAINTED rule via a generateVisualContent binding — see the fifth side-table below and
+    // TextOverlineBinding. CSS inherits all four axes; UITK does not (for text-transform / text-decoration /
+    // line-height there is no UITK property at all; white-space DOES natively inherit, but no enum value
+    // expresses pre-line's collapse, so the string still needs the same treatment — see the Whitespace
+    // remarks on TextEffect). So every axis cascades by walking ancestors (StyleTextEffectClass holds the
+    // pure parse + string ops; this owns the reconciler-side cascade and the per-element side-tables).
+    //
+    // Four per-element side-tables are pure (on ReconcilerContext): TextEffects = an element's OWN parsed
+    // effect (each axis nullable so an explicit reset — normal-case / no-underline / an explicit
+    // whitespace-* class — is distinct from "inherit"; Leading is nullable the same way, its reset being
+    // leading-[normal], see LeadingUnit); TextRawText = the
+    // text the app gave a text-bearing element, captured at the text-set seams so the effect can be
+    // re-applied idempotently; TextRendered = the shown string handed to the engine, when it differs from
+    // that text; TextWhitespaceOwned = a set (Dictionary with a trivial value) of elements whose CURRENT
+    // inline `style.whiteSpace` was written by THIS resolver — see the ownership discussion below
+    // ApplyToElement. All of them ride element cleanup / pool reuse for free via
+    // ReconcilerContext.ClearElementSideTables. Leading needs no table of its own: unlike PreLine it drives
+    // no separate inline style, only the SAME shown string TextEffects/TextRawText already carry, so it rides
+    // their existing cleanup for free too. A FIFTH table,
+    // TextOverlineBindings, is NOT pure: it owns a live generateVisualContent subscription (one per leaf with
+    // decoration == Overline), so FiberElementCleaner detaches it explicitly instead of riding the plain
+    // side-table sweep — see the Overline remarks below ApplyToElement and the table's own comment on
+    // ReconcilerContext.
+    //
+    // text-wrap / text-nowrap / text-balance / text-pretty drive the same per-leaf inline write, of the
+    // white-space that pairs their wrap mode with the inherited collapse (see ResolveEffective), for the
+    // same reason and under the same ownership as PreLine's below.
+    //
+    // text-balance and text-pretty also inherit their line breaking (CSS's text-wrap-style), so the same
+    // walk gives every text leaf under the class a StyleTextBalanceManipulator, tracked in
+    // TextBalanceManipulators, which supplies the newlines of the displayed string once the leaf has a width.
+    // That leaf is then written pre-wrap whatever its collapse, over a string StyleTextEffectClass.Apply
+    // collapsed itself.
+    //
+    // PreLine ALSO drives an inline `white-space: pre-wrap` write, so the preserved newlines render as
+    // breaks and wrapping still works. That write happens in ApplyToElement (below), on EVERY text leaf
+    // whose EFFECTIVE (cascade-resolved) axis is PreLine — the same call, off the same resolved value, that
+    // already drives the string collapse. Writing must happen per-leaf off the RESOLVED value rather than once
+    // on the class-carrying ancestor: UI Toolkit gives an element's OWN matching USS rule priority over an
+    // INHERITED value regardless of specificity, so an ancestor-level write reaches a descendant Label only
+    // where no theme or sheet rule sets the Label's own `white-space`, which the resolver cannot know — the
+    // primary use case (a class on a container Div, text in a descendant Label) depends on the leaf write.
+    // A leaf with its own explicit
+    // whitespace-{normal,nowrap,pre,pre-wrap} class resolves its own axis first in ResolveEffective (the
+    // walk starts at the leaf itself), so it never receives the write and its own USS class governs
+    // untouched — no separate "does this leaf opt itself out" check is needed, ResolveEffective already IS
+    // that check, and the write and the collapsed string always agree for the same leaf by construction.
+    //
+    // The write's clear-when-nothing-is-written (ApplyToElement) is OWNERSHIP-gated via TextWhitespaceOwned, not
+    // unconditional: it clears style.whiteSpace back to StyleKeyword.Null only when this element is
+    // CURRENTLY marked owned there (and then drops the mark); any other leaf — one this resolver never
+    // wrote to at all — is left completely untouched. Ownership gating is required because a consumer's
+    // refCallback can legitimately write style.whiteSpace directly (a pattern the framework's own docs treat
+    // as legitimate, see ReconcilerContext.RefCallbacks); FiberElementPoolReset's pool-RETURN sweep is the
+    // only OTHER writer, and it only ever runs on a pooled element BETWEEN tenants, never on one still live,
+    // so it cannot explain away a live element's inline value. An unconditional clear on every non-PreLine
+    // call would silently clobber a refCallback's write on this element's very next mount-or-patch
+    // text-effect pass, whether or not PreLine was involved anywhere in the tree. Tracking ownership instead
+    // means the resolver only ever undoes its OWN prior write, so an element it never touched keeps whatever
+    // any other writer put there.
+    //
+    // TextWhitespaceOwned rides the same ClearElementSideTables sweep as TextEffects/TextRawText, so a
+    // normal unmount or pool return scrubs it for free — FiberElementPoolReset's unconditional
+    // `style.whiteSpace = null` on the pool-RETURN path remains the backstop for a freshly-rented element
+    // whose new node carries no Text prop at all (CaptureRaw never fires for it, so the TextRawText gate
+    // below never runs and never gets a chance to clear anything itself). The one path that does NOT go
+    // through that sweep is a still-MOUNTED TextElement whose Text prop patches to null: the element keeps
+    // living, so ClearElementSideTables never runs for it, yet ApplyToElement can no longer run for it
+    // either (no tracked raw text left to resolve from) — without an explicit clear at that transition, a
+    // leaf that carried an owned inline PreWrap would keep it forever. FiberNodePatcher.PatchBaseElement
+    // clears TextWhitespaceOwned at exactly that site; see the comment there.
+    //
+    // Overline is likewise gated in ApplyToElement, off the SAME resolved Decoration value the string
+    // rewrite above just used: a leaf that resolves to Overline gets a TextOverlineBinding attached (a
+    // no-op if one is already tracked for it) and one that no longer does gets its existing binding
+    // detached — so the paint and the (absent) string change can never disagree about which axis is active.
+    // TextOverlineBindings is NOT a pure side-table (see its own comment on ReconcilerContext): the same
+    // still-MOUNTED-Text-prop-patched-to-null transition above would otherwise leak its generateVisualContent
+    // subscription forever (ClearElementSideTables never runs, and ApplyToElement can never run again to
+    // detach it either), so FiberNodePatcher.PatchBaseElement detaches it at that exact site too.
+    internal static class StyleTextEffectResolver
+    {
+        // The context an element's own effect was recorded in, for LineHeightOf, whose caller holds none.
+        // ctx.TextEffects stays the record: an element whose context no longer holds it reads as having no effect,
+        // so the pool's side-table sweep needs no step here.
+        private static readonly ConditionalWeakTable<VisualElement, ReconcilerContext> s_effectContexts = new();
+
+        // Tailwind's preflight gives the root a line height of 1.5, which every element inherits as a number.
+        internal static readonly LeadingValue PreflightLeading = new(LeadingUnit.Em, 1.5f);
+
+        // The line height CSS computes on element, in pixels, from the nearest leading on it or an ancestor
+        // (ResolveEffective's walk): a number times the element's own font size, an em or percentage length
+        // times its declaring element's, or a length as written, and the preflight's 1.5 times the element's font
+        // size where none sets one. NaN for `leading-[normal]`, and where a measured length cannot be measured yet.
+        internal static float LineHeightOf(VisualElement element)
+        {
+            for (var e = element; e != null; e = e.hierarchy.parent)
+            {
+                if (s_effectContexts.TryGetValue(e, out var ctx) && ctx.TextEffects.TryGetValue(e, out var eff)
+                    && eff.Leading is { } leading)
+                {
+                    return leading.Unit switch
+                    {
+                        LeadingUnit.Em => leading.Value * element.resolvedStyle.fontSize,
+                        LeadingUnit.EmLength => leading.Value * e.resolvedStyle.fontSize,
+                        LeadingUnit.Pixel => leading.Value,
+                        LeadingUnit.Measured => ctx.LeadingLengthProbes.TryGetValue(e, out var probe)
+                            && probe.TryMeasure(out var px) ? Math.Max(0f, px) : float.NaN,
+                        LeadingUnit.Normal or LeadingUnit.Inherit => float.NaN,
+                        _ => throw new ArgumentOutOfRangeException(nameof(leading), leading.Unit, null),
+                    };
+                }
+            }
+            return PreflightLeading.Value * element.resolvedStyle.fontSize;
+        }
+
+        // Whether a text Velvet creates is shown in the preflight's line height: where it breaks a line itself, or
+        // where the generator has laid it out in more than one line (TextLineBox.SpansLines). A single line is the
+        // same with the tag or without it, so the tag is not written for one.
+        // Not short-circuited, since SpansLines is what takes a new text in. False for any other element.
+        private static bool ShowsPreflight(ILineBoxed? element, string? raw)
+            => element != null && (element.LineBox.SpansLines(raw) | BreaksLine(raw));
+
+        private static bool BreaksLine(string? raw)
+            => raw != null && (raw.IndexOf('\n') >= 0 || TextLineBoxMarkup.HasTag(raw, "br"));
+
+        // Captures the text the app gave a text-bearing element at a text-set seam (TextNode create/patch, or
+        // an element's Text prop). Stored so a later re-apply (this element's or an ancestor's effect pass)
+        // rebuilds the shown string from that text, not from an already-transformed one.
+        public static void CaptureRaw(ReconcilerContext ctx, VisualElement element, string raw)
+        {
+            ctx.TextRawText[element] = raw ?? string.Empty;
+        }
+
+        // Captures the raw text AND immediately applies the cascade-resolved effect to this element. Used at the
+        // text-set seams (TextNode create / patch) so a leaf that re-renders in ISOLATION — its own text changed
+        // via an inner component's state while the effect-bearing ANCESTOR did not re-render — still shows the
+        // inherited effect, rather than waiting for the ancestor's next pass. Idempotent (resolves from the raw).
+        public static void OnTextSet(ReconcilerContext ctx, VisualElement element, string raw)
+        {
+            // The mark belongs here rather than in CaptureRaw below: an element's Text prop calls CaptureRaw
+            // DIRECTLY and never routes through this method, while a TextNode reaches it only through here.
+            // Moving the mark down one call would mark every text-bearing element — see
+            // ReconcilerContext.TextNodeElements.
+            ctx.TextNodeElements[element] = true;
+            CaptureRaw(ctx, element, raw);
+            ApplyToElement(ctx, element);
+        }
+
+        // The create-time entry to Apply. A freshly created element is detached and its side tables are empty, so
+        // with no effect class of its own there is nothing for Apply to resolve, write or remove, and its
+        // descendants are not walked either: an ancestor's effect reaches the element from the ancestor's own pass.
+        // A text element Velvet creates whose text breaks a line is the exception, since it shows the preflight's line
+        // height, and one that is not is still given the context its line box is shown in.
+        public static void ApplyOnCreate(ReconcilerContext ctx, VisualElement element, string[] classNames)
+        {
+            if (element.hierarchy.parent == null && StyleTextEffectClass.Parse(classNames).IsEmpty)
+            {
+                if (element is not ILineBoxed boxed)
+                {
+                    return;
+                }
+                ctx.TextRawText.TryGetValue(element, out var raw);
+                if (!ShowsPreflight(boxed, raw))
+                {
+                    boxed.LineBox.Bind(ctx);
+                    return;
+                }
+            }
+            Apply(ctx, element, classNames);
+        }
+
+        // A line height a sheet declares under a selector is the cascade's to give once the element's style pass has run,
+        // so the element is applied again when the engine hands it another variable context.
+        private static void FollowThemedLineHeight(ReconcilerContext ctx, VisualElement element, string[] classNames)
+        {
+            foreach (var cls in classNames ?? Array.Empty<string>())
+            {
+                if (!string.IsNullOrEmpty(cls) && StyleNamedTextSize.HasThemedLineHeight(StyleArbitraryValueResolver.StripImportant(cls, out _)))
+                {
+                    Follow(ctx, element, classNames);
+                    return;
+                }
+            }
+            StyleThemeTokens.Unfollow(element);
+        }
+
+        // The capture lives here rather than in FollowThemedLineHeight, which every Apply enters:
+        // RetextAllocationTests reddens when it moves back.
+        private static void Follow(ReconcilerContext ctx, VisualElement element, string[] classNames)
+            => StyleThemeTokens.Follow(element, () => Apply(ctx, element, classNames));
+
+        // Syncs an element's OWN effect from its class list and applies the (cascade-resolved) effect to its own
+        // text and — when it carries an effect (now OR before this call) — its descendant text. Called from the
+        // post-children hook on create and patch, so it runs after the element's text, its classes, and its
+        // children are all in place.
+        public static void Apply(ReconcilerContext ctx, VisualElement element, string[] classNames)
+        {
+            using var themeScope = StyleThemeTokens.Use(ctx, element);
+            FollowThemedLineHeight(ctx, element, classNames);
+            ctx.TextEffects.TryGetValue(element, out var previous);
+            var own = StyleTextEffectClass.Parse(classNames);
+            LeadingLengthProbe.Sync(ctx, element, own.Leading);
+            if (own.IsEmpty)
+            {
+                ctx.TextEffects.Remove(element);
+                s_effectContexts.Remove(element);
+            }
+            else
+            {
+                ctx.TextEffects[element] = own;
+                s_effectContexts.AddOrUpdate(element, ctx);
+            }
+
+            // The element's own text (Label / Button carrying a Text prop) reflects its cascade-resolved
+            // effect — including the inline pre-wrap write for PreLine (see ApplyToElement). No own-axis
+            // shortcut is needed here: ApplyToElement resolves from THIS element via ResolveEffective, which
+            // checks the TextEffects entry just written above first, so an own PreLine token (or reset) is
+            // already the first thing the walk finds.
+            ApplyToElement(ctx, element);
+
+            // An element carrying an effect cascades it to descendant text (the V.Div("uppercase", V.Text(...))
+            // shape, where the text leaf has no class of its own). Gated on "own OR previous carrying an
+            // effect" — not simply "own effect present" — so a patch that DROPS the last effect-bearing class
+            // (own goes from non-empty to empty) still re-walks descendants: nothing else re-resolves a
+            // descendant TextNode leaf whose own text prop is unchanged (PatchText only calls OnTextSet when
+            // the text prop itself changes), so without this walk it would keep showing the removed effect —
+            // string AND, for PreLine, the inline whitespace write alike — forever. The reset forms
+            // (normal-case / no-underline / an explicit whitespace-* class) also cascade — they re-resolve
+            // descendants against the nearest surviving ancestor effect.
+            if (!own.IsEmpty || !previous.IsEmpty)
+            {
+                ApplyToDescendants(ctx, element);
+            }
+        }
+
+        // Re-applies the cascade-resolved effect to a single element if it is text-bearing and a raw text is
+        // tracked for it. Idempotent: always transforms from the stored raw.
+        private static void ApplyToElement(ReconcilerContext ctx, VisualElement element)
+        {
+            if (element is TextElement te && ctx.TextRawText.TryGetValue(te, out var raw))
+            {
+                var effect = ResolveEffective(ctx, te);
+                // A text element Velvet creates is shown in the preflight's line height where nothing sets one.
+                if (effect.Leading == null && ShowsPreflight(te as ILineBoxed, raw))
+                {
+                    effect.Leading = PreflightLeading;
+                }
+                var breaker = SyncBalance(ctx, te, effect.WrapStyle);
+                TextBreakRequest? breaks = breaker != null && breaker.CanBreak
+                    ? new TextBreakRequest(breaker, effect.Preserves)
+                    : null;
+                breaker?.BeginBreak();
+                var cell = effect.Numeric == NumericSpacing.Tabular && te.enableRichText ? DigitCell(te) : 0f;
+                var display = Compose(raw, effect, te.enableRichText, new TextShaping(breaks, cell));
+                if (breaks != null && !breaker!.Broke)
+                {
+                    breaks = null;
+                    display = Compose(raw, effect, te.enableRichText, new TextShaping(null, cell));
+                }
+                display = Raised(ctx, te, display, effect, raw);
+                ShowText(ctx, te, raw, display);
+                (te as ILineBoxed)?.LineBox.AfterShown(raw);
+                TextShownWatch.Sync(ctx, te, WritesTags(effect) || !string.Equals(display, raw, StringComparison.Ordinal)
+                    || effect.Numeric == NumericSpacing.Tabular);
+                var decoration = effect.Decoration;
+                // The leaf is written pre-wrap over a string StyleTextEffectClass.Apply already collapsed.
+                var write = breaks != null ? WhiteSpace.PreWrap : effect.Write;
+                // Per-leaf inline white-space write, off the SAME resolved values that just drove the string
+                // collapse above, so the two can never disagree for this leaf. Ownership-gated (see the type
+                // comment / TextWhitespaceOwned): a write marks; a resolve that writes nothing clears ONLY
+                // when this element is currently marked, so a leaf this resolver never wrote to — including
+                // one a consumer's refCallback wrote style.whiteSpace on directly — is never touched either way.
+                if (write != null)
+                {
+                    te.style.whiteSpace = write.Value;
+                    ctx.TextWhitespaceOwned[te] = true;
+                }
+                else if (ctx.TextWhitespaceOwned.Remove(te))
+                {
+                    te.style.whiteSpace = StyleKeyword.Null;
+                }
+
+                // Overline paint, off the SAME resolved decoration the string rewrite above just used (it
+                // left the string itself unchanged — see StyleTextEffectClass.ApplyDecoration): attach a
+                // binding the first time this leaf resolves to Overline, detach it the moment it no longer
+                // does. Unlike the whitespace write there is nothing to disagree with here (no other system
+                // ever attaches this binding), so no ownership gate is needed — presence in
+                // TextOverlineBindings IS the ownership.
+                if (decoration == TextDecorationKind.Overline)
+                {
+                    // Repaint belongs on the ATTACH transition only — Attach's own MarkDirtyRepaint already
+                    // covers a fresh subscription's first paint — NOT on a steady-state revisit where the
+                    // binding already exists, or every patch of every overlined leaf pays a full mesh regen
+                    // whether or not anything the paint reads actually changed. This is safe because every
+                    // value Draw reads is already dirtied through its OWN native channel by the time it
+                    // changes: TextElement's text setter always raises Repaint (SetValueWithoutNotify diffs
+                    // the string and calls IncrementVersion(Layout|Repaint) or Repaint); font-size and
+                    // -unity-text-align are both explicit Repaint-raising properties in UI Toolkit's own
+                    // ComputedStyle diff (ComputedStyle.CompareChanges); and contentRect only ever moves as
+                    // the result of a resolved layout change, which the layout pass itself always pairs with
+                    // Repaint the moment a box's resolved size actually changes (VisualTreeLayoutUpdater.
+                    // UpdateSubTree raises Size and Repaint together, unconditionally, no fast path). The one
+                    // real gap found: a resolvedStyle.color-ONLY change raises
+                    // VersionChangeType.Color, not Repaint, and an element that opts into the native
+                    // UsageHints.DynamicColor perf hint can patch that color in place without a full repaint
+                    // (RenderEvents.OnColorChanged's dynamic-color fast path) — Velvet itself never sets that
+                    // hint, so closing it here would mean paying an unconditional repaint on every visit to
+                    // guard a combination this framework never produces; left as a documented, self-correcting
+                    // gap (any OTHER later change on the element still repaints it) rather than gated.
+                    if (!ctx.TextOverlineBindings.TryGetValue(te, out var overline))
+                    {
+                        overline = TextOverlineSilhouette.Attach(ctx, te);
+                        ctx.TextOverlineBindings[te] = overline;
+                    }
+                }
+                else if (ctx.TextOverlineBindings.TryGetValue(te, out var overline))
+                {
+                    TextOverlineSilhouette.Detach(te, overline);
+                    ctx.TextOverlineBindings.Remove(te);
+                }
+            }
+        }
+
+        // The shown text inside the <voffset> its line boxes place it with (TextLineBox), which a leaf with rich text
+        // off is shown without.
+        // The app's own offsets inside it are raised with it (TextLineBoxMarkup).
+        private static string Raised(ReconcilerContext ctx, TextElement element, string display, in ResolvedEffect effect,
+            string raw)
+        {
+            if (!element.enableRichText)
+            {
+                return display;
+            }
+            if (element is not ILineBoxed boxed)
+            {
+                return display;
+            }
+            var ownMarkup = raw.IndexOf('<') >= 0;
+            var raise = boxed.LineBox.Shown(ctx, display, WritesLineHeight(effect), ownMarkup);
+            if (raise == 0f)
+            {
+                return display;
+            }
+            var inner = ownMarkup && (TextLineBoxMarkup.HasTag(display, "voffset") || TextLineBoxMarkup.HasTag(display, "/voffset"))
+                ? TextLineBoxMarkup.Raised(display, raise, element.resolvedStyle.fontSize)
+                : display;
+            return string.Concat("<voffset=", raise.ToString(System.Globalization.CultureInfo.InvariantCulture), "px>", inner, "</voffset>");
+        }
+
+        // Decoration and line height are tags, so a leaf with rich text off is shown without them rather than
+        // with the markup as literal text.
+        private static string Compose(string raw, in ResolvedEffect effect, bool richText, TextShaping shaping)
+        {
+            return StyleTextEffectClass.Apply(
+                raw,
+                effect.Transform,
+                richText ? effect.Decoration : null,
+                effect.Whitespace,
+                richText ? effect.Leading : null,
+                shaping);
+        }
+
+        // The widest digit of the leaf's font in em, which a tabular figure is given; zero while the font cannot be
+        // measured, and then the text carries no tag. Kept per font asset (or legacy font) instance and style, since
+        // the advance of a digit scales with the font size and the letter spacing is taken out of the measurement;
+        // a font the definition does not name, the panel's default, is measured each time rather than keyed by
+        // nothing. A replaced asset is a new object and so a new key, and the registry changing drops the rest.
+        private static readonly Dictionary<(UnityEngine.Object Font, UnityEngine.FontStyle Style), float> s_digitCells = new();
+
+        static StyleTextEffectResolver()
+        {
+            VelvetFonts.FontsChanged += s_digitCells.Clear;
+        }
+
+        private static UnityEngine.Object FontIdentity(FontDefinition definition)
+        {
+            if (definition.fontAsset != null)
+            {
+                return definition.fontAsset;
+            }
+            return definition.font != null ? definition.font : null;
+        }
+
+        private static float DigitCell(TextElement element)
+        {
+            var style = element.resolvedStyle;
+            var key = (FontIdentity(style.unityFontDefinition), style.unityFontStyleAndWeight);
+            var cell = 0f;
+            var named = key.Item1 != null;
+            var known = named && s_digitCells.TryGetValue(key, out cell);
+            if (known)
+            {
+                return cell;
+            }
+            var size = style.fontSize;
+            var widest = 0f;
+            for (var digit = '0'; digit <= '9'; digit++)
+            {
+                var width = element.MeasureTextSize(
+                    digit.ToString(), float.NaN, VisualElement.MeasureMode.Undefined,
+                    float.NaN, VisualElement.MeasureMode.Undefined).x;
+                widest = float.IsNaN(width) ? widest : Math.Max(widest, width);
+            }
+            cell = (widest - style.letterSpacing) / size;
+            if (!(size > 0f) || !(cell > 0f) || !float.IsFinite(cell))
+            {
+                return 0f;
+            }
+            if (key.Item1 != null)
+            {
+                s_digitCells[key] = cell;
+            }
+            return cell;
+        }
+
+        // Whether the shown string carries a tag, which only a leaf with rich text on is given (Compose).
+        private static bool WritesTags(in ResolvedEffect effect)
+        {
+            var decorated = effect.Decoration is TextDecorationKind.Underline or TextDecorationKind.LineThrough;
+            return decorated || WritesLineHeight(effect);
+        }
+
+        private static bool WritesLineHeight(in ResolvedEffect effect)
+            => effect.Leading is { Unit: LeadingUnit.Em or LeadingUnit.Pixel or LeadingUnit.EmLength };
+
+        // The leaf's text stays what the app gave, and the string it shows goes in through the engine's
+        // rendered-text hook. Setting the text, from here or from a prop write, resets the shown string to the
+        // text, so a shown string made from another text is gone and the hook is called again
+        // (TextRenderedTests pins this).
+        //
+        // The exception is a leaf the engine elides from the start or the middle: it elides the text, whatever
+        // the hook was given, so such a leaf holds the shown string as its text and the engine elides that
+        // (TextRenderedTests).
+        private static void ShowText(ReconcilerContext ctx, TextElement element, string raw, string display)
+        {
+            var carried = !string.Equals(display, raw, StringComparison.Ordinal) && ElidesFromStart(element);
+            var held = carried ? display : raw;
+            var textChanged = !string.Equals(element.text, held, StringComparison.Ordinal);
+            if (textChanged)
+            {
+                element.text = held;
+            }
+            var current = textChanged ? null : ShownFor(ctx, element, raw);
+            var wanted = carried || string.Equals(display, raw, StringComparison.Ordinal) ? null : display;
+            if (wanted == null)
+            {
+                ctx.TextRendered.Remove(element);
+            }
+            else
+            {
+                ctx.TextRendered[element] = (raw, wanted);
+            }
+            if (string.Equals(current, wanted, StringComparison.Ordinal))
+            {
+                return;
+            }
+            element.experimental.SetRenderedText(wanted ?? raw);
+            element.MarkDirtyText();
+            if (ctx.FlexMinSizeManipulators.TryGetValue(element, out var minSize))
+            {
+                minSize.Rederive();
+            }
+        }
+
+        // Whether the engine elides this leaf's text from the start or the middle, as it does for a computed
+        // text-overflow of ellipsis once the overflow is hidden.
+        internal static bool ElidesFromStart(TextElement element)
+        {
+            var style = element.resolvedStyle;
+            return style.textOverflow == TextOverflow.Ellipsis && style.unityTextOverflowPosition != TextOverflowPosition.End;
+        }
+
+        // What the leaf shows: the string handed to the engine, or its text when none was.
+        internal static string DisplayedText(ReconcilerContext ctx, TextElement element)
+        {
+            var text = element.text ?? string.Empty;
+            return ShownFor(ctx, element, text) ?? text;
+        }
+
+        // The string handed to the engine for this text, or null when none was or it was made from another text.
+        private static string? ShownFor(ReconcilerContext ctx, TextElement element, string raw)
+        {
+            if (!ctx.TextRendered.TryGetValue(element, out var entry))
+            {
+                return null;
+            }
+            return string.Equals(entry.Raw, raw, StringComparison.Ordinal) ? entry.Shown : null;
+        }
+
+        private static void ApplyToDescendants(ReconcilerContext ctx, VisualElement root)
+        {
+            // hierarchy walk (not the content Query) so wrapper-free structure is traversed exactly; only the
+            // text-bearing descendants with a tracked raw text are touched.
+            var count = root.hierarchy.childCount;
+            for (var i = 0; i < count; i++)
+            {
+                var child = root.hierarchy[i];
+                ApplyToElement(ctx, child);
+                ApplyToDescendants(ctx, child);
+            }
+        }
+
+        // The cascade: the nearest ancestor-or-self that sets each axis wins (each axis resolved
+        // independently), mirroring CSS inheritance of text-transform / text-decoration / white-space /
+        // line-height. A null axis on every ancestor means no effect on that axis. An explicit None on
+        // Transform/Whitespace (normal-case / an explicit whitespace-* class) also wins and stops the walk for
+        // THAT axis — it is a real resolved value, not "no token" — so it blocks a farther ancestor's non-None
+        // value from reaching this element. Decoration is the exception, as in CSS: no-underline cannot take
+        // away a line an ancestor draws, so the walk passes a None and takes the nearest line. Leading's walk stops on the nearest leading-* token, leading-[normal]
+        // included (see LeadingUnit), or the tree's root.
+        // Feeds BOTH the string rewrite and the inline white-space write in ApplyToElement — one resolve,
+        // N writes off the same values, so they can never disagree.
+        //
+        // write is the inline white-space this leaf gets, or null to leave its own cascade alone. CSS splits
+        // white-space into a collapse and a wrap mode; UI Toolkit holds one value for both, so where
+        // text-wrap / text-nowrap / text-balance / text-pretty set the mode nearer the text than any
+        // white-space class does, the value written pairs that mode with the collapse inherited from above
+        // it. A white-space class on the same element as one of the four decides on its own.
+        private static ResolvedEffect ResolveEffective(ReconcilerContext ctx, VisualElement element)
+        {
+            TextTransformKind? transform = null;
+            TextDecorationKind? decoration = null;
+            WhitespaceCollapseKind? whitespace = null;
+            LeadingValue? leading = null;
+            VisualElement? leadingOwner = null;
+            bool? wraps = null;
+            var modeDecided = false;
+            WhiteSpace? collapseClass = null;
+            WhiteSpace? deciderClass = null;
+            TextWrapStyle? wrapStyle = null;
+            NumericSpacing? numeric = null;
+            for (var e = element; e != null; e = e.hierarchy.parent)
+            {
+                if (!ctx.TextEffects.TryGetValue(e, out var eff))
+                {
+                    continue;
+                }
+                transform ??= eff.Transform;
+                if (eff.Decoration != TextDecorationKind.None)
+                {
+                    decoration ??= eff.Decoration;
+                }
+                whitespace ??= eff.Whitespace;
+                collapseClass ??= eff.WhiteSpaceClass;
+                wrapStyle ??= eff.WrapStyle;
+                numeric ??= eff.Numeric;
+                if (leading == null)
+                {
+                    leading = eff.Leading;
+                    leadingOwner = e;
+                }
+                if (!modeDecided)
+                {
+                    wraps = eff.Whitespace == null ? eff.Wraps : null;
+                    deciderClass = eff.Whitespace != null ? eff.WhiteSpaceClass : null;
+                    modeDecided = eff.Whitespace != null || eff.Wraps != null;
+                }
+            }
+            if (leading?.Unit is LeadingUnit.EmLength or LeadingUnit.Measured)
+            {
+                leading = ResolveLength(ctx, leading.Value, leadingOwner!);
+            }
+            var preserves = whitespace == WhitespaceCollapseKind.PreLine
+                || collapseClass == WhiteSpace.Pre || collapseClass == WhiteSpace.PreWrap;
+            var write = ResolveWrite(wraps, whitespace, preserves);
+            return new ResolvedEffect
+            {
+                Transform = transform,
+                Decoration = decoration,
+                Whitespace = whitespace,
+                Leading = leading,
+                Numeric = numeric,
+                Write = write,
+                Preserves = preserves,
+                WrapStyle = ResolveBalance(write ?? deciderClass, wrapStyle),
+            };
+        }
+
+        private static WhiteSpace? ResolveWrite(bool? wraps, WhitespaceCollapseKind? whitespace, bool preserves)
+        {
+            if (wraps != null)
+            {
+                return wraps.Value
+                    ? preserves ? WhiteSpace.PreWrap : WhiteSpace.Normal
+                    : preserves ? WhiteSpace.Pre : WhiteSpace.NoWrap;
+            }
+            return whitespace == WhitespaceCollapseKind.PreLine ? WhiteSpace.PreWrap : null;
+        }
+
+        // Balancing needs lines to break: the wrap mode written for the leaf, or else the white-space class
+        // that decided it.
+        private static TextWrapStyle ResolveBalance(WhiteSpace? lineWrapping, TextWrapStyle? wrapStyle)
+        {
+            var wraps = lineWrapping == WhiteSpace.Normal || lineWrapping == WhiteSpace.PreWrap;
+            return wraps && wrapStyle != null ? wrapStyle.Value : TextWrapStyle.None;
+        }
+
+        // CSS computes an em or percentage line-height to a length on the element that declares it, from
+        // that element's computed font size. LeadingLengthProbe reads that size once UI Toolkit has resolved
+        // it; until then the em is left to the text's own size. A Measured value is the probe's measurement of
+        // the expression, and is left unresolved, which writes no tag, until there is one.
+        private static LeadingValue ResolveLength(ReconcilerContext ctx, LeadingValue leading, VisualElement owner)
+        {
+            if (!ctx.LeadingLengthProbes.TryGetValue(owner, out var probe))
+            {
+                return leading;
+            }
+            if (leading.Unit == LeadingUnit.Measured)
+            {
+                var measurable = probe.TryMeasure(out var px);
+                return measurable ? new LeadingValue(LeadingUnit.Pixel, Math.Max(0f, px)) : leading;
+            }
+            if (float.IsNaN(probe.FontSize))
+            {
+                return leading;
+            }
+            return new LeadingValue(LeadingUnit.Pixel, leading.Value * probe.FontSize);
+        }
+
+        // Attaches the line-breaking manipulator to a leaf whose resolved text-wrap-style asks for one and
+        // takes it off one whose no longer does. Null when the leaf has none.
+        private static StyleTextBalanceManipulator? SyncBalance(ReconcilerContext ctx, TextElement element, TextWrapStyle style)
+        {
+            ctx.TextBalanceManipulators.TryGetValue(element, out var existing);
+            if (style == TextWrapStyle.None)
+            {
+                if (existing != null)
+                {
+                    element.RemoveManipulator(existing);
+                    ctx.TextBalanceManipulators.Remove(element);
+                }
+                return null;
+            }
+            if (existing != null)
+            {
+                existing.SetStyle(style);
+                return existing;
+            }
+            var created = new StyleTextBalanceManipulator(ctx, style);
+            ctx.TextBalanceManipulators[element] = created;
+            element.AddManipulator(created);
+            return created;
+        }
+
+        // Re-resolves one text leaf, for the manipulator that reacts to its width.
+        internal static void ReapplyElement(ReconcilerContext ctx, VisualElement element)
+        {
+            ApplyToElement(ctx, element);
+        }
+
+        // Re-resolves the element and every text under it, for LeadingLengthProbe.
+        internal static void Reapply(ReconcilerContext ctx, VisualElement element)
+        {
+            ApplyToElement(ctx, element);
+            ApplyToDescendants(ctx, element);
+        }
+
+        private struct ResolvedEffect
+        {
+            public TextTransformKind? Transform;
+            public TextDecorationKind? Decoration;
+            public WhitespaceCollapseKind? Whitespace;
+            public LeadingValue? Leading;
+            public NumericSpacing? Numeric;
+            // The inline white-space the leaf gets, or null to leave its own cascade alone.
+            public WhiteSpace? Write;
+            // Whether the white-space the text inherits keeps its spaces and newlines.
+            public bool Preserves;
+            // The text-wrap-style to realise on this leaf; None when it is auto or the leaf does not wrap.
+            public TextWrapStyle WrapStyle;
+        }
+    }
+}

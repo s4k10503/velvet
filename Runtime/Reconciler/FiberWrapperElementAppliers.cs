@@ -1,0 +1,383 @@
+using System;
+using System.Collections.Generic;
+using UnityEngine.UIElements;
+
+namespace Velvet
+{
+    // The className-driven effect appliers: the wrapper-less layers (gradient backgrounds,
+    // box shadow, animate-* motion, ring/outline — each the element's own generateVisualContent / inline
+    // style or a reconciler-invisible sibling, no structural element in the element's own slot) and the one
+    // structural-WRAPPER layer (clip-path), plus the gesture (whileHover/whileTap/whileFocus) manipulator.
+    // The patcher's PatchElementPost/PatchMotionPost and the node factory orchestrate these at patch/create time; the
+    // shared wrap/unwrap surgery and wrapper<->inner resolution live in WrapperInfrastructure, which both this
+    // and the patcher reference. Each subsystem's own logic lives in its own FiberXxxApplier (constructed once
+    // here and held for the life of this instance); this class is the stable per-subsystem dispatch surface
+    // the factory/patcher call into. Helpers genuinely shared by more than one subsystem live on
+    // WrapperInfrastructure instead, so each FiberXxxApplier depends only on ReconcilerContext and
+    // WrapperInfrastructure — the sole exception is the ClipPathWrapperClass constant, kept on this facade
+    // because tests reference it through this type; do not add any other applier-to-facade dependency.
+    internal sealed class FiberWrapperElementAppliers
+    {
+        private readonly ReconcilerContext _ctx;
+
+        private readonly FiberSkewApplier _skew;
+        private readonly FiberGradientApplier _gradient;
+        private readonly FiberAnimateMotionApplier _animate;
+        private readonly FiberFilterTransitionApplier _filterTransition;
+        private readonly FiberBoxShadowApplier _boxShadow;
+        private readonly FiberBorderStyleApplier _borderStyle;
+        private readonly FiberRingApplier _ring;
+        private readonly FiberBackdropApplier _backdrop;
+        private readonly FiberClipPathApplier _clipPath;
+        private readonly FiberGestureApplier _gesture;
+
+        public FiberWrapperElementAppliers(ReconcilerContext ctx, WrapperInfrastructure wrappers)
+        {
+            _ctx = ctx;
+            _skew = new FiberSkewApplier(ctx);
+            _gradient = new FiberGradientApplier(ctx);
+            _animate = new FiberAnimateMotionApplier(ctx);
+            _filterTransition = new FiberFilterTransitionApplier(ctx);
+            _boxShadow = new FiberBoxShadowApplier(ctx);
+            _borderStyle = new FiberBorderStyleApplier(ctx);
+            _ring = new FiberRingApplier(ctx);
+            _backdrop = new FiberBackdropApplier(ctx);
+            _clipPath = new FiberClipPathApplier(ctx, wrappers);
+            _gesture = new FiberGestureApplier(ctx);
+            // One per context: a replacement would strand the holds a Motion play has taken in the old one.
+            ctx.PaintLeases ??= new FiberPaintLeases(ctx, _skew, _gradient, _boxShadow);
+        }
+
+        internal void ApplySkewOnCreate(VisualElement element, string[] classNames)
+            => _skew.ApplySkewOnCreate(element, classNames);
+
+        internal void ApplySkewOnPatch(VisualElement element, string[] classNames, bool classesChanged)
+        {
+            if (!_ctx.PaintLeases!.Holds(element, FiberPaintLeases.Layer.Skew))
+            {
+                _skew.ApplySkewOnPatch(element, classNames, classesChanged);
+            }
+        }
+
+        internal void ApplyGradientOnCreate(VisualElement element, string[] classNames)
+            => _gradient.ApplyGradientOnCreate(element, classNames);
+
+        internal void ApplyGradientOnPatch(VisualElement element, string[] classNames)
+        {
+            if (!_ctx.PaintLeases!.Holds(element, FiberPaintLeases.Layer.Gradient))
+            {
+                _gradient.ApplyGradientOnPatch(element, classNames);
+            }
+        }
+
+        internal void ApplyAnimateOnCreate(VisualElement element, string[] classNames)
+            => _animate.ApplyAnimateOnCreate(element, classNames);
+
+        internal void ApplyAnimateOnPatch(VisualElement element, string[] classNames)
+            => _animate.ApplyAnimateOnPatch(element, classNames);
+
+        internal void ApplyFilterTransitionOnCreate(VisualElement element, string[] classNames)
+            => _filterTransition.ApplyFilterTransitionOnCreate(element, classNames);
+
+        internal void ApplyFilterTransitionOnPatch(VisualElement element, string[] classNames)
+            => _filterTransition.ApplyFilterTransitionOnPatch(element, classNames);
+
+        // ease-in, ease-out and ease-in-out run their transition along Tailwind's curve (StyleEaseCurve).
+        internal void ApplyEaseCurveOnCreate(VisualElement element, string[] classNames)
+            => StyleEaseCurve.NoteClasses(element, classNames);
+
+        internal void ApplyEaseCurveOnPatch(VisualElement element, string[] classNames)
+            => StyleEaseCurve.NoteClasses(element, classNames);
+
+        internal void ApplyShadowOnCreate(VisualElement element, string[] classNames)
+            => _boxShadow.ApplyShadowOnCreate(element, classNames);
+
+        internal void ApplyShadowOnPatch(VisualElement element, string[] classNames, bool clipActive)
+        {
+            if (!_ctx.PaintLeases!.Holds(element, FiberPaintLeases.Layer.Shadow))
+            {
+                _boxShadow.ApplyShadowOnPatch(element, classNames, clipActive);
+            }
+        }
+
+        internal void ApplyBorderStyleOnCreate(VisualElement element, string[] classNames)
+            => _borderStyle.ApplyBorderStyleOnCreate(element, classNames);
+
+        internal void ApplyBorderStyleOnPatch(VisualElement element, string[] classNames, bool classesChanged)
+            => _borderStyle.ApplyBorderStyleOnPatch(element, classNames, classesChanged);
+
+        internal void ApplyRingOnCreate(VisualElement element, string[] classNames)
+            => _ring.ApplyRingOnCreate(element, classNames);
+
+        internal void ApplyRingOnPatch(VisualElement element, string[] classNames, bool clipActive)
+            => _ring.ApplyRingOnPatch(element, classNames, clipActive);
+
+        internal void ApplyBackdropOnCreate(VisualElement element, string[] classNames)
+            => _backdrop.ApplyBackdropOnCreate(element, classNames);
+
+        internal void ApplyBackdropOnPatch(VisualElement element, string[] classNames)
+            => _backdrop.ApplyBackdropOnPatch(element, classNames);
+
+        // USS class on the structural wrapper Velvet emits to host a clip-path-* element. UI Toolkit
+        // (6000.3) has no USS clip-path; the supported arbitrary-shape mask is an overflow-hidden
+        // element whose background-image is a VECTOR image (UIR stencil-clips the subtree to the
+        // vector geometry). The wrapper carries that baked VectorImage (ClipPathVectorImageBaker), so
+        // the inner element's own background, borders, text and children are ALL clipped to the shape
+        // — CSS clip-path's "clips everything, including descendants" semantics. Limitations vs CSS:
+        // pointer picking is unchanged (the clipped-away corners still hit-test), and world-space
+        // panels (which only support rectangle clipping) ignore the mask.
+        internal const string ClipPathWrapperClass = "velvet-clip-path-wrapper";
+
+        internal VisualElement ApplyClipPathOnCreate(VisualElement element, string[] classNames)
+            => _clipPath.ApplyClipPathOnCreate(element, classNames);
+
+        internal bool ApplyClipPathOnPatch(VisualElement element, string[] classNames)
+            => _clipPath.ApplyClipPathOnPatch(element, classNames);
+
+        internal void ReResolveClipPathLive(VisualElement element)
+            => _clipPath.ReResolveClipPathLive(element);
+
+        internal VisualElement WrapLayoutIdCorrection(VisualElement element) => _clipPath.WrapLayoutIdCorrection(element);
+
+        internal void WrapLayoutIdCorrectionInPlace(VisualElement element) => _clipPath.WrapLayoutIdCorrectionInPlace(element);
+
+        internal void UnwrapLayoutIdCorrectionInPlace(VisualElement element) => _clipPath.UnwrapLayoutIdCorrectionInPlace(element);
+
+        internal bool HasLayoutIdCorrection(VisualElement element) => _clipPath.HasLayoutIdCorrection(element);
+
+        internal void ApplyGestureManipulator(VisualElement element, string? whileHoverClass, string? whileTapClass, string? whileFocusClass)
+            => _gesture.ApplyGestureManipulator(element, whileHoverClass, whileTapClass, whileFocusClass);
+
+        #region Element bindings (SceneView / Particles)
+
+        // Binds / re-binds / releases a SceneView element's camera-output machinery — the mount paths
+        // (plain element AND Motion host) and the props diff all land here, beside the sibling binding
+        // lifecycles above, because the binding owns live resources (a framework-created RenderTexture,
+        // a registered geometry callback, an editor-panel repaint tick) tracked per element for the
+        // cleaner and the reconciler dispose sweep to release.
+        internal void ApplySceneView(VisualElement element, SceneViewSettings? settings)
+        {
+            if (element is not SceneViewElement)
+            {
+                return;
+            }
+            ApplyElementBinding(element, settings, _ctx.SceneViewBindings,
+                s_sceneViewAttach, s_sceneViewUpdate, s_sceneViewDetach);
+        }
+
+        // Binds / re-binds / releases a Particles element's simulation-and-draw machinery, on the same
+        // dispatch as the SceneView binding: live resources here are the hidden simulation host
+        // GameObject, the painter callback and the repaint tick.
+        internal void ApplyParticles(VisualElement element, ParticlesSettings? settings)
+        {
+            if (element is not ParticlesElement)
+            {
+                return;
+            }
+            ApplyElementBinding(element, settings, _ctx.ParticlesBindings,
+                s_particlesAttach, s_particlesUpdate, s_particlesDetach);
+        }
+
+        // A filter clips the particle quads drawn beyond the host rect (it renders the element through an
+        // offscreen tree sized to the layout box); the driver reserves render bounds to keep them, gated on
+        // the same variant-peeling filter check as the skew / shadow paints. Driven on every patch rather than
+        // the Particles-settings diff, because a filter comes and goes independent of the effect — a class
+        // swap, or a state variant the reconcile pass never sees active.
+        internal void ApplyParticlesSpacer(VisualElement element, string[] classNames)
+        {
+            if (element is ParticlesElement && _ctx.ParticlesBindings.TryGetValue(element, out var binding))
+            {
+                ParticlesDriver.SetWantSpacer(element, binding, WrapperInfrastructure.CarriesFilter(classNames), classNames);
+            }
+        }
+
+        // Unlike SceneView/Particles, Anchored has no dedicated element type to gate on — V.Anchored builds
+        // a plain ElementNode (any host type is valid; the binding only ever writes inline left/top), so
+        // this dispatches straight to the shared binding logic with no type check.
+        internal void ApplyAnchored(VisualElement element, AnchoredSettings? settings)
+        {
+            ApplyElementBinding(element, settings, _ctx.AnchoredBindings,
+                s_anchoredAttach, s_anchoredUpdate, s_anchoredDetach);
+        }
+
+        // Same attach/update/detach shape as the bindings above, inlined rather than routed through the
+        // shared generic dispatch: FocusScopeDriver.Attach needs the ReconcilerContext (the navigator's
+        // scope registry and lazy panel attach live there), which the cached static delegates cannot carry.
+        internal void ApplyFocusScope(VisualElement element, FocusScopeSettings? settings)
+        {
+            if (_ctx.FocusScopeBindings.TryGetValue(element, out var binding))
+            {
+                if (settings == null)
+                {
+                    FocusScopeDriver.Detach(element, binding);
+                    _ctx.FocusScopeBindings.Remove(element);
+                    return;
+                }
+                FocusScopeDriver.Update(element, binding, settings);
+            }
+            else if (settings != null)
+            {
+                _ctx.FocusScopeBindings[element] = FocusScopeDriver.Attach(element, settings, _ctx);
+            }
+        }
+
+        // The four DnD slots share ApplyFocusScope's hand-inlined shape: the drivers need the
+        // ReconcilerContext (scope resolution, the active-session interlock), which the cached static
+        // delegates of the shared generic dispatch cannot carry.
+        internal void ApplyDndContext(VisualElement element, DndContextSettings? settings)
+        {
+            if (_ctx.DndScopeBindings.TryGetValue(element, out var binding))
+            {
+                if (settings == null)
+                {
+                    DndScopeDriver.Detach(element, _ctx);
+                    _ctx.DndScopeBindings.Remove(element);
+                    return;
+                }
+                DndScopeDriver.Update(binding, settings);
+            }
+            else if (settings != null)
+            {
+                _ctx.DndScopeBindings[element] = DndScopeDriver.Attach(element, settings);
+            }
+        }
+
+        // The drag channels' share of ReconcilerContext.ExpectGatePayload, for a create path that applies the drag
+        // bindings after it resolves its paints. A patch reaches the same calls through ApplyDraggable and
+        // ApplyDroppable, ahead of the passes that resolve its paints.
+        internal void ExpectDragGates(VisualElement element, FiberElementProps? props)
+        {
+            ExpectDragGates(element, props?.Draggable);
+            ExpectDragGates(element, props?.Droppable);
+        }
+
+        private void ExpectDragGates(VisualElement element, DraggableSettings? settings)
+        {
+            if (settings != null)
+            {
+                _ctx.ExpectGatePayload(element, V.ParseClassNames(settings.WhileDraggingClass));
+            }
+        }
+
+        private void ExpectDragGates(VisualElement element, DroppableSettings? settings)
+        {
+            if (settings != null)
+            {
+                _ctx.ExpectGatePayload(element, V.ParseClassNames(settings.WhileOverClass));
+                _ctx.ExpectGatePayload(element, V.ParseClassNames(settings.WhileDragActiveClass));
+            }
+        }
+
+        internal void ApplyDraggable(VisualElement element, DraggableSettings? settings)
+        {
+            ExpectDragGates(element, settings);
+            if (_ctx.DraggableBindings.TryGetValue(element, out var binding))
+            {
+                if (settings == null)
+                {
+                    DndDraggableDriver.Detach(element, binding, _ctx);
+                    _ctx.DraggableBindings.Remove(element);
+                    return;
+                }
+                DndDraggableDriver.Update(element, binding, settings, _ctx);
+            }
+            else if (settings != null)
+            {
+                _ctx.DraggableBindings[element] = DndDraggableDriver.Attach(element, settings, _ctx);
+            }
+        }
+
+        internal void ApplyDroppable(VisualElement element, DroppableSettings? settings)
+        {
+            ExpectDragGates(element, settings);
+            if (_ctx.DroppableBindings.TryGetValue(element, out var binding))
+            {
+                if (settings == null)
+                {
+                    DndDroppableDriver.Detach(element, _ctx);
+                    _ctx.DroppableBindings.Remove(element);
+                    return;
+                }
+                DndDroppableDriver.Update(element, binding, settings, _ctx);
+            }
+            else if (settings != null)
+            {
+                _ctx.DroppableBindings[element] = DndDroppableDriver.Attach(element, settings, _ctx);
+            }
+        }
+
+        internal void ApplyDragOverlay(VisualElement element, DragOverlaySettings? settings)
+        {
+            if (_ctx.DragOverlayBindings.TryGetValue(element, out var binding))
+            {
+                if (settings == null)
+                {
+                    DndOverlayDriver.Detach(element, _ctx);
+                    _ctx.DragOverlayBindings.Remove(element);
+                }
+                else
+                {
+                    binding.Settings = settings;
+                }
+                return;
+            }
+            if (settings != null)
+            {
+                _ctx.DragOverlayBindings[element] = DndOverlayDriver.Attach(element, settings, _ctx);
+            }
+        }
+
+        internal void ApplyNoDrag(VisualElement element, bool noDrag)
+        {
+            if (noDrag)
+            {
+                _ctx.NoDragElements.Add(element);
+            }
+            else
+            {
+                _ctx.NoDragElements.Remove(element);
+            }
+        }
+
+        // Cached method-group delegates so the shared dispatch below adds no per-call allocation.
+        private static readonly Func<VisualElement, SceneViewSettings, SceneViewBinding> s_sceneViewAttach = SceneViewDriver.Attach;
+        private static readonly Action<VisualElement, SceneViewBinding, SceneViewSettings> s_sceneViewUpdate = SceneViewDriver.Update;
+        private static readonly Action<VisualElement, SceneViewBinding> s_sceneViewDetach = SceneViewDriver.Detach;
+        private static readonly Func<VisualElement, ParticlesSettings, ParticlesBinding> s_particlesAttach = ParticlesDriver.Attach;
+        private static readonly Action<VisualElement, ParticlesBinding, ParticlesSettings> s_particlesUpdate = ParticlesDriver.Update;
+        private static readonly Action<VisualElement, ParticlesBinding> s_particlesDetach = ParticlesDriver.Detach;
+        private static readonly Func<VisualElement, AnchoredSettings, AnchoredBinding> s_anchoredAttach = AnchoredDriver.Attach;
+        private static readonly Action<VisualElement, AnchoredBinding, AnchoredSettings> s_anchoredUpdate = AnchoredDriver.Update;
+        private static readonly Action<VisualElement, AnchoredBinding> s_anchoredDetach = AnchoredDriver.Detach;
+
+        // The attach/update/detach dispatch both element bindings share. A vanished settings prop only
+        // happens on a hand-built ElementNode (the factories always carry settings, even for a null
+        // camera/effect): release everything and drop the binding — the element stays mounted, inert.
+        private static void ApplyElementBinding<TSettings, TBinding>(
+            VisualElement element,
+            TSettings? settings,
+            Dictionary<VisualElement, TBinding> bindings,
+            Func<VisualElement, TSettings, TBinding> attach,
+            Action<VisualElement, TBinding, TSettings> update,
+            Action<VisualElement, TBinding> detach)
+            where TSettings : class
+        {
+            if (bindings.TryGetValue(element, out var binding))
+            {
+                if (settings == null)
+                {
+                    detach(element, binding);
+                    bindings.Remove(element);
+                    return;
+                }
+                update(element, binding, settings);
+            }
+            else if (settings != null)
+            {
+                bindings[element] = attach(element, settings);
+            }
+        }
+
+        #endregion
+    }
+}

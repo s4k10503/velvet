@@ -1,0 +1,169 @@
+/* ============================================ */
+/* Design Tokens - Single Source of Truth       */
+/* ============================================ */
+
+:root {
+    /* === Spacing (1unit = 4px) === */
+    --space-0: 0px;
+    --space-px: 1px;
+    --space-0-5: 2px;
+    --space-1: 4px;
+    --space-1-5: 6px;
+    --space-2: 8px;
+    --space-2-5: 10px;
+    --space-3-5: 14px;
+    --space-3: 12px;
+    --space-4: 16px;
+    --space-5: 20px;
+    --space-6: 24px;
+    --space-7: 28px;
+    --space-8: 32px;
+    --space-9: 36px;
+    --space-10: 40px;
+    --space-11: 44px;
+    --space-12: 48px;
+    --space-14: 56px;
+    --space-16: 64px;
+    --space-20: 80px;
+    --space-24: 96px;
+    --space-28: 112px;
+    --space-32: 128px;
+    --space-36: 144px;
+    --space-40: 160px;
+    --space-44: 176px;
+    --space-48: 192px;
+    --space-52: 208px;
+    --space-56: 224px;
+    --space-60: 240px;
+    --space-64: 256px;
+    --space-72: 288px;
+    --space-80: 320px;
+    --space-96: 384px;
+
+    /* === Font Size === */
+    /* Font sizes follow the Tailwind v3.4 scale (rem*16). Consumers can pin a different scale via
+       a :root rule in their own stylesheet, which wins on later source order. */
+    --text-xs: 12px;
+    --text-sm: 14px;
+    --text-base: 16px;
+    --text-lg: 18px;
+    --text-xl: 20px;
+    --text-2xl: 24px;
+    --text-3xl: 30px;
+    --text-4xl: 36px;
+    --text-5xl: 48px;
+    --text-6xl: 60px;
+    --text-7xl: 72px;
+    --text-8xl: 96px;
+    --text-9xl: 128px;
+
+    /* === Colors (light set; the dark set is the .dark block below) ===
+     * A role token — background, surface, text, border, primary, … — is opaque, so an element carrying
+     * bg-surface inside another one resolves to the same colour rather than compositing to a brighter
+     * one. --color-white-*, --color-overlay* and --color-shadow name a colour and a strength rather
+     * than a role: compositing over whatever is behind them is what a scrim and a shadow are for, so
+     * they keep their alpha and are declared once, below, for both themes. The role tokens
+     * SemanticTokenPaletteTests names hold the palette colour it pairs each with.
+     */
+    --color-background: rgb(255, 255, 255);
+    --color-surface: rgb(241, 245, 249);
+    --color-surface-strong: rgb(215, 223, 233);
+    --color-highlight: rgb(202, 213, 226);
+    --color-border: rgb(226, 232, 240);
+    --color-border-strong: rgb(176, 190, 207);
+    --color-accent: rgb(0, 132, 209);
+    --color-accent-strong: rgb(0, 105, 168);
+    --color-text: rgb(15, 23, 43);
+    --color-text-subtle: rgb(98, 116, 142);
+    --color-primary: rgb(21, 93, 252);
+    --color-primary-hover: rgb(20, 71, 230);
+    --color-primary-active: rgb(25, 60, 184);
+    --color-primary-soft: rgb(219, 234, 254);
+    --color-primary-faint: rgb(239, 246, 255);
+    --color-danger: rgb(231, 0, 11);
+    --color-danger-hover: rgb(193, 0, 7);
+    --color-danger-active: rgb(159, 7, 18);
+    --color-success: rgb(0, 166, 62);
+    --color-success-hover: rgb(0, 130, 54);
+    --color-success-active: rgb(1, 102, 48);
+    --color-neutral: rgb(248, 250, 252);
+    --color-surface-hover: rgb(226, 232, 240);
+    --color-surface-active: rgb(233, 238, 244);
+    --color-border-hover: rgb(144, 161, 185);
+    --color-border-active: rgb(202, 213, 226);
+
+    --color-white-soft: rgba(255, 255, 255, 0.8);
+    --color-white-strong: rgba(255, 255, 255, 0.95);
+    --color-white-full: rgb(255, 255, 255);
+    --color-shadow: rgba(4, 12, 24, 0.35);
+    --color-overlay: rgba(0, 0, 0, 0.6);
+    --color-overlay-hover: rgba(0, 0, 0, 0.8);
+
+    /* === Border Radius === */
+    --radius-none: 0;
+    --radius-xs: 2px;
+    --radius-sm: 4px;
+    --radius-default: 4px;
+    --radius-md: 6px;
+    --radius-lg: 8px;
+    --radius-xl: 12px;
+    --radius-2xl: 16px;
+    --radius-3xl: 24px;
+    --radius-4xl: 32px;
+    /* A length, not 50%: Velvet's own painters read the resolved radius as a number, and 50% reaches
+       them as 50. RoundedFullSilhouettePlaybackTests' rounded-full shadow corner case reddens under 50%.
+       CornerRadiusFit scales it to the box as CSS does; Documentation~/styling-variants.md states where
+       that still differs. */
+    --radius-full: 9999px;
+
+    /* === Transition === */
+    --duration-fast: 0.1s;
+    --duration-normal: 0.15s;
+    --duration-slow: 0.2s;
+
+    /* === Scale === */
+    --scale-hover: 1.05;
+    --scale-active: 0.97;
+    --scale-hover-subtle: 1.02;
+    --scale-active-subtle: 0.98;
+}
+
+/*
+ * The dark set, declared after :root so it wins for the subtree of the element carrying the class.
+ * The class goes on and comes off with VelvetTheme.IsDark, the same signal the dark: variant answers to;
+ * Documentation~/styling-variants.md owns that mechanism.
+ */
+.dark {
+    --color-background: rgb(15, 23, 43);
+    --color-surface: rgb(44, 51, 68);
+    --color-surface-strong: rgb(63, 69, 85);
+    --color-highlight: rgb(99, 104, 117);
+    --color-border: rgb(101, 107, 119);
+    --color-border-strong: rgb(147, 151, 159);
+    --color-accent: rgb(90, 200, 250);
+    --color-accent-strong: rgb(10, 132, 255);
+    --color-text: rgb(242, 247, 255);
+    --color-text-subtle: rgb(174, 180, 191);
+    --color-primary: rgb(11, 105, 202);
+    --color-primary-hover: rgb(11, 112, 217);
+    --color-primary-active: rgb(12, 94, 180);
+    --color-primary-soft: rgb(14, 47, 89);
+    --color-primary-faint: rgb(14, 38, 72);
+    --color-danger: rgb(195, 76, 81);
+    --color-danger-hover: rgb(212, 81, 85);
+    --color-danger-active: rgb(164, 67, 74);
+    --color-success: rgb(45, 164, 80);
+    --color-success-hover: rgb(46, 173, 82);
+    --color-success-active: rgb(39, 137, 73);
+    --color-neutral: rgb(34, 42, 59);
+    --color-surface-hover: rgb(58, 65, 80);
+    --color-surface-active: rgb(49, 55, 72);
+    --color-border-hover: rgb(183, 185, 191);
+    --color-border-active: rgb(135, 139, 148);
+}
+
+/*
+ * Note: no z-index tokens.
+ * USS has no `z-index` property; stacking is controlled by sibling order and
+ * `VisualElement.BringToFront()` / `SendToBack()`. See `_layout.uss`.
+ */
