@@ -34,6 +34,8 @@ namespace Velvet.Tests.Performance
         private const string PanelName = "VelvetE2EBenchmarkPanel";
         private const string TextPrefix = "e2e-item-";
 
+        private static readonly Font s_font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+
         private static readonly int k_WarmupCount = BenchmarkRun.Warmup(3);
         private static readonly int k_MeasurementCount = BenchmarkRun.Measurements(10);
 
@@ -58,6 +60,12 @@ namespace Velvet.Tests.Performance
             yield return null;
 
             _root = _uiDocument.rootVisualElement;
+            // A font the labels inherit, since the test panel's empty theme gives them none, and a root that grows
+            // with its labels: shrunk into the panel's height, the floor's labels collapse, where Velvet's keep their
+            // text's height as CSS's automatic minimum (StyleFlexMinSizeManipulator). RequireLaidOut refuses a label
+            // the frame left without a height.
+            _root.style.unityFontDefinition = new StyleFontDefinition(FontDefinition.FromFont(s_font));
+            _root.style.flexShrink = 0f;
             _reconciler = new Reconciler();
         }
 
@@ -240,12 +248,16 @@ namespace Velvet.Tests.Performance
             }
         }
 
+        private static bool LaidOut(VisualElement element)
+            => element.layout.width > 0 && element.layout.height > 0;
+
         private void RequireLaidOut(int count)
         {
             RequireBuilt(count);
-            if (float.IsNaN(_root[0].layout.width) || float.IsNaN(_root[count - 1].layout.width))
+            if (!LaidOut(_root[0]) || !LaidOut(_root[count - 1]))
             {
-                throw new InvalidOperationException("a built element has no layout after the frame that followed the build");
+                throw new InvalidOperationException(
+                    $"a built element is laid out at {_root[0].layout} and {_root[count - 1].layout} after the frame that followed the build");
             }
         }
     }
