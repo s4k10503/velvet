@@ -1,6 +1,5 @@
 using System;
 using NUnit.Framework;
-using UnityEngine.UIElements;
 using Velvet.TestUtilities;
 
 namespace Velvet.Tests
@@ -9,9 +8,13 @@ namespace Velvet.Tests
     /// Pins render-phase semantics — which components render for an update and what each render sees — as one
     /// <see cref="EventLog"/> string per case, each one what React 19 logs for the same tree.
     /// </summary>
-    [TestFixture]
+    [TestFixtureSource(typeof(EventLogRenderer), nameof(EventLogRenderer.All))]
     internal sealed class RenderPhaseEventLogTests
     {
+        private readonly EventLogRenderer _renderer;
+
+        public RenderPhaseEventLogTests(EventLogRenderer renderer) => _renderer = renderer;
+
         private static readonly ComponentContext<int> Value = ComponentContext<int>.Create(0);
 
         [Component]
@@ -92,13 +95,14 @@ namespace Velvet.Tests
             return V.Div();
         }
 
-        // GREEN_ON_BASE(characterization): the drain renders a parent ahead of a child queued before it.
+        // GREEN_ON_BASE(characterization): through the renderer source the base's drain still renders the parent first.
+        // The child was queued ahead of it in the same batch.
         [Test]
         public void Given_AChildDirtiedBeforeItsParentInOneBatch_When_Drained_Then_TheParentRendersBeforeTheChildAndTheChildRendersOnce()
         {
             // Arrange
             var log = new EventLog();
-            using var mounted = V.Mount(new VisualElement(), log.Provide(V.Component(StatefulParent)));
+            using var mounted = _renderer.Mount(log.Provide(V.Component(StatefulParent)));
             mounted.DrainForTest();
             log.Clear();
 
@@ -111,13 +115,13 @@ namespace Velvet.Tests
             Assert.That(log.ToString(), Is.EqualTo("render:P render:C"));
         }
 
-        // GREEN_ON_BASE(characterization): hook slots keyed by call order, which a render/commit split must keep.
+        // GREEN_ON_BASE(characterization): through the renderer source the base keys hook slots by call order.
         [Test]
         public void Given_HooksOfDifferentKindsInOneComponent_When_TheFirstHooksValueChanges_Then_TheLaterSlotsKeepTheirValues()
         {
             // Arrange
             var log = new EventLog();
-            using var mounted = V.Mount(new VisualElement(), log.Provide(V.Component(Slots)));
+            using var mounted = _renderer.Mount(log.Provide(V.Component(Slots)));
             mounted.DrainForTest();
             log.Setter<int>("b").Invoke(7);
             mounted.DrainForTest();
@@ -131,13 +135,13 @@ namespace Velvet.Tests
             Assert.That(log.ToString(), Is.EqualTo("render:a=1,r=r1,m=m0,b=7"));
         }
 
-        // GREEN_ON_BASE(characterization): each effect cleanup reads its own render's value, which a split must keep.
+        // GREEN_ON_BASE(characterization): through the renderer source each base cleanup reads its own render's value.
         [Test]
         public void Given_EffectsClosingOverAStateValue_When_TheNextRenderCommits_Then_EachCleanupReadsTheValueOfTheRenderThatSetItUp()
         {
             // Arrange
             var log = new EventLog();
-            using var mounted = V.Mount(new VisualElement(), log.Provide(V.Component(Snapshot)));
+            using var mounted = _renderer.Mount(log.Provide(V.Component(Snapshot)));
             mounted.DrainForTest();
             log.Clear();
 
@@ -149,13 +153,13 @@ namespace Velvet.Tests
             Assert.That(log.ToString(), Is.EqualTo("lay-x:0 lay:1 eff-x:0 eff:1"));
         }
 
-        // GREEN_ON_BASE(characterization): an equal set renders none of the children, which a split must keep.
+        // GREEN_ON_BASE(characterization): through the renderer source an equal set renders no child on the base.
         [Test]
         public void Given_AStateJustChangedToAValue_When_ThatValueIsSetAgain_Then_TheComponentRendersAtMostOnceMoreAndItsChildDoesNot()
         {
             // Arrange
             var log = new EventLog();
-            using var mounted = V.Mount(new VisualElement(), log.Provide(V.Component(StatefulParent)));
+            using var mounted = _renderer.Mount(log.Provide(V.Component(StatefulParent)));
             mounted.DrainForTest();
             log.Setter<int>("P").Invoke(1);
             mounted.DrainForTest();
@@ -169,13 +173,13 @@ namespace Velvet.Tests
             Assert.That(log.ToString(), Is.EqualTo("").Or.EqualTo("render:P"));
         }
 
-        // GREEN_ON_BASE(characterization): context reaching a consumer past a memoized parent, which a split must keep.
+        // GREEN_ON_BASE(characterization): through the renderer source the base's context passes a memoized parent.
         [Test]
         public void Given_AProviderAboveAMemoizedChildWhoseChildConsumes_When_TheValueChanges_Then_OnlyTheProviderOwnerAndTheConsumerRender()
         {
             // Arrange
             var log = new EventLog();
-            using var mounted = V.Mount(new VisualElement(), log.Provide(V.Component(ProviderRoot)));
+            using var mounted = _renderer.Mount(log.Provide(V.Component(ProviderRoot)));
             mounted.DrainForTest();
             log.Clear();
 

@@ -16,37 +16,27 @@ namespace Velvet.Tests
     /// reads components React keeps: the children of Portals declared elsewhere into elements a deletion removes, which
     /// the walk reaches no place for and takes down after it, in the order it collected them.
     /// </summary>
-    [TestFixture]
+    [TestFixtureSource(typeof(EventLogRenderer), nameof(EventLogRenderer.All))]
     internal sealed class DeletionCommitOrderEventLogTests
     {
+        private readonly EventLogRenderer _renderer;
+
+        public DeletionCommitOrderEventLogTests(EventLogRenderer renderer) => _renderer = renderer;
+
         private sealed record Named(string Name);
-
-        // EventLog.UseEffects without its passive effect.
-        private static void UseInsertionAndLayoutEffects(string name, object[] deps)
-        {
-            var log = EventLog.UseLog();
-            Hooks.UseInsertionEffect(() => Record(log, "ins", name), deps);
-            Hooks.UseLayoutEffect(() => Record(log, "lay", name), deps);
-        }
-
-        private static Action Record(EventLog log, string kind, string name)
-        {
-            log.Add(kind + ":" + name);
-            return () => log.Add(kind + "-x:" + name);
-        }
 
         [Component]
         private static VNode Probed(Named props)
         {
-            UseInsertionAndLayoutEffects(props.Name, Array.Empty<object>());
-            return V.Div(refCallback: EventLog.UseRefCallback(props.Name));
+            EventLog.UseInsertionAndLayoutEffects(props.Name, Array.Empty<object>());
+            return V.Div(refCallback: EventLog.UseRefCallback<VisualElement>(props.Name));
         }
 
         [Component]
         private static VNode DeletedParent()
         {
-            UseInsertionAndLayoutEffects("P", Array.Empty<object>());
-            return V.Div(refCallback: EventLog.UseRefCallback("P"), children: new VNode[]
+            EventLog.UseInsertionAndLayoutEffects("P", Array.Empty<object>());
+            return V.Div(refCallback: EventLog.UseRefCallback<VisualElement>("P"), children: new VNode[]
             {
                 V.Component(Probed, new Named("C1"), key: "c1"),
                 V.Component(Probed, new Named("C2"), key: "c2"),
@@ -58,7 +48,7 @@ namespace Velvet.Tests
         {
             var (shown, _) = EventLog.UseState("Shown", true);
             EventLog.UseRender("Root");
-            UseInsertionAndLayoutEffects("Root", Array.Empty<object>());
+            EventLog.UseInsertionAndLayoutEffects("Root", Array.Empty<object>());
             return V.Fragment(shown ? V.Component(DeletedParent, key: "p") : null);
         }
 
@@ -67,7 +57,7 @@ namespace Velvet.Tests
         {
             var (shown, _) = EventLog.UseState("Shown", true);
             EventLog.UseRender("Root");
-            var holderRef = EventLog.UseRefCallback("H");
+            var holderRef = EventLog.UseRefCallback<VisualElement>("H");
             return V.Fragment(shown
                 ? V.Div(refCallback: holderRef, children: new VNode[]
                 {
@@ -81,7 +71,7 @@ namespace Velvet.Tests
         private static VNode Stateful()
         {
             var (value, _) = EventLog.UseState("S", 0);
-            UseInsertionAndLayoutEffects("S", new object[] { value });
+            EventLog.UseInsertionAndLayoutEffects("S", new object[] { value });
             return V.Div();
         }
 
@@ -100,14 +90,14 @@ namespace Velvet.Tests
         [Component]
         private static VNode InnerEmpty()
         {
-            UseInsertionAndLayoutEffects("Y", Array.Empty<object>());
+            EventLog.UseInsertionAndLayoutEffects("Y", Array.Empty<object>());
             return V.Fragment(Array.Empty<VNode>());
         }
 
         [Component]
         private static VNode OuterEmpty()
         {
-            UseInsertionAndLayoutEffects("X", Array.Empty<object>());
+            EventLog.UseInsertionAndLayoutEffects("X", Array.Empty<object>());
             return V.Fragment(V.Component(InnerEmpty, key: "y"));
         }
 
@@ -139,8 +129,8 @@ namespace Velvet.Tests
         {
             var (keys, _) = EventLog.UseState("Keys", new[] { "A", "B" });
             EventLog.UseRender("L");
-            var refA = EventLog.UseRefCallback("A");
-            var refB = EventLog.UseRefCallback("B");
+            var refA = EventLog.UseRefCallback<VisualElement>("A");
+            var refB = EventLog.UseRefCallback<VisualElement>("B");
             return V.Div(children: KeyedRows(keys, refA, refB));
         }
 
@@ -149,8 +139,8 @@ namespace Velvet.Tests
         [Component]
         private static VNode PortalChild(Named props)
         {
-            UseInsertionAndLayoutEffects(props.Name, Array.Empty<object>());
-            return V.Div(refCallback: EventLog.UseRefCallback(props.Name), children: new VNode[]
+            EventLog.UseInsertionAndLayoutEffects(props.Name, Array.Empty<object>());
+            return V.Div(refCallback: EventLog.UseRefCallback<VisualElement>(props.Name), children: new VNode[]
             {
                 V.Component(Probed, new Named(props.Name + "C"), key: "c"),
             });
@@ -162,7 +152,7 @@ namespace Velvet.Tests
         {
             var (shown, _) = EventLog.UseState("Shown", true);
             EventLog.UseRender("Root");
-            var holderRef = EventLog.UseRefCallback("O");
+            var holderRef = EventLog.UseRefCallback<VisualElement>("O");
             return V.Fragment(
                 shown
                     ? V.Div(refCallback: holderRef, children: new VNode[]
@@ -185,7 +175,7 @@ namespace Velvet.Tests
         [Component]
         private static VNode LabelThenChild(Named props)
         {
-            UseInsertionAndLayoutEffects(props.Name, Array.Empty<object>());
+            EventLog.UseInsertionAndLayoutEffects(props.Name, Array.Empty<object>());
             return V.Fragment(V.Label(text: props.Name), V.Component(Unreffed, new Named(props.Name + "c"), key: "c"));
         }
 
@@ -217,21 +207,21 @@ namespace Velvet.Tests
         private static VNode ListRow(Named props)
         {
             var (value, _) = EventLog.UseState(props.Name, 0);
-            UseInsertionAndLayoutEffects(props.Name, new object[] { value });
+            EventLog.UseInsertionAndLayoutEffects(props.Name, new object[] { value });
             return V.Label(text: props.Name);
         }
 
         [Component]
         private static VNode Unreffed(Named props)
         {
-            UseInsertionAndLayoutEffects(props.Name, Array.Empty<object>());
+            EventLog.UseInsertionAndLayoutEffects(props.Name, Array.Empty<object>());
             return V.Label(text: props.Name);
         }
 
         [Component]
         private static VNode UnreffedHolder(Named props)
         {
-            UseInsertionAndLayoutEffects(props.Name, Array.Empty<object>());
+            EventLog.UseInsertionAndLayoutEffects(props.Name, Array.Empty<object>());
             return V.Div(children: new VNode[] { V.Component(Unreffed, new Named(props.Name + "i"), key: "i") });
         }
 
@@ -258,7 +248,7 @@ namespace Velvet.Tests
         [Component]
         private static VNode Rowless(Named props)
         {
-            UseInsertionAndLayoutEffects(props.Name, Array.Empty<object>());
+            EventLog.UseInsertionAndLayoutEffects(props.Name, Array.Empty<object>());
             return V.Fragment(new VNode[] { null });
         }
 
@@ -279,8 +269,8 @@ namespace Velvet.Tests
         [Component]
         private static VNode HoldsAListPortal(InnerTarget props)
         {
-            UseInsertionAndLayoutEffects(props.Name, Array.Empty<object>());
-            return V.Div(refCallback: EventLog.UseRefCallback(props.Name), children: new VNode[]
+            EventLog.UseInsertionAndLayoutEffects(props.Name, Array.Empty<object>());
+            return V.Div(refCallback: EventLog.UseRefCallback<VisualElement>(props.Name), children: new VNode[]
             {
                 props.Shown
                     ? V.Portal(props.Target, new VNode[]
@@ -305,7 +295,7 @@ namespace Velvet.Tests
         private static VNode PortalOfAListPortalInARemovedElement(PortalTargets targets)
         {
             var (phase, _) = EventLog.UseState("Phase", 0);
-            var holderRef = EventLog.UseRefCallback("O");
+            var holderRef = EventLog.UseRefCallback<VisualElement>("O");
             return V.Fragment(
                 phase == 0 ? V.Portal(targets.Spare, new VNode[] { V.Div() }, key: "spare") : null,
                 phase < 2
@@ -322,14 +312,14 @@ namespace Velvet.Tests
         [Component]
         private static VNode Wrapping(Named props)
         {
-            UseInsertionAndLayoutEffects(props.Name, Array.Empty<object>());
+            EventLog.UseInsertionAndLayoutEffects(props.Name, Array.Empty<object>());
             return V.Component(Probed, new Named(props.Name + "i"), key: "i");
         }
 
         [Component]
         private static VNode WrappingTwice(Named props)
         {
-            UseInsertionAndLayoutEffects(props.Name, Array.Empty<object>());
+            EventLog.UseInsertionAndLayoutEffects(props.Name, Array.Empty<object>());
             return V.Component(Wrapping, new Named(props.Name + "i"), key: "i");
         }
 
@@ -350,8 +340,8 @@ namespace Velvet.Tests
         private static VNode KeyedWrappedRows()
         {
             var (keys, _) = EventLog.UseState("WrappedKeys", new[] { "A", "B" });
-            var refA = EventLog.UseRefCallback("A");
-            var refB = EventLog.UseRefCallback("B");
+            var refA = EventLog.UseRefCallback<VisualElement>("A");
+            var refB = EventLog.UseRefCallback<VisualElement>("B");
             var rows = new VNode[keys.Length];
             for (var i = 0; i < keys.Length; i++)
             {
@@ -370,10 +360,10 @@ namespace Velvet.Tests
         private static VNode KeyedPortals(Target target)
         {
             var (keys, _) = EventLog.UseState("PortalKeys", new[] { "A", "B" });
-            var refA1 = EventLog.UseRefCallback("A1");
-            var refA2 = EventLog.UseRefCallback("A2");
-            var refB1 = EventLog.UseRefCallback("B1");
-            var refB2 = EventLog.UseRefCallback("B2");
+            var refA1 = EventLog.UseRefCallback<VisualElement>("A1");
+            var refA2 = EventLog.UseRefCallback<VisualElement>("A2");
+            var refB1 = EventLog.UseRefCallback<VisualElement>("B1");
+            var refB2 = EventLog.UseRefCallback<VisualElement>("B2");
             var portals = new VNode[keys.Length];
             for (var i = 0; i < keys.Length; i++)
             {
@@ -407,14 +397,11 @@ namespace Velvet.Tests
 
         private const string RegisteredId = "deletion-commit-order-target";
 
-        [TearDown]
-        public void TearDown() => RuntimeStateProbe.ClearPortalRegistry();
-
         // A Portal into a registered id, whose element holds a component.
         [Component]
         private static VNode RegisteredPortal()
         {
-            var holderRef = EventLog.UseRefCallback("R");
+            var holderRef = EventLog.UseRefCallback<VisualElement>("R");
             return V.Div(children: new VNode[]
             {
                 V.Portal(RegisteredId, new VNode[]
@@ -466,9 +453,9 @@ namespace Velvet.Tests
                     : null);
         }
 
-        private static MountedTree Mount(EventLog log, VNode root)
+        private MountedEventLogTree Mount(EventLog log, VNode root)
         {
-            var mounted = V.Mount(new VisualElement(), log.Provide(root));
+            var mounted = _renderer.Mount(log.Provide(root));
             mounted.DrainForTest();
             log.Clear();
             return mounted;
@@ -536,13 +523,14 @@ namespace Velvet.Tests
             Assert.That(log.ToString(), Is.EqualTo("render:L ref-x:A ins-x:CA lay-x:CA ref-x:CA"));
         }
 
+        // GREEN_ON_BASE(characterization): with targets from the renderer source the base takes the Portal's children down in place.
         [Test]
         public void Given_APortalInsideARemovedElement_When_TheElementIsRemoved_Then_ThePortalsChildrenAreTakenDownWhereThePortalSits()
         {
             // Arrange
             var log = new EventLog();
-            using var mounted = Mount(log,
-                V.Component(PortalInARemovedElement, new Targets(new VisualElement(), new VisualElement())));
+            using var mounted = Mount(log, V.Component(PortalInARemovedElement,
+                new Targets(_renderer.CreatePortalTarget(), _renderer.CreatePortalTarget())));
 
             // Act
             log.Setter<bool>("Shown").Invoke(false);
@@ -553,12 +541,13 @@ namespace Velvet.Tests
                 "render:Root ref-x:O ins-x:PC lay-x:PC ref-x:PC ins-x:PCC lay-x:PCC ref-x:PCC"));
         }
 
+        // GREEN_ON_BASE(characterization): with a target from the renderer source the base keeps the other Portal's children.
         [Test]
         public void Given_APortalInsideARemovedElementAndOneBesideItOnTheSameTarget_When_TheElementIsRemoved_Then_TheOtherPortalsChildrenStay()
         {
             // Arrange
             var log = new EventLog();
-            var target = new VisualElement();
+            var target = _renderer.CreatePortalTarget();
             using var mounted = Mount(log, V.Component(PortalInARemovedElement, new Targets(target, target)));
 
             // Act
@@ -636,38 +625,13 @@ namespace Velvet.Tests
             Assert.That(log.ToString(), Is.EqualTo("ins-x:A lay-x:A ins-x:B lay-x:B ref-x:B"));
         }
 
-        [Test]
-        public void Given_APortalChildHoldingAPortalOfAList_When_TheElementAroundTheOuterPortalIsRemoved_Then_TheListsRowIsTakenDownWhereItsPortalSits()
-        {
-            // Arrange — the list holds its row once a range update has placed it
-            var log = new EventLog();
-            var inner = new VisualElement();
-            using var mounted = V.Mount(new VisualElement(), log.Provide(V.Component(PortalOfAListPortalInARemovedElement,
-                new PortalTargets(new VisualElement(), new VisualElement(), inner))));
-            mounted.DrainForTest();
-            log.Setter<int>("Phase").Invoke(1);
-            mounted.DrainForTest();
-            mounted.Root.Reconciler!.Context.VirtualListControllers[inner.Q<ScrollView>()]
-                .UpdateVisibleRange(scrollY: 0f, viewportHeight: 50f);
-            mounted.DrainForTest();
-            log.Clear();
-
-            // Act
-            log.Setter<int>("Phase").Invoke(2);
-            mounted.DrainForTest();
-
-            // Assert
-            Assert.That(log.ToString(), Is.EqualTo(
-                "ref-x:O ins-x:P lay-x:P ref-x:P ins-x:R lay-x:R ins-x:Z lay-x:Z ref-x:Z"));
-        }
-
+        // GREEN_ON_BASE(characterization): mounted through the renderer source, the base takes the outer component down first.
         [Test]
         public void Given_ANestedComponentDroppedAheadOfABoundaryThatCatchesALayoutCleanup_When_TheRenderCommits_Then_TheOuterIsTakenDownFirst()
         {
             // Arrange
             var log = new EventLog();
-            using var mounted = V.Mount(new VisualElement(), log.Provide(V.Component(HostOfNestedAndACatch)),
-                CaughtErrors.Unlogged);
+            using var mounted = _renderer.Mount(log.Provide(V.Component(HostOfNestedAndACatch)), CaughtErrors.Unlogged);
             mounted.DrainForTest();
             log.Clear();
 
@@ -679,12 +643,13 @@ namespace Velvet.Tests
             Assert.That(log.ToString(), Is.EqualTo("ins-x:P lay-x:P ins-x:Pc lay-x:Pc"));
         }
 
+        // GREEN_ON_BASE(characterization): with a target from the renderer source the base detaches the two refs in order.
         [Test]
         public void Given_AKeyedPortalOfTwoElementsWithRefs_When_ItLeavesAListOfPortals_Then_TheirRefsDetachInTheirOrder()
         {
             // Arrange
             var log = new EventLog();
-            using var mounted = Mount(log, V.Component(KeyedPortals, new Target(new VisualElement())));
+            using var mounted = Mount(log, V.Component(KeyedPortals, new Target(_renderer.CreatePortalTarget())));
 
             // Act
             log.Setter<string[]>("PortalKeys").Invoke(new[] { "B" });
@@ -692,23 +657,6 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(log.ToString(), Is.EqualTo("ref-x:A1 ref-x:A2"));
-        }
-
-        [Test]
-        public void Given_APortalIntoARegisteredId_When_TheIdIsRegisteredToAnotherElement_Then_ItsChildrenAreTakenDownInPreOrderBeforeTheyMountAgain()
-        {
-            // Arrange
-            var log = new EventLog();
-            FiberPortalRegistry.Register(RegisteredId, new VisualElement());
-            using var mounted = Mount(log, V.Component(RegisteredPortal));
-            LogAssert.Expect(LogType.Warning, $"[FiberPortalRegistry] Id \"{RegisteredId}\" is already registered. Overwriting.");
-
-            // Act
-            FiberPortalRegistry.Register(RegisteredId, new VisualElement());
-            mounted.FlushStateForTest();
-
-            // Assert
-            Assert.That(log.ToString(), Is.EqualTo("ref-x:R ins-x:C lay-x:C ref-x:C ins:C ref:C lay:C ref:R"));
         }
 
         [Test]
@@ -727,12 +675,13 @@ namespace Velvet.Tests
                 "ref-x:A ins-x:WA lay-x:WA ins-x:WAi lay-x:WAi ins-x:WAii lay-x:WAii ref-x:WAii"));
         }
 
+        // GREEN_ON_BASE(characterization): with a target from the renderer source the base takes the component down first.
         [Test]
         public void Given_AKeyedElementHoldingAComponentAheadOfAPortalInATreeWithNoRef_When_ItLeavesAListOfElements_Then_TheComponentIsTakenDownFirst()
         {
             // Arrange
             var log = new EventLog();
-            using var mounted = Mount(log, V.Component(KeyedRowsWithAPortal, new Target(new VisualElement())));
+            using var mounted = Mount(log, V.Component(KeyedRowsWithAPortal, new Target(_renderer.CreatePortalTarget())));
 
             // Act
             log.Setter<string[]>("PortalRowKeys").Invoke(new[] { "B" });
@@ -757,24 +706,84 @@ namespace Velvet.Tests
             Assert.That(log.ToString(), Is.EqualTo("ins-x:X lay-x:X ins-x:O lay-x:O ins-x:Oi lay-x:Oi ref-x:Oi"));
         }
 
-        [Test]
-        public void Given_PortalsIntoTheRowsOfAPortalIntoARegisteredId_When_TheIdIsRegisteredToAnotherElement_Then_TheirChildrenAreTakenDownInTheRowsOrder()
+        [TestFixture]
+        internal sealed class UIToolkitOnly
         {
-            // Arrange
-            var log = new EventLog();
-            FiberPortalRegistry.Register(RegisteredId, new VisualElement());
-            using var mounted = Mount(log, V.Component(PortalsIntoRetargetedRows, new RowTargets()));
-            log.Setter<bool>("Aimed").Invoke(true);
-            mounted.DrainForTest();
-            log.Clear();
-            LogAssert.Expect(LogType.Warning, $"[FiberPortalRegistry] Id \"{RegisteredId}\" is already registered. Overwriting.");
+            [TearDown]
+            public void TearDown() => RuntimeStateProbe.ClearPortalRegistry();
 
-            // Act
-            FiberPortalRegistry.Register(RegisteredId, new VisualElement());
-            mounted.FlushStateForTest();
+            private static MountedTree Mount(EventLog log, VNode root)
+            {
+                var mounted = V.Mount(new VisualElement(), log.Provide(root));
+                mounted.DrainForTest();
+                log.Clear();
+                return mounted;
+            }
 
-            // Assert
-            Assert.That(log.ToString(), Is.EqualTo("ins-x:Q1 lay-x:Q1 ins-x:Q2 lay-x:Q2"));
+            // GREEN_ON_BASE(characterization): on the UI renderer's own fixture the base takes the row down in place.
+            [Test]
+            public void Given_APortalChildHoldingAPortalOfAList_When_TheElementAroundTheOuterPortalIsRemoved_Then_TheListsRowIsTakenDownWhereItsPortalSits()
+            {
+                // Arrange — the list holds its row once a range update has placed it
+                var log = new EventLog();
+                var inner = new VisualElement();
+                using var mounted = V.Mount(new VisualElement(), log.Provide(V.Component(PortalOfAListPortalInARemovedElement,
+                    new PortalTargets(new VisualElement(), new VisualElement(), inner))));
+                mounted.DrainForTest();
+                log.Setter<int>("Phase").Invoke(1);
+                mounted.DrainForTest();
+                mounted.Root.Reconciler!.Context.VirtualListControllers[inner.Q<ScrollView>()]
+                    .UpdateVisibleRange(scrollY: 0f, viewportHeight: 50f);
+                mounted.DrainForTest();
+                log.Clear();
+
+                // Act
+                log.Setter<int>("Phase").Invoke(2);
+                mounted.DrainForTest();
+
+                // Assert
+                Assert.That(log.ToString(), Is.EqualTo(
+                    "ref-x:O ins-x:P lay-x:P ref-x:P ins-x:R lay-x:R ins-x:Z lay-x:Z ref-x:Z"));
+            }
+
+            // GREEN_ON_BASE(characterization): on the UI renderer's own fixture the base takes them down before they mount again.
+            [Test]
+            public void Given_APortalIntoARegisteredId_When_TheIdIsRegisteredToAnotherElement_Then_ItsChildrenAreTakenDownInPreOrderBeforeTheyMountAgain()
+            {
+                // Arrange
+                var log = new EventLog();
+                FiberPortalRegistry.Register(RegisteredId, new VisualElement());
+                using var mounted = Mount(log, V.Component(RegisteredPortal));
+                LogAssert.Expect(LogType.Warning, $"[FiberPortalRegistry] Id \"{RegisteredId}\" is already registered. Overwriting.");
+
+                // Act
+                FiberPortalRegistry.Register(RegisteredId, new VisualElement());
+                mounted.FlushStateForTest();
+
+                // Assert
+                Assert.That(log.ToString(), Is.EqualTo("ref-x:R ins-x:C lay-x:C ref-x:C ins:C ref:C lay:C ref:R"));
+            }
+
+            // GREEN_ON_BASE(characterization): on the UI renderer's own fixture the base takes them down in row order.
+            [Test]
+            public void Given_PortalsIntoTheRowsOfAPortalIntoARegisteredId_When_TheIdIsRegisteredToAnotherElement_Then_TheirChildrenAreTakenDownInTheRowsOrder()
+            {
+                // Arrange
+                var log = new EventLog();
+                FiberPortalRegistry.Register(RegisteredId, new VisualElement());
+                using var mounted = Mount(log, V.Component(PortalsIntoRetargetedRows, new RowTargets()));
+                log.Setter<bool>("Aimed").Invoke(true);
+                mounted.DrainForTest();
+                log.Clear();
+                LogAssert.Expect(LogType.Warning, $"[FiberPortalRegistry] Id \"{RegisteredId}\" is already registered. Overwriting.");
+
+                // Act
+                FiberPortalRegistry.Register(RegisteredId, new VisualElement());
+                mounted.FlushStateForTest();
+
+                // Assert
+                Assert.That(log.ToString(), Is.EqualTo("ins-x:Q1 lay-x:Q1 ins-x:Q2 lay-x:Q2"));
+            }
         }
     }
 }

@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using UnityEngine.UIElements;
 
 namespace Velvet.TestUtilities
 {
@@ -11,7 +10,7 @@ namespace Velvet.TestUtilities
     /// </summary>
     /// <remarks>
     /// A tree reaches its log through <see cref="Provide"/> at the root rather than through a static, so no
-    /// fixture's entries reach another's. The probes never read the host tree, the element a ref callback is
+    /// fixture's entries reach another's. The probes never read the host tree, the instance a ref callback is
     /// handed included, so that a case moves to another renderer by its mount line alone.
     /// </remarks>
     public sealed class EventLog
@@ -61,13 +60,25 @@ namespace Velvet.TestUtilities
         }
 
         /// <summary>
+        /// <see cref="UseEffects"/> without its passive effect: records <c>ins:</c> and <c>lay:</c> on setup and
+        /// <c>ins-x:</c> and <c>lay-x:</c> on cleanup, each followed by <paramref name="name"/>.
+        /// </summary>
+        public static void UseInsertionAndLayoutEffects(string name, object?[]? deps)
+        {
+            var log = UseLog();
+            Hooks.UseInsertionEffect(() => Record(log, "ins", name), deps);
+            Hooks.UseLayoutEffect(() => Record(log, "lay", name), deps);
+        }
+
+        /// <summary>
         /// A ref callback, the same instance on every render, recording <c>ref:<paramref name="name"/></c> on attach
         /// and <c>ref-x:<paramref name="name"/></c> when the cleanup it returns runs.
         /// </summary>
-        public static Func<VisualElement, Action> UseRefCallback(string name)
+        /// <typeparam name="TInstance">The host instance the renderer hands a ref callback.</typeparam>
+        public static Func<TInstance, Action> UseRefCallback<TInstance>(string name)
         {
             var log = UseLog();
-            return Hooks.UseCallback<Func<VisualElement, Action>>(
+            return Hooks.UseCallback<Func<TInstance, Action>>(
                 _ => Record(log, "ref", name), Array.Empty<object>());
         }
 
