@@ -2145,6 +2145,8 @@ namespace Velvet
         // Reset when the drain runs.
         public bool PassiveEffectDrainScheduled { get; set; }
 
+        internal System.Action? PassiveEffectDrainCallback;
+
         // Staged fibers the passive drain took out of PendingPassiveEffectFibers because a parked time-sliced
         // pass rendered them (FiberEffects.HoldWhileParked). Their EffectFlushScheduled stays set, so nothing
         // stages them again until FiberEffects.StageReleasedPassiveEffects does.

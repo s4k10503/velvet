@@ -1101,7 +1101,7 @@ namespace Velvet
             {
                 if (target[i].Context == context) return;
             }
-            target.Add(new ContextDependency { Context = context });
+            target.Add(new ContextDependency(context));
         }
 
         internal bool HasDependencyOn(object context)
@@ -1221,8 +1221,10 @@ namespace Velvet
     /// Subscription entry pushed onto ComponentFiber.Dependencies on a UseContext call.
     /// Used to determine whether the entry matches a given context when propagating Provider value changes to consumers.
     /// </summary>
-    internal sealed class ContextDependency
+    internal readonly struct ContextDependency
     {
-        public object? Context { get; set; }
+        internal ContextDependency(object context) => Context = context;
+
+        public object Context { get; }
     }
 }

@@ -158,6 +158,53 @@ namespace Velvet
 
         #endregion
 
+        #region FiberEffects — a layout commit's entries and the post-order walk of a commit or a passive drain
+
+        private readonly ClearablePool<List<(ComponentFiber Fiber, bool IsMount)>> _commitEntryListPool = new(l => l.Clear());
+        private readonly ClearablePool<List<(ComponentFiber Fiber, bool IsMount, Reconciler? Pass)>> _deferredEntryListPool = new(l => l.Clear());
+
+        public List<(ComponentFiber Fiber, bool IsMount)> RentCommitEntryList() => _commitEntryListPool.Rent();
+        public void ReturnCommitEntryList(List<(ComponentFiber Fiber, bool IsMount)> list) => _commitEntryListPool.Return(list);
+
+        public List<(ComponentFiber Fiber, bool IsMount, Reconciler? Pass)> RentDeferredEntryList() => _deferredEntryListPool.Rent();
+        public void ReturnDeferredEntryList(List<(ComponentFiber Fiber, bool IsMount, Reconciler? Pass)> list) => _deferredEntryListPool.Return(list);
+
+        internal PostOrderBuffers<(ComponentFiber Fiber, bool IsMount)> CommitEntryPostOrder { get; } = new();
+        internal PostOrderBuffers<ComponentFiber> FiberPostOrder { get; } = new();
+
+        internal sealed class PostOrderBuffers<T>
+        {
+            internal readonly List<T> Roots = new();
+            internal readonly Stack<(int ChildIndex, T Entry)> Work = new();
+            internal readonly Dictionary<ComponentFiber, List<T>> ChildrenByParent = new();
+            private readonly Stack<List<T>> _spareChildLists = new();
+
+            internal List<T> RentChildList() => _spareChildLists.Count > 0 ? _spareChildLists.Pop() : new List<T>();
+
+            internal void Clear()
+            {
+                Roots.Clear();
+                Work.Clear();
+                foreach (var children in ChildrenByParent.Values)
+                {
+                    children.Clear();
+                    _spareChildLists.Push(children);
+                }
+                ChildrenByParent.Clear();
+            }
+        }
+
+        #endregion
+
+        #region FiberContextSpine — the Providers a spine pushed, until it unwinds
+
+        private readonly ClearablePool<List<ContextProviderNode>> _providerNodeListPool = new(l => l.Clear());
+
+        public List<ContextProviderNode> RentProviderNodeList() => _providerNodeListPool.Rent();
+        public void ReturnProviderNodeList(List<ContextProviderNode> list) => _providerNodeListPool.Return(list);
+
+        #endregion
+
         #region ChildReconciler — for duplicate-key orphans (HashSet<int>)
 
         private readonly ClearablePool<HashSet<int>> _orphanedIndexSetPool = new(s => s.Clear());

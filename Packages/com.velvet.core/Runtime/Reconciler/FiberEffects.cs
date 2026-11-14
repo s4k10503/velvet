@@ -49,7 +49,21 @@ namespace Velvet
                 ctx.HeldRowLayoutEffects.Peek().Add((fiber, mountDoubleInvoke));
                 return;
             }
-            CommitLayoutBatch(ctx, fiber, new List<(ComponentFiber Fiber, bool IsMount)>(1) { (fiber, mountDoubleInvoke) });
+            CommitAsRoot(ctx, fiber, mountDoubleInvoke);
+        }
+
+        private static void CommitAsRoot(ReconcilerContext ctx, ComponentFiber fiber, bool isMount)
+        {
+            var roots = ctx.BufferPool.RentCommitEntryList();
+            roots.Add((fiber, isMount));
+            try
+            {
+                CommitLayoutBatch(ctx, fiber, roots);
+            }
+            finally
+            {
+                ctx.BufferPool.ReturnCommitEntryList(roots);
+            }
         }
 
         // Runs the effect commits deferred during a batch drain (see CommitSubtreeEffects) after every fiber in
@@ -73,7 +87,7 @@ namespace Velvet
             for (var i = 0; i < held.Count; i++)
             {
                 var (fiber, isMount) = held[i];
-                CommitLayoutBatch(ctx, fiber, new List<(ComponentFiber Fiber, bool IsMount)>(1) { (fiber, isMount) });
+                CommitAsRoot(ctx, fiber, isMount);
             }
         }
 
@@ -81,9 +95,9 @@ namespace Velvet
         {
             // Clear in a finally so a throwing effect (e.g. an imperative-handle factory, which is unguarded
             // user code) does not leave entries to accumulate / re-run on the next drain.
+            var roots = ctx.BufferPool.RentCommitEntryList();
             try
             {
-                var roots = new List<(ComponentFiber Fiber, bool IsMount)>(pending.Count);
                 for (var i = 0; i < pending.Count; i++)
                 {
                     if (pending[i].fiber.IsMounted) roots.Add(pending[i]);
@@ -93,6 +107,7 @@ namespace Velvet
             finally
             {
                 pending.Clear();
+                ctx.BufferPool.ReturnCommitEntryList(roots);
             }
             CommitStrandedLayoutWork(ctx);
         }
@@ -276,9 +291,10 @@ namespace Velvet
             // A catch during this commit's own setups showed a fallback this commit has not laid out, so its
             // report waits for the follow-up commit that does.
             var reportCutoff = ctx.NextCaughtErrorSequence;
+            List<(ComponentFiber Fiber, bool IsMount)>? ordered = null;
             try
             {
-                var ordered = TakeBatch(ctx, scope, roots);
+                ordered = TakeBatch(ctx, scope, roots);
                 // The pass that rides this commit left it the cleanups of the refs it replaces, which run ahead of
                 // every cleanup of the layout effects and so of every setup.
                 ctx.DetachReplacedRefs(scope);
@@ -303,6 +319,7 @@ namespace Velvet
             {
                 ctx.EffectCommitDepth--;
                 StageReleasedPassiveEffects(ctx);
+                if (ordered != null) ctx.BufferPool.ReturnCommitEntryList(ordered);
             }
         }
 
@@ -368,9 +385,10 @@ namespace Velvet
             ReconcilerContext ctx, ComponentFiber? scope, List<(ComponentFiber Fiber, bool IsMount)> roots)
         {
             var stack = ctx.DeferredInlineLayoutEffectFibers;
-            var popped = new List<(ComponentFiber Fiber, bool IsMount, Reconciler? Pass)>(stack.Count);
+            var bufferPool = ctx.BufferPool;
+            var popped = bufferPool.RentDeferredEntryList();
             while (stack.Count > 0) popped.Add(stack.Pop());
-            var taken = new List<(ComponentFiber Fiber, bool IsMount)>(popped.Count);
+            var taken = bufferPool.RentCommitEntryList();
             for (var i = popped.Count - 1; i >= 0; i--)
             {
                 var entry = popped[i];
@@ -383,7 +401,7 @@ namespace Velvet
                 if (entry.Fiber.LayoutEffectsHidden) continue;
                 // A fiber this commit takes as a root has its own render committed here, so an entry a parked pass left
                 // for it no longer holds its passive work back.
-                if (IsHeld(entry.Pass) && roots.Exists(root => ReferenceEquals(root.Fiber, entry.Fiber))) continue;
+                if (IsHeld(entry.Pass) && HoldsFiber(roots, entry.Fiber)) continue;
                 if (!IsHeld(entry.Pass) && IsInScope(entry.Fiber, scope))
                 {
                     taken.Add((entry.Fiber, entry.IsMount));
@@ -395,9 +413,8 @@ namespace Velvet
             // Dedup: the same fiber pushed twice (MountInline + a follow-up SubsumeFiberIntoThisPass bundled in
             // the same reconcile pass) must drain ONCE. Walk in reverse so the last entry wins — Mount is
             // architecturally first, so IsMount=false (the update) prevails. A root already pushed keeps its entry.
-            var bufferPool = ctx.BufferPool;
             var pushedSet = bufferPool.RentFiberSet();
-            var deduped = new List<(ComponentFiber Fiber, bool IsMount)>(taken.Count + roots.Count);
+            var deduped = bufferPool.RentCommitEntryList();
             for (var i = taken.Count - 1; i >= 0; i--)
             {
                 if (pushedSet.Add(taken[i].Fiber)) deduped.Add(taken[i]);
@@ -426,10 +443,23 @@ namespace Velvet
 
             PlacePortalChildrenAtTheirPortals(ctx, deduped);
 
-            var ordered = new List<(ComponentFiber Fiber, bool IsMount)>(deduped.Count);
-            OrderByNearestStagedAncestorPostOrder(deduped, pushedSet, static e => e.Fiber, ordered);
+            var ordered = bufferPool.RentCommitEntryList();
+            OrderByNearestStagedAncestorPostOrder(
+                deduped, pushedSet, static e => e.Fiber, ordered, bufferPool.CommitEntryPostOrder);
             bufferPool.ReturnFiberSet(pushedSet);
+            bufferPool.ReturnDeferredEntryList(popped);
+            bufferPool.ReturnCommitEntryList(taken);
+            bufferPool.ReturnCommitEntryList(deduped);
             return ordered;
+        }
+
+        private static bool HoldsFiber(List<(ComponentFiber Fiber, bool IsMount)> entries, ComponentFiber fiber)
+        {
+            for (var i = 0; i < entries.Count; i++)
+            {
+                if (ReferenceEquals(entries[i].Fiber, fiber)) return true;
+            }
+            return false;
         }
 
         // A Portal's children mount once the walk that rendered the Portal has ended
@@ -607,7 +637,7 @@ namespace Velvet
             if (context == null)
             {
                 // No shared context (defensive): fall back to the standalone single-fiber drain.
-                fiber.MountPoint.schedule.Execute(() => PanelSchedulerCallback.Run(fiber.MountPoint, fiber, RunEffects));
+                ScheduleStandaloneEffectRun(fiber.MountPoint, fiber);
                 return;
             }
             if (context.PendingPassiveEffectFiberSet.Add(fiber))
@@ -616,6 +646,11 @@ namespace Velvet
             }
             ArmPassiveDrain(context);
         }
+
+        // Kept out of ScheduleRunEffects, whose every call would otherwise build this closure
+        // (RenderCommitAllocationTests).
+        private static void ScheduleStandaloneEffectRun(VisualElement mountPoint, ComponentFiber fiber)
+            => mountPoint.schedule.Execute(() => PanelSchedulerCallback.Run(fiber.MountPoint, fiber, RunEffects));
 
         private static void ArmPassiveDrain(ReconcilerContext context)
         {
@@ -631,8 +666,14 @@ namespace Velvet
             // any fiber stages — so this return is never on it — is held by PassiveEffectDrainArmingTests.
             if (anchor == null) return;
             context.PassiveEffectDrainScheduled = true;
-            anchor.schedule.Execute(() => PanelSchedulerCallback.Run(anchor, context, ctx => DrainPassiveEffects(ctx)));
+            anchor.schedule.Execute(context.PassiveEffectDrainCallback ??= PassiveEffectDrainCallback(context));
         }
+
+        // Reads the anchor as the drain runs rather than as it is armed, which is the same element: SetAnchor runs
+        // once per context.
+        private static Action PassiveEffectDrainCallback(ReconcilerContext context)
+            => () => PanelSchedulerCallback.Run(
+                context.BatchScheduler.Anchor, context, static ctx => DrainPassiveEffects(ctx));
 
         // An exit with nothing to animate, whose child the pass that just ended removed, settles in the
         // passive-effect flush, after the effects that flush runs, as Framer Motion settles it after that commit.
@@ -692,13 +733,26 @@ namespace Velvet
 
         private static void RunPassivePhases(ReconcilerContext context)
         {
-            var ordered = OrderFibersPostOrder(context.PendingPassiveEffectFibers);
+            var ordered = context.BufferPool.RentFiberList();
+            try
+            {
+                RunPassivePhases(context, ordered);
+            }
+            finally
+            {
+                context.BufferPool.ReturnFiberList(ordered);
+            }
+        }
+
+        private static void RunPassivePhases(ReconcilerContext context, List<ComponentFiber> ordered)
+        {
+            OrderFibersPostOrder(context, context.PendingPassiveEffectFibers, ordered);
             context.PendingPassiveEffectFibers.Clear();
             context.PendingPassiveEffectFiberSet.Clear();
             // A tree a Suspense hides runs none of the passive work its render queued, as React commits none of
             // that render; ShowLayoutEffects schedules what is held for the reveal.
             ordered.RemoveAll(HoldWhileHidden);
-            ordered.RemoveAll(candidate => HoldWhileParked(context, candidate));
+            RemoveHeldWhileParked(context, ordered);
 
             // Phase 1: all cleanups, post-order. Clear EffectFlushScheduled here so a cleanup that
             // re-stages the same fiber re-arms scheduling cleanly.
@@ -737,6 +791,18 @@ namespace Velvet
             if (!fiber.LayoutEffectsHidden) return false;
             fiber.EffectFlushScheduled = false;
             return true;
+        }
+
+        private static void RemoveHeldWhileParked(ReconcilerContext context, List<ComponentFiber> ordered)
+        {
+            var kept = 0;
+            for (var i = 0; i < ordered.Count; i++)
+            {
+                var fiber = ordered[i];
+                if (HoldWhileParked(context, fiber)) continue;
+                ordered[kept++] = fiber;
+            }
+            ordered.RemoveRange(kept, ordered.Count - kept);
         }
 
         // The passive work of a fiber a parked pass rendered waits with that fiber's layout work on the deferred
@@ -794,12 +860,14 @@ namespace Velvet
         // TakeBatch performs for layout effects. A fiber whose
         // nearest staged ancestor is present is emitted before that ancestor; staged roots keep their
         // relative staging order (siblings are staged left-to-right during reconcile).
-        private static List<ComponentFiber> OrderFibersPostOrder(List<ComponentFiber> staged)
+        private static void OrderFibersPostOrder(
+            ReconcilerContext context, List<ComponentFiber> staged, List<ComponentFiber> result)
         {
-            var stagedSet = new HashSet<ComponentFiber>(staged);
-            var result = new List<ComponentFiber>(staged.Count);
-            OrderByNearestStagedAncestorPostOrder(staged, stagedSet, static f => f, result);
-            return result;
+            var bufferPool = context.BufferPool;
+            var stagedSet = bufferPool.RentFiberSet();
+            for (var i = 0; i < staged.Count; i++) stagedSet.Add(staged[i]);
+            OrderByNearestStagedAncestorPostOrder(staged, stagedSet, static f => f, result, bufferPool.FiberPostOrder);
+            bufferPool.ReturnFiberSet(stagedSet);
         }
 
         // The one post-order-by-nearest-staged-ancestor implementation shared by the layout-effect drain
@@ -809,52 +877,65 @@ namespace Velvet
         // DFS over the resulting forest emits children before their parent into result, roots in their
         // relative staging order. Iterative (stack-based, recursion-free) to prevent .NET stack overflow on
         // deep inline-mount chains (1k+ nested Provider / Memo subtrees); the same iterative pattern that
-        // FiberTreeTraversal.Visit documented away. fiberOf must be a compiler-cached static lambda so this
-        // stays allocation-free per call beyond the grouping collections themselves.
+        // FiberTreeTraversal.Visit documented away. fiberOf must be a compiler-cached static lambda. The grouping
+        // collections are one set per element type on the context rather than rented, since nothing this walk
+        // calls can start another walk.
         private static void OrderByNearestStagedAncestorPostOrder<T>(
-            List<T> staged, HashSet<ComponentFiber> stagedSet, Func<T, ComponentFiber> fiberOf, List<T> result)
+            List<T> staged, HashSet<ComponentFiber> stagedSet, Func<T, ComponentFiber> fiberOf, List<T> result,
+            ReconcilerBufferPool.PostOrderBuffers<T> buffers)
         {
-            Dictionary<ComponentFiber, List<T>>? childrenByParent = null;
-            var roots = new List<T>();
-            for (var i = 0; i < staged.Count; i++)
+            // A lone entry has no staged ancestor to be grouped under.
+            if (staged.Count == 1)
             {
-                var entry = staged[i];
-                var ancestor = fiberOf(entry).Parent;
-                while (ancestor != null && !stagedSet.Contains(ancestor)) ancestor = ancestor.Parent;
-                if (ancestor == null)
+                result.Add(staged[0]);
+                return;
+            }
+            var childrenByParent = buffers.ChildrenByParent;
+            var roots = buffers.Roots;
+            var workStack = buffers.Work;
+            try
+            {
+                for (var i = 0; i < staged.Count; i++)
                 {
-                    roots.Add(entry);
-                }
-                else
-                {
-                    childrenByParent ??= new Dictionary<ComponentFiber, List<T>>();
-                    if (!childrenByParent.TryGetValue(ancestor, out var list))
+                    var entry = staged[i];
+                    var ancestor = fiberOf(entry).Parent;
+                    while (ancestor != null && !stagedSet.Contains(ancestor)) ancestor = ancestor.Parent;
+                    if (ancestor == null)
                     {
-                        list = new List<T>();
-                        childrenByParent[ancestor] = list;
+                        roots.Add(entry);
                     }
-                    list.Add(entry);
+                    else
+                    {
+                        if (!childrenByParent.TryGetValue(ancestor, out var list))
+                        {
+                            list = buffers.RentChildList();
+                            childrenByParent[ancestor] = list;
+                        }
+                        list.Add(entry);
+                    }
+                }
+
+                for (var r = 0; r < roots.Count; r++)
+                {
+                    workStack.Push((0, roots[r]));
+                    while (workStack.Count > 0)
+                    {
+                        var (childIndex, entry) = workStack.Pop();
+                        if (childrenByParent.TryGetValue(fiberOf(entry), out var children)
+                            && childIndex < children.Count)
+                        {
+                            // Resume the parent after this child's subtree completes, then descend.
+                            workStack.Push((childIndex + 1, entry));
+                            workStack.Push((0, children[childIndex]));
+                            continue;
+                        }
+                        result.Add(entry);
+                    }
                 }
             }
-
-            var workStack = new Stack<(int ChildIndex, T Entry)>();
-            for (var r = 0; r < roots.Count; r++)
+            finally
             {
-                workStack.Push((0, roots[r]));
-                while (workStack.Count > 0)
-                {
-                    var (childIndex, entry) = workStack.Pop();
-                    if (childrenByParent != null
-                        && childrenByParent.TryGetValue(fiberOf(entry), out var children)
-                        && childIndex < children.Count)
-                    {
-                        // Resume the parent after this child's subtree completes, then descend.
-                        workStack.Push((childIndex + 1, entry));
-                        workStack.Push((0, children[childIndex]));
-                        continue;
-                    }
-                    result.Add(entry);
-                }
+                buffers.Clear();
             }
         }
 

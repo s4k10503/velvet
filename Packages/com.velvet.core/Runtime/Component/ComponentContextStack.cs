@@ -13,6 +13,8 @@ namespace Velvet
     {
         private Dictionary<object, Stack<object>> _stacks = new();
 
+        private readonly Stack<Stack<object>> _emptied = new();
+
         public void Push<T>(ComponentContext<T> context, T? value) => PushRaw(context, value);
 
         public void Pop<T>(ComponentContext<T> context) => PopRaw(context);
@@ -63,7 +65,7 @@ namespace Velvet
         {
             if (!_stacks.TryGetValue(key, out var stack))
             {
-                stack = new Stack<object>();
+                stack = _emptied.Count > 0 ? _emptied.Pop() : new Stack<object>();
                 _stacks[key] = stack;
             }
             stack.Push(value!);
@@ -79,6 +81,7 @@ namespace Velvet
             if (stack.Count == 0)
             {
                 _stacks.Remove(key);
+                _emptied.Push(stack);
             }
         }
     }

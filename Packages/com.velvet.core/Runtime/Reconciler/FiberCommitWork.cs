@@ -504,8 +504,7 @@ namespace Velvet
                 // Registered so retirement sweeps elsewhere treat this parked baseline as live: the
                 // paused pass keeps diffing against it across frames.
                 reconciler.Context.ParkedBaselineFibers.Add(fiber);
-                fiber.MountPoint?.schedule.Execute(
-                    () => PanelSchedulerCallback.Run(fiber.MountPoint, fiber, FiberWorkLoop.ContinueReconcile));
+                ScheduleParkedPassResume(fiber);
             }
             else
             {
@@ -514,6 +513,12 @@ namespace Velvet
 
             ReturnSupersededParkedBaseline(fiber, prevPendingOldTree, oldTree);
         }
+
+        // Kept out of ReturnOldTreeAfterReconcile, whose every call would otherwise build this closure
+        // (RenderCommitAllocationTests).
+        private static void ScheduleParkedPassResume(ComponentFiber fiber)
+            => fiber.MountPoint?.schedule.Execute(
+                () => PanelSchedulerCallback.Run(fiber.MountPoint, fiber, FiberWorkLoop.ContinueReconcile));
 
         // Retires a superseded parked baseline. The identity guard encodes an aliasing rule shared
         // by every caller (the normal path here, plus the abort and exception paths in

@@ -33,13 +33,16 @@ namespace Velvet
         // pop). Always pushed before any _pushed Provider (the Portal edge is the spine's first), so per
         // context key the raw base sits under the Providers and unwinds last.
         private readonly List<object>? _rawPushedKeys;
+        private readonly ReconcilerBufferPool _bufferPool;
 
         private FiberContextSpine(
-            ComponentContextStack stack, List<ContextProviderNode> pushed, List<object>? rawPushedKeys)
+            ComponentContextStack stack, List<ContextProviderNode> pushed, List<object>? rawPushedKeys,
+            ReconcilerBufferPool bufferPool)
         {
             _stack = stack;
             _pushed = pushed;
             _rawPushedKeys = rawPushedKeys;
+            _bufferPool = bufferPool;
         }
 
         // What every step of one spine edge's walk threads unchanged: the edge being searched, the cursor and
@@ -85,6 +88,16 @@ namespace Velvet
             private int _scope;
             private int _nextScope = 1;
 
+            // Puts back what a new instance holds. One instance serves every Push, since none starts while
+            // another walks.
+            internal void Reset()
+            {
+                _counts.Clear();
+                _scopes.Clear();
+                _scope = 0;
+                _nextScope = 1;
+            }
+
             internal int Claim(long slotPath, string key, object identity)
             {
                 var id = (_scope, slotPath, key, identity);
@@ -115,20 +128,21 @@ namespace Velvet
 
             // Build the spine root -> target's parent. Each entry contributes the
             // Providers enclosing the NEXT entry down (or the target at the deepest entry).
-            List<ComponentFiber>? spine = null;
+            var bufferPool = ctx.BufferPool;
+            var spine = bufferPool.RentFiberList();
             for (var f = target.Parent; f != null; f = f.Parent)
             {
-                (spine ??= new List<ComponentFiber>()).Add(f);
+                spine.Add(f);
             }
-            if (spine == null) return default;
             spine.Reverse();
 
             var stack = ctx.ComponentContextStack;
-            var pushed = new List<ContextProviderNode>();
+            var pushed = bufferPool.RentProviderNodeList();
             List<object>? rawPushedKeys = null;
             var registry = ctx.ComponentRegistry;
             var memoCache = ctx.FiberMemoCache;
-            var claims = new InlineKeyClaims();
+            var claims = s_claims;
+            claims.Reset();
 
             // For each spine edge (ancestor -> child), re-push the Providers in the ancestor's output
             // that enclose `child`. The deepest ancestor encloses `target` itself.
@@ -217,8 +231,12 @@ namespace Velvet
                 PushEnclosingProviders(tree, FiberKeying.WalkRoot, in walk);
             }
 
-            return new FiberContextSpine(stack, pushed, rawPushedKeys);
+            bufferPool.ReturnFiberList(spine);
+            claims.Reset();
+            return new FiberContextSpine(stack, pushed, rawPushedKeys, bufferPool);
         }
+
+        private static readonly InlineKeyClaims s_claims = new();
 
         // The output of ancestor's that a keyed walk to child reads. Where child was last reached from the baseline of
         // ancestor's parked pass, that pass has not reached child yet, and the Providers around child are still the
@@ -240,6 +258,7 @@ namespace Velvet
                 {
                     _pushed[i].PopContext(_stack);
                 }
+                _bufferPool.ReturnProviderNodeList(_pushed);
             }
             // Pop the Portal snapshot base last: it was raw-pushed before every Provider, so per context key
             // it sits at the bottom of the stack and must come off after the Providers layered above it.
