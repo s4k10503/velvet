@@ -36,9 +36,9 @@ def test_name(fixture, method):
     return "System.Void Velvet.Tests.{}::{}()".format(fixture, method)
 
 
-def record(test, points):
-    """One case's OpenCover file. `points` is [(source, line, visits)]; `test` None writes a file that
-    tracks no test, the shape a run without generateTestReferences writes."""
+def record(test, points, module="Velvet"):
+    """One case's OpenCover file, of one assembly `module`. `points` is [(source, line, visits)]; `test`
+    None writes a file that tracks no test, the shape a run without generateTestReferences writes."""
     sources = sorted({source for source, _, _ in points})
     uids = {source: uid for uid, source in enumerate(sources, start=1)}
     files = "".join('        <File uid="{}" fullPath="{}" />\n'.format(uids[source], source)
@@ -69,9 +69,9 @@ def record(test, points):
     return ('<?xml version="1.0" encoding="utf-8"?>\n'
             '<CoverageSession xmlns:xsd="http://www.w3.org/2001/XMLSchema" '
             'xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" Version="0.0.0.0">\n'
-            "  <Modules>\n    <Module>\n      <ModuleName>Velvet</ModuleName>\n"
+            "  <Modules>\n    <Module>\n      <ModuleName>{}</ModuleName>\n"
             "      <Files>\n{}      </Files>\n      <Classes>\n{}      </Classes>\n{}"
-            "    </Module>\n  </Modules>\n</CoverageSession>\n").format(files, methods, tracked)
+            "    </Module>\n  </Modules>\n</CoverageSession>\n").format(module, files, methods, tracked)
 
 
 def run(records, *options, packed=False, extra=None):
@@ -148,6 +148,28 @@ class UniqueCoverageTests(unittest.TestCase):
 
         # Assert
         self.assertIn("pruned: 1 line(s) only it reaches", printed)
+
+    def test_Given_AGroupedCaseThatReachedNoLine_When_Reported_Then_TheGroupIsListedAsReachingNoLineAlone(self):
+        # Arrange — the record names the case and holds no visited line.
+        records = [record(test_name("ATests", "Given_Pruned"), [(A, 10, 0)]),
+                   record(test_name("BTests", "Given_Y"), [(A, 20, 1)])]
+
+        # Act
+        _, printed = run(records, "--group", "pruned=::Given_Pruned")
+
+        # Assert
+        self.assertIn("  pruned\n", printed)
+
+    def test_Given_RecordsOfTwoAssemblies_When_Reported_Then_OnlyTheOneHoldingAReachedLineIsNamed(self):
+        # Arrange — the weaver's assembly in a record whose case ran none of its lines.
+        records = [record(test_name("ATests", "Given_X"), [(A, 10, 1)]),
+                   record(test_name("BTests", "Given_Y"), [(A, 20, 0)], module="Unity.Velvet.CodeGen")]
+
+        # Act
+        _, printed = run(records)
+
+        # Assert
+        self.assertIn("\nlines reached in: Velvet\n", printed)
 
     def test_Given_AGroupWhosePatternFindsNoTest_When_Reported_Then_TheReadingIsRefused(self):
         # Arrange — a misspelt pattern would otherwise leave the group out of the report without a word.

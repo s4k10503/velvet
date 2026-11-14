@@ -197,20 +197,38 @@ class SplitJobTests(unittest.TestCase):
 # What a GitHub-hosted ubuntu-latest runner holds, which a limit on the editor's container is meant to
 # stay under: the runner's own agent and the daemon share the rest.
 RUNNER_MEMORY_GIB = 16
-SUITE_WORKFLOWS = ("mutation.yml", "kill-set.yml", "per-case-coverage.yml")
-SUITE_SCRIPTS = ("ci_mutation_shard.py", "per_case_coverage.py")
+EDITOR_IMAGE = "unityci/editor:"
+# A floor under the suite launches read rather than their count, since a reading that found none holds
+# every limit.
+SUITE_LAUNCH_FLOOR = 4
 
 
-def suite_launches(name):
-    """The flags ahead of the image's command in each `docker run` of workflow `name` that runs one of
-    SUITE_SCRIPTS, and the workflow's text."""
-    text = (REPO_ROOT / ".github/workflows" / name).read_text()
-    launches = []
-    for chunk in text.split("docker run ")[1:]:
-        found = [chunk.index(script) for script in SUITE_SCRIPTS if script in chunk]
-        if found:
-            launches.append(chunk[:min(found)])
-    return launches, text
+def docker_commands(text):
+    """Each `docker run` command a workflow's text spells, its continuation lines joined."""
+    lines = text.splitlines()
+    for index, line in enumerate(lines):
+        if line.lstrip().startswith("#") or "docker run " not in line:
+            continue
+        parts, at = [line.split("docker run ", 1)[1]], index
+        while parts[-1].rstrip().endswith("\\") and at + 1 < len(lines):
+            at += 1
+            parts.append(lines[at])
+        yield " ".join(part.strip().rstrip("\\").strip() for part in parts)
+
+
+def suite_launches():
+    """(workflow text, the flags ahead of the image) for each `docker run` of the editor image in any
+    workflow that runs a suite: every one but a launch handing licensed_editor.py an editor command line
+    without -runTests, which runs no case."""
+    found = []
+    for path in sorted(item for pattern in ("*.yml", "*.yaml")
+                       for item in (REPO_ROOT / ".github/workflows").glob(pattern)):
+        text = path.read_text()
+        for command in docker_commands(text):
+            flags, image, rest = command.partition(EDITOR_IMAGE)
+            if image and not ("licensed_editor.py" in rest and "-runTests" not in rest):
+                found.append((text, flags))
+    return found
 
 
 def flag_value(launch, flag):
@@ -219,53 +237,60 @@ def flag_value(launch, flag):
     return found.group(1) if found else None
 
 
+def memory_gibibytes(text, flags):
+    """The --memory a launch is given, resolved through the workflow's env, in GiB, or None."""
+    value = flag_value(flags, "--memory") or ""
+    if value.startswith("$"):
+        declared = re.search(r"^  {}: \"(\w+)\"".format(re.escape(value[1:])), text, re.MULTILINE)
+        value = declared.group(1) if declared else ""
+    found = re.fullmatch(r"([0-9]+)g", value)
+    return int(found.group(1)) if found else None
+
+
 class RunnerLimitTests(unittest.TestCase):
     """What an editor container running a suite may take of the runner it shares with the job's own agent."""
 
-    def limits(self, flag):
-        return [flag_value(launch, flag) for name in SUITE_WORKFLOWS
-                for launch in suite_launches(name)[0]]
+    def offending(self, holds):
+        """The launches `holds` is false of, or what was read where it is under the floor."""
+        launches = suite_launches()
+        if len(launches) < SUITE_LAUNCH_FLOOR:
+            return ["{} suite launch(es) read".format(len(launches))]
+        return [flags for text, flags in launches if not holds(text, flags)]
 
     def test_Given_TheSuiteLaunches_When_TheirSwapIsRead_Then_EachIsAsLargeAsItsMemory(self):
         # Arrange — a swap beyond the memory lets the container thrash the runner before it is killed.
-        memory = self.limits("--memory")
+        def holds(_, flags):
+            swap = flag_value(flags, "--memory-swap")
+            return swap is not None and swap == flag_value(flags, "--memory")
 
         # Act
-        swap = self.limits("--memory-swap")
-        equal = [held is not None and held == allowed for held, allowed in zip(swap, memory)]
+        offending = self.offending(holds)
 
-        # Assert — the two measuring steps of mutation.yml, the one of kill-set.yml and the suite step of
-        # per-case-coverage.yml.
-        self.assertEqual(equal, [True] * 4)
+        # Assert
+        self.assertEqual(offending, [])
 
     def test_Given_TheSuiteLaunches_When_TheirProcessLimitIsRead_Then_EachIsBounded(self):
         # Arrange
-        launches = [launch for name in SUITE_WORKFLOWS for launch in suite_launches(name)[0]]
+        def holds(_, flags):
+            return (flag_value(flags, "--pids-limit") or "").isdigit()
 
         # Act
-        bounded = [(flag_value(launch, "--pids-limit") or "").isdigit() for launch in launches]
+        offending = self.offending(holds)
 
         # Assert
-        self.assertEqual(bounded, [True] * 4)
+        self.assertEqual(offending, [])
 
     def test_Given_TheSuiteLaunches_When_TheirMemoryIsResolved_Then_EachIsBelowTheRunners(self):
         # Arrange
-        gibibytes = []
-        for name in SUITE_WORKFLOWS:
-            launches, text = suite_launches(name)
-            for launch in launches:
-                value = flag_value(launch, "--memory") or ""
-                if value.startswith("$"):
-                    declared = re.search(r"^  {}: \"(\w+)\"".format(re.escape(value[1:])), text, re.MULTILINE)
-                    value = declared.group(1) if declared else ""
-                found = re.fullmatch(r"([0-9]+)g", value)
-                gibibytes.append(int(found.group(1)) if found else None)
+        def holds(text, flags):
+            size = memory_gibibytes(text, flags)
+            return size is not None and 0 < size < RUNNER_MEMORY_GIB
 
         # Act
-        below = [size is not None and 0 < size < RUNNER_MEMORY_GIB for size in gibibytes]
+        offending = self.offending(holds)
 
         # Assert
-        self.assertEqual(below, [True] * 4)
+        self.assertEqual(offending, [])
 
 
 class ShardPlatformTests(unittest.TestCase):

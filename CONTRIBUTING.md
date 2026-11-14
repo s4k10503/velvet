@@ -613,8 +613,9 @@ gh workflow run per-case-coverage.yml --ref main -f ref=main \
   -f group='pruned=^Velvet\.Tests\.FooTests::(Given_A|Given_B)_'
 ```
 
-A group listed among those reaching no line alone reaches nothing a case outside it does not. A group
-with lines of its own leaves them unreached unless the head adds a case that reaches them. Say in the pull request body the run's link, the `group` pattern and the report's line for it,
+A group listed among those reaching no line alone reaches nothing, in the assemblies the report's
+second line names, that a case outside it does not. A group with lines of its own leaves them
+unreached unless the head adds a case that reaches them. Say in the pull request body the run's link, the `group` pattern and the report's line for it,
 beside the deleted cases. What the script counts as a case's line, and what no case's record holds, is
 its docstring's to say.
 

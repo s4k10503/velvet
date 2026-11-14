@@ -16,7 +16,12 @@ by the test method its reference names, `Class::Method`, which makes every row o
 method one test, and its fixture is the class that declares the method: a case a fixture inherits from
 a base class is the base's. `--group LABEL=REGEX` takes each test whose `Class::Method` the pattern
 finds out of its fixture and into LABEL, and a test two patterns find goes to the first; that is the
-question a pruning asks of the cases it removes, all of them gone together.
+question a pruning asks of the cases it removes, all of them gone together. A record naming a test that
+reached no line still puts the test in the report, among those reaching no line alone.
+
+The report's second line names the assemblies holding a line some record reaches. An assembly the run
+did not ask for is in no record, so a group alone in reaching one of its lines reads as reaching
+nothing; `per_case_coverage.py` decides which assemblies a run asks for.
 
 A record holds only what ran between its own case's start and finish, so what a fixture's
 `[OneTimeSetUp]` reaches before its first case starts is in none. Nor does a record say what a case
@@ -28,8 +33,8 @@ Paths are printed relative to `--root`, which defaults to where the workflow mou
 editor's container.
 
 Exits 0 with the report, and 2 where no reading can be taken: an input that is neither a file nor a
-directory, inputs holding no OpenCover file, a file that is not one, no test reference in any file,
-or a `--group` that is not LABEL=REGEX or took no test.
+directory, inputs holding no OpenCover file, a file that is not one, no file naming a test, or a
+`--group` that is not LABEL=REGEX or took no test.
 """
 
 import argparse
@@ -82,7 +87,8 @@ def coverage_files(inputs):
 
 
 def references(path):
-    """{(class, method): {(source, line)}}: the lines each test reference in one OpenCover file ran."""
+    """({(class, method): {(source, line)}}, assemblies): the lines each test one OpenCover file names
+    ran, a test that ran none kept with no line, and the assemblies holding a line one of them ran."""
     opener = gzip.open if path.name.endswith(".gz") else open
     try:
         with opener(str(path), "rb") as stream:
@@ -92,10 +98,12 @@ def references(path):
     if session.tag != "CoverageSession":
         raise Unreadable("{} is not an OpenCover file: its root is <{}>".format(path, session.tag))
 
-    found = {}
+    found, assemblies = {}, set()
     for module in session.iter("Module"):
         sources = {item.get("uid"): item.get("fullPath") for item in module.iter("File")}
         tests = {item.get("uid"): test_of(item.get("name", "")) for item in module.iter("TrackedMethod")}
+        for test in tests.values():
+            found.setdefault(test, set())
         for method in module.iter("Method"):
             declared = method.find("FileRef")
             fallback = declared.get("uid") if declared is not None else None
@@ -112,8 +120,9 @@ def references(path):
                     if test is None or source is None:
                         raise Unreadable(
                             "{} references a test or a file its module does not declare".format(path))
-                    found.setdefault(test, set()).add((source, line))
-    return found
+                    found[test].add((source, line))
+                    assemblies.add(module.findtext("ModuleName", ""))
+    return found, assemblies
 
 
 def parse_groups(options):
@@ -154,12 +163,14 @@ def ranges(lines):
 
 
 def read(paths, groups):
-    """(owner, labels, tests, records, unnamed): which group alone reaches each line, or SHARED; every
-    group a test fell into; every test; how many files held a test reference; how many held none."""
-    owner, labels, tests = {}, set(), set()
+    """(owner, labels, tests, records, unnamed, assemblies): which group alone reaches each line, or
+    SHARED; every group a test fell into; every test; how many files named a test and how many named
+    none; and the assemblies holding a line a test reached."""
+    owner, labels, tests, assemblies = {}, set(), set(), set()
     records = unnamed = 0
     for path in paths:
-        found = references(path)
+        found, reached = references(path)
+        assemblies |= reached
         if not found:
             unnamed += 1
             continue
@@ -171,7 +182,7 @@ def read(paths, groups):
             for line in lines:
                 if owner.setdefault(line, label) != label:
                     owner[line] = SHARED
-    return owner, labels, tests, records, unnamed
+    return owner, labels, tests, records, unnamed, assemblies
 
 
 def report(owner, labels, root):
@@ -202,9 +213,9 @@ def main(argv):
     try:
         groups = parse_groups(args.group)
         paths = coverage_files(args.inputs)
-        owner, labels, tests, records, unnamed = read(paths, groups)
+        owner, labels, tests, records, unnamed, assemblies = read(paths, groups)
         if not records:
-            raise Unreadable("no file among {} holds a test reference: was the run given "
+            raise Unreadable("no file among {} names a test: was the run given "
                              "generateTestReferences?".format(len(paths)))
         empty = [label for label, _ in groups if label not in labels]
         if empty:
@@ -213,8 +224,9 @@ def main(argv):
         print("cannot take this reading: {}".format(error), file=sys.stderr)
         return CANNOT_READ
 
-    print("read {} file(s): {} held test references, to {} test(s) in {} group(s); {} held none".format(
+    print("read {} file(s): {} named a test, to {} test(s) in {} group(s); {} named none".format(
         len(paths), records, len(tests), len(labels), unnamed))
+    print("lines reached in: {}".format(", ".join(sorted(assemblies)) or "no assembly"))
     for line in report(owner, labels, args.root):
         print(line)
     return 0

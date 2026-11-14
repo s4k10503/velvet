@@ -4,9 +4,10 @@ name: Per-case coverage
 # no other fixture's cases reach. CONTRIBUTING.md ▸ Checking that the tests can fail owns when to run
 # it and what a pull request says about the result.
 #
-# Dispatched by hand, never by an event, and no branch-protection rule requires it. It is dispatched onto
-# the default branch with the commit to measure as `ref`, so its run's head is the default branch's and
-# it is no run of a pull request's head for settle.py to wait on.
+# Dispatched by hand, never by an event, and no branch-protection rule requires it. It measures only when
+# dispatched onto the default branch, with the commit to measure as `ref`: a run on any other branch sits
+# on that branch's head, which settle.py waits on where it is a pull request's, so there the commit job
+# resolves no commit and both suites skip.
 on:
   workflow_dispatch:
     inputs:
@@ -21,8 +22,8 @@ on:
 permissions:
   contents: read
 
-# PYTHONDONTWRITEBYTECODE for the reason test.yml gives. EDITOR_MEMORY is the limit mutation.yml gives a
-# shard's editor container, and RunnerLimitTests holds the suite launch here to it as well.
+# PYTHONDONTWRITEBYTECODE for the reason test.yml gives. EDITOR_MEMORY is the suite launch's memory and
+# swap, which RunnerLimitTests holds as it holds every suite launch's.
 env:
   PYTHONDONTWRITEBYTECODE: "1"
   EDITOR_MEMORY: "12g"
@@ -60,7 +61,14 @@ jobs:
           ref: ${{ inputs.ref }}
 
       - id: sha
-        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+        env:
+          DEFAULT_REF: refs/heads/${{ github.event.repository.default_branch }}
+        run: |
+          if [ "$GITHUB_REF" = "$DEFAULT_REF" ]; then
+            echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::dispatched onto $GITHUB_REF, so nothing is measured: dispatch onto $DEFAULT_REF and name the commit as ref"
+          fi
 
   # ---------------------------------------------------------------------------
   # The suite in the editor image under scripts/ci/per_case_coverage.py, which gzips each case's file
@@ -69,7 +77,7 @@ jobs:
   suite:
     name: Per-case coverage (${{ matrix.testMode }})
     needs: [license-check, commit]
-    if: needs.license-check.outputs.has_license == 'true'
+    if: needs.license-check.outputs.has_license == 'true' && needs.commit.outputs.sha != ''
     runs-on: ubuntu-latest
     # Sized without a run to take a percentile of: the suite step has most of the job's bound, and the
     # rest is the checkout, the Library restore, the image pull and the uploads.

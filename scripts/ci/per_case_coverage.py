@@ -15,10 +15,14 @@ deleted file would make it skip a later case. That reading is of the writer in C
 `PINNED_PACKAGE`, and a project resolving another version is refused before any editor starts.
 
 `scripts/test_quality/unique_coverage.py` reads what `OUTPUT/per-case` holds. The editor's results and
-log go to `OUTPUT/results`, where the workflow's provenance checks read them.
+log go to `OUTPUT/results`, where the workflow's provenance checks read them. An `OUTPUT` that already
+holds anything is refused: the package clears its own folder's `.xml` files when a run starts and
+numbers from zero again, so a second run's files would take names whose copies the first run left, and
+be passed over.
 
-Exits with the editor's status; 1 where the editor passed and compressing failed; 2 where the project
-resolves a Code Coverage version other than `PINNED_PACKAGE`.
+Exits with the editor's status; 1 where the editor passed and compressing failed; 2, before any editor
+starts, where the project resolves a Code Coverage version other than `PINNED_PACKAGE`, declares no
+package assembly to measure, or `OUTPUT` already holds something.
 
 Run: python3 scripts/ci/test_per_case_coverage.py
 """
@@ -38,9 +42,12 @@ import licensed_editor  # noqa: E402
 PACKAGE = "com.unity.testtools.codecoverage"
 PINNED_PACKAGE = "1.3.0"
 LOCK = Path("Packages/packages-lock.json")
+PACKAGE_ROOT = Path("Packages/com.velvet.core")
 
-# The assemblies test.yml's unity-tests job measures, for the reason it gives there.
-OPTIONS = "generateTestReferences;assemblyFilters:+Velvet,+Velvet.Editor"
+# Every assembly of the package's own code is asked for, read off its asmdefs. test.yml's figure leaves
+# Unity.Velvet.CodeGen out; a record cannot, since the weaver fixtures run it in the editor domain and a
+# line only they reach has to be in their record.
+NOT_MEASURED = frozenset({"Tests", "TestUtilities"})
 
 NUMBERED = re.compile(r"_(\d+)\.xml$")
 
@@ -61,12 +68,24 @@ def pinned_refusal(lock):
     return None
 
 
-def editor_command(platform, project, coverage, results, unity=licensed_editor.UNITY):
+def package_assemblies(project):
+    """The assemblies the package's asmdefs declare, outside its test folders and its `~` folders."""
+    names = []
+    for path in sorted((project / PACKAGE_ROOT).rglob("*.asmdef")):
+        parts = path.relative_to(project / PACKAGE_ROOT).parts
+        if NOT_MEASURED & set(parts) or any(part.endswith("~") for part in parts):
+            continue
+        names.append(json.loads(path.read_text())["name"])
+    return names
+
+
+def editor_command(platform, project, coverage, results, assemblies, unity=licensed_editor.UNITY):
+    options = "generateTestReferences;assemblyFilters:" + ",".join("+" + name for name in assemblies)
     # -debugCodeOptimization: AGENTS.md's headless recipe says why a run passes it.
     return [unity, "-runTests", "-batchmode", "-debugCodeOptimization", "-projectPath", str(project),
             "-testPlatform", platform,
             "-testResults", str(results / "results.xml"), "-logFile", str(results / "run.log"),
-            "-enableCodeCoverage", "-coverageResultsPath", str(coverage), "-coverageOptions", OPTIONS]
+            "-enableCodeCoverage", "-coverageResultsPath", str(coverage), "-coverageOptions", options]
 
 
 def numbered_files(directory):
@@ -137,12 +156,17 @@ def main(argv, run=licensed_editor.run_licensed, poll=POLL):
     args = parser.parse_args(argv)
 
     project = Path(args.project).resolve()
+    output = Path(args.output).resolve()
+    assemblies = package_assemblies(project)
     refusal = pinned_refusal(project / LOCK)
+    if not refusal and not assemblies:
+        refusal = "no asmdef under {} declares an assembly to measure".format(project / PACKAGE_ROOT)
+    if not refusal and output.exists() and any(output.iterdir()):
+        refusal = "{} already holds a run; name an output that does not exist yet".format(output)
     if refusal:
         print("::error::{}".format(refusal), flush=True)
         return 2
 
-    output = Path(args.output).resolve()
     coverage, per_case, results = output / "coverage", output / "per-case", output / "results"
     results.mkdir(parents=True, exist_ok=True)
 
@@ -150,7 +174,7 @@ def main(argv, run=licensed_editor.run_licensed, poll=POLL):
     watcher = threading.Thread(target=watch, args=(coverage, per_case, stop, poll), daemon=True)
     watcher.start()
     try:
-        status = run(editor_command(args.platform, project, coverage, results),
+        status = run(editor_command(args.platform, project, coverage, results, assemblies),
                      "the {} suite".format(args.platform))
     finally:
         stop.set()
