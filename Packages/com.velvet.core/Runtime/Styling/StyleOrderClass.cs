@@ -15,7 +15,10 @@ namespace Velvet
         internal static bool IsOrderToken(string core) => StyleIntegerUtility.IsToken(core, Prefix);
 
         // Cheap early-out gate ahead of TryExtract.
-        public static bool HasOrderClass(string[] classNames) => StyleIntegerUtility.HasToken(classNames, Prefix);
+        public static bool HasOrderClass(string[] classNames)
+            => StyleClassFamilies.Has(classNames, StyleClassFamily.Order);
+
+        internal static bool IsOrderClass(string cls) => StyleIntegerUtility.IsTokenClass(cls, Prefix);
 
         // The order the cascade would give: an important token beats every plain one wherever it sits, and within
         // either group the later class wins. False when no order utility parses. winnerClass is the class the

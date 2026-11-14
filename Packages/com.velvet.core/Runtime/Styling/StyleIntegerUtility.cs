@@ -15,23 +15,11 @@ namespace Velvet
                 && string.CompareOrdinal(core, offset, prefix, 0, prefix.Length) == 0;
         }
 
-        // The cheap early-out gate ahead of a class's TryExtract. Routed through StripImportant so it agrees with
-        // the parse on what counts as the utility: otherwise "!z-10" would fail this gate and never be attempted.
-        internal static bool HasToken(string[]? classNames, string prefix)
-        {
-            if (classNames == null)
-            {
-                return false;
-            }
-            foreach (var cls in classNames)
-            {
-                if (!string.IsNullOrEmpty(cls) && IsToken(StyleArbitraryValueResolver.StripImportant(cls, out _), prefix))
-                {
-                    return true;
-                }
-            }
-            return false;
-        }
+        // The class test of the cheap early-out gates ahead of a class's TryExtract. Routed through StripImportant so
+        // it agrees with the parse on what counts as the utility: otherwise "!z-10" would fail the gate and never be
+        // attempted.
+        internal static bool IsTokenClass(string cls, string prefix)
+            => !string.IsNullOrEmpty(cls) && IsToken(StyleArbitraryValueResolver.StripImportant(cls, out _), prefix);
 
         // The utility a class reading a custom property is read as (StyleCustomPropertyClass.Consumer), for a class
         // with its important bang stripped; null for any other class. bracketed and negatedBracketed are the

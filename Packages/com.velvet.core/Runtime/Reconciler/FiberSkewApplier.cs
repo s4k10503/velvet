@@ -39,7 +39,8 @@ namespace Velvet
                 return;
             }
             var transformed = _ctx.SkewTransformed.TryGetValue(element, out var owner);
-            var has = StyleSkewClass.TryGetWinningSkewClasses(newClassNames, out _, out _);
+            var has = StyleSkewClass.HasSkewClass(newClassNames)
+                && StyleSkewClass.TryGetWinningSkewClasses(newClassNames, out _, out _);
             if (!has && !transformed)
             {
                 return;

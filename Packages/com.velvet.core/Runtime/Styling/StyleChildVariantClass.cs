@@ -51,18 +51,7 @@ namespace Velvet
         // ~99% of elements that carry no child-combinator variant.
         public static bool HasChildVariantClass(string[] classNames)
         {
-            if (classNames == null)
-            {
-                return false;
-            }
-            foreach (var cls in classNames)
-            {
-                if (IsChildVariant(cls))
-                {
-                    return true;
-                }
-            }
-            return false;
+            return StyleClassFamilies.Has(classNames, StyleClassFamily.ChildVariant);
         }
 
         // Splits a [&>*]:<payload> token into its wrapped payload. Returns false for a non-token, an empty

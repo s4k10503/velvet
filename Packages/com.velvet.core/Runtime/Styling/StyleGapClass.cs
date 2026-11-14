@@ -158,8 +158,9 @@ namespace Velvet
                 || IsSpaceToken(cls);
 
         // Single-token half of HasGapClass: true when cls belongs to the gap / space family the gap
-        // manipulator is gated on. Its own predicate so the prefix set has ONE definition — both the array
-        // scan below and the variant-payload gate (StyleVariantPayload) resolve the family through here.
+        // manipulator is gated on. Its own predicate so the prefix set has ONE definition — both the family
+        // reading (StyleClassFamilies) and the variant-payload gate (StyleVariantPayload) resolve the family
+        // through here.
         public static bool IsGapToken(string cls)
             => !string.IsNullOrEmpty(cls)
                 && (StyleArbitraryValueResolver.StripImportant(cls, out _).StartsWith("gap-", StringComparison.Ordinal)
@@ -172,22 +173,11 @@ namespace Velvet
                 || cls.StartsWith("-space-", StringComparison.Ordinal);
 
         // Cheap early-out gate: true when ANY class belongs to the gap / space family, including important
-        // gap tokens. No dictionary lookup — used to skip the full TryExtract scan on the
-        // ~99% of elements that carry no gap class at all.
+        // gap tokens. Used to skip the full TryExtract scan on the ~99% of elements that carry no gap class at
+        // all.
         public static bool HasGapClass(string[] classNames)
         {
-            if (classNames == null)
-            {
-                return false;
-            }
-            foreach (var cls in classNames)
-            {
-                if (IsGapToken(cls))
-                {
-                    return true;
-                }
-            }
-            return false;
+            return StyleClassFamilies.Has(classNames, StyleClassFamily.Gap);
         }
 
         // Scans classNames for the space-x-reverse / space-y-reverse markers.

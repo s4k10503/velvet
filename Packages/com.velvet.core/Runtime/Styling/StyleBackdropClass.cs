@@ -121,8 +121,10 @@ namespace Velvet
                 && (cls!.StartsWith(Prefix, StringComparison.Ordinal) || cls.StartsWith("-" + Prefix, StringComparison.Ordinal));
 
         public static bool HasBackdropClass(string[]? classNames)
-            => classNames != null && Array.Exists(classNames,
-                cls => IsBackdropClass(StyleArbitraryValueResolver.StripImportant(cls ?? string.Empty, out _)));
+            => StyleClassFamilies.Has(classNames, StyleClassFamily.Backdrop);
+
+        internal static bool IsBackdropToken(string cls)
+            => IsBackdropClass(StyleArbitraryValueResolver.StripImportant(cls ?? string.Empty, out _));
 
         private struct Slot
         {

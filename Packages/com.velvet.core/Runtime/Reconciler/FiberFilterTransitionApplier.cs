@@ -52,21 +52,11 @@ namespace Velvet
         // True when the class list carries transition-filter in the base classes OR any state variant (peeling
         // variant layers to the leaf, mirroring CarriesFilter).
         private static bool HasFilterTransitionClass(string[] classNames)
-        {
-            if (classNames == null)
-            {
-                return false;
-            }
-            foreach (var cls in classNames)
-            {
-                // Same pass-over as StyleEaseCurve.NoteClasses: a peel leaves a suffix of its class.
-                if (cls != null && cls.EndsWith(FilterTransitionClass, StringComparison.Ordinal)
-                    && StyleVariantClass.LeafOf(cls) == FilterTransitionClass)
-                {
-                    return true;
-                }
-            }
-            return false;
-        }
+            => StyleClassFamilies.Has(classNames, StyleClassFamily.FilterTransition);
+
+        // Same pass-over as StyleEaseCurve.IsTimingToken: a peel leaves a suffix of its class.
+        internal static bool IsFilterTransitionToken(string cls)
+            => cls != null && cls.EndsWith(FilterTransitionClass, StringComparison.Ordinal)
+                && StyleVariantClass.LeafOf(cls) == FilterTransitionClass;
     }
 }

@@ -11,8 +11,8 @@ namespace Velvet
     internal static class StyleGridClass
     {
         // Single-token half of HasGridClass: true when cls is the bare `grid` marker or a grid-cols
-        // utility. Its own predicate so the token set has ONE definition — both the array scan below and
-        // the variant-payload gate (StyleVariantPayload) resolve the family through here.
+        // utility. Its own predicate so the token set has ONE definition — both the family reading
+        // (StyleClassFamilies) and the variant-payload gate (StyleVariantPayload) resolve the family through here.
         public static bool IsGridToken(string cls)
             => !string.IsNullOrEmpty(cls)
                 && (cls == "grid" || cls.StartsWith("grid-cols-", StringComparison.Ordinal));
@@ -21,18 +21,7 @@ namespace Velvet
         // the full scan on the ~99% of elements that carry no grid spec.
         public static bool HasGridClass(string[] classNames)
         {
-            if (classNames == null)
-            {
-                return false;
-            }
-            foreach (var cls in classNames)
-            {
-                if (IsGridToken(cls))
-                {
-                    return true;
-                }
-            }
-            return false;
+            return StyleClassFamilies.Has(classNames, StyleClassFamily.Grid);
         }
 
         // Scans classNames for the last grid-cols-* (later classes win, matching CSS cascade) and returns its

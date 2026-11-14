@@ -121,15 +121,19 @@ namespace Velvet.Tests
             Assert.That(blocks, Is.EqualTo(1));
         }
 
+        // Per class rather than through NoteClasses, whose gate reads a family bit kept per array once the warm-up has
+        // read it, and so would show nothing about the class test it reads that bit from.
         [Test]
-        public void Given_VariantClassesNamingNoTimingKeyword_When_TheirEaseCurveIsNoted_Then_NothingIsAllocated()
+        public void Given_VariantClassesNamingNoTimingKeyword_When_EachIsAskedWhetherItGivesOne_Then_NothingIsAllocated()
         {
-            // Arrange
-            var element = new VisualElement();
-            var classNames = new[] { "hover:bg-red-500", "sm:p-2", "dark:bg-red-500", "group-hover:opacity-50" };
-
             // Act
-            var blocks = WarmBlocks(() => StyleEaseCurve.NoteClasses(element, classNames));
+            var blocks = WarmBlocks(() =>
+            {
+                foreach (var cls in VariantClasses)
+                {
+                    StyleEaseCurve.IsTimingToken(cls);
+                }
+            });
 
             // Assert
             Assert.That(blocks, Is.Zero);
@@ -167,16 +171,18 @@ namespace Velvet.Tests
             Assert.That(blocks, Is.Zero);
         }
 
+        // Per class, for the reason the timing-keyword case above gives.
         [Test]
-        public void Given_VariantClassesNamingNoFilterTransition_When_ReadForOne_Then_NothingIsAllocated()
+        public void Given_VariantClassesNamingNoFilterTransition_When_EachIsReadForOne_Then_NothingIsAllocated()
         {
-            // Arrange
-            var read = (Func<string[], bool>)Delegate.CreateDelegate(typeof(Func<string[], bool>),
-                typeof(FiberFilterTransitionApplier).GetMethod("HasFilterTransitionClass",
-                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static));
-
             // Act
-            var blocks = WarmBlocks(() => read(VariantClasses));
+            var blocks = WarmBlocks(() =>
+            {
+                foreach (var cls in VariantClasses)
+                {
+                    FiberFilterTransitionApplier.IsFilterTransitionToken(cls);
+                }
+            });
 
             // Assert
             Assert.That(blocks, Is.Zero);

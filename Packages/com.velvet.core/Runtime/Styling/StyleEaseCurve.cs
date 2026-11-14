@@ -299,36 +299,29 @@ namespace Velvet
             Sync(element, binding);
         }
 
-        // Whether the element's classes can give it a timing keyword that takes a Tailwind curve: ease-in, ease-out,
+        // Whether name can give an element a timing keyword that takes a Tailwind curve: ease-in, ease-out,
         // ease-in-out or a transition-* utility, behind a variant or not.
+        internal static bool IsTimingToken(string name)
+        {
+            // A peel leaves a suffix of its class, so a class holding neither word cannot leave one of these.
+            // It is passed over before the peel, which allocates its variants (ClassReadAllocationTests).
+            if (name == null || (name.IndexOf("ease-", StringComparison.Ordinal) < 0
+                    && name.IndexOf("transition", StringComparison.Ordinal) < 0))
+            {
+                return false;
+            }
+            var leaf = name;
+            while (StyleVariantClass.TryParse(leaf, out _, out var payload))
+            {
+                leaf = payload;
+            }
+            return leaf == "ease-in" || leaf == "ease-out" || leaf == "ease-in-out"
+                || leaf == "transition" || leaf.StartsWith("transition-", StringComparison.Ordinal);
+        }
+
         internal static void NoteClasses(VisualElement element, string[] classNames)
         {
-            var classed = false;
-            if (classNames != null)
-            {
-                foreach (var name in classNames)
-                {
-                    // A peel leaves a suffix of its class, so a class holding neither word cannot leave one of these.
-                    // It is passed over before the peel, which allocates its variants and would run on each patch
-                    // (ClassReadAllocationTests).
-                    if (name == null || (name.IndexOf("ease-", StringComparison.Ordinal) < 0
-                            && name.IndexOf("transition", StringComparison.Ordinal) < 0))
-                    {
-                        continue;
-                    }
-                    var leaf = name;
-                    while (StyleVariantClass.TryParse(leaf, out _, out var payload))
-                    {
-                        leaf = payload;
-                    }
-                    if (leaf == "ease-in" || leaf == "ease-out" || leaf == "ease-in-out"
-                        || leaf == "transition" || leaf.StartsWith("transition-", StringComparison.Ordinal))
-                    {
-                        classed = true;
-                        break;
-                    }
-                }
-            }
+            var classed = StyleClassFamilies.Has(classNames, StyleClassFamily.EaseCurve);
             if (!classed && !s_bindings.TryGetValue(element, out _))
             {
                 return;

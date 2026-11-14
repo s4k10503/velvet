@@ -64,18 +64,7 @@ namespace Velvet
         // Cheap early-out gate: true when ANY class is a skew utility.
         public static bool HasSkewClass(string[]? classNames)
         {
-            if (classNames == null)
-            {
-                return false;
-            }
-            foreach (var cls in classNames)
-            {
-                if (IsSkewClass(cls))
-                {
-                    return true;
-                }
-            }
-            return false;
+            return StyleClassFamilies.Has(classNames, StyleClassFamily.Skew);
         }
 
         // The skew token holding each axis (the token TryExtract stores in SkewSpec.SourceX / SourceY), or false when
