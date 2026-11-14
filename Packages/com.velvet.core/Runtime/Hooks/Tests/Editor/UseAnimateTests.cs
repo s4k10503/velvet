@@ -154,5 +154,24 @@ namespace Velvet.Tests
             // Assert
             Assert.That(string.Join("|", matched), Is.EqualTo("a+b|a|a+b|b+a"));
         }
+
+        // GREEN_ON_BASE(characterization): the base reads a compound's classes from after its type name.
+        [Test]
+        public void Given_AMountedScope_When_ASelectorNamesATypeWithAClass_Then_OnlyThatTypeCarryingTheClassMatches()
+        {
+            // Arrange — a Label and a plain element, both carrying the class.
+            var scope = new VisualElement();
+            var (label, plain) = (new Label { name = "label" }, new VisualElement { name = "plain" });
+            label.AddToClassList("row");
+            plain.AddToClassList("row");
+            scope.Add(label);
+            scope.Add(plain);
+
+            // Act
+            var matched = AnimateSelector.Resolve(scope, "Label.row").Select(e => e.name);
+
+            // Assert
+            Assert.That(string.Join("+", matched), Is.EqualTo("label"));
+        }
     }
 }

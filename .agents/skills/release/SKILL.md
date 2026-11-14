@@ -55,8 +55,8 @@ CONTRIBUTING.md's release section owns which entry goes where.
 **Highlights is what the release note leads with, and the release fails without it.** Five to nine
 bullets, one short paragraph each, ordered by what a user notices first — a fix for something that
 was silently broken outranks a new utility. A major leads its last bullet with `**Breaking:**` and
-lists every breaking change in it — what the drain has just moved into this version's own
-subsections — and `scripts/release/test_release_notes.py` refuses a major without that bullet and
+lists in it every API change a caller has to edit around, the definition of breaking that
+CONTRIBUTING.md's release section owns, and `scripts/release/test_release_notes.py` refuses a major without that bullet and
 any other release that carries one. Write them fresh: a bullet copied verbatim from a
 long-form entry below fails the same script, because the note would then say the same thing twice.
 

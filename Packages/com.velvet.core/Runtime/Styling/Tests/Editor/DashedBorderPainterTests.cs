@@ -107,6 +107,36 @@ namespace Velvet.Tests
             Assert.That(runs[runs.Count - 1].To.x, Is.EqualTo(30f).Within(1e-3f));
         }
 
+        // GREEN_ON_BASE(characterization): the base fits a dash more where that leaves the gap nearer the preferred one.
+        [Test]
+        public void Given_AnEdgeWhereADashMoreFitsNearerThePreferredGap_When_DashesComputed_Then_TheDashMoreIsDrawn()
+        {
+            // Arrange — dash 3 and gap 2 on 22 units: four dashes would leave gaps of 10/3, five leave gaps of 7/4,
+            // the nearer to 2.
+            var edge = new List<Vector2> { new(0f, 0f), new(22f, 0f) };
+
+            // Act
+            var runs = Compute(edge, closed: false, lineWidth: 1f, BorderLineStyle.Dashed);
+
+            // Assert
+            Assert.That(runs.Count, Is.EqualTo(5));
+        }
+
+        // GREEN_ON_BASE(characterization): the base never fits a dash more that would leave no gap.
+        [Test]
+        public void Given_AnEdgeWhereADashMoreLeavesNoGap_When_DashesComputed_Then_TheGapIsKept()
+        {
+            // Arrange — dash 6 and gap 3 on 18 units: two dashes leave a gap of 6 and three leave none. None is as near
+            // the preferred 3 as 6 is, and is refused all the same, as it would draw the line solid.
+            var edge = new List<Vector2> { new(0f, 0f), new(18f, 0f) };
+
+            // Act
+            var runs = Compute(edge, closed: false, lineWidth: 3f, BorderLineStyle.Dashed);
+
+            // Assert
+            Assert.That(runs.Count, Is.EqualTo(2));
+        }
+
         [Test]
         public void Given_AnEdgeNoLongerThanTwoDashes_When_DashesComputed_Then_OneRunCoversIt()
         {

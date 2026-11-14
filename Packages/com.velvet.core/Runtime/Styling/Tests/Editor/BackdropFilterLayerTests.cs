@@ -58,6 +58,14 @@ namespace Velvet.Tests
                 + (dim ? "backdrop-brightness-50" : "backdrop-brightness-100"));
         }
 
+        [Component]
+        private static VNode LosingItsBackdrop()
+        {
+            var lost = Hooks.UseStore(s_dim, x => x);
+            return V.Div(name: "glass", className: "w-[40px] h-[40px] transition-all duration-1000 ease-linear"
+                + (lost ? string.Empty : " backdrop-brightness-50"));
+        }
+
         // The first function's amount the layer paints now, NaN where there is no layer.
         private static float ShownAmount(VisualElement element)
         {
@@ -269,6 +277,27 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(ShownAmount(glass), Is.EqualTo(1f).Within(1e-3f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base transitions a dropped backdrop-filter to none before its layer goes.
+        [Test]
+        public void Given_TransitionAll_When_TheBackdropClassIsRemoved_Then_HalfTheDurationInTheLayerPaintsHalfWayToNone()
+        {
+            // Arrange
+            var clock = new HeldMotionClock();
+            s_dim = new Flag();
+            _mounted = V.Mount(_window.rootVisualElement, V.Component(LosingItsBackdrop, key: "root"),
+                new MountOptions { MotionClock = clock });
+            var glass = _window.rootVisualElement.Q<VisualElement>("glass");
+            ForcePanelUpdate(glass.panel);
+
+            // Act
+            s_dim.Set(true);
+            _mounted.FlushStateForTest();
+            clock.Now += 0.5;
+
+            // Assert — brightness 0.5 to none's 1, linear.
+            Assert.That(ShownAmount(glass), Is.EqualTo(0.75f).Within(1e-3f));
         }
 
         // The window as it painted, read back through the editor's own capture of a window's pixels, and the scale from

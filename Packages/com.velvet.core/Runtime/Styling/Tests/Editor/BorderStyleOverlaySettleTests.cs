@@ -7,8 +7,8 @@ namespace Velvet.Tests
 {
     /// <summary>
     /// Pins the settling a dashed or dotted outline queues for the sibling overlay a clipping element paints it on:
-    /// a settle puts the overlay up, a settle queued before the binding was torn down does not, and a settle that
-    /// ran leaves the next paint free to queue another.
+    /// a settle puts the overlay up, a settle queued before the binding was torn down does not, tearing the binding
+    /// down takes an overlay it put up down with it, and a settle that ran leaves the next paint free to queue another.
     /// </summary>
     internal sealed class BorderStyleOverlaySettleTests : PanelTestBase
     {
@@ -67,6 +67,38 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(FaceBorderOverlay.Has(element), Is.False);
+        }
+
+        // GREEN_ON_BASE(characterization): the base takes the overlay down with the outline it carries.
+        [Test]
+        public void Given_AClippingDashedElementWithItsOverlayUp_When_TheOutlineIsDetached_Then_TheOverlayIsGone()
+        {
+            // Arrange
+            var (element, binding) = AttachToClippingElement();
+            Settle(element, binding);
+            var up = FaceBorderOverlay.Has(element);
+
+            // Act
+            BorderStyleSilhouette.Detach(element, binding);
+
+            // Assert — false where the settle put no overlay up, so an overlay never raised cannot pass as one removed.
+            Assert.That(up && !FaceBorderOverlay.Has(element), Is.True);
+        }
+
+        // GREEN_ON_BASE(characterization): the base takes the overlay down with an outline it hands off.
+        [Test]
+        public void Given_AClippingDashedElementWithItsOverlayUp_When_TheOutlineIsHandedOff_Then_TheOverlayIsGone()
+        {
+            // Arrange
+            var (element, binding) = AttachToClippingElement();
+            Settle(element, binding);
+            var up = FaceBorderOverlay.Has(element);
+
+            // Act
+            BorderStyleSilhouette.DetachPreservingSuppression(element, binding);
+
+            // Assert — false where the settle put no overlay up, so an overlay never raised cannot pass as one removed.
+            Assert.That(up && !FaceBorderOverlay.Has(element), Is.True);
         }
 
         // GREEN_ON_BASE(characterization): the base clears the pending mark once its settle runs.

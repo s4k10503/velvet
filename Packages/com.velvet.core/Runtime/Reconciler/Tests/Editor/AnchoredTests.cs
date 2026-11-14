@@ -195,6 +195,22 @@ namespace Velvet.Tests
             return new[] { viewportX * 800f - origin.x, (1f - viewportY) * 600f - origin.y };
         }
 
+        // GREEN_ON_BASE(characterization): a target exactly the minimum distance away already holds the scale at one.
+        [Test]
+        public void Given_ATargetExactlyTheMinimumDistanceFromAPerspectiveCamera_When_ItsDistanceScaleIsTaken_Then_TheScaleHoldsAtOne()
+        {
+            // Arrange — read off the driver, so the case holds the bound wherever the constant moves
+            var minimum = (float)typeof(AnchoredDriver)
+                .GetField("MinDistanceFactorDistance", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!
+                .GetValue(null);
+
+            // Act
+            var scale = AnchoredDriver.DistanceScale(_camera, minimum, 2f);
+
+            // Assert
+            Assert.That(scale, Is.EqualTo(1f));
+        }
+
         [Test]
         public void Given_ADirectlyConstructedSettings_When_TheDistanceFactorIsInvalid_Then_ItThrows()
         {

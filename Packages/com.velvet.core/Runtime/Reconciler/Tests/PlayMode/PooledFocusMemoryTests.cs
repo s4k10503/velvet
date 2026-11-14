@@ -558,6 +558,69 @@ namespace Velvet.Tests
             Assert.That((focusLanded, own.panel == SecondRoot.panel, focusIns), Is.EqualTo((true, true, 0)));
         }
 
+        // GREEN_ON_BASE(characterization): the base already watches the Button again once it is focused back.
+        [UnityTest]
+        public IEnumerator Given_AButtonUserCodeMovedToAnotherPanelAndBack_When_ItIsFocusedAndMovedAwayAgainAndTheFirstRegainsFocus_Then_TheButtonIsNotFocused()
+        {
+            // Arrange
+            var mountPoint = new VisualElement();
+            FirstRoot.Add(mountPoint);
+            _released = V.Mount(mountPoint, V.Component(SingleButton, key: "tree"));
+            var own = new Button { name = "own" };
+            FirstRoot.Add(own);
+            yield return Settle();
+            own.Focus();
+            var focusLanded = FirstRoot.panel.focusController.focusedElement == own;
+            yield return null;
+            SetFocusedPanel(null);
+            SecondRoot.Add(own);
+            yield return Settle();
+            FirstRoot.Add(own);
+            yield return Settle();
+            own.Focus();
+            var focusedAgain = focusLanded && FirstRoot.panel.focusController.focusedElement == own;
+            yield return null;
+            SetFocusedPanel(null);
+            SecondRoot.Add(own);
+            yield return Settle();
+            var focusIns = 0;
+            own.RegisterCallback<FocusInEvent>(_ => focusIns++);
+
+            // Act
+            SetFocusedPanel(FirstRoot.panel);
+            yield return Settle();
+
+            // Assert
+            Assert.That(focusedAgain ? focusIns : -1, Is.EqualTo(0));
+        }
+
+        // GREEN_ON_BASE(characterization): the base already scrubs once per armed scrub.
+        [UnityTest]
+        public IEnumerator Given_AReturnScrubWhoseTargetAttachedAndLeftBeforeTheTick_When_TheTickRuns_Then_AnElementFocusedInTheDepartingSubtreeSinceKeepsTheFocus()
+        {
+            // Arrange — armed directly, as Forget arms it for a pending target, whose attach and departure both come
+            // before the panel's next tick.
+            var departing = new VisualElement();
+            var kept = new Button { name = "kept" };
+            departing.Add(kept);
+            FirstRoot.Add(departing);
+            var target = new Button { name = "target" };
+            yield return Settle();
+            var scrubType = typeof(PanelFocusMemory).GetNestedType("ReturnScrub", BindingFlags.NonPublic)
+                ?? throw new MissingMemberException(typeof(PanelFocusMemory).FullName, "ReturnScrub");
+            var scrub = Activator.CreateInstance(scrubType, FirstRoot.panel, departing, target);
+            (scrubType.GetMethod("Arm") ?? throw new MissingMethodException(scrubType.FullName, "Arm")).Invoke(scrub, null);
+            departing.Add(target);
+            target.RemoveFromHierarchy();
+            kept.Focus();
+
+            // Act
+            yield return Settle();
+
+            // Assert
+            Assert.That(FirstRoot.panel.focusController.focusedElement, Is.EqualTo(kept));
+        }
+
         [Component]
         private static VNode SingleLabel() => V.Label(name: "label", text: "selected");
 

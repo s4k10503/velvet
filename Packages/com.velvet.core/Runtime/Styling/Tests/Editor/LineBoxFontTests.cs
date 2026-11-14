@@ -177,6 +177,26 @@ namespace Velvet.Tests
             Assert.That(copy.fallbackFontAssetTable, Is.Empty);
         }
 
+        // GREEN_ON_BASE(characterization): a copy whose fallback table is rebuilt already looks up afresh what it drew from it.
+        [Test]
+        public void Given_ACopyThatDrewAGlyphFromAFontStacksFallback_When_TheStackIsReleased_Then_TheCopyHoldsNoCharacterForIt()
+        {
+            // Arrange — the primary holds M alone, so the x is drawn from the stack's fallback
+            var label = Add(TextGeneratorType.Standard);
+            var primary = OnlyM(label);
+            VelvetFontStack.Append(primary, new[] { Fresh(label) });
+            var copy = Acquire(primary);
+            DrawIn(label, copy);
+            HeightOf(label, "x");
+            var held = copy.characterLookupTable.ContainsKey('x');
+
+            // Act
+            VelvetFontStack.Release();
+
+            // Assert — a copy whose lookup never held the x reads as no answer, which false is not
+            Assert.That(held ? copy.characterLookupTable.ContainsKey('x') : (bool?)null, Is.EqualTo(false));
+        }
+
         [Test]
         public void Given_AFontWhoseWeightTableNamesABoldFace_When_BothAreCopied_Then_TheCopysTableNamesTheBoldFacesCopy()
         {

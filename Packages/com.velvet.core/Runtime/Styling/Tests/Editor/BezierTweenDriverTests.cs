@@ -371,6 +371,38 @@ namespace Velvet.Tests
             Assert.That(output, Is.EqualTo(0.5f).Within(1e-4f));
         }
 
+        // GREEN_ON_BASE(characterization): the base solves a curve whose x1 is exactly zero by the monotone solve.
+        [Test]
+        public void Given_ACurveWhoseX1IsZero_When_EvaluatedWhereItsXIsFlat_Then_TheOutputIsWhereTheMonotoneSolveStops()
+        {
+            // Arrange — x1 = x2 = 0 makes x(s) = s^3, so for progress 0.001 every parameter within about 3e-5 of 0.1 meets
+            // the 1e-6 tolerance, and which of them a solve returns depends on where it starts. An x1 of exactly 0 lies in
+            // [0, 1], so SolveForParam takes it: Newton's steps from s = 0.001 do not converge, and its bisection starts at
+            // the progress itself. BisectForParam starts at one half and stops elsewhere in that band. y1 = y2 = 1 gives
+            // y(s) = 3s - 3s^2 + s^3.
+
+            // Act
+            var output = CubicBezierEvaluator.Evaluate(0f, 1f, 0f, 1f, 0.001f);
+
+            // Assert
+            Assert.That(output, Is.EqualTo(0.2710534f).Within(1e-5f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base halves the interval thirty-two times and stops there.
+        [Test]
+        public void Given_ACurveTooSteepForTheHalvingToMeetItsTolerance_When_Evaluated_Then_TheOutputIsWhereTheThirtySecondHalvingStops()
+        {
+            // Arrange — x1 = 1e6 puts the parameter for progress 0.5 near 1.7e-7, where x rises some three million per
+            // unit of s, so none of the thirty-two halvings comes within the 1e-6 tolerance. y1 = x1 makes the output all
+            // but x itself there, so it reads back where the last halving stopped: 5.8e-4 short of the progress.
+
+            // Act
+            var output = CubicBezierEvaluator.Evaluate(1e6f, 1e6f, 0f, 1f, 0.5f);
+
+            // Assert
+            Assert.That(output, Is.EqualTo(0.4994216f).Within(1e-5f));
+        }
+
         [Test]
         public void Given_ANaNXControlPoint_When_Evaluated_Then_TheOutputMatchesTheDefaultCurveInsteadOfPassingNaNThrough()
         {

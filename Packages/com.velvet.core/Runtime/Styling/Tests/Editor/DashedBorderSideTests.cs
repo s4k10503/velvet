@@ -1,14 +1,17 @@
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using NUnit.Framework;
 using UnityEngine;
+using UnityEngine.UIElements;
 
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Specifies how a box's dashed side is laid out: a square-cornered side is a line of its own from corner to
-    /// corner (<see cref="DashedBorderPainter.ComputeSideRuns"/>), and every side is cut to its own corner of the
-    /// box (<see cref="DashedBorderPainter.ComputeSidePieces"/>). GWT, one assert per case.
+    /// Specifies how a box's dashed side is laid out and painted: a square-cornered side is a line of its own from
+    /// corner to corner (<see cref="DashedBorderPainter.ComputeSideRuns"/>), every side is cut to its own corner of the
+    /// box (<see cref="DashedBorderPainter.ComputeSidePieces"/>), and a side is painted with its box's shear, each piece
+    /// filled as a closed shape. GWT, one assert per case.
     /// </summary>
     [TestFixture]
     internal sealed class DashedBorderSideTests
@@ -57,6 +60,137 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(points.Min(p => p.x), Is.EqualTo(15f).Within(1e-3f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base paints a piece the clip leaves with three corners.
+        [Test]
+        public void Given_ADashedBoxRoundedLessThanHalfItsBorder_When_ItsLeftSidesPiecesAreComputed_Then_TheyReachIntoTheCornerTheTopsFirstDashCrosses()
+        {
+            // Arrange — 8 wide all round and rounded 4, the stroke's centre line is square, and the outline's first dash
+            // runs right from its corner at (4, 4) across the whole band. The left side owns what lies below the line
+            // from (0, 0) to (8, 8), so it paints that dash's end there, the triangle (4, 4), (4, 8), (8, 8).
+            var box = new BorderBox
+            {
+                Size = new Vector2(80f, 40f), Left = 8f, Top = 8f, Right = 8f, Bottom = 8f,
+                RadiusTopLeft = 4f, RadiusTopRight = 4f, RadiusBottomRight = 4f, RadiusBottomLeft = 4f,
+            };
+            var points = new List<Vector2>();
+            var counts = new List<int>();
+
+            // Act
+            DashedBorderPainter.ComputeSidePieces(DivideEdge.Left, box, BorderLineStyle.Dashed, points, counts);
+
+            // Assert
+            Assert.That(Covers(points, counts, new Vector2(5f, 7f)), Is.True);
+        }
+
+        // GREEN_ON_BASE(characterization): the base shears a dashed side skewed on x alone.
+        [Test]
+        public void Given_ALeftSideSkewedOnXAlone_When_Painted_Then_ItsImageSpansTheShearedSide()
+        {
+            // Arrange — the left side of a 40 × 20 box at width 2 lies along x 0 to 2; skewX(45deg) about the box's centre
+            // carries its top 10 left and its bottom 10 right, out to x -10 and 10, where an upright side is 2 wide.
+            var box = new BorderBox { Size = new Vector2(40f, 20f), Left = 2f, Top = 2f, Right = 2f, Bottom = 2f };
+            var image = ScriptableObject.CreateInstance<VectorImage>();
+            try
+            {
+                // Act
+                using (var painter = new Painter2D())
+                {
+                    DashedBorderPainter.PaintSide(painter, DivideEdge.Left, box, Color.white, BorderLineStyle.Dashed,
+                        new SilhouetteFace.Shearing(40f, 20f, 1f, 0f));
+                    painter.SaveToVectorImage(image);
+                }
+
+                // Assert — within the antialiased fringe the tessellation adds.
+                Assert.That(image.width, Is.EqualTo(20f).Within(2f));
+            }
+            finally
+            {
+                Object.DestroyImmediate(image);
+            }
+        }
+
+        // GREEN_ON_BASE(characterization): the base closes each piece of a dashed side before it fills it.
+        [Test]
+        public void Given_ADashedTopSide_When_Painted_Then_ItMeshesAsItsPiecesFilledClosedDo()
+        {
+            // Arrange — the top of a 40 × 20 box at width 2 cuts into four pieces, none ending where it starts, filled
+            // here one after another as closed shapes.
+            var box = new BorderBox { Size = new Vector2(40f, 20f), Left = 2f, Top = 2f, Right = 2f, Bottom = 2f };
+            var points = new List<Vector2>();
+            var counts = new List<int>();
+            DashedBorderPainter.ComputeSidePieces(DivideEdge.Top, box, BorderLineStyle.Dashed, points, counts);
+            var closed = MeshedVertices(painter =>
+            {
+                painter.fillColor = Color.white;
+                var at = 0;
+                foreach (var count in counts)
+                {
+                    painter.BeginPath();
+                    painter.MoveTo(points[at]);
+                    for (var i = 1; i < count; i++)
+                    {
+                        painter.LineTo(points[at + i]);
+                    }
+                    painter.ClosePath();
+                    painter.Fill();
+                    at += count;
+                }
+            });
+
+            // Act
+            var painted = MeshedVertices(painter =>
+                DashedBorderPainter.PaintSide(painter, DivideEdge.Top, box, Color.white, BorderLineStyle.Dashed));
+
+            // Assert — -1 where the closed pieces meshed to nothing, which no count can equal.
+            Assert.That(painted, Is.EqualTo(closed > 0 ? closed : -1));
+        }
+
+        // The vertices of what paint fills, saved to a VectorImage.
+        private static int MeshedVertices(System.Action<Painter2D> paint)
+        {
+            var image = ScriptableObject.CreateInstance<VectorImage>();
+            try
+            {
+                using (var painter = new Painter2D())
+                {
+                    paint(painter);
+                    painter.SaveToVectorImage(image);
+                }
+                var vertices = typeof(VectorImage).GetField("vertices", BindingFlags.Instance | BindingFlags.NonPublic)
+                    ?.GetValue(image) as System.Array;
+                return vertices?.Length ?? 0;
+            }
+            finally
+            {
+                Object.DestroyImmediate(image);
+            }
+        }
+
+        // Whether point lies inside one of the convex pieces counts lays out in points.
+        private static bool Covers(List<Vector2> points, List<int> counts, Vector2 point)
+        {
+            var at = 0;
+            foreach (var count in counts)
+            {
+                var positive = false;
+                var negative = false;
+                for (var i = 0; i < count; i++)
+                {
+                    var p = points[at + i];
+                    var q = points[at + ((i + 1) % count)];
+                    var side = ((q.x - p.x) * (point.y - p.y)) - ((q.y - p.y) * (point.x - p.x));
+                    positive |= side > 0f;
+                    negative |= side < 0f;
+                }
+                if (!(positive && negative))
+                {
+                    return true;
+                }
+                at += count;
+            }
+            return false;
         }
 
         // The area of the polygon whose count vertices open points.

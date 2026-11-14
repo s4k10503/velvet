@@ -230,6 +230,37 @@ namespace Velvet.Tests
                 && binding.EffectLayer.style.unityMaterial.Equals(new StyleMaterialDefinition(premultiplied)), Is.True);
         }
 
+        // GREEN_ON_BASE(characterization): the camera looks down the clone's forward axis however the source is turned, as before.
+        [Test]
+        public void Given_AVisualEffectTurnedAboutItsUpAxis_When_Attached_Then_ItsCameraLooksDownTheClonesForwardAxis()
+        {
+            // Arrange — a quarter turn, which a camera keeping the world's axes would see edge on
+            var effect = CreateVisualEffectSource("fx-vfx-turned");
+            effect.transform.rotation = Quaternion.Euler(0f, 90f, 0f);
+
+            // Act
+            var binding = MountVisualEffect(effect, "px-vfx-turned");
+
+            // Assert
+            Assert.That(Vector3.Dot(binding.EffectCamera.transform.forward, binding.EffectHost.transform.forward),
+                Is.EqualTo(1f).Within(1e-4f));
+        }
+
+        // GREEN_ON_BASE(characterization): the far plane lies as far beyond the clone as the camera stands before it, as before.
+        [Test]
+        public void Given_AMountedVisualEffect_When_Attached_Then_ItsCamerasFarPlaneLiesAsFarBeyondTheCloneAsTheCameraStandsBeforeIt()
+        {
+            // Arrange
+            var effect = CreateVisualEffectSource("fx-vfx-far-plane");
+
+            // Act
+            var binding = MountVisualEffect(effect, "px-vfx-far-plane");
+
+            // Assert
+            var camera = binding.EffectCamera;
+            Assert.That(camera.farClipPlane, Is.EqualTo(2f * -camera.transform.localPosition.z));
+        }
+
         // GREEN_ON_BASE(characterization): a Manual trigger is recorded as applied when the clone is made, as before.
         [Test]
         public void Given_AManualVisualEffect_When_Mounted_Then_TheManualTriggerIsRecordedAsApplied()

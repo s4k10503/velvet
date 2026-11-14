@@ -88,9 +88,11 @@ namespace Velvet
         // would compute subtree rings that drift from the engine's own panel-wide ring, and registering
         // per call-site element would stack duplicate listeners whose relative order inverts the branch
         // priority. An element with no panel yet defers via a tracked self-removing attach hook (one per
-        // element — repeat calls while detached dedup). Called from V.Mount (main panel),
-        // ConfigurePortalFocusOrder (declaring + host panels), and the focus-scope attach hook
-        // (whatever panel the scope lands in).
+        // element — repeat calls while detached dedup). Called from V.Mount (main panel), PanelHostFactory
+        // (each host panel it creates), ConfigurePortalFocusOrder (a chained portal's declaring panel, and the
+        // host panel of a chained or appended one, which can be a new panel since the host was created, as
+        // FocusChainedPortalTests' case for a host document disabled and enabled again holds), and the
+        // focus-scope attach hook (whatever panel the scope lands in).
         internal static void EnsureAttached(VisualElement? element, ReconcilerContext ctx)
         {
             var pending = Request(element, ctx);
@@ -1497,6 +1499,8 @@ namespace Velvet
                 element.UnregisterCallback(binding.OnAttach);
                 binding.OnAttach = null;
             }
+            // MUTANT_SURVIVES(unreachable, clause removed): each caller passes the binding it read from FocusScopeBindings.
+            // Attach wrote that binding onto the start as it was stored there, and only Detach writes Binding again.
             if (element is FocusScopeStart start && ReferenceEquals(start.Binding, binding))
             {
                 start.Binding = null;

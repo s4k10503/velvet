@@ -137,6 +137,8 @@ namespace Velvet
         // axis, a corner direction and a radial come out the same in every box.
         internal static bool DependsOnAspect(in GradientSpec spec)
         {
+            // MUTANT_SURVIVES(equivalent, clause removed): HasCentreLength is false for a linear gradient.
+            // The radial arm below is true wherever it holds, through NeedsAbsoluteSize, and the conic arm is true outright.
             if (spec.HasLengths || spec.HasCentreLength)
             {
                 return true;
@@ -395,6 +397,9 @@ namespace Velvet
             {
                 Object.DestroyImmediate(binding.Owned);
             }
+            // MUTANT_SURVIVES(equivalent, line removed): outside the tests only this class reads Owned, as a null check or behind one.
+            // Under Unity's equality the texture destroyed above already compares null, which GradientBackgroundLifecycleTests'
+            // Given_APlaysOwnTexture_When_TheNextFrameDrawsAnother_Then_TheFirstIsDestroyed holds.
             binding.Owned = null;
         }
 

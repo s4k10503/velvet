@@ -269,6 +269,32 @@ namespace Velvet.Tests
             Assert.That(binding.TargetExtents[0].width, Is.GreaterThan(0f));
         }
 
+        // GREEN_ON_BASE(characterization): the base takes each paint's extent into the live extent as it paints, as before.
+        // A patch that adds a filter between a paint and the next tick reads it to size the bounds spacer.
+        [Test]
+        public void Given_ALiveEffect_When_TheElementIsPaintedBetweenTicks_Then_TheLiveExtentIsWhatItDrew()
+        {
+            // Arrange
+            _fakeMs = 1000;
+            EditorPanelTestHelpers.SetPanelTimeFunction(_host.Panel, () => _fakeMs / 1000.0);
+            var effect = CreateEffectSource("fx-live-extent");
+            effect.GetComponent<ParticleSystemRenderer>().sharedMaterial = NewParticleMaterial("Legacy Shaders/Particles/Alpha Blended");
+            var emission = effect.emission;
+            emission.rateOverTime = 1000f;
+            var binding = MountEffect(effect, "px-live-extent");
+            AdvanceTicks(3);
+
+            // Act
+            EditorPanelTestHelpers.ForcePanelUpdate(_host.Panel);
+
+            // Assert
+            var painted = binding.TargetExtents[0];
+            Assert.That(painted.width > 0f && painted.height > 0f
+                    ? binding.LiveExtentLocal
+                    : new Rect(float.NaN, float.NaN, float.NaN, float.NaN),
+                Is.EqualTo(painted));
+        }
+
         // GREEN_ON_BASE(characterization): a live element's Stop ends the simulation's logical play, as before.
         [Test]
         public void Given_ALiveHostOutsidePlayMode_When_StopIsCalledOnTheElement_Then_ItIsNoLongerLogicallyPlaying()
@@ -305,6 +331,35 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(layer.style.left, Is.EqualTo(new StyleLength(0f)));
+        }
+
+        // GREEN_ON_BASE(characterization): a blend layer is pinned to the element's right edge, as before.
+        [Test]
+        public void Given_ABlendLayer_When_ItIsCreated_Then_ItIsPinnedToTheRightEdge()
+        {
+            // Arrange & Act
+            var layer = ParticlesDriver.CreateLayer();
+
+            // Assert
+            Assert.That(layer.style.right, Is.EqualTo(new StyleLength(0f)));
+        }
+
+        // GREEN_ON_BASE(characterization): the live extent is the union of the targets' extents alone, as before.
+        // TheLiveExtentIsTheirUnion's first extent starts at the origin, which a union that took the origin in would match.
+        [Test]
+        public void Given_ExtentsThatLeaveTheOriginOut_When_TheTickArranges_Then_TheLiveExtentIsTheirUnionAlone()
+        {
+            // Arrange
+            var binding = MountAlphaRootOverAdditiveChild("fx-extents-off-origin");
+            binding.TargetExtents.Clear();
+            binding.TargetExtents.Add(new Rect(20f, 30f, 10f, 10f));
+            binding.TargetExtents.Add(new Rect(40f, 50f, 10f, 10f));
+
+            // Act
+            AdvanceTicks(1);
+
+            // Assert
+            Assert.That(binding.LiveExtentLocal, Is.EqualTo(new Rect(20f, 30f, 30f, 30f)));
         }
     }
 }

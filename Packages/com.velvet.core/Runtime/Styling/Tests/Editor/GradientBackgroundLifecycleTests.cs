@@ -6,7 +6,7 @@ namespace Velvet.Tests
 {
     /// <summary>
     /// Specifies what a gradient binding leaves on its element when a play's own texture ends and when the binding is
-    /// dropped.
+    /// dropped, and that two bindings of one spec show one bake.
     /// </summary>
     internal sealed class GradientBackgroundLifecycleTests
     {
@@ -88,6 +88,28 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(_binding.Poll, Is.Null);
+        }
+
+        // GREEN_ON_BASE(characterization): the base shares one cached bake between two bindings of a spec that ignores the box.
+        [Test]
+        public void Given_AGradientBoundToOneElement_When_AnotherIsBoundToTheSameSpec_Then_ItShowsTheSameTexture()
+        {
+            // Arrange
+            var other = new VisualElement();
+
+            // Act
+            var binding = GradientBackground.Bind(other, s_spec);
+
+            // Assert
+            try
+            {
+                Assert.That(binding.Texture, Is.SameAs(_binding.Texture));
+            }
+            finally
+            {
+                GradientBackground.Detach(other, binding);
+                GradientBackground.Clear(other);
+            }
         }
     }
 }

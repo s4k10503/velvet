@@ -180,6 +180,22 @@ namespace Velvet.Tests
             Assert.That(rowFirst.panel.focusController.focusedElement, Is.EqualTo(rowFirst));
         }
 
+        // GREEN_ON_BASE(characterization): the base already keeps focus on the row's last member when a right arrow moves past it.
+        [UnityTest]
+        public IEnumerator Given_AGroupLaidOutInReverse_When_ARightArrowMovesPastItsLastMember_Then_FocusStaysThere()
+        {
+            // Arrange
+            var rowLast = Element("rowLast");
+            rowLast.Focus();
+
+            // Act
+            SendMove(rowLast, NavigationMoveEvent.Direction.Right);
+            yield return null;
+
+            // Assert
+            Assert.That(rowLast.panel.focusController.focusedElement, Is.EqualTo(rowLast));
+        }
+
         // GREEN_ON_BASE(characterization): the base records no reverted landing as a group's roving stop.
         // This case pins that for a landing the engine's own move makes once the group's step is skipped.
         [UnityTest]

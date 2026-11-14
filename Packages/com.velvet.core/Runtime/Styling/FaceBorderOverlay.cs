@@ -163,6 +163,9 @@ namespace Velvet
             style.width = element.layout.width;
             style.height = element.layout.height;
             SyncElementState(element, binding);
+            // MUTANT_SURVIVES(equivalent, line removed): of what a placement writes, only the size changes what is painted.
+            // That resize repaints the overlay in the same update, which FaceBorderOverlayTests'
+            // Given_AnOverlaidElement_When_ItIsWidened_Then_TheSameUpdatePaintsItAtTheNewWidth holds.
             binding.Overlay.MarkDirtyRepaint();
         }
 

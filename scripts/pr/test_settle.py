@@ -3860,9 +3860,28 @@ class CallerTokenTests(unittest.TestCase):
 def rearmed(first, then, caller="tok-5"):
     """What a token caller's re-arm prints after its first run exited over `first`'s states and
     the pull requests moved to `then`'s, over one set of watcher files."""
+    return told_and_rearmed(first, then, caller)[1]
+
+
+def told_and_rearmed(first, then, caller="tok-5", **watching):
+    """`rearmed`'s first run beside its second, for a case whose reading of the second means
+    something only where the first exited. `watching` goes to both runs."""
+    return rearmed_over((first, then), caller, **watching)
+
+
+def rearmed_over(tables, caller="tok-5", **watching):
+    """A run over each of `tables` in turn, for one token caller over one set of watcher files: the
+    first and the last as `rearmed`'s two runs are, each one between as the re-arm of the run before.
+
+    One between polls once. Every run's clock starts at the same moment, and a record stamped later
+    than that is not read, so a run between that polled on would hide what it was told.
+    """
+    last = len(tables) - 1
     with tempfile.TemporaryDirectory(prefix="settle-rearm-") as home:
-        watch_until(until_actionable=True, bound=3, caller=caller, home=home, states=first)
-        return watch_until(until_actionable=True, bound=2, caller=caller, home=home, states=then)
+        return tuple(watch_until(until_actionable=True, bound=3 if index == 0 else
+                                 2 if index == last else 0, caller=caller, home=home,
+                                 states=states, **watching)
+                     for index, states in enumerate(tables))
 
 
 class ToldKeyTests(unittest.TestCase):
@@ -3891,6 +3910,182 @@ class ToldKeyTests(unittest.TestCase):
 
         # Assert
         self.assertIn("PR#5 eeeeeee green, but", again.output)
+
+
+# The line a green `fabricate(7, draft=True)` prints, spelled out rather than read from settle so a
+# change to its wording reddens the case quoting it.
+GREEN_DRAFT_LINE = "PR#7 0000000 GREEN, BLOCKED: it is a draft: mark it ready for review first"
+
+DIRTY_REASON = ("it conflicts with main: resolve the conflict in the branch, which `settle.py update` "
+                "declines to do")
+
+# A reason running over two lines, as the publication one does.
+UNPUBLISHED_REASON = "v9.9.9 closed in the CHANGELOG and never published:\n  dispatch it first"
+
+
+def said_of(output):
+    """The pull requests an output names on a line other than a check result's or a READY one, in
+    its order."""
+    return " ".join(line.split(" ", 1)[0] for line in output.splitlines()
+                    if line.startswith("PR#") and " => " not in line and " READY: " not in line)
+
+
+def releasing_unpublished(reading):
+    """`project_state`, answering that the base holds a release nobody published."""
+    return lambda project, base: types.SimpleNamespace(
+        **dict(vars(reading(project, base)), unpublished_release="unpublished"))
+
+
+def publication_over_two_lines(_module):
+    """The release guard, answering every head with `UNPUBLISHED_REASON`."""
+    return types.SimpleNamespace(unpublished_reason=lambda *_, **__: UNPUBLISHED_REASON)
+
+
+class GreenBlockedTests(unittest.TestCase):
+    """A green pull request that something other than its checks blocks waits on its caller as a
+    ready one does, without being ready."""
+
+    def test_Given_ADraftWhoseChecksAllPassed_When_WatchedUntilActionable_Then_ItSaysWhatBlocksIt(self):
+        # Act
+        watched = watch_until(until_actionable=True, bound=3, states={7: fabricate(7, draft=True)})
+
+        # Assert
+        self.assertIn(GREEN_DRAFT_LINE, watched.output)
+
+    def test_Given_AGreenPullRequestFromAFork_When_WatchedUntilActionable_Then_ItNamesTheFork(self):
+        # Act
+        watched = watch_until(until_actionable=True, bound=3, states={11: fabricate(11, fork=True)})
+
+        # Assert
+        self.assertIn("its head is on another repository: this settles branches on origin",
+                      watched.output)
+
+    def test_Given_AGreenDraftConflictingWithItsBase_When_WatchedUntilActionable_Then_ItNamesBoth(self):
+        # Act
+        watched = watch_until(until_actionable=True, bound=3,
+                              states={7: fabricate(7, draft=True, merge_state="dirty")})
+
+        # Assert
+        self.assertIn(f"it is a draft: mark it ready for review first; {DIRTY_REASON}",
+                      watched.output)
+
+    def test_Given_DraftsWithAPendingAndAFailingCheck_When_WatchedUntilActionable_Then_NeitherIsCalledGreen(self):
+        # Arrange — beside a green draft, so a run calling no draft green reads as wrong here as
+        # well. The other two report the context the base requires, which leaves their one check
+        # as all that holds them back besides being drafts.
+        states = {7: fabricate(7, draft=True),
+                  8: fabricate(8, draft=True,
+                               results=PASSING + [{"name": "Lint", "bucket": "pending"}]),
+                  9: fabricate(9, draft=True, results=PASSING + [{"name": "Lint", "bucket": "fail"}])}
+
+        # Act
+        watched = watch_until(until_actionable=True, bound=3, states=states)
+
+        # Assert — #9's failing check is a line of its own, which `said_of` leaves out.
+        self.assertEqual(said_of(watched.output), "PR#7")
+
+    def test_Given_AReasonSpanningTwoLinesItWasToldOf_When_ReArmedOnTheSameHeadAndReasons_Then_ItWaits(self):
+        # Act
+        told, again = told_and_rearmed({1: fabricate(1, draft=True)}, {1: fabricate(1, draft=True)},
+                                       readings=[("project_state", releasing_unpublished),
+                                                 ("published_check", publication_over_two_lines)])
+
+        # Assert — None is what a run still polling at the clock's bound leaves. A re-arm that
+        # waits says nothing where the first run was not told of the reason on one line, which
+        # its polls and its output carry.
+        self.assertIsNone(again.code if told.polls == 0
+                          and "never published: dispatch it first" in told.output
+                          else "the first run was not told of it on one line")
+
+    def test_Given_AGreenDraftAWorktreeHoldsItWasToldOf_When_TheWorktreeGoes_Then_ItWaits(self):
+        # Arrange — the held line is said only of a pull request nothing else holds back, so the
+        # first run is told of this one by the blocked line or by none.
+        held, freed = fabricate(5, draft=True, held=True), fabricate(5, draft=True)
+
+        # Act
+        told, again = told_and_rearmed({5: held}, {5: freed})
+
+        # Assert — None is what a run still polling at the clock's bound leaves, and the first
+        # run's polls carry whether it was told of this one at all.
+        self.assertIsNone(again.code if told.polls == 0 else "the first run did not exit at once")
+
+    def test_Given_AGreenDraftItWasToldOf_When_ItsConflictClearsOnTheSameHead_Then_ItIsToldAgain(self):
+        # Act
+        told, again = told_and_rearmed({7: fabricate(7, draft=True, merge_state="dirty")},
+                                       {7: fabricate(7, draft=True)})
+
+        # Assert — the first run's polls carry whether it was told of the two at all.
+        self.assertIn("it is a draft: mark it ready for review first",
+                      again.output if told.polls == 0 else "")
+
+    def test_Given_AConflictingHeadNoCheckRanFor_When_WatchedUntilActionable_Then_ItNamesTheConflict(self):
+        # Act
+        watched = watch_until(until_actionable=True, bound=3,
+                              states={3: fabricate(3, results=[], merge_state="dirty")})
+
+        # Assert
+        self.assertIn(f"PR#3 0000000 BLOCKED: {DIRTY_REASON}", watched.output)
+
+    def test_Given_AConflictItWasToldOfBeforeAnyCheckRan_When_ACheckStarts_Then_ItWaits(self):
+        # Act
+        told, again = told_and_rearmed({3: fabricate(3, results=[], merge_state="dirty")},
+                                       {3: fabricate(3, results=[{"name": "Required checks (Unity)",
+                                                                  "bucket": "pending"}],
+                                                     merge_state="dirty")})
+
+        # Assert — read as the case about a two-line reason is.
+        self.assertIsNone(again.code if told.polls == 0 else "the first run did not exit at once")
+
+    def test_Given_AConflictItWasToldOf_When_ReadUnknownAndThenConflictingAgain_Then_BothReArmsWait(self):
+        # Arrange — no check ran for the head, so its line is the conflict one rather than the green
+        # one.
+        conflicting = fabricate(3, results=[], merge_state="dirty")
+
+        # Act
+        told, unknown, again = rearmed_over(({3: conflicting},
+                                             {3: conflicting._replace(merge_state="unknown")},
+                                             {3: conflicting}))
+
+        # Assert — None is what a run still polling at the clock's bound leaves. The last re-arm
+        # waiting says nothing unless the first run exited and the one reading `unknown` waited.
+        self.assertIsNone(again.code if told.polls == 0 and unknown.code is None
+                          else "the first run did not exit, or the second did")
+
+    def test_Given_AConflictItWasToldOf_When_ANewHeadReadsUnknown_Then_ItIsToldReady(self):
+        # Arrange — the same pull request on a new head, whose merge state has not been read.
+        pushed = fabricate(3, merge_state="unknown")._replace(sha="e" * 40, after="e" * 40)
+
+        # Act
+        told, again = told_and_rearmed({3: fabricate(3, merge_state="dirty")}, {3: pushed})
+
+        # Assert — the first run's polls carry whether it was told of the conflict at all.
+        self.assertIn("PR#3 eeeeeee READY: nothing blocks the merge",
+                      again.output if told.polls == 0 else "")
+
+    def test_Given_AHeadThatMovedWhileRead_When_WatchedUntilActionable_Then_ItIsNotCalledGreen(self):
+        # Arrange — beside a green draft, so a run calling nothing green reads as wrong here as
+        # well. The moved one is a draft too, so read at an unmoved head it would be called green.
+        states = {1: fabricate(1, draft=True, moved=True), 2: fabricate(2, draft=True)}
+
+        # Act
+        watched = watch_until(until_actionable=True, bound=3, states=states)
+
+        # Assert
+        self.assertEqual(said_of(watched.output), "PR#2")
+
+    def test_Given_AGreenDraft_When_APollEnds_Then_ItIsLeftForAFollower(self):
+        # Act
+        watched = watch_until(bound=0, states={7: fabricate(7, draft=True)})
+
+        # Assert
+        self.assertEqual(said_of(watched.actionable), "PR#7")
+
+    def test_Given_AGreenDraft_When_WatchedWithoutExiting_Then_ItIsPrinted(self):
+        # Act
+        watched = watch_until(bound=0, states={7: fabricate(7, draft=True)})
+
+        # Assert
+        self.assertEqual(said_of(watched.output), "PR#7")
 
 
 class RecordPruningTests(unittest.TestCase):

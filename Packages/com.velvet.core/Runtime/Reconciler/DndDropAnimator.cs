@@ -42,6 +42,7 @@ namespace Velvet
             VisualElement positioner, DndOverlayBinding binding, VisualElement source, VisualElement scopeElement,
             string activeId, ReconcilerContext ctx)
         {
+            // MUTANT_SURVIVES(unreachable): the closing session joined this overlay through DndOverlayDriver.BeginSession, which stopped its run, and no other session of the tree could start one since.
             Stop(binding);
             var animation = binding.Settings?.DropAnimation;
             if (animation == null || animation.DurationMs <= 0f || positioner.panel == null

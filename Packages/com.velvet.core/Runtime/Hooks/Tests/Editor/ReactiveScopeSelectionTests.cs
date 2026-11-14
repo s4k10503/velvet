@@ -476,9 +476,8 @@ namespace Velvet.Tests
         #region What the declarations over the walk rest on
 
         // GREEN_ON_BASE(characterization): the base reaches every instruction of every component body the walk follows here.
-        // None of them falls off its end either, which the `MUTANT_SURVIVES` over `ReactiveScopeFlow.Walk`,
-        // `LoopHeads` and `CheckHost`'s end-of-body test rest on. Removing the `Send` of an unconditional branch from
-        // `ReactiveScopeFlow.Continue` leaves instructions unreached and reddens it.
+        // The `MUTANT_SURVIVES` over `ReactiveScopeFlow.LoopHeads` rests on that. Removing the `Send` of an unconditional
+        // branch from `ReactiveScopeFlow.Continue` leaves instructions unreached and reddens it.
         [Test]
         public void Given_EveryComponentBodyThisAssemblyHolds_When_TheFlowWalkReadsIt_Then_NoInstructionIsUnreachedAndNoneFallsOffTheEnd()
         {

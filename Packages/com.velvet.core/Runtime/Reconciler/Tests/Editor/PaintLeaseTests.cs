@@ -26,6 +26,29 @@ namespace Velvet.Tests
             return layers[0].Blur;
         }
 
+        private static float SkewXOf(string[] classNames)
+        {
+            StyleSkewClass.TryExtract(classNames, out var spec);
+            return spec.XDeg;
+        }
+
+        // NaN where the element draws no shadow layer, which no blur a class names can equal.
+        private static float ShownBlur(ReconcilerScope scope, VisualElement card)
+            => scope.Reconciler.Context.ShadowBindings.TryGetValue(card, out var binding) && binding.Layers.Length > 0
+                ? binding.Layers[0].Blur
+                : float.NaN;
+
+        private static float ShownSkewX(VisualElement card)
+            => AuthoredTransform.TryGetSkew(card, out var x, out _) ? x : float.NaN;
+
+        private static (ReconcilerScope Scope, VisualElement Card) MountWithClasses(string[] classNames)
+        {
+            var scope = new ReconcilerScope();
+            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(),
+                new VNode[] { V.Div(className: string.Join(" ", classNames), name: "card") });
+            return (scope, scope.Root[0]);
+        }
+
         private static (ReconcilerScope Scope, VisualElement Card, VNode[] Tree) MountSmall()
         {
             var scope = new ReconcilerScope();
@@ -241,6 +264,247 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(ShadowOf(scope, card).Layers[0].Blur, Is.EqualTo(BlurOf(Small)).Within(1e-3f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base already draws the enter's start gradient at once.
+        [Test]
+        public void Given_AnElementMountedOnTheEndGradient_When_AnEnterOpensItsLease_Then_TheStartGradientShowsAtOnce()
+        {
+            // Arrange
+            var (scope, card) = MountWithClasses(RedToBlue);
+            using var _s = scope;
+            var context = scope.Reconciler.Context;
+            StyleGradientClass.TryExtract(GreenToBlue, card, out var start, out _);
+            StyleGradientClass.TryExtract(RedToBlue, card, out var end, out _);
+
+            // Act
+            context.PaintLeases.Open(card, GreenToBlue, RedToBlue, isExit: false);
+
+            // Assert
+            Assert.That(context.GradientBackgrounds[card].Spec, Is.EqualTo(MotionPaintInterpolation.Gradient(start, end, 0f)));
+        }
+
+        // GREEN_ON_BASE(characterization): the base already starts from the shadow the element shows.
+        [Test]
+        public void Given_AnElementShowingAShadow_When_AnEnterWhoseStartPoseNamesNoShadowOpensItsLease_Then_TheShadowItShowsStays()
+        {
+            // Arrange
+            var (scope, card, _) = MountSmall();
+            using var _s = scope;
+
+            // Act
+            scope.Reconciler.Context.PaintLeases.Open(card, Array.Empty<string>(), Large, isExit: false);
+
+            // Assert
+            Assert.That(ShownBlur(scope, card), Is.EqualTo(BlurOf(Small)).Within(1e-3f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base already starts from the gradient the element shows.
+        [Test]
+        public void Given_AnElementShowingAGradient_When_AnExitWhoseStartPoseNamesNoGradientOpensItsLease_Then_TheGradientStillShows()
+        {
+            // Arrange
+            var (scope, card) = MountWithClasses(RedToBlue);
+            using var _s = scope;
+
+            // Act
+            scope.Reconciler.Context.PaintLeases.Open(card, Array.Empty<string>(), GreenToBlue, isExit: true);
+
+            // Assert
+            Assert.That(card.style.backgroundImage.value.texture, Is.Not.Null);
+        }
+
+        // GREEN_ON_BASE(characterization): the base already opens the enter on its own start pose.
+        [Test]
+        public void Given_APlayHoldingTheShadowThatAPassToldItsEnd_When_AnEnterWithNoPassOpensOverIt_Then_TheShadowShowsTheEntersStartPose()
+        {
+            // Arrange
+            var (scope, card, _) = MountSmall();
+            using var _s = scope;
+            Play(scope, card, 0.5f);
+
+            // Act
+            scope.Reconciler.Context.PaintLeases.Open(card, Large, Small, isExit: false);
+
+            // Assert
+            Assert.That(ShownBlur(scope, card), Is.EqualTo(BlurOf(Large)).Within(1e-3f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base already opens the exit on the drawn pose.
+        [Test]
+        public void Given_APlayHoldingTheShadowThatHasDrawnHalfway_When_AnExitOpensOverIt_Then_TheShadowHoldsTheHalfwayPose()
+        {
+            // Arrange
+            var (scope, card, _) = MountSmall();
+            using var _s = scope;
+            Play(scope, card, 0.5f);
+
+            // Act
+            scope.Reconciler.Context.PaintLeases.Open(card, Large, Small, isExit: true);
+
+            // Assert
+            Assert.That(ShownBlur(scope, card), Is.EqualTo((BlurOf(Small) + BlurOf(Large)) / 2f).Within(1e-3f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base already opens the exit on the drawn angle.
+        [Test]
+        public void Given_APlayHoldingTheSkewThatHasDrawnHalfway_When_AnExitOpensOverIt_Then_TheSkewHoldsTheHalfwayAngle()
+        {
+            // Arrange
+            var (scope, card) = MountWithClasses(Skewed);
+            using var _s = scope;
+            var leases = scope.Reconciler.Context.PaintLeases;
+            var first = leases.Open(card, Skewed, SkewedFurther, isExit: false);
+            leases.Note(card, SkewedFurther);
+            first.Apply(0f);
+            first.Apply(0.5f);
+
+            // Act
+            leases.Open(card, SkewedFurther, Skewed, isExit: true);
+
+            // Assert
+            Assert.That(ShownSkewX(card), Is.EqualTo((SkewXOf(Skewed) + SkewXOf(SkewedFurther)) / 2f).Within(1e-3f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base already opens the exit on the drawn blend.
+        [Test]
+        public void Given_APlayBetweenTwoGradientsThatHasDrawnHalfway_When_AnExitOpensOverIt_Then_TheGradientHoldsTheHalfwayBlend()
+        {
+            // Arrange
+            var (scope, card) = MountWithClasses(RedToBlue);
+            using var _s = scope;
+            var context = scope.Reconciler.Context;
+            StyleGradientClass.TryExtract(RedToBlue, card, out var start, out _);
+            StyleGradientClass.TryExtract(GreenToBlue, card, out var end, out _);
+            var halfway = MotionPaintInterpolation.Gradient(start, end, 0.5f);
+            var first = context.PaintLeases.Open(card, RedToBlue, GreenToBlue, isExit: false);
+            context.PaintLeases.Note(card, GreenToBlue);
+            first.Apply(0f);
+            first.Apply(0.5f);
+
+            // Act
+            context.PaintLeases.Open(card, GreenToBlue, RedToBlue, isExit: true);
+
+            // Assert
+            Assert.That(context.GradientBackgrounds[card].Spec, Is.EqualTo(MotionPaintInterpolation.Gradient(halfway, start, 0f)));
+        }
+
+        // GREEN_ON_BASE(characterization): the base already ends the enter on the angle the element showed.
+        [Test]
+        public void Given_AnElementShowingASkew_When_AnEnterWithNoPassDrawsToItsEnd_Then_TheSkewIsTheOneItShowed()
+        {
+            // Arrange
+            var (scope, card) = MountWithClasses(Skewed);
+            using var _s = scope;
+            var lease = scope.Reconciler.Context.PaintLeases.Open(card, SkewedFurther, Skewed, isExit: false);
+
+            // Act
+            lease.Apply(1f);
+
+            // Assert
+            Assert.That(ShownSkewX(card), Is.EqualTo(SkewXOf(Skewed)).Within(1e-3f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base already binds the end pose's gradient once the play lets go.
+        [Test]
+        public void Given_APlayBetweenTwoGradientsThatHasDrawnHalfway_When_ItIsReleased_Then_TheBoundGradientIsTheEndPoses()
+        {
+            // Arrange
+            var (scope, card) = MountWithClasses(RedToBlue);
+            using var _s = scope;
+            var context = scope.Reconciler.Context;
+            StyleGradientClass.TryExtract(GreenToBlue, card, out var end, out _);
+            var lease = context.PaintLeases.Open(card, RedToBlue, GreenToBlue, isExit: false);
+            context.PaintLeases.Note(card, GreenToBlue);
+            lease.Apply(0f);
+            lease.Apply(0.5f);
+
+            // Act
+            lease.Release();
+
+            // Assert
+            Assert.That(context.GradientBackgrounds[card].Spec, Is.EqualTo(end));
+        }
+
+        // GREEN_ON_BASE(characterization): the base already gives the classes' angle back.
+        [Test]
+        public void Given_APlayHoldingTheSkewThatEndsOnTheElementsOwnClass_When_ItIsReleasedHalfway_Then_TheSkewIsTheClasses()
+        {
+            // Arrange
+            var (scope, card) = MountWithClasses(Skewed);
+            using var _s = scope;
+            var leases = scope.Reconciler.Context.PaintLeases;
+            var lease = leases.Open(card, SkewedFurther, Skewed, isExit: false);
+            leases.Note(card, Skewed);
+            lease.Apply(0f);
+            lease.Apply(0.5f);
+
+            // Act
+            lease.Release();
+
+            // Assert
+            Assert.That(ShownSkewX(card), Is.EqualTo(SkewXOf(Skewed)).Within(1e-3f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base already lets go of the cached texture.
+        [Test]
+        public void Given_APlayFromAGradientToNone_When_ItDrawsPastHalfway_Then_TheGradientHoldsNoCachedTexture()
+        {
+            // Arrange
+            var (scope, card) = MountWithClasses(RedToBlue);
+            using var _s = scope;
+            var context = scope.Reconciler.Context;
+            var binding = context.GradientBackgrounds[card];
+            var lease = context.PaintLeases.Open(card, RedToBlue, Array.Empty<string>(), isExit: false);
+            context.PaintLeases.Note(card, Array.Empty<string>());
+            lease.Apply(0f);
+
+            // Act
+            lease.Apply(0.75f);
+
+            // Assert
+            Assert.That(binding.Held.HasValue, Is.False);
+        }
+
+        // GREEN_ON_BASE(characterization): the base already binds the gradient again.
+        [Test]
+        public void Given_APlayFromAGradientToNoneThatDrewPastHalfway_When_ItDrawsBeforeHalfwayAgain_Then_TheGradientShowsAgain()
+        {
+            // Arrange
+            var (scope, card) = MountWithClasses(RedToBlue);
+            using var _s = scope;
+            var leases = scope.Reconciler.Context.PaintLeases;
+            var lease = leases.Open(card, RedToBlue, Array.Empty<string>(), isExit: false);
+            leases.Note(card, Array.Empty<string>());
+            lease.Apply(0f);
+            lease.Apply(0.75f);
+
+            // Act
+            lease.Apply(0.25f);
+
+            // Assert
+            Assert.That(card.style.backgroundImage.value.texture, Is.Not.Null);
+        }
+
+        // GREEN_ON_BASE(characterization): the base already restacks at the patched z.
+        [Test]
+        public void Given_APlayHoldingAStackedElementsZ_When_APatchRestacksItAndThePlayIsReleased_Then_TheElementTakesThePatchedZ()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { V.Div(className: "relative z-10", name: "card") };
+            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), tree);
+            var card = scope.Root.Q<VisualElement>("card");
+            var context = scope.Reconciler.Context;
+            var lease = context.PaintLeases.Open(card, new[] { "relative", "z-10" }, new[] { "relative", "z-20" }, isExit: false);
+            scope.Reconciler.Reconcile(scope.Root, tree, new VNode[] { V.Div(className: "relative z-20", name: "card") });
+
+            // Act
+            lease.Release();
+
+            // Assert
+            int? z = context.StackingFacts.TryGetValue(card, out var facts) ? facts.Z : -1;
+            Assert.That(z, Is.EqualTo(20));
         }
     }
 }

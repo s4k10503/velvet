@@ -111,8 +111,8 @@ namespace Velvet
             foreach (var root in _hidden)
             {
                 _root = root;
-                // Not a root that a commit nested in a cleanup above revealed, hid or returned to the pool, which drops
-                // its hold: that commit decided later.
+                // Not a root that a commit nested in a cleanup above hid or returned to the pool, which drops its hold:
+                // that commit decided later.
                 if (SuspenseHiddenElements.IsHeldForHide(root)) Visit(root);
             }
             // A fiber taken down above returns at once.

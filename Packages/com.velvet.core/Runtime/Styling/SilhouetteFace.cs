@@ -449,13 +449,10 @@ namespace Velvet
 
         public Color BorderColor => BorderColors[(int)DivideEdge.Left];
 
-        // Whether the captured background came from an INLINE value (the resolver's bg-[…] write) rather than a
-        // USS rule. An inline color is authoritative and only ever changes via another resolver write, which
-        // overwrites the sentinel and is caught by SyncOnPatch's re-capture branch.
+        // Whether the captured background came from an INLINE value (the resolver's bg-[…] write, or one made
+        // through a ref) rather than a USS rule. An inline color is authoritative: a later write over the sentinel
+        // is captured by the next re-capture, and at the latest by Release.
         public bool BgFromInline;
-
-        // The border equivalent of BgFromInline, true where any side's is inline.
-        public bool BorderFromInline;
 
         // Whether the sentinel suppression is currently written to the element's inline style.
         public bool SuppressionApplied;
@@ -494,6 +491,8 @@ namespace Velvet
         private readonly bool[] _sideInline = new bool[4];
         // The sides whose kept colour is preflight's, which the rules the face reads do not give.
         private readonly bool[] _sidePreflight = new bool[4];
+        // The sides whose slot the last capture read, rather than finding a sentinel there.
+        private readonly bool[] _sideRead = new bool[4];
 
         // A slot's colour carried to what the rules give it, else to captured where they cannot be read; captured
         // alone while this suppresses no element.
@@ -682,12 +681,14 @@ namespace Velvet
                 CaptureFace(element.style.backgroundColor, element.resolvedStyle.backgroundColor,
                     ref BgColor, ref BgFromInline);
             }
-            var anyInline = false;
             foreach (var side in s_sides)
             {
                 var inlineStyle = SilhouetteFace.InlineBorderColor(element, side);
                 var inline = inlineStyle.value;
-                var fromInline = false;
+                _sideRead[(int)side] = !SilhouetteFace.IsSentinel(inline);
+                // A side the sentinel still masks keeps whether its colour came inline, as BgFromInline does:
+                // CaptureFace sets the flag only from a slot it can read.
+                var fromInline = HasStash && _sideInline[(int)side];
                 // A dashed divider's mask is not this stash's suppression, so a first capture under it takes the
                 // color the divider paints there rather than keeping a stash it never had.
                 var underDash = false;
@@ -715,9 +716,7 @@ namespace Velvet
                 _sidePreflight[(int)side] = preflight;
                 _sideKept[(int)side] = fromInline || underDash || preflight;
                 _sideInline[(int)side] = fromInline;
-                anyInline |= fromInline;
             }
-            BorderFromInline = anyInline;
             HasStash = true;
         }
 
@@ -783,6 +782,9 @@ namespace Velvet
         // inline bg-[…] or border-[…] stays the element's (a face handed from a shadow to a skew keeps it).
         public void Release(VisualElement element)
         {
+            // A value written over the suppression since the last capture is the face's now, as every re-capture
+            // takes it, so the slot gets that back rather than the colour captured before it.
+            Capture(element);
             if (_includeBackground)
             {
                 element.style.backgroundColor = BgFromInline ? BgColor : StyleKeyword.Null;
@@ -831,20 +833,26 @@ namespace Velvet
         // defers to a skew / shadow layer that took the whole face in the same patch, the incoming layer's own
         // Capture ran while the outgoing layer's suppression sentinel masked the shared inline border slot, so it
         // could recover only its unset default — the real color lives in the outgoing stash. Transfer it here so
-        // the sheared / shadowed face repaints the same border. Only fills a border the new owner did not capture
-        // itself: if the resolver rewrote the border color in this same patch, the new owner read that fresh value
-        // directly, so its stash already holds a real color and must not be clobbered with the outgoing (stale) one.
+        // the sheared / shadowed face repaints the same border. A side the new owner read keeps what it read, the
+        // element's own value now, which the outgoing stash's would replace with a stale one; the others, masked at
+        // its capture or not captured yet, take the outgoing stash's colour and inline flag.
         public void AdoptBorderFace(SilhouetteFaceStash source)
         {
-            if (!source.HasStash || !SilhouetteFace.IsUnset(BorderColor))
+            if (!source.HasStash)
             {
                 return;
             }
-            source.BorderColors.CopyTo(BorderColors, 0);
-            source._sideKept.CopyTo(_sideKept, 0);
-            source._sideInline.CopyTo(_sideInline, 0);
-            source._sidePreflight.CopyTo(_sidePreflight, 0);
-            BorderFromInline = source.BorderFromInline;
+            for (var side = 0; side < BorderColors.Length; side++)
+            {
+                if (_sideRead[side])
+                {
+                    continue;
+                }
+                BorderColors[side] = source.BorderColors[side];
+                _sideKept[side] = source._sideKept[side];
+                _sideInline[side] = source._sideInline[side];
+                _sidePreflight[side] = source._sidePreflight[side];
+            }
             HasStash = true;
         }
 

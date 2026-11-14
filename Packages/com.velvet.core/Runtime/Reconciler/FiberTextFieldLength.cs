@@ -176,6 +176,7 @@ namespace Velvet
             var text = field.text ?? string.Empty;
             var start = Clamp(field.cursorIndex, text.Length);
             var end = Clamp(field.selectIndex, text.Length);
+            // MUTANT_SURVIVES(equivalent, boundary): the swap `>=` adds is of two equal indices, which leaves both as they were.
             if (start > end)
             {
                 (start, end) = (end, start);
@@ -191,6 +192,7 @@ namespace Velvet
                 return 0;
             }
 
+            // MUTANT_SURVIVES(equivalent, boundary): where index equals length both arms return that same value.
             return index > length ? length : index;
         }
 

@@ -341,6 +341,24 @@ namespace Velvet.Tests
             Assert.That(ResolvedFont(target, "row"), Is.SameAs(_sans));
         }
 
+        // GREEN_ON_BASE(characterization): the render taking the family class off already writes the default family back.
+        // The case above reads it after a panel update, which decides again on its own once the clear moved the row's stamp.
+        [Test]
+        public void Given_APortalRowNamingAFamily_When_ARenderTakesTheFamilyClassOff_Then_TheRowCarriesTheDefaultFamilyBeforeThePanelUpdates()
+        {
+            // Arrange
+            VelvetFonts.DefaultFamily = "sans";
+            var target = NewRootElement();
+            _mounted = V.Mount(NewRootElement(),
+                PortalInto(target, V.Label(className: "font-serif", text: "row", name: "row")));
+
+            // Act
+            _mounted.Render(PortalInto(target, V.Label(text: "row", name: "row")));
+
+            // Assert
+            Assert.That(target.Q<Label>("row").style.unityFontDefinition.value.fontAsset, Is.SameAs(_sans));
+        }
+
         [Test]
         public void Given_ATreeMountedOnAnElementInsideAnotherTreesRoot_When_TheOuterTreeIsDisposed_Then_TheInnerRootCarriesTheDefaultFamily()
         {

@@ -606,6 +606,7 @@ namespace Velvet
             {
                 return null;
             }
+            // MUTANT_SURVIVES(equivalent, line removed): TakeReal's one caller cleans real up next, and that cleanup's ClearElementSideTables drops the same pin; until then real is held dead or detached, which Arrange passes over, and InsidePinnedGhost, the pin's other reader, asks only as an exit starts, which that teardown cancels.
             ctx.PinnedGhosts.Remove(real);
             s_held.Remove(placeholder);
             ctx.ZLayerMembers.Remove(real);

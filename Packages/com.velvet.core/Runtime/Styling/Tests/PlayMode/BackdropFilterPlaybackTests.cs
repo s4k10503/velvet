@@ -1,5 +1,7 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
+using System.Reflection;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.TestTools;
@@ -10,14 +12,13 @@ using static Velvet.TestUtilities.PlayModeRealtimeTestHelpers;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Measures the <c>backdrop-*</c> utilities by GPU pixel readback on a panel rendering into a RenderTexture: a
-    /// red half and a blue half meet at x = 60 (at y = 60 in a column), and the element under test, absolutely
-    /// positioned over them, carries no background of its own, so what it shows is the filtered backdrop.
+    /// Measures the <c>backdrop-*</c> utilities on a panel rendering into a RenderTexture, by GPU pixel readback or by
+    /// the renderer's reading of the frame it drew: a red half and a blue half meet at x = 60 (at y = 60 in a
+    /// column), and the element under test, absolutely positioned over them, carries no background of its own, so
+    /// what it shows is the filtered backdrop.
     /// </summary>
     /// <remarks>
-    /// The panel carries no stylesheet, so the row direction and the absolute placement are set inline. The samples
-    /// sit at fixed points, and the measured boxes that put them where they are meant to be are folded into the
-    /// assertion beside the control sample that shows the backdrop filter drew at all.
+    /// The panel carries no stylesheet, so the row direction and the absolute placement are set inline.
     /// </remarks>
     [Timeout(600000)]
     internal sealed class BackdropFilterPlaybackTests
@@ -357,6 +358,210 @@ namespace Velvet.Tests
             // Assert
             Assert.That((Near(glass.worldBound.width, width), far.r > 10 && far.b > 100),
                 Is.EqualTo((true, true)), $"far={far} glass={glass.worldBound}");
+        }
+
+        // The renderer's reading of the target as it began the last layer it drew.
+        private static BackdropFrame LastFrame()
+            => (BackdropFrame)typeof(BackdropRenderer).GetField("s_frame", BindingFlags.NonPublic | BindingFlags.Static)
+                .GetValue(null);
+
+        // GREEN_ON_BASE(characterization): the base copies the target from the box's own left edge.
+        [UnityTest]
+        public IEnumerator Given_ABackdropBlurAwayFromTheTargetsCorner_When_Rendered_Then_TheRegionItCopiesStartsAtTheBoxsLeftEdge()
+        {
+            // Arrange — the box's left edge stands at x = 30.
+            yield return Render("backdrop-blur-md", 30f, 30f, 60f);
+
+            // Act
+            var region = LastFrame().Region;
+
+            // Assert — the pixel column holding that edge, or the one before it.
+            Assert.That(region.x, Is.InRange(29, 30), $"region={region}");
+        }
+
+        // GREEN_ON_BASE(characterization): the base reads one target pixel per point of a box on a panel at scale 1.
+        [UnityTest]
+        public IEnumerator Given_ABackdropBlurOnAPanelAtScaleOne_When_Rendered_Then_ItsDeviationIsTakenAtOnePixelPerPoint()
+        {
+            // Arrange
+            yield return Render("backdrop-blur-md", 30f, 30f, 60f);
+
+            // Act
+            var scale = LastFrame().PixelScale;
+
+            // Assert
+            Assert.That(scale, Is.EqualTo(1f).Within(1e-3f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base samples the captured region mirrored past its edges.
+        [UnityTest]
+        public IEnumerator Given_ABackdropBlurWhoseFirstColumnDiffersFromTheNext_When_Rendered_Then_ThatColumnReadsItsNeighboursMirrored()
+        {
+            // Arrange — a 120px box from x = 60 whose first column is red, whose next 79 are green and whose last 40
+            // are blue. Mirrored, an 8px blur at that first column puts a tenth of its weight on red, on the column and
+            // its mirror image; clamped, every tap left of it is red, and repeated, every one is the blue end. The
+            // target left of the box holds the box's first 60 columns mirrored, so a copy reaching past the box's
+            // left edge reads the same.
+            const int width = 200;
+            const int height = 20;
+            _host = new RenderTexturePanelHost(nameof(BackdropFilterPlaybackTests), width, height);
+            _mounted = V.Mount(_host.Root, V.Div(name: "stage", className: $"w-[{width}px] h-[{height}px]",
+                children: new VNode[]
+                {
+                    V.Div(className: $"w-[59px] h-[{height}px] bg-[#00ff00]"),
+                    V.Div(className: $"w-[2px] h-[{height}px] bg-[#ff0000]"),
+                    V.Div(className: $"w-[79px] h-[{height}px] bg-[#00ff00]"),
+                    V.Div(className: $"w-[60px] h-[{height}px] bg-[#0000ff]"),
+                    V.Div(name: "glass", className: $"w-[120px] h-[{height}px] backdrop-blur-sm"),
+                }));
+            _host.Root.Q<VisualElement>("stage").style.flexDirection = FlexDirection.Row;
+            var glass = Glass().style;
+            glass.position = Position.Absolute;
+            glass.left = 60f;
+            glass.top = 0f;
+            yield return WaitRealtimeDraining(0.8, _host.TargetTexture);
+
+            // Act
+            var first = RenderTexturePixelReader.ReadPixels(_host.TargetTexture, new RectInt(60, height / 2, 1, 1))[0];
+
+            // Assert — nine tenths green, where clamping or repeating leaves about half.
+            Assert.That((int)first.g, Is.GreaterThan(175), $"first={first}");
+        }
+
+        // GREEN_ON_BASE(characterization): the base runs a pending blur's second half before a drop shadow reads it.
+        [UnityTest]
+        public IEnumerator Given_ABlurThenADropShadowOverAHorizontalEdge_When_Rendered_Then_TheEdgeBlursAcrossTheRows()
+        {
+            // Arrange — red above y = 60 and blue below it. An opaque backdrop covers its own shadow, so what shows
+            // is the blur.
+            yield return Render("backdrop-filter-[blur(8px)_drop-shadow(0_0_0_#0000ff)]", 30f, 30f, 60f,
+                direction: FlexDirection.Column);
+
+            // Act
+            var below = At(50, 61);
+
+            // Assert
+            Assert.That(Mixed(below), Is.True, $"below={below}");
+        }
+
+        // GREEN_ON_BASE(characterization): the base blurs a drop shadow's alpha along x as well as along y.
+        [UnityTest]
+        public IEnumerator Given_ABlurredDropShadowOverATransparentBackdrop_When_Rendered_Then_ItFadesPastTheShadowsSideEdge()
+        {
+            // Arrange — a red square from (40, 40) on a clear target, under a box casting its backdrop's shadow 10px
+            // right in blue with a 4px deviation: the shadow's right edge stands at x = 70.
+            _host = new RenderTexturePanelHost(nameof(BackdropFilterPlaybackTests), Size, Size, clear: true);
+            _mounted = V.Mount(_host.Root, V.Div(name: "stage", className: $"w-[{Size}px] h-[{Size}px]", children: new VNode[]
+            {
+                V.Div(name: "square", className: "w-[20px] h-[20px] bg-[#ff0000]"),
+                V.Div(name: "glass", className: "w-[80px] h-[80px] backdrop-filter-[drop-shadow(10px_0_4px_#0000ff)]"),
+            }));
+            foreach (var (name, at) in new[] { ("square", 40f), ("glass", 20f) })
+            {
+                var style = _host.Root.Q<VisualElement>(name).style;
+                style.position = Position.Absolute;
+                style.left = at;
+                style.top = at;
+            }
+            yield return WaitRealtimeDraining(0.8, _host.TargetTexture);
+
+            // Act — 2px past that edge, on the square's middle row.
+            var beside = ReadAt(72, 50);
+
+            // Assert — a quarter of the shadow's alpha; a shadow sharp along x leaves none.
+            Assert.That((int)beside.a, Is.GreaterThan(25), $"beside={beside}");
+        }
+
+        // GREEN_ON_BASE(characterization): the base runs the colour functions before a halved blur on its first halving.
+        [UnityTest]
+        public IEnumerator Given_AnInvertBeforeABlurPastTheShadersReach_When_Rendered_Then_TheBlurredBackdropIsFullyGreen()
+        {
+            // Arrange — a 400px deviation reaches 1200 pixels, which one halving brings inside the shader's 1024.
+            yield return Render("backdrop-filter-[invert(1)_blur(400px)]", 30f, 30f, 60f);
+
+            // Act
+            var inside = At(60, 60);
+
+            // Assert — the red and the blue under the box carry no green, and inverted both carry all of it.
+            Assert.That((int)inside.g, Is.GreaterThan(200), $"inside={inside}");
+        }
+
+        // GREEN_ON_BASE(characterization): the base binds the panel's target again after blitting a multisampled one.
+        [UnityTest]
+        public IEnumerator Given_ABackdropBrightnessOnAMultisampledTarget_When_Rendered_Then_TheRedUnderItIsHalved()
+        {
+            // Arrange — over the red half only. A multisampled target is captured by a blit rather than a copy, and a
+            // brightness alone runs no pass of its own after it.
+            _host = new RenderTexturePanelHost(nameof(BackdropFilterPlaybackTests), Size, Size);
+            _host.TargetTexture.Release();
+            _host.TargetTexture.antiAliasing = 4;
+            _mounted = V.Mount(_host.Root, V.Div(name: "stage", className: $"w-[{Size}px] h-[{Size}px]", children: new VNode[]
+            {
+                V.Div(className: $"w-[{Edge}px] h-[{Size}px] bg-[#ff0000]"),
+                V.Div(className: $"w-[{Size - Edge}px] h-[{Size}px] bg-[#0000ff]"),
+                V.Div(name: "glass", className: "w-[40px] h-[40px] backdrop-brightness-50"),
+            }));
+            _host.Root.Q<VisualElement>("stage").style.flexDirection = FlexDirection.Row;
+            var glass = Glass().style;
+            glass.position = Position.Absolute;
+            glass.left = 5f;
+            glass.top = 30f;
+            yield return WaitRealtime(0.8);
+
+            // Act
+            var inside = Resolved(_host.TargetTexture, 25, 50);
+
+            // Assert — red at brightness 0.5: 128.
+            Assert.That((int)inside.r, Is.InRange(100, 160), $"inside={inside}");
+        }
+
+        private static Color32 Resolved(RenderTexture target, int x, int y)
+        {
+            var previous = RenderTexture.active;
+            var plain = RenderTexture.GetTemporary(target.width, target.height, 0);
+            try
+            {
+                Graphics.Blit(target, plain);
+                return RenderTexturePixelReader.ReadPixels(plain, new RectInt(x, target.height - 1 - y, 1, 1))[0];
+            }
+            finally
+            {
+                RenderTexture.active = previous;
+                RenderTexture.ReleaseTemporary(plain);
+            }
+        }
+
+        // GREEN_ON_BASE(characterization): the base paints a backdrop under a filtered ancestor over its own box alone.
+        [UnityTest]
+        public IEnumerator Given_ABackdropBlurUnderAFilteredAncestor_When_Rendered_Then_ItPaintsAcrossItsBoxAlone()
+        {
+            // Arrange — a 40px box from x = 60 over a blue fill, both inside a stage carrying a filter at its identity
+            // amount; the inversion paints the box yellow.
+            var identity = new FilterFunction(FilterFunctionType.Grayscale);
+            identity.AddParameter(new FilterParameter(0f));
+            _host = new RenderTexturePanelHost(nameof(BackdropFilterPlaybackTests), Size, Size);
+            _mounted = V.Mount(_host.Root, V.Div(name: "stage", className: $"w-[{Size}px] h-[{Size}px]", children: new VNode[]
+            {
+                V.Div(className: $"w-[{Size}px] h-[{Size}px] bg-[#0000ff]"),
+                V.Div(name: "glass", className: "w-[40px] h-[40px] backdrop-filter-[blur(4px)_invert(1)]"),
+            }));
+            _host.Root.Q<VisualElement>("stage").style.filter = new List<FilterFunction> { identity };
+            var glass = Glass().style;
+            glass.position = Position.Absolute;
+            glass.left = 60f;
+            glass.top = 30f;
+            yield return WaitRealtimeDraining(0.8, _host.TargetTexture);
+            var row = RenderTexturePixelReader.ReadPixels(_host.TargetTexture, new RectInt(0, Size - 1 - 50, Size, 1));
+
+            // Act
+            var yellow = 0;
+            foreach (var p in row)
+            {
+                yellow += p.r > 200 && p.g > 200 && p.b < 60 ? 1 : 0;
+            }
+
+            // Assert — the box's 40 columns, give or take the one at either edge.
+            Assert.That(yellow, Is.InRange(38, 42), $"yellow={yellow} at x=60: {row[60]} x=58: {row[58]}");
         }
     }
 }

@@ -74,6 +74,7 @@ namespace Velvet
                 {
                     return false;
                 }
+                // MUTANT_SURVIVES(equivalent, boundary): next is searched for from position + 1, which is at least 1, so it is never 0.
                 position = next < 0 ? compound.Length : next;
             }
             return true;

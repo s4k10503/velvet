@@ -28,6 +28,7 @@ namespace Velvet.Tests
         private static readonly FieldInfo CapField = T.GetField("MaxSilhouetteCacheEntries", Priv);
         private static readonly MethodInfo StoreMethod = T.GetMethod("StoreSilhouette", Priv);
         private static readonly MethodInfo ResetMethod = T.GetMethod("ResetStaticCaches", Priv);
+        private static readonly FieldInfo MaterialField = T.GetField("s_material", Priv);
 
         private static int CacheCount => ((ICollection)CacheField.GetValue(null)).Count;
         private static int LruCount => ((ICollection)LruField.GetValue(null)).Count;
@@ -35,6 +36,7 @@ namespace Velvet.Tests
         private static int Cap => (int)CapField.GetValue(null);
         private static void Store(int w, Texture2D tex)
             => StoreMethod.Invoke(null, new object[] { (0L, 0L, 0L, w, 0, 0, 0L), tex });
+        private static object CachedAt(int w) => ((IDictionary)CacheField.GetValue(null))[(0L, 0L, 0L, w, 0, 0, 0L)];
 
         private static ShadowSpec Layer(float blur, float offsetY = 0f, float spread = 0f, float offsetX = 0f,
             bool inset = false)
@@ -194,6 +196,22 @@ namespace Velvet.Tests
             Assert.That(new[] { rect.center.x, rect.center.y }, Is.EqualTo(new[] { 60f, 30f }).Within(1e-3f));
         }
 
+        // GREEN_ON_BASE(characterization): the base shears a shadow's offset on both axes as the face is sheared.
+        [Test]
+        public void Given_AnOffsetShadowOnACasterSkewedOnBothAxes_When_ItsRectIsTaken_Then_ItCentresWhereTheFacesShearCarriesTheOffset()
+        {
+            // Arrange — with no blur the shadow centres on the box centre (50, 20) moved by its offset (10, 0), and the
+            // caster's own face is sheared by SilhouetteFace.Shear, which carries that point to where the shadow centres.
+            var tan = Mathf.Tan(30f * Mathf.Deg2Rad);
+            var expected = SilhouetteFace.Shear(new Vector2(60f, 20f), 100f, 40f, tan, tan).x;
+
+            // Act
+            var rect = BoxShadowBaker.ShadowRect(Box(100f, 40f), Layer(0f, offsetX: 10f), new Vector2(30f, 30f));
+
+            // Assert
+            Assert.That(rect.center.x, Is.EqualTo(expected).Within(1e-3f));
+        }
+
         [Test]
         public void Given_AShadowOnACasterSkewedOnY_When_Baked_Then_TheTextureCoversTheShearOverhang()
         {
@@ -209,6 +227,27 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(tex != null ? tex.height : -1, Is.EqualTo(144).Within(1));
+        }
+
+        // GREEN_ON_BASE(characterization): the base bakes a shadow skewed on x with its caster's slant.
+        [Test]
+        public void Given_AShadowOnACasterSkewedOnX_When_Baked_Then_ItCoversAPointTheSlantCarriesIt()
+        {
+            TestGraphics.IgnoreIfHeadless("a GPU shadow bake (Graphics.Blit + ReadPixels)");
+
+            // Arrange — a 10px spread with no blur grows the 100x40 box to 120x60, and skewX(30deg) slants it left above
+            // its centre: on the row 25 above it, y -5, the shape's left edge moves from x -10 to -24.4 and the caster's
+            // own, which is cut out, from 0 to -14.4. So (-20, -5) lies in the slanted shape and outside the upright one.
+            var box = Box(100f, 40f);
+            var layer = Layer(0f, spread: 10f);
+            var skew = new Vector2(30f, 0f);
+            var rect = BoxShadowBaker.ShadowRect(box, layer, skew);
+
+            // Act
+            var tex = BoxShadowBaker.GetOrBakeSilhouette(box, layer, skew);
+
+            // Assert
+            Assert.That(tex != null ? AlphaAt(tex, rect, -20f, -5f) : float.NaN, Is.EqualTo(1f).Within(0.02f));
         }
 
         [TestCase(-7.5f, -7.5f, 1f, TestName = "Given_AShadowOnABoxRoundedAtOneCorner_When_Baked_Then_TheSquareCornerOfTheSpreadShapeCoversThePoint")]
@@ -230,6 +269,26 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(tex != null ? AlphaAt(tex, rect, x, y) : float.NaN, Is.EqualTo(expected).Within(0.02f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base cuts the caster's box out of its shadow with the box's own round corners.
+        [Test]
+        public void Given_AShadowOnARoundedBox_When_Baked_Then_ItCoversThePartOfTheBoundsTheRoundCornerLeavesOut()
+        {
+            TestGraphics.IgnoreIfHeadless("a GPU shadow bake (Graphics.Blit + ReadPixels)");
+
+            // Arrange — a 10px spread with no blur grows a box rounded 40px on every corner into a shape rounded 50px
+            // about the same corner centres, (40, 40) at the top left. (8.5, 8.5) lies about 44.5px from it: inside the
+            // box's bounds, outside its round corner, and inside the shape's.
+            var box = Box(200f, 120f, 40f);
+            var layer = Layer(0f, spread: 10f);
+            var rect = BoxShadowBaker.ShadowRect(box, layer, Vector2.zero);
+
+            // Act
+            var tex = BoxShadowBaker.GetOrBakeSilhouette(box, layer, Vector2.zero);
+
+            // Assert
+            Assert.That(tex != null ? AlphaAt(tex, rect, 8.5f, 8.5f) : float.NaN, Is.EqualTo(1f).Within(0.02f));
         }
 
         [TestCase(5.5f, 60.5f, 1f, TestName = "Given_AnInsetShadowWithASpread_When_Baked_Then_ItCoversABandInsideTheBox")]
@@ -361,6 +420,113 @@ namespace Velvet.Tests
 
             // Assert — the evicted texture was destroyed (Unity's fake-null on a destroyed Object).
             Assert.That(oldest == null, Is.True);
+        }
+
+        // GREEN_ON_BASE(characterization): the base evicts nothing until the cache holds more entries than its cap.
+        [Test]
+        public void Given_ACacheOneShortOfItsCap_When_OneMoreIsStored_Then_ItKeepsEveryEntry()
+        {
+            // Arrange
+            var cap = Cap;
+            for (var i = 0; i < cap - 1; i++)
+            {
+                Store(i, new Texture2D(2, 2));
+            }
+
+            // Act
+            Store(cap - 1, new Texture2D(2, 2));
+
+            // Assert
+            Assert.That(CacheCount, Is.EqualTo(cap));
+        }
+
+        // GREEN_ON_BASE(characterization): the base makes an entry stored again its most recently used one.
+        [Test]
+        public void Given_AFullCacheWhoseOldestEntryIsStoredAgain_When_OneMoreIsStored_Then_TheEntryStoredAgainIsKept()
+        {
+            // Arrange — the entry at 0 is the least recently used until it is stored again.
+            var cap = Cap;
+            for (var i = 0; i < cap; i++)
+            {
+                Store(i, new Texture2D(2, 2));
+            }
+            var restored = new Texture2D(2, 2);
+            Store(0, restored);
+
+            // Act
+            Store(cap, new Texture2D(2, 2));
+
+            // Assert
+            Assert.That(CachedAt(0), Is.SameAs(restored));
+        }
+
+        // GREEN_ON_BASE(characterization): the base makes a bake it hands back from the cache its most recently used one.
+        [Test]
+        public void Given_ACacheOneShortOfItsCapWhoseOldestBakeIsFetchedAgain_When_TwoMoreAreStored_Then_TheFetchedBakeIsKept()
+        {
+            TestGraphics.IgnoreIfHeadless("a GPU shadow bake (Graphics.Blit + ReadPixels)");
+
+            // Arrange — the bake is the least recently used entry until it is fetched again.
+            var baked = BoxShadowBaker.GetOrBakeSilhouette(Box(100f, 40f), Layer(8f), Vector2.zero);
+            var cap = Cap;
+            for (var i = 1; i < cap - 1; i++)
+            {
+                Store(i, new Texture2D(2, 2));
+            }
+            BoxShadowBaker.GetOrBakeSilhouette(Box(100f, 40f), Layer(8f), Vector2.zero);
+
+            // Act
+            Store(cap - 1, new Texture2D(2, 2));
+            Store(cap, new Texture2D(2, 2));
+
+            // Assert — false for a destroyed Object (Unity's fake-null) and for a bake that never happened.
+            Assert.That(baked != null, Is.True);
+        }
+
+        // GREEN_ON_BASE(characterization): the base destroys every cached bake as the editor resets the caches.
+        [Test]
+        public void Given_ACachedBake_When_TheEditorResetsTheCaches_Then_ItsTextureIsDestroyed()
+        {
+            // Arrange
+            var cached = new Texture2D(2, 2);
+            Store(0, cached);
+
+            // Act
+            ResetMethod.Invoke(null, null);
+
+            // Assert — Unity's fake-null on a destroyed Object.
+            Assert.That(cached == null, Is.True);
+        }
+
+        // GREEN_ON_BASE(characterization): the base hands back from its cache a layer it baked once.
+        [Test]
+        public void Given_ALayerBakedOnce_When_ItIsAskedForAgain_Then_TheSameTextureIsHandedBack()
+        {
+            TestGraphics.IgnoreIfHeadless("a GPU shadow bake (Graphics.Blit + ReadPixels)");
+
+            // Arrange
+            var first = BoxShadowBaker.GetOrBakeSilhouette(Box(100f, 40f), Layer(8f), Vector2.zero);
+
+            // Act
+            var second = BoxShadowBaker.GetOrBakeSilhouette(Box(100f, 40f), Layer(8f), Vector2.zero);
+
+            // Assert
+            Assert.That(second, Is.Not.Null.And.SameAs(first));
+        }
+
+        // GREEN_ON_BASE(characterization): the base destroys the bake material it disposes.
+        [Test]
+        public void Given_TheBakeMaterial_When_ItIsDisposed_Then_ItIsDestroyed()
+        {
+            // Arrange
+            var material = new Material(Shader.Find(VelvetShaders.BoxShadow));
+            MaterialField.SetValue(null, material);
+
+            // Act
+            BoxShadowBaker.DisposeMaterial();
+
+            // Assert — Unity's fake-null on a destroyed Object.
+            Assert.That(material == null, Is.True);
         }
     }
 }

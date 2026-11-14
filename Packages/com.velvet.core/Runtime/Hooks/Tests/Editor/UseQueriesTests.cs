@@ -266,7 +266,7 @@ namespace Velvet.Tests
                 "What combine returns is shared with what it returned before, and an equal value re-renders nothing");
         }
 
-        // GREEN_ON_BASE(characterization): the base already shows it once a render has caught up with the mount; deleting `_observer.Read(_entry, _shared, source);` from QueriesItem.Read reddens it.
+        // GREEN_ON_BASE(characterization): the base already shows it once a render has caught up with the mount.
         [Test]
         public void Given_ACombineOfStaleness_When_TheDataTurnsStaleAndTheComponentRendersTwice_Then_TheCombineSeesIt()
         {
@@ -320,6 +320,44 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(s_combined[s_combined.Count - 1], Is.EqualTo(true), "v5's setQueries runs combine over the result it replaced and re-renders for what changed");
+        }
+
+        // GREEN_ON_BASE(characterization): the base already re-renders a combine of staleness for data set again unchanged.
+        [Test]
+        public void Given_ACombineThatRenderedTheDataStale_When_TheSameDataIsSetAgain_Then_TheCombineSeesItFresh()
+        {
+            // Arrange
+            s_client = new QueryClient(new QueryClientOptions { GcTime = TimeSpan.MaxValue, Retry = 0, Clock = () => s_now });
+            s_client.SetQueryData(new QueryKey("a"), 1);
+            using var mounted = Mount(StaleReader);
+            s_now = TimeSpan.FromSeconds(2);
+            Rerender(mounted);
+
+            // Act — the same value, so the only change is staleness: one the last render read, and the subscription's
+            // own reading at the mount's commit did not
+            Settle(mounted, () => s_client.SetQueryData(new QueryKey("a"), 1));
+
+            // Assert
+            Assert.That(s_combined[s_combined.Count - 1], Is.EqualTo(false));
+        }
+
+        // GREEN_ON_BASE(characterization): the base already re-renders a mount for data set between its render and its commit.
+        [Test]
+        public void Given_DataSetBetweenTheMountsRenderAndItsCommit_When_TheCommitRuns_Then_TheComponentRendersWhatTheCombineMakesOfIt()
+        {
+            // Arrange — the mount's effects are left unflushed, so the subscriptions they make meet the new data
+            s_client.SetQueryData(new QueryKey("a"), 1);
+            s_client.SetQueryData(new QueryKey("b"), 2);
+            s_reader = SumReader;
+            using var mounted = V.Mount(_root, V.Component(Host, key: "host"), CaughtErrors.Unlogged);
+            s_client.SetQueryData(new QueryKey("a"), 5);
+
+            // Act
+            mounted.FlushEffectsForTest();
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(s_combined[s_combined.Count - 1], Is.EqualTo(7));
         }
 
         #endregion

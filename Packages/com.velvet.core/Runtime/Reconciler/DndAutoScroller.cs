@@ -70,7 +70,10 @@ namespace Velvet
         internal void Stop()
         {
             _tick?.Pause();
+            // MUTANT_SURVIVES(equivalent): DndActiveDrag.Close, the one caller, drops this scroller as Stop returns.
+            // Only Update resumes the tick paused above, and nothing calls Update on a dropped scroller.
             _tick = null;
+            // MUTANT_SURVIVES(equivalent): the scroller is dropped as Stop returns, as the line above says.
             _target = null;
         }
 

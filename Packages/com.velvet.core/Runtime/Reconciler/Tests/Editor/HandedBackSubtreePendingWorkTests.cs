@@ -21,6 +21,8 @@ namespace Velvet.Tests
         private static ComponentFiber s_ownerFiber;
         private static int s_heldLeaves;
         private static ComponentFiber s_heldLeavesFiber;
+        private static int s_owedLeafRenders;
+        private static ComponentFiber s_owedLeafFiber;
 
         private VisualElement _root = null!;
 
@@ -35,6 +37,8 @@ namespace Velvet.Tests
             s_ownerFiber = null;
             s_heldLeaves = 0;
             s_heldLeavesFiber = null;
+            s_owedLeafRenders = 0;
+            s_owedLeafFiber = null;
         }
 
         private static object PendingWorkBelow(ComponentFiber fiber)
@@ -86,6 +90,26 @@ namespace Velvet.Tests
             {
                 V.Label(name: "tick", text: "tick:" + tick),
                 V.Div(name: "held", children: new VNode[] { V.Component(Leaf, key: "leaf") }),
+            });
+        }
+
+        [Component(Compiler = false)]
+        private static VNode OwedLeaf()
+        {
+            s_owedLeafFiber = FiberAmbientStack.Current;
+            s_owedLeafRenders++;
+            return V.Label(name: "owed", text: "owed");
+        }
+
+        [Component]
+        private static VNode OwedLeafOwner()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setOrder = setTick;
+            return V.Div(name: "box", children: new VNode[]
+            {
+                V.Label(name: "tick", text: "tick:" + tick),
+                V.Div(name: "held", children: new VNode[] { V.Component(OwedLeaf, key: "owed") }),
             });
         }
 
@@ -227,6 +251,24 @@ namespace Velvet.Tests
             // Assert — the mark travels with the text: an owner with nothing marked would not ask
             Assert.That(Equals(PendingWorkBelow(s_ownerFiber), true) ? _root.Q<Label>("tick")?.text : null,
                 Is.EqualTo("tick:1"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base already enters a handed-back element over a fiber owed a render.
+        [Test]
+        public void Given_AFiberOwedARenderUnderAnElementTheOwnerHandsBack_When_TheOwnerRendersAgain_Then_TheFiberRenders()
+        {
+            // Arrange — set as FiberPassJournal.Abandon sets it on a fiber the abandoned pass rendered, with no update
+            // of the fiber's own left to mark it dirty
+            using var mounted = V.Mount(_root, V.Component(OwedLeafOwner, key: "owner"));
+            s_owedLeafFiber.RenderOwed = true;
+            var renders = s_owedLeafRenders;
+
+            // Act
+            s_setOrder.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(s_owedLeafRenders, Is.EqualTo(renders + 1));
         }
 
         // Read by reflection so the fixture builds where the mark does not exist.
