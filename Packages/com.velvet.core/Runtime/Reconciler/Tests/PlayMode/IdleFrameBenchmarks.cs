@@ -22,8 +22,8 @@ namespace Velvet.Tests.Performance
     /// <para>
     /// Two arms over the same elements and the same rows, on a panel carrying Velvet's utility stylesheet; a case
     /// throws when a row is not laid out by it. The polling arm adds the tokens that give an element a poll of its
-    /// own on the panel's scheduler, so what it records above the other arm is what those polls cost a frame in which
-    /// no state changes.
+    /// own on the panel's scheduler, so what its <c>Frame.TickScheduledActions</c> records above the other arm's is what
+    /// those polls cost a frame in which no state changes.
     /// </para>
     /// </summary>
     [TestFixture]
