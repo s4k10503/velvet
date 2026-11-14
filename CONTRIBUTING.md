@@ -600,6 +600,24 @@ Say in the pull request body which `files` and `assemblies` were measured, the r
 line the diff job prints (`N mutant(s); killed on the base: …, lost on the head: 0, …`), beside the
 deleted cases.
 
+**Which lines only the deleted cases reach is read off per-case coverage.** The kill set measures the
+mutants the campaign places, and says nothing of a line where it places none.
+`.github/workflows/per-case-coverage.yml` runs both suites with each case's coverage recorded on its
+own, and its report job runs `scripts/test_quality/unique_coverage.py` over them: for each fixture, the
+lines no other fixture's cases reach, with the tests `group` names taken out of their fixtures and
+reported as one unit. Measure the tree that still holds the cases, the pull request's base, naming them
+in `group`:
+
+```bash
+gh workflow run per-case-coverage.yml --ref main -f ref=main \
+  -f group='pruned=^Velvet\.Tests\.FooTests::(Given_A|Given_B)_'
+```
+
+A group listed among those reaching no line alone reaches nothing a case outside it does not. A group
+with lines of its own leaves them unreached unless the head adds a case that reaches them. Say in the pull request body the run's link, the `group` pattern and the report's line for it,
+beside the deleted cases. What the script counts as a case's line, and what no case's record holds, is
+its docstring's to say.
+
 Pruning trips two other checks as well:
 
 - **Adding or changing a line in a `[TestCase]` method poses it; deleting a row alone does not.** `base_red_check.py` poses a
