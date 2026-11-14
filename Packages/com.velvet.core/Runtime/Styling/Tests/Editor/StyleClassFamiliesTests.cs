@@ -6,11 +6,12 @@ using Velvet.TestUtilities;
 
 namespace Velvet.Tests
 {
-    // Every pass whose gate reads a class array's family bit must find that bit wherever its own reading acts on the
-    // array: a bit missing for a token the reading acts on skips the pass for an element that carries the token.
+    // A pass whose gate reads a class array's family bit has to find that bit wherever its own reading acts on the
+    // array: a bit missing for a token the reading acts on makes the pass read the array as naming none of its family.
     internal sealed class StyleClassFamiliesTests
     {
-        // Forms beside the bundled utilities that only a pass's own parse reads.
+        // Forms the passes read beside the bundled utilities: arbitrary values, negatives, important markers and the
+        // families realised in C#.
         private static readonly string[] s_written =
         {
             "skew-x-[8deg]", "-skew-x-6", "skew-[0.1turn]", "skew-y-[-3deg]", "!skew-x-3", "skew-x-[1]",
@@ -79,8 +80,8 @@ namespace Velvet.Tests
             (StyleClassFamily.Order, c => StyleOrderClass.TryExtract(c, out _, out _)),
         };
 
-        // A gradient activator draws only beside a colour stop, so each token is read beside one; a stop opens no
-        // activator, so it sets no gradient bit of its own.
+        // A gradient activator with no stop list of its own draws only beside a colour stop, so each token is read
+        // beside one; a stop opens no activator, so it sets no gradient bit of its own.
         private static string[] ArrayOf(string token, StyleClassFamily family)
             => family == StyleClassFamily.Gradient ? new[] { token, "from-red-500" } : new[] { token };
 

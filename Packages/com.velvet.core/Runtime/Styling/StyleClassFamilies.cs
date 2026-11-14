@@ -31,7 +31,7 @@ namespace Velvet
     // The families a class array's tokens feed, read once per array and kept by its identity, so the passes a
     // patch runs over one array answer their gates with a bit test instead of a scan each. A bit is set where its
     // family's own token predicate holds for some token, so a gate reading it answers what a scan would.
-    // StyleClassFamiliesTests fails where a family's parse reads a token its bit does not flag.
+    // StyleClassFamiliesTests fails where a family's parse reads a corpus token its bit does not flag.
     //
     // Keyed by identity, a reading holds only while the array's contents do, which the reconciler already
     // depends on: ClassNameParseCache hands the same array back for the same string, and DiffClassList returns
@@ -41,7 +41,7 @@ namespace Velvet
     // arrays sharing a slot each read again when the other displaced it, and the table keeps the last array of
     // each slot alive.
     //
-    // Main thread only, like the rest of the class reads (Documentation~/async.md owns the rule).
+    // Main thread only, like ClassNameParseCache (Documentation~/async.md owns the rule).
     internal static class StyleClassFamilies
     {
         private const int SlotCount = 1024;

@@ -158,9 +158,9 @@ namespace Velvet
                 || IsSpaceToken(cls);
 
         // Single-token half of HasGapClass: true when cls belongs to the gap / space family the gap
-        // manipulator is gated on. Its own predicate so the prefix set has ONE definition — both the family
-        // reading (StyleClassFamilies) and the variant-payload gate (StyleVariantPayload) resolve the family
-        // through here.
+        // manipulator is gated on. Its own predicate so the prefix set has ONE definition — the family reading
+        // (StyleClassFamilies), the variant-payload gate (StyleVariantPayload) and StyleFamilyOrder resolve the
+        // family through here.
         public static bool IsGapToken(string cls)
             => !string.IsNullOrEmpty(cls)
                 && (StyleArbitraryValueResolver.StripImportant(cls, out _).StartsWith("gap-", StringComparison.Ordinal)

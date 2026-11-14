@@ -98,9 +98,9 @@ namespace Velvet
             ["8"] = 8f,
         };
 
-        // Single-token half of HasDivideClass. Its own predicate so the prefix has ONE definition — both
-        // the family reading (StyleClassFamilies) and the variant-payload gate (StyleVariantPayload) resolve the
-        // family here.
+        // Single-token half of HasDivideClass. Its own predicate so the prefix has ONE definition — the family
+        // reading (StyleClassFamilies), the variant-payload gate (StyleVariantPayload) and StyleFamilyOrder resolve
+        // the family here.
         public static bool IsDivideToken(string cls)
             => !string.IsNullOrEmpty(cls)
                 && StyleArbitraryValueResolver.StripImportant(cls, out _).StartsWith("divide-", StringComparison.Ordinal);
