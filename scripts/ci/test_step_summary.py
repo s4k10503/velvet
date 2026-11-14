@@ -173,7 +173,7 @@ class WorkflowTests(unittest.TestCase):
     def test_Given_TheWorkflows_When_Read_Then_NoStepAppendsAFileToTheSummaryWithoutTheBound(self):
         # Arrange
         unbounded = []
-        for name in ("mutation.yml", "kill-set.yml"):
+        for name in ("mutation.yml", "kill-set.yml", "per-case-coverage.yml"):
             for line in (ROOT / ".github" / "workflows" / name).read_text().splitlines():
                 if "GITHUB_STEP_SUMMARY" in line and "step_summary.py" not in line:
                     unbounded.append((name, line.strip()))

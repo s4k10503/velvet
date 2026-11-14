@@ -21,9 +21,11 @@ on:
 permissions:
   contents: read
 
-# PYTHONDONTWRITEBYTECODE for the reason test.yml gives.
+# PYTHONDONTWRITEBYTECODE for the reason test.yml gives. EDITOR_MEMORY is the limit mutation.yml gives a
+# shard's editor container, and RunnerLimitTests holds the suite launch here to it as well.
 env:
   PYTHONDONTWRITEBYTECODE: "1"
+  EDITOR_MEMORY: "12g"
 
 jobs:
   # Same reading as test.yml's job of this name.
@@ -99,6 +101,7 @@ jobs:
         run: |
           version=$(sed -n 's/^m_EditorVersion: //p' ProjectSettings/ProjectVersion.txt)
           docker run --rm --init --workdir /github/workspace \
+            --memory "$EDITOR_MEMORY" --memory-swap "$EDITOR_MEMORY" --pids-limit 4096 \
             --volume "$GITHUB_WORKSPACE:/github/workspace" \
             --env UNITY_LICENSE --env UNITY_EMAIL --env UNITY_PASSWORD \
             --env PYTHONDONTWRITEBYTECODE=1 \
@@ -153,6 +156,7 @@ jobs:
           name: Per-case coverage (PlayMode)
           path: Logs/per-case/PlayMode
 
+      # The append to the summary stays on the line that bounds it: test_step_summary.py reads it by line.
       - env:
           SHA: ${{ needs.commit.outputs.sha }}
           GROUP: ${{ inputs.group }}
@@ -161,8 +165,8 @@ jobs:
           python3 scripts/test_quality/unique_coverage.py Logs/per-case/EditMode Logs/per-case/PlayMode \
             ${GROUP:+--group "$GROUP"} > unique-coverage.txt 2>&1
           status=$?
-          python3 scripts/ci/step_summary.py block "Lines only one fixture reaches ($SHA)" \
-            unique-coverage.txt >> "$GITHUB_STEP_SUMMARY"
+          title="Lines only one fixture reaches ($SHA)"
+          python3 scripts/ci/step_summary.py block "$title" unique-coverage.txt >> "$GITHUB_STEP_SUMMARY"
           exit "$status"
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

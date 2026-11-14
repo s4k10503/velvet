@@ -197,15 +197,19 @@ class SplitJobTests(unittest.TestCase):
 # What a GitHub-hosted ubuntu-latest runner holds, which a limit on the editor's container is meant to
 # stay under: the runner's own agent and the daemon share the rest.
 RUNNER_MEMORY_GIB = 16
-CAMPAIGN_WORKFLOWS = ("mutation.yml", "kill-set.yml")
+SUITE_WORKFLOWS = ("mutation.yml", "kill-set.yml", "per-case-coverage.yml")
+SUITE_SCRIPTS = ("ci_mutation_shard.py", "per_case_coverage.py")
 
 
-def campaign_launches(name):
-    """The flags ahead of the image's command in each `docker run` of workflow `name` that runs
-    ci_mutation_shard.py, and the workflow's text."""
+def suite_launches(name):
+    """The flags ahead of the image's command in each `docker run` of workflow `name` that runs one of
+    SUITE_SCRIPTS, and the workflow's text."""
     text = (REPO_ROOT / ".github/workflows" / name).read_text()
-    launches = [chunk.partition("ci_mutation_shard.py")[0]
-                for chunk in text.split("docker run ")[1:] if "ci_mutation_shard.py" in chunk]
+    launches = []
+    for chunk in text.split("docker run ")[1:]:
+        found = [chunk.index(script) for script in SUITE_SCRIPTS if script in chunk]
+        if found:
+            launches.append(chunk[:min(found)])
     return launches, text
 
 
@@ -216,13 +220,13 @@ def flag_value(launch, flag):
 
 
 class RunnerLimitTests(unittest.TestCase):
-    """What a shard's editor container may take of the runner it shares with the job's own agent."""
+    """What an editor container running a suite may take of the runner it shares with the job's own agent."""
 
     def limits(self, flag):
-        return [flag_value(launch, flag) for name in CAMPAIGN_WORKFLOWS
-                for launch in campaign_launches(name)[0]]
+        return [flag_value(launch, flag) for name in SUITE_WORKFLOWS
+                for launch in suite_launches(name)[0]]
 
-    def test_Given_TheCampaignsLaunches_When_TheirSwapIsRead_Then_EachIsAsLargeAsItsMemory(self):
+    def test_Given_TheSuiteLaunches_When_TheirSwapIsRead_Then_EachIsAsLargeAsItsMemory(self):
         # Arrange — a swap beyond the memory lets the container thrash the runner before it is killed.
         memory = self.limits("--memory")
 
@@ -230,24 +234,25 @@ class RunnerLimitTests(unittest.TestCase):
         swap = self.limits("--memory-swap")
         equal = [held is not None and held == allowed for held, allowed in zip(swap, memory)]
 
-        # Assert — the two measuring steps of mutation.yml and the one of kill-set.yml.
-        self.assertEqual(equal, [True] * 3)
+        # Assert — the two measuring steps of mutation.yml, the one of kill-set.yml and the suite step of
+        # per-case-coverage.yml.
+        self.assertEqual(equal, [True] * 4)
 
-    def test_Given_TheCampaignsLaunches_When_TheirProcessLimitIsRead_Then_EachIsBounded(self):
+    def test_Given_TheSuiteLaunches_When_TheirProcessLimitIsRead_Then_EachIsBounded(self):
         # Arrange
-        launches = [launch for name in CAMPAIGN_WORKFLOWS for launch in campaign_launches(name)[0]]
+        launches = [launch for name in SUITE_WORKFLOWS for launch in suite_launches(name)[0]]
 
         # Act
         bounded = [(flag_value(launch, "--pids-limit") or "").isdigit() for launch in launches]
 
         # Assert
-        self.assertEqual(bounded, [True] * 3)
+        self.assertEqual(bounded, [True] * 4)
 
-    def test_Given_TheCampaignsLaunches_When_TheirMemoryIsResolved_Then_EachIsBelowTheRunners(self):
+    def test_Given_TheSuiteLaunches_When_TheirMemoryIsResolved_Then_EachIsBelowTheRunners(self):
         # Arrange
         gibibytes = []
-        for name in CAMPAIGN_WORKFLOWS:
-            launches, text = campaign_launches(name)
+        for name in SUITE_WORKFLOWS:
+            launches, text = suite_launches(name)
             for launch in launches:
                 value = flag_value(launch, "--memory") or ""
                 if value.startswith("$"):
@@ -260,7 +265,7 @@ class RunnerLimitTests(unittest.TestCase):
         below = [size is not None and 0 < size < RUNNER_MEMORY_GIB for size in gibibytes]
 
         # Assert
-        self.assertEqual(below, [True] * 3)
+        self.assertEqual(below, [True] * 4)
 
 
 class ShardPlatformTests(unittest.TestCase):
