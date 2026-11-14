@@ -44,7 +44,9 @@ namespace Velvet
         {
             NoteFaceBorderStyle(element, newClassNames);
             var bound = _ctx.BorderStyleBindings.TryGetValue(element, out var binding);
-            var has = StyleBorderStyleClass.TryGetWinningBorderStyleClass(newClassNames, out var winner);
+            string? winner = null;
+            var has = StyleBorderStyleClass.HasBorderStyleClass(newClassNames)
+                && StyleBorderStyleClass.TryGetWinningBorderStyleClass(newClassNames, out winner);
             // A shadow owning the face repaints the border itself, so the dashed layer must stand down.
             var deferred = _ctx.ShadowBindings.ContainsKey(element);
 
@@ -101,7 +103,8 @@ namespace Velvet
         // Gives a shadow that owns the face the line style its classes give the border it repaints.
         private void NoteFaceBorderStyle(VisualElement element, string[] classNames)
         {
-            var style = StyleBorderStyleClass.TryExtract(classNames, out var spec) ? spec.Style : BorderLineStyle.Solid;
+            var style = StyleBorderStyleClass.HasBorderStyleClass(classNames)
+                && StyleBorderStyleClass.TryExtract(classNames, out var spec) ? spec.Style : BorderLineStyle.Solid;
             var changed = false;
             if (_ctx.ShadowBindings.TryGetValue(element, out var shadow) && shadow.BorderStyle != style)
             {

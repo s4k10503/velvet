@@ -416,8 +416,8 @@ namespace Velvet
                     || cls.StartsWith(ViaPrefix, StringComparison.Ordinal)
                     || cls.StartsWith(ToPrefix, StringComparison.Ordinal));
 
-        // Cheap early-out gate: true when ANY class LOOKS LIKE a gradient shape activator. A pure
-        // prefix scan — no substring allocation, no angle/position parsing — so it never
+        // Cheap early-out gate: true when ANY class LOOKS LIKE a gradient shape activator. A prefix
+        // test per class (IsActivatorToken) with no angle/position parsing, so it never
         // duplicates TryExtract's parse cost. May false-positive on a malformed activator (e.g. an
         // unrecognized /modifier or an out-of-range value), which TryExtract then correctly rejects.
         // It never false-negatives on anything TryExtract can actually resolve BY CONSTRUCTION:
@@ -426,23 +426,10 @@ namespace Velvet
         // the ~99% of elements with no gradient.
         public static bool HasGradientClass(string[] classNames)
         {
-            if (classNames == null)
-            {
-                return false;
-            }
-            foreach (var cls in classNames)
-            {
-                if (string.IsNullOrEmpty(cls))
-                {
-                    continue;
-                }
-                if (MatchesActivatorPrefix(cls))
-                {
-                    return true;
-                }
-            }
-            return false;
+            return StyleClassFamilies.Has(classNames, StyleClassFamily.Gradient);
         }
+
+        internal static bool IsActivatorToken(string cls) => !string.IsNullOrEmpty(cls) && MatchesActivatorPrefix(cls);
 
         // Resolves the gradient: last shape activator wins, last from/via/to colour and position each win.
         // Returns false when no from, via or to COLOR is given and the winning activator carries no stop

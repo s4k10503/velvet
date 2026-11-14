@@ -195,26 +195,18 @@ namespace Velvet
         // anywhere, so the element's stacking has to be tracked. Only the utility after a token's last variant is
         // read, so `md:absolute` counts and `[&>*]:z-10`'s bracketed selector does not.
         internal static bool DeclaresStacking(string[] declared)
+            => StyleClassFamilies.Has(declared, StyleClassFamily.Stacking);
+
+        internal static bool IsStackingToken(string cls)
         {
-            if (declared == null)
+            if (string.IsNullOrEmpty(cls))
             {
                 return false;
             }
-            foreach (var cls in declared)
-            {
-                if (string.IsNullOrEmpty(cls))
-                {
-                    continue;
-                }
-                var core = StyleArbitraryValueResolver.StripImportant(UtilityOf(cls), out _);
-                if (core == "absolute" || core == "relative" || StyleOrderClass.IsOrderToken(core)
-                    || core.StartsWith("z-", System.StringComparison.Ordinal)
-                    || core.StartsWith("-z-", System.StringComparison.Ordinal))
-                {
-                    return true;
-                }
-            }
-            return false;
+            var core = StyleArbitraryValueResolver.StripImportant(UtilityOf(cls), out _);
+            return core == "absolute" || core == "relative" || StyleOrderClass.IsOrderToken(core)
+                || core.StartsWith("z-", System.StringComparison.Ordinal)
+                || core.StartsWith("-z-", System.StringComparison.Ordinal);
         }
 
         // The utility after cls's last variant separator outside brackets and parentheses.

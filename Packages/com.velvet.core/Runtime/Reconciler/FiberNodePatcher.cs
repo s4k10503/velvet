@@ -4131,7 +4131,9 @@ namespace Velvet
         // every scope is walked again rather than this one alone.
         private void ApplyPointerEvents(VisualElement element, string[] classNames)
         {
-            var mode = StylePointerEventsClass.Read(classNames);
+            var mode = StylePointerEventsClass.HasPointerEventsClass(classNames)
+                ? StylePointerEventsClass.Read(classNames)
+                : PointerEventsMode.Inherit;
             var scopes = _ctx.PointerEventsScopes;
             if (scopes.TryGetValue(element, out var existing))
             {

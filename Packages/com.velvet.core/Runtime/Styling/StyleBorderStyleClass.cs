@@ -44,18 +44,7 @@ namespace Velvet
         // Cheap early-out gate: true when ANY class is a border line-style utility.
         public static bool HasBorderStyleClass(string[]? classNames)
         {
-            if (classNames == null)
-            {
-                return false;
-            }
-            foreach (var cls in classNames)
-            {
-                if (IsBorderStyleClass(cls))
-                {
-                    return true;
-                }
-            }
-            return false;
+            return StyleClassFamilies.Has(classNames, StyleClassFamily.BorderStyle);
         }
 
         // Allocation-free cascade probe: the LAST recognized border-style token (mirroring the token

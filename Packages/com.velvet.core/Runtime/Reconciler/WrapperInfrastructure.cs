@@ -92,7 +92,7 @@ namespace Velvet
             }
             foreach (var cls in classNames)
             {
-                // Same pass-over as StyleEaseCurve.NoteClasses: a peel leaves a suffix of its class.
+                // Same pass-over as StyleEaseCurve.IsTimingToken: a peel leaves a suffix of its class.
                 if (cls != null && cls.IndexOf(AnimateHuePrefix, StringComparison.Ordinal) != -1
                     && StyleVariantClass.LeafOf(cls).StartsWith(AnimateHuePrefix, StringComparison.Ordinal))
                 {
