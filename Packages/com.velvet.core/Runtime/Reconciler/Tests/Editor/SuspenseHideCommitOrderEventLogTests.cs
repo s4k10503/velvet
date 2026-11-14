@@ -9,12 +9,18 @@ namespace Velvet.Tests
     /// Pins the commit sequence of a revealed <c>V.Suspense</c> that suspends again as one <see cref="EventLog"/>
     /// string: React 19's <c>disappearLayoutEffects</c> walks the hidden tree in pre-order, running a component's
     /// layout cleanups as it reaches the component and detaching an element's ref as it reaches the element. A
-    /// Suspense removed while it hides that tree runs the tree's insertion cleanups, ahead of its fallback's, as
-    /// React's deletion walk (<c>commitDeletionEffectsOnFiber</c>) runs a hidden subtree's.
+    /// Suspense removed while it hides that tree runs the tree's insertion cleanups ahead of its fallback's, and none
+    /// of the layout cleanups the hide ran, as react-reconciler's deletion walk (<c>commitDeletionEffectsOnFiber</c>)
+    /// does from 19.2, which turned <c>enableHiddenSubtreeInsertionEffectCleanup</c> on. 19.1's default flags leave
+    /// it off, and its walk skips those insertion cleanups.
     /// </summary>
-    [TestFixture]
+    [TestFixtureSource(typeof(EventLogRenderer), nameof(EventLogRenderer.All))]
     internal sealed class SuspenseHideCommitOrderEventLogTests
     {
+        private readonly EventLogRenderer _renderer;
+
+        public SuspenseHideCommitOrderEventLogTests(EventLogRenderer renderer) => _renderer = renderer;
+
         private enum Shape
         {
             Nested,
@@ -48,7 +54,7 @@ namespace Velvet.Tests
         private static VNode Probed(Named props)
         {
             EventLog.UseEffects(props.Name, Array.Empty<object>());
-            return V.Div(className: props.ClassName, refCallback: EventLog.UseRefCallback(props.Name));
+            return V.Div(className: props.ClassName, refCallback: EventLog.UseRefCallback<VisualElement>(props.Name));
         }
 
         [Component]
@@ -62,8 +68,8 @@ namespace Velvet.Tests
         private static VNode Outer()
         {
             EventLog.UseEffects("O", Array.Empty<object>());
-            var refO = EventLog.UseRefCallback("O");
-            var refO2 = EventLog.UseRefCallback("O2");
+            var refO = EventLog.UseRefCallback<VisualElement>("O");
+            var refO2 = EventLog.UseRefCallback<VisualElement>("O2");
             return V.Div(refCallback: refO, children: new VNode[]
             {
                 V.Component(Probed, new Named("I"), key: "i"),
@@ -75,9 +81,9 @@ namespace Velvet.Tests
         private static VNode PortalOuter(HostProps props)
         {
             EventLog.UseEffects("O", Array.Empty<object>());
-            var refO = EventLog.UseRefCallback("O");
-            var refO2 = EventLog.UseRefCallback("O2");
-            var refPZ = EventLog.UseRefCallback("PZ");
+            var refO = EventLog.UseRefCallback<VisualElement>("O");
+            var refO2 = EventLog.UseRefCallback<VisualElement>("O2");
+            var refPZ = EventLog.UseRefCallback<VisualElement>("PZ");
             VNode portalChild = props.Shape switch
             {
                 Shape.PortalChildEmpty => V.Component(Empty, new Named("PC"), key: "pc"),
@@ -95,8 +101,8 @@ namespace Velvet.Tests
         [Component(Memoize = true)]
         private static VNode MemoizedPortalOuter(HostProps props)
         {
-            var refO = EventLog.UseRefCallback("O");
-            var refO2 = EventLog.UseRefCallback("O2");
+            var refO = EventLog.UseRefCallback<VisualElement>("O");
+            var refO2 = EventLog.UseRefCallback<VisualElement>("O2");
             return V.Div(refCallback: refO, children: new VNode[]
             {
                 V.Portal(props.Target, new VNode[] { V.Component(SelfUpdating, key: "c1") }, key: "portal"),
@@ -107,8 +113,8 @@ namespace Velvet.Tests
         [Component(Memoize = true)]
         private static VNode MemoizedBoundaryPortalOuter(HostProps props)
         {
-            var refO = EventLog.UseRefCallback("O");
-            var refO2 = EventLog.UseRefCallback("O2");
+            var refO = EventLog.UseRefCallback<VisualElement>("O");
+            var refO2 = EventLog.UseRefCallback<VisualElement>("O2");
             return V.Div(refCallback: refO, children: new VNode[]
             {
                 V.Portal(props.Target, new VNode[] { V.Component(FallingBack, key: "boundary") }, key: "portal"),
@@ -120,7 +126,7 @@ namespace Velvet.Tests
         private static VNode FallingBack()
         {
             var (broken, _) = EventLog.UseState("Broken", 0);
-            var refD = EventLog.UseRefCallback("D");
+            var refD = EventLog.UseRefCallback<VisualElement>("D");
             Hooks.UseFallback(_ => V.Fragment(
                 V.Component(Empty, new Named("E"), key: "e"), V.Div(refCallback: refD, key: "d")));
             return V.Component(ThrowsWhenBroken, broken, key: "breaking");
@@ -135,7 +141,7 @@ namespace Velvet.Tests
         {
             EventLog.UseState("C1", 0);
             EventLog.UseEffects("C1", Array.Empty<object>());
-            var refD = EventLog.UseRefCallback("D");
+            var refD = EventLog.UseRefCallback<VisualElement>("D");
             return V.Fragment(V.Component(Empty, new Named("E"), key: "e"), V.Div(refCallback: refD, key: "d"));
         }
 
@@ -148,8 +154,8 @@ namespace Velvet.Tests
         {
             var (show, _) = EventLog.UseState("Show", false);
             EventLog.UseEffects("O", Array.Empty<object>());
-            var refO = EventLog.UseRefCallback("O");
-            var refPZ = EventLog.UseRefCallback("PZ");
+            var refO = EventLog.UseRefCallback<VisualElement>("O");
+            var refPZ = EventLog.UseRefCallback<VisualElement>("PZ");
             var keepTarget = Hooks.UseCallback<Func<VisualElement, Action>>(element =>
             {
                 props.Own.Element = element;
@@ -173,7 +179,7 @@ namespace Velvet.Tests
         private static VNode TrailingOuter()
         {
             EventLog.UseEffects("O", Array.Empty<object>());
-            return V.Div(refCallback: EventLog.UseRefCallback("O"), children: new VNode[]
+            return V.Div(refCallback: EventLog.UseRefCallback<VisualElement>("O"), children: new VNode[]
             {
                 V.Component(Probed, new Named("I"), key: "i"),
                 V.Component(Empty, new Named("N"), key: "n"),
@@ -185,7 +191,7 @@ namespace Velvet.Tests
         {
             var (lead, _) = EventLog.UseState("Lead", false);
             EventLog.UseEffects("O", Array.Empty<object>());
-            return V.Div(refCallback: EventLog.UseRefCallback("O"), children: new VNode[]
+            return V.Div(refCallback: EventLog.UseRefCallback<VisualElement>("O"), children: new VNode[]
             {
                 lead ? V.Component(Empty, new Named("N"), key: "n") : null,
                 V.Component(Probed, new Named("I"), key: "i"),
@@ -196,8 +202,8 @@ namespace Velvet.Tests
         private static VNode RelocatingOuter()
         {
             EventLog.UseEffects("O", Array.Empty<object>());
-            var refO = EventLog.UseRefCallback("O");
-            var refZ = EventLog.UseRefCallback("Z");
+            var refO = EventLog.UseRefCallback<VisualElement>("O");
+            var refZ = EventLog.UseRefCallback<VisualElement>("Z");
             // The positioned parent is kept apart from O's element: the case is about Z's slot, and the case whose
             // first element is relocated owns what becomes of a component starting there.
             return V.Div(refCallback: refO, children: new VNode[]
@@ -268,16 +274,16 @@ namespace Velvet.Tests
                 });
         }
 
-        private static MountedTree MountShown(EventLog log, Shape shape)
+        private MountedEventLogTree MountShown(EventLog log, Shape shape)
         {
-            var mounted = V.Mount(new VisualElement(),
-                log.Provide(V.Component(SuspenseHost, new HostProps(shape, new VisualElement(), new VisualElement(), new Holder()))),
+            var props = new HostProps(shape, _renderer.CreatePortalTarget(), _renderer.CreatePortalTarget(), new Holder());
+            var mounted = _renderer.Mount(log.Provide(V.Component(SuspenseHost, props)),
                 new MountOptions { OnCaughtError = (_, _) => { } });
             mounted.DrainForTest();
             return mounted;
         }
 
-        private static MountedTree MountShownWithItsPortal(EventLog log, Shape shape)
+        private MountedEventLogTree MountShownWithItsPortal(EventLog log, Shape shape)
         {
             var mounted = MountShown(log, shape);
             log.Setter<bool>("Show").Invoke(true);
@@ -286,14 +292,14 @@ namespace Velvet.Tests
         }
 
         [Component]
-        private static VNode InsertionCleanupProbe(Named props)
+        private static VNode InsertionAndLayoutProbe(Named props)
         {
-            var log = EventLog.UseLog();
-            Hooks.UseInsertionEffect(() => () => log.Add("ins-x:" + props.Name), Array.Empty<object>());
+            EventLog.UseInsertionAndLayoutEffects(props.Name, Array.Empty<object>());
             return V.Div();
         }
 
-        // A Suspense its parent can remove, whose primary and fallback each hold a component with an insertion effect.
+        // A Suspense its parent can remove, whose primary and fallback each hold a component with an insertion and a
+        // layout effect.
         [Component]
         private static VNode RemovableSuspense()
         {
@@ -301,16 +307,16 @@ namespace Velvet.Tests
             var (blocked, _) = EventLog.UseState("Block", 0);
             return V.Fragment(shown
                 ? V.Suspense(
-                    fallback: V.Component(InsertionCleanupProbe, new Named("F"), key: "f"),
+                    fallback: V.Component(InsertionAndLayoutProbe, new Named("F"), key: "f"),
                     children: new VNode[]
                     {
-                        V.Component(InsertionCleanupProbe, new Named("H"), key: "h"),
+                        V.Component(InsertionAndLayoutProbe, new Named("H"), key: "h"),
                         V.Component(Reader, blocked, key: "reader"),
                     })
                 : null);
         }
 
-        private static void Suspend(EventLog log, MountedTree mounted)
+        private static void Suspend(EventLog log, MountedEventLogTree mounted)
         {
             log.Clear();
             log.Setter<int>("Block").Invoke(1);
@@ -556,14 +562,15 @@ namespace Velvet.Tests
             Assert.That(log.ToString(), Is.EqualTo("ref-x:O lay-x:E ref-x:D ref-x:O2 ins:F ref:F lay:F eff:F"));
         }
 
-        // GREEN_ON_BASE(characterization): the base runs a hidden component's insertion cleanup when it is removed.
-        // Skip it for a fiber a Suspense hides (FiberEffects.CleanUpDeleted) and this reads the fallback's alone.
+        // GREEN_ON_BASE(characterization): the base runs a removed hidden component's insertion cleanup, not its layout one.
+        // Skip it for a fiber a Suspense hides (FiberEffects.CleanUpDeleted) and this reads the fallback's alone; run
+        // the layout cleanup the hide already ran a second time and `lay-x:H` joins it.
         [Test]
-        public void Given_ASuspenseHidingAComponentWithAnInsertionEffect_When_TheSuspenseIsRemoved_Then_ItsInsertionCleanupRunsAheadOfTheFallbacks()
+        public void Given_ASuspenseHidingAComponentWithInsertionAndLayoutEffects_When_TheSuspenseIsRemoved_Then_OnlyItsInsertionCleanupRunsAheadOfTheFallbacks()
         {
             // Arrange
             var log = new EventLog();
-            using var mounted = V.Mount(new VisualElement(), log.Provide(V.Component(RemovableSuspense)),
+            using var mounted = _renderer.Mount(log.Provide(V.Component(RemovableSuspense)),
                 new MountOptions { OnCaughtError = (_, _) => { } });
             mounted.DrainForTest();
             Suspend(log, mounted);
@@ -574,7 +581,7 @@ namespace Velvet.Tests
             mounted.DrainForTest();
 
             // Assert
-            Assert.That(log.ToString(), Is.EqualTo("ins-x:H ins-x:F"));
+            Assert.That(log.ToString(), Is.EqualTo("ins-x:H ins-x:F lay-x:F"));
         }
     }
 }

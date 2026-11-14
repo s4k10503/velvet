@@ -3342,6 +3342,50 @@ def il_reading_assemblies(project, ran=None):
     return names - {None}
 
 
+# What the runner writes after a fixture's class name where the fixture was given arguments: the
+# argument list, `N.Fixture(UIToolkit)`, as one suite per list, and the class name alone for the suite
+# above them where there are several lists.
+FIXTURE_ARGUMENTS_TERM = r"(?:\(.*\))?"
+
+
+def fixture_arguments_after_row(full):
+    """A reported case's full name with the argument list its fixture was named with moved to after
+    the row: `N.Fixture(UIToolkit).Method` reads as `N.Fixture.Method(UIToolkit)`, so that the class a
+    case is declared in and its method are the name up to its first parenthesis, as `fixture_hashes`
+    and `killed_by_behaviour` read one and `base_red_check.as_read` matches one to its method.
+
+    The runner writes a fixture's arguments as the first parenthesised group, followed by a dot. A
+    name whose first group is followed by anything else holds a row's arguments alone and comes back as
+    it was. The group is read to its matching parenthesis outside quotes, so a quoted argument holding
+    `).` stays one argument. `FixtureTraceTests` fails when the arguments stay where the runner wrote
+    them.
+    """
+    opened = full.find("(")
+    if opened < 0:
+        return full
+    depth, quote, escaped = 0, None, False
+    for at in range(opened, len(full)):
+        character = full[at]
+        if quote:
+            if escaped:
+                escaped = False
+            elif character == "\\":
+                escaped = True
+            elif character == quote:
+                quote = None
+        elif character in "\"'":
+            quote = character
+        elif character == "(":
+            depth += 1
+        elif character == ")":
+            depth -= 1
+            if depth == 0:
+                if full[at + 1:at + 2] != ".":
+                    return full
+                return full[:opened] + full[at + 1:] + full[opened:at + 1]
+    return full
+
+
 def killed_by_behaviour(names, text_readers):
     """The failing cases that are not a text-reading fixture's.
 
@@ -3351,17 +3395,19 @@ def killed_by_behaviour(names, text_readers):
     mutating -- an identifier the documentation names is one that is public.
     """
     return [name for name in names
-            if not any(part in text_readers for part in name.split("."))]
+            if not any(part in text_readers
+                       for part in fixture_arguments_after_row(name).split("(")[0].split("."))]
 
 
 def excluding(scope, text_readers):
     """`scope` with every fixture of `text_readers` taken out of the run.
 
     `killed_by_behaviour` discounts their failures whatever they are, so running them cannot move a
-    verdict. A term matches a suite whose full name ends in the class, so a case it takes out is one
-    whose name carries that class, which `killed_by_behaviour` discounts too.
+    verdict. A term matches a suite whose full name ends in the class, or in the class and the
+    argument list a fixture given arguments is named with, so a case it takes out is one whose name
+    carries that class, which `killed_by_behaviour` discounts too.
     """
-    terms = ["!\\.{}$".format(name) for name in sorted(text_readers)]
+    terms = ["!\\.{}{}$".format(name, FIXTURE_ARGUMENTS_TERM) for name in sorted(text_readers)]
     if not terms:
         return list(scope)
     scope = list(scope)
@@ -4387,7 +4433,7 @@ def fixture_hashes(project, case, index):
     `digestible` gives, so a comment edit moves nothing and a code edit, a new case included, does.
     """
     classes, texts, uses = index
-    owner, _, method = CASE_NAME.match(case).group(1).rpartition(".")
+    owner, _, method = CASE_NAME.match(fixture_arguments_after_row(case)).group(1).rpartition(".")
     name = re.split(r"[.+]", owner)[-1] if owner else ""
     if not name or not method or name not in classes:
         return None
@@ -4480,7 +4526,7 @@ def measured_entry(mutant, project, index, text_readers, run):
 
 
 def short_case(case):
-    return ".".join(CASE_NAME.match(case).group(1).split(".")[-2:])
+    return ".".join(CASE_NAME.match(fixture_arguments_after_row(case)).group(1).split(".")[-2:])
 
 
 def kill_problem(record, mutant, project, index):

@@ -11,9 +11,13 @@ namespace Velvet.Tests
     /// <c>ReactFiberCommitWork</c> walks a portal's children where the portal sits among its siblings, whichever
     /// container they mount into.
     /// </summary>
-    [TestFixture]
+    [TestFixtureSource(typeof(EventLogRenderer), nameof(EventLogRenderer.All))]
     internal sealed class PortalCommitOrderEventLogTests
     {
+        private readonly EventLogRenderer _renderer;
+
+        public PortalCommitOrderEventLogTests(EventLogRenderer renderer) => _renderer = renderer;
+
         private sealed record Named(string Name);
 
         private sealed record ParentProps(VisualElement Target, bool LastRendersNothing);
@@ -34,7 +38,7 @@ namespace Velvet.Tests
         private static VNode Probed(Named props)
         {
             EventLog.UseEffects(props.Name, Array.Empty<object>());
-            return V.Div(refCallback: EventLog.UseRefCallback(props.Name));
+            return V.Div(refCallback: EventLog.UseRefCallback<VisualElement>(props.Name));
         }
 
         [Component]
@@ -48,7 +52,7 @@ namespace Velvet.Tests
         private static VNode PortalParent(ParentProps props)
         {
             EventLog.UseEffects("P", Array.Empty<object>());
-            return V.Div(refCallback: EventLog.UseRefCallback("P"), children: new VNode[]
+            return V.Div(refCallback: EventLog.UseRefCallback<VisualElement>("P"), children: new VNode[]
             {
                 V.Component(Probed, new Named("A"), key: "a"),
                 V.Portal(props.Target, new VNode[] { V.Component(Probed, new Named("PC"), key: "pc") }, key: "portal"),
@@ -126,7 +130,7 @@ namespace Velvet.Tests
         private static VNode ChildRenderingAComponentThenAnElement()
         {
             EventLog.UseEffects("C1", Array.Empty<object>());
-            return V.Fragment(V.Component(Empty, new Named("E"), key: "e"), V.Div(refCallback: EventLog.UseRefCallback("D")));
+            return V.Fragment(V.Component(Empty, new Named("E"), key: "e"), V.Div(refCallback: EventLog.UseRefCallback<VisualElement>("D")));
         }
 
         [Component]
@@ -176,11 +180,11 @@ namespace Velvet.Tests
                 V.Component(After, key: "after"));
         }
 
-        private static string MountAndLog(bool lastRendersNothing)
+        private string MountAndLog(bool lastRendersNothing)
         {
             var log = new EventLog();
-            using var mounted = V.Mount(new VisualElement(),
-                log.Provide(V.Component(PortalParent, new ParentProps(new VisualElement(), lastRendersNothing))));
+            using var mounted = _renderer.Mount(
+                log.Provide(V.Component(PortalParent, new ParentProps(_renderer.CreatePortalTarget(), lastRendersNothing))));
             mounted.DrainForTest();
             return log.ToString();
         }
@@ -213,13 +217,14 @@ namespace Velvet.Tests
                 "ins:A ins:PC ins:N ins:P ref:A lay:A ref:PC lay:PC lay:N ref:P lay:P eff:A eff:PC eff:N eff:P"));
         }
 
+        // GREEN_ON_BASE(characterization): mounted through the renderer source, the base runs the Portal child's effects first.
         [Test]
         public void Given_APortalChildAndASiblingAfterThePortalUpdatedTogether_When_TheyCommit_Then_ThePortalChildsEffectsRunFirst()
         {
             // Arrange
             var log = new EventLog();
-            using var mounted = V.Mount(new VisualElement(),
-                log.Provide(V.Component(PortalThenSibling, new ParentProps(new VisualElement(), false))));
+            using var mounted = _renderer.Mount(
+                log.Provide(V.Component(PortalThenSibling, new ParentProps(_renderer.CreatePortalTarget(), false))));
             mounted.DrainForTest();
             log.Clear();
 
@@ -234,6 +239,7 @@ namespace Velvet.Tests
                 + " eff-x:Leaf eff-x:After eff:Leaf eff:After"));
         }
 
+        // GREEN_ON_BASE(characterization): mounted through the renderer source, the base attaches the ref between them.
         [Test]
         public void Given_APortalChildRenderingAComponentAheadOfAnElementWithARef_When_Mounted_Then_TheRefAttachesBetweenTheirLayoutEffects()
         {
@@ -241,130 +247,133 @@ namespace Velvet.Tests
             var log = new EventLog();
 
             // Act
-            using var mounted = V.Mount(new VisualElement(), log.Provide(
-                V.Component(PortalOfAChildWithAComponentThenAnElement, new ParentProps(new VisualElement(), false))));
+            using var mounted = _renderer.Mount(log.Provide(
+                V.Component(PortalOfAChildWithAComponentThenAnElement, new ParentProps(_renderer.CreatePortalTarget(), false))));
             mounted.DrainForTest();
 
             // Assert
             Assert.That(log.ToString(), Is.EqualTo("ins:E ins:C1 lay:E ref:D lay:C1 eff:E eff:C1"));
         }
 
-        [Test]
-        public void Given_AVirtualListRowInAPortalAndASiblingAfterThePortalUpdatedTogether_When_TheyCommit_Then_TheRowsEffectsRunFirst()
+        [TestFixture]
+        internal sealed class UIToolkitOnlyPortals
         {
-            // Arrange — the row renders from a range update outside any pass, the way a scroll renders one
-            var log = new EventLog();
-            var target = new VisualElement();
-            using var mounted = V.Mount(new VisualElement(),
-                log.Provide(V.Component(VirtualListInAPortalThenSibling, new ParentProps(target, false))));
-            mounted.DrainForTest();
-            var list = mounted.Root.Reconciler!.Context.VirtualListControllers[target.Q<ScrollView>()];
-            list.UpdateVisibleRange(scrollY: 0f, viewportHeight: 50f);
-            mounted.DrainForTest();
-            log.Clear();
+            // GREEN_ON_BASE(characterization): on the UI renderer's own fixture the base runs the row's effects first.
+            [Test]
+            public void Given_AVirtualListRowInAPortalAndASiblingAfterThePortalUpdatedTogether_When_TheyCommit_Then_TheRowsEffectsRunFirst()
+            {
+                // Arrange — the row renders from a range update outside any pass, the way a scroll renders one
+                var log = new EventLog();
+                var target = new VisualElement();
+                using var mounted = V.Mount(new VisualElement(),
+                    log.Provide(V.Component(VirtualListInAPortalThenSibling, new ParentProps(target, false))));
+                mounted.DrainForTest();
+                var list = mounted.Root.Reconciler!.Context.VirtualListControllers[target.Q<ScrollView>()];
+                list.UpdateVisibleRange(scrollY: 0f, viewportHeight: 50f);
+                mounted.DrainForTest();
+                log.Clear();
 
-            // Act
-            log.Setter<int>("R").Invoke(1);
-            log.Setter<int>("After").Invoke(1);
-            mounted.DrainForTest();
+                // Act
+                log.Setter<int>("R").Invoke(1);
+                log.Setter<int>("After").Invoke(1);
+                mounted.DrainForTest();
 
-            // Assert
-            Assert.That(log.ToString(), Is.EqualTo(
-                "ins-x:R ins:R lay-x:R ins-x:After ins:After lay-x:After lay:R lay:After"
-                + " eff-x:R eff-x:After eff:R eff:After"));
-        }
+                // Assert
+                Assert.That(log.ToString(), Is.EqualTo(
+                    "ins-x:R ins:R lay-x:R ins-x:After ins:After lay-x:After lay:R lay:After"
+                    + " eff-x:R eff-x:After eff:R eff:After"));
+            }
 
-        // GREEN_ON_BASE(characterization): the base never names a Portal for a component's own render to take back.
-        // What this pins is that the render of a Portal's child, which now names its Portal, takes it back.
-        [Test]
-        public void Given_APortalChildThatRendersOnItsOwn_When_ThatRenderCommits_Then_NoPortalIsLeftInFlight()
-        {
-            // Arrange
-            var log = new EventLog();
-            using var mounted = V.Mount(new VisualElement(),
-                log.Provide(V.Component(PortalThenSibling, new ParentProps(new VisualElement(), false))));
-            mounted.DrainForTest();
+            // GREEN_ON_BASE(characterization): on the UI renderer's own fixture the base leaves no Portal in flight.
+            [Test]
+            public void Given_APortalChildThatRendersOnItsOwn_When_ThatRenderCommits_Then_NoPortalIsLeftInFlight()
+            {
+                // Arrange
+                var log = new EventLog();
+                using var mounted = V.Mount(new VisualElement(),
+                    log.Provide(V.Component(PortalThenSibling, new ParentProps(new VisualElement(), false))));
+                mounted.DrainForTest();
 
-            // Act
-            log.Setter<int>("PortalChild").Invoke(1);
-            mounted.DrainForTest();
+                // Act
+                log.Setter<int>("PortalChild").Invoke(1);
+                mounted.DrainForTest();
 
-            // Assert
-            Assert.That(mounted.Root.Reconciler!.Context.CurrentPortalPlaceholder, Is.Null);
-        }
+                // Assert
+                Assert.That(mounted.Root.Reconciler!.Context.CurrentPortalPlaceholder, Is.Null);
+            }
 
-        [Test]
-        public void Given_APortalChildsRowReachedByAResumedSliceOfItsUpdate_When_ThatRowAndASiblingAfterThePortalUpdateTogether_Then_TheRowsEffectsRunFirst()
-        {
-            // Arrange — a transition of a component inside the Portal parks, and its resumed slices reach the rows it
-            // left
-            var log = new EventLog();
-            var slicing = new Slicing();
-            using var mounted = V.Mount(new VisualElement(),
-                log.Provide(V.Component(SlicedPortalHost, new SlicedProps(new VisualElement(), slicing))));
-            mounted.DrainForTest();
-            slicing.Version = 1;
-            slicing.Fiber!.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
-            slicing.Fiber.FlushStateWithTinyBudgetForTest();
-            var parked = slicing.Fiber.HasPendingReconcileWorkForTest();
-            log.Clear();
-            slicing.Fiber.DrainTimeSlicedReconcileForTest();
-            var survivedTheSlices = slicing.Fiber.IsMounted;
-            mounted.DrainForTest();
-            var renderedAfterTheSlices = log.ToString().Contains("render:Rows");
-            log.Clear();
-            var last = "R" + (SlicedRowCount - 1);
+            // GREEN_ON_BASE(characterization): on the UI renderer's own fixture the base runs the row's effects first.
+            [Test]
+            public void Given_APortalChildsRowReachedByAResumedSliceOfItsUpdate_When_ThatRowAndASiblingAfterThePortalUpdateTogether_Then_TheRowsEffectsRunFirst()
+            {
+                // Arrange — a transition of a component inside the Portal parks, and its resumed slices reach the rows it
+                // left
+                var log = new EventLog();
+                var slicing = new Slicing();
+                using var mounted = V.Mount(new VisualElement(),
+                    log.Provide(V.Component(SlicedPortalHost, new SlicedProps(new VisualElement(), slicing))));
+                mounted.DrainForTest();
+                slicing.Version = 1;
+                slicing.Fiber!.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
+                slicing.Fiber.FlushStateWithTinyBudgetForTest();
+                var parked = slicing.Fiber.HasPendingReconcileWorkForTest();
+                log.Clear();
+                slicing.Fiber.DrainTimeSlicedReconcileForTest();
+                var survivedTheSlices = slicing.Fiber.IsMounted;
+                mounted.DrainForTest();
+                var renderedAfterTheSlices = log.ToString().Contains("render:Rows");
+                log.Clear();
+                var last = "R" + (SlicedRowCount - 1);
 
-            // Act
-            log.Setter<int>(last).Invoke(1);
-            log.Setter<int>("After").Invoke(1);
-            mounted.DrainForTest();
+                // Act
+                log.Setter<int>(last).Invoke(1);
+                log.Setter<int>("After").Invoke(1);
+                mounted.DrainForTest();
 
-            // Assert — a pass that never parked reaches every row in its first slice, and a render of the component
-            // after its slices reaches every row again, so neither says anything here
-            var unmet = !parked ? "the transition's pass never parked"
-                : !survivedTheSlices ? "the component was unmounted while its slices resumed"
-                : renderedAfterTheSlices ? "the component rendered again after its slices"
-                : null;
-            Assert.That(unmet ?? log.ToString(), Is.EqualTo(
-                $"ins-x:{last} ins:{last} lay-x:{last} ins-x:After ins:After lay-x:After lay:{last} lay:After"
-                + $" eff-x:{last} eff-x:After eff:{last} eff:After"));
-        }
+                // Assert — a pass that never parked reaches every row in its first slice, and a render of the component
+                // after its slices reaches every row again, so neither says anything here
+                var unmet = !parked ? "the transition's pass never parked"
+                    : !survivedTheSlices ? "the component was unmounted while its slices resumed"
+                    : renderedAfterTheSlices ? "the component rendered again after its slices"
+                    : null;
+                Assert.That(unmet ?? log.ToString(), Is.EqualTo(
+                    $"ins-x:{last} ins:{last} lay-x:{last} ins-x:After ins:After lay-x:After lay:{last} lay:After"
+                    + $" eff-x:{last} eff-x:After eff:{last} eff:After"));
+            }
 
-        // GREEN_ON_BASE(characterization): the base leaves the walk's Portal named once a list's row scope ends.
-        // The branch saves and restores it around that scope (Reconciler.BeginDetachedItemScope); without the save the
-        // component after the list is stamped with no Portal and its effects run after the sibling's.
-        [Test]
-        public void Given_APassThatRenderedAListsRowInAPortal_When_TheComponentAfterTheListAndASiblingAfterThePortalUpdate_Then_TheComponentsEffectsRunFirst()
-        {
-            // Arrange — the list holds its row once a range update has placed it, and the viewport height a geometry
-            // pass would have left at that row, so the pass that renders the host renders the row too
-            var log = new EventLog();
-            var target = new VisualElement();
-            using var mounted = V.Mount(new VisualElement(),
-                log.Provide(V.Component(ListThenChildInAPortalThenSibling, new ParentProps(target, false))));
-            mounted.DrainForTest();
-            var list = mounted.Root.Reconciler!.Context.VirtualListControllers[target.Q<ScrollView>()];
-            list.UpdateVisibleRange(scrollY: 0f, viewportHeight: 50f);
-            typeof(FiberVirtualListController)
-                .GetField("_viewportHeight", BindingFlags.NonPublic | BindingFlags.Instance)!
-                .SetValue(list, 50f);
-            mounted.DrainForTest();
-            log.Clear();
-            log.Setter<int>("Gen").Invoke(1);
-            mounted.DrainForTest();
-            var renderedTheRow = log.ToString().Contains("eff:R");
-            log.Clear();
+            // GREEN_ON_BASE(characterization): on the UI renderer's own fixture the base runs the component's effects first.
+            [Test]
+            public void Given_APassThatRenderedAListsRowInAPortal_When_TheComponentAfterTheListAndASiblingAfterThePortalUpdate_Then_TheComponentsEffectsRunFirst()
+            {
+                // Arrange — the list holds its row once a range update has placed it, and the viewport height a geometry
+                // pass would have left at that row, so the pass that renders the host renders the row too
+                var log = new EventLog();
+                var target = new VisualElement();
+                using var mounted = V.Mount(new VisualElement(),
+                    log.Provide(V.Component(ListThenChildInAPortalThenSibling, new ParentProps(target, false))));
+                mounted.DrainForTest();
+                var list = mounted.Root.Reconciler!.Context.VirtualListControllers[target.Q<ScrollView>()];
+                list.UpdateVisibleRange(scrollY: 0f, viewportHeight: 50f);
+                typeof(FiberVirtualListController)
+                    .GetField("_viewportHeight", BindingFlags.NonPublic | BindingFlags.Instance)!
+                    .SetValue(list, 50f);
+                mounted.DrainForTest();
+                log.Clear();
+                log.Setter<int>("Gen").Invoke(1);
+                mounted.DrainForTest();
+                var renderedTheRow = log.ToString().Contains("eff:R");
+                log.Clear();
 
-            // Act
-            log.Setter<int>("PortalChild").Invoke(1);
-            log.Setter<int>("After").Invoke(1);
-            mounted.DrainForTest();
+                // Act
+                log.Setter<int>("PortalChild").Invoke(1);
+                log.Setter<int>("After").Invoke(1);
+                mounted.DrainForTest();
 
-            // Assert — a pass that rendered no row of the list says nothing here, so that reading is a sentinel
-            Assert.That(renderedTheRow ? log.ToString() : "the pass rendered no row of the list", Is.EqualTo(
-                "ins-x:Leaf ins:Leaf lay-x:Leaf ins-x:After ins:After lay-x:After lay:Leaf lay:After"
-                + " eff-x:Leaf eff-x:After eff:Leaf eff:After"));
+                // Assert — a pass that rendered no row of the list says nothing here, so that reading is a sentinel
+                Assert.That(renderedTheRow ? log.ToString() : "the pass rendered no row of the list", Is.EqualTo(
+                    "ins-x:Leaf ins:Leaf lay-x:Leaf ins-x:After ins:After lay-x:After lay:Leaf lay:After"
+                    + " eff-x:Leaf eff-x:After eff:Leaf eff:After"));
+            }
         }
     }
 }

@@ -199,6 +199,22 @@ class TextReadingKillerTests(unittest.TestCase):
         # Act / Assert
         self.assertEqual(mutation_check.killed_by_behaviour(names, self.READERS), [])
 
+    def test_Given_ATextReaderGivenFixtureArguments_When_ItsReportedFailureIsRead_Then_NothingKilledIt(self):
+        # Arrange -- the runner names the fixture with its arguments, which no reader is named by.
+        holder = Path(tempfile.mkdtemp(prefix="velvet-text-reader-"))
+        self.addCleanup(shutil.rmtree, holder, ignore_errors=True)
+        results = holder / "results.xml"
+        results.write_text(
+            '<test-run><test-case name="Given_X" methodname="Given_X" '
+            'fullname="Velvet.Tests.CrefTargetTests(UIToolkit).Given_X" '
+            'classname="Velvet.Tests.CrefTargetTests" result="Failed" /></test-run>')
+
+        # Act
+        names = mutation_check.failing_names(results)
+
+        # Assert
+        self.assertEqual(mutation_check.killed_by_behaviour(names, self.READERS), [])
+
     def test_Given_TheFixturesOfThisPackage_When_TheyAreDerived_Then_TheDriftOneIsAmongThem(self):
         # Arrange -- derived from what references the corpus rather than listed, so a fixture written
         # that way later is covered by having been written that way.
@@ -7372,14 +7388,25 @@ class TextReaderExclusionTests(unittest.TestCase):
         scope = mutation_check.excluding([], {"CrefTargetTests", "DocumentationDriftTests"})
 
         # Assert
-        self.assertEqual(scope, ["-testFilter", "!\\.CrefTargetTests$;!\\.DocumentationDriftTests$"])
+        self.assertEqual(scope, ["-testFilter", "!\\.CrefTargetTests(?:\\(.*\\))?$;"
+                                                "!\\.DocumentationDriftTests(?:\\(.*\\))?$"])
 
     def test_Given_ACallersFilter_When_TextReadersAreTakenOut_Then_ItStillSelectsWhatItNamed(self):
         # Act
         scope = mutation_check.excluding(["-testFilter", "Velvet.Tests.HookTests"], {"CrefTargetTests"})
 
         # Assert
-        self.assertEqual(scope, ["-testFilter", "Velvet.Tests.HookTests;!\\.CrefTargetTests$"])
+        self.assertEqual(scope, ["-testFilter", "Velvet.Tests.HookTests;!\\.CrefTargetTests(?:\\(.*\\))?$"])
+
+    def test_Given_AReaderGivenFixtureArguments_When_ItsTermIsMatched_Then_ItTakesTheFixture(self):
+        # Arrange -- the runner names the fixture's suite with its arguments, after the class.
+        term = mutation_check.excluding([], {"CrefTargetTests"})[1][1:]
+
+        # Act
+        matched = bool(re.search(term, "Velvet.Tests.CrefTargetTests(UIToolkit)"))
+
+        # Assert
+        self.assertTrue(matched)
 
     def test_Given_AReaderNamedLikeAnArea_When_ItsTermIsMatched_Then_ItTakesTheFixtureAndNotTheAssembly(self):
         # Arrange — a term matching an assembly's full name takes out every case in it, which
@@ -7406,7 +7433,7 @@ class TextReaderExclusionTests(unittest.TestCase):
 
         # Assert
         self.assertEqual({tuple(scope) for _, scope in campaign.scopes},
-                         {("-testFilter", "!\\.DriftTests$")})
+                         {("-testFilter", "!\\.DriftTests(?:\\(.*\\))?$")})
 
 
 class AssemblyScopeTests(unittest.TestCase):
@@ -11316,6 +11343,33 @@ class FixtureTraceTests(unittest.TestCase):
         # Assert
         self.assertEqual(len(traced or {}), 1)
 
+    def test_Given_AFailedCaseOfAFixtureGivenArguments_When_ItsReportedNameIsTraced_Then_TheFixturesFileIsHashed(self):
+        # Arrange -- the runner names the fixture with its arguments, `ProbeTests(UIToolkit)`.
+        campaign = RecordCampaign()
+        results = campaign.project / "parameterised.xml"
+        results.write_text(
+            '<test-run><test-case name="Given_A_When_B_Then_Probe" methodname="Given_A_When_B_Then_Probe" '
+            'fullname="Velvet.Tests.ProbeTests(UIToolkit).Given_A_When_B_Then_Probe" '
+            'classname="Velvet.Tests.ProbeTests" result="Failed" /></test-run>')
+
+        # Act
+        traced = self.trace(campaign, mutation_check.failing_names(results)[0])
+
+        # Assert
+        self.assertEqual(sorted(traced or {}), ["Packages/com.velvet.core/Runtime/Tests/Editor/ProbeTests.cs"])
+
+    # GREEN_ON_BASE(characterization): the base traces a case by its name up to its first parenthesis.
+    # End the group at the first `)` in `fixture_arguments_after_row` and tracing this case raises.
+    def test_Given_ARowArgumentQuotingAParenthesisAndADot_When_Traced_Then_ItsFixtureIsFound(self):
+        # Arrange -- the runner quotes a string argument, and a quoted `).` belongs to the row.
+        campaign = RecordCampaign()
+
+        # Act
+        traced = self.trace(campaign, 'Velvet.Tests.ProbeTests.Given_A_When_B_Then_Probe("a).b")')
+
+        # Assert
+        self.assertEqual(len(traced or {}), 1)
+
     # GREEN_ON_BASE(refactor): only the fixture class it builds was renamed with the record.
     def test_Given_ACaseOfANestedFixture_When_Traced_Then_TheDeclaringFileIsHashed(self):
         # Arrange
@@ -11331,6 +11385,20 @@ class FixtureTraceTests(unittest.TestCase):
 
         # Assert
         self.assertEqual(sorted(traced or {}), [relative])
+
+
+class KillingCaseNameTests(unittest.TestCase):
+    """How a lapsed kill names the case that killed it."""
+
+    def test_Given_ACaseOfAFixtureGivenArguments_When_Shortened_Then_ItIsItsClassAndMethod(self):
+        # Arrange -- the runner names the fixture with its arguments, ahead of the method.
+        case = "Velvet.Tests.ProbeTests(UIToolkit).Given_A_When_B_Then_Probe"
+
+        # Act
+        short = mutation_check.short_case(case)
+
+        # Assert
+        self.assertEqual(short, "ProbeTests.Given_A_When_B_Then_Probe")
 
 
 class KillStandingTests(unittest.TestCase):

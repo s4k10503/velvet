@@ -1202,7 +1202,8 @@ def scaffolded(case):
         return False
     trace = case.find("./failure/stack-trace")
     name = (case.get("methodname")
-            or (case.get("fullname") or case.get("name") or "").split("(")[0].rsplit(".", 1)[-1])
+            or _mutation_check.fixture_arguments_after_row(case.get("fullname") or case.get("name") or "")
+            .split("(")[0].rsplit(".", 1)[-1])
     body = re.search(r"(?:\.|<){}(?:\s*\(|>)".format(re.escape(name)),
                      (trace.text or "") if trace is not None else "")
     return body is None
@@ -1245,11 +1246,17 @@ def as_read(case):
 
     The `+` the runner writes before a nested class is taken as the dot `csharp_cases` writes there,
     as `assert_results_from_this_tree.py` reads one in a classname.
+
+    A fixture given arguments, as a `TestFixtureSource` gives them, carries them in its own name, and
+    `mutation_check.fixture_arguments_after_row` moves them to after the row, so that `outcome_for`
+    takes each fixture's run of the method as one of its argument lists. `ParameterisedFixtureNameTests`
+    fails when they stay where the runner wrote them.
     """
     full = case.get("fullname") or case.get("name")
     name, method = case.get("name"), case.get("methodname")
     if name and method and name != method and not name.startswith(method + "("):
         full = "{}.{}({})".format(full[:-len(name) - 1], method, name)
+    full = _mutation_check.fixture_arguments_after_row(full)
     head, opened, arguments = full.partition("(")
     return head.replace("+", ".") + opened + arguments
 

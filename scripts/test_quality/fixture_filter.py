@@ -9,7 +9,9 @@ wherever they are declared.
 Each fixture is one `^...$` term, and the terms are joined by `;` alone. How the runner matches a
 value is the unity-tests skill's to say: the anchors keep a term from selecting a fixture whose
 name begins or ends with it, and each separator is `[.+]` because the reader writes a nested type
-after a dot where the skill notes the runner writes `+`.
+after a dot where the skill notes the runner writes `+`. A fixture given arguments, by a
+`TestFixtureSource` or a `[TestFixture(...)]`, is named with them, and its term takes the argument
+list `mutation_check.FIXTURE_ARGUMENTS_TERM` matches after the class.
 
     F=$(python3 scripts/test_quality/fixture_filter.py Packages/.../Tests/Editor/FooTests.cs) &&
       "$UNITY" -runTests -batchmode -debugCodeOptimization -projectPath "$PWD" -testPlatform EditMode -testFilter "$F" ...
@@ -18,8 +20,9 @@ Exits 1 with nothing on stdout where the files declare no fixture for the run, s
 none. Exits 2 where it cannot answer: a file is missing or outside the project, git cannot list the
 project, the fixtures run on both platforms and no --platform chose one, a case runs under no
 concrete class the reader finds, a requested file declares a caseless abstract base, or a fixture
-is generic or takes or inherits fixture arguments, whose runner names this does not spell. Shared bases
-without cases require an explicit fixture roster; they must not silently shrink a combined filter.
+is generic or takes its arguments from a source building `TestFixtureData`, which this does not
+read, whose runner names this does not spell. Shared bases without cases require an explicit fixture roster;
+they must not silently shrink a combined filter.
 """
 
 import argparse
@@ -52,8 +55,14 @@ FIXTURE_ARGUMENTS = re.compile(
     r"\bTestFixtureSource\b|\bTestFixture(?:Attribute)?\s*\((?!\s*\))(?!\s*[A-Za-z_]\w*\s*=(?!=))")
 
 
-def term(fixture):
-    return "^" + "[.+]".join(fixture.split(".")) + "$"
+# The class a `TestFixtureSource` names for its entries, and the fixture data such a class can build.
+SOURCE_TYPE = re.compile(r"\bTestFixtureSource(?:Attribute)?\s*\(\s*typeof\s*\(\s*([A-Za-z_][\w.]*)\s*\)")
+FIXTURE_DATA = re.compile(r"\bTestFixtureData\b")
+
+
+def term(fixture, given_arguments=False):
+    suffix = _base_red_check._mutation_check.FIXTURE_ARGUMENTS_TERM if given_arguments else ""
+    return "^" + "[.+]".join(fixture.split(".")) + suffix + "$"
 
 
 def generic_declaration(name):
@@ -153,25 +162,36 @@ class Tree:
             found[fixture] = {_base_red_check.platform_of(file) for file in where}
         return found, involved, orphaned
 
-    def unspellable(self, fixtures, involved):
-        """Refuse names requiring fixture arguments or generic fixture spelling.
+    def spelling(self, fixtures, involved):
+        """(the file and the reason a fixture here has a runner name this does not spell, or None;
+        whether a fixture here is given arguments, which its term then takes).
 
         Ancestor declarations outside Tests/ carry attributes too. The source reader follows
-        simple names, so ambiguous declarations and generic argument names can cost a refusal.
+        simple names, so ambiguous declarations and generic argument names can cost a refusal, and
+        reading every fixture of one call as given arguments where one is costs a term that also
+        takes an argument list the runner never writes.
         """
         involved = set(involved)
         for fixture in fixtures:
             for owner in self.ancestry(fixture.rsplit(".", 1)[-1]):
                 involved.update(self.declaring(owner))
+        sources = set()
+        given_arguments = False
         for relative in sorted(involved):
             text = self.corpus[relative]
             if FIXTURE_ARGUMENTS.search(text):
-                return relative, "passes fixture arguments"
+                given_arguments = True
+                for name in SOURCE_TYPE.findall(text):
+                    sources |= self.declaring(name.rsplit(".", 1)[-1])
             for fixture in sorted(fixtures):
                 for name in fixture.split("."):
                     if generic_declaration(name).search(text):
-                        return relative, "declares {} generic".format(name)
-        return None
+                        return (relative, "declares {} generic".format(name)), given_arguments
+        if given_arguments:
+            for relative in sorted(involved | sources):
+                if FIXTURE_DATA.search(self.corpus[relative]):
+                    return (relative, "builds TestFixtureData"), given_arguments
+        return None, given_arguments
 
 
 def resolve(argument, project):
@@ -233,14 +253,14 @@ def main(argv):
         if not found:
             empty.append(relative)
             continue
-        refused = tree.unspellable(found, involved)
+        refused, given_arguments = tree.spelling(found, involved)
         if refused:
             print("{} {}, which can give a fixture a runner name this does not spell; name it "
                   "from a results file's fullname roster instead".format(*refused), file=sys.stderr)
             return CANNOT_ANSWER
         for fixture, platforms in found.items():
             for platform in platforms:
-                by_platform.setdefault(platform, set()).add(fixture)
+                by_platform.setdefault(platform, set()).add(term(fixture, given_arguments))
 
     if empty:
         print("{} of {} file(s) declare no fixture: {}".format(
@@ -259,7 +279,7 @@ def main(argv):
     for platform in sorted(set(by_platform) - {chosen}):
         print("{} fixture(s) run under {} and need a run of their own".format(
             len(by_platform[platform]), platform), file=sys.stderr)
-    print(";".join(sorted(term(fixture) for fixture in by_platform[chosen])))
+    print(";".join(sorted(by_platform[chosen])))
     return 0
 
 

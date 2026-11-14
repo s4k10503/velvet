@@ -3322,6 +3322,86 @@ class TestNamedRowTests(unittest.TestCase):
         self.assertEqual(list(reported), ["N.ProbeTests.{}(1)".format(self.METHOD)])
 
 
+
+class ParameterisedFixtureNameTests(unittest.TestCase):
+    """A fixture given arguments, which the runner names with them, as `N.ProbeTests(UIToolkit)`.
+
+    The rows are written by hand in that shape, read off this repository's own EditMode results for a
+    `TestFixtureSource` fixture whose argument's `ToString` is `UIToolkit`, for the reason
+    `NestedFixtureNameTests` gives.
+    """
+
+    PATH = "Packages/p/Runtime/A/Tests/Editor/ProbeTests.cs"
+    METHOD = "Given_A_When_B_Then_C"
+    SOURCE = ("namespace N\n{\n    [TestFixtureSource(typeof(Renderer), nameof(Renderer.All))]\n"
+              "    internal sealed class ProbeTests\n    {\n"
+              "        public ProbeTests(Renderer renderer) { }\n\n"
+              "        [Test]\n        public void Given_A_When_B_Then_C() => Assert.Pass();\n    }\n}\n")
+
+    @classmethod
+    def row(cls, argument, result):
+        return ('<test-case name="{0}" fullname="N.ProbeTests({1}).{0}" methodname="{0}" '
+                'classname="N.ProbeTests" result="{2}" />'.format(cls.METHOD, argument, result))
+
+    def verdict(self, *rows):
+        """The one case's verdict over a results file holding `rows` alone."""
+        holder = tempfile.mkdtemp(prefix="base-red-parameterised-")
+        self.addCleanup(shutil.rmtree, holder, ignore_errors=True)
+        Path(holder, "r.xml").write_text(
+            '<test-run><test-suite type="ParameterizedFixture">{}</test-suite></test-run>'.format(
+                "".join(rows)))
+        reported, wrote = base_red_check.results_from(holder)
+        cases = base_red_check.csharp_cases(self.SOURCE, self.PATH)
+        with contextlib.redirect_stdout(io.StringIO()):
+            base_red_check.report(cases, [], reported, {}, wrote)
+        return cases[0].verdict
+
+    def test_Given_AParameterisedFixturesCaseThatDisagreed_When_Decided_Then_ItIsRed(self):
+        # Arrange -- misread, the fixture ran and nothing answered to the case's name.
+        rows = (self.row("UIToolkit", "Failed"),)
+
+        # Act
+        verdict = self.verdict(*rows)
+
+        # Assert
+        self.assertEqual(verdict, base_red_check.RED_ON_BASE)
+
+    def test_Given_AParameterisedFixturesCaseThatPassed_When_Decided_Then_ItPassedOnTheBase(self):
+        # Arrange
+        rows = (self.row("UIToolkit", "Passed"),)
+
+        # Act
+        verdict = self.verdict(*rows)
+
+        # Assert
+        self.assertEqual(verdict, base_red_check.PASSED_ON_BASE)
+
+    def test_Given_ARowWithNoMethodNameWhoseBodyMessageOpensWithASection_When_Read_Then_ItIsTheBodysFailure(self):
+        # Arrange -- the trace leads back to the method, which the fixture's arguments stand in front of
+        # in the row's full name.
+        case = ET.fromstring(
+            '<test-case name="{0}" fullname="N.ProbeTests(UIToolkit).{0}" result="Failed"><failure>'
+            '<message>TearDown : the body expected this text</message><stack-trace>  at N.ProbeTests.{0} '
+            '() [0x00011] in ./Packages/p/Runtime/A/Tests/Editor/ProbeTests.cs:41 </stack-trace></failure>'
+            '</test-case>'.format(self.METHOD))
+
+        # Act
+        reading = base_red_check.reading_of(case)
+
+        # Assert
+        self.assertEqual(reading, "Failed")
+
+    def test_Given_ACaseThatPassedUnderOneFixtureArgumentAndDisagreedUnderAnother_When_Decided_Then_ItIsRed(self):
+        # Arrange -- read as one argument list each, the method passed only where both did.
+        rows = (self.row("UIToolkit", "Passed"), self.row("Test", "Failed"))
+
+        # Act
+        verdict = self.verdict(*rows)
+
+        # Assert
+        self.assertEqual(verdict, base_red_check.RED_ON_BASE)
+
+
 class ResultLabelTests(unittest.TestCase):
     """What the base said about a case that stopped on an exception, and which of those disagreed.
 
