@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Unit tests for benchmark_steps.py: which runs of the benchmark history read as a step, and what the
-issue for one says and does.
+"""Unit tests for benchmark_steps.py: which runs of the benchmark history read as a step or a drift, and
+what the issue for one says and does.
 
 Run: python3 scripts/ci/test_benchmark_steps.py
 """
@@ -635,6 +635,615 @@ class RenderTests(unittest.TestCase):
 
         # Act
         _, body = benchmark_steps.render(many, "o/r")
+
+        # Assert
+        self.assertLessEqual(len(body), benchmark_steps.BODY_LIMIT)
+
+
+def drift_commit(index):
+    return f"d{index:03d}".ljust(40, "0")
+
+
+def daily(levels, name=NAME, every=timedelta(days=1)):
+    """One run per processor at each `every`, a minute apart, at the level `levels` gives that processor
+    there; a level of None leaves that run out."""
+    width = len(levels)
+    return [benchmark_steps.Run(drift_commit(day * width + offset), START + day * every + timedelta(minutes=offset),
+                                f"subject {day * width + offset}", processor, {name: series[day]})
+            for day in range(max(map(len, levels.values())))
+            for offset, (processor, series) in enumerate(levels.items())
+            if day < len(series) and series[day] is not None]
+
+
+def beside(first, second):
+    """Two histories laid out alike as one, each run measuring the benchmarks of both."""
+    return [replace(one, values={**one.values, **other.values}) for one, other in zip(first, second)]
+
+
+OTHER = "B / Time"
+BOTH = {**UNITS, OTHER: "ms"}
+
+# Three rises of about 1.15x each, every one short of a step, and 1.52x in all.
+CREEP = [10] * 6 + [11.5] * 5 + [13.2] * 5 + [15.2] * 5
+FLAT = [10] * 21
+# 1.145x by creep to day 13, a step there, then 1.17x by creep again.
+AROUND = ([10] * 5 + [10.45] * 2 + [10.95] * 2 + [11.45] * 2 + [12] * 2
+          + [14.5] * 3 + [15.2] * 3 + [15.9] * 3 + [16.5] * 3 + [17] * 4)
+# A 1.5x step on day 6 undone on day 9, then 1.4x by creep.
+UNDONE = [10] * 6 + [15] * 3 + [10] * 3 + [10.6] * 4 + [11.3] * 4 + [12] * 4 + [12.8] * 4 + [14] * 4
+
+
+def ramp(low, high, days):
+    """`days` levels rising from `low` by a constant factor to `high`, `low` itself left out."""
+    return [low * (high / low) ** ((day + 1) / days) for day in range(days)]
+
+
+def drifts(runs, units=UNITS):
+    return benchmark_steps.find_drifts(runs, units)
+
+
+class FindDriftsTests(unittest.TestCase):
+
+    def test_Given_StepsEachUnderTheStepThresholdThatTogetherCrossTheDriftThreshold_When_RegressionsAreFiled_Then_OneIssueOpens(self):
+        # Arrange
+        runs = daily({ONE: CREEP, TWO: CREEP})
+        gh = FakeGh([])
+
+        # Act
+        benchmark_steps.file_regressions(runs, UNITS, "o/r", gh)
+
+        # Assert
+        self.assertEqual(len(created(gh)), 1)
+
+    def test_Given_StepsEachUnderTheStepThresholdThatTogetherCrossTheDriftThreshold_When_RegressionsAreFiled_Then_ItNamesTheDriftAtTheLatestRun(self):
+        # Arrange
+        runs = daily({ONE: CREEP, TWO: CREEP})
+        gh = FakeGh([])
+
+        # Act
+        benchmark_steps.file_regressions(runs, UNITS, "o/r", gh)
+
+        # Assert
+        self.assertEqual(benchmark_steps.DRIFT_MARKER_PATTERN.findall(created(gh)[0]), [(NAME, runs[-1].commit)])
+
+    def test_Given_AFlatHistory_When_RegressionsAreFiled_Then_NoneOpens(self):
+        # Arrange
+        runs = daily({ONE: FLAT, TWO: FLAT})
+        gh = FakeGh([])
+
+        # Act
+        benchmark_steps.file_regressions(runs, UNITS, "o/r", gh)
+
+        # Assert
+        self.assertEqual(len(created(gh)), 0)
+
+    def test_Given_AStepAmongTheLatestRuns_When_RegressionsAreFiled_Then_OnlyTheStepOpensOne(self):
+        # Arrange: 15 is 1.5x 10, a step on both processors at day 22 of 28.
+        stepped_up = [10] * 22 + [15] * 6
+        runs = daily({ONE: stepped_up, TWO: stepped_up})
+        gh = FakeGh([])
+
+        # Act
+        benchmark_steps.file_regressions(runs, UNITS, "o/r", gh)
+
+        # Assert
+        self.assertEqual(len(created(gh)), 1)
+
+    def test_Given_ARiseUnderTheDriftThreshold_When_DriftsAreFound_Then_ThereIsNone(self):
+        # Arrange: 12.5 is 1.25x 10.
+        under = [10] * 6 + [11] * 5 + [12.5] * 10
+        runs = daily({ONE: under, TWO: under})
+
+        # Act
+        found = drifts(runs)
+
+        # Assert
+        self.assertEqual(len(found), 0)
+
+    def test_Given_ACreepOnOneProcessorAlone_When_DriftsAreFound_Then_ThereIsNone(self):
+        # Arrange
+        runs = daily({ONE: CREEP, TWO: FLAT})
+
+        # Act
+        found = drifts(runs)
+
+        # Assert
+        self.assertEqual(len(found), 0)
+
+    def test_Given_ACreepOnTwoProcessorsAndOnAThirdWithNineRuns_When_DriftsAreFound_Then_OnlyTheTwoAreJudged(self):
+        # Arrange: the third processor's nine runs span the whole creep.
+        runs = daily({ONE: CREEP, TWO: CREEP, THREE: [10] * 4 + [None] * 12 + [15.2] * 5})
+
+        # Act
+        found = drifts(runs)
+
+        # Assert
+        self.assertEqual(len(found[0].per_processor), 2)
+
+    def test_Given_ACreepOverTenDays_When_DriftsAreFound_Then_ThereIsNone(self):
+        # Arrange: two runs a day on each processor.
+        runs = daily({ONE: CREEP, TWO: CREEP}, every=timedelta(hours=12))
+
+        # Act
+        found = drifts(runs)
+
+        # Assert
+        self.assertEqual(len(found), 0)
+
+    def test_Given_ACreepThatEndedMoreThanThirtyDaysBack_When_DriftsAreFound_Then_ThereIsNone(self):
+        # Arrange: the last rise is on day 16 of 51.
+        old = CREEP + [15.2] * 30
+        runs = daily({ONE: old, TWO: old})
+
+        # Act
+        found = drifts(runs)
+
+        # Assert
+        self.assertEqual(len(found), 0)
+
+    def test_Given_AStepAndACreepAfterItThatEndedMoreThanThirtyDaysBack_When_DriftsAreFound_Then_ThereIsNone(self):
+        # Arrange: a 1.5x step on day 4, then 1.33x by creep up to day 18 of 51.
+        old = [10] * 4 + [15] * 4 + [16.5] * 5 + [18] * 5 + [20] * 33
+        runs = daily({ONE: old, TWO: old})
+
+        # Act
+        found = drifts(runs)
+
+        # Assert
+        self.assertEqual(len(found), 0)
+
+    def test_Given_AStepFollowedByAFlatLevel_When_DriftsAreFound_Then_ThereIsNone(self):
+        # Arrange
+        stepped_up = [10] * 8 + [15] * 20
+        runs = daily({ONE: stepped_up, TWO: stepped_up})
+
+        # Act
+        found = drifts(runs)
+
+        # Assert
+        self.assertEqual(len(found), 0)
+
+    def test_Given_TwoStepsAndNoCreep_When_DriftsAreFound_Then_ThereIsNone(self):
+        # Arrange: 13 is 1.3x 10, a step at day 6, and 17 is 1.31x 13, a step at day 16.
+        two_steps = [10] * 6 + [13] * 10 + [17] * 14
+        runs = daily({ONE: two_steps, TWO: two_steps})
+
+        # Act
+        found = drifts(runs)
+
+        # Assert
+        self.assertEqual(len(found), 0)
+
+    def test_Given_ACreepEitherSideOfAStep_When_DriftsAreFound_Then_OneIsFound(self):
+        # Arrange
+        runs = daily({ONE: AROUND, TWO: AROUND})
+
+        # Act
+        found = drifts(runs)
+
+        # Assert
+        self.assertEqual(len(found), 1)
+
+    def test_Given_ACreepEitherSideOfAStep_When_DriftsAreFound_Then_ItsRatioLeavesTheStepOut(self):
+        # Arrange
+        runs = daily({ONE: AROUND, TWO: AROUND})
+
+        # Act
+        found = drifts(runs)
+
+        # Assert
+        self.assertAlmostEqual(found[0].ratio, 11.45 / 10 * 17 / 14.5)
+
+    def test_Given_ACreepAfterAStepThatWasUndone_When_DriftsAreFound_Then_OneIsFound(self):
+        # Arrange
+        runs = daily({ONE: UNDONE, TWO: UNDONE})
+
+        # Act
+        found = drifts(runs)
+
+        # Assert
+        self.assertEqual(len(found), 1)
+
+    def test_Given_AStepUndoneTo15PercentAboveItsOldLevelAndACreepAfter_When_DriftsAreFound_Then_ThereIsNone(self):
+        # Arrange: a 1.5x step on day 8 undone after three days to 11.5, 1.15x the 10 before it, then a creep
+        # to 13.8, 1.38x 10.
+        partly = [10] * 8 + [15] * 3 + [11.5] * 9 + [12.2] * 4 + [13] * 4 + [13.8] * 4
+        runs = daily({ONE: partly, TWO: partly})
+
+        # Act
+        found = drifts(runs)
+
+        # Assert
+        self.assertEqual(len(found), 0)
+
+    def test_Given_ACreepThatAFixBroughtBackToWhereItStarted_When_DriftsAreFound_Then_ThereIsNone(self):
+        # Arrange: 1.2x by creep, a fix to 9, then a creep back to the 10 it started at.
+        undone = [10] * 5 + ramp(10, 12, 8) + [12] * 3 + [9] + ramp(9, 10, 8) + [10] * 3
+        runs = daily({ONE: undone, TWO: undone})
+
+        # Act
+        found = drifts(runs)
+
+        # Assert
+        self.assertEqual(len(found), 0)
+
+    def test_Given_ACreepThatAFixUndidAndACreepAfterIt_When_DriftsAreFound_Then_ThereIsNone(self):
+        # Arrange: 1.25x by creep, a fix back to 10, then 1.1x by creep.
+        undone = [10] * 5 + ramp(10, 12.5, 8) + [12.5] * 3 + [10] + ramp(10, 11, 8) + [11] * 3
+        runs = daily({ONE: undone, TWO: undone})
+
+        # Act
+        found = drifts(runs)
+
+        # Assert
+        self.assertEqual(len(found), 0)
+
+    def test_Given_AFixAndACreepFromTheNextRun_When_DriftsAreFound_Then_ThereIsNone(self):
+        # Arrange: a fix halves the time on day 6, and from day 7 it creeps 1.4x over eight days; the creep is
+        # compared from the 20 before the fix.
+        fixed = [20] * 6 + [10] + ramp(10, 14, 8) + [14] * 5
+        runs = daily({ONE: fixed, TWO: fixed})
+
+        # Act
+        found = drifts(runs)
+
+        # Assert
+        self.assertEqual(len(found), 0)
+
+    def test_Given_ARiseOnTwoProcessorsThatAThirdKeepsFromBeingAStep_When_DriftsAreFound_Then_ThereIsNoneYet(self):
+        # Arrange: three runs each at 15 on two processors, while the third stays at 10.
+        risen = [10] * 20 + [15] * 3
+        runs = daily({ONE: risen, TWO: risen, THREE: [10] * 23})
+
+        # Act
+        found = drifts(runs)
+
+        # Assert
+        self.assertEqual(len(found), 0)
+
+    def test_Given_ARiseOnTwoProcessorsThatAThirdKeepsFromBeingAStepFiveRunsOn_When_DriftsAreFound_Then_OneIsFound(self):
+        # Arrange: eight runs each at 15 on two processors, while the third stays at 10.
+        risen = [10] * 20 + [15] * 8
+        runs = daily({ONE: risen, TWO: risen, THREE: [10] * 28})
+
+        # Act
+        found = drifts(runs)
+
+        # Assert
+        self.assertEqual(len(found), 1)
+
+    def test_Given_ACreepOfEightRunsBeforeAStep_When_DriftsAreFound_Then_ThereIsNone(self):
+        # Arrange: 1.45x by creep over the eight runs before a 1.38x step on day 8.
+        short = [10, 10, 10, 11.5, 13, 14.5, 14.5, 14.5] + [20] * 20
+        runs = daily({ONE: short, TWO: short})
+
+        # Act
+        found = drifts(runs)
+
+        # Assert
+        self.assertEqual(len(found), 0)
+
+    def test_Given_ACreepWhileAnotherBenchmarkSteps_When_DriftsAreFound_Then_TheCreepIsFound(self):
+        # Arrange: the other benchmark steps 1.5x at day 20, when the creep is at 12.2 of its 13.5.
+        creep = [10] * 12 + [10.7] * 3 + [11.4] * 3 + [12.2] * 3 + [13.5] * 9
+        stepped_up = [10] * 20 + [15] * 10
+        runs = beside(daily({ONE: creep, TWO: creep}), daily({ONE: stepped_up, TWO: stepped_up}, name=OTHER))
+
+        # Act
+        found = drifts(runs, BOTH)
+
+        # Assert
+        self.assertEqual([drift.benchmark for drift in found], [NAME])
+
+    def test_Given_ACreepOnTwoProcessorsAndOnRunsThatRecordNone_When_DriftsAreFound_Then_OnlyTheTwoAreJudged(self):
+        # Arrange
+        runs = daily({ONE: CREEP, TWO: CREEP, "": CREEP})
+
+        # Act
+        found = drifts(runs)
+
+        # Assert
+        self.assertEqual(len(found[0].per_processor), 2)
+
+    def test_Given_AnAllocationCountThatCreeps_When_DriftsAreFound_Then_ThereIsNone(self):
+        # Arrange
+        runs = daily({ONE: CREEP, TWO: CREEP}, name=COUNT)
+
+        # Act
+        found = drifts(runs)
+
+        # Assert
+        self.assertEqual(len(found), 0)
+
+    def test_Given_TheFirstRunAppendedLast_When_DriftsAreFound_Then_TheDriftIsDecidedAtTheLatestRunToLand(self):
+        # Arrange
+        runs = daily({ONE: CREEP, TWO: CREEP})
+        runs = runs[1:] + runs[:1]
+
+        # Act
+        found = drifts(runs)
+
+        # Assert
+        self.assertEqual(found[0].decided.commit, drift_commit(41))
+
+    def test_Given_AProcessorThatStartedTwoDaysLater_When_DriftsAreFound_Then_TheFirstRunComparedIsTheOthersFirst(self):
+        # Arrange
+        runs = daily({ONE: [None] * 2 + CREEP[2:], TWO: CREEP})
+
+        # Act
+        found = drifts(runs)
+
+        # Assert
+        self.assertEqual(found[0].earliest.commit, drift_commit(1))
+
+    # Five runs at the start have a median of 10 and six of 10.95; five at the end, 16 and six, 15.
+    EDGES = [10, 10, 10, 11.9, 11.9] + [11.9] * 8 + [14] * 5 + [16] * 3
+
+    def test_Given_ACreep_When_DriftsAreFound_Then_TheEarlierMedianIsOverAProcessorsFirstFiveRuns(self):
+        # Arrange
+        runs = daily({ONE: self.EDGES, TWO: self.EDGES})
+
+        # Act
+        found = drifts(runs)
+
+        # Assert
+        self.assertEqual(found[0].per_processor[0][2], 10)
+
+    def test_Given_ACreep_When_DriftsAreFound_Then_TheLatestMedianIsOverAProcessorsLastFiveRuns(self):
+        # Arrange
+        runs = daily({ONE: self.EDGES, TWO: self.EDGES})
+
+        # Act
+        found = drifts(runs)
+
+        # Assert
+        self.assertEqual(found[0].per_processor[0][3], 16)
+
+    def test_Given_ACreepWhoseFirstSixRunsHaveAHigherMedianThanItsFirstFive_When_DriftsAreFound_Then_ItsRatioIsOverTheFive(self):
+        # Arrange: the first five have a median of 10 and the first six, 10.75; the last six are all 15.2.
+        start = [10, 10, 10, 11.5, 11.5] + [11.5] * 6 + [13.2] * 5 + [15.2] * 6
+        runs = daily({ONE: start, TWO: start})
+
+        # Act
+        found = drifts(runs)
+
+        # Assert
+        self.assertAlmostEqual(found[0].ratio, 1.52)
+
+    def test_Given_ACreepWhoseLastSixRunsHaveALowerMedianThanItsLastFive_When_DriftsAreFound_Then_ItsRatioIsOverTheFive(self):
+        # Arrange: the first six are all 10; the last five have a median of 15.5 and the last six, 14.5.
+        end = [10] * 6 + [11.5] * 6 + [13.5] * 6 + [15.5] * 3
+        runs = daily({ONE: end, TWO: end})
+
+        # Act
+        found = drifts(runs)
+
+        # Assert
+        self.assertAlmostEqual(found[0].ratio, 1.55)
+
+    def test_Given_ACreep_When_Replayed_Then_AnIssueOpensAtTheFirstPrefixHoldingTheDrift(self):
+        # Arrange
+        runs = daily({ONE: CREEP, TWO: CREEP})
+        first = next(end for end in range(1, len(runs) + 1) if drifts(runs[:end]))
+
+        # Act
+        issues = benchmark_steps.replay(runs, UNITS)
+
+        # Assert
+        self.assertEqual(issues.issues[0]["opened"], first)
+
+
+class HeldTests(unittest.TestCase):
+
+    def test_Given_ThreeRunsSinceAStep_When_ItIsAskedWhetherTheStepHolds_Then_ItDoes(self):
+        # Arrange
+        since, before = [15] * 3, [10] * 5
+
+        # Act
+        holds = benchmark_steps.held(since, before, benchmark_steps.DRIFT)
+
+        # Assert
+        self.assertTrue(holds)
+
+    def test_Given_ThreeRunsBeforeAStep_When_ItIsAskedWhetherTheStepHolds_Then_ItDoes(self):
+        # Arrange: five runs since at the old level would undo a step with five before it.
+        since, before = [10] * 5, [10] * 3
+
+        # Act
+        holds = benchmark_steps.held(since, before, benchmark_steps.DRIFT)
+
+        # Assert
+        self.assertTrue(holds)
+
+    def test_Given_TenRunsBeforeAStepThatFellFrom20To10_When_ItIsAskedWhetherTheStepHolds_Then_TheBarIsFromTheLatestFive(self):
+        # Arrange: 12 is 1.2x the latest five before the step and 0.6x the five before those.
+        since, before = [12] * 5, [20] * 5 + [10] * 5
+
+        # Act
+        holds = benchmark_steps.held(since, before, benchmark_steps.DRIFT)
+
+        # Assert
+        self.assertTrue(holds)
+
+    def test_Given_RunsSinceAStepWhoseLatestFiveAloneHaveALowMedian_When_ItIsAskedWhetherTheStepHolds_Then_ItDoesNot(self):
+        # Arrange
+        since, before = [15] * 7 + [10] * 3, [10] * 5
+
+        # Act
+        holds = benchmark_steps.held(since, before, benchmark_steps.DRIFT)
+
+        # Assert
+        self.assertFalse(holds)
+
+    def test_Given_FiveRunsSinceAStepWithOneFarBelowTheRest_When_ItIsAskedWhetherTheStepHolds_Then_ItDoes(self):
+        # Arrange: their median is 12, 1.2x the 10 before; their mean is 9.8.
+        since, before = [12, 12, 12, 12, 1], [10] * 5
+
+        # Act
+        holds = benchmark_steps.held(since, before, benchmark_steps.DRIFT)
+
+        # Assert
+        self.assertTrue(holds)
+
+
+CREEPING = daily({ONE: CREEP, TWO: CREEP})
+
+
+def drift_issue(number, state, index, name=NAME):
+    """An issue a drift of `name` was filed in at the run of CREEPING's layout numbered `index`."""
+    return issue(number, state, benchmark_steps.DRIFT_MARKER.format(series=name, decided=drift_commit(index)))
+
+
+def sync_drifts(runs, gh, units=UNITS):
+    return benchmark_steps.sync_drift_issues(runs, units, "o/r", gh)
+
+
+class SyncDriftIssuesTests(unittest.TestCase):
+
+    def test_Given_ADriftNoIssueNames_When_DriftIssuesSync_Then_OneOpensLabelledAndAssigned(self):
+        # Arrange
+        gh = FakeGh([])
+
+        # Act
+        sync_drifts(CREEPING, gh)
+
+        # Assert
+        self.assertEqual(" ".join(gh.calls[1][-6:]), "--assignee s4k10503 --label performance --label bug")
+
+    def test_Given_TwoBenchmarksThatDrift_When_DriftIssuesSync_Then_OneIssueOpensForBoth(self):
+        # Arrange
+        runs = beside(CREEPING, daily({ONE: CREEP, TWO: CREEP}, name=OTHER))
+        gh = FakeGh([])
+
+        # Act
+        sync_drifts(runs, gh, BOTH)
+
+        # Assert
+        self.assertEqual(len(benchmark_steps.DRIFT_MARKER_PATTERN.findall(created(gh)[0])), 2)
+
+    def test_Given_AClosedIssueFiledAtTheLatestRun_When_DriftIssuesSync_Then_NothingIsWritten(self):
+        # Arrange
+        gh = FakeGh([drift_issue(3, "closed", 41)])
+
+        # Act
+        sync_drifts(CREEPING, gh)
+
+        # Assert
+        self.assertEqual(len(gh.calls), 1)
+
+    def test_Given_AnIssueFiledAtTheFifthRun_When_DriftIssuesSync_Then_TheDriftComparesFromTheSixth(self):
+        # Arrange
+        gh = FakeGh([drift_issue(3, "closed", 4)])
+
+        # Act
+        sync_drifts(CREEPING, gh)
+
+        # Assert
+        self.assertIn(f"/compare/{drift_commit(5)}...", created(gh)[0])
+
+    def test_Given_AFurtherCreepAfterADriftWasFiled_When_DriftIssuesSync_Then_OneOpens(self):
+        # Arrange: 13 is 1.3x 10, filed at day 17; 17.2 is a further 1.32x, reached at day 33.
+        twice = ([10] * 6 + [10.7] * 3 + [11.4] * 3 + [12.2] * 3 + [13] * 9
+                 + [13.9] * 3 + [14.8] * 3 + [15.8] * 3 + [17.2] * 6)
+        gh = FakeGh([drift_issue(3, "closed", 35)])
+
+        # Act
+        sync_drifts(daily({ONE: twice, TWO: twice}), gh)
+
+        # Assert
+        self.assertEqual(len(created(gh)), 1)
+
+    def test_Given_AnIssueFiledAtACommitTheHistoryDoesNotHold_When_DriftIssuesSync_Then_OneOpens(self):
+        # Arrange
+        gh = FakeGh([issue(3, "closed", benchmark_steps.DRIFT_MARKER.format(series=NAME, decided="e" * 40))])
+
+        # Act
+        sync_drifts(CREEPING, gh)
+
+        # Assert
+        self.assertEqual(len(created(gh)), 1)
+
+    def test_Given_AStepIssueNamingThisBenchmarkAtTheLatestRun_When_DriftIssuesSync_Then_OneOpens(self):
+        # Arrange
+        gh = FakeGh([issue(3, "open", benchmark_steps.MARKER.format(series=NAME, first=drift_commit(41)))])
+
+        # Act
+        sync_drifts(CREEPING, gh)
+
+        # Assert
+        self.assertEqual(len(created(gh)), 1)
+
+    def test_Given_ADriftIssueNamingThisBenchmarkAtAFreshStepsFirstSlowCommit_When_IssuesSync_Then_TheStepOpensOne(self):
+        # Arrange
+        fresh = step(last=29, first=30)
+        gh = FakeGh([issue(3, "open", benchmark_steps.DRIFT_MARKER.format(series=NAME, decided=commit(30)))])
+
+        # Act
+        benchmark_steps.sync_issues([fresh], RUNS, "o/r", gh)
+
+        # Assert
+        self.assertEqual(len(created(gh)), 1)
+
+    def test_Given_TwoDriftIssuesListedNewestFirst_When_TheFiledCommitsAreRead_Then_TheLaterOneIsTheBenchmarks(self):
+        # Arrange
+        issues = [drift_issue(4, "open", 30), drift_issue(3, "closed", 10)]
+
+        # Act
+        filed = benchmark_steps.filed_drifts(issues, CREEPING)
+
+        # Assert
+        self.assertEqual(filed[NAME], drift_commit(30))
+
+    def test_Given_AnIssueAtARunAppendedLastThatLandedEarlier_When_TheFiledCommitsAreRead_Then_TheLaterToLandIsTheBenchmarks(self):
+        # Arrange: the run at d030 was appended after every other run.
+        runs = CREEPING[:30] + CREEPING[31:] + CREEPING[30:31]
+        issues = [drift_issue(3, "closed", 30), drift_issue(4, "open", 35)]
+
+        # Act
+        filed = benchmark_steps.filed_drifts(issues, runs)
+
+        # Assert
+        self.assertEqual(filed[NAME], drift_commit(35))
+
+
+DRIFT_RUNS = daily({ONE: [10] * 40})
+
+
+def drift(earliest=10, decided=39, name=NAME):
+    """A drift built directly over DRIFT_RUNS, from 10 to 15 on two processors and 1.3x with its steps left out."""
+    first = DRIFT_RUNS[earliest]
+    return benchmark_steps.Drift(name, "ms", first, DRIFT_RUNS[decided], 1.3,
+                                 ((ONE, first, 10, 15, 1.3), (TWO, first, 10, 15, 1.3)))
+
+
+class RenderDriftsTests(unittest.TestCase):
+
+    def test_Given_ADrift_When_Rendered_Then_TheBodyLinksTheCommitsFromItsFirstRunComparedToItsLatest(self):
+        # Arrange
+        found = [drift()]
+
+        # Act
+        _, body = benchmark_steps.render_drifts(found, "o/r")
+
+        # Assert
+        self.assertIn(f"https://github.com/o/r/compare/{drift_commit(10)}...{drift_commit(39)}", body)
+
+    def test_Given_ADrift_When_Rendered_Then_EachProcessorsRowReadsEarlierLatestAndTheRatioWithoutSteps(self):
+        # Arrange
+        found = [drift()]
+
+        # Act
+        _, body = benchmark_steps.render_drifts(found, "o/r")
+
+        # Assert
+        self.assertIn(f"| {NAME} | {ONE} | `{drift_commit(10)[:8]}` | 10 ms | 15 ms | 1.30x |", body)
+
+    def test_Given_MoreDriftsThanTheBodyLimitHolds_When_Rendered_Then_TheBodyIsCutToIt(self):
+        # Arrange
+        many = [drift(name=f"B{index} / Time") for index in range(2000)]
+
+        # Act
+        _, body = benchmark_steps.render_drifts(many, "o/r")
 
         # Assert
         self.assertLessEqual(len(body), benchmark_steps.BODY_LIMIT)

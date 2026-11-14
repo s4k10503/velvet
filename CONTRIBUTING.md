@@ -1392,15 +1392,15 @@ reads, each value carrying in its `extra` the processor that Unity's run-info li
 (`scripts/ci/benchmark_results.py` converts, `scripts/ci/test_benchmark_results.py` holds it). A
 benchmark that throws fails the run like any other test. No job fails on a number:
 
-- `trend-main` appends a push's run to the `benchmark-data` branch under `dev/bench`, one entry per commit
-  and at most 200 in the chart. It first creates the branch as an orphan commit holding a README when
-  the remote has none, which the action does not do itself, and it is the only job holding
+- `trend-main` appends a push's run to the `benchmark-data` branch under `dev/bench`, one entry per run,
+  and keeps the latest 200 there, which is all the history the chart and `regressions` read. It first
+  creates the branch as an orphan commit holding a README when the remote has none, which the action does not do itself, and it is the only job holding
   `contents: write`. The `Docs` workflow copies that directory into the
   site it deploys, so the trend chart is at <https://s4k10503.github.io/velvet/dev/bench/>; it
   refreshes with the next docs deployment, so it can trail the newest entry by a merge, and the site
   lacks the page until `main` has recorded a first entry and a docs deployment has followed.
 - `regressions` runs after `trend-main`, on `main` in this repository alone, reads the whole history back
-  from the branch and files the steps up it finds (below) as issues labelled `performance` and `bug` and
+  from the branch and files the steps up and the drifts it finds (below) as issues labelled `performance` and `bug` and
   assigned to s4k10503 (`scripts/ci/benchmark_steps.py`, held by `scripts/ci/test_benchmark_steps.py`).
   Its concurrency group runs one at a time, and it lists the issues through the REST issues endpoint,
   because `gh issue list --label` reads them through search.
@@ -1447,9 +1447,41 @@ order their entries were appended:
 - Entries written before the processor was recorded carry none, so times are read from the first runs
   that do and counts from the whole history.
 
+A rise that arrives as smaller steps can file none, since each of its runs is measured against the
+slowest of the five before it on its model. What `regressions` reads as a drift is the second rule,
+and it reads times alone, from the runs that record their processor:
+
+- **A time drifts** when, on at least two processor models, it rose at least 1.3 times over the last 30
+  days of the history, counting a model only where it ran at least ten times in them, over at least 14
+  days. A model's rise is the median of its latest five runs over the median of its earliest five, taken
+  within each stretch between the benchmark's steps and multiplied across them, so a step's own jump is
+  left out and the rise either side of it is not. A stretch of fewer than ten runs adds nothing.
+- A step stops splitting a model's runs once five of them in a row since it have a median under 1.1
+  times the median of the five before it, so a step that was undone splits nothing.
+- A model whose latest five runs measure at least 1.2 times the five before them, the step rule's
+  threshold, counts toward no drift: a rise that recent is left to the step rule.
+- A drift issue holds, for each benchmark it names, a marker of its own with the benchmark and the latest
+  run's commit. Where an issue labelled `performance`, open or closed and whoever opened it, holds such a
+  marker for a commit the history holds, that benchmark's runs are compared only from after the latest
+  such commit. The drifts one run finds go into one new issue, and the job never rewrites a drift issue
+  nor closes one.
+- Nothing drifts until a model's runs span 14 days: from the first runs that record the processor,
+  and again after each drift issue that names the benchmark. A history whose 200 entries span fewer than
+  14 days files no drift.
+- What this costs: benchmarks whose models reach ten runs over 14 days at different runs get an issue
+  each, so a rise several benchmarks share can open issues on several consecutive runs.
+- What the rule cannot see: a step down splits nothing, so a creep after a fix is compared from the
+  level before the fix. It is filed once the window has passed the fix, sooner only if it climbs 1.3
+  times past the level before the fix, and a creep that began within a few runs of the fix can go
+  unfiled altogether. Splitting at steps down was tried and rejected:
+  it filed drifts for benchmarks whose rise a fix had undone, one of them back exactly where it was 30
+  days earlier. A step undone only part way within its first five runs, to more than 1.1 times its old
+  level, still splits, so a creep after it is compared from the stepped level until the window has passed
+  the step.
+
 Given a `data.js` and `--replay`, `scripts/ci/benchmark_steps.py` syncs every prefix of that history in
-turn against issues it keeps in memory and prints what it opened, which is how a change to the rule is
-measured before it ships.
+turn against issues it keeps in memory and prints what it opened, which is how a change to either rule
+is measured before it ships.
 
 The two trend jobs flag a median above 150% of the previous entry in the summary and neither fails: CI
 runners' timings are noisy enough that a gate would be a coin flip. A run of this workflow is a run for
