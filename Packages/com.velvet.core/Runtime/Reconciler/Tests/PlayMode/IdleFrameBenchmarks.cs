@@ -12,9 +12,11 @@ namespace Velvet.Tests.Performance
     /// <summary>
     /// Frames in which no state changes, on a live runtime panel holding a mounted tree of 1,000 styled elements.
     /// Each sample is one such frame: the time the panel recorded under the markers <see cref="PanelFrameRecorder"/>
-    /// reads, and the GC.Alloc blocks every thread charged in it. Frames are paced at 60 a second, a frame a little
-    /// longer than the 16 ms the per-element polls here repeat at; the paced wall clock is not recorded. A frame's
-    /// pass over the scheduler stops before it has run every item when they take long enough
+    /// reads, and the GC.Alloc blocks every thread charged in it. Frames are paced at 25 a second. A poll comes due
+    /// 16 ms after its last run, and a 40 ms frame leaves those 16 ms between a poll run late in one frame's scheduler
+    /// pass and the same poll checked early in the next; at 60 a second, a run mixed frames that ran the polls with
+    /// frames that ran almost none, in a share that changed from run to run. The paced wall clock is not recorded. A
+    /// frame's pass over the scheduler stops before it has run every item when they take long enough
     /// (<see cref="PanelSchedulerCanaries"/>), so a <c>Frame.TickScheduledActions</c> sample that stops growing as the
     /// polls do is that stop, not their whole cost.
     /// <para>
@@ -31,7 +33,7 @@ namespace Velvet.Tests.Performance
         private const int Rows = 200;
         private const int ElementsPerRow = 5;
         private const int SettleFrames = 5;
-        private const int FramesPerSecond = 60;
+        private const int FramesPerSecond = 25;
 
         private static readonly int WarmupFrames = BenchmarkRun.Warmup(10);
         private static readonly int MeasuredFrames = BenchmarkRun.Measurements(60);

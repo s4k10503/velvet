@@ -8,10 +8,9 @@ namespace Velvet.TestUtilities
     /// </summary>
     /// <remarks>
     /// The count is read while the recorder is still filtered to this thread, and the restore happens after.
-    /// Reading on the other side of the restore charges the delegate for allocations made by every other
-    /// thread in the process, which no delegate can prevent. The restore itself is here because this method
-    /// changed the filter and nothing else would put it back; whether that matters to a later reader is a
-    /// question about the engine that no test here holds, so it is not asserted.
+    /// The restore is here because this method changed the filter and nothing else would put it back; whether
+    /// that matters to a later reader is a question about the engine that no test here holds, so it is not
+    /// asserted.
     /// </remarks>
     public static class GCAllocationProbe
     {
