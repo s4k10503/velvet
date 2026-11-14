@@ -1,0 +1,38 @@
+{
+ "detail": "EditMode: 2 failed among the 1433 case(s) that ran the site: Given_APlainChildBuiltInACachedScope_When_TheParentRendersAgain_Then_TheChildDoesNotRenderAgain, Given_APlainChildInATreeTheParentsBodyGateReturns_When_TheGrandparentRendersAgain_Then_TheChildDoesNotRenderAgain",
+ "file": "0ff8a6946a5d6f1810e732e17a7f3e508d7f7186febbd078e665ce0e0bc01b9e",
+ "killers": [
+  {
+   "case": "Velvet.Tests.CachedChildNodeBailTests.Given_APlainChildBuiltInACachedScope_When_TheParentRendersAgain_Then_TheChildDoesNotRenderAgain",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/CachedChildNodeBailTests.cs": "3e5527145d3f9df6d4ae7c034b2040aff098fe4917f96750935d4340afba1ff8",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  },
+  {
+   "case": "Velvet.Tests.CachedChildNodeBailTests.Given_APlainChildInATreeTheParentsBodyGateReturns_When_TheGrandparentRendersAgain_Then_TheChildDoesNotRenderAgain",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/CachedChildNodeBailTests.cs": "3e5527145d3f9df6d4ae7c034b2040aff098fe4917f96750935d4340afba1ff8",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  }
+ ],
+ "measured_by": "43555305317",
+ "mutant": {
+  "after": "false",
+  "before": "true",
+  "column": 19,
+  "line": 40,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Hooks/MemoScopeCache.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
+ "verdict": "killed"
+}

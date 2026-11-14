@@ -1,8 +1,15 @@
 {
- "detail": "EditMode survived; PlayMode: -",
+ "detail": "EditMode: 1 failed among the 2 case(s) that ran the site: Given_ABezierColourAGestureHolds_When_AGestureNamingOnlyOpacityHandsItsChannelsBack_Then_TheColourStaysHeld",
  "file": "1940f1c44a5c1217b3260b8f8eac5b1285e22defcc584f1b6b661a78bc1f0bc3",
- "killers": [],
- "measured_by": "42317740368",
+ "killers": [
+  {
+   "case": "Velvet.Tests.BezierChannelHandBackTests.Given_ABezierColourAGestureHolds_When_AGestureNamingOnlyOpacityHandsItsChannelsBack_Then_TheColourStaysHeld",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BezierChannelHandBackTests.cs": "0dddb80cd22ff00cbe207875e2d9b403451b4157edfed65771be4dc4a57cd7ac"
+   }
+  }
+ ],
+ "measured_by": "43555305317",
  "mutant": {
   "after": "",
   "before": " || !StyleArbitraryLonghands.Of(property).Overlaps(named)",
@@ -16,9 +23,9 @@
   ]
  },
  "mutator": 10,
- "platform": "PlayMode",
+ "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
- "verdict": "survived"
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
+ "verdict": "killed"
 }

@@ -1,79 +1,108 @@
 {
- "detail": "EditMode: 7 failed among the 52 case(s) that ran the site: Given_ABlendLayerWhoseSystemWasDestroyed_When_TheTickArranges_Then_TheLayersBlendIsDropped, Given_ALiveEffect_When_TheElementIsPainted_Then_ItsExtentHasAWidth, Given_ALiveEffectWithABlendLayer_When_TheTickFires_Then_TheLayerRepaints",
+ "detail": "EditMode: 9 failed among the 54 case(s) that ran the site: Given_ABlendLayerWhoseSystemWasDestroyed_When_TheTickArranges_Then_TheLayersBlendIsDropped, Given_ALiveEffect_When_TheElementIsPainted_Then_ItsExtentHasAWidth, Given_ALiveEffect_When_TheElementIsPaintedBetweenTicks_Then_TheLiveExtentIsWhatItDrew",
  "file": "00a943dc5e6c4f8fd9671f5306545c7167548b21339a21b67332d175a57c3b8d",
  "killers": [
   {
    "case": "Velvet.Tests.ParticlesBlendLayerTests.Given_ABlendLayerWhoseSystemWasDestroyed_When_TheTickArranges_Then_TheLayersBlendIsDropped",
    "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ParticlesBlendLayerTests.cs": "eae4c4487db3cc2d8fbe93087865a2173f0f3fcd7127ac8840c62c24e14dbeb1",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ParticlesBlendLayerTests.cs": "2b3dbe7bc8d2a0cf501629cb4d0d97522cdb729ec57cd36185e8ba448f91f38c",
     "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
     "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
-    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166",
     "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26"
    }
   },
   {
    "case": "Velvet.Tests.ParticlesBlendLayerTests.Given_ALiveEffectWithABlendLayer_When_TheTickFires_Then_TheLayerRepaints",
    "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ParticlesBlendLayerTests.cs": "eae4c4487db3cc2d8fbe93087865a2173f0f3fcd7127ac8840c62c24e14dbeb1",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ParticlesBlendLayerTests.cs": "2b3dbe7bc8d2a0cf501629cb4d0d97522cdb729ec57cd36185e8ba448f91f38c",
     "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
     "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
-    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ParticlesBlendLayerTests.Given_ALiveEffect_When_TheElementIsPaintedBetweenTicks_Then_TheLiveExtentIsWhatItDrew",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ParticlesBlendLayerTests.cs": "2b3dbe7bc8d2a0cf501629cb4d0d97522cdb729ec57cd36185e8ba448f91f38c",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166",
     "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26"
    }
   },
   {
    "case": "Velvet.Tests.ParticlesBlendLayerTests.Given_ALiveEffect_When_TheElementIsPainted_Then_ItsExtentHasAWidth",
    "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ParticlesBlendLayerTests.cs": "eae4c4487db3cc2d8fbe93087865a2173f0f3fcd7127ac8840c62c24e14dbeb1",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ParticlesBlendLayerTests.cs": "2b3dbe7bc8d2a0cf501629cb4d0d97522cdb729ec57cd36185e8ba448f91f38c",
     "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
     "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
-    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166",
     "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26"
    }
   },
   {
    "case": "Velvet.Tests.ParticlesBlendLayerTests.Given_AnEffectWithABlendLayer_When_RepatchedToNull_Then_TheLayerLeavesTheElement",
    "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ParticlesBlendLayerTests.cs": "eae4c4487db3cc2d8fbe93087865a2173f0f3fcd7127ac8840c62c24e14dbeb1",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ParticlesBlendLayerTests.cs": "2b3dbe7bc8d2a0cf501629cb4d0d97522cdb729ec57cd36185e8ba448f91f38c",
     "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
     "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
-    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166",
     "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26"
    }
   },
   {
    "case": "Velvet.Tests.ParticlesBlendLayerTests.Given_AnExtentForTheElementAndForItsLayer_When_TheTickArranges_Then_BothAreKept",
    "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ParticlesBlendLayerTests.cs": "eae4c4487db3cc2d8fbe93087865a2173f0f3fcd7127ac8840c62c24e14dbeb1",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ParticlesBlendLayerTests.cs": "2b3dbe7bc8d2a0cf501629cb4d0d97522cdb729ec57cd36185e8ba448f91f38c",
     "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
     "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
-    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166",
     "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26"
    }
   },
   {
    "case": "Velvet.Tests.ParticlesBlendLayerTests.Given_AnExtentForTheElementAndForItsLayer_When_TheTickArranges_Then_TheLiveExtentIsTheirUnion",
    "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ParticlesBlendLayerTests.cs": "eae4c4487db3cc2d8fbe93087865a2173f0f3fcd7127ac8840c62c24e14dbeb1",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ParticlesBlendLayerTests.cs": "2b3dbe7bc8d2a0cf501629cb4d0d97522cdb729ec57cd36185e8ba448f91f38c",
     "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
     "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
-    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ParticlesBlendLayerTests.Given_ExtentsThatLeaveTheOriginOut_When_TheTickArranges_Then_TheLiveExtentIsTheirUnionAlone",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ParticlesBlendLayerTests.cs": "2b3dbe7bc8d2a0cf501629cb4d0d97522cdb729ec57cd36185e8ba448f91f38c",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166",
     "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26"
    }
   },
   {
    "case": "Velvet.Tests.ParticlesBlendLayerTests.Given_TwoSystemsAtTheSameDepth_When_Mounted_Then_TheyAreOrderedAsTheHierarchyHoldsThem",
    "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ParticlesBlendLayerTests.cs": "eae4c4487db3cc2d8fbe93087865a2173f0f3fcd7127ac8840c62c24e14dbeb1",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ParticlesBlendLayerTests.cs": "2b3dbe7bc8d2a0cf501629cb4d0d97522cdb729ec57cd36185e8ba448f91f38c",
     "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
     "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
-    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166",
     "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26"
    }
   }
  ],
- "measured_by": "40242988482",
+ "measured_by": "43555305317",
  "mutant": {
   "after": "==",
   "before": "!=",
@@ -91,6 +120,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "0512b43a5fa251938348f834e65769389f66a57fb578db5ff2713e35c4061839",
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
  "verdict": "killed"
 }

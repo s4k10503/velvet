@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "d54b08a06250f2216e39d327d13aa29dca9e5f80fd7f16ab9065c3d0a77677f8",
+ "killers": [],
+ "measured_by": "43555305317",
+ "mutant": {
+  "after": ";",
+  "before": "_remainders.Remove(cls);",
+  "column": 24,
+  "line": 599,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleClassProjection.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
+ "verdict": "survived"
+}

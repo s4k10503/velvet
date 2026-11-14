@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "90e648d5178901458d570fc6cc8ef0982cb708aa7e5e1796bc786cb3797cfd24",
+ "killers": [],
+ "measured_by": "43555305317",
+ "mutant": {
+  "after": ";",
+  "before": "winsB = GallopLeft(_work, temp[cursorTemp], cursorB, lengthB, 0);",
+  "column": 24,
+  "line": 404,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Routing/JsArraySort.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
+ "verdict": "survived"
+}

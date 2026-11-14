@@ -1,0 +1,31 @@
+{
+ "detail": "EditMode: 1 failed among the 1 case(s) that ran the site: Given_ASequenceSpringSegmentOfTwoKeyframes_When_ItsSpringOverThatTravelHasRested_Then_TheSequenceIsFinished",
+ "file": "18f7ea07c64a5b2c500f38fbe473bb82ce4f987789aeefbe345d57073e7b7e52",
+ "killers": [
+  {
+   "case": "Velvet.Tests.AnimateTransitionDefaultsTests.Given_ASequenceSpringSegmentOfTwoKeyframes_When_ItsSpringOverThatTravelHasRested_Then_TheSequenceIsFinished",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/AnimateTransitionDefaultsTests.cs": "4f1df3ffccb06b00107c98831f717a86d47df2b0313c6802a1a57a577f8f06a8"
+   }
+  }
+ ],
+ "measured_by": "43555305317",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 48,
+  "line": 461,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Hooks/Animator.cs",
+  "shadowed": [
+   "arithmetic",
+   "line removed"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
+ "verdict": "killed"
+}

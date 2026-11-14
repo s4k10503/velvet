@@ -1,8 +1,15 @@
 {
- "detail": "EditMode survived; PlayMode: -",
+ "detail": "EditMode: 1 failed: Given_ARetryingCallRemovedAheadOfAPausedOne_When_ItsRetryIsDue_Then_ItDoesNotStartAgain",
  "file": "34c4c3bcc4dfa213d2d9e536eec5cad619815408d8c63e8bae48849f3439e5f5",
- "killers": [],
- "measured_by": "42555673605",
+ "killers": [
+  {
+   "case": "Velvet.Tests.MutationScopeTests.Given_ARetryingCallRemovedAheadOfAPausedOne_When_ItsRetryIsDue_Then_ItDoesNotStartAgain",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/MutationScopeTests.cs": "96f2bb89f15e79a9451c49b53fc3bd33e3b3768ac1f95cb837cf6ed50ab24c65"
+   }
+  }
+ ],
+ "measured_by": "43555305317",
  "mutant": {
   "after": "",
   "before": " && (callbacks.CanRun?.Invoke(state) ?? true)",
@@ -16,9 +23,9 @@
   ]
  },
  "mutator": 10,
- "platform": "PlayMode",
+ "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "a5395f0cc726ce2565be694bced9679a56713246cc9946aac3608d804f919707",
- "verdict": "survived"
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
+ "verdict": "killed"
 }

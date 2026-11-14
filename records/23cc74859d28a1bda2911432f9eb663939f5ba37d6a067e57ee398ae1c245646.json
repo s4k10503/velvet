@@ -1,51 +1,27 @@
 {
- "detail": "EditMode: 3 failed in Velvet.Tests.Reconciler.Editor: Given_AFallbackWhoseLayoutEffectThrowsIntoItsOwnBoundaryOnEveryMount_When_TheFollowUpBoundStopsTheChain_Then_TheNextEntryNeitherRunsItAgainNorDeliversItsReport, Given_AFallbackWhoseLayoutEffectThrowsIntoItsOwnBoundaryOnItsFirst75Mounts_When_TheChainRuns_Then_ReactsNestedUpdateLimitStopsIt, Given_AParkedTransitionHoldingARowsLayoutEffect_When_TheFollowUpBoundStopsAChainElsewhere_Then_TheRowsLayoutEffectRunsWhenThePassCompletes",
+ "detail": "EditMode: 2 failed: Given_InitialMount_When_NotYetFlushed_Then_AsyncEffectDoesNotRun, Given_UnmountedBeforeFlush_When_EffectsFlushed_Then_PendingEffectIsSkipped; 1 other editor(s) were up",
  "file": "c54c72c65c16aaea094a8ff782a719c632dc76cea2aaa1b29451c2d6a7c3cbdb",
  "killers": [
   {
-   "case": "Velvet.Tests.CaughtErrorHandlerTests.Given_AFallbackWhoseLayoutEffectThrowsIntoItsOwnBoundaryOnEveryMount_When_TheFollowUpBoundStopsTheChain_Then_TheNextEntryNeitherRunsItAgainNorDeliversItsReport",
+   "case": "Velvet.Tests.UseEffectTests.Given_InitialMount_When_NotYetFlushed_Then_AsyncEffectDoesNotRun",
    "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/CaughtErrorHandlerTests.cs": "76c210205d3358a9aa48a5da5d648f74f2c0fca7e4f8ed4f7236de3c0c57c9f3",
-    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
-    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseEffectTests.cs": "db674be4028996a2eb7e20cebc17c2672b6da9c8d0b8e4ac12551dcb63d00a40",
+    "Packages/com.velvet.core/TestUtilities/ActionDisposable.cs": "e95e072a106d4d4a77b0e090c5bdd56a05df277aa99aeb1d28e41c5ce3d3e1ea",
     "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
-    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
-    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
-    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
-    "Packages/com.velvet.core/TestUtilities/UseFrameFakeClockHost.cs": "832e6d1a29eac04e37d6f7a12601c3572a72772621452748e332bb8c2d3d1194",
-    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
    }
   },
   {
-   "case": "Velvet.Tests.CaughtErrorHandlerTests.Given_AFallbackWhoseLayoutEffectThrowsIntoItsOwnBoundaryOnItsFirst75Mounts_When_TheChainRuns_Then_ReactsNestedUpdateLimitStopsIt",
+   "case": "Velvet.Tests.UseEffectTests.Given_UnmountedBeforeFlush_When_EffectsFlushed_Then_PendingEffectIsSkipped",
    "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/CaughtErrorHandlerTests.cs": "76c210205d3358a9aa48a5da5d648f74f2c0fca7e4f8ed4f7236de3c0c57c9f3",
-    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
-    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseEffectTests.cs": "db674be4028996a2eb7e20cebc17c2672b6da9c8d0b8e4ac12551dcb63d00a40",
+    "Packages/com.velvet.core/TestUtilities/ActionDisposable.cs": "e95e072a106d4d4a77b0e090c5bdd56a05df277aa99aeb1d28e41c5ce3d3e1ea",
     "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
-    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
-    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
-    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
-    "Packages/com.velvet.core/TestUtilities/UseFrameFakeClockHost.cs": "832e6d1a29eac04e37d6f7a12601c3572a72772621452748e332bb8c2d3d1194",
-    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
-   }
-  },
-  {
-   "case": "Velvet.Tests.CaughtErrorHandlerTests.Given_AParkedTransitionHoldingARowsLayoutEffect_When_TheFollowUpBoundStopsAChainElsewhere_Then_TheRowsLayoutEffectRunsWhenThePassCompletes",
-   "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/CaughtErrorHandlerTests.cs": "76c210205d3358a9aa48a5da5d648f74f2c0fca7e4f8ed4f7236de3c0c57c9f3",
-    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
-    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
-    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
-    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
-    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
-    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
-    "Packages/com.velvet.core/TestUtilities/UseFrameFakeClockHost.cs": "832e6d1a29eac04e37d6f7a12601c3572a72772621452748e332bb8c2d3d1194",
-    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
    }
   }
  ],
- "measured_by": "39913002090",
+ "measured_by": "43555305317",
  "mutant": {
   "after": "",
   "before": "if (!renderedSyncLane) return;",
@@ -59,6 +35,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "044c9d211f75f50f9cfae4dd5e8e80dda317b66cb32887ffa24e6f52fcbaade0",
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
  "verdict": "killed"
 }

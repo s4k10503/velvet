@@ -1,0 +1,31 @@
+{
+ "detail": "EditMode: 1 failed among the 43 case(s) that ran the site: Given_UseQueriesOverAQueryThatThrowsAndReadsOnlyData_When_ARefetchFails_Then_TheErrorBoundaryShowsIt",
+ "file": "e71a6ad0a25df92fedbcce5940851ab413d8aacfc4d2e5218662792f60cc93b9",
+ "killers": [
+  {
+   "case": "Velvet.Tests.QueryErrorWatchTests.Given_UseQueriesOverAQueryThatThrowsAndReadsOnlyData_When_ARefetchFails_Then_TheErrorBoundaryShowsIt",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/QueryErrorWatchTests.cs": "25a947b0f0a5cd5b039070a7c7a0123325f58686c857e27c4949dc6ff18e7a8d",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  }
+ ],
+ "measured_by": "43555305317",
+ "mutant": {
+  "after": ";",
+  "before": "_computer.Host(_observer);",
+  "column": 12,
+  "line": 78,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Hooks/HookQueries.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
+ "verdict": "killed"
+}

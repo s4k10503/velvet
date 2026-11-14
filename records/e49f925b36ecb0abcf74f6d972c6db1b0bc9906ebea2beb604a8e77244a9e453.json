@@ -1,0 +1,78 @@
+{
+ "detail": "EditMode: 7 failed among the 261 case(s) that ran the site: Given_ABoundaryUnderAProviderWhoseChildsEffectThrows_When_TheEffectsRun_Then_ItsFallbackReadsTheProvider, Given_ABoundaryUnderAProviderWhosePortalChildThrowsInTheMountsDrain_When_TheBoundaryCatches_Then_ItsFallbackReadsTheProvider, Given_ABoundaryWhoseOutputProvidesAboveAParkedComponent_When_AResumedRowThrows_Then_ItsFallbackReadsTheProviderAboveTheBoundary",
+ "file": "703d6b81c1b1d59757b6b1e433bc9f9530b44208fa564214d78760151646d07f",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ParkedPassResumeTests.Given_ABoundaryUnderAProviderWhoseChildsEffectThrows_When_TheEffectsRun_Then_ItsFallbackReadsTheProvider",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ParkedPassResumeTests.cs": "72a4c64fc996b36d6e4c2ed9e87ffd11b935c402c6590d4cb05f1534008e56d4",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ParkedPassResumeTests.Given_ABoundaryUnderAProviderWhosePortalChildThrowsInTheMountsDrain_When_TheBoundaryCatches_Then_ItsFallbackReadsTheProvider",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ParkedPassResumeTests.cs": "72a4c64fc996b36d6e4c2ed9e87ffd11b935c402c6590d4cb05f1534008e56d4",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ParkedPassResumeTests.Given_ABoundaryWhoseOutputProvidesAboveAParkedComponent_When_AResumedRowThrows_Then_ItsFallbackReadsTheProviderAboveTheBoundary",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ParkedPassResumeTests.cs": "72a4c64fc996b36d6e4c2ed9e87ffd11b935c402c6590d4cb05f1534008e56d4",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ParkedPassResumeTests.Given_ABoundaryWhoseOutputProvidesAboveAParkedComponent_When_ItsOwnRenderDrainsARowThatThrows_Then_ItsFallbackReadsTheProviderAboveTheBoundary",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ParkedPassResumeTests.cs": "72a4c64fc996b36d6e4c2ed9e87ffd11b935c402c6590d4cb05f1534008e56d4",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ParkedPassResumeTests.Given_AFallbackProvidingAroundABoundaryWithAPortal_When_AnEffectErrorSwapsItInAndThePortalsChildThrows_Then_TheInnerFallbackReadsTheOuterFallbacksProvider",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ParkedPassResumeTests.cs": "72a4c64fc996b36d6e4c2ed9e87ffd11b935c402c6590d4cb05f1534008e56d4",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ParkedPassResumeTests.Given_AFallbackProvidingAroundABoundaryWithAPortal_When_ItsBoundarysOwnUpdateRemovesAChildWhoseCleanupThrows_Then_TheInnerFallbackReadsTheOuterFallbacksProvider",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ParkedPassResumeTests.cs": "72a4c64fc996b36d6e4c2ed9e87ffd11b935c402c6590d4cb05f1534008e56d4",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ParkedPassResumeTests.Given_AFallbackProvidingAroundABoundaryWithAPortal_When_ItsBoundarysOwnUpdateThrowsBelowItAndThePortalsChildThrows_Then_TheInnerFallbackReadsTheOuterFallbacksProvider",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ParkedPassResumeTests.cs": "72a4c64fc996b36d6e4c2ed9e87ffd11b935c402c6590d4cb05f1534008e56d4",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  }
+ ],
+ "measured_by": "43555305317",
+ "mutant": {
+  "after": ";",
+  "before": "_ = FiberContextSpine.Push(fiber);",
+  "column": 12,
+  "line": 103,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberErrorBoundary.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
+ "verdict": "killed"
+}

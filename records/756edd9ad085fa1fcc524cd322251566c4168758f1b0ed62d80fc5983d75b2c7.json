@@ -1,30 +1,33 @@
 {
- "detail": "EditMode: 3 failed among the 64 case(s) that ran the site: Given_AnAuthoredRotateAndScale_When_ASkewIsEngaged_Then_TheSlotsCarryTheComposite, Given_ASkewedElementWithANegativeScale_When_Engaged_Then_TheSlotsCarryTheReflection, Given_ASkewOnAnElementWithNoOtherWriter_When_Engaged_Then_TheSlotsCarryTheShear",
+ "detail": "EditMode: 3 failed among the 72 case(s) that ran the site: Given_AnAuthoredRotateAndScale_When_ASkewIsEngaged_Then_TheSlotsCarryTheComposite, Given_ASkewedElementWithANegativeScale_When_Engaged_Then_TheSlotsCarryTheReflection, Given_ASkewOnAnElementWithNoOtherWriter_When_Engaged_Then_TheSlotsCarryTheShear",
  "file": "d4f738295d71ea2b129cc4c165a26db5070d507f526f59f8329e4f7c62fa062c",
  "killers": [
   {
    "case": "Velvet.Tests.AuthoredTransformTests.Given_ASkewOnAnElementWithNoOtherWriter_When_Engaged_Then_TheSlotsCarryTheShear",
    "files": {
-    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/AuthoredTransformTests.cs": "2cfc87edc3b6acb65ea4c99aac6c48960904e96da15f7d68e1a315bbebdc1930",
-    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/SkewCompositeMath.cs": "c88b38e855c9f38c76266fb3d5f4b50443da12bc199580316e003c142bf12b38"
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/AuthoredTransformTests.cs": "f6f419b6163ee9b86d3ed7fb463fdf083a3c3b06834114eff50486a4e6bc4d61",
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/SkewCompositeMath.cs": "c88b38e855c9f38c76266fb3d5f4b50443da12bc199580316e003c142bf12b38",
+    "Packages/com.velvet.core/TestUtilities/CallbackRegistryProbe.cs": "0bf11bf8f5b161e389e815cf4be1a5f33269e05d2fed160868b58bb1f3629b46"
    }
   },
   {
    "case": "Velvet.Tests.AuthoredTransformTests.Given_ASkewedElementWithANegativeScale_When_Engaged_Then_TheSlotsCarryTheReflection",
    "files": {
-    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/AuthoredTransformTests.cs": "2cfc87edc3b6acb65ea4c99aac6c48960904e96da15f7d68e1a315bbebdc1930",
-    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/SkewCompositeMath.cs": "c88b38e855c9f38c76266fb3d5f4b50443da12bc199580316e003c142bf12b38"
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/AuthoredTransformTests.cs": "f6f419b6163ee9b86d3ed7fb463fdf083a3c3b06834114eff50486a4e6bc4d61",
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/SkewCompositeMath.cs": "c88b38e855c9f38c76266fb3d5f4b50443da12bc199580316e003c142bf12b38",
+    "Packages/com.velvet.core/TestUtilities/CallbackRegistryProbe.cs": "0bf11bf8f5b161e389e815cf4be1a5f33269e05d2fed160868b58bb1f3629b46"
    }
   },
   {
    "case": "Velvet.Tests.AuthoredTransformTests.Given_AnAuthoredRotateAndScale_When_ASkewIsEngaged_Then_TheSlotsCarryTheComposite",
    "files": {
-    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/AuthoredTransformTests.cs": "2cfc87edc3b6acb65ea4c99aac6c48960904e96da15f7d68e1a315bbebdc1930",
-    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/SkewCompositeMath.cs": "c88b38e855c9f38c76266fb3d5f4b50443da12bc199580316e003c142bf12b38"
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/AuthoredTransformTests.cs": "f6f419b6163ee9b86d3ed7fb463fdf083a3c3b06834114eff50486a4e6bc4d61",
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/SkewCompositeMath.cs": "c88b38e855c9f38c76266fb3d5f4b50443da12bc199580316e003c142bf12b38",
+    "Packages/com.velvet.core/TestUtilities/CallbackRegistryProbe.cs": "0bf11bf8f5b161e389e815cf4be1a5f33269e05d2fed160868b58bb1f3629b46"
    }
   }
  ],
- "measured_by": "41716618666",
+ "measured_by": "43555305317",
  "mutant": {
   "after": ";",
   "before": "Write(element, state);",
@@ -38,6 +41,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
  "verdict": "killed"
 }

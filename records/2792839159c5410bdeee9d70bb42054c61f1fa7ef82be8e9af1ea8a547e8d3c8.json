@@ -1,0 +1,36 @@
+{
+ "detail": "EditMode: 2 failed among the 160 case(s) that ran the site: Given_OnEnterCompleteThrows_When_AStandaloneMotionPlaysItsOwnMountEnter_Then_TheChildStillMounts, Given_OnEnterCompleteThrows_When_ThePresenceVariantEnterHasNoDurationToWaitOut_Then_TheChildStillMounts",
+ "file": "218dd704330e077f06b11061eafff19efd019406bf7cfc676c876866b0780aaf",
+ "killers": [
+  {
+   "case": "Velvet.Tests.AnimatePresenceAnimationTests.Given_OnEnterCompleteThrows_When_AStandaloneMotionPlaysItsOwnMountEnter_Then_TheChildStillMounts",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/AnimatePresenceAnimationTests.cs": "a7ff95ec31fa180d58adaecff71bbaaaf3f7e0961ca58e218d0a694974b935a8",
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/SimulatedPanelTestBase.cs": "a06149cf212c91277fd1442580aee292a959fef6bf985e77628aabdbb0acacc8"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AnimatePresenceAnimationTests.Given_OnEnterCompleteThrows_When_ThePresenceVariantEnterHasNoDurationToWaitOut_Then_TheChildStillMounts",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/AnimatePresenceAnimationTests.cs": "a7ff95ec31fa180d58adaecff71bbaaaf3f7e0961ca58e218d0a694974b935a8",
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/SimulatedPanelTestBase.cs": "a06149cf212c91277fd1442580aee292a959fef6bf985e77628aabdbb0acacc8"
+   }
+  }
+ ],
+ "measured_by": "43555305317",
+ "mutant": {
+  "after": "true",
+  "before": "false",
+  "column": 27,
+  "line": 810,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleTransitionConfig.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
+ "verdict": "killed"
+}

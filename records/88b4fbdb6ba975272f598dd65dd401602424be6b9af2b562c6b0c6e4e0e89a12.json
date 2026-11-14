@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "a75f719d749e6109716fe298b2539870e2605bce40a3fa6048e39493b2e5f07f",
+ "killers": [],
+ "measured_by": "43555305317",
+ "mutant": {
+  "after": ";",
+  "before": "_rulesHash = StyleCascade.RulesHash(element);",
+  "column": 12,
+  "line": 868,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/SilhouetteFace.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
+ "verdict": "survived"
+}

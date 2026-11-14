@@ -1,11 +1,11 @@
 {
- "detail": "EditMode: 1 failed among the 1 case(s) that ran the site: Given_ARectWiderThanTheWindowWithItsLeftEdgeOnTheWindows_When_RestrictToWindowEdgesRuns_Then_TheLeftEdgeStays",
+ "detail": "EditMode: 1 failed among the 3 case(s) that ran the site: Given_ARectWiderThanTheWindowWithItsLeftEdgeOnTheWindows_When_RestrictToWindowEdgesRuns_Then_TheLeftEdgeStays",
  "file": "5c2db1185aad4731ec844e05655df84afe8a2e8b620a82ea3885312df9776fb4",
  "killers": [
   {
    "case": "Velvet.Tests.DndInteractionTests.Given_ARectWiderThanTheWindowWithItsLeftEdgeOnTheWindows_When_RestrictToWindowEdgesRuns_Then_TheLeftEdgeStays",
    "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/DndInteractionTests.cs": "94d1201d4072c091437ac22d2c28a9187433840c3aaa9cbd177fcd54627d482e",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/DndInteractionTests.cs": "2978fc80a5e02bbfe383fd3b1f55354c3b38a7702186f1164996a6631621468e",
     "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
     "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
     "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
@@ -15,7 +15,7 @@
    }
   }
  ],
- "measured_by": "42940765590",
+ "measured_by": "43555305317",
  "mutant": {
   "after": "<",
   "before": "<=",
@@ -31,6 +31,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "8938ef90a0e40de86da7e56a92aa1cd55ae481a966bf706518784b608a1968f3",
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
  "verdict": "killed"
 }

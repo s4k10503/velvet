@@ -1,0 +1,46 @@
+{
+ "detail": "EditMode: 4 failed among the 10 case(s) that ran the site: Given_ARingWhoseBoxShadowTheBrowserDiscards_When_Extracted_Then_NoRingIsDrawn(\"ring shadow-[0_4_8_#101820]\"), Given_ARingWhoseBoxShadowTheBrowserDiscards_When_Extracted_Then_NoRingIsDrawn(\"ring shadow-[4px]\"), Given_ARingWhoseBoxShadowTheBrowserDiscards_When_Extracted_Then_NoRingIsDrawn(\"ring-2 shadow-[0_4_8_#000] shadow-[#ff0000]\")",
+ "file": "4fd4c6f6d65f64001cba1ccff11c3543e1c039db02a98a5372d0060b0515af3c",
+ "killers": [
+  {
+   "case": "Velvet.Tests.RejectedValueTests.Given_ARingWhoseBoxShadowTheBrowserDiscards_When_Extracted_Then_NoRingIsDrawn(\"ring shadow-[0_4_8_#101820]\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/RejectedValueTests.cs": "cb41916238bd5825c3995f5f02d97280da1514db64d38079ba743d65fc7ec007"
+   }
+  },
+  {
+   "case": "Velvet.Tests.RejectedValueTests.Given_ARingWhoseBoxShadowTheBrowserDiscards_When_Extracted_Then_NoRingIsDrawn(\"ring shadow-[4px]\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/RejectedValueTests.cs": "cb41916238bd5825c3995f5f02d97280da1514db64d38079ba743d65fc7ec007"
+   }
+  },
+  {
+   "case": "Velvet.Tests.RejectedValueTests.Given_ARingWhoseBoxShadowTheBrowserDiscards_When_Extracted_Then_NoRingIsDrawn(\"ring-2 shadow-[0_4_8_#000] shadow-[#ff0000]\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/RejectedValueTests.cs": "cb41916238bd5825c3995f5f02d97280da1514db64d38079ba743d65fc7ec007"
+   }
+  },
+  {
+   "case": "Velvet.Tests.RejectedValueTests.Given_ARingWhoseBoxShadowTheBrowserDiscards_When_Extracted_Then_NoRingIsDrawn(\"ring-2 shadow-[0_4_8_#000] shadow-[color:red]\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/RejectedValueTests.cs": "cb41916238bd5825c3995f5f02d97280da1514db64d38079ba743d65fc7ec007"
+   }
+  }
+ ],
+ "measured_by": "43555305317",
+ "mutant": {
+  "after": "false",
+  "before": "true",
+  "column": 27,
+  "line": 820,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleShadowClass.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
+ "verdict": "killed"
+}

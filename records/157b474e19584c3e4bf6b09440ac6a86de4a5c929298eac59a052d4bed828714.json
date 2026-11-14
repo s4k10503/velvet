@@ -1,0 +1,42 @@
+{
+ "detail": "EditMode: 2 failed among the 21 case(s) that ran the site: Given_AKeyedLeafReplacedUnderAFrameBudget_When_TheSliceYieldsBeforeTheRemovals_Then_TheDepartingCleanupStillRunsFirst, Given_APassParkedWithASetupQueued_When_AnUnrelatedPassEndsOnTheSameContext_Then_TheDepartingCleanupStillRunsFirst",
+ "file": "5d3639254385d568524c8abd8ffc3706452bacca63b1144fc4cfc9885e0a4cf1",
+ "killers": [
+  {
+   "case": "Velvet.Tests.RefAttachOrderingTests.Given_AKeyedLeafReplacedUnderAFrameBudget_When_TheSliceYieldsBeforeTheRemovals_Then_TheDepartingCleanupStillRunsFirst",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/RefAttachOrderingTests.cs": "74468784f0625a6ba0653b994f25f3175c2b14d88fe7833c47de460ea64b0abf",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.RefAttachOrderingTests.Given_APassParkedWithASetupQueued_When_AnUnrelatedPassEndsOnTheSameContext_Then_TheDepartingCleanupStillRunsFirst",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/RefAttachOrderingTests.cs": "74468784f0625a6ba0653b994f25f3175c2b14d88fe7833c47de460ea64b0abf",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  }
+ ],
+ "measured_by": "43555305317",
+ "mutant": {
+  "after": ";",
+  "before": "_host.Remove(parent, state.OldOccupants!.Occupant(i)!, state.OldOccupants.PhysicalAtEntry(i));",
+  "column": 20,
+  "line": 1796,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ChildReconciler.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
+ "verdict": "killed"
+}

@@ -1,0 +1,33 @@
+{
+ "detail": "EditMode: 1 failed among the 233 case(s) that ran the site: a {-\")",
+ "file": "a5af3a44872fb35f4e092f25f307fd6831f8c615c35c379611243a7ae53da1eb",
+ "killers": [
+  {
+   "case": "Velvet.Tests.UssCustomPropertyTextTests.Given_ATextEndingInsideWhatTheRewriteReads_When_TheSheetIsRewritten_Then_ItIsUnchanged(\".a {-\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/UssCustomPropertyTextTests.cs": "24bb22a1cc129cb0a608b9bc9021d032bfec6d6a4c0250cd879c6eee33e16c1a"
+   }
+  }
+ ],
+ "measured_by": "43555305317",
+ "mutant": {
+  "after": "<=",
+  "before": "<",
+  "column": 52,
+  "line": 83,
+  "operator": "boundary",
+  "path": "Packages/com.velvet.core/Editor/StyleSheets/UssCustomPropertyText.cs",
+  "shadowed": [
+   "arithmetic",
+   "clause removed",
+   "equality",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
+ "verdict": "killed"
+}

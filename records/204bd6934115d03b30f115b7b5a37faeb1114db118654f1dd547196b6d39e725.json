@@ -1,0 +1,28 @@
+{
+ "detail": "EditMode: 1 failed among the 37 case(s) that ran the site: Given_ABezierPlayMovingEveryChannel_When_ASpringInterruptsIt_Then_TheChannelStartsWithTheCurvesSlope(\"Rotate\")",
+ "file": "5f8838919b7f5297e7e740e6ed6d6e342fa32f8f850f0b8b15afe28a2bffae99",
+ "killers": [
+  {
+   "case": "Velvet.Tests.MotionVelocityHandOverTests.Given_ABezierPlayMovingEveryChannel_When_ASpringInterruptsIt_Then_TheChannelStartsWithTheCurvesSlope(\"Rotate\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/MotionVelocityHandOverTests.cs": "86431680b2814cc2191228325bbcb1d55f52cf738ae9f6a1557ce868aacb657f"
+   }
+  }
+ ],
+ "measured_by": "43555305317",
+ "mutant": {
+  "after": ";",
+  "before": "Continue(next, next.Rotate, interrupted.Rotate, fromDrawn);",
+  "column": 12,
+  "line": 763,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/MotionSpringDriver.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
+ "verdict": "killed"
+}

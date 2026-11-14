@@ -1,0 +1,32 @@
+{
+ "detail": "EditMode: 1 failed: Given_AWatchedAncestor_When_ItLeavesThePanelAndTheWatchTicks_Then_ItIsNoLongerWatched",
+ "file": "e621851a1a44da1c609edd883ef21ca492537313986655492048f4b9c229c05e",
+ "killers": [
+  {
+   "case": "Velvet.Tests.BorderPreflightSheetWatchTests.Given_AWatchedAncestor_When_ItLeavesThePanelAndTheWatchTicks_Then_ItIsNoLongerWatched",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BorderPreflightSheetWatchTests.cs": "a6e1f67c40de8dea18e82a9f3263c40e58109cbf0ea60cdabcd28ac726df5cd4",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  }
+ ],
+ "measured_by": "43555305317",
+ "mutant": {
+  "after": ";",
+  "before": "watch.Ancestors.Add(entry);",
+  "column": 16,
+  "line": 510,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/BorderPreflight.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
+ "verdict": "killed"
+}

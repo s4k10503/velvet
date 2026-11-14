@@ -1,25 +1,16 @@
 {
- "detail": "EditMode: 2 failed in Velvet.Tests.Reconciler.Editor: Given_AncestorReExpandsKeyedChild_When_BusyClearedWithMessage_Then_ResultToastAppearsOnce, Given_AncestorReExpandsKeyedChild_When_BusyTrueViaFrameDrain_Then_ExactlyOneOverlayShows",
+ "detail": "EditMode: 1 failed: Given_AMotionWithExit_When_Removed_Then_ItAnimatesToTheExitVariant",
  "file": "c54c72c65c16aaea094a8ff782a719c632dc76cea2aaa1b29451c2d6a7c3cbdb",
  "killers": [
   {
-   "case": "Velvet.Tests.AncestorDescendantStoreRerenderTests.Given_AncestorReExpandsKeyedChild_When_BusyClearedWithMessage_Then_ResultToastAppearsOnce",
+   "case": "Velvet.Tests.AnimatePresenceAnimationTests.Given_AMotionWithExit_When_Removed_Then_ItAnimatesToTheExitVariant",
    "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/AncestorDescendantStoreRerenderTests.cs": "adc1876ff0d9b96323088d1a025f0dfd35e5cbe43a88fa4f6fec70d68d5d997b",
-    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
-    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
-   }
-  },
-  {
-   "case": "Velvet.Tests.AncestorDescendantStoreRerenderTests.Given_AncestorReExpandsKeyedChild_When_BusyTrueViaFrameDrain_Then_ExactlyOneOverlayShows",
-   "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/AncestorDescendantStoreRerenderTests.cs": "adc1876ff0d9b96323088d1a025f0dfd35e5cbe43a88fa4f6fec70d68d5d997b",
-    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
-    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/AnimatePresenceAnimationTests.cs": "a7ff95ec31fa180d58adaecff71bbaaaf3f7e0961ca58e218d0a694974b935a8",
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/SimulatedPanelTestBase.cs": "a06149cf212c91277fd1442580aee292a959fef6bf985e77628aabdbb0acacc8"
    }
   }
  ],
- "measured_by": "39913002090",
+ "measured_by": "43555305317",
  "mutant": {
   "after": ";",
   "before": "DrainImmediatePassesUpTo(ref totalPasses, ref renderedSyncLane);",
@@ -33,6 +24,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "044c9d211f75f50f9cfae4dd5e8e80dda317b66cb32887ffa24e6f52fcbaade0",
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
  "verdict": "killed"
 }

@@ -1,0 +1,46 @@
+{
+ "detail": "EditMode: 3 failed among the 819 case(s) that ran the site: Given_AContextFunctionThatDoesNotReadTheToken_When_ItsLastReaderLeaves_Then_TheRequestRunsOn, Given_AContextFunctionThatReadsTheToken_When_ItsLastReaderLeaves_Then_TheRequestIsCancelled, Given_AnEntryFetchedBefore_When_FetchRuns_Then_ItsTaskHoldsTheNewData",
+ "file": "88660c3891deb64c798514cd618527ecd5f64471abe418bbbe6a66b52f652eca",
+ "killers": [
+  {
+   "case": "Velvet.Tests.QueryCacheTests.Given_AContextFunctionThatDoesNotReadTheToken_When_ItsLastReaderLeaves_Then_TheRequestRunsOn",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/QueryCacheTests.cs": "0b7b39a8c622b096633e859404152402a1c589f60c7fea07d752dc1da6ca4d6d",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  },
+  {
+   "case": "Velvet.Tests.QueryCacheTests.Given_AContextFunctionThatReadsTheToken_When_ItsLastReaderLeaves_Then_TheRequestIsCancelled",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/QueryCacheTests.cs": "0b7b39a8c622b096633e859404152402a1c589f60c7fea07d752dc1da6ca4d6d",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  },
+  {
+   "case": "Velvet.Tests.QueryCacheTests.Given_AnEntryFetchedBefore_When_FetchRuns_Then_ItsTaskHoldsTheNewData",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/QueryCacheTests.cs": "0b7b39a8c622b096633e859404152402a1c589f60c7fea07d752dc1da6ca4d6d",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  }
+ ],
+ "measured_by": "43555305317",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 48,
+  "line": 1261,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Hooks/QueryClient.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
+ "verdict": "killed"
+}

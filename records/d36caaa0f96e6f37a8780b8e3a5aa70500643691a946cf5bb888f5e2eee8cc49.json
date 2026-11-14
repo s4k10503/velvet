@@ -1,0 +1,36 @@
+{
+ "detail": "EditMode: 1 failed among the 1447 case(s) that ran the site: Given_TabularNumsOnALabel_When_Mounted_Then_ItsDigitsAreOneMonospacedRun",
+ "file": "6bb198a3c4cda52253b0a4f6e4fdfa557114b31d33f2a46e5829952abaf67f90",
+ "killers": [
+  {
+   "case": "Velvet.Tests.TextRenderedTests.Given_TabularNumsOnALabel_When_Mounted_Then_ItsDigitsAreOneMonospacedRun",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/TextRenderedTests.cs": "2ca4577869bf661c8056e3a00cb9a9d86156b5eb285ff8d41734e36a322cfaef",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/RenderedTextProbe.cs": "1eb2072fc3aef248a139379b3ca65d395e5e267af058df5603edf70feaab20f8",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  }
+ ],
+ "measured_by": "43555305317",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 37,
+  "line": 279,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleTextEffectResolver.cs",
+  "shadowed": [
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
+ "verdict": "killed"
+}

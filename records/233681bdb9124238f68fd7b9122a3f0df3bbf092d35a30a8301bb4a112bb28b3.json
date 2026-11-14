@@ -1,0 +1,29 @@
+{
+ "detail": "EditMode: 1 failed: Given_InitialFalse_When_ChildAddedLater_Then_TheAdditionStillAnimates",
+ "file": "b54d7f662abf70318c7175a77644f351ba025188d1046f7cf5183f0dde3b4f89",
+ "killers": [
+  {
+   "case": "Velvet.Tests.AnimatePresenceTests.Given_InitialFalse_When_ChildAddedLater_Then_TheAdditionStillAnimates",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/AnimatePresenceTests.cs": "d68149d8e0f54e7a243f0b25f02b8add378a811d56dc3e6d820bd9b1a3cd8c2a",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  }
+ ],
+ "measured_by": "43555305317",
+ "mutant": {
+  "after": "-",
+  "before": "+",
+  "column": 40,
+  "line": 100,
+  "operator": "arithmetic",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/HostCommitQueue.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
+ "verdict": "killed"
+}

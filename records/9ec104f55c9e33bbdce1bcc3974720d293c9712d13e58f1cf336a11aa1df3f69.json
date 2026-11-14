@@ -1,0 +1,24 @@
+{
+ "detail": "EditMode: Stack overflow in unmanaged: IP: 0x7f148ca77dac, fault addr: 0x7fff82ec9dc8",
+ "file": "1cae56302451712eee41dfcdf0a5c321801676a58c343daacac53a9d26358602",
+ "killers": [],
+ "measured_by": "43555305317",
+ "mutant": {
+  "after": "",
+  "before": " || !scope.Project.Contains(\"--spacing\")",
+  "column": 21,
+  "line": 285,
+  "operator": "clause removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleThemeClass.cs",
+  "shadowed": [
+   "clause removed",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
+ "verdict": "killed (the editor crashed)"
+}

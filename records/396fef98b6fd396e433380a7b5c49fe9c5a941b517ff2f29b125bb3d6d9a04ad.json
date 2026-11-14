@@ -1,0 +1,28 @@
+{
+ "detail": "EditMode: 1 failed among the 3 case(s) that ran the site: Given_AShadowColourOfCurrentColorInABracket_When_Extracted_Then_EveryLayerTakesTheTextColour",
+ "file": "cb2a1212f53b3b67485dca9a24ddc4fad97e5652066ca3ba00e2c5d6fed5bb26",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ClassPrefilterReadTests.Given_AShadowColourOfCurrentColorInABracket_When_Extracted_Then_EveryLayerTakesTheTextColour",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ClassPrefilterReadTests.cs": "b0e20d60de007fabc994b978b22f03216c5149b1db7938b70d9acbef1290604c"
+   }
+  }
+ ],
+ "measured_by": "43555305317",
+ "mutant": {
+  "after": "true",
+  "before": "false",
+  "column": 19,
+  "line": 110,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleColorValueParser.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
+ "verdict": "killed"
+}

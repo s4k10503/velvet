@@ -1,0 +1,58 @@
+{
+ "detail": "EditMode: 3 failed among the 105 case(s) that ran the site: Given_ADraggableWithADistanceActivation_When_APressTravelsBelowTheDistanceAndReleases_Then_NoDragEverStarts, Given_ADragPressedThroughADescendantThatEnded_When_ANewPressMovesBelowTheDistance_Then_TheDraggableStaysUntranslated, Given_AnActiveTranslateDrag_When_ThePointerMovesByADelta_Then_TheInlineTranslateFollowsIt",
+ "file": "443c0281d23383ee251f2cf720fd304210a0b6179ecf95c67153e47e17c0da59",
+ "killers": [
+  {
+   "case": "Velvet.Tests.DndInteractionTests.Given_ADragPressedThroughADescendantThatEnded_When_ANewPressMovesBelowTheDistance_Then_TheDraggableStaysUntranslated",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/DndInteractionTests.cs": "2978fc80a5e02bbfe383fd3b1f55354c3b38a7702186f1164996a6631621468e",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.DndInteractionTests.Given_ADraggableWithADistanceActivation_When_APressTravelsBelowTheDistanceAndReleases_Then_NoDragEverStarts",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/DndInteractionTests.cs": "2978fc80a5e02bbfe383fd3b1f55354c3b38a7702186f1164996a6631621468e",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.DndInteractionTests.Given_AnActiveTranslateDrag_When_ThePointerMovesByADelta_Then_TheInlineTranslateFollowsIt",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/DndInteractionTests.cs": "2978fc80a5e02bbfe383fd3b1f55354c3b38a7702186f1164996a6631621468e",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  }
+ ],
+ "measured_by": "43555305317",
+ "mutant": {
+  "after": ";",
+  "before": "_pressPosition = drive.Start;",
+  "column": 12,
+  "line": 330,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/DndActiveDrag.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
+ "verdict": "killed"
+}

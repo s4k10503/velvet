@@ -1,0 +1,40 @@
+{
+ "detail": "EditMode survived; PlayMode: 2 failed: Given_AnOverflowHiddenRoundedLayoutIdMotionHeldByItsDelay_When_ItsInlineBackgroundImageChanges_Then_ItsChildStaysClippedAtTheCircle, Given_ARoundedLayoutIdMotionWithABackgroundImageDrawnAQuarterAcross_When_ItsFaceIsPainted_Then_NoImageIsPaintedOutsideTheCircle",
+ "file": "841ff16898e1c19acbfc5eb2d3b4e98ba4038e99afe41e61aeba552622022860",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ProjectedCornerFacePlaybackTests.Given_ARoundedLayoutIdMotionWithABackgroundImageDrawnAQuarterAcross_When_ItsFaceIsPainted_Then_NoImageIsPaintedOutsideTheCircle",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/PlayMode/ProjectedCornerFacePlaybackTests.cs": "ff47cda122ecd013c11d4c68900b80a6afd651414bd586f4d82d201ec8b28a7a",
+    "Packages/com.velvet.core/TestUtilities/RenderTexturePanelHost.cs": "194e0d5bc1138e5ae5cdeeae94298ce65a10fe077c4a75c73599e7abfa531bb6",
+    "Packages/com.velvet.core/TestUtilities/TargetFrameRateScope.cs": "2a2bdd5a934388428380fda4fcf82e2ec5df7d1ab86930011f6dbb3f772ae50c",
+    "Packages/com.velvet.core/TestUtilities/TestPanelSettings.cs": "c7a36f6a4acd48eb54e9b4c339d7caf0c56cbef64dacd018497182f9fadacc29"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ProjectedCornerFacePlaybackTests.Given_AnOverflowHiddenRoundedLayoutIdMotionHeldByItsDelay_When_ItsInlineBackgroundImageChanges_Then_ItsChildStaysClippedAtTheCircle",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/PlayMode/ProjectedCornerFacePlaybackTests.cs": "ff47cda122ecd013c11d4c68900b80a6afd651414bd586f4d82d201ec8b28a7a",
+    "Packages/com.velvet.core/TestUtilities/RenderTexturePanelHost.cs": "194e0d5bc1138e5ae5cdeeae94298ce65a10fe077c4a75c73599e7abfa531bb6",
+    "Packages/com.velvet.core/TestUtilities/TargetFrameRateScope.cs": "2a2bdd5a934388428380fda4fcf82e2ec5df7d1ab86930011f6dbb3f772ae50c",
+    "Packages/com.velvet.core/TestUtilities/TestPanelSettings.cs": "c7a36f6a4acd48eb54e9b4c339d7caf0c56cbef64dacd018497182f9fadacc29"
+   }
+  }
+ ],
+ "measured_by": "43555305317",
+ "mutant": {
+  "after": ";",
+  "before": "foreach (var point in s_clipped) mesh.SetNextVertex(VertexAt(point, rect, image));",
+  "column": 12,
+  "line": 700,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/ProjectedCornerFace.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
+ "verdict": "killed"
+}

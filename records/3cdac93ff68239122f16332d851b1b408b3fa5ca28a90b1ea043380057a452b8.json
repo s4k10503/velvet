@@ -1,0 +1,96 @@
+{
+ "detail": "EditMode: 9 failed among the 10 case(s) that ran the site: Given_ALeafRoute_When_UseHrefRendersARelativeTarget_Then_ItResolvesFromTheLeafRoute, Given_ALeafRoute_When_UseHrefRendersDotDot_Then_ItDropsTheLeafRoute, Given_ALeafRoute_When_UseResolvedPathRendersASearchAndHash_Then_ItKeepsTheCurrentPathname",
+ "file": "a2be4807a69712b4608d70dce683a21d2015d79d19cbfde37c590e0e78da9eb4",
+ "killers": [
+  {
+   "case": "Velvet.Tests.RouterMatchHooksTests.Given_ALeafRoute_When_UseHrefRendersARelativeTarget_Then_ItResolvesFromTheLeafRoute",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouteTestStubs.cs": "e6362642a4a6570b2b683eaa7ec1727a3cd53cd6de1d54a6164cd2248d03b3c2",
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouterMatchHooksTests.cs": "49bf73a9853997150db3c02e93b1efe93b0fff23b17044ce7e78fbe0c0fbc882",
+    "Packages/com.velvet.core/TestUtilities/CancellationTokenStateProbe.cs": "1344802a4cabd68e13bb57149f007230f5fcb7785eb33f0af4f1445f53b92657"
+   }
+  },
+  {
+   "case": "Velvet.Tests.RouterMatchHooksTests.Given_ALeafRoute_When_UseHrefRendersDotDot_Then_ItDropsTheLeafRoute",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouteTestStubs.cs": "e6362642a4a6570b2b683eaa7ec1727a3cd53cd6de1d54a6164cd2248d03b3c2",
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouterMatchHooksTests.cs": "49bf73a9853997150db3c02e93b1efe93b0fff23b17044ce7e78fbe0c0fbc882",
+    "Packages/com.velvet.core/TestUtilities/CancellationTokenStateProbe.cs": "1344802a4cabd68e13bb57149f007230f5fcb7785eb33f0af4f1445f53b92657"
+   }
+  },
+  {
+   "case": "Velvet.Tests.RouterMatchHooksTests.Given_ALeafRoute_When_UseResolvedPathRendersASearchAndHash_Then_ItKeepsTheCurrentPathname",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouteTestStubs.cs": "e6362642a4a6570b2b683eaa7ec1727a3cd53cd6de1d54a6164cd2248d03b3c2",
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouterMatchHooksTests.cs": "49bf73a9853997150db3c02e93b1efe93b0fff23b17044ce7e78fbe0c0fbc882",
+    "Packages/com.velvet.core/TestUtilities/CancellationTokenStateProbe.cs": "1344802a4cabd68e13bb57149f007230f5fcb7785eb33f0af4f1445f53b92657"
+   }
+  },
+  {
+   "case": "Velvet.Tests.RouterMatchHooksTests.Given_ALocationReachedByAPush_When_UseNavigationTypeRenders_Then_ItIsPush",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouteTestStubs.cs": "e6362642a4a6570b2b683eaa7ec1727a3cd53cd6de1d54a6164cd2248d03b3c2",
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouterMatchHooksTests.cs": "49bf73a9853997150db3c02e93b1efe93b0fff23b17044ce7e78fbe0c0fbc882",
+    "Packages/com.velvet.core/TestUtilities/CancellationTokenStateProbe.cs": "1344802a4cabd68e13bb57149f007230f5fcb7785eb33f0af4f1445f53b92657"
+   }
+  },
+  {
+   "case": "Velvet.Tests.RouterMatchHooksTests.Given_ARouterProvider_When_UseInRouterContextRenders_Then_ItIsTrue",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouteTestStubs.cs": "e6362642a4a6570b2b683eaa7ec1727a3cd53cd6de1d54a6164cd2248d03b3c2",
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouterMatchHooksTests.cs": "49bf73a9853997150db3c02e93b1efe93b0fff23b17044ce7e78fbe0c0fbc882",
+    "Packages/com.velvet.core/TestUtilities/CancellationTokenStateProbe.cs": "1344802a4cabd68e13bb57149f007230f5fcb7785eb33f0af4f1445f53b92657"
+   }
+  },
+  {
+   "case": "Velvet.Tests.RouterMatchHooksTests.Given_AnAncestorsLoaderData_When_ADescendantReadsItById_Then_ItIsReturned",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouteTestStubs.cs": "e6362642a4a6570b2b683eaa7ec1727a3cd53cd6de1d54a6164cd2248d03b3c2",
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouterMatchHooksTests.cs": "49bf73a9853997150db3c02e93b1efe93b0fff23b17044ce7e78fbe0c0fbc882",
+    "Packages/com.velvet.core/TestUtilities/CancellationTokenStateProbe.cs": "1344802a4cabd68e13bb57149f007230f5fcb7785eb33f0af4f1445f53b92657"
+   }
+  },
+  {
+   "case": "Velvet.Tests.RouterMatchHooksTests.Given_NestedRoutesWithLoadersAndHandles_When_UseMatchesRenders_Then_EachMatchCarriesItsIdPathnameDataAndHandle",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouteTestStubs.cs": "e6362642a4a6570b2b683eaa7ec1727a3cd53cd6de1d54a6164cd2248d03b3c2",
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouterMatchHooksTests.cs": "49bf73a9853997150db3c02e93b1efe93b0fff23b17044ce7e78fbe0c0fbc882",
+    "Packages/com.velvet.core/TestUtilities/CancellationTokenStateProbe.cs": "1344802a4cabd68e13bb57149f007230f5fcb7785eb33f0af4f1445f53b92657"
+   }
+  },
+  {
+   "case": "Velvet.Tests.RouterMatchHooksTests.Given_NestedRoutes_When_UseMatchesRenders_Then_EveryMatchSeesTheCapturedParams",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouteTestStubs.cs": "e6362642a4a6570b2b683eaa7ec1727a3cd53cd6de1d54a6164cd2248d03b3c2",
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouterMatchHooksTests.cs": "49bf73a9853997150db3c02e93b1efe93b0fff23b17044ce7e78fbe0c0fbc882",
+    "Packages/com.velvet.core/TestUtilities/CancellationTokenStateProbe.cs": "1344802a4cabd68e13bb57149f007230f5fcb7785eb33f0af4f1445f53b92657"
+   }
+  },
+  {
+   "case": "Velvet.Tests.RouterMatchHooksTests.Given_NoRouteWithTheId_When_UseRouteLoaderDataRenders_Then_ItIsDefault",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouteTestStubs.cs": "e6362642a4a6570b2b683eaa7ec1727a3cd53cd6de1d54a6164cd2248d03b3c2",
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouterMatchHooksTests.cs": "49bf73a9853997150db3c02e93b1efe93b0fff23b17044ce7e78fbe0c0fbc882",
+    "Packages/com.velvet.core/TestUtilities/CancellationTokenStateProbe.cs": "1344802a4cabd68e13bb57149f007230f5fcb7785eb33f0af4f1445f53b92657"
+   }
+  }
+ ],
+ "measured_by": "43555305317",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 18,
+  "line": 1157,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Hooks/Hooks.cs",
+  "shadowed": [
+   "line removed"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
+ "verdict": "killed"
+}

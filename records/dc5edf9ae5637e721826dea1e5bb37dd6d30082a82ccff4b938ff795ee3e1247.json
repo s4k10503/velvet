@@ -1,0 +1,54 @@
+{
+ "detail": "EditMode: 3 failed among the 105 case(s) that ran the site: Given_ADashedBorderWhoseColourTheRenderAddingAShadowRemoved_When_ALaterRenderRemovesTheShadow_Then_TheDashedFaceHoldsNoInlineColour, Given_ADashedBorderWhoseColourTheRenderAddingAShadowRemoved_When_TheBackgroundChangesAndThenTheShadowGoes_Then_TheDashedFaceHoldsNoInlineColour, Given_AShadowedElementWithNoInlineBorderColour_When_ItUnmounts_Then_ItsBorderColourIsLeftUnset",
+ "file": "a75f719d749e6109716fe298b2539870e2605bce40a3fa6048e39493b2e5f07f",
+ "killers": [
+  {
+   "case": "Velvet.Tests.SilhouetteFaceReleaseTests.Given_ADashedBorderWhoseColourTheRenderAddingAShadowRemoved_When_ALaterRenderRemovesTheShadow_Then_TheDashedFaceHoldsNoInlineColour",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/SilhouetteFaceReleaseTests.cs": "d5182bd9469dd536cc81ed54391aaaeebbfe68c1099c83cd1d238096baa70d62",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  },
+  {
+   "case": "Velvet.Tests.SilhouetteFaceReleaseTests.Given_ADashedBorderWhoseColourTheRenderAddingAShadowRemoved_When_TheBackgroundChangesAndThenTheShadowGoes_Then_TheDashedFaceHoldsNoInlineColour",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/SilhouetteFaceReleaseTests.cs": "d5182bd9469dd536cc81ed54391aaaeebbfe68c1099c83cd1d238096baa70d62",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  },
+  {
+   "case": "Velvet.Tests.SilhouetteFaceReleaseTests.Given_AShadowedElementWithNoInlineBorderColour_When_ItUnmounts_Then_ItsBorderColourIsLeftUnset",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/SilhouetteFaceReleaseTests.cs": "d5182bd9469dd536cc81ed54391aaaeebbfe68c1099c83cd1d238096baa70d62",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  }
+ ],
+ "measured_by": "43555305317",
+ "mutant": {
+  "after": "",
+  "before": " && _sideInline[(int)side]",
+  "column": 41,
+  "line": 691,
+  "operator": "clause removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/SilhouetteFace.cs",
+  "shadowed": [
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
+ "verdict": "killed"
+}

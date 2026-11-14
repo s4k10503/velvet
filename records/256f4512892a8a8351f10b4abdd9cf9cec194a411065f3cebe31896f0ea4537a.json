@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "a6bf18b0488edb1b25e9fa163fec8236f240934837b71a410e0638ab39beb35c",
+ "killers": [],
+ "measured_by": "43555305317",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 38,
+  "line": 538,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleAnimateDriver.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
+ "verdict": "survived"
+}

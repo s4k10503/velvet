@@ -1,0 +1,40 @@
+{
+ "detail": "EditMode survived; PlayMode: 2 failed: Given_ADividedLayoutIdMotionDrawnAQuarterAcross_When_ItsFaceIsPainted_Then_ItsDashedDividerShowsOverIt, Given_ADashedDividedChild_When_ItsOwnOverflowIsHidden_Then_TheDividerIsKept",
+ "file": "036279df75a11500340b8b6c91f32c55034d7a1da60b43f3197dd2820c26000a",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ProjectedCornerFacePlaybackTests.Given_ADividedLayoutIdMotionDrawnAQuarterAcross_When_ItsFaceIsPainted_Then_ItsDashedDividerShowsOverIt",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/PlayMode/ProjectedCornerFacePlaybackTests.cs": "ff47cda122ecd013c11d4c68900b80a6afd651414bd586f4d82d201ec8b28a7a",
+    "Packages/com.velvet.core/TestUtilities/RenderTexturePanelHost.cs": "194e0d5bc1138e5ae5cdeeae94298ce65a10fe077c4a75c73599e7abfa531bb6",
+    "Packages/com.velvet.core/TestUtilities/TargetFrameRateScope.cs": "2a2bdd5a934388428380fda4fcf82e2ec5df7d1ab86930011f6dbb3f772ae50c",
+    "Packages/com.velvet.core/TestUtilities/TestPanelSettings.cs": "c7a36f6a4acd48eb54e9b4c339d7caf0c56cbef64dacd018497182f9fadacc29"
+   }
+  },
+  {
+   "case": "Velvet.Tests.WrapperLessPaintOverflowClipPlaybackTests.Given_ADashedDividedChild_When_ItsOwnOverflowIsHidden_Then_TheDividerIsKept",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/PlayMode/WrapperLessPaintOverflowClipPlaybackTests.cs": "94f54fc080359e1cb2888249bc708440843c444109faa12f8813b3e11292998e",
+    "Packages/com.velvet.core/TestUtilities/RenderTexturePanelHost.cs": "194e0d5bc1138e5ae5cdeeae94298ce65a10fe077c4a75c73599e7abfa531bb6",
+    "Packages/com.velvet.core/TestUtilities/TargetFrameRateScope.cs": "2a2bdd5a934388428380fda4fcf82e2ec5df7d1ab86930011f6dbb3f772ae50c",
+    "Packages/com.velvet.core/TestUtilities/TestPanelSettings.cs": "c7a36f6a4acd48eb54e9b4c339d7caf0c56cbef64dacd018497182f9fadacc29"
+   }
+  }
+ ],
+ "measured_by": "43555305317",
+ "mutant": {
+  "after": ";",
+  "before": "PaintEdge(mgc, child, binding);",
+  "column": 16,
+  "line": 406,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/DivideDashPainter.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
+ "verdict": "killed"
+}

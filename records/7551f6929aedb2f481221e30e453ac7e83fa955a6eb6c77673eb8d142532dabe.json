@@ -1,0 +1,62 @@
+{
+ "detail": "EditMode: 5 failed among the 11 case(s) that ran the site: Given_ADeclarerMountedWhileItsPrimaryIsHiddenWithARefdPortalChild_When_TheBoundaryReveals_Then_TheRefAttachesOnlyThen, Given_APortalInsideAPortalChildMountedWhileItsPrimaryIsHidden_When_TheBoundaryReveals_Then_TheInnerRefAttachesOnlyThen, Given_APortalThatIsADirectChildOfTheBoundaryMountedWhileItsPrimaryIsHidden_When_ItsComponentsStateChangesAndTheBoundaryReveals_Then_TheNewestRefAttachesOnlyThen",
+ "file": "d069a68524ca08de95d1bc9932c2bba80edc7976b8eb3a334b9c5e23be8bfba0",
+ "killers": [
+  {
+   "case": "Velvet.Tests.SuspenseHiddenPortalRefTests.Given_ADeclarerMountedWhileItsPrimaryIsHiddenWithARefdPortalChild_When_TheBoundaryReveals_Then_TheRefAttachesOnlyThen",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/SuspenseHiddenPortalRefTests.cs": "44c888edbba9557e7c2c84fe302cd251c979f0ecff39e9a41b701e617ff5fe5b",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  },
+  {
+   "case": "Velvet.Tests.SuspenseHiddenPortalRefTests.Given_APortalInsideAPortalChildMountedWhileItsPrimaryIsHidden_When_TheBoundaryReveals_Then_TheInnerRefAttachesOnlyThen",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/SuspenseHiddenPortalRefTests.cs": "44c888edbba9557e7c2c84fe302cd251c979f0ecff39e9a41b701e617ff5fe5b",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  },
+  {
+   "case": "Velvet.Tests.SuspenseHiddenPortalRefTests.Given_APortalThatIsADirectChildOfTheBoundaryMountedWhileItsPrimaryIsHidden_When_ItsComponentsStateChangesAndTheBoundaryReveals_Then_TheNewestRefAttachesOnlyThen",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/SuspenseHiddenPortalRefTests.cs": "44c888edbba9557e7c2c84fe302cd251c979f0ecff39e9a41b701e617ff5fe5b",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  },
+  {
+   "case": "Velvet.Tests.SuspenseHiddenPortalRefTests.Given_ARefdElementBelowAPortalRowMountedWhileItsPrimaryIsHidden_When_TheBoundaryReveals_Then_TheRefAttachesOnlyThen",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/SuspenseHiddenPortalRefTests.cs": "44c888edbba9557e7c2c84fe302cd251c979f0ecff39e9a41b701e617ff5fe5b",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  },
+  {
+   "case": "Velvet.Tests.SuspenseHiddenPortalRefTests.Given_AStatefulComponentInAPortalMountedWhileItsPrimaryIsHidden_When_ItsStateChangesAndTheBoundaryReveals_Then_TheNewestRefAttachesOnlyThen",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/SuspenseHiddenPortalRefTests.cs": "44c888edbba9557e7c2c84fe302cd251c979f0ecff39e9a41b701e617ff5fe5b",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  }
+ ],
+ "measured_by": "43555305317",
+ "mutant": {
+  "after": ";",
+  "before": "DetachRefWhileHidden(element);",
+  "column": 12,
+  "line": 2318,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ReconcilerContext.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
+ "verdict": "killed"
+}

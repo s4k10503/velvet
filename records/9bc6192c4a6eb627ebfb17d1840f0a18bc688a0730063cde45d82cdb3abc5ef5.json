@@ -1,0 +1,32 @@
+{
+ "detail": "EditMode: 1 failed among the 100 case(s) that ran the site: Given_AFaceReleasedWhileItsBackgroundRuleChanged_When_ItIsTakenAgain_Then_ItShowsTheNewBackground",
+ "file": "a75f719d749e6109716fe298b2539870e2605bce40a3fa6048e39493b2e5f07f",
+ "killers": [
+  {
+   "case": "Velvet.Tests.SilhouetteFaceRestashTests.Given_AFaceReleasedWhileItsBackgroundRuleChanged_When_ItIsTakenAgain_Then_ItShowsTheNewBackground",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/SilhouetteFaceRestashTests.cs": "3ff26556ff2f7347de6f3785fac1b1b9e968aee456f9a05550b3947921d6187e",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  }
+ ],
+ "measured_by": "43555305317",
+ "mutant": {
+  "after": ";",
+  "before": "_element = null;",
+  "column": 12,
+  "line": 829,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/SilhouetteFace.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
+ "verdict": "killed"
+}

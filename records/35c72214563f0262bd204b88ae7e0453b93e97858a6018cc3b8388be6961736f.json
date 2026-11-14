@@ -1,0 +1,54 @@
+{
+ "detail": "EditMode: 5 failed among the 8 case(s) that ran the site: 00\"), 00\"), 00\")",
+ "file": "892ca6f69859a64c035e3021eae85ab8fa06d09681d5ba5cdd403bda10bb6c99",
+ "killers": [
+  {
+   "case": "Velvet.Tests.GradientPositionTests.Given_APositionWithALength_When_Extracted_Then_TheCentreIsThere(\"left_25%_bottom_5px\",\"25.00 5.00\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/GradientPositionTests.cs": "a48102fa2235257dfd66ed6e74ed54b751b9bb5703f088c7e4152a4a12d8cd6a"
+   }
+  },
+  {
+   "case": "Velvet.Tests.GradientPositionTests.Given_APositionWithALength_When_Extracted_Then_TheCentreIsThere(\"right_10px_bottom_20px\",\"10.00 20.00\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/GradientPositionTests.cs": "a48102fa2235257dfd66ed6e74ed54b751b9bb5703f088c7e4152a4a12d8cd6a"
+   }
+  },
+  {
+   "case": "Velvet.Tests.GradientPositionTests.Given_APositionWithALength_When_Extracted_Then_TheCentreIsThere(\"top_10px_left_5px\",\"5.00 10.00\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/GradientPositionTests.cs": "a48102fa2235257dfd66ed6e74ed54b751b9bb5703f088c7e4152a4a12d8cd6a"
+   }
+  },
+  {
+   "case": "Velvet.Tests.GradientPositionTests.Given_OffsetsFromTheFarEdges_When_Extracted_Then_TheCentreIsInsideTheBox",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/GradientPositionTests.cs": "a48102fa2235257dfd66ed6e74ed54b751b9bb5703f088c7e4152a4a12d8cd6a"
+   }
+  },
+  {
+   "case": "Velvet.Tests.GradientPositionTests.Given_PercentageOffsetsFromTheFarEdges_When_Extracted_Then_TheCentreIsInsideTheBox",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/GradientPositionTests.cs": "a48102fa2235257dfd66ed6e74ed54b751b9bb5703f088c7e4152a4a12d8cd6a"
+   }
+  }
+ ],
+ "measured_by": "43555305317",
+ "mutant": {
+  "after": "",
+  "before": " && TryEdgeOffset(tokens[2], tokens[3], ref x, ref y)",
+  "column": 70,
+  "line": 1413,
+  "operator": "clause removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleGradientClass.cs",
+  "shadowed": [
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
+ "verdict": "killed"
+}

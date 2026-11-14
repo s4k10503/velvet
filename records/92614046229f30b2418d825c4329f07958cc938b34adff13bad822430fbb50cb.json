@@ -1,0 +1,32 @@
+{
+ "detail": "EditMode: 1 failed among the 282 case(s) that ran the site: Given_AClassOfOwnWhoseVariantClassSetsTheSameRadius_When_TheVariantIsOn_Then_TheVariantClassRoundsTheElement",
+ "file": "6e9591e64737e583fb242ee6f154ded162c552b68696704170cbfc942239e5ec",
+ "killers": [
+  {
+   "case": "Velvet.Tests.StyleUserClassPropertiesPanelTests.Given_AClassOfOwnWhoseVariantClassSetsTheSameRadius_When_TheVariantIsOn_Then_TheVariantClassRoundsTheElement",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/StyleUserClassPropertiesPanelTests.cs": "66b14069973816d0e9494e9274d0847a5b43975a3ddc552e34b429b6240de98c",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  }
+ ],
+ "measured_by": "43555305317",
+ "mutant": {
+  "after": ";",
+  "before": "cache.Waiting[cls] = new List<WeakReference<VisualElement>> { new(element) };",
+  "column": 12,
+  "line": 124,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleUserClassProperties.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
+ "verdict": "killed"
+}

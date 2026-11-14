@@ -1,0 +1,74 @@
+{
+ "detail": "EditMode: 4 failed among the 428 case(s) that ran the site: Given_ASequenceAndAFadeBesideItsCoordinator_When_PausedForFiveFrames_Then_TheFadeBesideItMovesOn, Given_ASequencePartWayThroughABezierFade_When_PausedForFiveFrames_Then_TheMotionsOpacityHolds, Given_ASequencePartWayThroughAChildsBezierFade_When_PausedForFiveFrames_Then_TheChildsOpacityHolds",
+ "file": "76dddc4ad826e9b7322f4105b584459492650e7f6604d4e4233ffedd53cf3cbe",
+ "killers": [
+  {
+   "case": "Velvet.Tests.AnimationSequencePauseReachTests.Given_ASequenceAndAFadeBesideItsCoordinator_When_PausedForFiveFrames_Then_TheFadeBesideItMovesOn",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/AnimationSequenceMotionTestsBase.cs": "8f54880dede5e36babdcee611a543d9f181805455eee6d4f4fb39634f9092fa5",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/AnimationSequencePauseReachTests.cs": "af7eb9d978c4139b398d4ce934e756834e86344e366a003bcfdb173856031e70",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/UseFrameFakeClockHost.cs": "832e6d1a29eac04e37d6f7a12601c3572a72772621452748e332bb8c2d3d1194"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AnimationSequencePauseReachTests.Given_ASequencePartWayThroughABezierFade_When_PausedForFiveFrames_Then_TheMotionsOpacityHolds",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/AnimationSequenceMotionTestsBase.cs": "8f54880dede5e36babdcee611a543d9f181805455eee6d4f4fb39634f9092fa5",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/AnimationSequencePauseReachTests.cs": "af7eb9d978c4139b398d4ce934e756834e86344e366a003bcfdb173856031e70",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/UseFrameFakeClockHost.cs": "832e6d1a29eac04e37d6f7a12601c3572a72772621452748e332bb8c2d3d1194"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AnimationSequencePauseReachTests.Given_ASequencePartWayThroughAChildsBezierFade_When_PausedForFiveFrames_Then_TheChildsOpacityHolds",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/AnimationSequenceMotionTestsBase.cs": "8f54880dede5e36babdcee611a543d9f181805455eee6d4f4fb39634f9092fa5",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/AnimationSequencePauseReachTests.cs": "af7eb9d978c4139b398d4ce934e756834e86344e366a003bcfdb173856031e70",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/UseFrameFakeClockHost.cs": "832e6d1a29eac04e37d6f7a12601c3572a72772621452748e332bb8c2d3d1194"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AnimationSequencePauseReachTests.Given_ASequencePausedPartWayThroughABezierFade_When_PlayedForTwoFrames_Then_TheMotionMovesOnByTwoFrames",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/AnimationSequenceMotionTestsBase.cs": "8f54880dede5e36babdcee611a543d9f181805455eee6d4f4fb39634f9092fa5",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/AnimationSequencePauseReachTests.cs": "af7eb9d978c4139b398d4ce934e756834e86344e366a003bcfdb173856031e70",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/UseFrameFakeClockHost.cs": "832e6d1a29eac04e37d6f7a12601c3572a72772621452748e332bb8c2d3d1194"
+   }
+  }
+ ],
+ "measured_by": "43555305317",
+ "mutant": {
+  "after": "||",
+  "before": "&&",
+  "column": 19,
+  "line": 915,
+  "operator": "logic",
+  "path": "Packages/com.velvet.core/Runtime/Styling/MotionSpringClassParser.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
+ "verdict": "killed"
+}

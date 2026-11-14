@@ -1,0 +1,32 @@
+{
+ "detail": "EditMode survived; PlayMode: 1 failed: Given_AnAppendedLayerPortalReRenderedAsIsolated_When_TabDispatchesFromTheDeclaringPanelsOnlyFocusable_Then_ItKeepsFocus",
+ "file": "a777a2ae4d0b0da54e046dfd4f9a16b39f682f856128e5c7213fc4e5816e94b9",
+ "killers": [
+  {
+   "case": "Velvet.Tests.FocusChainedPortalTests.Given_AnAppendedLayerPortalReRenderedAsIsolated_When_TabDispatchesFromTheDeclaringPanelsOnlyFocusable_Then_ItKeepsFocus",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/PlayMode/FocusChainedPortalTests.cs": "efcde8e711999434e2b4dea4eaa4c34a32e2ca8b12e071e061642a58fd08d098",
+    "Packages/com.velvet.core/TestUtilities/FocusScopeElement.cs": "caee04a0e47cefaac0d9a6a30491bbf026426ccdbc1185e3ac842f7d698edb34",
+    "Packages/com.velvet.core/TestUtilities/RenderTexturePanelHost.cs": "194e0d5bc1138e5ae5cdeeae94298ce65a10fe077c4a75c73599e7abfa531bb6",
+    "Packages/com.velvet.core/TestUtilities/TargetFrameRateScope.cs": "2a2bdd5a934388428380fda4fcf82e2ec5df7d1ab86930011f6dbb3f772ae50c",
+    "Packages/com.velvet.core/TestUtilities/TestPanelSettings.cs": "c7a36f6a4acd48eb54e9b4c339d7caf0c56cbef64dacd018497182f9fadacc29"
+   }
+  }
+ ],
+ "measured_by": "43555305317",
+ "mutant": {
+  "after": ";",
+  "before": "ReleaseAppended(placeholder, ctx);",
+  "column": 12,
+  "line": 228,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberFocusNavigator.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
+ "verdict": "killed"
+}

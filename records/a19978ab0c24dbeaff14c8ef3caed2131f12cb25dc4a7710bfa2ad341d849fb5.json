@@ -1,0 +1,36 @@
+{
+ "detail": "EditMode: 2 failed among the 2 case(s) that ran the site: Given_LayersWhereARejectedValueHoldsItsProperty_When_Composed_Then_TheFamilyDrawsNothing(\"blur-sm drop-shadow-lg drop-shadow-[#ggg]\",\"- - 0\"), Given_LayersWhereARejectedValueHoldsItsProperty_When_Composed_Then_TheFamilyDrawsNothing(\"blur-sm drop-shadow-lg drop-shadow-[#ggg]/50\",\"- - 0\")",
+ "file": "204a3fa94dc959802c8ff3980534a4eb8a485b2d906aa6cd99e78f5c7238c280",
+ "killers": [
+  {
+   "case": "Velvet.Tests.RejectedCompositeTests.Given_LayersWhereARejectedValueHoldsItsProperty_When_Composed_Then_TheFamilyDrawsNothing(\"blur-sm drop-shadow-lg drop-shadow-[#ggg]\",\"- - 0\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/RejectedCompositeTests.cs": "27b5af4388ca3ae914d38107adcb6ca83df47fd790de51f4f3d00a65c4f353f4",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.RejectedCompositeTests.Given_LayersWhereARejectedValueHoldsItsProperty_When_Composed_Then_TheFamilyDrawsNothing(\"blur-sm drop-shadow-lg drop-shadow-[#ggg]/50\",\"- - 0\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/RejectedCompositeTests.cs": "27b5af4388ca3ae914d38107adcb6ca83df47fd790de51f4f3d00a65c4f353f4",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  }
+ ],
+ "measured_by": "43555305317",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 19,
+  "line": 4393,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleArbitraryValueResolver.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
+ "verdict": "killed"
+}

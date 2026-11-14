@@ -1,0 +1,82 @@
+{
+ "detail": "EditMode: 45 failed among the 54 case(s) that ran the site: Given_ALoopRepeatWithARepeatDelay_When_TheDelayAndAQuarterOfTheSecondPassHaveRun_Then_ThePassHasRestarted, Given_AMirrorRepeat_When_AQuarterOfTheSecondPassHasRun_Then_ThePassRunsFromTheLastKeyframeOnTheSameEase, Given_AnAnimationCancelled_When_ItsFinishedTaskIsRead_Then_ItHasNotSettled",
+ "file": "18f7ea07c64a5b2c500f38fbe473bb82ce4f987789aeefbe345d57073e7b7e52",
+ "killers": [
+  {
+   "case": "Velvet.Tests.AnimateTransitionDefaultsTests.Given_ALoopRepeatWithARepeatDelay_When_TheDelayAndAQuarterOfTheSecondPassHaveRun_Then_ThePassHasRestarted",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/AnimateTransitionDefaultsTests.cs": "4f1df3ffccb06b00107c98831f717a86d47df2b0313c6802a1a57a577f8f06a8"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AnimateTransitionDefaultsTests.Given_AMirrorRepeat_When_AQuarterOfTheSecondPassHasRun_Then_ThePassRunsFromTheLastKeyframeOnTheSameEase",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/AnimateTransitionDefaultsTests.cs": "4f1df3ffccb06b00107c98831f717a86d47df2b0313c6802a1a57a577f8f06a8"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AnimateTransitionDefaultsTests.Given_AReverseRepeat_When_AQuarterOfTheSecondPassHasRun_Then_ThePassPlaysTheFirstBackwardsInTime",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/AnimateTransitionDefaultsTests.cs": "4f1df3ffccb06b00107c98831f717a86d47df2b0313c6802a1a57a577f8f06a8"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AnimateTransitionDefaultsTests.Given_AScaleAnimationToZeroWithNoTransition_When_ATenthOfASecondPasses_Then_ItIsWhereTheCriticallyDampedScaleSpringPutsIt",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/AnimateTransitionDefaultsTests.cs": "4f1df3ffccb06b00107c98831f717a86d47df2b0313c6802a1a57a577f8f06a8"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AnimateTransitionDefaultsTests.Given_ASequenceSegmentOfOpacityEasingInBackWithARepeatDelay_When_ThreeQuartersOfItsFirstPassRun_Then_OpacityIsWhereTheWebAnimationsBackInPutsIt",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/AnimateTransitionDefaultsTests.cs": "4f1df3ffccb06b00107c98831f717a86d47df2b0313c6802a1a57a577f8f06a8"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AnimateTransitionDefaultsTests.Given_ASequenceSegmentOfOpacityEasingInBack_When_ThreeQuartersOfItsSecondPass_Then_OpacityIsWhereTheWebAnimationsBackInPutsIt",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/AnimateTransitionDefaultsTests.cs": "4f1df3ffccb06b00107c98831f717a86d47df2b0313c6802a1a57a577f8f06a8"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AnimateTransitionDefaultsTests.Given_ASequenceSegmentOfOpacityEasingInOutBack_When_AQuarterOfItsSecondPasses_Then_OpacityIsWhereTheWebAnimationsEaseOutPutsIt",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/AnimateTransitionDefaultsTests.cs": "4f1df3ffccb06b00107c98831f717a86d47df2b0313c6802a1a57a577f8f06a8"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AnimateTransitionDefaultsTests.Given_ASequenceSegmentOfOpacityEasingInOutCirc_When_AQuarterOfItsSecondPasses_Then_OpacityIsWhereTheWebAnimationsEaseOutPutsIt",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/AnimateTransitionDefaultsTests.cs": "4f1df3ffccb06b00107c98831f717a86d47df2b0313c6802a1a57a577f8f06a8"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AnimateTransitionDefaultsTests.Given_ASequenceSegmentOfThreeOpacityKeyframesWithNoTransition_When_SevenTenthsOfItsThreeTenthsOfASecondPass_Then_TheSecondPairIsAlongItsOwnEaseOut",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/AnimateTransitionDefaultsTests.cs": "4f1df3ffccb06b00107c98831f717a86d47df2b0313c6802a1a57a577f8f06a8"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AnimateTransitionDefaultsTests.Given_ASequenceSegmentOfXEasingInOutBack_When_AQuarterOfItsSecondPasses_Then_XIsWhereFramersBackInOutPutsIt",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/AnimateTransitionDefaultsTests.cs": "4f1df3ffccb06b00107c98831f717a86d47df2b0313c6802a1a57a577f8f06a8"
+   }
+  }
+ ],
+ "measured_by": "43555305317",
+ "mutant": {
+  "after": ";",
+  "before": "AddTracks(tracks, element, segment, start, kind);",
+  "column": 20,
+  "line": 317,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Hooks/Animator.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
+ "verdict": "killed"
+}

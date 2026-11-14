@@ -1,0 +1,28 @@
+{
+ "detail": "EditMode: 1 failed: Given_ASizeRecorded_When_AnotherTextIsShown_Then_ItIsNoLongerMeasured",
+ "file": "a2b81c3d2e1342974d168185dfa3a7b36003aa7899b3092e4af86ad3ff73a07a",
+ "killers": [
+  {
+   "case": "Velvet.Tests.TextLineBoxMeasureRecordTests.Given_ASizeRecorded_When_AnotherTextIsShown_Then_ItIsNoLongerMeasured",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/TextLineBoxMeasureRecordTests.cs": "33b275dcd08dadf078cade77e8dadc50d1e295e57452c51f4d623d4917cbe479"
+   }
+  }
+ ],
+ "measured_by": "43555305317",
+ "mutant": {
+  "after": ";",
+  "before": "_measured = MeasuredSizes.None;",
+  "column": 16,
+  "line": 261,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/TextLineBox.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
+ "verdict": "killed"
+}

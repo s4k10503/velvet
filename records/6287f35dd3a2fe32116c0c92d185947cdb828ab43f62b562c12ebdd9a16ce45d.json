@@ -1,0 +1,78 @@
+{
+ "detail": "EditMode: 6 failed among the 12 case(s) that ran the site: Given_AnOptionalLiteralSharingAParamsName_When_ItsPresentPathFails_Then_TheParamSurvives, Given_AnOptionalParamWhosePresentAndSkipPathsBothFail_When_Matched_Then_NothingMatches, Given_DefaultOptionalLiteralRoute_When_QueriedWithDifferentCase_Then_Matches",
+ "file": "63fa6ecd4172709f37b655bb7b42bba9c2a611631b6fee4f8b5362b64ffc3e98",
+ "killers": [
+  {
+   "case": "Velvet.Tests.RouteTreeTests.Given_AnOptionalLiteralSharingAParamsName_When_ItsPresentPathFails_Then_TheParamSurvives",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouteTestStubs.cs": "e6362642a4a6570b2b683eaa7ec1727a3cd53cd6de1d54a6164cd2248d03b3c2",
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouteTreeTests.cs": "727788267002b72b389b58646919d23533565ad729091d0a381b5c208044c851",
+    "Packages/com.velvet.core/TestUtilities/CancellationTokenStateProbe.cs": "1344802a4cabd68e13bb57149f007230f5fcb7785eb33f0af4f1445f53b92657",
+    "Packages/com.velvet.core/TestUtilities/NullableAnnotationProbe.cs": "6f277d399cd33f1aabb4032f6fed2da4549d84671aacf822d7473dfde74f390c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.RouteTreeTests.Given_AnOptionalParamWhosePresentAndSkipPathsBothFail_When_Matched_Then_NothingMatches",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouteTestStubs.cs": "e6362642a4a6570b2b683eaa7ec1727a3cd53cd6de1d54a6164cd2248d03b3c2",
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouteTreeTests.cs": "727788267002b72b389b58646919d23533565ad729091d0a381b5c208044c851",
+    "Packages/com.velvet.core/TestUtilities/CancellationTokenStateProbe.cs": "1344802a4cabd68e13bb57149f007230f5fcb7785eb33f0af4f1445f53b92657",
+    "Packages/com.velvet.core/TestUtilities/NullableAnnotationProbe.cs": "6f277d399cd33f1aabb4032f6fed2da4549d84671aacf822d7473dfde74f390c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.RouteTreeTests.Given_DefaultOptionalLiteralRoute_When_QueriedWithDifferentCase_Then_Matches",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouteTestStubs.cs": "e6362642a4a6570b2b683eaa7ec1727a3cd53cd6de1d54a6164cd2248d03b3c2",
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouteTreeTests.cs": "727788267002b72b389b58646919d23533565ad729091d0a381b5c208044c851",
+    "Packages/com.velvet.core/TestUtilities/CancellationTokenStateProbe.cs": "1344802a4cabd68e13bb57149f007230f5fcb7785eb33f0af4f1445f53b92657",
+    "Packages/com.velvet.core/TestUtilities/NullableAnnotationProbe.cs": "6f277d399cd33f1aabb4032f6fed2da4549d84671aacf822d7473dfde74f390c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.RouteTreeTests.Given_OptionalLiteralRoute_When_SegmentPresent_Then_Matches",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouteTestStubs.cs": "e6362642a4a6570b2b683eaa7ec1727a3cd53cd6de1d54a6164cd2248d03b3c2",
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouteTreeTests.cs": "727788267002b72b389b58646919d23533565ad729091d0a381b5c208044c851",
+    "Packages/com.velvet.core/TestUtilities/CancellationTokenStateProbe.cs": "1344802a4cabd68e13bb57149f007230f5fcb7785eb33f0af4f1445f53b92657",
+    "Packages/com.velvet.core/TestUtilities/NullableAnnotationProbe.cs": "6f277d399cd33f1aabb4032f6fed2da4549d84671aacf822d7473dfde74f390c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.RouteTreeTests.Given_OptionalLiteralRoute_When_SegmentPresent_Then_TheBaseCarriesIt",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouteTestStubs.cs": "e6362642a4a6570b2b683eaa7ec1727a3cd53cd6de1d54a6164cd2248d03b3c2",
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouteTreeTests.cs": "727788267002b72b389b58646919d23533565ad729091d0a381b5c208044c851",
+    "Packages/com.velvet.core/TestUtilities/CancellationTokenStateProbe.cs": "1344802a4cabd68e13bb57149f007230f5fcb7785eb33f0af4f1445f53b92657",
+    "Packages/com.velvet.core/TestUtilities/NullableAnnotationProbe.cs": "6f277d399cd33f1aabb4032f6fed2da4549d84671aacf822d7473dfde74f390c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.RouteTreeTests.Given_OptionalParamRoute_When_ValuePresent_Then_CapturesValue",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouteTestStubs.cs": "e6362642a4a6570b2b683eaa7ec1727a3cd53cd6de1d54a6164cd2248d03b3c2",
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouteTreeTests.cs": "727788267002b72b389b58646919d23533565ad729091d0a381b5c208044c851",
+    "Packages/com.velvet.core/TestUtilities/CancellationTokenStateProbe.cs": "1344802a4cabd68e13bb57149f007230f5fcb7785eb33f0af4f1445f53b92657",
+    "Packages/com.velvet.core/TestUtilities/NullableAnnotationProbe.cs": "6f277d399cd33f1aabb4032f6fed2da4549d84671aacf822d7473dfde74f390c"
+   }
+  }
+ ],
+ "measured_by": "43555305317",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 45,
+  "line": 292,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Routing/RouteTree.cs",
+  "shadowed": [
+   "line removed"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
+ "verdict": "killed"
+}

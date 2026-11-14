@@ -1,0 +1,41 @@
+{
+ "detail": "EditMode: 2 failed among the 3 case(s) that ran the site: Given_AJsonPostOfAString_When_TheActionReadsJson_Then_ItIsTheParsedValue, Given_AJsonPostOfAString_When_TheActionRuns_Then_TheNavigationHoldsTheParsedValue",
+ "file": "5aa66ff8abd21fdbed70ad1b9c5c3d86363ceb0a82d3131779dd9b0399abd760",
+ "killers": [
+  {
+   "case": "Velvet.Tests.RouteRequestTests.Given_AJsonPostOfAString_When_TheActionReadsJson_Then_ItIsTheParsedValue",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouteRequestTests.cs": "67310534e29f69381da1c892fdbbbfffb0cea6c5ae4ae3f42c5ae053b3229dbd",
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouteTestStubs.cs": "e6362642a4a6570b2b683eaa7ec1727a3cd53cd6de1d54a6164cd2248d03b3c2",
+    "Packages/com.velvet.core/TestUtilities/CancellationTokenStateProbe.cs": "1344802a4cabd68e13bb57149f007230f5fcb7785eb33f0af4f1445f53b92657"
+   }
+  },
+  {
+   "case": "Velvet.Tests.RouteRequestTests.Given_AJsonPostOfAString_When_TheActionRuns_Then_TheNavigationHoldsTheParsedValue",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouteRequestTests.cs": "67310534e29f69381da1c892fdbbbfffb0cea6c5ae4ae3f42c5ae053b3229dbd",
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouteTestStubs.cs": "e6362642a4a6570b2b683eaa7ec1727a3cd53cd6de1d54a6164cd2248d03b3c2",
+    "Packages/com.velvet.core/TestUtilities/CancellationTokenStateProbe.cs": "1344802a4cabd68e13bb57149f007230f5fcb7785eb33f0af4f1445f53b92657"
+   }
+  }
+ ],
+ "measured_by": "43555305317",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 44,
+  "line": 380,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Routing/JsonText.cs",
+  "shadowed": [
+   "clause removed",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
+ "verdict": "killed"
+}

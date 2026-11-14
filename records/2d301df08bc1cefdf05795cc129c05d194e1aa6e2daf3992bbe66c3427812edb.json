@@ -1,0 +1,32 @@
+{
+ "detail": "EditMode: 1 failed among the 4 case(s) that ran the site: Given_APasteThatDoesNotFit_When_TheEngineHasReadIt_Then_TheClipboardIsTheOriginalString",
+ "file": "0b43f8c3af9edcd2616c1fe1680697572a8e1ad64c945d3d47b27c1fba7b2490",
+ "killers": [
+  {
+   "case": "Velvet.Tests.TextFieldMaxLengthInputTests.Given_APasteThatDoesNotFit_When_TheEngineHasReadIt_Then_TheClipboardIsTheOriginalString",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/TextFieldMaxLengthInputTests.cs": "2d32de04b80d97aa55162adc495e0f06e58dcc5a8fef65670c1590998033777a",
+    "Packages/com.velvet.core/TestUtilities/CallbackRegistryProbe.cs": "0bf11bf8f5b161e389e815cf4be1a5f33269e05d2fed160868b58bb1f3629b46",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26"
+   }
+  }
+ ],
+ "measured_by": "43555305317",
+ "mutant": {
+  "after": ";",
+  "before": "Restore(box);",
+  "column": 16,
+  "line": 157,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberTextFieldLength.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
+ "verdict": "killed"
+}

@@ -1,0 +1,33 @@
+{
+ "detail": "EditMode: 1 failed among the 196 case(s) that ran the site: Given_AMountedHandle_When_ARenderPassesARecordEqualToTheCommittedOne_Then_ItCostsWhatPassingTheCommittedRecordDoes",
+ "file": "a2be4807a69712b4608d70dce683a21d2015d79d19cbfde37c590e0e78da9eb4",
+ "killers": [
+  {
+   "case": "Velvet.Tests.MutationAllocationTests.Given_AMountedHandle_When_ARenderPassesARecordEqualToTheCommittedOne_Then_ItCostsWhatPassingTheCommittedRecordDoes",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/MutationAllocationTests.cs": "089dbfaefa6fe5f3cbfabe4040ad618320edf41508a730a4811b8cdfd388a27f",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/GCAllocationCanary.cs": "fc61cead251d89e031e7591ac080a706d0568f2f3427cd7cda1ec3c93b965e58",
+    "Packages/com.velvet.core/TestUtilities/GCAllocationProbe.cs": "492823c099cf4f4de89da0da69c98d45cfc042070d93e2d0c0b95773310ebc2c",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166",
+    "Packages/com.velvet.core/TestUtilities/VelvetTaskFrameDriverTestExtensions.cs": "0e6fdaecfb53c37e3943edddc49923eddecd4a9cb293d2bd2a77fc06e81a3e75"
+   }
+  }
+ ],
+ "measured_by": "43555305317",
+ "mutant": {
+  "after": "||",
+  "before": "&&",
+  "column": 62,
+  "line": 2702,
+  "operator": "logic",
+  "path": "Packages/com.velvet.core/Runtime/Hooks/Hooks.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
+ "verdict": "killed"
+}

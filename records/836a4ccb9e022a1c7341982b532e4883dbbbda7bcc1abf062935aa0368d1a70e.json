@@ -1,0 +1,28 @@
+{
+ "detail": "EditMode: 1 failed among the 1 case(s) that ran the site: Given_SepiaAtHalf_When_ItsMatrixIsBuilt_Then_TheGreenRowsRedWeightIsTheSpecifications",
+ "file": "89178baab78c5939bda222dc3d98126f19e16ae78965962c1fac0f374c507a01",
+ "killers": [
+  {
+   "case": "Velvet.Tests.BackdropColorStepTests.Given_SepiaAtHalf_When_ItsMatrixIsBuilt_Then_TheGreenRowsRedWeightIsTheSpecifications",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BackdropColorStepTests.cs": "e1e99f08032d507ac2ca88182eb265d53a4e2da592f6628b6f0ed3e37d9fcae6"
+   }
+  }
+ ],
+ "measured_by": "43555305317",
+ "mutant": {
+  "after": "+",
+  "before": "-",
+  "column": 36,
+  "line": 615,
+  "operator": "arithmetic",
+  "path": "Packages/com.velvet.core/Runtime/Styling/BackdropRenderer.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
+ "verdict": "killed"
+}

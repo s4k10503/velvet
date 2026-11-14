@@ -1,0 +1,28 @@
+{
+ "detail": "EditMode: 1 failed among the 1 case(s) that ran the site: Given_BackgroundCurrentWithAModifier_When_Parsed_Then_TheModifierScalesTheAlpha",
+ "file": "cb2a1212f53b3b67485dca9a24ddc4fad97e5652066ca3ba00e2c5d6fed5bb26",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ColourKeywordTests.Given_BackgroundCurrentWithAModifier_When_Parsed_Then_TheModifierScalesTheAlpha",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ColourKeywordTests.cs": "68fa89873ae35c2f980e45df1fc2c4dc6fad161f1e98a5e5036180777965bd56"
+   }
+  }
+ ],
+ "measured_by": "43555305317",
+ "mutant": {
+  "after": ";",
+  "before": "factor.a = percent / 100f;",
+  "column": 20,
+  "line": 294,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleColorValueParser.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
+ "verdict": "killed"
+}

@@ -1,0 +1,40 @@
+{
+ "detail": "EditMode: 2 failed among the 14 case(s) that ran the site: Given_ANextPageInFlight_When_ItFails_Then_TheResultIsAFetchNextPageError, Given_ANextPageInFlight_When_TheComponentRenders_Then_ItIsFetchingTheNextPage",
+ "file": "e891afdd2bd306de496bf8d447f34154046ff9164538f1def7f2aefd47f2927b",
+ "killers": [
+  {
+   "case": "Velvet.Tests.UseInfiniteQueryTests.Given_ANextPageInFlight_When_ItFails_Then_TheResultIsAFetchNextPageError",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseInfiniteQueryTests.cs": "2d275a0701e072e5028d35fe3753edd3d1b8e241a253a17ba7125e78a5196570",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UseInfiniteQueryTests.Given_ANextPageInFlight_When_TheComponentRenders_Then_ItIsFetchingTheNextPage",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseInfiniteQueryTests.cs": "2d275a0701e072e5028d35fe3753edd3d1b8e241a253a17ba7125e78a5196570",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  }
+ ],
+ "measured_by": "43555305317",
+ "mutant": {
+  "after": "==",
+  "before": "!=",
+  "column": 21,
+  "line": 1213,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Hooks/HookQuery.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
+ "verdict": "killed"
+}

@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "c3369329c783325372cacde32aaee01ae48d7146bbb304f1763bd139cc453878",
+ "killers": [],
+ "measured_by": "43555305317",
+ "mutant": {
+  "after": "true",
+  "before": "false",
+  "column": 23,
+  "line": 224,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleVariantPayload.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
+ "verdict": "survived"
+}

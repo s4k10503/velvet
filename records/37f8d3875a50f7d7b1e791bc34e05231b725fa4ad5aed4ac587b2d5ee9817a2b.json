@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed among the 3 case(s) that ran the site: Given_ABracketColourWithABracketModifier_When_TheRingIsExtracted_Then_ItsBandIsDrawnAtTheModifiersAlpha(\"ring-2 ring-offset-2 ring-offset-[#f00]/[50%]\",\"offset\")",
+ "file": "3474d9aebe1853193f184fc41797cfa62165bdeff38687f9ae26c3f63c915ec2",
+ "killers": [
+  {
+   "case": "Velvet.Tests.BoxShadowDiscardTests.Given_ABracketColourWithABracketModifier_When_TheRingIsExtracted_Then_ItsBandIsDrawnAtTheModifiersAlpha(\"ring-2 ring-offset-2 ring-offset-[#f00]/[50%]\",\"offset\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BoxShadowDiscardTests.cs": "fffceff958eaef894998879c09cc485070eec75dbcdc8c2afd187ead6642c07a",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  }
+ ],
+ "measured_by": "43555305317",
+ "mutant": {
+  "after": ";",
+  "before": "slots.RingOffsetColor = offColor;",
+  "column": 20,
+  "line": 553,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleRingClass.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
+ "verdict": "killed"
+}

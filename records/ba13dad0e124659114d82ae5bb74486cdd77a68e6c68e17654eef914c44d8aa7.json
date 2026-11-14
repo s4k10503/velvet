@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed among the 65 case(s) that ran the site: Given_AnUpperCaseRingWidth_When_Extracted_Then_TheClassIsIgnored(\"ring-[5PX]\")",
+ "file": "3474d9aebe1853193f184fc41797cfa62165bdeff38687f9ae26c3f63c915ec2",
+ "killers": [
+  {
+   "case": "Velvet.Tests.LengthUnitCaseTests.Given_AnUpperCaseRingWidth_When_Extracted_Then_TheClassIsIgnored(\"ring-[5PX]\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/LengthUnitCaseTests.cs": "5b2d84673cecbd6dee13f0c6b070d7b28fb4dbf62b785cd2214f10778a189a2c"
+   }
+  }
+ ],
+ "measured_by": "43555305317",
+ "mutant": {
+  "after": "false",
+  "before": "true",
+  "column": 72,
+  "line": 517,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleRingClass.cs",
+  "shadowed": [
+   "literal"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
+ "verdict": "killed"
+}
