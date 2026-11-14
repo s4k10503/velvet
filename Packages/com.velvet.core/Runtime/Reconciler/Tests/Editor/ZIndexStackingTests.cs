@@ -2065,7 +2065,7 @@ namespace Velvet.Tests
 
         // GREEN_ON_BASE(refactor): the parked-baseline term now reads the fiber's PendingOldTree, which the base sets with the registration it read before.
         [Test]
-        public void Given_AFiberParkedAndRegisteredAcrossPasses_When_AnIndependentSiblingRelocatesTheSharedParentsFirstElementIntoItsBackBand_Then_TheParkedFiberResumesAtItsSlots()
+        public void Given_AFiberParkedAcrossPasses_When_AnIndependentSiblingRelocatesTheSharedParentsFirstElementIntoItsBackBand_Then_TheParkedFiberResumesAtItsSlots()
         {
             // Arrange — A mounts with a large flat list; B mounts ordinary (no z yet), so the back band is empty
             // when A's own park (below) begins.
@@ -2110,7 +2110,7 @@ namespace Velvet.Tests
 
         // GREEN_ON_BASE(refactor): the parked-baseline term now reads the fiber's PendingOldTree, which the base sets with the registration it read before.
         [Test]
-        public void Given_AFiberParkedAndRegisteredAcrossPasses_When_AnIndependentSiblingReturnsTheSharedParentsOnlyBackBandElement_Then_TheParkedFiberResumesAtItsSlots()
+        public void Given_AFiberParkedAcrossPasses_When_AnIndependentSiblingReturnsTheSharedParentsOnlyBackBandElement_Then_TheParkedFiberResumesAtItsSlots()
         {
             // Arrange — the return-direction mirror of the relocation test above: B mounts ALREADY z-managed, so
             // the shared host's back band holds it cleanly from the synchronous initial mount, before A's own
@@ -2203,7 +2203,7 @@ namespace Velvet.Tests
 
         // GREEN_ON_BASE(refactor): the parked-baseline term now reads the fiber's PendingOldTree, which the base sets with the registration it read before.
         [Test]
-        public void Given_AKeyedFiberParkedAndRegisteredAcrossPasses_When_AnIndependentSiblingRelocatesTheSharedParentsFirstElementIntoItsBackBand_Then_TheParkedFiberResumesAtItsSlots()
+        public void Given_AKeyedFiberParkedAcrossPasses_When_AnIndependentSiblingRelocatesTheSharedParentsFirstElementIntoItsBackBand_Then_TheParkedFiberResumesAtItsSlots()
         {
             // Arrange — A mounts with a large KEYED flat list, so its own park exercises
             // RebasePendingSlotStart's PendingKeyedState branch (via ContinueKeyed) instead of the
@@ -2246,7 +2246,7 @@ namespace Velvet.Tests
 
         // GREEN_ON_BASE(refactor): the parked-baseline term now reads the fiber's PendingOldTree, which the base sets with the registration it read before.
         [Test]
-        public void Given_AKeyedFiberParkedAndRegisteredAcrossPasses_When_AnIndependentSiblingReturnsTheSharedParentsOnlyBackBandElement_Then_TheParkedFiberResumesAtItsSlots()
+        public void Given_AKeyedFiberParkedAcrossPasses_When_AnIndependentSiblingReturnsTheSharedParentsOnlyBackBandElement_Then_TheParkedFiberResumesAtItsSlots()
         {
             // Arrange — the return-direction mirror of the keyed relocation test above, completing the
             // {positional, keyed} x {relocation, return} matrix: B mounts ALREADY z-managed so the back band
@@ -2360,7 +2360,7 @@ namespace Velvet.Tests
             // re-parks immediately after (item2..item9 remain), still holding its parked baseline.
             FiberWorkLoop.ContinueReconcile(s_drainFiber);
             var resumeTickFilledTheBackBand = Band(root, front: false).Names == "item1";
-            var reParkedWhileStillRegistered = s_drainFiber.HasPendingReconcileWorkForTest();
+            var reParkedWhileStillHoldingItsBaseline = s_drainFiber.HasPendingReconcileWorkForTest();
 
             // Act — drain the remainder; what this case reads is already fully determined by tick 2 above.
             s_drainFiber.DrainTimeSlicedReconcileForTest();
@@ -2368,7 +2368,7 @@ namespace Velvet.Tests
             // Assert — item1 stands in the back band ahead of the trailing items, and each of item2..item9 lands at its slot.
             Assert.That(
                 (noBackBandBeforeTheReRender, parkedAfterItem0, holdsAParkedBaseline,
-                    resumeTickFilledTheBackBand, reParkedWhileStillRegistered, TrailingItemOrder(root)),
+                    resumeTickFilledTheBackBand, reParkedWhileStillHoldingItsBaseline, TrailingItemOrder(root)),
                 Is.EqualTo((true, true, true, true, true, ExpectedTrailingItemOrder)));
         }
 

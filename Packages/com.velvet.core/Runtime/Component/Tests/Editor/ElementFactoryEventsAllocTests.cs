@@ -24,6 +24,8 @@ namespace Velvet.Tests.Performance
 
         private static readonly Action OnClick = () => { };
 
+        private const int HeldButtons = 8;
+
         private static readonly Action DivWithEvents = () => GC.KeepAlive(V.Div(events: CachedEvents));
 
         private static readonly Action DivWithout = () => GC.KeepAlive(V.Div());
@@ -34,7 +36,7 @@ namespace Velvet.Tests.Performance
 
         // The second term is what a probe stuck at zero fails, since two zeroed counts would satisfy the
         // difference vacuously. Both delegates run once first, for the warming reason
-        // VNodePoolZeroAllocTests states.
+        // FactoryCallAllocationTests states.
         private static (int Difference, bool Measured) Cost(Action with, Action without)
         {
             with();
@@ -55,11 +57,16 @@ namespace Velvet.Tests.Performance
             Assert.That(cost, Is.EqualTo((0, true)));
         }
 
-        // GREEN_ON_BASE(refactor): this case is the base's own text; only the delegates beside it stopped handing their parts back to a pool.
+        // GREEN_ON_BASE(refactor): the base takes each side's event array from the pool the disposed mounts filled, so the sides read alike there too.
         [Test]
         public void Given_ACachedEventsArray_When_VButtonIsCalledWithItBesideOnClick_Then_ItAllocatesNothingOnClickAloneDoesNot()
         {
-            // Arrange + Act
+            // Arrange — disposed trees held buttons of both kinds, so a factory that took arrays from a disposed tree
+            // would take one for each side alike.
+            DisposedMount.Holding(HeldButtons, () => V.Button(onClick: OnClick, events: CachedEvents));
+            DisposedMount.Holding(HeldButtons, () => V.Button(onClick: OnClick));
+
+            // Act
             var cost = Cost(ButtonWithOnClickAndEvents, ButtonWithOnClick);
 
             // Assert

@@ -21,7 +21,7 @@ namespace Velvet.Tests.Performance
     /// </summary>
     [TestFixture]
     [Category("Performance")]
-    internal sealed class VNodePoolZeroAllocTests
+    internal sealed class FactoryCallAllocationTests
     {
         private const int HeldNodes = 8;
         private const string LabelText = "held";
@@ -37,16 +37,6 @@ namespace Velvet.Tests.Performance
         private static readonly Action BuildButton = () => GC.KeepAlive(V.Button(onClick: OnClick));
 
         private static readonly Action BuildList = () => GC.KeepAlive(V.List(Items, item => Keys[item], item => Rows[item]));
-
-        private static void MountAndDispose(Func<VNode> build)
-        {
-            var children = new VNode?[HeldNodes];
-            for (var i = 0; i < children.Length; i++)
-            {
-                children[i] = build();
-            }
-            V.Mount(new VisualElement(), V.Div(children: children)).Dispose();
-        }
 
         // A probe stuck at zero satisfies every guard below without measuring anything, and nothing else
         // in the repository would notice. This is the only case here that asserts a NON-zero count, and it
@@ -70,7 +60,7 @@ namespace Velvet.Tests.Performance
         public void Given_ADisposedMountThatHeldLabelsWithText_When_AFactoryBuildsAnother_Then_ItAllocatesTheNodeAndAPropsBag()
         {
             // Arrange
-            MountAndDispose(() => V.Label(text: LabelText));
+            DisposedMount.Holding(HeldNodes, () => V.Label(text: LabelText));
             BuildLabel();
 
             // Act
@@ -84,7 +74,7 @@ namespace Velvet.Tests.Performance
         public void Given_ADisposedMountThatHeldClickHandlers_When_AFactoryBuildsAnotherButton_Then_ItAllocatesTheNodeTheBindingAndItsArray()
         {
             // Arrange
-            MountAndDispose(() => V.Button(onClick: OnClick));
+            DisposedMount.Holding(HeldNodes, () => V.Button(onClick: OnClick));
             BuildButton();
 
             // Act
@@ -98,7 +88,7 @@ namespace Velvet.Tests.Performance
         public void Given_ADisposedMountThatHeldListsOfTheSameLength_When_VListMapsNodesItKeyedBefore_Then_ItAllocatesOnlyTheChildArray()
         {
             // Arrange
-            MountAndDispose(() => V.Div(children: V.List(Items, item => Keys[item], _ => V.Div())));
+            DisposedMount.Holding(HeldNodes, () => V.Div(children: V.List(Items, item => Keys[item], _ => V.Div())));
             BuildList();
 
             // Act

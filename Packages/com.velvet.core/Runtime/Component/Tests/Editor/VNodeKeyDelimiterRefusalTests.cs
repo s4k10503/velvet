@@ -12,9 +12,6 @@ namespace Velvet.Tests
     /// dep-cache key. A <c>V.List</c> selector reaches the same override without passing through any
     /// <c>key:</c> parameter.
     /// </summary>
-    /// <remarks>
-    /// What a refusal takes from the pools is <see cref="VFactoryRefusalRentalTests"/>'s question.
-    /// </remarks>
     [TestFixture]
     internal sealed class VNodeKeyDelimiterRefusalTests
     {

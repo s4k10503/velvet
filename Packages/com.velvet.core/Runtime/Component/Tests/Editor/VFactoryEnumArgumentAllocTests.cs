@@ -25,6 +25,8 @@ namespace Velvet.Tests.Performance
     [Category("Performance")]
     internal sealed class VFactoryEnumArgumentAllocTests
     {
+        private const int HeldLabels = 8;
+
         // Static, so the measured delegates capture nothing and allocate no closure of their own.
         private static readonly VNode[] NoChildren = Array.Empty<VNode>();
 
@@ -130,7 +132,7 @@ namespace Velvet.Tests.Performance
 
         // The difference is what the refusal costs; the second term is what a probe stuck at zero fails,
         // since two zeroed counts would satisfy the difference vacuously. Both delegates run once first,
-        // for the warming reason VNodePoolZeroAllocTests states.
+        // for the warming reason FactoryCallAllocationTests states.
         private static (int Difference, bool Measured) RefusalCost(Action viaFactory, Action viaInit)
         {
             viaFactory();
@@ -162,22 +164,28 @@ namespace Velvet.Tests.Performance
             Assert.That(cost, Is.EqualTo((0, true)));
         }
 
-        // GREEN_ON_BASE(refactor): this case is the base's own text; only the delegates beside it stopped handing a props bag back to a pool.
         [Test]
         public void Given_ANamedPlayOn_When_VParticlesIsCalled_Then_ItsRefusalAllocatesNothing()
         {
-            // Arrange + Act
+            // Arrange — a factory that took its props bag from a disposed tree would read a block cheaper than the node
+            // built directly.
+            DisposedMount.Holding(HeldLabels, () => V.Label(text: "held"));
+
+            // Act
             var cost = RefusalCost(ParticlesViaFactory, ParticlesViaInit);
 
             // Assert
             Assert.That(cost, Is.EqualTo((0, true)));
         }
 
-        // GREEN_ON_BASE(refactor): this case is the base's own text; only the delegates beside it stopped handing a props bag back to a pool.
         [Test]
         public void Given_ANamedMovement_When_VDraggableIsCalled_Then_ItsRefusalAllocatesNothing()
         {
-            // Arrange + Act
+            // Arrange — a factory that took its props bag from a disposed tree would read a block cheaper than the node
+            // built directly.
+            DisposedMount.Holding(HeldLabels, () => V.Label(text: "held"));
+
+            // Act
             var cost = RefusalCost(DraggableViaFactory, DraggableViaInit);
 
             // Assert
@@ -206,11 +214,14 @@ namespace Velvet.Tests.Performance
             Assert.That(cost, Is.EqualTo((0, true)));
         }
 
-        // GREEN_ON_BASE(refactor): this case is the base's own text; only the delegates beside it stopped handing a props bag back to a pool.
         [Test]
         public void Given_ANamedDirection_When_VSliderIsCalled_Then_ItsRefusalAllocatesNothing()
         {
-            // Arrange + Act
+            // Arrange — a factory that took its props bag from a disposed tree would read a block cheaper than the node
+            // built directly.
+            DisposedMount.Holding(HeldLabels, () => V.Label(text: "held"));
+
+            // Act
             var cost = RefusalCost(SliderViaFactory, SliderViaInit);
 
             // Assert
