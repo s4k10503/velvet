@@ -9,8 +9,9 @@ namespace Velvet.Tests.Performance
     /// <summary>
     /// Rows that are themselves pooled Buttons with a click handler. The keyed benchmark rows are plain containers
     /// holding their Buttons, and a container is discarded rather than pooled, so what a pooled Button's teardown
-    /// costs, and what renting one back costs, is measured nowhere else. Time is the stopwatch over one reconcile
-    /// of the case's operation; the arrangement that puts the rows in the state it starts from runs outside it.
+    /// costs, and what renting one back costs, is measured nowhere else. Each sample is one reconcile of the case's
+    /// operation: its time, and the GC.Alloc blocks it charged (<see cref="WindowCost"/>). The arrangement that puts
+    /// the rows in the state the operation starts from runs outside that window.
     /// </summary>
     [TestFixture]
     internal sealed class PooledButtonRowBenchmarks
@@ -36,7 +37,7 @@ namespace Velvet.Tests.Performance
             _reconciler.Dispose();
         }
 
-        // GREEN_ON_BASE(characterization): a benchmark asserts nothing about its numbers, so the base runs it green; the tree check holds behaviour the base already has.
+        // GREEN_ON_BASE(characterization): a benchmark asserts nothing about its numbers, so the base runs it green; this change adds the allocation series its window records.
         [Test, Performance]
         public void Clear_1000PooledButtonRows()
         {
@@ -49,7 +50,7 @@ namespace Velvet.Tests.Performance
             Assert.AreEqual(0, _root.childCount);
         }
 
-        // GREEN_ON_BASE(characterization): a benchmark asserts nothing about its numbers, so the base runs it green; the tree check holds behaviour the base already has.
+        // GREEN_ON_BASE(characterization): a benchmark asserts nothing about its numbers, so the base runs it green; this change adds the allocation series its window records.
         [Test, Performance]
         public void Create_1000PooledButtonRows()
         {
@@ -65,15 +66,24 @@ namespace Velvet.Tests.Performance
             Assert.AreEqual(Rows, _root.childCount);
         }
 
-        // The arrangement of the first iteration meets an empty pool and a later one a full one, which is the
-        // path a Button rented back takes, so one more arrangement and operation run after the loops.
+        // The arrangement of the first iteration meets an empty pool and a later one a full one, which is the path a
+        // Button rented back takes, so one more arrangement and operation run after the loops.
         private static void Run(Action arrange, Action operate)
         {
-            Measure.Method(operate)
-                .SetUp(arrange)
-                .WarmupCount(WarmupCount)
-                .MeasurementCount(MeasurementCount)
-                .Run();
+            var time = new SampleGroup("Time", SampleUnit.Millisecond);
+            var allocation = new SampleGroup("GC.Alloc", SampleUnit.Undefined);
+            for (var i = 0; i < WarmupCount; i++)
+            {
+                arrange();
+                operate();
+            }
+            for (var i = 0; i < MeasurementCount; i++)
+            {
+                arrange();
+                var cost = WindowCost.Of(operate);
+                Measure.Custom(time, cost.Milliseconds);
+                Measure.Custom(allocation, cost.AllocationBlocks);
+            }
             arrange();
             operate();
         }

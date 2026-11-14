@@ -1424,8 +1424,7 @@ order their entries were appended:
   differently from the benchmarks.
 - **An allocation count** (a `.GC()` group and the other unit-less ones) does not depend on the model, so
   counts are compared across all runs, by the same rule with one model, and must also rise by at least
-  two. Byte-valued groups are left out: the one `E2EBenchmarks.E2E_Mount_100Elements_WithLayoutAndPaint`
-  records reads anything from 0 to 12 KB from one run to the next.
+  two. Byte-valued groups are left out.
 - Every step in a benchmark's history is found, not only its first. After a step, a model is judged again
   only once it has run since, so the slowest of its last five runs includes one measured since.
 - The range a step names starts after the latest run at which its model was judged and measured no higher

@@ -11,14 +11,29 @@ using Velvet.TestUtilities;
 namespace Velvet.Tests.Performance
 {
     /// <summary>
-    /// E2E benchmark: measures VNode construction through MarkDirty in a PlayMode environment.
-    /// Unity 6's public API has no equivalent of IPanel.ValidateLayout, so synchronous layout/paint
-    /// measurement is not possible from the outside. This records only the synchronous cost of
-    /// Reconcile + MarkDirty. Actual layout/paint runs asynchronously on a frame after yield return null.
+    /// Mounts onto a live runtime panel, a <see cref="UIDocument"/>'s root, beside a floor that builds the same
+    /// labels by hand onto the same panel, as <see cref="InitialMountAllocBreakdown.Bench_E_FullPipelineParity"/>
+    /// builds them onto an element with no panel.
+    /// <para>
+    /// A case without a suffix times the build alone, and yields the frame after it outside its window. A
+    /// <c>_ThroughNextFrame</c> case's window spans that frame too: the build's own time is the stopwatch's, and
+    /// the frame's is what the panel recorded under the markers <see cref="PanelFrameRecorder"/> reads.
+    /// Its allocation count is every thread's over the build and the frame. Allocation is GC.Alloc sample
+    /// blocks throughout.
+    /// </para>
+    /// <para>
+    /// Each build starts on an empty panel whose last frame ran after the teardown before it. A case throws when
+    /// a measured build leaves the root holding another number of elements, and a <c>_ThroughNextFrame</c> case also when
+    /// the frame its window spans ran none of a phase or left a built element without a layout, so a number is
+    /// not read off a window that missed the work it is named for.
+    /// </para>
     /// </summary>
     [TestFixture]
     public class E2EBenchmarks
     {
+        private const string PanelName = "VelvetE2EBenchmarkPanel";
+        private const string TextPrefix = "e2e-item-";
+
         private static readonly int k_WarmupCount = BenchmarkRun.Warmup(3);
         private static readonly int k_MeasurementCount = BenchmarkRun.Measurements(10);
 
@@ -28,17 +43,22 @@ namespace Velvet.Tests.Performance
         private VisualElement _root;
         private Reconciler _reconciler;
 
+        private sealed record Build(Action Run, Action Teardown);
+
         [UnitySetUp]
         public IEnumerator SetUp()
         {
             _gameObject = new GameObject("E2EBenchmarkRoot");
             _uiDocument = _gameObject.AddComponent<UIDocument>();
             _panelSettings = TestPanelSettings.Create();
+            // The panel takes its name, and the names of its profiler markers, from its settings when it is made.
+            _panelSettings.name = PanelName;
             _uiDocument.panelSettings = _panelSettings;
 
             yield return null;
 
             _root = _uiDocument.rootVisualElement;
+            BenchmarkPanelRoot.Prepare(_root);
             _reconciler = new Reconciler();
         }
 
@@ -53,96 +73,183 @@ namespace Velvet.Tests.Performance
             yield return null;
         }
 
-        #region B-4: E2E mount (including layout + paint)
-
+        // GREEN_ON_BASE(characterization): a benchmark asserts nothing about its numbers, so the base runs it green; its build checks hold behaviour the base already has.
         [UnityTest, Performance]
-        public IEnumerator E2E_Mount_10Elements_WithLayoutAndPaint()
+        public IEnumerator E2E_Mount_10Elements()
         {
-            yield return RunE2EBenchmark(10);
+            yield return RunBuild(Mount(10), 10);
         }
 
+        // GREEN_ON_BASE(characterization): a benchmark asserts nothing about its numbers, so the base runs it green; its build checks hold behaviour the base already has.
         [UnityTest, Performance]
-        public IEnumerator E2E_Mount_100Elements_WithLayoutAndPaint()
+        public IEnumerator E2E_Mount_100Elements()
         {
-            yield return RunE2EBenchmark(100);
+            yield return RunBuild(Mount(100), 100);
         }
 
+        // GREEN_ON_BASE(characterization): a benchmark asserts nothing about its numbers, so the base runs it green; its build checks hold behaviour the base already has.
         [UnityTest, Performance]
-        public IEnumerator E2E_Mount_1000Elements_WithLayoutAndPaint()
+        public IEnumerator E2E_Mount_1000Elements()
         {
-            yield return RunE2EBenchmark(1000);
+            yield return RunBuild(Mount(1000), 1000);
         }
 
-        #endregion
-
-        #region Internal measurement logic
-
-        private IEnumerator RunE2EBenchmark(int count)
+        // GREEN_ON_BASE(characterization): a benchmark asserts nothing about its numbers, so the base runs it green; its build checks hold behaviour the base already has.
+        [UnityTest, Performance]
+        public IEnumerator E2E_Mount_1000Elements_ThroughNextFrame()
         {
-            var groupTime      = new SampleGroup("E2E.Time",      SampleUnit.Millisecond);
-            var groupGC        = new SampleGroup("E2E.GC",        SampleUnit.Byte);
-            var groupReconcile = new SampleGroup("E2E.Reconcile", SampleUnit.Millisecond);
-            var groupMarkDirty = new SampleGroup("E2E.MarkDirty", SampleUnit.Millisecond);
+            yield return RunThroughNextFrame(Mount(1000), 1000);
+        }
 
-            var nodes = BenchmarkHelpers.BuildLabelNodes(count, prefix: "e2e-item-");
-            var sw = new Stopwatch();
+        // GREEN_ON_BASE(characterization): a benchmark asserts nothing about its numbers, so the base runs it green; its build checks hold behaviour the base already has.
+        [UnityTest, Performance]
+        public IEnumerator E2E_Floor_1000Labels()
+        {
+            yield return RunBuild(Floor(1000), 1000);
+        }
 
-            for (int i = 0; i < k_WarmupCount; i++)
+        // GREEN_ON_BASE(characterization): a benchmark asserts nothing about its numbers, so the base runs it green; its build checks hold behaviour the base already has.
+        [UnityTest, Performance]
+        public IEnumerator E2E_Floor_1000Labels_ThroughNextFrame()
+        {
+            yield return RunThroughNextFrame(Floor(1000), 1000);
+        }
+
+        private Build Mount(int count)
+        {
+            var nodes = BenchmarkHelpers.BuildLabelNodes(count, prefix: TextPrefix);
+            return new Build(
+                () => _reconciler.Reconcile(_root, Array.Empty<VNode>(), nodes),
+                () => _reconciler.Reconcile(_root, nodes, Array.Empty<VNode>()));
+        }
+
+        // The texts BuildLabelNodes gives the mounted labels, made before any window opens.
+        private Build Floor(int count)
+        {
+            var texts = new string[count];
+            for (var i = 0; i < count; i++)
             {
-                _reconciler.Reconcile(_root, Array.Empty<VNode>(), nodes);
-                _root.MarkDirtyRepaint();
-                _reconciler.Reconcile(_root, nodes, Array.Empty<VNode>());
-                yield return null;
+                texts[i] = $"{TextPrefix}{i}";
             }
-
-            for (int i = 0; i < k_MeasurementCount; i++)
-            {
-                // Cleanup goes BEFORE GC.Collect so unmount allocations are reclaimed before the
-                // GC baseline. First iteration has nothing mounted yet.
-                if (i > 0)
+            return new Build(
+                () =>
                 {
-                    _reconciler.Reconcile(_root, nodes, Array.Empty<VNode>());
-                }
+                    for (var i = 0; i < texts.Length; i++)
+                    {
+                        var label = new Label();
+                        label.text = texts[i];
+                        _root.Add(label);
+                    }
+                },
+                () => _root.Clear());
+        }
 
+        private IEnumerator RunBuild(Build build, int count)
+        {
+            var time = new SampleGroup("Build.Time", SampleUnit.Millisecond);
+            var allocation = new SampleGroup("Build.GC", SampleUnit.Undefined);
+
+            for (var i = 0; i < k_WarmupCount; i++)
+            {
+                yield return Cycle(build);
+            }
+
+            for (var i = 0; i < k_MeasurementCount; i++)
+            {
                 System.GC.Collect();
-                System.GC.WaitForPendingFinalizers();
-                System.GC.Collect();
-                long gcBefore = System.GC.GetTotalMemory(false);
-
-                sw.Restart();
-                _reconciler.Reconcile(_root, Array.Empty<VNode>(), nodes);
-                sw.Stop();
-                double reconcileMs = sw.Elapsed.TotalMilliseconds;
-
-                // MarkDirtyRepaint only sets the dirty flag; actual painting runs asynchronously
-                // on the panel's next-frame update. What is measured here is the synchronous call
-                // overhead, not the actual paint cost.
-                sw.Restart();
-                _root.MarkDirtyRepaint();
-                sw.Stop();
-                double markDirtyMs = sw.Elapsed.TotalMilliseconds;
-
-                long gcAfter = System.GC.GetTotalMemory(false);
-
-                Measure.Custom(groupTime,      reconcileMs + markDirtyMs);
-                Measure.Custom(groupGC,        Math.Max(0, gcAfter - gcBefore));
-                Measure.Custom(groupReconcile, reconcileMs);
-                Measure.Custom(groupMarkDirty, markDirtyMs);
-
+                var cost = WindowCost.Of(build.Run);
+                Measure.Custom(time, cost.Milliseconds);
+                Measure.Custom(allocation, cost.AllocationBlocks);
+                RequireBuilt(count);
+                yield return null;
+                build.Teardown();
                 yield return null;
             }
 
-            // Unmount, re-mount and unmount again, whatever the counts. With no warmup and one measurement
-            // (BenchmarkRun's default) the loops above mount once and never unmount, so the live panel's
-            // unmount and a re-mount into pooled elements would go unexercised.
-            _reconciler.Reconcile(_root, nodes, Array.Empty<VNode>());
-            yield return null;
-            _reconciler.Reconcile(_root, Array.Empty<VNode>(), nodes);
-            yield return null;
-            _reconciler.Reconcile(_root, nodes, Array.Empty<VNode>());
+            yield return TrailingCycle(build);
         }
 
-        #endregion
+        private IEnumerator RunThroughNextFrame(Build build, int count)
+        {
+            var time = new SampleGroup("Build.Time", SampleUnit.Millisecond);
+            var phases = new SampleGroup[PanelFrameRecorder.Phases.Length];
+            for (var i = 0; i < phases.Length; i++)
+            {
+                phases[i] = new SampleGroup("Frame." + PanelFrameRecorder.Phases[i], SampleUnit.Millisecond);
+            }
+            var allocation = new SampleGroup("Window.GC", SampleUnit.Undefined);
+            var frame = new PanelFrameRecorder(PanelName);
+
+            for (var i = 0; i < k_WarmupCount; i++)
+            {
+                yield return Cycle(build);
+            }
+
+            for (var i = 0; i < k_MeasurementCount; i++)
+            {
+                System.GC.Collect();
+                frame.Start();
+                var started = Stopwatch.GetTimestamp();
+                build.Run();
+                var buildMs = WindowCost.ElapsedMilliseconds(started, Stopwatch.GetTimestamp());
+                yield return null;
+                frame.Capture();
+                frame.Stop();
+
+                if (!frame.RanEveryPhase)
+                {
+                    throw new InvalidOperationException($"the frame after the build ran none of a phase of {PanelName}");
+                }
+                RequireLaidOut(count);
+
+                Measure.Custom(time, buildMs);
+                for (var p = 0; p < phases.Length; p++)
+                {
+                    Measure.Custom(phases[p], frame.Milliseconds(p));
+                }
+                Measure.Custom(allocation, frame.AllocationBlocks);
+
+                build.Teardown();
+                yield return null;
+            }
+
+            yield return TrailingCycle(build);
+        }
+
+        private static IEnumerator Cycle(Build build)
+        {
+            build.Run();
+            yield return null;
+            build.Teardown();
+            yield return null;
+        }
+
+        // One more build after the loops, whatever the counts: with BenchmarkRun's single iteration the measured
+        // build is the first, so a mount renting the labels an earlier unmount pooled would go unexercised.
+        private static IEnumerator TrailingCycle(Build build)
+        {
+            build.Run();
+            yield return null;
+            build.Teardown();
+        }
+
+        private void RequireBuilt(int count)
+        {
+            if (_root.childCount != count)
+            {
+                throw new InvalidOperationException($"expected {count} built elements, the panel's root holds {_root.childCount}");
+            }
+        }
+
+        private void RequireLaidOut(int count)
+        {
+            RequireBuilt(count);
+            if (!BenchmarkPanelRoot.LaidOut(_root[0]) || !BenchmarkPanelRoot.LaidOut(_root[count - 1]))
+            {
+                throw new InvalidOperationException(
+                    $"a built element is laid out at {_root[0].layout} and {_root[count - 1].layout} after the frame that followed the build");
+            }
+        }
     }
 
     [TestFixture]
@@ -488,24 +595,14 @@ namespace Velvet.Tests.Performance
     }
 
     /// <summary>
-    /// Initial mount GC alloc breakdown benchmark.
-    /// Introduced to isolate the source of "11 alloc/element"; demonstrated the following:
-    ///
-    ///   <list type="bullet">
-    ///     <item>The per-element ~11 alloc originates from <b>Unity UIToolkit internals</b> (new Label / text setter / parent.Add)</item>
-    ///     <item>Velvet's Reconcile path is <b>0 alloc</b> (long-lived Reconciler path; Bench_G matches Bench_E)</item>
-    ///     <item>The F-G difference is the one-time <c>new Reconciler()</c> ctor cost</item>
-    ///   </list>
-    ///
-    /// Expected relative relationships (environment-independent):
-    ///   <code>
-    ///   G ≈ E              (Velvet long-lived matches the Unity floor = 0 Velvet alloc)
-    ///   F ≈ E + α          (α is the fixed overhead of one Reconciler ctor)
-    ///   A ≤ B,C ≤ D ≤ E    (monotonically increasing as features are added)
-    ///   </code>
-    ///
-    /// This file is for early detection of baseline regressions. If new alloc is introduced on Velvet's side,
-    /// G drifts far from E → catchable via CI / manual review.
+    /// An initial mount of 1,000 labels onto an element with no panel, beside the same build written by hand.
+    /// <para>
+    /// A constructs each label, B and C also give it a text (through the constructor, and through the setter), D
+    /// attaches it without one, and E does all three: the tree F and G mount through a <see cref="Reconciler"/>.
+    /// G mounts through one that lives across iterations, as production reuses one, so what G records above E is
+    /// Velvet's share of the mount; F constructs and disposes a Reconciler inside each window as well.
+    /// <see cref="E2EBenchmarks"/> runs E's loop onto a live panel.
+    /// </para>
     /// </summary>
     [TestFixture]
     public class InitialMountAllocBreakdown
@@ -581,9 +678,6 @@ namespace Velvet.Tests.Performance
                 .Run();
         }
 
-        /// <summary>
-        /// Hand-written equivalent benchmark. Reference implementation for the Unity floor; baseline for measuring Velvet overhead.
-        /// </summary>
         [Test, Performance]
         public void Bench_E_FullPipelineParity()
         {
@@ -603,10 +697,6 @@ namespace Velvet.Tests.Performance
                 .Run();
         }
 
-        /// <summary>
-        /// Path that creates a new Reconciler each iteration. Includes the one-time Reconciler ctor cost.
-        /// Reference value, since production assumes a long-lived Reconciler.
-        /// </summary>
         [Test, Performance]
         public void Bench_F_VelvetReconcile()
         {
@@ -625,11 +715,6 @@ namespace Velvet.Tests.Performance
                 .Run();
         }
 
-        /// <summary>
-        /// Long-lived Reconciler path. Reflects the production usage pattern (the Reconciler is
-        /// long-lived per Page/Component). Demonstrates that Velvet-attributable alloc is 0.
-        /// Expected: matches Bench_E (differences within measurement noise).
-        /// </summary>
         [Test, Performance]
         public void Bench_G_VelvetReconcileLongLived()
         {
