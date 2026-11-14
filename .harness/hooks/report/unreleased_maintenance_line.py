@@ -162,15 +162,16 @@ def items(text):
 def unmerged_into_main(cwd, line):
     """The items this line's CHANGELOG carries that `main`'s does not, or None.
 
-    Read of the content rather than of the ancestry, because nothing that reaches `main` here can
-    leave an ancestry: both branches refuse a direct push, so every change arrives through a pull
-    request and `settle.py` squashes it, which writes a commit whose only parent is `main`. Measured
-    after the line was merged forward -- `merge-base --is-ancestor` was still false, and `git cherry`
+    Read of the content rather than of the ancestry, because a squash or a pick carries a line's
+    entries into `main` and leaves its commits out of `main`'s ancestry. Measured after the line was
+    first merged forward, by a squash -- `merge-base --is-ancestor` was still false, and `git cherry`
     reported all eight commits outstanding, the squash having combined their patches into one whose
-    id matches none of them.
+    id matches none of them. A forward merge landed as a merge commit, which CONTRIBUTING.md's
+    maintenance-line section asks for and `settle.py merge` refuses to squash, leaves the ancestry as
+    well; the content reading clears for that one and for the ones that came by a squash or a pick.
 
     Weaker than an ancestry: an item reworded on the way across reads as missing. That is a line too
-    many on a report, where the ancestry reading was a report nobody could ever clear.
+    many on a report, where an ancestry reading reports a line that no squash or pick can clear.
     """
     there = changelog(cwd, "origin/main")
     here = changelog(cwd, line, reads_fragments(cwd, line))
