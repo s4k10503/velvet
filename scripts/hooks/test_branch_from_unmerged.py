@@ -399,6 +399,96 @@ class LineCutTests(unittest.TestCase):
         self.assertIn(f"Refusing to push to `2.x`: it carries 1 commit of main that 2.x does not "
                       f"hold, starting with {main_fix[:7]}", said)
 
+    def test_Given_OriginsRepositoryNamedByItsPath_When_MainsOwnSeriesIsPushedThere_Then_ItIsRefused(self):
+        # Act
+        said = self.refused(f"git push {self.root / 'origin.git'} HEAD:refs/heads/3.x")
+
+        # Assert
+        self.assertIn("Refusing to push `3.x`: 3.x is not a line main maintains", said)
+
+    def test_Given_OriginsRepositoryNamedByAFileUrl_When_MainsOwnSeriesIsPushedThere_Then_ItIsRefused(self):
+        # Act
+        said = self.refused(f"git push file://{self.root / 'origin.git'} HEAD:refs/heads/3.x")
+
+        # Assert
+        self.assertIn("Refusing to push `3.x`: 3.x is not a line main maintains", said)
+
+    def test_Given_ASecondRemoteForOriginsRepository_When_MainsOwnSeriesIsPushedThere_Then_ItIsRefused(self):
+        # Arrange
+        git(self.project, "remote", "add", "gh", str(self.root / "origin.git"))
+
+        # Act
+        said = self.refused("git push gh HEAD:refs/heads/3.x")
+
+        # Assert
+        self.assertIn("Refusing to push `3.x`: 3.x is not a line main maintains", said)
+
+    # GREEN_ON_BASE(characterization): the base reads no push, so it lets this one through.
+    # What it pins is that another repository's lines are not origin's: reading every remote as
+    # origin reddens it.
+    def test_Given_ARepositoryThatIsNotOrigins_When_MainsOwnSeriesIsPushedThere_Then_ItIsAllowed(self):
+        # Arrange
+        subprocess.run(["git", "init", "-q", "--bare", str(self.root / "fork.git")], check=True,
+                       timeout=60)
+
+        # Act
+        result = ask_in(self.root, self.project,
+                        f"git push {self.root / 'fork.git'} HEAD:refs/heads/3.x")
+
+        # Assert
+        self.assertEqual(result.returncode, ALLOWED)
+
+    def test_Given_NoOriginToCompareWith_When_ALineIsPushedToAPath_Then_ItIsRefusedAsUntold(self):
+        # Arrange
+        git(self.project, "remote", "remove", "origin")
+
+        # Act
+        said = self.refused(f"git push {self.root / 'fork.git'} HEAD:refs/heads/3.x")
+
+        # Assert
+        self.assertIn("whether the push reaches origin's repository could not be told", said)
+
+    def test_Given_ATreeThatIsNotThere_When_MainsOwnSeriesIsCreatedInIt_Then_ItIsRefusedAsUnread(self):
+        # Act
+        said = self.refused(f"git -C {self.root / 'missing'} branch 3.x origin/main")
+
+        # Assert
+        self.assertIn("Refusing to create `3.x`: which lines main maintains could not be read", said)
+
+    def test_Given_AnOriginThatCannotBeFetched_When_ALineIsCreated_Then_ItIsRefusedAsUnread(self):
+        # Arrange
+        git(self.project, "remote", "set-url", "origin", str(self.root / "gone.git"))
+
+        # Act
+        said = self.refused("git branch 2.x origin/main")
+
+        # Assert
+        self.assertIn("Refusing to create `2.x`: which lines main maintains could not be read", said)
+
+    def test_Given_ALocalLineAGlobMatches_When_TheGlobIsPushed_Then_ItIsRefused(self):
+        # Arrange
+        git(self.project, "branch", "3.x")
+
+        # Act
+        said = self.refused("git push origin 'refs/heads/*:refs/heads/*'")
+
+        # Assert
+        self.assertIn("Refusing to push `3.x`: 3.x is not a line main maintains", said)
+
+    # GREEN_ON_BASE(characterization): the base reads no push, so it lets this one through.
+    # What it pins is that a glob names only what it matches: reading a glob as every local line
+    # reddens it.
+    def test_Given_ALocalLineAGlobDoesNotMatch_When_TheGlobIsPushed_Then_ItIsAllowed(self):
+        # Arrange — a destination that would name 1.x, so the source side alone keeps it out.
+        git(self.project, "branch", "1.x")
+        git(self.project, "branch", "feat/knob")
+
+        # Act
+        result = ask_in(self.root, self.project, "git push origin 'refs/heads/feat/*:refs/heads/*'")
+
+        # Assert
+        self.assertEqual(result.returncode, ALLOWED)
+
     # GREEN_ON_BASE(characterization): the base reads no push, so it lets this one through.
     # What it pins is that a fix the line takes is let through: refusing every commit a push brings
     # reddens it.
@@ -452,6 +542,35 @@ class LineCutTests(unittest.TestCase):
 
         # Assert
         self.assertEqual(result.returncode, ALLOWED)
+
+
+def repository(url):
+    """`line_branches.repository` for `url`, imported where it is asked rather than with this
+    module, which the cases above load without."""
+    sys.path.insert(0, str(REPO_ROOT / ".claude/hooks/lib"))
+    import line_branches
+    return line_branches.repository(url, ".")
+
+
+# This repository's origin, spelled each way a push can name it.
+ORIGIN_SPELLINGS = ("https://github.com/s4k10503/velvet.git", "https://github.com/S4K10503/velvet",
+                    "git@github.com:s4k10503/velvet.git", "ssh://git@github.com/s4k10503/velvet.git")
+
+
+class RepositorySpellingTests(unittest.TestCase):
+    def test_Given_OriginSpelledEachWayAPushCanName_When_Read_Then_EachIsOneRepository(self):
+        # Act
+        read = {repository(url) for url in ORIGIN_SPELLINGS}
+
+        # Assert
+        self.assertEqual(len(read), 1)
+
+    def test_Given_AForkOfTheSameName_When_Read_Then_ItIsNotOrigins(self):
+        # Act
+        read = repository("git@github.com:someone/velvet.git")
+
+        # Assert
+        self.assertNotEqual(read, repository(ORIGIN_SPELLINGS[0]))
 
 
 class LineTreeTests(unittest.TestCase):

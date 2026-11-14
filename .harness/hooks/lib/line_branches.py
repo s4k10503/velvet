@@ -2,11 +2,14 @@
 
 `refuse/branch_from_unmerged.py` asks this; `scripts/pr/maintenance_line.py` owns which lines main
 maintains and what a line does not take, and the refusals here only apply it to a command. A tree
-whose origin/main holds no Velvet package is not this repository, and nothing here refuses in it.
+whose origin/main was read and holds no Velvet package is not this repository, and nothing here
+refuses in it; one whose origin/main could not be read is refused as unread.
 """
 
 import os
+import re
 import sys
+import urllib.parse
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -89,54 +92,126 @@ def _answer(tree, *args):
     return answer.stdout.strip() if answer.code == 0 else None
 
 
+# A remote spelled `[user@]host:path`, which git reads as ssh where no slash comes before the colon.
+SCP = re.compile(r"^(?:[^@/:]+@)?[^/:]+:")
+
+
+def repository(url, tree):
+    """A spelling of the repository `url` names that two spellings of one repository share: the
+    host and path of one with a host, and the resolved path of a local one, `url` being read from
+    `tree` as git reads it."""
+    url = url.strip()
+    if url.startswith("file://"):
+        url = urllib.parse.unquote(urllib.parse.urlsplit(url).path)
+    elif "://" in url:
+        parts = urllib.parse.urlsplit(url)
+        return f"{(parts.hostname or '').lower()}:{parts.path.strip('/').removesuffix('.git').lower()}"
+    elif SCP.match(url):
+        host, _, path = url.partition(":")
+        return f"{host.rpartition('@')[2].lower()}:{path.strip('/').removesuffix('.git').lower()}"
+    return os.path.realpath(os.path.join(tree, url)).removesuffix("/.git")
+
+
+def _remote_url(tree, remote):
+    """The URL `remote` pushes to: a configured remote's, or `remote` itself as git takes it."""
+    return _answer(tree, "remote", "get-url", "--push", remote) or remote
+
+
+def _default_remote(tree):
+    branch = _answer(tree, "symbolic-ref", "--short", "-q", "HEAD")
+    for key in ([f"branch.{branch}.pushRemote"] if branch else []) + ["remote.pushDefault"] + (
+            [f"branch.{branch}.remote"] if branch else []):
+        named = _answer(tree, "config", "--get", key)
+        if named:
+            return named
+    return "origin"
+
+
+def _origins(tree, remote):
+    """Whether a push to `remote` from `tree` reaches origin's repository, or None where origin's
+    own URL cannot be read to tell."""
+    origin = _answer(tree, "remote", "get-url", "--push", "origin")
+    if origin is None:
+        return None
+    return repository(_remote_url(tree, remote), tree) == repository(origin, tree)
+
+
+def _globbed(pattern, name):
+    """What a refspec glob's `*` stands for where it matches the local branch `name`, or None."""
+    expression = re.escape(pattern).replace(r"\*", "(.*)", 1)
+    for ref in (f"refs/heads/{name}", name):
+        matched = re.fullmatch(expression, ref)
+        if matched:
+            return matched.group(1)
+    return None
+
+
 def pushed(command, cwd):
-    """The lines a `git push` in this command updates on origin, as (line, source, tree). `HEAD`,
-    `@` and a push naming no refspec are the current branch; `--all` and a glob are every local
-    line. A deletion updates none, and a push to another remote is not to this repository's lines."""
+    """The lines a `git push` in this command updates, as (line, source, tree, whether the push
+    reaches origin's repository or None where that cannot be told). `HEAD`, `@` and a push naming
+    no refspec are the current branch; `--all` is every local line, and a glob every one its source
+    side matches. A deletion updates none."""
     found = []
     for directory, subcommand, operands in _invocations(command):
         if subcommand != "push" or any(token in PUSH_DELETES for token in operands):
             continue
         tree = _tree(cwd, directory)
         named = _positionals(operands, PUSH_VALUE_FLAGS)
-        if named and named[0] != "origin":
-            continue
+        reaches = _origins(tree, named[0] if named else _default_remote(tree))
         refspecs = named[1:]
-        if PUSH_EVERY_BRANCH & set(operands) or any("*" in refspec for refspec in refspecs):
-            local = (_answer(tree, "for-each-ref", "--format=%(refname:short)", "refs/heads") or "")
-            found += [(name, f"refs/heads/{name}", tree) for name in local.split()
-                      if maintenance_line.is_line(name)]
-            refspecs = [refspec for refspec in refspecs if "*" not in refspec]
+        local = [name for name in
+                 (_answer(tree, "for-each-ref", "--format=%(refname:short)", "refs/heads")
+                  or "").split() if maintenance_line.is_line(name)]
+        if PUSH_EVERY_BRANCH & set(operands):
+            found += [(name, f"refs/heads/{name}", tree, reaches) for name in local]
         elif not refspecs and "--tags" not in operands:
             refspecs = ["HEAD"]
         for refspec in refspecs:
             source, colon, destination = refspec.lstrip("+").partition(":")
             if colon and not source:
                 continue
+            if "*" in source:
+                for name in local:
+                    star = _globbed(source, name)
+                    target = (destination if colon else source).replace("*", star or "", 1)
+                    if star is not None and maintenance_line.is_line(
+                            target.removeprefix("refs/heads/")):
+                        found.append((target.removeprefix("refs/heads/"), f"refs/heads/{name}",
+                                      tree, reaches))
+                continue
             if not colon:
                 destination = (_answer(tree, "symbolic-ref", "--short", "-q", "HEAD")
                                if source in CURRENT else source)
             name = (destination or "").removeprefix("refs/heads/")
             if maintenance_line.is_line(name):
-                found.append((name, source, tree))
+                found.append((name, source, tree, reaches))
     return found
 
 
+def _unread(verb, name, failure):
+    return (f"Refusing to {verb} `{name}`: which lines main maintains could not be read off "
+            f"origin/main.\n\n  {failure.strip()}\n\nFetch origin and retry, or give a branch that "
+            f"is not a line a name that is not one.")
+
+
 def _main_says(tree, verb, name):
-    """(`main_state`, None) for `tree`, (None, None) where it is not this repository, or (None, the
-    refusal) where it could not be read."""
-    git_answer(["fetch", "-q", "origin", maintenance_line.MAIN, maintenance_line.LINES_REFSPEC],
-               tree, timeout=GIT_TIMEOUT)
-    package = f"origin/{maintenance_line.MAIN}:{maintenance_line.published_check.PACKAGE_JSON_PATH}"
-    if git_answer(["cat-file", "-e", package], tree, timeout=GIT_TIMEOUT).code != 0:
+    """(`main_state`, None) for `tree`, (None, None) where origin/main was read and holds no Velvet
+    package, or (None, the refusal) where it could not be read."""
+    fetched = git_answer(["fetch", "-q", "origin", maintenance_line.MAIN,
+                          maintenance_line.LINES_REFSPEC], tree, timeout=GIT_TIMEOUT)
+    if fetched.code != 0:
+        return None, _unread(verb, name, fetched.stderr or "git fetch failed")
+    listed = git_answer(["ls-tree", "--name-only", f"origin/{maintenance_line.MAIN}", "--",
+                         maintenance_line.published_check.PACKAGE_JSON_PATH], tree,
+                        timeout=GIT_TIMEOUT)
+    if listed.code != 0:
+        return None, _unread(verb, name, listed.stderr or "git ls-tree failed")
+    if not listed.stdout.strip():
         return None, None
     try:
         return maintenance_line.main_state(tree), None
     except maintenance_line.UNREAD as failure:
-        said = (getattr(failure, "stderr", None) or str(failure)).strip()
-        return None, (f"Refusing to {verb} `{name}`: which lines main maintains could not be read "
-                      f"off origin/main.\n\n  {said}\n\nFetch origin and retry, or give a branch "
-                      f"that is not a line a name that is not one.")
+        return None, _unread(verb, name, getattr(failure, "stderr", None) or str(failure))
 
 
 def refusals(command, cwd, creations):
@@ -153,7 +228,15 @@ def refusals(command, cwd, creations):
                 f"is not one, and the lines main maintains are "
                 f"{', '.join(maintenance_line.maintained(state)) or 'none'} "
                 f"({maintenance_line.SECTION})."))
-    for name, source, tree in pushed(command, cwd):
+    for name, source, tree, reaches in pushed(command, cwd):
+        if reaches is False:
+            continue
+        if reaches is None:
+            said.append(f"Refusing to push `{name}`: whether the push reaches origin's repository "
+                        f"could not be told, origin's own URL being unreadable here. Configure "
+                        f"origin and retry, or give a branch that is not a line a name that is not "
+                        f"one.")
+            continue
         state, refused = _main_says(tree, "push", name)
         why = maintenance_line.unmaintained(name, state) if state else None
         if refused or why:
