@@ -1245,11 +1245,20 @@ def as_read(case):
 
     The `+` the runner writes before a nested class is taken as the dot `csharp_cases` writes there,
     as `assert_results_from_this_tree.py` reads one in a classname.
+
+    A fixture given arguments, as a `TestFixtureSource` gives them, carries them in its own name --
+    `Fixture(UIToolkit).Method` -- and they move to after the row, so that `outcome_for` takes each
+    fixture's run of the method as one of its argument lists. `ParameterisedFixtureNameTests` fails
+    when they stay where the runner wrote them.
     """
     full = case.get("fullname") or case.get("name")
     name, method = case.get("name"), case.get("methodname")
-    if name and method and name != method and not name.startswith(method + "("):
-        full = "{}.{}({})".format(full[:-len(name) - 1], method, name)
+    if name and full.endswith("." + name):
+        row = name
+        if method and name != method and not name.startswith(method + "("):
+            row = "{}({})".format(method, name)
+        owner, opened, arguments = full[:-len(name) - 1].partition("(")
+        full = "{}.{}{}{}".format(owner, row, opened, arguments)
     head, opened, arguments = full.partition("(")
     return head.replace("+", ".") + opened + arguments
 
