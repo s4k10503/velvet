@@ -43,7 +43,8 @@ settle = load_module()
 def reasons(before=GREEN, after=GREEN, results=None, branch="topic", base="main",
             held_by_worktree=False, unpublished_release=None, draft=False, merge_state="clean",
             fork=False, failing_runs=(), behind_release=None, long_lived_head=False, runs_unfinished=(),
-            runs_failed=(), required=(), stack_below=(), stack_settings=None, stack_tangles=()):
+            runs_failed=(), required=(), stack_below=(), stack_settings=None, stack_tangles=(),
+            line_pull_request=(), line_head=(), line_squash=()):
     if results is None:
         results = [{"name": "Required checks (Unity)", "bucket": "pass"}]
     return settle.reasons_from(before, after, results, branch, base,
@@ -53,7 +54,9 @@ def reasons(before=GREEN, after=GREEN, results=None, branch="topic", base="main"
                                behind_release=behind_release, long_lived_head=long_lived_head,
                                runs_unfinished=runs_unfinished, runs_failed=runs_failed,
                                required=required, stack_below=stack_below,
-                               stack_settings=stack_settings, stack_tangles=stack_tangles)
+                               stack_settings=stack_settings, stack_tangles=stack_tangles,
+                               line_pull_request=line_pull_request, line_head=line_head,
+                               line_squash=line_squash)
 
 
 def failing(workflow="test.yml", sha=BROKE):
@@ -209,7 +212,7 @@ class MergeDecisionTests(unittest.TestCase):
 Fabricated = collections.namedtuple(
     "Fabricated",
     "sha after branch base draft merge_state results holds held fork labels runs state jobs stack "
-    "tangled")
+    "tangled title line carried")
 
 PASSING = [{"name": "Required checks (Unity)", "bucket": "pass"}]
 
@@ -266,13 +269,19 @@ REQUIRED = ("Required checks (Unity)",)
 
 def fabricate(number, results=PASSING, draft=False, merge_state="clean", holds=(),
               held=False, moved=False, fork=False, base="main", branch=None, labels=(), runs=(),
-              state="open", jobs=None, stack=None, tangled=None):
+              state="open", jobs=None, stack=None, tangled=None, title="fix(velvet): a fix",
+              line=None, carried=()):
+    """`line` is what `settle.line_reading` answers for the head, a line taking all of it unless a
+    case says otherwise, and `carried` what `settle.line_carried` answers, no line's commits unless a
+    case says otherwise."""
     sha = str(number).rjust(40, "0")
     return Fabricated(sha=sha, after=MOVED if moved else sha, branch=branch or f"topic-{number}",
                       base=base,
                       draft=draft, merge_state=merge_state, results=results, holds=holds,
                       held=held, fork=fork, labels=frozenset(labels), runs=list(runs), state=state,
-                      jobs=jobs or {}, stack=stack, tangled=tangled)
+                      jobs=jobs or {}, stack=stack, tangled=tangled, title=title,
+                      line=line or settle.maintenance_line.Reading([], [], []),
+                      carried=list(carried))
 
 
 def base_state(held, base, red=(RED,), releasing=(RELEASING,), required=None):
@@ -342,11 +351,12 @@ def tangles(states, base, listed):
 
 @contextlib.contextmanager
 def fabricated_readings(states, red=(RED,), releasing=(RELEASING,), required=None,
-                        settings=STACK_SETTINGS):
+                        settings=STACK_SETTINGS, maintained=None):
     """Every reading a poll takes from git or the API, answered from a table of pull request states.
 
     Patched at the readings rather than at `blocking_reasons`, so the decision itself is what runs:
-    stubbing the verdict would make the agreement below true by construction.
+    stubbing the verdict would make the agreement below true by construction. `maintained` is what
+    `settle.line_main_state` answers, and None asks nothing of a base about it.
     """
     by_sha = {state.sha: state for state in states.values()}
     by_branch = {state.branch: state for state in states.values()}
@@ -362,7 +372,10 @@ def fabricated_readings(states, red=(RED,), releasing=(RELEASING,), required=Non
                 sha=states[number].sha, branch=states[number].branch, base=states[number].base,
                 draft=states[number].draft, merge_state=states[number].merge_state,
                 fork=states[number].fork, labels=states[number].labels, state=states[number].state,
-                stack=states[number].stack)),
+                stack=states[number].stack, title=states[number].title)),
+            ("line_reading", lambda _project, _line, sha: by_sha[sha].line),
+            ("line_carried", lambda _project, _base, sha: by_sha[sha].carried),
+            ("line_main_state", lambda _project: maintained),
             ("stack_members", lambda _project, stack: members(states, stack)),
             ("stack_settings", lambda _project: settings),
             ("stack_tangles", lambda _project, base, listed: tangles(states, base, listed)),
@@ -1148,7 +1161,7 @@ def rest_readings(check_runs, workflow_runs, labels=(AUTOMERGE,), statuses=None)
     """
     state = types.SimpleNamespace(sha=GREEN, branch="topic", base="main", draft=False,
                                   merge_state="clean", fork=False, labels=frozenset(labels),
-                                  state="open", stack=None)
+                                  state="open", stack=None, title="fix(velvet): a fix")
     answers = {"/check-runs": {"total_count": len(check_runs), "check_runs": check_runs},
                "/status": NO_STATUSES if statuses is None else statuses,
                "/jobs": {"total_count": 0, "jobs": []},
@@ -1158,6 +1171,7 @@ def rest_readings(check_runs, workflow_runs, labels=(AUTOMERGE,), statuses=None)
             ("repository", lambda *_: "owner/name"),
             ("pull_request", lambda *_: state),
             ("head_sha", lambda *_: GREEN),
+            ("line_carried", lambda *_: []),
             ("project_state", lambda _project, base: base_state({}, base)),
             ("rest_json", lambda path: next(value for key, value in answers.items() if key in path)),
         ):
@@ -1661,6 +1675,132 @@ class LongLivedHeadTests(unittest.TestCase):
         self.assertEqual(decided, [])
 
 
+# What `settle.line_reading` answers for a head that merged main in: main's commit, and the merge.
+MAIN_MERGED_IN = settle.maintenance_line.Reading(
+    [("e" * 40, "Merge remote-tracking branch 'origin/main' into topic", ""),
+     ("f" * 40, "fix(velvet): main's fix", "")],
+    [("f" * 40, "fix(velvet): main's fix")], [])
+
+FEATURE = "feat(velvet): add a knob"
+
+# What an expectation read off `maintenance_line` falls back to where the module answers nothing, so
+# a module refusing nothing cannot leave both sides of a case empty and equal.
+UNANSWERED = "the module gave no reason here"
+
+
+def line_reasons(base="2.x", maintained=None, **fabricated):
+    """What `settle.py merge` would refuse pull request 7 onto `base` for, `maintained` being what
+    origin/main says of its lines."""
+    with fabricated_readings({7: fabricate(7, base=base, **fabricated)}, maintained=maintained):
+        return settle.blocking_reasons(Path("."), 7).reasons
+
+
+class MaintenanceLineMergeTests(unittest.TestCase):
+    """A pull request decided from what `maintenance_line` reads of it."""
+
+    def test_Given_AHeadThatMergedMainIntoALine_When_TheMergeIsDecided_Then_WhatItBroughtIsTheReason(self):
+        # Act
+        decided = line_reasons(line=MAIN_MERGED_IN)
+
+        # Assert
+        self.assertEqual(decided, settle.maintenance_line.head_reasons("2.x", MAIN_MERGED_IN)
+                         or [UNANSWERED])
+
+    def test_Given_AFeatureTitleOntoALine_When_TheMergeIsDecided_Then_TheTitleIsTheReason(self):
+        # Act
+        decided = line_reasons(title=FEATURE)
+
+        # Assert
+        self.assertEqual(decided, settle.maintenance_line.pull_request_reasons(
+            "2.x", "topic-7", FEATURE) or [UNANSWERED])
+
+    def test_Given_AFeatureTitleOntoALineWhoseHeadMoved_When_TheMergeIsDecided_Then_TheTitleIsStillAReason(self):
+        # Act — the title is the pull request's, and a force-push does not change it.
+        decided = line_reasons(title=FEATURE, moved=True)
+
+        # Assert
+        self.assertIn(settle.maintenance_line.pull_request_reasons("2.x", "topic-7", FEATURE)[0],
+                      decided)
+
+    def test_Given_AHeadNamedLikeALineOntoMain_When_TheMergeIsDecided_Then_ItsNameIsTheReason(self):
+        # Act
+        decided = line_reasons(base="main", branch="3.0.x")
+
+        # Assert
+        self.assertEqual(decided, settle.maintenance_line.pull_request_reasons(
+            "main", "3.0.x", "fix(velvet): a fix") or [UNANSWERED])
+
+    def test_Given_APullRequestOntoALineSecurityNoLongerSupports_When_TheMergeIsDecided_Then_TheLineIsTheReason(self):
+        # Arrange — main building 4.0, and SECURITY.md marking only 3.x supported.
+        state = settle.maintenance_line.MainState(4, frozenset({3}))
+
+        # Act
+        decided = line_reasons(maintained=state)
+
+        # Assert
+        self.assertEqual(decided, settle.maintenance_line.pull_request_reasons(
+            "2.x", "topic-7", "fix(velvet): a fix", state) or [UNANSWERED])
+
+    def test_Given_APullRequestOntoMainsOwnSeries_When_TheMergeIsDecided_Then_TheLineIsTheReason(self):
+        # Arrange — the head holds the release commit the tables date 3.x at, which is not this case's.
+        state = settle.maintenance_line.MainState(3, frozenset({3, 2}))
+
+        # Act
+        decided = line_reasons(base="3.x", maintained=state, holds=(RELEASED,))
+
+        # Assert
+        self.assertEqual(decided, settle.maintenance_line.pull_request_reasons(
+            "3.x", "topic-7", "fix(velvet): a fix", state) or [UNANSWERED])
+
+    def test_Given_ABaseOverrideOfAPullRequestOntoALine_When_TheMergeIsDecided_Then_TheLineItLandsOnIsAsked(self):
+        # Arrange — `--base main` judges the base readings against main, and the merge still lands
+        # on 2.x.
+        state = settle.maintenance_line.MainState(4, frozenset({3}))
+
+        # Act
+        with fabricated_readings({7: fabricate(7, base="2.x")}, maintained=state):
+            decided = settle.blocking_reasons(Path("."), 7, base="main").reasons
+
+        # Assert
+        self.assertEqual(decided, settle.maintenance_line.pull_request_reasons(
+            "2.x", "topic-7", "fix(velvet): a fix", state) or [UNANSWERED])
+
+    def test_Given_AHeadOntoMainCarryingALinesCommits_When_TheMergeIsDecided_Then_ItsSquashIsTheReason(self):
+        # Arrange — the shape a forward merge made on a branch of its own takes.
+        carried = [("2.x", [("e" * 40, "fix(velvet): the line's fix")])]
+
+        # Act
+        decided = line_reasons(base="main", branch="chore/forward-merge-2x", carried=carried)
+
+        # Assert
+        self.assertEqual(decided, settle.maintenance_line.squash_reasons("main", carried)
+                         or [UNANSWERED])
+
+    def test_Given_TheLineItselfOntoMainCarryingItsCommits_When_TheMergeIsDecided_Then_OnlyItsLongLivedHeadIsTheReason(self):
+        # Act
+        decided = line_reasons(base="main", branch="2.x",
+                               carried=[("2.x", [("e" * 40, "fix(velvet): the line's fix")])])
+
+        # Assert
+        self.assertEqual(decided, [LONG_LIVED_REASON.format("2.x")])
+
+    def test_Given_ATreeGitCannotRead_When_ALineIsReadThere_Then_WhatGitSaidIsRaised(self):
+        # Arrange
+        nowhere = Path(tempfile.mkdtemp(prefix="velvet-no-repository-"))
+        self.addCleanup(shutil.rmtree, nowhere, ignore_errors=True)
+
+        # Act / Assert
+        with self.assertRaisesRegex(RuntimeError, "onto origin/2.x could not be read: fatal: not a git"):
+            settle.line_reading(nowhere, "2.x", GREEN)
+
+    def test_Given_AHeadOntoMainThatALineWouldRefuse_When_TheMergeIsDecided_Then_NothingBlocksIt(self):
+        # Act
+        decided = line_reasons(base="main", line=MAIN_MERGED_IN, title=FEATURE)
+
+        # Assert
+        self.assertEqual(decided, [])
+
+
 class ReadyStateTests(unittest.TestCase):
     def test_Given_AReadyPullRequestThatStoppedBeingReady_When_ItIsRecorded_Then_ItsAgeIsDropped(self):
         # Arrange
@@ -1945,13 +2085,14 @@ class RedBaseMergeTests(unittest.TestCase):
         self.assertEqual(decided, [RED_REASON])
 
     # GREEN_ON_BASE(refactor): an unlabelled head behind a green base still merges.
-    # The pull request it arranges now says it sits in no stack, which the base does not read.
+    # The pull request it arranges now carries a title, and the case answers which lines the head
+    # carries, neither of which the base reads.
     def test_Given_ABranchBehindAGreenBase_When_TheMergeIsDecided_Then_NothingBlocksIt(self):
         # Arrange — `gh_git` answers that the branch is behind: the merge-base is not the base's tip.
         # That is what `contains_base` reads, so a decision asking it is told the branch is behind.
         state = types.SimpleNamespace(sha=GREEN, branch="topic", base="main", draft=False,
                                       merge_state="clean", fork=False, labels=frozenset(),
-                                      state="open", stack=None)
+                                      state="open", stack=None, title="fix(velvet): a fix")
         answers = {"merge-base": MOVED, "rev-parse": BROKE}
         with contextlib.ExitStack() as stack:
             for name, answer in (
@@ -1961,6 +2102,7 @@ class RedBaseMergeTests(unittest.TestCase):
                 ("campaign_runs", lambda *_: []),
                 ("run_jobs", lambda *_: {}),
                 ("head_sha", lambda *_: GREEN),
+                ("line_carried", lambda *_: []),
                 ("project_state", lambda _project, base: base_state({}, base)),
                 ("gh_git", lambda _project, command, *_: answers[command]),
             ):

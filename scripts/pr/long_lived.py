@@ -6,17 +6,13 @@ CONTRIBUTING.md's maintenance-line section says is read to know it was merged, a
 removes the line. `settle.py` and `refuse/merge_unchecked_against_base.py` both decide from here.
 """
 
-import re
+import maintenance_line
 
 NAMED = frozenset({"main", "upm"})
 
-# The naming CONTRIBUTING.md's maintenance-line section owns, read the way
-# `report/unreleased_maintenance_line.py` reads it.
-LINE = re.compile(r"[0-9]+\.x")
-
 
 def is_long_lived(branch):
-    return branch in NAMED or bool(LINE.fullmatch(branch))
+    return branch in NAMED or maintenance_line.is_line(branch)
 
 
 def reason(branch):

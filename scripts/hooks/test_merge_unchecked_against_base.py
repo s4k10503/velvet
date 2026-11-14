@@ -39,6 +39,14 @@ argv = sys.argv[1:]
 with open(os.environ["VELVET_UNCHECKED_CALLS"], "a", encoding="utf-8") as calls:
     calls.write(" ".join(argv) + "\\n")
 table = json.loads(os.environ["VELVET_UNCHECKED_TABLE"])
+if argv[:2] == ["pr", "view"]:
+    # The fields asked for and no others, as gh answers; one the table has not got is gh's error.
+    asked = argv[argv.index("--json") + 1].split(",") if "--json" in argv else []
+    current = table.get("current") or {}
+    if not asked or any(field not in current for field in asked):
+        sys.exit(1)
+    print(json.dumps({field: current[field] for field in asked}))
+    sys.exit(0)
 if argv[:1] != ["api"]:
     sys.exit(1)
 if "/pulls/" in argv[1]:
@@ -85,6 +93,27 @@ def commit(project, message, changelog=None):
     return git(project, "rev-parse", "HEAD")
 
 
+PACKAGE = "Packages/com.velvet.core/package.json"
+
+
+def package(project, version):
+    """Stage a package declaring `version`, for the next commit."""
+    (project / PACKAGE).parent.mkdir(parents=True, exist_ok=True)
+    (project / PACKAGE).write_text(json.dumps({"name": "com.velvet.core", "version": version}),
+                                   encoding="utf-8")
+    git(project, "add", PACKAGE)
+
+
+SECURITY = ("# Security Policy\n\n## Supported versions\n\n| Version | Supported |\n"
+            "| ------- | --------- |\n| 3.0.x   | ✅        |\n| 2.1.x   | ✅        |\n")
+
+
+def security(project, text):
+    """Stage SECURITY.md as `text`, for the next commit."""
+    (project / "SECURITY.md").write_text(text, encoding="utf-8")
+    git(project, "add", "SECURITY.md")
+
+
 def released(*versions):
     """A CHANGELOG with an open section over each of `versions`, closed, newest first."""
     return "# Changelog\n\n## [Unreleased]\n\n" + "".join(
@@ -113,6 +142,10 @@ class UncheckedAgainstBaseTests(unittest.TestCase):
         subprocess.run(["git", "init", "-q", "-b", "main", str(self.project)], check=True,
                        timeout=60)
         git(self.project, "remote", "add", "origin", str(origin))
+        # The series and the table whose maintained line is 2.x, which the cases onto 2.x read off
+        # main.
+        package(self.project, "3.0.0")
+        security(self.project, SECURITY)
         self.fork_point = commit(self.project, "release 1.0.0", released("1.0.0"))
         git(self.project, "branch", "topic")
         self.tip = commit(self.project, "main moves on")
@@ -125,8 +158,10 @@ class UncheckedAgainstBaseTests(unittest.TestCase):
         (self.binaries / "gh").chmod(0o755)
         self.calls = self.root / "calls"
 
-    def ask(self, runs, command=MERGE, runs_unreadable=False, pulls=None, checks=SUITES_RAN):
-        """What the guard does with `command`, against runs on each base as given."""
+    def ask(self, runs, command=MERGE, runs_unreadable=False, pulls=None, checks=SUITES_RAN,
+            current=None):
+        """What the guard does with `command`, against runs on each base as given. `current` is
+        what `gh pr view` answers for the checkout's branch."""
         pulls = pulls or {"7": pull("topic", "main", self.head)}
         environment = dict(os.environ)
         environment["PATH"] = str(self.binaries) + os.pathsep + environment.get("PATH", "")
@@ -134,7 +169,8 @@ class UncheckedAgainstBaseTests(unittest.TestCase):
         environment.pop("CLAUDE_PROJECT_DIR", None)
         environment["VELVET_UNCHECKED_CALLS"] = str(self.calls)
         environment["VELVET_UNCHECKED_TABLE"] = json.dumps(
-            {"pulls": pulls, "runs": runs, "runs_unreadable": runs_unreadable, "checks": checks})
+            {"pulls": pulls, "runs": runs, "runs_unreadable": runs_unreadable, "checks": checks,
+             "current": current})
         event = {"tool_name": "Bash", "cwd": str(self.project), "tool_input": {"command": command}}
         return subprocess.run([sys.executable, "-B", str(HOOK)], input=json.dumps(event),
                               capture_output=True, text=True, env=environment, timeout=120)
@@ -249,6 +285,171 @@ class UncheckedAgainstBaseTests(unittest.TestCase):
         # Assert
         self.assertEqual((result.returncode, "its head 2.x is a long-lived branch" in result.stderr),
                          (REFUSED, True))
+
+    def onto_a_line(self, head, title=""):
+        """`2.x` cut at `fork_point`, and a pull request onto it from `head`, titled `title`."""
+        git(self.project, "push", "-q", "origin", f"{self.fork_point}:refs/heads/2.x",
+            f"{head}:refs/heads/backport")
+        pulled = pull("backport", "2.x", head)
+        pulled["title"] = title
+        return {"7": pulled}
+
+    def test_Given_AHeadCarryingMainsCommitOntoALine_When_TheMergeIsAsked_Then_ItIsRefused(self):
+        # Arrange — a branch cut from main and opened onto the line.
+        pulls = self.onto_a_line(self.tip)
+
+        # Act
+        result = self.ask(self.green(), pulls=pulls)
+
+        # Assert
+        self.assertIn(f"of main that 2.x does not hold, starting with {self.tip[:7]}",
+                      result.stderr if result.returncode == REFUSED else "")
+
+    def test_Given_AFeatureTitledPullRequestOntoALine_When_TheMergeIsAsked_Then_ItIsRefused(self):
+        # Arrange — a head that brings nothing, so the title is all there is to refuse.
+        pulls = self.onto_a_line(self.fork_point, title="feat(velvet): add a knob")
+
+        # Act
+        result = self.ask(self.green(), pulls=pulls)
+
+        # Assert
+        self.assertIn("its title `feat(velvet): add a knob` is a feature",
+                      result.stderr if result.returncode == REFUSED else "")
+
+    def test_Given_TheCurrentBranchsPullRequestOntoALineTitledAsAFeature_When_ItsMergeIsAsked_Then_ItIsRefused(self):
+        # Arrange — no number, so the pull request is the one `gh pr view` answers for.
+        self.onto_a_line(self.fork_point)
+        current = {"headRefName": "backport", "baseRefName": "2.x", "headRefOid": self.fork_point,
+                   "isCrossRepository": False, "title": "feat(velvet): add a knob"}
+
+        # Act
+        result = self.ask(self.green(), command="gh pr merge --squash --delete-branch",
+                          current=current)
+
+        # Assert
+        self.assertIn("its title `feat(velvet): add a knob` is a feature",
+                      result.stderr if result.returncode == REFUSED else "")
+
+    def test_Given_AStaleLocalMainAndAHeadCarryingMainsNewerCommitOntoALine_When_TheMergeIsAsked_Then_ItIsRefused(self):
+        # Arrange — this checkout last saw main at the cut, so only a fetch of main shows `tip`.
+        pulls = self.onto_a_line(self.tip)
+        git(self.project, "update-ref", "refs/remotes/origin/main", self.fork_point)
+
+        # Act
+        result = self.ask(self.green(), pulls=pulls)
+
+        # Assert
+        self.assertIn(f"of main that 2.x does not hold, starting with {self.tip[:7]}",
+                      result.stderr if result.returncode == REFUSED else "")
+
+    def test_Given_AFixOntoALineSecurityHasEnded_When_TheMergeIsAsked_Then_ItIsRefused(self):
+        # Arrange — main moves on to 4.0.0, and its SECURITY.md stops supporting 2.1.x.
+        package(self.project, "4.0.0")
+        security(self.project, SECURITY.replace("| 2.1.x   | ✅", "| 2.1.x   | ❌"))
+        commit(self.project, "chore(velvet): release v4.0.0")
+        git(self.project, "push", "-q", "origin", "main")
+        pulls = self.onto_a_line(self.fork_point, title="fix(velvet): a fix")
+
+        # Act
+        result = self.ask(self.green(), pulls=pulls)
+
+        # Assert
+        self.assertIn("2.x is no longer maintained: SECURITY.md's supported-versions table on main "
+                      "marks no 2.x release supported",
+                      result.stderr if result.returncode == REFUSED else "")
+
+    # GREEN_ON_BASE(characterization): the base refuses no line by main's series, so it lets this through.
+    # What it pins is that main's first 4.0 entry leaves 2.x maintained while SECURITY.md supports
+    # it: refusing every line but the one before main's series reddens it.
+    def test_Given_AFixOntoALineWhileMainStartsTheNextMajor_When_TheMergeIsAsked_Then_ItIsLetThrough(self):
+        # Arrange — main's first breaking entry for 4.0, with SECURITY.md still supporting 2.1.x.
+        fragment = self.project / "Packages/com.velvet.core/Changelog~/breaking/knob.md"
+        fragment.parent.mkdir(parents=True)
+        fragment.write_text("### Removed\n\n- The knob.\n", encoding="utf-8")
+        git(self.project, "add", str(fragment))
+        commit(self.project, "feat(velvet)!: remove the knob")
+        git(self.project, "push", "-q", "origin", "main")
+        pulls = self.onto_a_line(self.fork_point, title="fix(velvet): a fix")
+
+        # Act
+        result = self.ask(self.green(), pulls=pulls)
+
+        # Assert
+        self.assertEqual(result.returncode, ALLOWED)
+
+    def test_Given_AFixOntoALineForMainsOwnSeries_When_TheMergeIsAsked_Then_ItIsRefused(self):
+        # Arrange — main declares 3.0.0 and holds nothing breaking, so 3.x is main's own series.
+        git(self.project, "push", "-q", "origin", f"{self.fork_point}:refs/heads/3.x",
+            f"{self.fork_point}:refs/heads/backport")
+        pulled = pull("backport", "3.x", self.fork_point)
+        pulled["title"] = "fix(velvet): a fix"
+
+        # Act
+        result = self.ask(self.green(), pulls={"7": pulled})
+
+        # Assert
+        self.assertIn("3.x is not a line main maintains: main is building 3.x",
+                      result.stderr if result.returncode == REFUSED else "")
+
+    def forward_merge(self):
+        """`2.x` cut at `fork_point` with a fix of its own, and pull request 7 onto main from a
+        branch of main that merged it."""
+        git(self.project, "switch", "-q", "-c", "line", self.fork_point)
+        self.line_fix = commit(self.project, "fix(velvet): the line's own fix")
+        git(self.project, "switch", "-q", "-c", "forward", "origin/main")
+        git(self.project, "-c", "user.email=check@velvet", "-c", "user.name=check", "merge", "-q",
+            "--no-edit", "line")
+        merged = git(self.project, "rev-parse", "HEAD")
+        git(self.project, "push", "-q", "origin", "line:refs/heads/2.x", "forward")
+        return {"7": pull("forward", "main", merged)}
+
+    def test_Given_AForwardMergeOnABranchOfItsOwn_When_ItIsSquashed_Then_ItIsRefused(self):
+        # Arrange
+        pulls = self.forward_merge()
+
+        # Act
+        result = self.ask(self.green(), pulls=pulls)
+
+        # Assert
+        self.assertIn(f"of 2.x that main does not hold, starting with {self.line_fix[:7]}",
+                      result.stderr if result.returncode == REFUSED else "")
+
+    def test_Given_AForwardMergeOnABranchOfItsOwn_When_ItsMergeFlagIsSetFalse_Then_ItIsRefused(self):
+        # Arrange
+        pulls = self.forward_merge()
+
+        # Act
+        result = self.ask(self.green(), pulls=pulls,
+                          command="gh pr merge 7 --merge=false --squash --delete-branch")
+
+        # Assert
+        self.assertIn(f"of 2.x that main does not hold, starting with {self.line_fix[:7]}",
+                      result.stderr if result.returncode == REFUSED else "")
+
+    def test_Given_AForwardMergeOnABranchOfItsOwn_When_ASubjectIsSpelledLikeTheMergeFlag_Then_ItIsRefused(self):
+        # Arrange
+        pulls = self.forward_merge()
+
+        # Act
+        result = self.ask(self.green(), pulls=pulls,
+                          command="gh pr merge 7 --squash -t -m --delete-branch")
+
+        # Assert
+        self.assertIn(f"of 2.x that main does not hold, starting with {self.line_fix[:7]}",
+                      result.stderr if result.returncode == REFUSED else "")
+
+    # GREEN_ON_BASE(characterization): the base lets this merge commit through too, refusing no squash.
+    # What it pins is that the squash refusal leaves the way out it names open: reading no
+    # `--merge` on the command reddens it.
+    def test_Given_AForwardMergeOnABranchOfItsOwn_When_ItIsMergedWithAMergeCommit_Then_ItIsLetThrough(self):
+        # Arrange — the way out the squash's refusal names.
+        pulls = self.forward_merge()
+
+        # Act
+        result = self.ask(self.green(), pulls=pulls, command="gh pr merge 7 --merge --delete-branch")
+
+        # Assert
+        self.assertEqual(result.returncode, ALLOWED)
 
 
 if __name__ == "__main__":

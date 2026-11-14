@@ -25,7 +25,8 @@ its run by `expected_checks.run_of`.
 
 The other merge preconditions have their own hooks: `merge_unchecked_against_base.py` for a base
 whose required workflows last failed on push, a head behind the base's newest release commit, a
-head on another repository, and a long-lived head; `merge_without_branch_deletion.py` for the flag;
+head on another repository, a long-lived head, and what `scripts/pr/maintenance_line.py` refuses;
+`merge_without_branch_deletion.py` for the flag;
 `merge_branch_held_by_worktree.py` for a branch git will refuse to delete;
 `merge_onto_unpublished_release.py` for a base holding a release nobody dispatched.
 `scripts/pr/settle.py` reports these together with the ones its own docstring names as having no

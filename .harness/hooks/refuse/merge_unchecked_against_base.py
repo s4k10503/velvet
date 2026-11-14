@@ -12,7 +12,10 @@ own checks to have seen them:
   not hold, or holds as a different branch of the same name, so neither containment can be read;
   and a long-lived head, which `scripts/pr/long_lived.py` names, is not to be squashed or deleted.
 
-`lib/merge_target.py` owns which pull request a command would land.
+What a pull request onto a maintenance line brings, whether a base or head is named like a line
+without being one, and which lines' commits a head would land without a merge commit,
+`scripts/pr/maintenance_line.py` decides. `lib/merge_target.py` owns which pull request a command
+would land.
 """
 import collections
 import json
@@ -23,12 +26,15 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 from merge_target import GH_TIMEOUT, UNRESOLVED, merge_targets
 from repository import gh, git_answer
-from shell_commands import NAME_THE_TREE, UNPLACEABLE_MOVE, UNRESOLVED_CD, command_directory
+from pr_body import merges_nothing
+from shell_commands import (NAME_THE_TREE, UNPLACEABLE_MOVE, UNRESOLVED_CD, command_directory,
+                            program_invocations)
 
 SCRIPTS = Path(__file__).resolve().parents[3] / "scripts"
 sys.path.insert(0, str(SCRIPTS / "pr"))
 sys.path.insert(0, str(SCRIPTS / "release"))
 import long_lived
+import maintenance_line
 import published_check
 import red_base
 
@@ -46,7 +52,42 @@ UNREADABLE_PROBE = {"command": "gh pr merge 1 --squash --delete-branch"}
 
 GIT_TIMEOUT = 30
 
-Target = collections.namedtuple("Target", "head base commit fork")
+Target = collections.namedtuple("Target", "head base commit fork title")
+
+# `gh pr merge`'s flags that take a value, so a value spelled like a flag is not read as one.
+VALUED_FLAGS = {"-A", "--author-email", "-b", "--body", "-F", "--body-file", "--match-head-commit",
+                "-t", "--subject", "-R", "--repo"}
+VALUED_SHORT = "AbFtR"
+# What a boolean flag's `=value` reads as true.
+TRUE_VALUES = {"1", "t", "true"}
+
+
+def merge_commit_asked(operands):
+    """Whether these `gh pr merge` operands ask for a merge commit, which keeps what the head carries
+    in the base's ancestry; a squash and a rebase both land new commits instead."""
+    asked, index = False, 0
+    while index < len(operands):
+        token = operands[index]
+        name, equals, value = token.partition("=")
+        index += 1
+        if name in VALUED_FLAGS:
+            index += 0 if equals else 1
+        elif name == "--merge":
+            asked = not equals or value.lower() in TRUE_VALUES
+        elif token.startswith("-") and not token.startswith("--"):
+            for position, letter in enumerate(token[1:], start=1):
+                if letter in VALUED_SHORT:
+                    index += 0 if position < len(token) - 1 else 1
+                    break
+                asked = asked or letter == "m"
+    return asked
+
+
+def landed_by_merge_commit(command):
+    """The pull requests this command merges with a merge commit, "" meaning the current branch's."""
+    return {next((token for token in operands if token.isdigit()), "")
+            for operands in program_invocations(command, "gh", ("pr", "merge"))
+            if not merges_nothing(operands) and merge_commit_asked(operands)}
 
 UNREADABLE_REFUSAL = (
     "Refusing `gh pr merge`: what its base holds against the head could not be read.\n\n"
@@ -67,7 +108,8 @@ def gh_json(cwd, args, timeout=7):
 
 
 def target_of(cwd, pr):
-    """The head, base, head SHA and whether the head is on another repository, or None unread.
+    """The head, base, head SHA, whether the head is on another repository and the title, or None
+    unread.
 
     Under merge_target.py's bound, which merge_onto_unpublished_release.py relies on this sharing.
     """
@@ -78,14 +120,17 @@ def target_of(cwd, pr):
         head, base = payload.get("head") or {}, payload.get("base") or {}
         home = (head.get("repo") or {}).get("full_name") or ""
         fork = home != ((base.get("repo") or {}).get("full_name") or "")
-        target = Target(head.get("ref"), base.get("ref"), head.get("sha"), fork)
+        target = Target(head.get("ref"), base.get("ref"), head.get("sha"), fork,
+                        payload.get("title") or "")
     else:
         payload = gh_json(cwd, ["pr", "view", "--json",
-                                "headRefName,baseRefName,headRefOid,isCrossRepository"], GH_TIMEOUT)
+                                "headRefName,baseRefName,headRefOid,isCrossRepository,title"],
+                          GH_TIMEOUT)
         if not isinstance(payload, dict):
             return None
         target = Target(payload.get("headRefName"), payload.get("baseRefName"),
-                        payload.get("headRefOid"), payload.get("isCrossRepository") is not False)
+                        payload.get("headRefOid"), payload.get("isCrossRepository") is not False,
+                        payload.get("title") or "")
     return target if target.head and target.base and target.commit else None
 
 
@@ -122,8 +167,9 @@ def holds(cwd, head, sha):
     return {0: True, 1: False}.get(held.code)
 
 
-def refuse_one(cwd, pr):
+def refuse_one(cwd, pr, merge_commit=False):
     """What to say about one merge in the command, or None when nothing about it blocks.
+    `merge_commit` is whether the command lands it with one.
 
     Every merge the command carries is decided, not the first: a compound command lands each of
     them, and a guard reading one operand covers one of the merges it was posed.
@@ -146,7 +192,10 @@ def refuse_one(cwd, pr):
         return UNREADABLE_REFUSAL.format(failing)
     # Ahead of the release reading, which reads the fetched ref: an unfetched one can predate the
     # release and name the one before it.
-    fetched = git_answer(["fetch", "-q", "origin", target.base, target.head], cwd=cwd,
+    onto_line = maintenance_line.is_line(target.base)
+    fetched = git_answer(["fetch", "-q", "origin", target.base, target.head,
+                          *([maintenance_line.MAIN] if onto_line else []),
+                          *([] if merge_commit else [maintenance_line.LINES_REFSPEC])], cwd=cwd,
                          timeout=GIT_TIMEOUT)
     if fetched.code != 0:
         return UNREADABLE_REFUSAL.format(
@@ -157,7 +206,31 @@ def refuse_one(cwd, pr):
         return UNREADABLE_REFUSAL.format(
             f"the newest release commit on {target.base} could not be read")
 
-    said = []
+    main_says = None
+    if onto_line:
+        try:
+            main_says = maintenance_line.main_state(cwd)
+        except maintenance_line.UNREAD:
+            return UNREADABLE_REFUSAL.format("which lines origin/main maintains could not be read")
+    said = [f"{label}: {reason}.\n" for reason in
+            maintenance_line.pull_request_reasons(target.base, target.head, target.title,
+                                                  main_says)]
+    if onto_line:
+        try:
+            reading = maintenance_line.read(cwd, target.base, target.commit, GIT_TIMEOUT)
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError):
+            return UNREADABLE_REFUSAL.format(
+                f"what {target.commit[:7]} brings onto {target.base} could not be read")
+        said.extend(f"{label}: {reason}.\n"
+                    for reason in maintenance_line.head_reasons(target.base, reading))
+    if not merge_commit:
+        try:
+            lines = maintenance_line.carried(cwd, target.base, target.commit, GIT_TIMEOUT)
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError):
+            return UNREADABLE_REFUSAL.format(
+                f"which lines {target.commit[:7]} carries past {target.base} could not be read")
+        said.extend(f"{label}: {reason}.\n"
+                    for reason in maintenance_line.squash_reasons(target.base, lines))
     if release:
         held = holds(cwd, target.head, release[0])
         if held is None:
@@ -219,8 +292,9 @@ def main():
                          f"from could not be read itself.\n\n{UNPLACEABLE_MOVE}\n\n"
                          f"{NAME_THE_TREE}\n")
         return 2
+    merge_commits = landed_by_merge_commit(command)
     for pr in targets:
-        refusal = refuse_one(cwd, pr)
+        refusal = refuse_one(cwd, pr, pr in merge_commits)
         if refusal is not None:
             sys.stderr.write(refusal)
             return 2

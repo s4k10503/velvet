@@ -50,12 +50,12 @@ from repository import project_tree  # noqa: E402
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts" / "release"))
 import release_notes  # noqa: E402
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts" / "pr"))
+import maintenance_line  # noqa: E402
+
 CHANGELOG = "Packages/com.velvet.core/CHANGELOG.md"
 
-# The repository's own naming, which CONTRIBUTING.md's maintenance-line section owns. A branch that
-# does not match is not reported on rather than guessed at: a feature branch holds unreleased entries
-# by design, and reporting those would bury the one case this exists for.
-LINE = re.compile(r"^origin/([0-9]+)\.x$")
+REMOTE = "origin/"
 
 # The hook shares SessionStart's budget with the reports beside it, so the fetch is bounded and what
 # follows reads refs already on disk.
@@ -108,12 +108,22 @@ def unread_fragments(cwd, line):
     return [path for path, _ in found if not Path(path).name.startswith(".")]
 
 
-def lines(cwd):
+def remote_branches(cwd):
     listed = answer(["for-each-ref", "--format=%(refname:short)", "refs/remotes/origin"],
                     cwd, READ_TIMEOUT)
-    if listed is None:
-        return []
-    return sorted(name for name in listed.split() if LINE.match(name))
+    return [name for name in (listed or "").split() if name.startswith(REMOTE)]
+
+
+def lines(cwd):
+    # A branch that is not a line is not read for entries: a feature branch holds unreleased entries
+    # by design, and reporting those would bury the one case this exists for.
+    return sorted(name for name in remote_branches(cwd)
+                  if maintenance_line.is_line(name[len(REMOTE):]))
+
+
+def lookalikes(cwd):
+    return sorted(name for name in remote_branches(cwd)
+                  if maintenance_line.lookalike(name[len(REMOTE):]))
 
 
 def waiting(text):
@@ -152,15 +162,16 @@ def items(text):
 def unmerged_into_main(cwd, line):
     """The items this line's CHANGELOG carries that `main`'s does not, or None.
 
-    Read of the content rather than of the ancestry, because nothing that reaches `main` here can
-    leave an ancestry: both branches refuse a direct push, so every change arrives through a pull
-    request and `settle.py` squashes it, which writes a commit whose only parent is `main`. Measured
-    after the line was merged forward -- `merge-base --is-ancestor` was still false, and `git cherry`
+    Read of the content rather than of the ancestry, because a squash or a pick carries a line's
+    entries into `main` and leaves its commits out of `main`'s ancestry. Measured after the line was
+    first merged forward, by a squash -- `merge-base --is-ancestor` was still false, and `git cherry`
     reported all eight commits outstanding, the squash having combined their patches into one whose
-    id matches none of them.
+    id matches none of them. A forward merge landed as a merge commit, which CONTRIBUTING.md's
+    maintenance-line section asks for and `settle.py merge` refuses to squash, leaves the ancestry as
+    well; the content reading clears for that one and for the ones that came by a squash or a pick.
 
     Weaker than an ancestry: an item reworded on the way across reads as missing. That is a line too
-    many on a report, where the ancestry reading was a report nobody could ever clear.
+    many on a report, where an ancestry reading reports a line that no squash or pick can clear.
     """
     there = changelog(cwd, "origin/main")
     here = changelog(cwd, line, reads_fragments(cwd, line))
@@ -171,6 +182,10 @@ def unmerged_into_main(cwd, line):
 
 
 def report(cwd):
+    for name in lookalikes(cwd):
+        yield ("{} is named like a maintenance line and is not one: a line is `<major>.x`, as\n"
+               "CONTRIBUTING.md's maintenance-line section says. Rename it to that if it is one, and\n"
+               "to a name that is not a version if it is not.").format(name)
     for line in lines(cwd):
         unread = unread_fragments(cwd, line)
         if unread:
@@ -206,7 +221,8 @@ def main():
                 "main does not carry {} CHANGELOG {} that {} does, starting with:\n"
                 "  {}{}\n"
                 "A fix made on the line has to reach main, or a branch cut from main reproduces what\n"
-                "it fixed. Carry them across — `cherry-pick -x` names where each came from.".format(
+                "it fixed. Merge the line forward with a merge commit, as CONTRIBUTING.md's\n"
+                "maintenance-line section says.".format(
                     len(outstanding), "entry" if len(outstanding) == 1 else "entries", line,
                     outstanding[0][:96], "…" if len(outstanding[0]) > 96 else ""))
     if said:

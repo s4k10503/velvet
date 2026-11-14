@@ -280,5 +280,385 @@ class UnreadHeadTests(unittest.TestCase):
                          (ALLOWED, None))
 
 
+SECURITY = ("# Security Policy\n\n## Supported versions\n\n| Version | Supported |\n"
+             "| ------- | --------- |\n| 3.0.x   | ✅        |\n| 2.1.x   | ✅        |\n")
+
+
+def velvet_origin(root, security=SECURITY):
+    """A checkout whose origin/main declares 3.0.0 with nothing breaking waiting, and whose
+    SECURITY.md, unless `security` is None, supports 3.0.x and 2.1.x, so the line main maintains is
+    2.x and 3.x is its own series. 2.x is on origin, cut where main stands."""
+    origin, project = root / "origin.git", root / "project"
+    subprocess.run(["git", "init", "-q", "--bare", str(origin)], check=True, timeout=60)
+    subprocess.run(["git", "init", "-q", "-b", "main", str(project)], check=True, timeout=60)
+    git(project, "remote", "add", "origin", str(origin))
+    package = project / "Packages/com.velvet.core/package.json"
+    package.parent.mkdir(parents=True)
+    package.write_text(json.dumps({"name": "com.velvet.core", "version": "3.0.0"}))
+    (package.parent / "CHANGELOG.md").write_text(
+        "# Changelog\n\n## [Unreleased]\n\n## [3.0.0] - 2026-11-14\n\n- A change.\n")
+    if security is not None:
+        (project / "SECURITY.md").write_text(security, encoding="utf-8")
+    git(project, "add", "-A")
+    commit(project, "chore(velvet): release v3.0.0")
+    git(project, "push", "-q", "origin", "main", "main:refs/heads/2.x")
+    git(project, "fetch", "-q", "origin")
+    return project
+
+
+def ask_in(root, project, command):
+    event = {"tool_name": "Bash", "cwd": str(project), "tool_input": {"command": command}}
+    environment = dict(os.environ, HOME=str(root))
+    environment.pop("CLAUDE_PROJECT_DIR", None)
+    return subprocess.run([sys.executable, "-B", str(HOOK)], input=json.dumps(event),
+                          capture_output=True, text=True, env=environment, timeout=120)
+
+
+class LineCutTests(unittest.TestCase):
+    """`velvet_origin`'s checkout. Each creation names a start point, which the guard allows on its
+    own, and a push is read for its line alone, so a refusal here is the line's."""
+
+    def setUp(self):
+        self.root = Path(tempfile.mkdtemp(prefix="velvet-line-cut-"))
+        self.addCleanup(shutil.rmtree, self.root, ignore_errors=True)
+        self.project = velvet_origin(self.root)
+
+    def refused(self, command):
+        """What the guard said in refusing `command`, or "" where it let it through."""
+        result = ask_in(self.root, self.project, command)
+        return result.stderr if result.returncode == REFUSED else ""
+
+    def test_Given_MainsOwnSeries_When_ABranchIsRenamedToItAndPushed_Then_ItIsRefused(self):
+        # Act
+        said = self.refused("git branch -m topic 3.x && git push -u origin HEAD")
+
+        # Assert
+        self.assertIn("Refusing to create `3.x`: 3.x is not a line main maintains", said)
+
+    def test_Given_MainsOwnSeries_When_ABranchIsCopiedToIt_Then_ItIsRefused(self):
+        # Act
+        said = self.refused("git branch -c main 3.x")
+
+        # Assert
+        self.assertIn("Refusing to create `3.x`: 3.x is not a line main maintains", said)
+
+    def test_Given_MainsOwnSeries_When_AnOrphanIsCheckedOutAsIt_Then_ItIsRefused(self):
+        # Act
+        said = self.refused("git checkout --orphan 3.x")
+
+        # Assert
+        self.assertIn("Refusing to create `3.x`: 3.x is not a line main maintains", said)
+
+    def test_Given_MainsOwnSeries_When_AWorktreeIsAddedAtAPathNamedForIt_Then_ItIsRefused(self):
+        # Act
+        said = self.refused("git worktree add ../3.x && git -C ../3.x push -u origin HEAD")
+
+        # Assert
+        self.assertIn("Refusing to create `3.x`: 3.x is not a line main maintains", said)
+
+    def test_Given_TheCurrentBranchIsMainsOwnSeries_When_HeadIsPushed_Then_ItIsRefused(self):
+        # Arrange
+        git(self.project, "switch", "-q", "-c", "3.x")
+
+        # Act
+        said = self.refused("git push -u origin HEAD")
+
+        # Assert
+        self.assertIn("Refusing to push `3.x`: 3.x is not a line main maintains", said)
+
+    def test_Given_TheCurrentBranchIsMainsOwnSeries_When_APushNamesNoRefspec_Then_ItIsRefused(self):
+        # Arrange
+        git(self.project, "switch", "-q", "-c", "3.x")
+
+        # Act
+        said = self.refused("git push")
+
+        # Assert
+        self.assertIn("Refusing to push `3.x`: 3.x is not a line main maintains", said)
+
+    def test_Given_ALocalBranchForMainsOwnSeries_When_EveryBranchIsPushed_Then_ItIsRefused(self):
+        # Arrange
+        git(self.project, "branch", "3.x")
+
+        # Act
+        said = self.refused("git push --all origin")
+
+        # Assert
+        self.assertIn("Refusing to push `3.x`: 3.x is not a line main maintains", said)
+
+    def test_Given_MainsCommitsNotOnTheLine_When_MainIsPushedToTheLine_Then_ItIsRefused(self):
+        # Arrange — main moves past where 2.x was cut.
+        commit(self.project, "fix(velvet): main's own fix")
+        main_fix = git(self.project, "rev-parse", "HEAD").stdout.strip()
+        git(self.project, "push", "-q", "origin", "main")
+
+        # Act
+        said = self.refused("git push origin main:2.x")
+
+        # Assert
+        self.assertIn(f"Refusing to push to `2.x`: it carries 1 commit of main that 2.x does not "
+                      f"hold, starting with {main_fix[:7]}", said)
+
+    def test_Given_OriginsRepositoryNamedByItsPath_When_MainsOwnSeriesIsPushedThere_Then_ItIsRefused(self):
+        # Act
+        said = self.refused(f"git push {self.root / 'origin.git'} HEAD:refs/heads/3.x")
+
+        # Assert
+        self.assertIn("Refusing to push `3.x`: 3.x is not a line main maintains", said)
+
+    def test_Given_OriginsRepositoryNamedByAFileUrl_When_MainsOwnSeriesIsPushedThere_Then_ItIsRefused(self):
+        # Act
+        said = self.refused(f"git push file://{self.root / 'origin.git'} HEAD:refs/heads/3.x")
+
+        # Assert
+        self.assertIn("Refusing to push `3.x`: 3.x is not a line main maintains", said)
+
+    def test_Given_ASecondRemoteForOriginsRepository_When_MainsOwnSeriesIsPushedThere_Then_ItIsRefused(self):
+        # Arrange
+        git(self.project, "remote", "add", "gh", str(self.root / "origin.git"))
+
+        # Act
+        said = self.refused("git push gh HEAD:refs/heads/3.x")
+
+        # Assert
+        self.assertIn("Refusing to push `3.x`: 3.x is not a line main maintains", said)
+
+    # GREEN_ON_BASE(characterization): the base reads no push, so it lets this one through.
+    # What it pins is that another repository's lines are not origin's: reading every remote as
+    # origin reddens it.
+    def test_Given_ARepositoryThatIsNotOrigins_When_MainsOwnSeriesIsPushedThere_Then_ItIsAllowed(self):
+        # Arrange
+        subprocess.run(["git", "init", "-q", "--bare", str(self.root / "fork.git")], check=True,
+                       timeout=60)
+
+        # Act
+        result = ask_in(self.root, self.project,
+                        f"git push {self.root / 'fork.git'} HEAD:refs/heads/3.x")
+
+        # Assert
+        self.assertEqual(result.returncode, ALLOWED)
+
+    # GREEN_ON_BASE(characterization): the base reads no push, so it lets this one through.
+    # What it pins is that a tree with no origin is not this repository: reading it as one that
+    # cannot be told reddens it.
+    def test_Given_ATreeWithNoOrigin_When_ALineIsPushedToAPath_Then_ItIsAllowed(self):
+        # Arrange
+        git(self.project, "remote", "remove", "origin")
+
+        # Act
+        result = ask_in(self.root, self.project,
+                        f"git push {self.root / 'fork.git'} HEAD:refs/heads/3.x")
+
+        # Assert
+        self.assertEqual(result.returncode, ALLOWED)
+
+    def test_Given_ATreeThatIsNotThere_When_ALineIsPushedFromIt_Then_ItIsRefusedAsUntold(self):
+        # Act
+        said = self.refused(f"git -C {self.root / 'missing'} push origin HEAD:refs/heads/3.x")
+
+        # Assert
+        self.assertIn("whether the push reaches origin's repository could not be told", said)
+
+    # GREEN_ON_BASE(characterization): the base lets a named start point through whatever its name.
+    # What it pins is that a tree with no origin is not this repository: refusing a line where
+    # origin cannot be read reddens it.
+    def test_Given_ATreeWithNoOrigin_When_ALineIsCreated_Then_ItIsAllowed(self):
+        # Arrange
+        git(self.project, "remote", "remove", "origin")
+
+        # Act
+        result = ask_in(self.root, self.project, "git branch 3.x HEAD")
+
+        # Assert
+        self.assertEqual(result.returncode, ALLOWED)
+
+    # GREEN_ON_BASE(characterization): the base lets a named start point through whatever its name.
+    # What it pins is that an origin with no `main` is not this repository: refusing a line where
+    # origin/main cannot be fetched reddens it.
+    def test_Given_AnOriginWithNoMain_When_ALineIsCreated_Then_ItIsAllowed(self):
+        # Arrange — origin carries a branch of another name only.
+        trunk = self.root / "trunk.git"
+        subprocess.run(["git", "init", "-q", "--bare", str(trunk)], check=True, timeout=60)
+        git(self.project, "push", "-q", str(trunk), "main:refs/heads/trunk")
+        git(self.project, "remote", "set-url", "origin", str(trunk))
+
+        # Act
+        result = ask_in(self.root, self.project, "git branch 3.x HEAD")
+
+        # Assert
+        self.assertEqual(result.returncode, ALLOWED)
+
+    def test_Given_ATreeThatIsNotThere_When_MainsOwnSeriesIsCreatedInIt_Then_ItIsRefusedAsUnread(self):
+        # Act
+        said = self.refused(f"git -C {self.root / 'missing'} branch 3.x origin/main")
+
+        # Assert
+        self.assertIn("Refusing to create `3.x`: which lines main maintains could not be read", said)
+
+    def test_Given_AnOriginThatCannotBeFetched_When_ALineIsCreated_Then_ItIsRefusedAsUnread(self):
+        # Arrange
+        git(self.project, "remote", "set-url", "origin", str(self.root / "gone.git"))
+
+        # Act
+        said = self.refused("git branch 2.x origin/main")
+
+        # Assert
+        self.assertIn("Refusing to create `2.x`: which lines main maintains could not be read", said)
+
+    def test_Given_ALocalLineAGlobMatches_When_TheGlobIsPushed_Then_ItIsRefused(self):
+        # Arrange
+        git(self.project, "branch", "3.x")
+
+        # Act
+        said = self.refused("git push origin 'refs/heads/*:refs/heads/*'")
+
+        # Assert
+        self.assertIn("Refusing to push `3.x`: 3.x is not a line main maintains", said)
+
+    def test_Given_ABranchThatIsNoLineAGlobWritesToALine_When_TheGlobIsPushed_Then_ItIsRefused(self):
+        # Arrange
+        git(self.project, "branch", "x")
+
+        # Act
+        said = self.refused("git push origin 'refs/heads/x*:refs/heads/3.x*'")
+
+        # Assert
+        self.assertIn("Refusing to push `3.x`: 3.x is not a line main maintains", said)
+
+    # GREEN_ON_BASE(characterization): the base reads no push, so it lets this one through.
+    # What it pins is that a glob names only what it matches: reading a glob as every local line
+    # reddens it.
+    def test_Given_ALocalLineAGlobDoesNotMatch_When_TheGlobIsPushed_Then_ItIsAllowed(self):
+        # Arrange — a destination that would name 1.x, so the source side alone keeps it out.
+        git(self.project, "branch", "1.x")
+        git(self.project, "branch", "feat/knob")
+
+        # Act
+        result = ask_in(self.root, self.project, "git push origin 'refs/heads/feat/*:refs/heads/*'")
+
+        # Assert
+        self.assertEqual(result.returncode, ALLOWED)
+
+    # GREEN_ON_BASE(characterization): the base reads no push, so it lets this one through.
+    # What it pins is that a fix the line takes is let through: refusing every commit a push brings
+    # reddens it.
+    def test_Given_AFixOfTheLinesOwn_When_ItIsPushedToTheLine_Then_ItIsAllowed(self):
+        # Arrange
+        git(self.project, "switch", "-q", "-c", "fix", "origin/2.x")
+        commit(self.project, "fix(velvet): the line's own fix")
+
+        # Act
+        result = ask_in(self.root, self.project, "git push origin fix:2.x")
+
+        # Assert
+        self.assertEqual(result.returncode, ALLOWED)
+
+    def ask(self, command):
+        event = {"tool_name": "Bash", "cwd": str(self.project), "tool_input": {"command": command}}
+        environment = dict(os.environ, HOME=str(self.root))
+        return subprocess.run([sys.executable, "-B", str(HOOK)], input=json.dumps(event),
+                              capture_output=True, text=True, env=environment, timeout=120)
+
+    def test_Given_MainsOwnSeries_When_ItsLineIsCreated_Then_ItIsRefused(self):
+        # Act
+        result = self.ask("git branch 3.x origin/main")
+
+        # Assert
+        self.assertIn("3.x is not a line main maintains: main is building 3.x",
+                      result.stderr if result.returncode == REFUSED else "")
+
+    def test_Given_MainsOwnSeries_When_ItsLineIsPushed_Then_ItIsRefused(self):
+        # Act
+        result = self.ask("git push origin origin/main:refs/heads/3.x")
+
+        # Assert
+        self.assertIn("3.x is not a line main maintains: main is building 3.x",
+                      result.stderr if result.returncode == REFUSED else "")
+
+    # GREEN_ON_BASE(characterization): the base lets a named start point through whatever its name.
+    # What it pins is that the line main maintains is not refused: refusing every line reddens it.
+    def test_Given_TheLineMainMaintains_When_ItIsCreated_Then_ItIsAllowed(self):
+        # Act
+        result = self.ask("git branch 2.x origin/main")
+
+        # Assert
+        self.assertEqual(result.returncode, ALLOWED)
+
+    # GREEN_ON_BASE(characterization): the base reads no push at all, so it lets this one through.
+    # What it pins is that deleting a line is no push to one: reading `--delete` as one reddens it.
+    def test_Given_MainsOwnSeries_When_ItsLineIsDeleted_Then_ItIsAllowed(self):
+        # Act
+        result = self.ask("git push origin --delete 3.x")
+
+        # Assert
+        self.assertEqual(result.returncode, ALLOWED)
+
+
+def repository(url):
+    """`line_branches.repository` for `url`, imported where it is asked rather than with this
+    module, which the cases above load without."""
+    sys.path.insert(0, str(REPO_ROOT / ".claude/hooks/lib"))
+    import line_branches
+    return line_branches.repository(url, ".")
+
+
+# This repository's origin, spelled each way a push can name it.
+ORIGIN_SPELLINGS = ("https://github.com/s4k10503/velvet.git", "https://github.com/S4K10503/velvet",
+                    "git@github.com:s4k10503/velvet.git", "ssh://git@github.com/s4k10503/velvet.git")
+
+
+class RepositorySpellingTests(unittest.TestCase):
+    def test_Given_OriginSpelledEachWayAPushCanName_When_Read_Then_EachIsOneRepository(self):
+        # Act
+        read = {repository(url) for url in ORIGIN_SPELLINGS}
+
+        # Assert
+        self.assertEqual(len(read), 1)
+
+    def test_Given_AForkOfTheSameName_When_Read_Then_ItIsNotOrigins(self):
+        # Act
+        read = repository("git@github.com:someone/velvet.git")
+
+        # Assert
+        self.assertNotEqual(read, repository(ORIGIN_SPELLINGS[0]))
+
+
+class LineTreeTests(unittest.TestCase):
+    """Trees the line reading cannot ask: one that is not this repository, and one it cannot read."""
+
+    def setUp(self):
+        self.root = Path(tempfile.mkdtemp(prefix="velvet-line-tree-"))
+        self.addCleanup(shutil.rmtree, self.root, ignore_errors=True)
+
+    # GREEN_ON_BASE(characterization): the base reads no push, so it lets this one through.
+    # What it pins is that a tree whose main holds no Velvet package is left alone: dropping the
+    # package check reddens it.
+    def test_Given_ATreeThatIsNotThisRepository_When_ALineIsPushed_Then_ItIsAllowed(self):
+        # Arrange
+        origin, project = self.root / "origin.git", self.root / "elsewhere"
+        subprocess.run(["git", "init", "-q", "--bare", str(origin)], check=True, timeout=60)
+        subprocess.run(["git", "init", "-q", "-b", "main", str(project)], check=True, timeout=60)
+        git(project, "remote", "add", "origin", str(origin))
+        commit(project, "a project of its own")
+        git(project, "push", "-q", "origin", "main")
+
+        # Act
+        result = ask_in(self.root, project, "git push origin HEAD:refs/heads/1.x")
+
+        # Assert
+        self.assertEqual(result.returncode, ALLOWED)
+
+    def test_Given_AMainWhoseSecurityPolicyIsMissing_When_ALineIsPushed_Then_WhatGitSaidAndAWayOutAreNamed(self):
+        # Arrange
+        project = velvet_origin(self.root, security=None)
+
+        # Act
+        result = ask_in(self.root, project, "git push origin HEAD:refs/heads/2.x")
+
+        # Assert
+        self.assertIn("'SECURITY.md' does not exist in 'origin/main'\n\nFetch origin and retry",
+                      result.stderr if result.returncode == REFUSED else "")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

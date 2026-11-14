@@ -11,6 +11,12 @@ each miss is silent: exit 0 and no output is what a guard with nothing to say lo
 `BranchGuardParsingTests` holds the table of what is and is not a creation for `checkout`, `switch`
 and `branch`; `scripts/hooks/test_branch_from_unmerged.py` holds it for `git worktree add`, whose
 start point is a positional beside the path rather than the token after the flag.
+
+It also refuses creating or pushing a maintenance line `main` does not maintain, from whatever
+start point, and a push to one it does that brings what `maintenance_line.head_reasons` refuses;
+`lib/line_branches.py` reads which lines a command creates or pushes. A push behind a `cd` the
+guard cannot place is not read for its lines: the guard stands down there rather than refusing every
+push behind such a move.
 """
 
 import json
@@ -19,6 +25,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 from deferrals import DEFERRALS_OPERAND, deferred, disowned, unusable
+import line_branches
 from repository import git_answer
 from shell_commands import (NAME_THE_TREE, UNPLACEABLE_MOVE, UNRESOLVED_CD, command_directory,
                             command_segments, git_invocation, tokens_of, without_redirections)
@@ -282,15 +289,22 @@ def main():
 
     command = event.get("tool_input", {}).get("command", "")
     made = creations(command)
-    if not made:
+    creates = made or line_branches.created(command)
+    if not creates and not line_branches.pushes(command):
         return 0
 
     cwd = command_directory(command, event.get("cwd") or ".")
+    # A push's lines are read off the tree it runs in, which an unplaceable move leaves unread; it
+    # stands down there rather than refusing every push behind such a move.
+    if cwd is UNRESOLVED_CD and not creates:
+        return 0
     if cwd is UNRESOLVED_CD:
         sys.stderr.write("Refusing this branch creation: which tree it would branch in could not "
                          f"be read.\n\n{UNPLACEABLE_MOVE}\n\n{NAME_THE_TREE}\n")
         return 2
-    refusals = []
+    # Apart from the deferrals below, which release a creation stacked on unmerged work and not a
+    # line main does not maintain.
+    refusals = line_branches.refusals(command, cwd, made)
     # Every creation in the command is evaluated. Consulting only the first let an undeferred
     # creation chained after a deferred one through on the deferral meant for the other name.
     for name, start_point, directory in made:
