@@ -1,0 +1,32 @@
+{
+ "detail": "EditMode: 1 failed among the 390 case(s) that ran the site: Given_AGradientBoundToAnElement_When_PatchedWithItsClassesAgain_Then_ItAllocatesWhatReadingThemDoes",
+ "file": "892ca6f69859a64c035e3021eae85ab8fa06d09681d5ba5cdd403bda10bb6c99",
+ "killers": [
+  {
+   "case": "Velvet.Tests.RelativeLengthPollAllocationTests.Given_AGradientBoundToAnElement_When_PatchedWithItsClassesAgain_Then_ItAllocatesWhatReadingThemDoes",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/RelativeLengthPollAllocationTests.cs": "3538cd9cff94d219f00fad3680ac110939eb786a0f23da1eedb0dacf795bbd67",
+    "Packages/com.velvet.core/TestUtilities/GCAllocationCanary.cs": "fc61cead251d89e031e7591ac080a706d0568f2f3427cd7cda1ec3c93b965e58",
+    "Packages/com.velvet.core/TestUtilities/GCAllocationProbe.cs": "492823c099cf4f4de89da0da69c98d45cfc042070d93e2d0c0b95773310ebc2c"
+   }
+  }
+ ],
+ "measured_by": "43587907292",
+ "mutant": {
+  "after": "true",
+  "before": "false",
+  "column": 29,
+  "line": 462,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleGradientClass.cs",
+  "shadowed": [
+   "line removed"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
+ "verdict": "killed"
+}

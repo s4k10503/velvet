@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode: the editor was killed at 806s, 1.5 times the baseline's 533s plus 5s, with no readable result",
+ "file": "63fa6ecd4172709f37b655bb7b42bba9c2a611631b6fee4f8b5362b64ffc3e98",
+ "killers": [],
+ "measured_by": "43587907292",
+ "mutant": {
+  "after": ";",
+  "before": "at++;",
+  "column": 16,
+  "line": 450,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Routing/RouteTree.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
+ "verdict": "killed (timed out)"
+}

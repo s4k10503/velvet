@@ -1,0 +1,31 @@
+{
+ "detail": "EditMode: 1 failed among the 24 case(s) that ran the site: Given_AComponentRenderingNothingMountedInFrontOfAnEarlierOne_When_ItSuspendsAgain_Then_ItsCleanupRunsFirst",
+ "file": "4cb6c439faa3babb1126a003a13b519efeee1822be1845d4726326c72e6a2dd2",
+ "killers": [
+  {
+   "case": "Velvet.Tests.SuspenseHideCommitOrderEventLogTests.Given_AComponentRenderingNothingMountedInFrontOfAnEarlierOne_When_ItSuspendsAgain_Then_ItsCleanupRunsFirst",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/SuspenseHideCommitOrderEventLogTests.cs": "fad9d9f26e3ce273fa863a4a86e9d5d77268e7983ce93c6a8d79cd0de996a0d9",
+    "Packages/com.velvet.core/TestUtilities/EventLog.cs": "f8851c55cde58b2a9c3b2ea7282a508a425e4c459badf397641be77e18571845",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  }
+ ],
+ "measured_by": "43587907292",
+ "mutant": {
+  "after": "true",
+  "before": "false",
+  "column": 19,
+  "line": 78,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/PreOrderTeardown.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
+ "verdict": "killed"
+}

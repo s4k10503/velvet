@@ -1,0 +1,46 @@
+{
+ "detail": "EditMode: 3 failed among the 37 case(s) that ran the site: Given_AMotionMovingTowardItsLabelOnABezier_When_TheLabelFlipsBackOnASpring_Then_ItKeepsMovingThatWayForAFrame, Given_ASpringItsDurationDescribesMovingTowardItsLabel_When_TheLabelFlipsBack_Then_ItKeepsMovingThatWayForAFrame, Given_ASpringMotionMovingTowardItsLabel_When_TheLabelFlipsBack_Then_ItKeepsMovingThatWayForAFrame",
+ "file": "5f8838919b7f5297e7e740e6ed6d6e342fa32f8f850f0b8b15afe28a2bffae99",
+ "killers": [
+  {
+   "case": "Velvet.Tests.MotionDriverInterruptionTests.Given_AMotionMovingTowardItsLabelOnABezier_When_TheLabelFlipsBackOnASpring_Then_ItKeepsMovingThatWayForAFrame",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionDriverInterruptionTests.cs": "84fbe3b6a7cb44f279c864069df3e7a078e3fc76e9b676d2c3bf3139a676d759",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  },
+  {
+   "case": "Velvet.Tests.MotionDriverInterruptionTests.Given_ASpringItsDurationDescribesMovingTowardItsLabel_When_TheLabelFlipsBack_Then_ItKeepsMovingThatWayForAFrame",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionDriverInterruptionTests.cs": "84fbe3b6a7cb44f279c864069df3e7a078e3fc76e9b676d2c3bf3139a676d759",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  },
+  {
+   "case": "Velvet.Tests.MotionDriverInterruptionTests.Given_ASpringMotionMovingTowardItsLabel_When_TheLabelFlipsBack_Then_ItKeepsMovingThatWayForAFrame",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionDriverInterruptionTests.cs": "84fbe3b6a7cb44f279c864069df3e7a078e3fc76e9b676d2c3bf3139a676d759",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  }
+ ],
+ "measured_by": "43587907292",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 70,
+  "line": 757,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Styling/MotionSpringDriver.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
+ "verdict": "killed"
+}

@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "5c47cf33ad394c3a63920d2903eb156d072b3d93a95225e5c76468ed61207148",
+ "killers": [],
+ "measured_by": "43587907292",
+ "mutant": {
+  "after": "<=",
+  "before": "<",
+  "column": 26,
+  "line": 459,
+  "operator": "boundary",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberEffects.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
+ "verdict": "survived"
+}

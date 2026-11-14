@@ -1,0 +1,50 @@
+{
+ "detail": "EditMode: 2 failed among the 492 case(s) that ran the site: Given_AMeasuredWidthInsideAnotherOnAPanelWhoseClockIsHeld_When_RenderedOnce_Then_ItMeasuresTheWidthTheOuterResolvedTo, Given_AMeasuredWidthOnAPanelWhoseClockIsHeld_When_RenderedOnce_Then_ItIsLaidOutAtTheWidthItMeasures",
+ "file": "241f79512abf2fbb7ee05a98d27e02e00229b4c41adc09e6f26d04147bd7ccfd",
+ "killers": [
+  {
+   "case": "Velvet.Tests.VelvetPreviewPanelTests.Given_AMeasuredWidthInsideAnotherOnAPanelWhoseClockIsHeld_When_RenderedOnce_Then_ItMeasuresTheWidthTheOuterResolvedTo",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Preview/Tests/Editor/VelvetPreviewPanelTests.cs": "9c2bfecefe49dd4ce3fff7c7b58e270edd9db674beab3a45449365b92a5c4215",
+    "Packages/com.velvet.core/TestUtilities/ActionDisposable.cs": "e95e072a106d4d4a77b0e090c5bdd56a05df277aa99aeb1d28e41c5ce3d3e1ea",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/RenderTexturePanelHost.cs": "194e0d5bc1138e5ae5cdeeae94298ce65a10fe077c4a75c73599e7abfa531bb6",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff",
+    "Packages/com.velvet.core/TestUtilities/TestPanelSettings.cs": "c7a36f6a4acd48eb54e9b4c339d7caf0c56cbef64dacd018497182f9fadacc29"
+   }
+  },
+  {
+   "case": "Velvet.Tests.VelvetPreviewPanelTests.Given_AMeasuredWidthOnAPanelWhoseClockIsHeld_When_RenderedOnce_Then_ItIsLaidOutAtTheWidthItMeasures",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Preview/Tests/Editor/VelvetPreviewPanelTests.cs": "9c2bfecefe49dd4ce3fff7c7b58e270edd9db674beab3a45449365b92a5c4215",
+    "Packages/com.velvet.core/TestUtilities/ActionDisposable.cs": "e95e072a106d4d4a77b0e090c5bdd56a05df277aa99aeb1d28e41c5ce3d3e1ea",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/RenderTexturePanelHost.cs": "194e0d5bc1138e5ae5cdeeae94298ce65a10fe077c4a75c73599e7abfa531bb6",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff",
+    "Packages/com.velvet.core/TestUtilities/TestPanelSettings.cs": "c7a36f6a4acd48eb54e9b4c339d7caf0c56cbef64dacd018497182f9fadacc29"
+   }
+  }
+ ],
+ "measured_by": "43587907292",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 26,
+  "line": 407,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleLengthExpression.cs",
+  "shadowed": [
+   "clause removed",
+   "equality",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
+ "verdict": "killed"
+}

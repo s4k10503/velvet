@@ -1,0 +1,23 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "a2b81c3d2e1342974d168185dfa3a7b36003aa7899b3092e4af86ad3ff73a07a",
+ "killers": [],
+ "measured_by": "43587907292",
+ "mutant": {
+  "after": "false",
+  "before": "true",
+  "column": 24,
+  "line": 325,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Styling/TextLineBox.cs",
+  "shadowed": [
+   "line removed"
+  ]
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
+ "verdict": "survived"
+}

@@ -1,0 +1,31 @@
+{
+ "detail": "EditMode: 1 failed: Given_NoMatcher_When_ATreeMountsOnARootAnAuthorsRuleGivesAFont_Then_ItsLabelResolvesTheDefaultFamily",
+ "file": "df2c8ff23a32e827140dca36a42920eb99f8035a5a477da798e117e68e48cdf8",
+ "killers": [
+  {
+   "case": "Velvet.Tests.DefaultFamilyMatcherFallbackTests.Given_NoMatcher_When_ATreeMountsOnARootAnAuthorsRuleGivesAFont_Then_ItsLabelResolvesTheDefaultFamily",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/DefaultFamilyMatcherFallbackTests.cs": "f04385f4aebc511d7c957c1dd70a427c4ab082c678f4b9c6e8e1f0751779c324",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26"
+   }
+  }
+ ],
+ "measured_by": "43587907292",
+ "mutant": {
+  "after": ";",
+  "before": "Decide(element, root, asset);",
+  "column": 20,
+  "line": 130,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/DefaultFamilyRoots.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
+ "verdict": "killed"
+}

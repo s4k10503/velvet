@@ -1,0 +1,23 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "595abf376989530e11439f39b99da78bc8c0219fb2c7fc424ad2904254f67e8b",
+ "killers": [],
+ "measured_by": "43587907292",
+ "mutant": {
+  "after": ">",
+  "before": ">=",
+  "column": 22,
+  "line": 89,
+  "operator": "boundary",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ReconcilerBufferPool.cs",
+  "shadowed": [
+   "line removed"
+  ]
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
+ "verdict": "survived"
+}

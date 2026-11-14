@@ -1,0 +1,32 @@
+{
+ "detail": "EditMode: 1 failed: Given_AnElementABoundaryHid_When_TheBoundaryIsRemovedAndTheElementGoesBackToThePool_Then_ItIsNoLongerRecordedHidden",
+ "file": "75124c43071f726453709a5937a3d1b31b4071f815c6f72ca223486497f603a6",
+ "killers": [
+  {
+   "case": "Velvet.Tests.SuspenseHiddenPrimaryTests.Given_AnElementABoundaryHid_When_TheBoundaryIsRemovedAndTheElementGoesBackToThePool_Then_ItIsNoLongerRecordedHidden",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/SuspenseHiddenPrimaryTests.cs": "7cd62f62bd8b1fd815d37659e83232241351aa5a1656f4b93a20438ea5789f8c",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  }
+ ],
+ "measured_by": "43587907292",
+ "mutant": {
+  "after": ";",
+  "before": "s_hidden.Remove(element);",
+  "column": 12,
+  "line": 75,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/SuspenseHiddenElements.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
+ "verdict": "killed"
+}

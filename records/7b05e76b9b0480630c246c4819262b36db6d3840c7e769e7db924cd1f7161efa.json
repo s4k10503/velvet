@@ -1,0 +1,38 @@
+{
+ "detail": "EditMode: 2 failed among the 16 case(s) that ran the site: Given_AContainerQueryClass_When_ItsBindingIsRead_Then_ItAllocatesWhatOneParseAndItsQueryDo(\"max-md:p-2\",\"@max-md/*viewport\"), Given_AContainerQueryClass_When_ItsBindingIsRead_Then_ItAllocatesWhatOneParseAndItsQueryDo(\"max-[600px]:p-2\",\"@max-[600px]/*viewport\")",
+ "file": "3ab89d827f92af5a77d744d86e3968894c68c719b6e822f300c0eb5d89faa318",
+ "killers": [
+  {
+   "case": "Velvet.Tests.VariantConfigureAllocationTests.Given_AContainerQueryClass_When_ItsBindingIsRead_Then_ItAllocatesWhatOneParseAndItsQueryDo(\"max-[600px]:p-2\",\"@max-[600px]/*viewport\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/VariantConfigureAllocationTests.cs": "186ddd321fe6c288692179537cbcffdcbae8a949a5533544af520d938c08e8e6",
+    "Packages/com.velvet.core/TestUtilities/GCAllocationCanary.cs": "fc61cead251d89e031e7591ac080a706d0568f2f3427cd7cda1ec3c93b965e58",
+    "Packages/com.velvet.core/TestUtilities/GCAllocationProbe.cs": "492823c099cf4f4de89da0da69c98d45cfc042070d93e2d0c0b95773310ebc2c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.VariantConfigureAllocationTests.Given_AContainerQueryClass_When_ItsBindingIsRead_Then_ItAllocatesWhatOneParseAndItsQueryDo(\"max-md:p-2\",\"@max-md/*viewport\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/VariantConfigureAllocationTests.cs": "186ddd321fe6c288692179537cbcffdcbae8a949a5533544af520d938c08e8e6",
+    "Packages/com.velvet.core/TestUtilities/GCAllocationCanary.cs": "fc61cead251d89e031e7591ac080a706d0568f2f3427cd7cda1ec3c93b965e58",
+    "Packages/com.velvet.core/TestUtilities/GCAllocationProbe.cs": "492823c099cf4f4de89da0da69c98d45cfc042070d93e2d0c0b95773310ebc2c"
+   }
+  }
+ ],
+ "measured_by": "43587907292",
+ "mutant": {
+  "after": "false",
+  "before": "true",
+  "column": 23,
+  "line": 174,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleContainerQuery.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
+ "verdict": "killed"
+}

@@ -1,0 +1,24 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "eb6bc4b5c7f8d8b23a978551de3a6d3bc92d1eb4f7a8b7fb9396bece4b7f910f",
+ "killers": [],
+ "measured_by": "43587907292",
+ "mutant": {
+  "after": "<",
+  "before": "<=",
+  "column": 99,
+  "line": 21,
+  "operator": "boundary",
+  "path": "Packages/com.velvet.core/Runtime/Styling/SkewTransformFactor.cs",
+  "shadowed": [
+   "clause removed",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
+ "verdict": "survived"
+}

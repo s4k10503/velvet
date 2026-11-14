@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed among the 488 case(s) that ran the site: Given_APresenceBetweenThatPropagates_When_TheOuterKeyIsRemoved_Then_TheChildIsHeldUntilTheInnerExitCompletes(\"middle-top\")",
+ "file": "018860714571638b2692145c51a5d7ea7a7b066e04d44ff62b6c707335b13a46",
+ "killers": [
+  {
+   "case": "Velvet.Tests.AnimatePresencePropagateTests.Given_APresenceBetweenThatPropagates_When_TheOuterKeyIsRemoved_Then_TheChildIsHeldUntilTheInnerExitCompletes(\"middle-top\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/AnimatePresencePropagateTests.cs": "dce4a40e97215e5879b28f2da1fef059618e8a6a93b058269ebb35e7aa27ef27",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  }
+ ],
+ "measured_by": "43587907292",
+ "mutant": {
+  "after": ";",
+  "before": "walk.ReuseSuspended++;",
+  "column": 24,
+  "line": 1013,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/GeneralPathReconciler.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
+ "verdict": "killed"
+}

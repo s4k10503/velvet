@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "a98051ec7445f61ff2468815d015bce8d0f91232ea132170c2f2c0694baeed99",
+ "killers": [],
+ "measured_by": "43587907292",
+ "mutant": {
+  "after": ";",
+  "before": "style.visibility = rs.visibility;",
+  "column": 12,
+  "line": 211,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/BackdropFilterLayer.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
+ "verdict": "survived"
+}

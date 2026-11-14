@@ -1,0 +1,29 @@
+{
+ "detail": "EditMode: 1 failed among the 39 case(s) that ran the site: Given_AShadowedElement_When_ShadowClassRemovedByPatch_Then_PaintBindingIsDetached",
+ "file": "157fe599610fb3016cd0c8961552af3a3ed5358e8975fa3a70470326d3180c27",
+ "killers": [
+  {
+   "case": "Velvet.Tests.PaintBindingPatchTests.Given_AShadowedElement_When_ShadowClassRemovedByPatch_Then_PaintBindingIsDetached",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PaintBindingPatchTests.cs": "56c5a8942dae531fad09ae7aa04d5ca48f0236a5f28d95f2c83ebacf0e91699d",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  }
+ ],
+ "measured_by": "43587907292",
+ "mutant": {
+  "after": ";",
+  "before": "BoxShadowSilhouette.Detach(element, binding);",
+  "column": 16,
+  "line": 81,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberBoxShadowApplier.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
+ "verdict": "killed"
+}

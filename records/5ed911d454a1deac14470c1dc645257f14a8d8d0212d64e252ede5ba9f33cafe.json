@@ -1,0 +1,28 @@
+{
+ "detail": "EditMode: 1 failed among the 230 case(s) that ran the site: Given_ADropShadowColorFunction_When_Applied_Then_TheShadowTakesIt",
+ "file": "204a3fa94dc959802c8ff3980534a4eb8a485b2d906aa6cd99e78f5c7238c280",
+ "killers": [
+  {
+   "case": "Velvet.Tests.CssColorFunctionUtilityTests.Given_ADropShadowColorFunction_When_Applied_Then_TheShadowTakesIt",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/CssColorFunctionUtilityTests.cs": "8207ff9deab2bb26092ab04e3138681e5c38db6908d97f648190b8e92596d5e2"
+   }
+  }
+ ],
+ "measured_by": "43587907292",
+ "mutant": {
+  "after": ";",
+  "before": "AppendDropShadows(element, map, ref functions);",
+  "column": 16,
+  "line": 4429,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleArbitraryValueResolver.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
+ "verdict": "killed"
+}

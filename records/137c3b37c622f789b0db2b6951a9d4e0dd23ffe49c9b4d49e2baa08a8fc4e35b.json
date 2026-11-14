@@ -1,0 +1,34 @@
+{
+ "detail": "EditMode: 2 failed among the 29 case(s) that ran the site: Given_ACornerUnderTheSpread_When_ARingSpreadsIt_Then_ItFollowsTheCubic, Given_ASquareCorner_When_ARingSpreadsIt_Then_ItStaysSquare",
+ "file": "3665431fd20c2cb3d7f7b6d9ca2ab894e0bc2f470684ea2ace1c0ca695bec3e6",
+ "killers": [
+  {
+   "case": "Velvet.Tests.RingBandShapeTests.Given_ACornerUnderTheSpread_When_ARingSpreadsIt_Then_ItFollowsTheCubic",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/RingBandShapeTests.cs": "b4f9b35f987fa6ab4d40359b68af38418d9716024b33c22a38f12b23f06891cd"
+   }
+  },
+  {
+   "case": "Velvet.Tests.RingBandShapeTests.Given_ASquareCorner_When_ARingSpreadsIt_Then_ItStaysSquare",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/RingBandShapeTests.cs": "b4f9b35f987fa6ab4d40359b68af38418d9716024b33c22a38f12b23f06891cd"
+   }
+  }
+ ],
+ "measured_by": "43587907292",
+ "mutant": {
+  "after": "+",
+  "before": "-",
+  "column": 31,
+  "line": 24,
+  "operator": "arithmetic",
+  "path": "Packages/com.velvet.core/Runtime/Styling/RingBandShape.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
+ "verdict": "killed"
+}

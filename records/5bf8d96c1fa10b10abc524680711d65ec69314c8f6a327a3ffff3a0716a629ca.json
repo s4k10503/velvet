@@ -1,14 +1,15 @@
 {
- "detail": "EditMode: 2 failed: Given_AFocusedRingElement_When_TheRefMovesToAReplacementElement_Then_IsFocusedReturnsToFalse, Given_AFocusVisibleRing_When_TheElementBlurs_Then_IsFocusVisibleReturnsToFalse",
+ "detail": "EditMode: 2 failed among the 124 case(s) that ran the site: Given_AFocusedRingElement_When_TheRefMovesToAReplacementElement_Then_IsFocusedReturnsToFalse, Given_AFocusVisibleRingWhoseElementUnmountedWhileFocused_When_AKeyIsPressed_Then_IsFocusVisibleStaysFalse",
  "file": "9b0c7d14eea0a483740c6be3b0040c7382d1f5e6ead1ea123bdeec10023fd7d4",
  "killers": [
   {
-   "case": "Velvet.Tests.UseFocusRingTests.Given_AFocusVisibleRing_When_TheElementBlurs_Then_IsFocusVisibleReturnsToFalse",
+   "case": "Velvet.Tests.UseFocusRingTests.Given_AFocusVisibleRingWhoseElementUnmountedWhileFocused_When_AKeyIsPressed_Then_IsFocusVisibleStaysFalse",
    "files": {
     "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseFocusRingTests.cs": "5c22764b7c5d69979850ba93950a4ee13d80e7fe45d2121a5ad7fa6ab238e8ab",
     "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
     "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
-    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166",
     "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
     "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
    }
@@ -18,14 +19,15 @@
    "files": {
     "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseFocusRingTests.cs": "5c22764b7c5d69979850ba93950a4ee13d80e7fe45d2121a5ad7fa6ab238e8ab",
     "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
     "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
-    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166",
     "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
     "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
    }
   }
  ],
- "measured_by": "41622815197",
+ "measured_by": "43587907292",
  "mutant": {
   "after": ";",
   "before": "_element.UnregisterCallback(_onAttached);",
@@ -39,6 +41,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
  "verdict": "killed"
 }

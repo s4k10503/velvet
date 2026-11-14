@@ -1,0 +1,34 @@
+{
+ "detail": "EditMode: 2 failed: Given_AClearingMountsGradientMeasuredInEms_When_ItsFontChanges_Then_ItIsReadAgainWithNoPaletteColour, Given_AMountRenderedFirst_When_AMountClearingTheColourNamespaceRendersTheSameStop_Then_ItBindsNoPaletteColour",
+ "file": "e8003af2c797a33444705f542d7a00dd58a62dcbad9da59d4eb51a99b2dc08b9",
+ "killers": [
+  {
+   "case": "Velvet.Tests.GradientStopThemeScopeTests.Given_AClearingMountsGradientMeasuredInEms_When_ItsFontChanges_Then_ItIsReadAgainWithNoPaletteColour",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/GradientStopThemeScopeTests.cs": "43cab2495d395de3ba5d8c1cdd3c1333d0750aca0f418186045d4982097d3fac"
+   }
+  },
+  {
+   "case": "Velvet.Tests.GradientStopThemeScopeTests.Given_AMountRenderedFirst_When_AMountClearingTheColourNamespaceRendersTheSameStop_Then_ItBindsNoPaletteColour",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/GradientStopThemeScopeTests.cs": "43cab2495d395de3ba5d8c1cdd3c1333d0750aca0f418186045d4982097d3fac"
+   }
+  }
+ ],
+ "measured_by": "43587907292",
+ "mutant": {
+  "after": "==",
+  "before": "!=",
+  "column": 25,
+  "line": 444,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleThemeTokens.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
+ "verdict": "killed"
+}

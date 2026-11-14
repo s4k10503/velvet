@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed: Given_LabelsWhoseTextChanges_When_TwiceAsManyArePatched_Then_NothingMoreIsAllocated",
+ "file": "195a0235a0958c495c3552739630e05ceb3ec042cd42a0553dab2eb5ea2fcb2b",
+ "killers": [
+  {
+   "case": "Velvet.Tests.RetextAllocationTests.Given_LabelsWhoseTextChanges_When_TwiceAsManyArePatched_Then_NothingMoreIsAllocated",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/RetextAllocationTests.cs": "f965a6fac7e60aa46cce98c2737345e04aa75dcd1343f6da8845688b811c39e9",
+    "Packages/com.velvet.core/TestUtilities/GCAllocationCanary.cs": "fc61cead251d89e031e7591ac080a706d0568f2f3427cd7cda1ec3c93b965e58",
+    "Packages/com.velvet.core/TestUtilities/GCAllocationProbe.cs": "492823c099cf4f4de89da0da69c98d45cfc042070d93e2d0c0b95773310ebc2c"
+   }
+  }
+ ],
+ "measured_by": "43587907292",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 23,
+  "line": 254,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleCascade.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
+ "verdict": "killed"
+}

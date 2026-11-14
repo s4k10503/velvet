@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed: Given_TheSheetDeclaringASizesLineHeightRemoved_When_TheSizeIsAskedWhetherItIsFollowed_Then_ItIsNot",
+ "file": "e8003af2c797a33444705f542d7a00dd58a62dcbad9da59d4eb51a99b2dc08b9",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ThemeTokenLineHeightLookupTests.Given_TheSheetDeclaringASizesLineHeightRemoved_When_TheSizeIsAskedWhetherItIsFollowed_Then_ItIsNot",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ThemeTokenLineHeightLookupTests.cs": "246eec2c45c2ca00916eaebc31f98f9d53f437ff7b5d881fb8a8534105504805",
+    "Packages/com.velvet.core/TestUtilities/GCAllocationCanary.cs": "fc61cead251d89e031e7591ac080a706d0568f2f3427cd7cda1ec3c93b965e58",
+    "Packages/com.velvet.core/TestUtilities/GCAllocationProbe.cs": "492823c099cf4f4de89da0da69c98d45cfc042070d93e2d0c0b95773310ebc2c"
+   }
+  }
+ ],
+ "measured_by": "43587907292",
+ "mutant": {
+  "after": ";",
+  "before": "scope.LineHeightClasses.Clear();",
+  "column": 16,
+  "line": 454,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleThemeTokens.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
+ "verdict": "killed"
+}

@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "d5d537b142088335cd3e61f346e77002d058e453594d7ebc5409ae5546142ea6",
+ "killers": [],
+ "measured_by": "43587907292",
+ "mutant": {
+  "after": ";",
+  "before": "SyncClassDrivenStyling(scrollView, oldVirtualList.ClassNames, newVirtualList.ClassNames);",
+  "column": 20,
+  "line": 213,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberNodePatcher.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
+ "verdict": "survived"
+}

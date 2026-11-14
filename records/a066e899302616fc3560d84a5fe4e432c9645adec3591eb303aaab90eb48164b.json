@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "43e689b3acc15492765c1160fd75ae88bd2a6701e56f6b7eddbfea27dafc24ef",
+ "killers": [],
+ "measured_by": "43587907292",
+ "mutant": {
+  "after": ";",
+  "before": "skewPick.PickRegion = null;",
+  "column": 16,
+  "line": 121,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberElementPoolReset.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
+ "verdict": "survived"
+}

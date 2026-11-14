@@ -1,0 +1,32 @@
+{
+ "detail": "EditMode: 1 failed among the 15 case(s) that ran the site: Given_APendingValueUnderAParkedTransitionSlice_When_TheSliceResumes_Then_ItCommitsTheDeferredValue",
+ "file": "e50571017abc646d0fca33332a9d860b83e984668fcbdf021c9cf8a31dceabb6",
+ "killers": [
+  {
+   "case": "Velvet.Tests.UseDeferredValueTests.Given_APendingValueUnderAParkedTransitionSlice_When_TheSliceResumes_Then_ItCommitsTheDeferredValue",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseDeferredValueTests.cs": "ad9028f5a38a46e03ae98eade6364debbc3bf94b140daef50fb0fb59aef70f19",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  }
+ ],
+ "measured_by": "43587907292",
+ "mutant": {
+  "after": "false",
+  "before": "true",
+  "column": 65,
+  "line": 147,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Component/VNodeTypes.cs",
+  "shadowed": [
+   "guard removed"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
+ "verdict": "killed"
+}

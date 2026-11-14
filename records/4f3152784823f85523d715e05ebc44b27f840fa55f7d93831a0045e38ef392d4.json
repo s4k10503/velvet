@@ -1,0 +1,28 @@
+{
+ "detail": "EditMode: 1 failed among the 276 case(s) that ran the site: Given_AnEntryNothingReads_When_ResetQueriesRuns_Then_TheResetEntryIsNotFetchedAgain",
+ "file": "88660c3891deb64c798514cd618527ecd5f64471abe418bbbe6a66b52f652eca",
+ "killers": [
+  {
+   "case": "Velvet.Tests.QueryClientCommandsTests.Given_AnEntryNothingReads_When_ResetQueriesRuns_Then_TheResetEntryIsNotFetchedAgain",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/QueryClientCommandsTests.cs": "43bab26e43caf4a68b6b2fbeaeb493589fa154f63ca3b58040e49b0a11d5f482"
+   }
+  }
+ ],
+ "measured_by": "43587907292",
+ "mutant": {
+  "after": ";",
+  "before": "_fetched = saved.Fetched;",
+  "column": 12,
+  "line": 2097,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Hooks/QueryClient.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
+ "verdict": "killed"
+}

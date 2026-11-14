@@ -1,15 +1,21 @@
 {
- "detail": "EditMode: 1 failed among the 8 case(s) that ran the site: Given_AParenthesisedUnitWithNoMathFunction_When_ItsUnitCaseIsAsked_Then_TailwindDoesNotTakeItForALength",
+ "detail": "EditMode: 2 failed among the 15 case(s) that ran the site: Given_AFromStopColorFunction_When_Extracted_Then_TheFirstStopTakesIt, Given_AnOutlineColorFunction_When_Extracted_Then_TheOutlineTakesIt",
  "file": "b0b409f0fcdf7a3c31613c8b29f8ee07b3a9eb27318ed125dd029a819cecb450",
  "killers": [
   {
-   "case": "Velvet.Tests.LengthUnitCaseTests.Given_AParenthesisedUnitWithNoMathFunction_When_ItsUnitCaseIsAsked_Then_TailwindDoesNotTakeItForALength",
+   "case": "Velvet.Tests.CssColorFunctionUtilityTests.Given_AFromStopColorFunction_When_Extracted_Then_TheFirstStopTakesIt",
    "files": {
-    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/LengthUnitCaseTests.cs": "9b397853b851e1b9b02fa51e89848d9ee47605421abbca6b2963dd78126b706f"
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/CssColorFunctionUtilityTests.cs": "8207ff9deab2bb26092ab04e3138681e5c38db6908d97f648190b8e92596d5e2"
+   }
+  },
+  {
+   "case": "Velvet.Tests.CssColorFunctionUtilityTests.Given_AnOutlineColorFunction_When_Extracted_Then_TheOutlineTakesIt",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/CssColorFunctionUtilityTests.cs": "8207ff9deab2bb26092ab04e3138681e5c38db6908d97f648190b8e92596d5e2"
    }
   }
  ],
- "measured_by": "39046269867",
+ "measured_by": "43587907292",
  "mutant": {
   "after": "true",
   "before": "false",
@@ -23,6 +29,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "76309e91a4c128f75d085827c1f64dd9aa29779443e0e20e5e97a4d376492b9e",
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
  "verdict": "killed"
 }

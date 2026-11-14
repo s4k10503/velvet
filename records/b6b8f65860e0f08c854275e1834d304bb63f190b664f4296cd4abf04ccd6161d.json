@@ -1,0 +1,40 @@
+{
+ "detail": "EditMode: 2 failed among the 135 case(s) that ran the site: Given_MemoizedBoundary_When_ResourceResolves_Then_ChildDisplaysResolvedValue, Given_MemoizedBoundary_When_ResourceResolves_Then_FallbackIsRemoved",
+ "file": "f3cfbe11f5635b795e83000eacd00068e3f04b88a2a3cbbbcf46c2ba83e9335c",
+ "killers": [
+  {
+   "case": "Velvet.Tests.MemoizePropsBailInteractionTests.Given_MemoizedBoundary_When_ResourceResolves_Then_ChildDisplaysResolvedValue",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/MemoizePropsBailInteractionTests.cs": "e349f878fe1a8c7c127e8dd20112613cafb2ec2c6bab6ba094fabb747abbf48c",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  },
+  {
+   "case": "Velvet.Tests.MemoizePropsBailInteractionTests.Given_MemoizedBoundary_When_ResourceResolves_Then_FallbackIsRemoved",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/MemoizePropsBailInteractionTests.cs": "e349f878fe1a8c7c127e8dd20112613cafb2ec2c6bab6ba094fabb747abbf48c",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  }
+ ],
+ "measured_by": "43587907292",
+ "mutant": {
+  "after": "true",
+  "before": "false",
+  "column": 19,
+  "line": 937,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberRenderer.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
+ "verdict": "killed"
+}

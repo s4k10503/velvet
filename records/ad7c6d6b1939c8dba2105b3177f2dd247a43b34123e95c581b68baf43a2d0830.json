@@ -1,0 +1,82 @@
+{
+ "detail": "EditMode: 15 failed among the 75 case(s) that ran the site: Given_AClosedSquareThePatternDoesNotDivide_When_DashesComputed_Then_EachSideHoldsOneWholeDash, Given_ADottedEdge_When_SegmentsComputed_Then_ConsecutiveDotsAreTwoWidthsApart, Given_ADottedEdge_When_SegmentsComputed_Then_EveryDotIsZeroLength",
+ "file": "efc4e8894c7016e6ed6c11444fb12ee88c550782aabfa81e3b25c792787b2cd7",
+ "killers": [
+  {
+   "case": "Velvet.Tests.DashedBorderPainterTests.Given_AClosedSquareThePatternDoesNotDivide_When_DashesComputed_Then_EachSideHoldsOneWholeDash",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/DashedBorderPainterTests.cs": "23fe8c9a554fd5b25b69b201d425d488a312ba3eb174f9b47610088a2d615aec"
+   }
+  },
+  {
+   "case": "Velvet.Tests.DashedBorderPainterTests.Given_ADottedEdge_When_SegmentsComputed_Then_ConsecutiveDotsAreTwoWidthsApart",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/DashedBorderPainterTests.cs": "23fe8c9a554fd5b25b69b201d425d488a312ba3eb174f9b47610088a2d615aec"
+   }
+  },
+  {
+   "case": "Velvet.Tests.DashedBorderPainterTests.Given_ADottedEdge_When_SegmentsComputed_Then_EveryDotIsZeroLength",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/DashedBorderPainterTests.cs": "23fe8c9a554fd5b25b69b201d425d488a312ba3eb174f9b47610088a2d615aec"
+   }
+  },
+  {
+   "case": "Velvet.Tests.DashedBorderPainterTests.Given_AKnownEdgeAndWidth_When_DashesComputed_Then_EachRunIsThreeWidthsLong",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/DashedBorderPainterTests.cs": "23fe8c9a554fd5b25b69b201d425d488a312ba3eb174f9b47610088a2d615aec"
+   }
+  },
+  {
+   "case": "Velvet.Tests.DashedBorderPainterTests.Given_AKnownEdgeAndWidth_When_DashesComputed_Then_TheRunCountMatchesTheFormula",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/DashedBorderPainterTests.cs": "23fe8c9a554fd5b25b69b201d425d488a312ba3eb174f9b47610088a2d615aec"
+   }
+  },
+  {
+   "case": "Velvet.Tests.DashedBorderPainterTests.Given_AOnePixelDottedEdgeAnEvenLength_When_SegmentsComputed_Then_ItsFirstDotGrowsByAPixel",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/DashedBorderPainterTests.cs": "23fe8c9a554fd5b25b69b201d425d488a312ba3eb174f9b47610088a2d615aec"
+   }
+  },
+  {
+   "case": "Velvet.Tests.DashedBorderPainterTests.Given_AThickDottedEdgeShorterThanHalfADot_When_SegmentsComputed_Then_ItsDotStaysHalfAWidthIn",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/DashedBorderPainterTests.cs": "23fe8c9a554fd5b25b69b201d425d488a312ba3eb174f9b47610088a2d615aec"
+   }
+  },
+  {
+   "case": "Velvet.Tests.DashedBorderPainterTests.Given_AThinDottedEdge_When_SegmentsComputed_Then_EachDotIsASquareAWidthLong",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/DashedBorderPainterTests.cs": "23fe8c9a554fd5b25b69b201d425d488a312ba3eb174f9b47610088a2d615aec"
+   }
+  },
+  {
+   "case": "Velvet.Tests.DashedBorderPainterTests.Given_AThreePixelDashedEdge_When_DashesComputed_Then_EachRunIsTwoWidthsLong",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/DashedBorderPainterTests.cs": "23fe8c9a554fd5b25b69b201d425d488a312ba3eb174f9b47610088a2d615aec"
+   }
+  },
+  {
+   "case": "Velvet.Tests.DashedBorderPainterTests.Given_AThreePixelDottedEdgeOneOverAMultipleOfSix_When_SegmentsComputed_Then_ThePatternStopsShortOfTheLastDot",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/DashedBorderPainterTests.cs": "23fe8c9a554fd5b25b69b201d425d488a312ba3eb174f9b47610088a2d615aec"
+   }
+  }
+ ],
+ "measured_by": "43587907292",
+ "mutant": {
+  "after": ";",
+  "before": "intervals.Clear();",
+  "column": 12,
+  "line": 299,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/DashedBorderPainter.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
+ "verdict": "killed"
+}

@@ -1,0 +1,28 @@
+{
+ "detail": "EditMode: 1 failed among the 3 case(s) that ran the site: Given_AMathFunctionOfTheFamilysType_When_Read_Then_TheClassIsKept(\"blur-[calc(2px*3)]\")",
+ "file": "e683b334e5730c2cca172bed13162408509092561089f92d0db5dda8dd4880fe",
+ "killers": [
+  {
+   "case": "Velvet.Tests.MathTypeCompositeTests.Given_AMathFunctionOfTheFamilysType_When_Read_Then_TheClassIsKept(\"blur-[calc(2px*3)]\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/MathTypeCompositeTests.cs": "d7de78bb168627189e9b28c9aeddcec8503df8400b966434ffd09ef183affd8a"
+   }
+  }
+ ],
+ "measured_by": "43587907292",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 30,
+  "line": 184,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleCompositeRejection.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
+ "verdict": "killed"
+}

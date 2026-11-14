@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed among the 2 case(s) that ran the site: Given_AnXTweenEasingInOutBack_When_ThreeQuartersOfItsSecondPass_Then_XIsWhereFramersBackInOutPutsItOnItsSecondHalf",
+ "file": "b2e326396ef5dcfde155c164298949381f7e8d3ee7fa89686f073410ab4cbe71",
+ "killers": [
+  {
+   "case": "Velvet.Tests.AnimateTransitionDefaultsTests.Given_AnXTweenEasingInOutBack_When_ThreeQuartersOfItsSecondPass_Then_XIsWhereFramersBackInOutPutsItOnItsSecondHalf",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/AnimateTransitionDefaultsTests.cs": "4f1df3ffccb06b00107c98831f717a86d47df2b0313c6802a1a57a577f8f06a8"
+   }
+  }
+ ],
+ "measured_by": "43587907292",
+ "mutant": {
+  "after": "+",
+  "before": "-",
+  "column": 26,
+  "line": 60,
+  "operator": "arithmetic",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleEaseCurve.cs",
+  "shadowed": [
+   "arithmetic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
+ "verdict": "killed"
+}

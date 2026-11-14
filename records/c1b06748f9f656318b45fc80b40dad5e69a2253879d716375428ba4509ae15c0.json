@@ -1,0 +1,26 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "b08093bc78a2571538f845595d83f26079d46d28ae73c11e89b1d3e55997dcae",
+ "killers": [],
+ "measured_by": "43587907292",
+ "mutant": {
+  "after": ">",
+  "before": ">=",
+  "column": 25,
+  "line": 57,
+  "operator": "boundary",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberElementCleaner.cs",
+  "shadowed": [
+   "arithmetic",
+   "boundary",
+   "clause removed",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
+ "verdict": "survived"
+}

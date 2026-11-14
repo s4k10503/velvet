@@ -1,0 +1,58 @@
+{
+ "detail": "EditMode: 4 failed among the 16 case(s) that ran the site: Given_AComponentGrewAheadOfOneHoldingAnother_When_TheHeldOneRerenders_Then_ItRewritesItsOwnRow, Given_AComponentGrewInsideTheOneAheadOfIt_When_TheOneBehindRerenders_Then_ItRewritesItsOwnRows, Given_AnEmptyComponentAtTheFirstRowOfItsHolder_When_ItGrows_Then_TheHolderStillRewritesItsOwnRows",
+ "file": "fe9e2c99b4d9e8cf22f5ef331174c9da76ed88da311a9a0614e9cd98e09b2cd1",
+ "killers": [
+  {
+   "case": "Velvet.Tests.InlineSlotStartTests.Given_AComponentGrewAheadOfOneHoldingAnother_When_TheHeldOneRerenders_Then_ItRewritesItsOwnRow",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/InlineSlotStartTests.cs": "826965e82071b5985a6dcb45bd23d18c1868cbf15eae3225194c48f1eb8fd046",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  },
+  {
+   "case": "Velvet.Tests.InlineSlotStartTests.Given_AComponentGrewInsideTheOneAheadOfIt_When_TheOneBehindRerenders_Then_ItRewritesItsOwnRows",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/InlineSlotStartTests.cs": "826965e82071b5985a6dcb45bd23d18c1868cbf15eae3225194c48f1eb8fd046",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  },
+  {
+   "case": "Velvet.Tests.InlineSlotStartTests.Given_AnEmptyComponentAtTheFirstRowOfItsHolder_When_ItGrows_Then_TheHolderStillRewritesItsOwnRows",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/InlineSlotStartTests.cs": "826965e82071b5985a6dcb45bd23d18c1868cbf15eae3225194c48f1eb8fd046",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  },
+  {
+   "case": "Velvet.Tests.InlineSlotStartTests.Given_AnEmptyComponentMountedAheadOfAnother_When_ItGrows_Then_TheOtherRerendersItsOwnRow",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/InlineSlotStartTests.cs": "826965e82071b5985a6dcb45bd23d18c1868cbf15eae3225194c48f1eb8fd046",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  }
+ ],
+ "measured_by": "43587907292",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 28,
+  "line": 262,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/LogicalChildSlots.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
+ "verdict": "killed"
+}

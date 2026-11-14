@@ -1,0 +1,82 @@
+{
+ "detail": "EditMode: 17 failed among the 59 case(s) that ran the site: png); }\"), b); }\"), Given_ACustomPropertyTheImporterHolds_When_TheSheetIsRewritten_Then_ItIsUnchanged(\":root { --x: none() filter() url() URL(); }\")",
+ "file": "a5af3a44872fb35f4e092f25f307fd6831f8c615c35c379611243a7ae53da1eb",
+ "killers": [
+  {
+   "case": "Velvet.Tests.UssCustomPropertyTextTests.Given_ACustomPropertyTheImporterHolds_When_TheSheetIsRewritten_Then_ItIsUnchanged(\".a { --x: url(\\\"a\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/UssCustomPropertyTextTests.cs": "24bb22a1cc129cb0a608b9bc9021d032bfec6d6a4c0250cd879c6eee33e16c1a"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UssCustomPropertyTextTests.Given_ACustomPropertyTheImporterHolds_When_TheSheetIsRewritten_Then_ItIsUnchanged(\".a { --x: url(a\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/UssCustomPropertyTextTests.cs": "24bb22a1cc129cb0a608b9bc9021d032bfec6d6a4c0250cd879c6eee33e16c1a"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UssCustomPropertyTextTests.Given_ACustomPropertyTheImporterHolds_When_TheSheetIsRewritten_Then_ItIsUnchanged(\":root { --bg: resource(a/b.png); --img: url(a/b.png); }\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/UssCustomPropertyTextTests.cs": "24bb22a1cc129cb0a608b9bc9021d032bfec6d6a4c0250cd879c6eee33e16c1a"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UssCustomPropertyTextTests.Given_ACustomPropertyTheImporterHolds_When_TheSheetIsRewritten_Then_ItIsUnchanged(\":root { --u: URL-prefix(a/b) domain(a.b); }\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/UssCustomPropertyTextTests.cs": "24bb22a1cc129cb0a608b9bc9021d032bfec6d6a4c0250cd879c6eee33e16c1a"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UssCustomPropertyTextTests.Given_ACustomPropertyTheImporterHolds_When_TheSheetIsRewritten_Then_ItIsUnchanged(\":root { --x: filter(url(a/*c*/)); }\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/UssCustomPropertyTextTests.cs": "24bb22a1cc129cb0a608b9bc9021d032bfec6d6a4c0250cd879c6eee33e16c1a"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UssCustomPropertyTextTests.Given_ACustomPropertyTheImporterHolds_When_TheSheetIsRewritten_Then_ItIsUnchanged(\":root { --x: none() filter() url() URL(); }\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/UssCustomPropertyTextTests.cs": "24bb22a1cc129cb0a608b9bc9021d032bfec6d6a4c0250cd879c6eee33e16c1a"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UssCustomPropertyTextTests.Given_ACustomPropertyTheImporterHolds_When_TheSheetIsRewritten_Then_ItIsUnchanged(\":root { --x: url(  a  ); }\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/UssCustomPropertyTextTests.cs": "24bb22a1cc129cb0a608b9bc9021d032bfec6d6a4c0250cd879c6eee33e16c1a"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UssCustomPropertyTextTests.Given_ACustomPropertyTheImporterHolds_When_TheSheetIsRewritten_Then_ItIsUnchanged(\":root { --x: url(\\\"a\\\" ); }\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/UssCustomPropertyTextTests.cs": "24bb22a1cc129cb0a608b9bc9021d032bfec6d6a4c0250cd879c6eee33e16c1a"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UssCustomPropertyTextTests.Given_ACustomPropertyTheImporterHolds_When_TheSheetIsRewritten_Then_ItIsUnchanged(\":root { --x: url(\\\"a\\\\31\\nb\\\"); }\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/UssCustomPropertyTextTests.cs": "24bb22a1cc129cb0a608b9bc9021d032bfec6d6a4c0250cd879c6eee33e16c1a"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UssCustomPropertyTextTests.Given_ACustomPropertyTheImporterHolds_When_TheSheetIsRewritten_Then_ItIsUnchanged(\":root { --x: url(\\\"a\\\\\\\"b\\\"); }\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/UssCustomPropertyTextTests.cs": "24bb22a1cc129cb0a608b9bc9021d032bfec6d6a4c0250cd879c6eee33e16c1a"
+   }
+  }
+ ],
+ "measured_by": "43587907292",
+ "mutant": {
+  "after": ";",
+  "before": "i = PathEnd(text, i);",
+  "column": 24,
+  "line": 246,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Editor/StyleSheets/UssCustomPropertyText.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "77452438a620385575533c5c08b5d6288f2db3bda217759f4b253f070cdb3464",
+ "verdict": "killed"
+}
