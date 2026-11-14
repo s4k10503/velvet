@@ -5,7 +5,7 @@ Both halves existed as instructions rather than as code: `stop/unsettled_pr.py` 
 the reader to reimplement, and the merge was typed by hand. An instruction is re-derived each time,
 and that hook's own text owns what a re-derived watcher gets wrong.
 
-**Eight of the preconditions below have a refuse hook behind them**, so a `gh pr merge` typed by hand
+**Nine of the preconditions below have a refuse hook behind them**, so a `gh pr merge` typed by hand
 is held to those as well; `refuse/merge_unproven_head.py` records which hook holds which. Those hooks
 match on `gh pr merge` and do not see the `gh api -X PUT .../merge` this script sends, so teaching
 them that shape is its own change. What this adds is reporting them together: one run names
@@ -15,7 +15,7 @@ everything wrong rather than costing a round of CI per reason.
 and the two a stack member is held to. A `gh stack merge` typed by hand is refused whole instead,
 by `refuse/stack_merge_by_hand.py`.
 
-Eleven preconditions:
+Twelve preconditions:
 
 - **Checks are bound to the head SHA they were read at.** The checks API answers about whatever it
   last recorded, which after a force-push is the previous commit's run. So the head is read, then the
@@ -52,6 +52,9 @@ Eleven preconditions:
   addressed on origin by that name.
 - **A long-lived head is not merged from here**, since this squashes and deletes it. `long_lived.py`
   owns which heads those are.
+- **A pull request onto a maintenance line carries no commit `main` holds that the line does not,
+  no `feat` or breaking title or commit, and no breaking fragment**, and no base or head is named
+  like a line without being one. `maintenance_line.py` owns those readings.
 - **A stack member merges only once every member below it has merged, and while its stack is
   linear on its base.** It goes through the asynchronous endpoint, which GitHub documents as merging
   every member below the one asked for as well, and nothing here read their checks; and GitHub
@@ -119,6 +122,9 @@ published_check = load_published_check()
 red_base = load_by_path(Path(__file__).resolve().with_name("red_base.py"), "red_base")
 
 long_lived = load_by_path(Path(__file__).resolve().with_name("long_lived.py"), "long_lived")
+
+maintenance_line = load_by_path(Path(__file__).resolve().with_name("maintenance_line.py"),
+                                "maintenance_line")
 
 expected_checks = load_by_path(Path(__file__).resolve().with_name("expected_checks.py"),
                                "expected_checks")
@@ -255,7 +261,7 @@ def head_sha(project, number):
 # Everything the decision reads off the pull request itself. `mergeable_state` is on this payload and
 # not on the listing one, so a caller that wants it has to ask per pull request anyway.
 PullRequest = collections.namedtuple("PullRequest",
-                                     "sha branch base draft merge_state fork state stack")
+                                     "sha branch base draft merge_state fork state stack title")
 
 # The stack a pull request sits in: its number, and the branch the whole stack merges into.
 Stack = collections.namedtuple("Stack", "number base")
@@ -282,7 +288,8 @@ def pull_request(project, number):
     return PullRequest(head["sha"], head["ref"], base["ref"], bool(payload.get("draft")),
                        payload.get("mergeable_state") or "", home != base_repository,
                        "merged" if payload.get("merged") else payload.get("state") or "unnamed",
-                       Stack(stack["number"], stack["base"]["ref"]) if stack else None)
+                       Stack(stack["number"], stack["base"]["ref"]) if stack else None,
+                       payload.get("title") or "")
 
 
 def stack_members(project, number):
@@ -572,7 +579,7 @@ def contains_commit(project, branch, sha):
 def reasons_from(before, after, results, branch, base, held_by_worktree,
                  unpublished_release, draft, merge_state, fork, failing_runs, behind_release,
                  long_lived_head, runs_unfinished, runs_failed, required, stack_below,
-                 stack_settings, stack_tangles):
+                 stack_settings, stack_tangles, line_pull_request, line_head):
     """Every reason not to merge, decided from plain data so the decision is testable without a network.
 
     `unpublished_release` takes no default on purpose: a caller that stops supplying it would otherwise
@@ -585,20 +592,23 @@ def reasons_from(before, after, results, branch, base, held_by_worktree,
     requires. Nor do `stack_below`, what `unmerged_below` answers for a stack member and () for any
     other pull request, `stack_settings`, what `stack_settings` reads for a stack member and None
     for any other, and `stack_tangles`, what `stack_tangles` answers for a stack member and () for
-    any other.
+    any other. `line_pull_request` and `line_head`, what `maintenance_line.pull_request_reasons` and
+    `maintenance_line.head_reasons` answer, take none either.
 
     A moved head returns with the reasons that are not about a commit and nothing else: with the
     readings straddling a force-push, nothing else read here is known to be about the same commit, so
     reporting the rest would be reporting about two SHAs at once. The publication reason is about the
     base, which the force-push did not touch; draft is a state of the pull request rather than of
-    its head, a long-lived head is one by its branch name, and neither a stack's order nor the
-    repository's settings is about the head's commit.
+    its head, a long-lived head is one by its branch name, `line_pull_request` is read off the
+    names and the title, and neither a stack's order nor the repository's settings is about the
+    head's commit.
     """
     reasons = [unpublished_release] if unpublished_release else []
     if draft:
         reasons.append("it is a draft: mark it ready for review first")
     if long_lived_head:
         reasons.append(long_lived.reason(branch))
+    reasons.extend(line_pull_request)
     if stack_below:
         lowest, state = stack_below[0]
         reasons.append(f"#{lowest} sits below it in its stack and has not merged: merge #{lowest} first"
@@ -618,6 +628,7 @@ def reasons_from(before, after, results, branch, base, held_by_worktree,
     # `refuse/edit_while_a_ready_pr_sits.py` measures a pull request by.
     if merge_state == "dirty":
         reasons.append(conflict_reason(base))
+    reasons.extend(line_head)
     if stack_tangles:
         reasons.append("its stack is not linear on {}: {}. {}".format(
             base, "; ".join(f"#{member} does not hold the head of {below}" if how == "lacks"
@@ -713,6 +724,17 @@ def project_state(project, base):
                         red, release_commit(project, base), required_contexts(project, base))
 
 
+def line_reading(project, line, sha):
+    """`maintenance_line.read` for `sha` onto origin/<line>, raising a failure as the RuntimeError
+    `watch` catches per pull request."""
+    try:
+        return maintenance_line.read(project, line, sha, GIT_TIMEOUT)
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError) as failure:
+        said = (failure.stderr if isinstance(failure, subprocess.CalledProcessError)
+                and failure.stderr else str(failure)).strip()
+        raise RuntimeError(f"what {sha[:7]} brings onto origin/{line} could not be read: {said}")
+
+
 def release_commit(project, base):
     """`published_check.release_commit` for origin/<base>, raising a failure as the RuntimeError
     `watch` catches per pull request rather than as one that stops the watcher."""
@@ -772,6 +794,8 @@ def blocking_reasons(project, number, base=None, states=None, previous=()):
     behind_release = (state.release if state.release and not before.fork and not stack
                       and not contains_commit(project, before.branch, state.release[0]) else None)
     long_lived_head = not before.fork and long_lived.is_long_lived(before.branch)
+    line_head = (maintenance_line.head_reasons(target, line_reading(project, target, before.sha))
+                 if maintenance_line.is_line(target) and not before.fork else [])
     holders = state.held.get(before.branch) or ()
     held = tuple((tree.path, holder_state(project, tree, after)) for tree in holders)
     runs_failed = expected_checks.failed(others, jobs, now)
@@ -791,7 +815,10 @@ def blocking_reasons(project, number, base=None, states=None, previous=()):
                                  required=state.required,
                                  stack_below=unmerged_below(members, number) if stack else (),
                                  stack_settings=stack_settings(project) if stack else None,
-                                 stack_tangles=stack_tangles(project, target, members)),
+                                 stack_tangles=stack_tangles(project, target, members),
+                                 line_pull_request=maintenance_line.pull_request_reasons(
+                                     target, before.branch, before.title),
+                                 line_head=line_head),
                     after, before.branch, results, target, before.sha, held,
                     # Read at `before`, so a moved head has none, as its reasons have none.
                     runs_failed if before.sha == after else (), stack,

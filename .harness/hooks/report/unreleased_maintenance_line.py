@@ -50,12 +50,12 @@ from repository import project_tree  # noqa: E402
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts" / "release"))
 import release_notes  # noqa: E402
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts" / "pr"))
+import maintenance_line  # noqa: E402
+
 CHANGELOG = "Packages/com.velvet.core/CHANGELOG.md"
 
-# The repository's own naming, which CONTRIBUTING.md's maintenance-line section owns. A branch that
-# does not match is not reported on rather than guessed at: a feature branch holds unreleased entries
-# by design, and reporting those would bury the one case this exists for.
-LINE = re.compile(r"^origin/([0-9]+)\.x$")
+REMOTE = "origin/"
 
 # The hook shares SessionStart's budget with the reports beside it, so the fetch is bounded and what
 # follows reads refs already on disk.
@@ -108,12 +108,22 @@ def unread_fragments(cwd, line):
     return [path for path, _ in found if not Path(path).name.startswith(".")]
 
 
-def lines(cwd):
+def remote_branches(cwd):
     listed = answer(["for-each-ref", "--format=%(refname:short)", "refs/remotes/origin"],
                     cwd, READ_TIMEOUT)
-    if listed is None:
-        return []
-    return sorted(name for name in listed.split() if LINE.match(name))
+    return [name for name in (listed or "").split() if name.startswith(REMOTE)]
+
+
+def lines(cwd):
+    # A branch that is not a line is not read for entries: a feature branch holds unreleased entries
+    # by design, and reporting those would bury the one case this exists for.
+    return sorted(name for name in remote_branches(cwd)
+                  if maintenance_line.is_line(name[len(REMOTE):]))
+
+
+def lookalikes(cwd):
+    return sorted(name for name in remote_branches(cwd)
+                  if maintenance_line.lookalike(name[len(REMOTE):]))
 
 
 def waiting(text):
@@ -171,6 +181,10 @@ def unmerged_into_main(cwd, line):
 
 
 def report(cwd):
+    for name in lookalikes(cwd):
+        yield ("{} is named like a maintenance line and is not one: a line is `<major>.x`, as\n"
+               "CONTRIBUTING.md's maintenance-line section says. Rename it to that if it is one, and\n"
+               "to a name that is not a version if it is not.").format(name)
     for line in lines(cwd):
         unread = unread_fragments(cwd, line)
         if unread:
@@ -206,7 +220,8 @@ def main():
                 "main does not carry {} CHANGELOG {} that {} does, starting with:\n"
                 "  {}{}\n"
                 "A fix made on the line has to reach main, or a branch cut from main reproduces what\n"
-                "it fixed. Carry them across — `cherry-pick -x` names where each came from.".format(
+                "it fixed. Merge the line forward with a merge commit, as CONTRIBUTING.md's\n"
+                "maintenance-line section says.".format(
                     len(outstanding), "entry" if len(outstanding) == 1 else "entries", line,
                     outstanding[0][:96], "…" if len(outstanding[0]) > 96 else ""))
     if said:

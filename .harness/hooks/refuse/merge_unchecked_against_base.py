@@ -12,7 +12,9 @@ own checks to have seen them:
   not hold, or holds as a different branch of the same name, so neither containment can be read;
   and a long-lived head, which `scripts/pr/long_lived.py` names, is not to be squashed or deleted.
 
-`lib/merge_target.py` owns which pull request a command would land.
+What a pull request onto a maintenance line brings, and whether a base or head is named like a line
+without being one, `scripts/pr/maintenance_line.py` decides. `lib/merge_target.py` owns which pull
+request a command would land.
 """
 import collections
 import json
@@ -29,6 +31,7 @@ SCRIPTS = Path(__file__).resolve().parents[3] / "scripts"
 sys.path.insert(0, str(SCRIPTS / "pr"))
 sys.path.insert(0, str(SCRIPTS / "release"))
 import long_lived
+import maintenance_line
 import published_check
 import red_base
 
@@ -46,7 +49,7 @@ UNREADABLE_PROBE = {"command": "gh pr merge 1 --squash --delete-branch"}
 
 GIT_TIMEOUT = 30
 
-Target = collections.namedtuple("Target", "head base commit fork")
+Target = collections.namedtuple("Target", "head base commit fork title")
 
 UNREADABLE_REFUSAL = (
     "Refusing `gh pr merge`: what its base holds against the head could not be read.\n\n"
@@ -67,7 +70,8 @@ def gh_json(cwd, args, timeout=7):
 
 
 def target_of(cwd, pr):
-    """The head, base, head SHA and whether the head is on another repository, or None unread.
+    """The head, base, head SHA, whether the head is on another repository and the title, or None
+    unread.
 
     Under merge_target.py's bound, which merge_onto_unpublished_release.py relies on this sharing.
     """
@@ -78,14 +82,17 @@ def target_of(cwd, pr):
         head, base = payload.get("head") or {}, payload.get("base") or {}
         home = (head.get("repo") or {}).get("full_name") or ""
         fork = home != ((base.get("repo") or {}).get("full_name") or "")
-        target = Target(head.get("ref"), base.get("ref"), head.get("sha"), fork)
+        target = Target(head.get("ref"), base.get("ref"), head.get("sha"), fork,
+                        payload.get("title") or "")
     else:
         payload = gh_json(cwd, ["pr", "view", "--json",
-                                "headRefName,baseRefName,headRefOid,isCrossRepository"], GH_TIMEOUT)
+                                "headRefName,baseRefName,headRefOid,isCrossRepository,title"],
+                          GH_TIMEOUT)
         if not isinstance(payload, dict):
             return None
         target = Target(payload.get("headRefName"), payload.get("baseRefName"),
-                        payload.get("headRefOid"), payload.get("isCrossRepository") is not False)
+                        payload.get("headRefOid"), payload.get("isCrossRepository") is not False,
+                        payload.get("title") or "")
     return target if target.head and target.base and target.commit else None
 
 
@@ -146,7 +153,9 @@ def refuse_one(cwd, pr):
         return UNREADABLE_REFUSAL.format(failing)
     # Ahead of the release reading, which reads the fetched ref: an unfetched one can predate the
     # release and name the one before it.
-    fetched = git_answer(["fetch", "-q", "origin", target.base, target.head], cwd=cwd,
+    onto_line = maintenance_line.is_line(target.base)
+    fetched = git_answer(["fetch", "-q", "origin", target.base, target.head,
+                          *([maintenance_line.MAIN] if onto_line else [])], cwd=cwd,
                          timeout=GIT_TIMEOUT)
     if fetched.code != 0:
         return UNREADABLE_REFUSAL.format(
@@ -157,7 +166,16 @@ def refuse_one(cwd, pr):
         return UNREADABLE_REFUSAL.format(
             f"the newest release commit on {target.base} could not be read")
 
-    said = []
+    said = [f"{label}: {reason}.\n" for reason in
+            maintenance_line.pull_request_reasons(target.base, target.head, target.title)]
+    if onto_line:
+        try:
+            reading = maintenance_line.read(cwd, target.base, target.commit, GIT_TIMEOUT)
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError):
+            return UNREADABLE_REFUSAL.format(
+                f"what {target.commit[:7]} brings onto {target.base} could not be read")
+        said.extend(f"{label}: {reason}.\n"
+                    for reason in maintenance_line.head_reasons(target.base, reading))
     if release:
         held = holds(cwd, target.head, release[0])
         if held is None:

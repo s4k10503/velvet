@@ -121,6 +121,16 @@ class LineMainHasNotTaken(unittest.TestCase):
         # Assert
         self.assertIn("main does not carry 1 CHANGELOG entry that origin/2.x does", done.stdout)
 
+    def test_Given_ALineMainHasNotTaken_When_Reported_Then_TheWayOutIsToMergeItForward(self):
+        # Arrange
+        clone = repository("2.x", WAITING, merged=False)
+
+        # Act
+        done = run(clone)
+
+        # Assert
+        self.assertIn("Merge the line forward with a merge commit", done.stdout)
+
     def test_Given_ALineCarriedForwardBySquash_When_Reported_Then_NothingIsSaidAboutIt(self):
         # Arrange — the content is on main and the ancestry is not, which is every forward merge this
         # repository can perform.
@@ -246,6 +256,16 @@ class MaintenanceLineReport(unittest.TestCase):
 
         # Assert
         self.assertEqual((done.returncode, done.stdout), (0, ""))
+
+    def test_Given_ABranchNamedLikeALineWithoutBeingOne_When_Reported_Then_ItIsNamed(self):
+        # Arrange — a minor's series, which SECURITY.md writes its rows as.
+        clone = repository("3.0.x", WAITING)
+
+        # Act
+        done = run(clone)
+
+        # Assert
+        self.assertIn("origin/3.0.x is named like a maintenance line and is not one", done.stdout)
 
     def test_Given_ATreeThatIsNoRepository_When_Reported_Then_ItExitsZero(self):
         # Arrange

@@ -250,6 +250,36 @@ class UncheckedAgainstBaseTests(unittest.TestCase):
         self.assertEqual((result.returncode, "its head 2.x is a long-lived branch" in result.stderr),
                          (REFUSED, True))
 
+    def onto_a_line(self, head, title=""):
+        """`2.x` cut at `fork_point`, and a pull request onto it from `head`, titled `title`."""
+        git(self.project, "push", "-q", "origin", f"{self.fork_point}:refs/heads/2.x",
+            f"{head}:refs/heads/backport")
+        pulled = pull("backport", "2.x", head)
+        pulled["title"] = title
+        return {"7": pulled}
+
+    def test_Given_AHeadCarryingMainsCommitOntoALine_When_TheMergeIsAsked_Then_ItIsRefused(self):
+        # Arrange — a branch cut from main and opened onto the line.
+        pulls = self.onto_a_line(self.tip)
+
+        # Act
+        result = self.ask(self.green(), pulls=pulls)
+
+        # Assert
+        self.assertIn(f"of main that 2.x does not hold, starting with {self.tip[:7]}",
+                      result.stderr if result.returncode == REFUSED else "")
+
+    def test_Given_AFeatureTitledPullRequestOntoALine_When_TheMergeIsAsked_Then_ItIsRefused(self):
+        # Arrange — a head that brings nothing, so the title is all there is to refuse.
+        pulls = self.onto_a_line(self.fork_point, title="feat(velvet): add a knob")
+
+        # Act
+        result = self.ask(self.green(), pulls=pulls)
+
+        # Assert
+        self.assertIn("its title `feat(velvet): add a knob` is a feature",
+                      result.stderr if result.returncode == REFUSED else "")
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
