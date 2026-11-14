@@ -15,7 +15,7 @@ import re
 import statistics
 import subprocess
 import sys
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 SUITE = "Velvet benchmarks"
@@ -62,7 +62,6 @@ class DriftRule:
     days: int = 30
     min_days: int = 14
     held: float = 1.1
-    after_step: int = 3
 
 
 DRIFT = DriftRule()
@@ -210,9 +209,9 @@ def find_steps(runs, units, rule=RULE, counts=COUNTS):
 
 
 def held(points, before, rule):
-    """Whether a step still holds on one processor: no five of its runs since the step and before the next one,
-    `points`, have in a row a median under `rule.held` times the median of the five `before` it. With fewer than
-    five on either side, it holds. A fall is asked the same of the reciprocals."""
+    """Whether a step still holds on one processor: no five of its runs since the step, `points`, have in a row
+    a median under `rule.held` times the median of the five `before` it. With fewer than five on either side,
+    it holds."""
     if len(before) < rule.runs or len(points) < rule.runs:
         return True
     bar = rule.held * statistics.median(before[-rule.runs:])
@@ -222,9 +221,9 @@ def held(points, before, rule):
 
 def series_drift(runs, name, unit, start, cuts, rule, jump):
     """The drift of one time benchmark over `runs[start:]`, landed in order, measured on each processor within
-    the stretches between the `cuts` that still hold there, or None. A cut is the position of a step's first
-    slow run and whether it is a fall. A processor whose latest five runs measure `jump` times the five before
-    them is left out of the decision: a rise that recent is left to the step rule."""
+    the stretches between the `cuts`, positions of steps' first slow runs, that still hold there, or None. A
+    processor whose latest five runs measure `jump` times the five before them is left out of the decision: a
+    rise that recent is left to the step rule."""
     order = {run.commit: index for index, run in enumerate(runs)}
     by_processor = {}
     for run in runs:
@@ -243,23 +242,18 @@ def series_drift(runs, name, unit, start, cuts, rule, jump):
             return next((index for index, run in enumerate(points) if after(order[run.commit])), len(points))
 
         stretches, low_index = [], 0
-        for number, (cut, fall) in enumerate(cuts):
+        for cut in cuts:
             at = first(lambda position: position >= cut)
-            until = first(lambda position: position >= cuts[number + 1][0]) if number + 1 < len(cuts) else None
             before = [run.values[name] for run in every if order[run.commit] < cut]
-            since = values[at:until]
-            if fall:
-                before, since = [1 / value for value in before], [1 / value for value in since]
-            if low_index < at < len(points) and held(since, before, rule):
+            if low_index < at < len(points) and held(values[at:], before, rule):
                 stretches.append((low_index, at))
                 low_index = at
         stretches.append((low_index, len(points)))
         ratio = 1
-        for number, (low, high) in enumerate(stretches):
-            earlier = rule.runs if number == 0 else rule.after_step
+        for low, high in stretches:
             if high - low >= 2 * rule.runs:
                 ratio *= (statistics.median(values[high - rule.runs:high])
-                          / statistics.median(values[low:low + earlier]))
+                          / statistics.median(values[low:low + rule.runs]))
         latest = statistics.median(values[-rule.runs:])
         if latest >= jump * statistics.median(values[-2 * rule.runs:-rule.runs]):
             rising.add(processor)
@@ -272,18 +266,15 @@ def series_drift(runs, name, unit, start, cuts, rule, jump):
 
 
 def drift_cuts(runs, name, unit, steps, order):
-    """A time benchmark's steps up, and its steps down as steps up of its reciprocal, each as its first slow
-    run's position in `order` and whether it is a fall."""
-    reciprocals = [replace(run, values={name: 1 / run.values[name]}) for run in runs if run.values.get(name, 0) > 0]
-    return ([(order[step.first_slow.commit], False) for step in series_steps(runs, name, unit, steps)]
-            + [(order[step.first_slow.commit], True) for step in series_steps(reciprocals, name, unit, steps)])
+    """The positions in `order` of a time benchmark's steps' first slow runs."""
+    return [order[step.first_slow.commit] for step in series_steps(runs, name, unit, steps)]
 
 
 def find_drifts(runs, units, rule=DRIFT, steps=RULE, filed=None):
     """Every time benchmark that drifted up over the latest `rule.days` days, after the commit `filed` maps it
-    to where that is later. Its steps up and down, as `steps` finds them in its times and in their
-    reciprocals, split what is compared while they hold, so that a drift leaves out the jump of each step that
-    holds, up or down, and does not wait for one that was undone to leave the window."""
+    to where that is later. Its steps, as `steps` finds them, split what is compared while their rise holds,
+    so that a drift leaves out the jump of each step that holds and does not wait for one that was undone to
+    leave the window."""
     runs = landed(runs)
     if not runs:
         return []
@@ -419,7 +410,7 @@ def render_drifts(drifts, repository, rule=DRIFT):
             lines.append(f"| {short_name(drift.benchmark)} | {processor} | `{first.commit[:8]}` "
                          f"| {amount(earlier, drift.unit)} | {amount(latest, drift.unit)} | {ratio_text(ratio)} |")
     lines += ["", f"Earlier and Latest are medians over a processor's first and last {rule.runs} runs compared; "
-              "the ratio leaves out the steps up and down between them that still hold. "
+              "the ratio leaves out the steps between them whose rise still holds. "
               "`.github/workflows/benchmarks.yml` opened this and does not rewrite it; "
               "CONTRIBUTING.md's benchmarks section says what counts as a drift."]
     return title, fitted(lines)

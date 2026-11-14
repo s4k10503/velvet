@@ -856,43 +856,10 @@ class FindDriftsTests(unittest.TestCase):
         # Assert
         self.assertEqual(len(found), 0)
 
-    def test_Given_AFallAndACreepFromTheNextRun_When_DriftsAreFound_Then_OneIsFound(self):
-        # Arrange: a fix halves the time on day 6, and from day 7 it creeps 1.4x over eight days.
-        fixed = [20] * 6 + [10] + ramp(10, 14, 8) + [14] * 5
-        runs = daily({ONE: fixed, TWO: fixed})
-
-        # Act
-        found = drifts(runs)
-
-        # Assert
-        self.assertEqual(len(found), 1)
-
-    def test_Given_AFallAWeekBeforeACreep_When_DriftsAreFound_Then_OneIsFound(self):
-        # Arrange: a fix halves the time on day 6, and from day 12 it creeps 1.4x over sixteen days.
-        fixed = [20] * 6 + [10] * 6 + ramp(10, 14, 16) + [14]
-        runs = daily({ONE: fixed, TWO: fixed})
-
-        # Act
-        found = drifts(runs)
-
-        # Assert
-        self.assertEqual(len(found), 1)
-
-    def test_Given_AStepAndACreepFromTheNextRun_When_DriftsAreFound_Then_OneIsFound(self):
-        # Arrange: a 1.5x step on day 10, and from day 11 a 1.4x creep over eight days.
-        stepped_up = [10] * 10 + [15] + ramp(15, 21, 8) + [21] * 5
-        runs = daily({ONE: stepped_up, TWO: stepped_up})
-
-        # Act
-        found = drifts(runs)
-
-        # Assert
-        self.assertEqual(len(found), 1)
-
-    def test_Given_AFallUndoneTwoDaysLater_When_DriftsAreFound_Then_ThereIsNone(self):
-        # Arrange
-        dipped = [20] * 10 + [10] * 2 + [20] * 16
-        runs = daily({ONE: dipped, TWO: dipped})
+    def test_Given_ACreepThatAFixBroughtBackToWhereItStarted_When_DriftsAreFound_Then_ThereIsNone(self):
+        # Arrange: 1.2x by creep, a fix to 9, then a creep back to the 10 it started at.
+        undone = [10] * 5 + ramp(10, 12, 8) + [12] * 3 + [9] + ramp(9, 10, 8) + [10] * 3
+        runs = daily({ONE: undone, TWO: undone})
 
         # Act
         found = drifts(runs)
@@ -900,10 +867,22 @@ class FindDriftsTests(unittest.TestCase):
         # Assert
         self.assertEqual(len(found), 0)
 
-    def test_Given_AStepUndoneByAFall_When_DriftsAreFound_Then_ThereIsNone(self):
-        # Arrange: a 1.5x step on day 8, and a fall back to 10 on day 18.
-        undone = [10] * 8 + [15] * 10 + [10] * 10
+    def test_Given_ACreepThatAFixUndidAndACreepAfterIt_When_DriftsAreFound_Then_ThereIsNone(self):
+        # Arrange: 1.25x by creep, a fix back to 10, then 1.1x by creep.
+        undone = [10] * 5 + ramp(10, 12.5, 8) + [12.5] * 3 + [10] + ramp(10, 11, 8) + [11] * 3
         runs = daily({ONE: undone, TWO: undone})
+
+        # Act
+        found = drifts(runs)
+
+        # Assert
+        self.assertEqual(len(found), 0)
+
+    def test_Given_AFixAndACreepFromTheNextRun_When_DriftsAreFound_Then_ThereIsNone(self):
+        # Arrange: a fix halves the time on day 6, and from day 7 it creeps 1.4x over eight days; the creep is
+        # compared from the 20 before the fix.
+        fixed = [20] * 6 + [10] + ramp(10, 14, 8) + [14] * 5
+        runs = daily({ONE: fixed, TWO: fixed})
 
         # Act
         found = drifts(runs)
