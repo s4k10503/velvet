@@ -1,8 +1,6 @@
 using System;
-using System.Diagnostics;
 using NUnit.Framework;
 using Unity.PerformanceTesting;
-using UnityEngine.Profiling;
 using UnityEngine.UIElements;
 using Velvet.TestUtilities;
 
@@ -13,10 +11,8 @@ namespace Velvet.Tests.Performance
     /// <para>
     /// Each case measures one dispatch plus the synchronous flush that commits it onto the mounted elements.
     /// The root is a <see cref="VisualElement"/> with no panel, as in <c>ReconcilerBenchmarks</c>, so the
-    /// measurement holds no layout pass. Time is the stopwatch over the window; allocation is the count of
-    /// GC.Alloc sample blocks the window charges to the running thread, the recorder the other async
-    /// benchmarks read. The arrangement that puts the rows in the state an operation starts from runs before
-    /// the window.
+    /// measurement holds no layout pass. Time and allocation are <see cref="WindowCost"/>'s over the window. The
+    /// arrangement that puts the rows in the state an operation starts from runs before the window.
     /// </para>
     /// <para>
     /// After every iteration, measured or not, the elements are compared with the state they should show
@@ -62,7 +58,7 @@ namespace Velvet.Tests.Performance
             _mounted.Dispose();
         }
 
-        // GREEN_ON_BASE(characterization): a benchmark asserts nothing about its numbers, so the base runs it green; its tree check holds behaviour the base already has.
+        // GREEN_ON_BASE(characterization): a benchmark asserts nothing about its numbers, so the base runs it green; this change takes the window's own stopwatch out of its count.
         [Test, Performance]
         public void Create_1000Rows()
         {
@@ -72,7 +68,7 @@ namespace Velvet.Tests.Performance
                 MeasurementCount);
         }
 
-        // GREEN_ON_BASE(characterization): a benchmark asserts nothing about its numbers, so the base runs it green; its tree check holds behaviour the base already has.
+        // GREEN_ON_BASE(characterization): a benchmark asserts nothing about its numbers, so the base runs it green; this change takes the window's own stopwatch out of its count.
         [Test, Performance]
         public void Replace_AllOf1000Rows()
         {
@@ -82,7 +78,7 @@ namespace Velvet.Tests.Performance
                 MeasurementCount);
         }
 
-        // GREEN_ON_BASE(characterization): a benchmark asserts nothing about its numbers, so the base runs it green; its tree check holds behaviour the base already has.
+        // GREEN_ON_BASE(characterization): a benchmark asserts nothing about its numbers, so the base runs it green; this change takes the window's own stopwatch out of its count.
         [Test, Performance]
         public void PartialUpdate_EveryTenthOf1000Rows()
         {
@@ -98,7 +94,7 @@ namespace Velvet.Tests.Performance
 
         // The arrangement selects the first row, so the measured selection both highlights one row and
         // un-highlights another.
-        // GREEN_ON_BASE(characterization): a benchmark asserts nothing about its numbers, so the base runs it green; its tree check holds behaviour the base already has.
+        // GREEN_ON_BASE(characterization): a benchmark asserts nothing about its numbers, so the base runs it green; this change takes the window's own stopwatch out of its count.
         [Test, Performance]
         public void Select_OneOf1000Rows()
         {
@@ -117,7 +113,7 @@ namespace Velvet.Tests.Performance
         }
 
         // Rows 2 and 999 trade places; neither row's props change, so no row renders.
-        // GREEN_ON_BASE(characterization): a benchmark asserts nothing about its numbers, so the base runs it green; its tree check holds behaviour the base already has.
+        // GREEN_ON_BASE(characterization): a benchmark asserts nothing about its numbers, so the base runs it green; this change takes the window's own stopwatch out of its count.
         [Test, Performance]
         public void Swap_Rows2And999Of1000()
         {
@@ -131,7 +127,7 @@ namespace Velvet.Tests.Performance
                 MeasurementCount);
         }
 
-        // GREEN_ON_BASE(characterization): a benchmark asserts nothing about its numbers, so the base runs it green; its tree check holds behaviour the base already has.
+        // GREEN_ON_BASE(characterization): a benchmark asserts nothing about its numbers, so the base runs it green; this change takes the window's own stopwatch out of its count.
         [Test, Performance]
         public void Remove_OneOf1000Rows()
         {
@@ -145,7 +141,7 @@ namespace Velvet.Tests.Performance
                 MeasurementCount);
         }
 
-        // GREEN_ON_BASE(characterization): a benchmark asserts nothing about its numbers, so the base runs it green; its tree check holds behaviour the base already has.
+        // GREEN_ON_BASE(characterization): a benchmark asserts nothing about its numbers, so the base runs it green; this change takes the window's own stopwatch out of its count.
         [Test, Performance]
         public void Create_10000Rows()
         {
@@ -156,7 +152,7 @@ namespace Velvet.Tests.Performance
         }
 
         // The 1000 rows already shown keep their props, so only the appended rows render.
-        // GREEN_ON_BASE(characterization): a benchmark asserts nothing about its numbers, so the base runs it green; its tree check holds behaviour the base already has.
+        // GREEN_ON_BASE(characterization): a benchmark asserts nothing about its numbers, so the base runs it green; this change takes the window's own stopwatch out of its count.
         [Test, Performance]
         public void Append_1000RowsTo1000()
         {
@@ -170,7 +166,7 @@ namespace Velvet.Tests.Performance
                 MeasurementCount);
         }
 
-        // GREEN_ON_BASE(characterization): a benchmark asserts nothing about its numbers, so the base runs it green; its tree check holds behaviour the base already has.
+        // GREEN_ON_BASE(characterization): a benchmark asserts nothing about its numbers, so the base runs it green; this change takes the window's own stopwatch out of its count.
         [Test, Performance]
         public void Clear_1000Rows()
         {
@@ -227,26 +223,18 @@ namespace Velvet.Tests.Performance
             var action = operation.Next();
             KeyedBenchmarkApp.RowRenders = 0;
 
-            var recorder = Recorder.Get("GC.Alloc");
-            recorder.enabled = false;
-            recorder.FilterToCurrentThread();
-            recorder.enabled = true;
-
-            var sw = Stopwatch.StartNew();
-            KeyedBenchmarkApp.Dispatch(action);
-            _mounted.FlushStateForTest();
-            sw.Stop();
-
-            recorder.enabled = false;
-            var blocks = recorder.sampleBlockCount;
-            recorder.CollectFromAllThreads();
+            var cost = WindowCost.Of(() =>
+            {
+                KeyedBenchmarkApp.Dispatch(action);
+                _mounted.FlushStateForTest();
+            });
 
             VerifyTree(operation);
 
             if (time != null && allocation != null)
             {
-                Measure.Custom(time, sw.Elapsed.TotalMilliseconds);
-                Measure.Custom(allocation, blocks);
+                Measure.Custom(time, cost.Milliseconds);
+                Measure.Custom(allocation, cost.AllocationBlocks);
             }
         }
 
