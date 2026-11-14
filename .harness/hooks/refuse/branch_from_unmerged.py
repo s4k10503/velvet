@@ -14,7 +14,9 @@ start point is a positional beside the path rather than the token after the flag
 
 It also refuses creating or pushing a maintenance line `main` does not maintain, from whatever
 start point, and a push to one it does that brings what `maintenance_line.head_reasons` refuses;
-`lib/line_branches.py` reads which lines a command creates or pushes.
+`lib/line_branches.py` reads which lines a command creates or pushes. A push behind a `cd` the
+guard cannot place is not read for its lines: the guard stands down there rather than refusing every
+push behind such a move.
 """
 
 import json

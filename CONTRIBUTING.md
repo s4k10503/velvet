@@ -1769,7 +1769,9 @@ fragment, in the tracked markdown and workflow files, and runs in `Test ▸ rele
 ### The maintenance line
 
 A maintenance branch is named `<major>.x` and cut from that series' last release; `main` is where the
-next major is built. **One line is maintained at a time — the series immediately before `main`'s.**
+next major is built. **One line is maintained at a time — the series immediately before `main`'s —
+except that from `main`'s first entry for its next major until SECURITY.md ends the older line, the
+older and the newer line are both maintained.**
 
 **The line takes fixes, and the CI its own pull requests need. It does not take features.**
 `settle.py merge` — and so the automerge workflow, which runs `main`'s copy whatever the base — and
