@@ -83,9 +83,6 @@ namespace Velvet.CodeGen
                 var stack = Before[i];
                 if (stack == null)
                 {
-                    // MUTANT_SURVIVES(unreachable, line removed): only an instruction nothing reaches gets here.
-                    // ReactiveScopeSelectionTests.Given_EveryComponentBodyThisAssemblyHolds_When_TheFlowWalkReadsIt_Then_NoInstructionIsUnreachedAndNoneFallsOffTheEnd
-                    // pins that the component bodies of Velvet.Tests.Hooks.Editor hold none.
                     Popped[i] = System.Array.Empty<StackValue>();
                     continue;
                 }
