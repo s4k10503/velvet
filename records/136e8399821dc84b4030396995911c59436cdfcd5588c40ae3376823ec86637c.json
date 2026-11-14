@@ -1,0 +1,23 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "928bf6b9fa6e0663e247ee3c366a7b1c92b6b6a052492fc3a50a4aa9814566be",
+ "killers": [],
+ "measured_by": "43633215138",
+ "mutant": {
+  "after": "",
+  "before": " && StyleSkewClass.TryGetWinningSkewClasses(newClassNames, out _, out _)",
+  "column": 15,
+  "line": 43,
+  "operator": "clause removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberSkewApplier.cs",
+  "shadowed": [
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "41383ac56a9cd6a9062e1a35f07a35247a834beea84fee30eca75e6c3bc38e5a",
+ "verdict": "survived"
+}

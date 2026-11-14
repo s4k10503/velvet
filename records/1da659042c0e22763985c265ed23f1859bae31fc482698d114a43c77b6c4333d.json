@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed: Given_AShadowPresetBesideAnImportantClassOfAnotherFamily_When_ItsColoursAreRecordedAgain_Then_NothingIsAllocated",
+ "file": "d20e02ca3d823475b2230bb8353c98295e633b6f0fa6c1a1d8b9663c3b82a81a",
+ "killers": [
+  {
+   "case": "Velvet.Tests.BoxShadowExtractAllocationTests.Given_AShadowPresetBesideAnImportantClassOfAnotherFamily_When_ItsColoursAreRecordedAgain_Then_NothingIsAllocated",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BoxShadowExtractAllocationTests.cs": "e7345d8e71a3d94f444e13f97f369816bb3cc8383b86566ce6335eee413ee9b9",
+    "Packages/com.velvet.core/TestUtilities/GCAllocationCanary.cs": "fc61cead251d89e031e7591ac080a706d0568f2f3427cd7cda1ec3c93b965e58",
+    "Packages/com.velvet.core/TestUtilities/GCAllocationProbe.cs": "492823c099cf4f4de89da0da69c98d45cfc042070d93e2d0c0b95773310ebc2c"
+   }
+  }
+ ],
+ "measured_by": "43633215138",
+ "mutant": {
+  "after": ";",
+  "before": "s_arrays[slot] = classNames;",
+  "column": 12,
+  "line": 87,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleClassFamilies.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "41383ac56a9cd6a9062e1a35f07a35247a834beea84fee30eca75e6c3bc38e5a",
+ "verdict": "killed"
+}

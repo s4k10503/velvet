@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode: the editor was killed at 874s, 1.5 times the baseline's 579s plus 5s, with no readable result",
+ "file": "72403ef53dee1106d70fd5cb2cd4870d1616d15ccce4cb12543f0299fb905a10",
+ "killers": [],
+ "measured_by": "43633215138",
+ "mutant": {
+  "after": ";",
+  "before": "leaf = payload;",
+  "column": 16,
+  "line": 316,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleEaseCurve.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "41383ac56a9cd6a9062e1a35f07a35247a834beea84fee30eca75e6c3bc38e5a",
+ "verdict": "killed (timed out)"
+}

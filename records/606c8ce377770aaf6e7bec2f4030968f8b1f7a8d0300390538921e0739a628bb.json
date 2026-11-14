@@ -1,0 +1,32 @@
+{
+ "detail": "EditMode: 1 failed: Given_ADescendantExitCompleted_When_TheKeyReturnsBeforeTheDropRender_Then_TheWaitAndItsRegistrationAreGone",
+ "file": "47830d842adb57e94931454ec9045a1f95ce41acafed51faeac1894dc2be0b01",
+ "killers": [
+  {
+   "case": "Velvet.Tests.AnimatePresenceDescendantExitStateTests.Given_ADescendantExitCompleted_When_TheKeyReturnsBeforeTheDropRender_Then_TheWaitAndItsRegistrationAreGone",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/AnimatePresenceDescendantExitStateTests.cs": "5a9a4330ed08f375fb9ba587beea02ac68a4548e9f803f571e7af83aec8a8c03",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  }
+ ],
+ "measured_by": "43633215138",
+ "mutant": {
+  "after": "",
+  "before": " && IsToken(StyleArbitraryValueResolver.StripImportant(cls, out _), prefix)",
+  "column": 41,
+  "line": 22,
+  "operator": "clause removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleIntegerUtility.cs",
+  "shadowed": [
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "41383ac56a9cd6a9062e1a35f07a35247a834beea84fee30eca75e6c3bc38e5a",
+ "verdict": "killed"
+}

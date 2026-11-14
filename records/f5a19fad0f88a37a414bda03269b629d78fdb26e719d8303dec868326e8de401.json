@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "8d9f4913bc4d4221da8214f14186e0614ac9a98630588b41e176034ceb1130c0",
+ "killers": [],
+ "measured_by": "43633215138",
+ "mutant": {
+  "after": "||",
+  "before": "&&",
+  "column": 15,
+  "line": 49,
+  "operator": "logic",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberBorderStyleApplier.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "41383ac56a9cd6a9062e1a35f07a35247a834beea84fee30eca75e6c3bc38e5a",
+ "verdict": "survived"
+}

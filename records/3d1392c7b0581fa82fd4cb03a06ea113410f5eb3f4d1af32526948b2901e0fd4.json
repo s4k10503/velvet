@@ -1,0 +1,32 @@
+{
+ "detail": "EditMode: 1 failed: Given_AnUnprefixedTimingClass_When_ItsCurveIsAskedFor_Then_ItHasOne(\"ease-in\")",
+ "file": "72403ef53dee1106d70fd5cb2cd4870d1616d15ccce4cb12543f0299fb905a10",
+ "killers": [
+  {
+   "case": "Velvet.Tests.StyleEaseCurveTests.Given_AnUnprefixedTimingClass_When_ItsCurveIsAskedFor_Then_ItHasOne(\"ease-in\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/StyleEaseCurveTests.cs": "c385be0438de392db5fbf00d0fe02540638ff635c9e423a42112965822f5ab7e",
+    "Packages/com.velvet.core/TestUtilities/GCAllocationProbe.cs": "492823c099cf4f4de89da0da69c98d45cfc042070d93e2d0c0b95773310ebc2c"
+   }
+  }
+ ],
+ "measured_by": "43633215138",
+ "mutant": {
+  "after": "<=",
+  "before": "<",
+  "column": 80,
+  "line": 308,
+  "operator": "boundary",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleEaseCurve.cs",
+  "shadowed": [
+   "equality",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "41383ac56a9cd6a9062e1a35f07a35247a834beea84fee30eca75e6c3bc38e5a",
+ "verdict": "killed"
+}

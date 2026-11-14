@@ -1,0 +1,36 @@
+{
+ "detail": "EditMode: 1 failed among the 238 case(s) that ran the site: Given_AnArrayReadOutsideEveryScope_When_ItsTimingKeywordIsNotedInAScopeNamingItsBreakpoint_Then_ItAnswersAsAFreshArrayDoes",
+ "file": "72403ef53dee1106d70fd5cb2cd4870d1616d15ccce4cb12543f0299fb905a10",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ClassGateThemeScopeTests.Given_AnArrayReadOutsideEveryScope_When_ItsTimingKeywordIsNotedInAScopeNamingItsBreakpoint_Then_ItAnswersAsAFreshArrayDoes",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ClassGateThemeScopeTests.cs": "eed45e2d59d17e910ae8f337209f16fd3e90da116641eb186deb4d465dd78ac7",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  }
+ ],
+ "measured_by": "43633215138",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 23,
+  "line": 318,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleEaseCurve.cs",
+  "shadowed": [
+   "clause removed",
+   "equality",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "41383ac56a9cd6a9062e1a35f07a35247a834beea84fee30eca75e6c3bc38e5a",
+ "verdict": "killed"
+}
