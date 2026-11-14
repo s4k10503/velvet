@@ -5,7 +5,6 @@ using System.Diagnostics;
 using System.Threading;
 using NUnit.Framework;
 using Unity.PerformanceTesting;
-using UnityEngine.Profiling;
 using UnityEngine.TestTools;
 using Velvet.TestUtilities;
 
@@ -55,13 +54,12 @@ namespace Velvet.Tests.Performance
                 .Run();
         }
 
-        // GREEN_ON_BASE(refactor): a benchmark asserts nothing about its numbers, so it is green wherever its body completes.
-        // This change takes its counts from BenchmarkRun, and one iteration still runs the whole body.
+        // GREEN_ON_BASE(characterization): a benchmark asserts nothing about its numbers, so the base runs it green; this change counts its whole window.
         [UnityTest, Performance]
         public IEnumerator RunLoadersSync_SuspendDeferredCompletion()
         {
             var groupTime = new SampleGroup("RouteLoaderRunner.SuspendDeferred.Time", SampleUnit.Millisecond);
-            var groupGC = new SampleGroup("RouteLoaderRunner.SuspendDeferred.GC", SampleUnit.Undefined);
+            var groupGC = new SampleGroup("RouteLoaderRunner.SuspendDeferred.GCAcrossFrame", SampleUnit.Undefined);
 
             for (var i = 0; i < WarmupCount; i++)
             {
@@ -110,21 +108,17 @@ namespace Velvet.Tests.Performance
         private static IEnumerator RunSuspendDeferredRoundTripMeasured(SuspendDeferredMeasurement measurement)
         {
             var tcs = new VelvetTaskCompletionSource<object>();
-            var recorder = Recorder.Get("GC.Alloc");
-            recorder.enabled = false;
-            recorder.FilterToCurrentThread();
-            recorder.enabled = true;
-
-            var sw = Stopwatch.StartNew();
+            var sw = new Stopwatch();
+            var allocation = new GCAllocationAcrossOneFrame();
+            allocation.Start();
+            sw.Start();
             SharedRunner.RunLoadersSync(MakeSuspendMatch(tcs.Task), CancellationToken.None);
             tcs.TrySetResult("loaded-data");
             yield return null;
             sw.Stop();
 
-            recorder.enabled = false;
-            measurement.AllocBlocks = recorder.sampleBlockCount;
+            measurement.AllocBlocks = allocation.Stop();
             measurement.ElapsedMs = sw.Elapsed.TotalMilliseconds;
-            recorder.CollectFromAllThreads();
         }
 
         private sealed class SuspendDeferredMeasurement
