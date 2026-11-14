@@ -2,8 +2,9 @@
 
 `refuse/branch_from_unmerged.py` asks this; `scripts/pr/maintenance_line.py` owns which lines main
 maintains and what a line does not take, and the refusals here only apply it to a command. A tree
-whose origin/main was read and holds no Velvet package is not this repository, and nothing here
-refuses in it; one whose origin/main could not be read is refused as unread.
+with no origin, an origin with no `main`, or an origin/main that was read and holds no Velvet
+package is not this repository, and nothing here refuses in it; one whose origin could not be
+read to tell is refused as unread.
 """
 
 import os
@@ -127,9 +128,20 @@ def _default_remote(tree):
     return "origin"
 
 
+def _has_origin(tree):
+    """Whether `tree` is a repository with an origin remote, False where it is one without, and
+    None where git cannot read it as a repository at all."""
+    if _answer(tree, "rev-parse", "--git-dir") is None:
+        return None
+    return "origin" in (_answer(tree, "remote") or "").split()
+
+
 def _origins(tree, remote):
-    """Whether a push to `remote` from `tree` reaches origin's repository, or None where origin's
-    own URL cannot be read to tell."""
+    """Whether a push to `remote` from `tree` reaches origin's repository, False in a tree with no
+    origin, and None where `tree` or origin's URL cannot be read to tell."""
+    has_origin = _has_origin(tree)
+    if not has_origin:
+        return has_origin
     origin = _answer(tree, "remote", "get-url", "--push", "origin")
     if origin is None:
         return None
@@ -149,8 +161,9 @@ def _globbed(pattern, name):
 def pushed(command, cwd):
     """The lines a `git push` in this command updates, as (line, source, tree, whether the push
     reaches origin's repository or None where that cannot be told). `HEAD`, `@` and a push naming
-    no refspec are the current branch; `--all` is every local line, and a glob every one its source
-    side matches. A deletion updates none."""
+    no refspec are the current branch; `--all` is every local line, and a glob is each local branch
+    its source side matches, written to the line its destination side names. A deletion updates
+    none."""
     found = []
     for directory, subcommand, operands in _invocations(command):
         if subcommand != "push" or any(token in PUSH_DELETES for token in operands):
@@ -159,11 +172,11 @@ def pushed(command, cwd):
         named = _positionals(operands, PUSH_VALUE_FLAGS)
         reaches = _origins(tree, named[0] if named else _default_remote(tree))
         refspecs = named[1:]
-        local = [name for name in
-                 (_answer(tree, "for-each-ref", "--format=%(refname:short)", "refs/heads")
-                  or "").split() if maintenance_line.is_line(name)]
+        local = (_answer(tree, "for-each-ref", "--format=%(refname:short)", "refs/heads")
+                 or "").split()
         if PUSH_EVERY_BRANCH & set(operands):
-            found += [(name, f"refs/heads/{name}", tree, reaches) for name in local]
+            found += [(name, f"refs/heads/{name}", tree, reaches) for name in local
+                      if maintenance_line.is_line(name)]
         elif not refspecs and "--tags" not in operands:
             refspecs = ["HEAD"]
         for refspec in refspecs:
@@ -195,8 +208,21 @@ def _unread(verb, name, failure):
 
 
 def _main_says(tree, verb, name):
-    """(`main_state`, None) for `tree`, (None, None) where origin/main was read and holds no Velvet
-    package, or (None, the refusal) where it could not be read."""
+    """(`main_state`, None) for `tree`; (None, None) where it is not this repository, having no
+    origin, an origin with no `main`, or an origin/main holding no Velvet package; or (None, the
+    refusal) where any of that could not be read."""
+    has_origin = _has_origin(tree)
+    if has_origin is None:
+        failed = git_answer(["rev-parse", "--git-dir"], tree, timeout=GIT_TIMEOUT)
+        return None, _unread(verb, name, failed.stderr or "git rev-parse failed")
+    if not has_origin:
+        return None, None
+    heads = git_answer(["ls-remote", "origin", f"refs/heads/{maintenance_line.MAIN}"], tree,
+                       timeout=GIT_TIMEOUT)
+    if heads.code != 0:
+        return None, _unread(verb, name, heads.stderr or "git ls-remote failed")
+    if not heads.stdout.strip():
+        return None, None
     fetched = git_answer(["fetch", "-q", "origin", maintenance_line.MAIN,
                           maintenance_line.LINES_REFSPEC], tree, timeout=GIT_TIMEOUT)
     if fetched.code != 0:
@@ -233,9 +259,9 @@ def refusals(command, cwd, creations):
             continue
         if reaches is None:
             said.append(f"Refusing to push `{name}`: whether the push reaches origin's repository "
-                        f"could not be told, origin's own URL being unreadable here. Configure "
-                        f"origin and retry, or give a branch that is not a line a name that is not "
-                        f"one.")
+                        f"could not be told: git could not read this tree, or origin's URL in it. "
+                        f"Run the push from a readable checkout, or give a branch that is not a "
+                        f"line a name that is not one.")
             continue
         state, refused = _main_says(tree, "push", name)
         why = maintenance_line.unmaintained(name, state) if state else None

@@ -438,15 +438,55 @@ class LineCutTests(unittest.TestCase):
         # Assert
         self.assertEqual(result.returncode, ALLOWED)
 
-    def test_Given_NoOriginToCompareWith_When_ALineIsPushedToAPath_Then_ItIsRefusedAsUntold(self):
+    # GREEN_ON_BASE(characterization): the base reads no push, so it lets this one through.
+    # What it pins is that a tree with no origin is not this repository: reading it as one that
+    # cannot be told reddens it.
+    def test_Given_ATreeWithNoOrigin_When_ALineIsPushedToAPath_Then_ItIsAllowed(self):
         # Arrange
         git(self.project, "remote", "remove", "origin")
 
         # Act
-        said = self.refused(f"git push {self.root / 'fork.git'} HEAD:refs/heads/3.x")
+        result = ask_in(self.root, self.project,
+                        f"git push {self.root / 'fork.git'} HEAD:refs/heads/3.x")
+
+        # Assert
+        self.assertEqual(result.returncode, ALLOWED)
+
+    def test_Given_ATreeThatIsNotThere_When_ALineIsPushedFromIt_Then_ItIsRefusedAsUntold(self):
+        # Act
+        said = self.refused(f"git -C {self.root / 'missing'} push origin HEAD:refs/heads/3.x")
 
         # Assert
         self.assertIn("whether the push reaches origin's repository could not be told", said)
+
+    # GREEN_ON_BASE(characterization): the base lets a named start point through whatever its name.
+    # What it pins is that a tree with no origin is not this repository: refusing a line where
+    # origin cannot be read reddens it.
+    def test_Given_ATreeWithNoOrigin_When_ALineIsCreated_Then_ItIsAllowed(self):
+        # Arrange
+        git(self.project, "remote", "remove", "origin")
+
+        # Act
+        result = ask_in(self.root, self.project, "git branch 3.x HEAD")
+
+        # Assert
+        self.assertEqual(result.returncode, ALLOWED)
+
+    # GREEN_ON_BASE(characterization): the base lets a named start point through whatever its name.
+    # What it pins is that an origin with no `main` is not this repository: refusing a line where
+    # origin/main cannot be fetched reddens it.
+    def test_Given_AnOriginWithNoMain_When_ALineIsCreated_Then_ItIsAllowed(self):
+        # Arrange — origin carries a branch of another name only.
+        trunk = self.root / "trunk.git"
+        subprocess.run(["git", "init", "-q", "--bare", str(trunk)], check=True, timeout=60)
+        git(self.project, "push", "-q", str(trunk), "main:refs/heads/trunk")
+        git(self.project, "remote", "set-url", "origin", str(trunk))
+
+        # Act
+        result = ask_in(self.root, self.project, "git branch 3.x HEAD")
+
+        # Assert
+        self.assertEqual(result.returncode, ALLOWED)
 
     def test_Given_ATreeThatIsNotThere_When_MainsOwnSeriesIsCreatedInIt_Then_ItIsRefusedAsUnread(self):
         # Act
@@ -471,6 +511,16 @@ class LineCutTests(unittest.TestCase):
 
         # Act
         said = self.refused("git push origin 'refs/heads/*:refs/heads/*'")
+
+        # Assert
+        self.assertIn("Refusing to push `3.x`: 3.x is not a line main maintains", said)
+
+    def test_Given_ABranchThatIsNoLineAGlobWritesToALine_When_TheGlobIsPushed_Then_ItIsRefused(self):
+        # Arrange
+        git(self.project, "branch", "x")
+
+        # Act
+        said = self.refused("git push origin 'refs/heads/x*:refs/heads/3.x*'")
 
         # Assert
         self.assertIn("Refusing to push `3.x`: 3.x is not a line main maintains", said)
