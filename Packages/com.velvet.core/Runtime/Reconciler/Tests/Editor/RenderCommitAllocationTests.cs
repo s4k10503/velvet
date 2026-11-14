@@ -7,9 +7,9 @@ using Velvet.TestUtilities;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Pins the GC.Alloc blocks a setter's re-render of a component costs, from the setter through the immediate
-    /// tier's scheduled drain and the layout commit, and what the passive flush after it costs, so an allocation
-    /// added back on either path fails a case. The component re-renders on its own under a Provider, with a keyed
+    /// Bounds the GC.Alloc blocks a setter's re-render of a component costs, from the setter through the immediate
+    /// tier's scheduled drain and the layout commit, and specifies that the passive flush after it and a resume of a
+    /// tree with no parked pass allocate nothing. The component re-renders on its own under a Provider, with a keyed
     /// child it renders inline, and both carry an effect whose deps each re-render changes. Their deps and texts
     /// come from static arrays, so a change of state builds neither.
     /// </summary>
@@ -106,6 +106,20 @@ namespace Velvet.Tests
 
             // Act
             var blocks = GCAllocationProbe.MedianBlocksDuring(ReRender, FlushPassiveEffects);
+
+            // Assert — a probe stuck at zero reads as an allocation.
+            Assert.That(canary > 0 ? blocks : -1, Is.Zero);
+        }
+
+        [Test]
+        public void Given_ATreeWithNoParkedPass_When_AResumeOfItsRootRuns_Then_NothingIsAllocated()
+        {
+            // Arrange
+            var canary = GCAllocationCanary.BlocksForKnownArray();
+            var root = _mounted.Root;
+
+            // Act
+            var blocks = GCAllocationProbe.MedianBlocksDuring(() => FiberWorkLoop.ContinueReconcile(root));
 
             // Assert — a probe stuck at zero reads as an allocation.
             Assert.That(canary > 0 ? blocks : -1, Is.Zero);

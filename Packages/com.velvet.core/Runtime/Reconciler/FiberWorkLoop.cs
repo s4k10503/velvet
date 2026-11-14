@@ -732,7 +732,7 @@ namespace Velvet
                 // reads it.
                 if (fiber.Reconciler?.HasPendingWork == true)
                 {
-                    mountPoint.schedule.Execute(() => PanelSchedulerCallback.Run(mountPoint, fiber, ContinueReconcile));
+                    ScheduleNextSlice(mountPoint, fiber);
                 }
                 else
                 {
@@ -806,6 +806,11 @@ namespace Velvet
                 FiberRenderer.PopFiber(pushedOnto);
             }
         }
+
+        // Kept out of ContinueReconcile, whose every call would otherwise build this closure
+        // (RenderCommitAllocationTests).
+        private static void ScheduleNextSlice(UnityEngine.UIElements.VisualElement mountPoint, ComponentFiber fiber)
+            => mountPoint.schedule.Execute(() => PanelSchedulerCallback.Run(mountPoint, fiber, ContinueReconcile));
 
         private static void PromoteStarvedTransitionLane(ComponentFiber fiber)
         {
