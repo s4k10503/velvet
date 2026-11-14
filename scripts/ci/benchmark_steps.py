@@ -61,6 +61,7 @@ class DriftRule:
     runs: int = 5
     days: int = 30
     min_days: int = 14
+    held: float = 1.1
 
 
 DRIFT = DriftRule()
@@ -95,7 +96,7 @@ class Drift:
     earliest: Run
     decided: Run
     ratio: float
-    # (processor, its first run compared, earlier median, latest median), one per processor judged.
+    # (processor, its first run compared, earlier median, latest median, ratio), one per processor judged.
     per_processor: tuple
 
 
@@ -207,40 +208,71 @@ def find_steps(runs, units, rule=RULE, counts=COUNTS):
                                      rule if units.get(name) in TIME_UNITS else counts)]
 
 
-def series_drift(runs, name, unit, start, rule):
-    """The drift of one time benchmark over the runs landed from `start` on, or None."""
+def held(points, before, rule):
+    """Whether a step's rise still holds on one processor: no five of its runs since the step, in a row, have
+    a median under `rule.held` times the median of the five before it. With fewer than five on either side,
+    it holds."""
+    if len(before) < rule.runs or len(points) < rule.runs:
+        return True
+    bar = rule.held * statistics.median(before[-rule.runs:])
+    return all(statistics.median(points[index:index + rule.runs]) >= bar
+               for index in range(len(points) - rule.runs + 1))
+
+
+def series_drift(runs, name, unit, start, cuts, rule):
+    """The drift of one time benchmark over `runs[start:]`, landed in order, measured on each processor within
+    the stretches between the `cuts` whose rise still holds there, or None."""
+    order = {run.commit: index for index, run in enumerate(runs)}
     by_processor = {}
     for run in runs:
-        if run.timestamp >= start and run.processor and run.values.get(name, 0) > 0:
+        if run.processor and run.values.get(name, 0) > 0:
             by_processor.setdefault(run.processor, []).append(run)
     judged = []
-    for processor, points in sorted(by_processor.items()):
+    for processor, every in sorted(by_processor.items()):
+        points = [run for run in every if order[run.commit] >= start]
         if (len(points) < 2 * rule.runs
                 or points[-1].timestamp - points[0].timestamp < timedelta(days=rule.min_days)):
             continue
-        earlier = statistics.median(run.values[name] for run in points[:rule.runs])
-        latest = statistics.median(run.values[name] for run in points[-rule.runs:])
-        judged.append((processor, points[0], earlier, latest))
-    drifting = [row for row in judged if row[3] >= rule.threshold * row[2]]
+        values = [run.values[name] for run in points]
+        bounds = [0]
+        for cut in sorted(cuts):
+            at = next((index for index, run in enumerate(points) if order[run.commit] >= cut), len(points))
+            before = [run.values[name] for run in every if order[run.commit] < cut]
+            if bounds[-1] < at < len(points) and held(values[at:], before, rule):
+                bounds.append(at)
+        ratio = 1
+        for low, high in zip(bounds, bounds[1:] + [len(points)]):
+            if high - low >= 2 * rule.runs:
+                ratio *= (statistics.median(values[high - rule.runs:high])
+                          / statistics.median(values[low:low + rule.runs]))
+        judged.append((processor, points[0], statistics.median(values[:rule.runs]),
+                       statistics.median(values[-rule.runs:]), ratio))
+    drifting = [row for row in judged if row[4] >= rule.threshold]
     if len(drifting) < rule.min_processors:
         return None
     return Drift(name, unit, min((row[1] for row in judged), key=lambda run: run.timestamp), runs[-1],
-                 min(times(latest, earlier) for _, _, earlier, latest in drifting), tuple(judged))
+                 min(row[4] for row in drifting), tuple(judged))
 
 
-def find_drifts(runs, units, steps=(), rule=DRIFT):
-    """Every time benchmark that drifted up over the latest `rule.days` days, and from the first slow run of its
-    latest step among `steps` where that is later, so that no drift repeats a rise a step names."""
+def find_drifts(runs, units, rule=DRIFT, steps=RULE, filed=None):
+    """Every time benchmark that drifted up over the latest `rule.days` days, after the commit `filed` maps it
+    to where that is later. Its steps, as `steps` finds them, split what is compared while their rise holds,
+    so that a drift leaves out the jump of each step that holds and does not wait for one that was undone to
+    leave the window."""
     runs = landed(runs)
     if not runs:
         return []
-    since = {}
-    for step in steps:
-        since[step.benchmark] = max(since.get(step.benchmark, step.first_slow.timestamp), step.first_slow.timestamp)
-    window = runs[-1].timestamp - timedelta(days=rule.days)
-    drifts = (series_drift(runs, name, units[name], max(window, since.get(name, window)), rule)
-              for name in sorted({name for run in runs for name in run.values if units.get(name) in TIME_UNITS}))
-    return [drift for drift in drifts if drift is not None]
+    order = {run.commit: index for index, run in enumerate(runs)}
+    window = next(index for index, run in enumerate(runs)
+                  if run.timestamp >= runs[-1].timestamp - timedelta(days=rule.days))
+    drifts = []
+    for name in sorted({name for run in runs for name in run.values if units.get(name) in TIME_UNITS}):
+        start = max(window, order[filed[name]] + 1) if name in (filed or {}) else window
+        cuts = [order[step.first_slow.commit] for step in series_steps(runs, name, units[name], steps)]
+        drift = series_drift(runs, name, units[name], start, cuts, rule)
+        if drift is not None:
+            drifts.append(drift)
+    return drifts
 
 
 def span(step, order):
@@ -358,11 +390,11 @@ def render_drifts(drifts, repository, rule=DRIFT):
         "|---|---|---|---:|---:|---:|",
     ]
     for drift in drifts:
-        for processor, first, earlier, latest in drift.per_processor:
+        for processor, first, earlier, latest, ratio in drift.per_processor:
             lines.append(f"| {short_name(drift.benchmark)} | {processor} | `{first.commit[:8]}` "
-                         f"| {amount(earlier, drift.unit)} | {amount(latest, drift.unit)} "
-                         f"| {ratio_text(times(latest, earlier))} |")
-    lines += ["", f"Earlier and Latest are medians over a processor's first and last {rule.runs} runs compared. "
+                         f"| {amount(earlier, drift.unit)} | {amount(latest, drift.unit)} | {ratio_text(ratio)} |")
+    lines += ["", f"Earlier and Latest are medians over a processor's first and last {rule.runs} runs compared; "
+              "the ratio leaves out the steps between them whose rise still holds. "
               "`.github/workflows/benchmarks.yml` opened this and does not rewrite it; "
               "CONTRIBUTING.md's benchmarks section says what counts as a drift."]
     return title, fitted(lines)
@@ -424,15 +456,21 @@ def open_issue(title, body, repository, run):
     run(create, body)
 
 
-def sync_drift_issues(drifts, runs, repository, run=gh, rule=DRIFT):
-    """Opens one issue for the drifts no issue names, and writes nothing else."""
+def filed_drifts(issues, runs):
+    """Each benchmark's latest commit, in the order `runs` landed, that a drift marker in `issues` names."""
     order = {entry.commit: index for index, entry in enumerate(landed(runs))}
-    named = {}
-    for issue in list_issues(repository, run):
+    filed = {}
+    for issue in issues:
         for match in DRIFT_MARKER_PATTERN.finditer(issue.get("body") or ""):
-            if match["decided"] in order:
-                named[match["series"]] = max(named.get(match["series"], -1), order[match["decided"]])
-    new = [drift for drift in drifts if named.get(drift.benchmark, -1) < order[drift.earliest.commit]]
+            series, commit = match["series"], match["decided"]
+            if commit in order and (series not in filed or order[commit] > order[filed[series]]):
+                filed[series] = commit
+    return filed
+
+
+def sync_drift_issues(runs, units, repository, run=gh, rule=DRIFT, steps=RULE):
+    """Opens one issue for the drifts found after the commits drift issues name, and writes nothing else."""
+    new = find_drifts(runs, units, rule, steps, filed_drifts(list_issues(repository, run), runs))
     if not new:
         return []
     open_issue(*render_drifts(new, repository, rule), repository, run)
@@ -441,9 +479,8 @@ def sync_drift_issues(drifts, runs, repository, run=gh, rule=DRIFT):
 
 def file_regressions(runs, units, repository, run=gh, rule=RULE, counts=COUNTS, drift=DRIFT):
     """The steps and drifts the history holds, synced: what the job runs."""
-    steps = find_steps(runs, units, rule, counts)
-    return (sync_issues(steps, runs, repository, run, rule)
-            + sync_drift_issues(find_drifts(runs, units, steps, drift), runs, repository, run, drift))
+    return (sync_issues(find_steps(runs, units, rule, counts), runs, repository, run, rule)
+            + sync_drift_issues(runs, units, repository, run, drift, rule))
 
 
 class MemoryIssues:
@@ -507,7 +544,7 @@ def main(argv):
         return 0
     steps = find_steps(runs, units)
     print("\n\n".join(describe(members) for members in clusters(steps, runs)) or "no step")
-    print(describe_drifts(find_drifts(runs, units, steps)) or "no drift")
+    print(describe_drifts(find_drifts(runs, units)) or "no drift")
     if args.issues:
         for action in file_regressions(runs, units, args.repository):
             print(action)
