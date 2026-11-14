@@ -54,17 +54,40 @@ GIT_TIMEOUT = 30
 
 Target = collections.namedtuple("Target", "head base commit fork title")
 
-# The method that lands a head with a merge commit, which keeps what it carries in the base's
-# ancestry; a squash and a rebase both land new commits instead.
-MERGE_COMMIT_FLAGS = ("--merge", "-m")
+# `gh pr merge`'s flags that take a value, so a value spelled like a flag is not read as one.
+VALUED_FLAGS = {"-A", "--author-email", "-b", "--body", "-F", "--body-file", "--match-head-commit",
+                "-t", "--subject", "-R", "--repo"}
+VALUED_SHORT = "AbFtR"
+# What a boolean flag's `=value` reads as true.
+TRUE_VALUES = {"1", "t", "true"}
+
+
+def merge_commit_asked(operands):
+    """Whether these `gh pr merge` operands ask for a merge commit, which keeps what the head carries
+    in the base's ancestry; a squash and a rebase both land new commits instead."""
+    asked, index = False, 0
+    while index < len(operands):
+        token = operands[index]
+        name, equals, value = token.partition("=")
+        index += 1
+        if name in VALUED_FLAGS:
+            index += 0 if equals else 1
+        elif name == "--merge":
+            asked = not equals or value.lower() in TRUE_VALUES
+        elif token.startswith("-") and not token.startswith("--"):
+            for position, letter in enumerate(token[1:], start=1):
+                if letter in VALUED_SHORT:
+                    index += 0 if position < len(token) - 1 else 1
+                    break
+                asked = asked or letter == "m"
+    return asked
 
 
 def landed_by_merge_commit(command):
     """The pull requests this command merges with a merge commit, "" meaning the current branch's."""
     return {next((token for token in operands if token.isdigit()), "")
             for operands in program_invocations(command, "gh", ("pr", "merge"))
-            if not merges_nothing(operands)
-            and any(token.partition("=")[0] in MERGE_COMMIT_FLAGS for token in operands)}
+            if not merges_nothing(operands) and merge_commit_asked(operands)}
 
 UNREADABLE_REFUSAL = (
     "Refusing `gh pr merge`: what its base holds against the head could not be read.\n\n"
@@ -183,14 +206,15 @@ def refuse_one(cwd, pr, merge_commit=False):
         return UNREADABLE_REFUSAL.format(
             f"the newest release commit on {target.base} could not be read")
 
-    kept = None
+    main_says = None
     if onto_line:
         try:
-            kept = maintenance_line.maintained(cwd)
+            main_says = maintenance_line.main_state(cwd)
         except maintenance_line.UNREAD:
-            return UNREADABLE_REFUSAL.format("which line origin/main maintains could not be read")
+            return UNREADABLE_REFUSAL.format("which lines origin/main maintains could not be read")
     said = [f"{label}: {reason}.\n" for reason in
-            maintenance_line.pull_request_reasons(target.base, target.head, target.title, kept)]
+            maintenance_line.pull_request_reasons(target.base, target.head, target.title,
+                                                  main_says)]
     if onto_line:
         try:
             reading = maintenance_line.read(cwd, target.base, target.commit, GIT_TIMEOUT)

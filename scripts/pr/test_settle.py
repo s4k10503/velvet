@@ -355,8 +355,8 @@ def fabricated_readings(states, red=(RED,), releasing=(RELEASING,), required=Non
     """Every reading a poll takes from git or the API, answered from a table of pull request states.
 
     Patched at the readings rather than at `blocking_reasons`, so the decision itself is what runs:
-    stubbing the verdict would make the agreement below true by construction. `maintained` is the
-    line `settle.line_maintained` answers, and None asks nothing of a base about it.
+    stubbing the verdict would make the agreement below true by construction. `maintained` is what
+    `settle.line_main_state` answers, and None asks nothing of a base about it.
     """
     by_sha = {state.sha: state for state in states.values()}
     by_branch = {state.branch: state for state in states.values()}
@@ -375,7 +375,7 @@ def fabricated_readings(states, red=(RED,), releasing=(RELEASING,), required=Non
                 stack=states[number].stack, title=states[number].title)),
             ("line_reading", lambda _project, _line, sha: by_sha[sha].line),
             ("line_carried", lambda _project, _base, sha: by_sha[sha].carried),
-            ("line_maintained", lambda _project: maintained),
+            ("line_main_state", lambda _project: maintained),
             ("stack_members", lambda _project, stack: members(states, stack)),
             ("stack_settings", lambda _project: settings),
             ("stack_tangles", lambda _project, base, listed: tangles(states, base, listed)),
@@ -1689,8 +1689,8 @@ UNANSWERED = "the module gave no reason here"
 
 
 def line_reasons(base="2.x", maintained=None, **fabricated):
-    """What `settle.py merge` would refuse pull request 7 onto `base` for, `maintained` being the
-    line origin/main maintains."""
+    """What `settle.py merge` would refuse pull request 7 onto `base` for, `maintained` being what
+    origin/main says of its lines."""
     with fabricated_readings({7: fabricate(7, base=base, **fabricated)}, maintained=maintained):
         return settle.blocking_reasons(Path("."), 7).reasons
 
@@ -1730,21 +1730,40 @@ class MaintenanceLineMergeTests(unittest.TestCase):
         self.assertEqual(decided, settle.maintenance_line.pull_request_reasons(
             "main", "3.0.x", "fix(velvet): a fix") or [UNANSWERED])
 
-    def test_Given_APullRequestOntoALineMainHasMovedPast_When_TheMergeIsDecided_Then_TheLineIsTheReason(self):
+    def test_Given_APullRequestOntoALineSecurityNoLongerSupports_When_TheMergeIsDecided_Then_TheLineIsTheReason(self):
+        # Arrange — main building 4.0, and SECURITY.md marking only 3.x supported.
+        state = settle.maintenance_line.MainState(4, frozenset({3}))
+
         # Act
-        decided = line_reasons(maintained="3.x")
+        decided = line_reasons(maintained=state)
 
         # Assert
         self.assertEqual(decided, settle.maintenance_line.pull_request_reasons(
-            "2.x", "topic-7", "fix(velvet): a fix", "3.x") or [UNANSWERED])
+            "2.x", "topic-7", "fix(velvet): a fix", state) or [UNANSWERED])
 
     def test_Given_APullRequestOntoMainsOwnSeries_When_TheMergeIsDecided_Then_TheLineIsTheReason(self):
-        # Act — the head holds the release commit the tables date 3.x at, which is not this case's.
-        decided = line_reasons(base="3.x", maintained="2.x", holds=(RELEASED,))
+        # Arrange — the head holds the release commit the tables date 3.x at, which is not this case's.
+        state = settle.maintenance_line.MainState(3, frozenset({3, 2}))
+
+        # Act
+        decided = line_reasons(base="3.x", maintained=state, holds=(RELEASED,))
 
         # Assert
         self.assertEqual(decided, settle.maintenance_line.pull_request_reasons(
-            "3.x", "topic-7", "fix(velvet): a fix", "2.x") or [UNANSWERED])
+            "3.x", "topic-7", "fix(velvet): a fix", state) or [UNANSWERED])
+
+    def test_Given_ABaseOverrideOfAPullRequestOntoALine_When_TheMergeIsDecided_Then_TheLineItLandsOnIsAsked(self):
+        # Arrange — `--base main` judges the base readings against main, and the merge still lands
+        # on 2.x.
+        state = settle.maintenance_line.MainState(4, frozenset({3}))
+
+        # Act
+        with fabricated_readings({7: fabricate(7, base="2.x")}, maintained=state):
+            decided = settle.blocking_reasons(Path("."), 7, base="main").reasons
+
+        # Assert
+        self.assertEqual(decided, settle.maintenance_line.pull_request_reasons(
+            "2.x", "topic-7", "fix(velvet): a fix", state) or [UNANSWERED])
 
     def test_Given_AHeadOntoMainCarryingALinesCommits_When_TheMergeIsDecided_Then_ItsSquashIsTheReason(self):
         # Arrange — the shape a forward merge made on a branch of its own takes.

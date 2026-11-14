@@ -54,10 +54,10 @@ Twelve preconditions:
   owns which heads those are. Nor is a head carrying commits of a line that its base lacks, which a
   squash would land without the line entering the base's ancestry; `maintenance_line.carried` reads
   those.
-- **A pull request onto a maintenance line lands only on the line `main` maintains, and carries no
+- **A pull request onto a maintenance line lands only on a line `main` maintains, and carries no
   commit `main` holds that the line does not, no `feat` or breaking title or commit, and no breaking
   fragment**, and no base or head is named like a line without being one. `maintenance_line.py`
-  owns those readings.
+  owns those readings, and they are asked of the line the merge lands on whatever `--base` names.
 - **A stack member merges only once every member below it has merged, and while its stack is
   linear on its base.** It goes through the asynchronous endpoint, which GitHub documents as merging
   every member below the one asked for as well, and nothing here read their checks; and GitHub
@@ -744,12 +744,12 @@ def line_reading(project, line, sha):
                            f"{git_said(failure)}")
 
 
-def line_maintained(project):
-    """`maintenance_line.maintained` off origin/main, raising as `line_reading` does."""
+def line_main_state(project):
+    """`maintenance_line.main_state` off origin/main, raising as `line_reading` does."""
     try:
-        return maintenance_line.maintained(project)
+        return maintenance_line.main_state(project)
     except maintenance_line.UNREAD as failure:
-        raise RuntimeError(f"which line origin/main maintains could not be read: "
+        raise RuntimeError(f"which lines origin/main maintains could not be read: "
                            f"{git_said(failure)}")
 
 
@@ -786,7 +786,9 @@ def blocking_reasons(project, number, base=None, states=None, previous=()):
     reading as a conflict that cleared. `merge` hands none, and to it `unknown` is no reason.
     """
     before = pull_request(project, number)
-    target = base or (before.stack.base if before.stack else before.base)
+    # What the merge lands on whatever `base` names, and so what the line readings are asked of.
+    landing = before.stack.base if before.stack else before.base
+    target = base or landing
     merge_state = before.merge_state
     if merge_state == "unknown" and any(line.startswith(f"PR#{number} {before.sha[:7]} ")
                                         and conflict_reason(target) in line for line in previous):
@@ -821,9 +823,10 @@ def blocking_reasons(project, number, base=None, states=None, previous=()):
     behind_release = (state.release if state.release and not before.fork and not stack
                       and not contains_commit(project, before.branch, state.release[0]) else None)
     long_lived_head = not before.fork and long_lived.is_long_lived(before.branch)
-    line_head = (maintenance_line.head_reasons(target, line_reading(project, target, before.sha))
-                 if maintenance_line.is_line(target) and not before.fork else [])
-    line_squash = (maintenance_line.squash_reasons(target, line_carried(project, target, before.sha))
+    line_head = (maintenance_line.head_reasons(landing, line_reading(project, landing, before.sha))
+                 if maintenance_line.is_line(landing) and not before.fork else [])
+    line_squash = (maintenance_line.squash_reasons(landing,
+                                                   line_carried(project, landing, before.sha))
                    if not before.fork and not long_lived_head else [])
     holders = state.held.get(before.branch) or ()
     held = tuple((tree.path, holder_state(project, tree, after)) for tree in holders)
@@ -846,9 +849,9 @@ def blocking_reasons(project, number, base=None, states=None, previous=()):
                                  stack_settings=stack_settings(project) if stack else None,
                                  stack_tangles=stack_tangles(project, target, members),
                                  line_pull_request=maintenance_line.pull_request_reasons(
-                                     target, before.branch, before.title,
-                                     line_maintained(project)
-                                     if maintenance_line.is_line(target) else None),
+                                     landing, before.branch, before.title,
+                                     line_main_state(project)
+                                     if maintenance_line.is_line(landing) else None),
                                  line_head=line_head, line_squash=line_squash),
                     after, before.branch, results, target, before.sha, held,
                     # Read at `before`, so a moved head has none, as its reasons have none.

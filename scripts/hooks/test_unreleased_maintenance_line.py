@@ -91,7 +91,7 @@ def repository(branch, changelog, merged=True):
         (origin / CHANGELOG).write_text(changelog)
         git(origin, "commit", "--quiet", "--allow-empty", "-am", "more")
     if merged == "squash" and branch != "main":
-        # What every merge onto main here actually is: the content arrives, the parent does not.
+        # What a squashed forward merge leaves: the content arrives, the parent does not.
         git(origin, "merge", "--quiet", "--squash", branch)
         git(origin, "commit", "--quiet", "-m", "carry the line forward")
     elif merged and branch != "main":
@@ -105,9 +105,9 @@ def repository(branch, changelog, merged=True):
 class LineMainHasNotTaken(unittest.TestCase):
     """The second reading, asked of the CHANGELOG rather than of git's ancestry.
 
-    Every merge onto main here is a squash, which writes a commit whose only parent is main — so an
-    ancestry reading is false forever whatever anyone does, and a patch-id reading is too, the squash
-    having combined the line's patches into one whose id matches none of them.
+    A squash writes a commit whose only parent is main, so after one an ancestry reading is false
+    whatever the content says, and a patch-id reading is too, the squash having combined the line's
+    patches into one whose id matches none of them.
     """
 
     def test_Given_ALineMainHasNotTaken_When_Reported_Then_ItsOutstandingEntriesAreNamed(self):
@@ -132,8 +132,8 @@ class LineMainHasNotTaken(unittest.TestCase):
         self.assertIn("Merge the line forward with a merge commit", done.stdout)
 
     def test_Given_ALineCarriedForwardBySquash_When_Reported_Then_NothingIsSaidAboutIt(self):
-        # Arrange — the content is on main and the ancestry is not, which is every forward merge this
-        # repository can perform.
+        # Arrange — the content is on main and the ancestry is not, which is what a squash or a pick
+        # leaves.
         clone = repository("2.x", WAITING, merged="squash")
 
         # Act

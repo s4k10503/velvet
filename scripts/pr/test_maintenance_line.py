@@ -232,6 +232,17 @@ class ReadTests(unittest.TestCase):
         # Assert
         self.assertEqual(carried, [f"2.x {self.line_fix}"])
 
+    def test_Given_AnOrphanHead_When_ItsLinesAreRead_Then_NoneIsCarried(self):
+        # Arrange — a head sharing no commit with the line, as `upm` and `benchmark-data` do.
+        git(self.project, "switch", "-q", "--orphan", "lone")
+        git(self.project, "commit", "-q", "--allow-empty", "-m", "chore(velvet): a history of its own")
+
+        # Act
+        carried = self.carried()
+
+        # Assert
+        self.assertEqual(carried, [])
+
     def test_Given_AHeadFromMainThatLeftTheLineAlone_When_ItsLinesAreRead_Then_NoneIsCarried(self):
         # Arrange — the line still holds a fix main lacks, which this head does not carry.
         git(self.project, "switch", "-q", "-c", "forward", "origin/main")
@@ -302,8 +313,21 @@ RELEASED_MAJOR = """# Changelog
 """
 
 
+SECURITY = """# Security Policy
+
+## Supported versions
+
+| Version | Supported |
+| ------- | --------- |
+| 3.0.x   | ✅        |
+| 2.1.x   | ✅        |
+| 1.x     | ❌        |
+"""
+
+
 class MaintainedTests(unittest.TestCase):
-    """`origin/main` declaring 3.0.0, with nothing waiting in its breaking section."""
+    """`origin/main` declaring 3.0.0, with nothing waiting in its breaking section, and SECURITY.md
+    supporting 3.0.x and 2.1.x."""
 
     def setUp(self):
         self.root = Path(tempfile.mkdtemp(prefix="velvet-maintained-"))
@@ -316,6 +340,7 @@ class MaintainedTests(unittest.TestCase):
         self.write("Packages/com.velvet.core/package.json",
                    json.dumps({"name": "com.velvet.core", "version": "3.0.0"}))
         self.write("Packages/com.velvet.core/CHANGELOG.md", RELEASED_MAJOR)
+        self.write("SECURITY.md", SECURITY)
 
     def write(self, path, text):
         (self.project / path).parent.mkdir(parents=True, exist_ok=True)
@@ -325,16 +350,16 @@ class MaintainedTests(unittest.TestCase):
         git(self.project, "add", "-A")
         git(self.project, "commit", "-q", "-m", "chore(velvet): the state under test")
         git(self.project, "push", "-q", "origin", "main")
-        return maintenance_line.maintained(self.project)
+        return maintenance_line.maintained(maintenance_line.main_state(self.project))
 
     def test_Given_MainAtAReleasedMajorWithNothingBreakingWaiting_When_Read_Then_TheSeriesBeforeIsMaintained(self):
         # Act
         kept = self.maintained()
 
         # Assert
-        self.assertEqual(kept, "2.x")
+        self.assertEqual(kept, ["2.x"])
 
-    def test_Given_MainHoldingABreakingEntry_When_Read_Then_ItsOwnSeriesIsMaintained(self):
+    def test_Given_MainHoldingABreakingEntry_When_Read_Then_ItsOwnSeriesIsMaintainedBesideTheLast(self):
         # Arrange
         self.write("Packages/com.velvet.core/CHANGELOG.md", RELEASED_MAJOR.replace(
             "## [Unreleased — breaking]\n", "## [Unreleased — breaking]\n\n### Removed\n\n- The knob.\n"))
@@ -343,9 +368,9 @@ class MaintainedTests(unittest.TestCase):
         kept = self.maintained()
 
         # Assert
-        self.assertEqual(kept, "3.x")
+        self.assertEqual(kept, ["3.x", "2.x"])
 
-    def test_Given_MainHoldingABreakingFragment_When_Read_Then_ItsOwnSeriesIsMaintained(self):
+    def test_Given_MainHoldingABreakingFragment_When_Read_Then_ItsOwnSeriesIsMaintainedBesideTheLast(self):
         # Arrange
         self.write(maintenance_line.BREAKING_FRAGMENTS + "/topic.md", "### Removed\n\n- The knob.\n")
 
@@ -353,7 +378,18 @@ class MaintainedTests(unittest.TestCase):
         kept = self.maintained()
 
         # Assert
-        self.assertEqual(kept, "3.x")
+        self.assertEqual(kept, ["3.x", "2.x"])
+
+    def test_Given_SecurityEndingTwoOnceMainBuildsFour_When_Read_Then_OnlyThreeIsMaintained(self):
+        # Arrange — the change that ends a line is the one marking its row otherwise.
+        self.write(maintenance_line.BREAKING_FRAGMENTS + "/topic.md", "### Removed\n\n- The knob.\n")
+        self.write("SECURITY.md", SECURITY.replace("| 2.1.x   | ✅", "| 2.1.x   | ❌"))
+
+        # Act
+        kept = self.maintained()
+
+        # Assert
+        self.assertEqual(kept, ["3.x"])
 
     def test_Given_MainsPackageDeclaringNoVersion_When_Read_Then_ItRaisesRatherThanNamingALine(self):
         # Arrange
@@ -364,28 +400,40 @@ class MaintainedTests(unittest.TestCase):
             self.maintained()
 
 
+# Main building 3.0 with SECURITY.md supporting 3.0.x and 2.1.x, which is the repository's state today.
+TODAY = maintenance_line.MainState(3, frozenset({3, 2}))
+
+
 class UnmaintainedTests(unittest.TestCase):
-    def test_Given_ALineMainHasMovedPast_When_Asked_Then_TheMessageSaysSecuritysTableMovesWithIt(self):
+    def test_Given_ALineSecurityNoLongerSupports_When_Asked_Then_TheTableIsTheReason(self):
         # Act
-        said = maintenance_line.unmaintained("2.x", "3.x")
+        said = maintenance_line.unmaintained("2.x", maintenance_line.MainState(4, frozenset({3})))
 
         # Assert
-        self.assertIn("SECURITY.md's supported-versions table is updated in the same change that "
-                      "ends 2.x", said or "")
+        self.assertIn("SECURITY.md's supported-versions table on main marks no 2.x release supported",
+                      said or "")
 
-    def test_Given_MainsOwnSeries_When_Asked_Then_ItIsNotTheMaintainedLine(self):
+    def test_Given_MainsOwnSeries_When_Asked_Then_ItIsNotAMaintainedLine(self):
         # Act
-        said = maintenance_line.unmaintained("3.x", "2.x")
+        said = maintenance_line.unmaintained("3.x", TODAY)
 
         # Assert
-        self.assertIn("3.x is not the line main maintains, which is 2.x", said or "")
+        self.assertIn("3.x is not a line main maintains: main is building 3.x", said or "")
 
     def test_Given_TheMaintainedLine_When_Asked_Then_NothingIsSaid(self):
         # Act
-        said = maintenance_line.unmaintained("2.x", "2.x")
+        said = maintenance_line.unmaintained("2.x", TODAY)
 
         # Assert
         self.assertIsNone(said)
+
+    def test_Given_ARefusedLine_When_ItsWayOutIsNamed_Then_ItCutsAgainFromATargetAndPicks(self):
+        # Act
+        said = maintenance_line.elsewhere(TODAY)
+
+        # Assert
+        self.assertIn("cut the branch again from origin/main or origin/2.x and take the fix across "
+                      "with `git cherry-pick -x`", said)
 
 
 # A line's name spelled into a string: an escaped dot or a bracketed one before the `x`, or an `x`

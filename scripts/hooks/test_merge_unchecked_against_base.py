@@ -104,6 +104,16 @@ def package(project, version):
     git(project, "add", PACKAGE)
 
 
+SECURITY = ("# Security Policy\n\n## Supported versions\n\n| Version | Supported |\n"
+            "| ------- | --------- |\n| 3.0.x   | ✅        |\n| 2.1.x   | ✅        |\n")
+
+
+def security(project, text):
+    """Stage SECURITY.md as `text`, for the next commit."""
+    (project / "SECURITY.md").write_text(text, encoding="utf-8")
+    git(project, "add", "SECURITY.md")
+
+
 def released(*versions):
     """A CHANGELOG with an open section over each of `versions`, closed, newest first."""
     return "# Changelog\n\n## [Unreleased]\n\n" + "".join(
@@ -132,8 +142,10 @@ class UncheckedAgainstBaseTests(unittest.TestCase):
         subprocess.run(["git", "init", "-q", "-b", "main", str(self.project)], check=True,
                        timeout=60)
         git(self.project, "remote", "add", "origin", str(origin))
-        # The series whose maintained line is 2.x, which the cases onto 2.x read off main.
+        # The series and the table whose maintained line is 2.x, which the cases onto 2.x read off
+        # main.
         package(self.project, "3.0.0")
+        security(self.project, SECURITY)
         self.fork_point = commit(self.project, "release 1.0.0", released("1.0.0"))
         git(self.project, "branch", "topic")
         self.tip = commit(self.project, "main moves on")
@@ -330,9 +342,10 @@ class UncheckedAgainstBaseTests(unittest.TestCase):
         self.assertIn(f"of main that 2.x does not hold, starting with {self.tip[:7]}",
                       result.stderr if result.returncode == REFUSED else "")
 
-    def test_Given_AFixOntoALineMainHasMovedPast_When_TheMergeIsAsked_Then_ItIsRefused(self):
-        # Arrange — main moves on to 4.0.0, so the line it maintains is 3.x.
+    def test_Given_AFixOntoALineSecurityHasEnded_When_TheMergeIsAsked_Then_ItIsRefused(self):
+        # Arrange — main moves on to 4.0.0, and its SECURITY.md stops supporting 2.1.x.
         package(self.project, "4.0.0")
+        security(self.project, SECURITY.replace("| 2.1.x   | ✅", "| 2.1.x   | ❌"))
         commit(self.project, "chore(velvet): release v4.0.0")
         git(self.project, "push", "-q", "origin", "main")
         pulls = self.onto_a_line(self.fork_point, title="fix(velvet): a fix")
@@ -341,8 +354,28 @@ class UncheckedAgainstBaseTests(unittest.TestCase):
         result = self.ask(self.green(), pulls=pulls)
 
         # Assert
-        self.assertIn("2.x is no longer maintained: the one line is 3.x",
+        self.assertIn("2.x is no longer maintained: SECURITY.md's supported-versions table on main "
+                      "marks no 2.x release supported",
                       result.stderr if result.returncode == REFUSED else "")
+
+    # GREEN_ON_BASE(characterization): the base refuses no line by main's series, so it lets this through.
+    # What it pins is that main's first 4.0 entry leaves 2.x maintained while SECURITY.md supports
+    # it: refusing every line but the one before main's series reddens it.
+    def test_Given_AFixOntoALineWhileMainStartsTheNextMajor_When_TheMergeIsAsked_Then_ItIsLetThrough(self):
+        # Arrange — main's first breaking entry for 4.0, with SECURITY.md still supporting 2.1.x.
+        fragment = self.project / "Packages/com.velvet.core/Changelog~/breaking/knob.md"
+        fragment.parent.mkdir(parents=True)
+        fragment.write_text("### Removed\n\n- The knob.\n", encoding="utf-8")
+        git(self.project, "add", str(fragment))
+        commit(self.project, "feat(velvet)!: remove the knob")
+        git(self.project, "push", "-q", "origin", "main")
+        pulls = self.onto_a_line(self.fork_point, title="fix(velvet): a fix")
+
+        # Act
+        result = self.ask(self.green(), pulls=pulls)
+
+        # Assert
+        self.assertEqual(result.returncode, ALLOWED)
 
     def test_Given_AFixOntoALineForMainsOwnSeries_When_TheMergeIsAsked_Then_ItIsRefused(self):
         # Arrange — main declares 3.0.0 and holds nothing breaking, so 3.x is main's own series.
@@ -355,7 +388,7 @@ class UncheckedAgainstBaseTests(unittest.TestCase):
         result = self.ask(self.green(), pulls={"7": pulled})
 
         # Assert
-        self.assertIn("3.x is not the line main maintains, which is 2.x",
+        self.assertIn("3.x is not a line main maintains: main is building 3.x",
                       result.stderr if result.returncode == REFUSED else "")
 
     def forward_merge(self):
@@ -376,6 +409,30 @@ class UncheckedAgainstBaseTests(unittest.TestCase):
 
         # Act
         result = self.ask(self.green(), pulls=pulls)
+
+        # Assert
+        self.assertIn(f"of 2.x that main does not hold, starting with {self.line_fix[:7]}",
+                      result.stderr if result.returncode == REFUSED else "")
+
+    def test_Given_AForwardMergeOnABranchOfItsOwn_When_ItsMergeFlagIsSetFalse_Then_ItIsRefused(self):
+        # Arrange
+        pulls = self.forward_merge()
+
+        # Act
+        result = self.ask(self.green(), pulls=pulls,
+                          command="gh pr merge 7 --merge=false --squash --delete-branch")
+
+        # Assert
+        self.assertIn(f"of 2.x that main does not hold, starting with {self.line_fix[:7]}",
+                      result.stderr if result.returncode == REFUSED else "")
+
+    def test_Given_AForwardMergeOnABranchOfItsOwn_When_ASubjectIsSpelledLikeTheMergeFlag_Then_ItIsRefused(self):
+        # Arrange
+        pulls = self.forward_merge()
+
+        # Act
+        result = self.ask(self.green(), pulls=pulls,
+                          command="gh pr merge 7 --squash -t -m --delete-branch")
 
         # Assert
         self.assertIn(f"of 2.x that main does not hold, starting with {self.line_fix[:7]}",

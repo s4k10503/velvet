@@ -14,6 +14,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "release"))
 import published_check  # noqa: E402
 import release_notes  # noqa: E402
+import supported_versions_check  # noqa: E402
 
 MAIN = "main"
 
@@ -43,34 +44,55 @@ def lookalike(branch):
     return not is_line(branch) and bool(LOOKALIKE.fullmatch(branch or ""))
 
 
-# What `maintained` raises where the tree at its revision cannot be read for an answer.
+# What `main_state` raises where the tree at its revision cannot be read for an answer.
 UNREAD = (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError, ValueError,
           release_notes.ReleaseNotesError)
 
+# What main's tree says of the lines: the major it is building, and the majors SECURITY.md's
+# supported-versions table marks a release of supported.
+MainState = collections.namedtuple("MainState", "series supported")
 
-def maintained(cwd, rev=f"origin/{MAIN}"):
-    """The one line the tree at `rev` maintains: the series before main's, which is its package's
-    major, and the next major while its CHANGELOG holds a breaking entry. Raises one of `UNREAD`."""
+
+def main_state(cwd, rev=f"origin/{MAIN}"):
+    """`MainState` for the tree at `rev`. Main builds its package's major, and the next major while
+    its CHANGELOG holds a breaking entry. Raises one of `UNREAD`."""
     version = published_check.declared_version(
         published_check.read_at(cwd, rev, published_check.PACKAGE_JSON_PATH))
     if not isinstance(version, str) or not version.split(".")[0].isdigit():
         raise ValueError(f"the package at {rev} declares no version: {version!r}")
-    building = int(version.split(".")[0]) + bool(published_check.section_entries(
+    series = int(version.split(".")[0]) + bool(published_check.section_entries(
         published_check.changelog_at(cwd, rev), release_notes.BREAKING_SECTION))
-    return f"{building - 1}.x"
+    rows = supported_versions_check.rows(published_check.read_at(cwd, rev, "SECURITY.md"))
+    return MainState(series, frozenset(int(prefix.split(".")[0]) for prefix, mark in rows
+                                       if mark == supported_versions_check.SUPPORTED
+                                       and prefix.split(".")[0].isdigit()))
 
 
-def unmaintained(line, kept):
-    """Why `line` is not the line `kept`, `maintained`'s answer, or None where it is."""
-    if not is_line(line) or line == kept:
+def maintained(state):
+    """The lines `state` maintains, newest first: each supported major below main's own."""
+    return [f"{major}.x" for major in sorted(state.supported, reverse=True) if major < state.series]
+
+
+def unmaintained(line, state):
+    """Why `line` is not a line `state` maintains, or None where it is one."""
+    if not is_line(line):
         return None
-    if int(line.split(".")[0]) < int(kept.split(".")[0]):
-        return (f"{line} is no longer maintained: the one line is {kept}, the series before main's. "
-                f"The line moves when main starts building its next major, and SECURITY.md's "
-                f"supported-versions table is updated in the same change that ends {line} ({SECTION})")
-    return (f"{line} is not the line main maintains, which is {kept}: a line is the series before "
-            f"main's, and {line} becomes it once main holds a breaking entry for the major after "
-            f"{line.split('.')[0]} ({SECTION})")
+    major = int(line.split(".")[0])
+    if major >= state.series:
+        return (f"{line} is not a line main maintains: main is building {state.series}.x, a line is "
+                f"a series before main's, and {line} becomes one once main holds a breaking entry "
+                f"for {major + 1}.0")
+    if major not in state.supported:
+        return (f"{line} is no longer maintained: SECURITY.md's supported-versions table on main "
+                f"marks no {major}.x release supported")
+    return None
+
+
+def elsewhere(state):
+    """Where the work a line main does not maintain refused goes instead."""
+    targets = " or ".join(f"origin/{name}" for name in [MAIN, *maintained(state)])
+    return (f"cut the branch again from {targets} and take the fix across with "
+            f"`git cherry-pick -x` ({SECTION})")
 
 
 def refused_subject(subject, body=""):
@@ -78,12 +100,23 @@ def refused_subject(subject, body=""):
             or bool(BREAKING_FOOTER.search(body or "")))
 
 
-def _git(cwd, args, timeout):
+def _git(cwd, args, timeout, allowed=(0,)):
     done = subprocess.run(["git", "-C", str(cwd), *args], capture_output=True, text=True,
                           timeout=timeout)
-    if done.returncode != 0:
+    if done.returncode not in allowed:
         raise subprocess.CalledProcessError(done.returncode, ["git", *args], done.stdout, done.stderr)
     return done.stdout
+
+
+def _shared(cwd, head, ref, not_in, timeout):
+    """The commits `head` and `ref` both hold that `not_in` does not, as (sha, subject). A head
+    sharing no commit with `ref` shares none of these: `merge-base` exits 1 for it, printing
+    nothing, which `test_maintenance_line.py`'s orphan-head case holds."""
+    bases = _git(cwd, ["merge-base", "--all", head, ref], timeout, allowed=(0, 1)).split()
+    if not bases:
+        return []
+    listed = _git(cwd, ["log", "--format=%H%x00%s", *bases, "--not", not_in], timeout)
+    return [tuple(entry.split("\x00", 1)) for entry in listed.splitlines() if entry]
 
 
 def read(cwd, line, head, timeout, remote="origin"):
@@ -96,9 +129,7 @@ def read(cwd, line, head, timeout, remote="origin"):
     logged = _git(cwd, ["log", "--format=%H%x00%s%x00%b%x1e", f"{line_ref}..{head}"], timeout)
     commits = [tuple(entry.strip("\n").split("\x00", 2)) for entry in logged.split("\x1e")
                if entry.strip()]
-    bases = _git(cwd, ["merge-base", "--all", head, main_ref], timeout).split()
-    listed = _git(cwd, ["log", "--format=%H%x00%s", *bases, "--not", line_ref], timeout)
-    from_main = [tuple(entry.split("\x00", 1)) for entry in listed.splitlines() if entry]
+    from_main = _shared(cwd, head, main_ref, line_ref, timeout)
     added = _git(cwd, ["diff", "--name-only", "--no-renames", "--diff-filter=A",
                        f"{line_ref}...{head}", "--", BREAKING_FRAGMENTS], timeout)
     fragments = [path for path in added.splitlines()
@@ -118,10 +149,7 @@ def carried(cwd, base, head, timeout, remote="origin"):
                   timeout)
     found = []
     for line in sorted(name for name in listed.split() if is_line(name) and name != base):
-        bases = _git(cwd, ["merge-base", "--all", head, f"{remote}/{line}"], timeout).split()
-        logged = _git(cwd, ["log", "--format=%H%x00%s", *bases, "--not", f"{remote}/{base}"],
-                      timeout)
-        commits = [tuple(entry.split("\x00", 1)) for entry in logged.splitlines() if entry]
+        commits = _shared(cwd, head, f"{remote}/{line}", f"{remote}/{base}", timeout)
         if commits:
             found.append((line, commits))
     return found
@@ -141,17 +169,17 @@ def _counted(found, noun):
     return f"{len(found)} {noun}{'' if len(found) == 1 else 's'}"
 
 
-def pull_request_reasons(base, branch, title, kept=None):
+def pull_request_reasons(base, branch, title, state=None):
     """The reasons a pull request from `branch` onto `base` does not land, read off its names and
-    title and, where `kept` is `maintained`'s answer, which line main maintains, each naming its way
-    out."""
+    title and, where `state` is `main_state`'s answer, which lines main maintains, each naming its
+    way out."""
     found = [f"its {role} {name} is named like a maintenance line and is not one: a line is "
              f"`<major>.x`, and any other branch takes a name that is not a version, as "
              f"`release/2.1.1` did ({SECTION})"
              for role, name in (("base", base), ("head", branch)) if lookalike(name)]
-    why = unmaintained(base, kept) if kept else None
+    why = unmaintained(base, state) if state else None
     if why:
-        found.append(f"{why}. Retarget it onto {kept} or {MAIN}")
+        found.append(f"{why}: {elsewhere(state)}")
     if is_line(base) and refused_subject(title):
         found.append(f"its title `{title}` is a feature or a breaking change, and {base} takes "
                      f"neither: a fix is titled as one, and the rest lands on {MAIN} ({SECTION})")

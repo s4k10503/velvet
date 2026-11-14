@@ -19,8 +19,8 @@ branch the head was cut from and in what the push runs answer, so one repository
   ahead, holds a closed version nobody published, its push runs last failed at its tip, and its
   rules require a check no head here reports. **Every guard must allow**: each thing that would block this merge is true of `main` alone, and `main` is
   not what the pull request names. A guard does read `main` for a pull request onto a line, for the
-  commits of `main` the head carries and for which line `main` maintains, which the version `main`
-  closed, 3.0.0, makes `2.x`.
+  commits of `main` the head carries and for which lines `main` maintains, which the version `main`
+  closed, 3.0.0, and its SECURITY.md supporting 2.1.x make `2.x`.
 - `maintenance-behind` — same, except the head does not contain `origin/2.x`. **Every guard must
   allow** here too: a head whose own checks passed merges while behind a green base.
 - `maintenance-red` — the behind world, except the push runs of `2.x` last failed at its tip.
@@ -69,6 +69,10 @@ PACKAGE_JSON_PATH = "Packages/com.velvet.core/package.json"
 PUBLISHED = "1.0.0"
 # Closed in the CHANGELOG with no tag anywhere, which is what `published_check.py` refuses a merge on.
 UNPUBLISHED = "3.0.0"
+
+# The table that, beside main's 3.0.0, keeps 2.x a line main maintains.
+SECURITY = ("# Security Policy\n\n## Supported versions\n\n| Version | Supported |\n"
+            "| ------- | --------- |\n| 3.0.x   | ✅        |\n| 2.1.x   | ✅        |\n")
 
 # What the stub gh was asked that no world models. A guard reaching for a reading nobody arranged
 # gets an unreadable state rather than a healthy one, and its verdict would then be about that.
@@ -176,6 +180,7 @@ def write(project, version, *closed):
     (project / CHANGELOG_PATH).write_text(changelog(*closed), encoding="utf-8")
     (project / PACKAGE_JSON_PATH).write_text(json.dumps({"name": "com.velvet.core",
                                                          "version": version}), encoding="utf-8")
+    (project / "SECURITY.md").write_text(SECURITY, encoding="utf-8")
 
 
 def commit(project, message):
