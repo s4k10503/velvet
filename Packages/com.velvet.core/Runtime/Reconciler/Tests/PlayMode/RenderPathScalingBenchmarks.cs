@@ -9,7 +9,8 @@ namespace Velvet.Tests.Performance
     /// <summary>
     /// The same render at several list sizes, so a cost that grows with the list shows as a series that grows
     /// with the size in the case's name. Each sample is one update and the drain that commits it: its time, and
-    /// the GC.Alloc blocks it charged (<see cref="WindowCost"/>).
+    /// the GC.Alloc blocks it charged (<see cref="WindowCost"/>), which include what <c>DrainForTest</c> allocates
+    /// itself.
     /// <para>
     /// The drain is the batch scheduler's own (<c>DrainForTest</c>), which starts from the fibers an update
     /// queued. Not <c>FlushStateForTest</c>: it visits every fiber of the tree, a cost that grows with the list

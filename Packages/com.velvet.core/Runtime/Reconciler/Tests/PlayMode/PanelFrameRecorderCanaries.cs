@@ -17,6 +17,7 @@ namespace Velvet.Tests.Performance
     {
         private const string PanelName = "VelvetPanelFrameRecorderCanaryPanel";
         private const int KnownAllocations = 500;
+        private const int OtherThreadAllocationCount = 10000;
 
         private GameObject _gameObject = null!;
         private PanelSettings _panelSettings = null!;
@@ -40,17 +41,22 @@ namespace Velvet.Tests.Performance
             yield return null;
         }
 
+        // Fails for a reading of the running thread alone, and for one that is not the frame Start ran in. No ceiling is
+        // asserted: the reading takes in every thread, and what the engine's own threads allocate in a frame is
+        // nothing this repository decides.
         // GREEN_ON_BASE(characterization): the recorder behaviour this pins is the engine's, which the base runs too.
         [UnityTest]
-        public IEnumerator Given_AllocationsMadeAfterStart_When_TheFrameEndsBeforeCapture_Then_CaptureCountsThem()
+        public IEnumerator Given_AllocationsOnThisAndAnotherThreadAfterStart_When_TheFrameEndsBeforeCapture_Then_CaptureCountsBoth()
         {
             // Arrange
+            using var other = new OtherThreadAllocations(OtherThreadAllocationCount);
             var frame = new PanelFrameRecorder(PanelName);
             frame.Start();
             for (var i = 0; i < KnownAllocations; i++)
             {
                 GC.KeepAlive(new byte[16]);
             }
+            other.AllocateAndWait();
 
             // Act
             yield return null;
@@ -58,7 +64,7 @@ namespace Velvet.Tests.Performance
             frame.Stop();
 
             // Assert
-            Assert.That(frame.AllocationBlocks, Is.GreaterThanOrEqualTo(KnownAllocations));
+            Assert.That(frame.AllocationBlocks, Is.GreaterThanOrEqualTo(KnownAllocations + OtherThreadAllocationCount));
         }
     }
 }

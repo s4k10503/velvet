@@ -5,13 +5,15 @@ namespace Velvet.Tests.Performance
 {
     /// <summary>
     /// What one runtime panel spent in the last frame that ended, phase by phase, read from the profiler markers
-    /// the panel names after itself, and the GC.Alloc blocks the main thread charged in that frame.
+    /// the panel names after itself, and the GC.Alloc blocks every thread charged in that frame.
     /// </summary>
     /// <remarks>
     /// The recorders stay enabled from <see cref="Start"/> to <see cref="Stop"/>, and <see cref="Capture"/> reads
-    /// them while they are, so that a reading is the last whole frame's, which <c>PanelFrameRecorderCanaries</c>
-    /// checks of the allocation count. The constructor throws when the panel has no marker by one of the expected
-    /// names, and <see cref="RanEveryPhase"/> is how a caller refuses a frame that ran none of a phase.
+    /// them while they are, so that a reading is the frame that ended last, from <see cref="Start"/> on where Start
+    /// ran inside it; <c>PanelFrameRecorderCanaries</c> checks that of the allocation count. Every thread rather than
+    /// the main one, because the frame after a build allocates off the main thread too. The phases are separate
+    /// series, not parts of a total. The constructor throws when the panel has no marker by one of the expected names,
+    /// and <see cref="RanEveryPhase"/> is how a caller refuses a frame that ran none of a phase.
     /// </remarks>
     internal sealed class PanelFrameRecorder
     {
@@ -52,7 +54,7 @@ namespace Velvet.Tests.Performance
                 recorder.enabled = true;
             }
             _allocation.enabled = false;
-            _allocation.FilterToCurrentThread();
+            _allocation.CollectFromAllThreads();
             _allocation.enabled = true;
         }
 

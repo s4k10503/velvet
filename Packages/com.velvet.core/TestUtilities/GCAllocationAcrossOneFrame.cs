@@ -10,8 +10,9 @@ namespace Velvet.TestUtilities
     /// </summary>
     /// <remarks>
     /// <see cref="Stop"/> reads the recorder while it is still enabled and again after disabling it, and returns the
-    /// two together; <c>GCAllocationAcrossOneFrameCanaries</c> fails where that is not the whole window. It throws
-    /// for a window that crossed no frame boundary or more than one.
+    /// two together. <c>GCAllocationAcrossOneFrameCanaries</c> fails where the count loses either side of the boundary
+    /// or takes in another thread's allocations. It throws for a window that crossed no frame boundary or more than
+    /// one.
     /// Test-only. Must not be used from production code.
     /// </remarks>
     public sealed class GCAllocationAcrossOneFrame

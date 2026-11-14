@@ -12,13 +12,16 @@ namespace Velvet.Tests.Performance
     /// <summary>
     /// Frames in which no state changes, on a live runtime panel holding a mounted tree of 1,000 styled elements.
     /// Each sample is one such frame: the time the panel recorded under the markers <see cref="PanelFrameRecorder"/>
-    /// reads, and the GC.Alloc blocks the main thread charged in it. Frames are paced at 60 a second,
-    /// longer than the 16 ms the per-element polls here repeat at, so a sample is a frame each of them can run in;
-    /// the paced wall clock is not recorded.
+    /// reads, and the GC.Alloc blocks every thread charged in it. Frames are paced at 60 a second, a frame a little
+    /// longer than the 16 ms the per-element polls here repeat at; the paced wall clock is not recorded. A frame's
+    /// pass over the scheduler stops before it has run every item when they take long enough
+    /// (<see cref="PanelSchedulerCanaries"/>), so a <c>Frame.TickScheduledActions</c> sample that stops growing as the
+    /// polls do is that stop, not their whole cost.
     /// <para>
-    /// Two arms over the same elements and the same styled rows. The polling arm adds the tokens that give an
-    /// element a poll of its own on the panel's scheduler, so what it records above the other arm is what those
-    /// polls cost a frame in which no state changes.
+    /// Two arms over the same elements and the same rows, on a panel carrying Velvet's utility stylesheet; a case
+    /// throws when a row is not laid out by it. The polling arm adds the tokens that give an element a poll of its
+    /// own on the panel's scheduler, so what it records above the other arm is what those polls cost a frame in which
+    /// no state changes.
     /// </para>
     /// </summary>
     [TestFixture]
@@ -49,6 +52,8 @@ namespace Velvet.Tests.Performance
             document.panelSettings = _panelSettings;
             yield return null;
             _root = document.rootVisualElement;
+            BenchmarkPanelRoot.Prepare(_root);
+            VelvetStyleUtilities.AttachTo(_root);
         }
 
         [UnityTearDown]
@@ -80,6 +85,7 @@ namespace Velvet.Tests.Performance
             {
                 yield return null;
             }
+            RequireStyledAndLaidOut();
 
             var phases = new SampleGroup[PanelFrameRecorder.Phases.Length];
             for (var i = 0; i < phases.Length; i++)
@@ -120,6 +126,21 @@ namespace Velvet.Tests.Performance
             if (mounted != 1 + Rows * ElementsPerRow)
             {
                 throw new InvalidOperationException($"expected {1 + Rows * ElementsPerRow} mounted elements, the panel's root holds {mounted}");
+            }
+        }
+
+        // A row's flex-row comes from the utility stylesheet alone, so a row laid out as a column is a panel the sheet
+        // never reached.
+        private void RequireStyledAndLaidOut()
+        {
+            var column = _root[0];
+            foreach (var row in new[] { column[0], column[Rows - 1] })
+            {
+                if (row.resolvedStyle.flexDirection != FlexDirection.Row || !BenchmarkPanelRoot.LaidOut(row[1]))
+                {
+                    throw new InvalidOperationException(
+                        $"a row resolved {row.resolvedStyle.flexDirection} and laid its last label out at {row[1].layout}");
+                }
             }
         }
 

@@ -18,7 +18,7 @@ namespace Velvet.Tests.Performance
     /// A case without a suffix times the build alone, and yields the frame after it outside its window. A
     /// <c>_ThroughNextFrame</c> case's window spans that frame too: the build's own time is the stopwatch's, and
     /// the frame's is what the panel recorded under the markers <see cref="PanelFrameRecorder"/> reads.
-    /// Its allocation count is the main thread's over the build and the frame. Allocation is GC.Alloc sample
+    /// Its allocation count is every thread's over the build and the frame. Allocation is GC.Alloc sample
     /// blocks throughout.
     /// </para>
     /// <para>
@@ -33,8 +33,6 @@ namespace Velvet.Tests.Performance
     {
         private const string PanelName = "VelvetE2EBenchmarkPanel";
         private const string TextPrefix = "e2e-item-";
-
-        private static readonly Font s_font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
 
         private static readonly int k_WarmupCount = BenchmarkRun.Warmup(3);
         private static readonly int k_MeasurementCount = BenchmarkRun.Measurements(10);
@@ -60,12 +58,7 @@ namespace Velvet.Tests.Performance
             yield return null;
 
             _root = _uiDocument.rootVisualElement;
-            // A font the labels inherit, since the test panel's empty theme gives them none, and a root that grows
-            // with its labels: shrunk into the panel's height, the floor's labels collapse, where Velvet's keep their
-            // text's height as CSS's automatic minimum (StyleFlexMinSizeManipulator). RequireLaidOut refuses a label
-            // the frame left without a height.
-            _root.style.unityFontDefinition = new StyleFontDefinition(FontDefinition.FromFont(s_font));
-            _root.style.flexShrink = 0f;
+            BenchmarkPanelRoot.Prepare(_root);
             _reconciler = new Reconciler();
         }
 
@@ -248,13 +241,10 @@ namespace Velvet.Tests.Performance
             }
         }
 
-        private static bool LaidOut(VisualElement element)
-            => element.layout.width > 0 && element.layout.height > 0;
-
         private void RequireLaidOut(int count)
         {
             RequireBuilt(count);
-            if (!LaidOut(_root[0]) || !LaidOut(_root[count - 1]))
+            if (!BenchmarkPanelRoot.LaidOut(_root[0]) || !BenchmarkPanelRoot.LaidOut(_root[count - 1]))
             {
                 throw new InvalidOperationException(
                     $"a built element is laid out at {_root[0].layout} and {_root[count - 1].layout} after the frame that followed the build");
