@@ -1435,19 +1435,31 @@ and it reads times alone, from the runs that record their processor:
 - **A time drifts** when, on at least two processor models, it rose at least 1.3 times over the last 30
   days of the history, counting a model only where it ran at least ten times in them, over at least 14
   days. A model's rise is the median of its latest five runs over the median of its earliest five, taken
-  within each stretch between the benchmark's steps and multiplied across them, so a step's own jump is
-  left out and the rise either side of it is not. A stretch of fewer than ten runs adds nothing.
-- A step stops splitting a model's runs once five of them in a row since it have a median under 1.1
-  times the median of the five before it, so a step that was undone splits nothing.
+  within each stretch between the benchmark's steps up and down and multiplied across them, so a step's
+  own jump is left out and the rise either side of it is not. A stretch that starts at a step takes its
+  earlier median over its first three runs rather than five, so a rise that begins at once after a step
+  or a fix is measured from nearer its start. A stretch of fewer than ten runs adds nothing.
+- A step down is a step up of the benchmark's reciprocal, as the step rule finds one. A step stops
+  splitting a model's runs once five of them in a row since it, and before the next step, have a median
+  under 1.1 times the median of the five before it, so a step that was undone splits nothing; a step down
+  is asked the same of the reciprocals.
+- A model whose latest five runs measure at least 1.2 times the five before them, the step rule's
+  threshold, counts toward no drift: a rise that recent is left to the step rule.
 - A drift issue holds, for each benchmark it names, a marker of its own with the benchmark and the latest
   run's commit. Where an issue labelled `performance`, open or closed and whoever opened it, holds such a
   marker for a commit the history holds, that benchmark's runs are compared only from after the latest
   such commit. The drifts one run finds go into one new issue, and the job never rewrites a drift issue
   nor closes one.
 - Nothing drifts until a model's runs span 14 days: from the first runs that record the processor,
-  and again after each drift issue. A history whose 200 entries span fewer than 14 days files no drift.
+  and again after each drift issue that names the benchmark. A history whose 200 entries span fewer than
+  14 days files no drift.
 - What this costs: benchmarks whose models reach ten runs over 14 days at different runs get an issue
   each, so a rise several benchmarks share can open issues on several consecutive runs.
+- What the rule cannot see: a step down followed at once by a creep that climbs back to within 1.1 times
+  the level before the fall splits nothing, so that creep is compared from the level before the fall and
+  is filed late or not at all. A step undone only part way within its first five runs, to more than 1.1
+  times its old level, still splits, so a creep after it is compared from the stepped level until the
+  window has passed the step.
 
 Given a `data.js` and `--replay`, `scripts/ci/benchmark_steps.py` syncs every prefix of that history in
 turn against issues it keeps in memory and prints what it opened, which is how a change to either rule

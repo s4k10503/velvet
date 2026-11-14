@@ -15,7 +15,7 @@ import re
 import statistics
 import subprocess
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 
 SUITE = "Velvet benchmarks"
@@ -62,6 +62,7 @@ class DriftRule:
     days: int = 30
     min_days: int = 14
     held: float = 1.1
+    after_step: int = 3
 
 
 DRIFT = DriftRule()
@@ -209,9 +210,9 @@ def find_steps(runs, units, rule=RULE, counts=COUNTS):
 
 
 def held(points, before, rule):
-    """Whether a step's rise still holds on one processor: no five of its runs since the step, in a row, have
-    a median under `rule.held` times the median of the five before it. With fewer than five on either side,
-    it holds."""
+    """Whether a step still holds on one processor: no five of its runs since the step and before the next one,
+    `points`, have in a row a median under `rule.held` times the median of the five `before` it. With fewer than
+    five on either side, it holds. A fall is asked the same of the reciprocals."""
     if len(before) < rule.runs or len(points) < rule.runs:
         return True
     bar = rule.held * statistics.median(before[-rule.runs:])
@@ -219,46 +220,70 @@ def held(points, before, rule):
                for index in range(len(points) - rule.runs + 1))
 
 
-def series_drift(runs, name, unit, start, cuts, rule):
+def series_drift(runs, name, unit, start, cuts, rule, jump):
     """The drift of one time benchmark over `runs[start:]`, landed in order, measured on each processor within
-    the stretches between the `cuts` whose rise still holds there, or None."""
+    the stretches between the `cuts` that still hold there, or None. A cut is the position of a step's first
+    slow run and whether it is a fall. A processor whose latest five runs measure `jump` times the five before
+    them is left out of the decision: a rise that recent is left to the step rule."""
     order = {run.commit: index for index, run in enumerate(runs)}
     by_processor = {}
     for run in runs:
         if run.processor and run.values.get(name, 0) > 0:
             by_processor.setdefault(run.processor, []).append(run)
-    judged = []
+    cuts = sorted(cuts)
+    judged, rising = [], set()
     for processor, every in sorted(by_processor.items()):
         points = [run for run in every if order[run.commit] >= start]
         if (len(points) < 2 * rule.runs
                 or points[-1].timestamp - points[0].timestamp < timedelta(days=rule.min_days)):
             continue
         values = [run.values[name] for run in points]
-        bounds = [0]
-        for cut in sorted(cuts):
-            at = next((index for index, run in enumerate(points) if order[run.commit] >= cut), len(points))
+
+        def first(after):
+            return next((index for index, run in enumerate(points) if after(order[run.commit])), len(points))
+
+        stretches, low_index = [], 0
+        for number, (cut, fall) in enumerate(cuts):
+            at = first(lambda position: position >= cut)
+            until = first(lambda position: position >= cuts[number + 1][0]) if number + 1 < len(cuts) else None
             before = [run.values[name] for run in every if order[run.commit] < cut]
-            if bounds[-1] < at < len(points) and held(values[at:], before, rule):
-                bounds.append(at)
+            since = values[at:until]
+            if fall:
+                before, since = [1 / value for value in before], [1 / value for value in since]
+            if low_index < at < len(points) and held(since, before, rule):
+                stretches.append((low_index, at))
+                low_index = at
+        stretches.append((low_index, len(points)))
         ratio = 1
-        for low, high in zip(bounds, bounds[1:] + [len(points)]):
+        for number, (low, high) in enumerate(stretches):
+            earlier = rule.runs if number == 0 else rule.after_step
             if high - low >= 2 * rule.runs:
                 ratio *= (statistics.median(values[high - rule.runs:high])
-                          / statistics.median(values[low:low + rule.runs]))
-        judged.append((processor, points[0], statistics.median(values[:rule.runs]),
-                       statistics.median(values[-rule.runs:]), ratio))
-    drifting = [row for row in judged if row[4] >= rule.threshold]
+                          / statistics.median(values[low:low + earlier]))
+        latest = statistics.median(values[-rule.runs:])
+        if latest >= jump * statistics.median(values[-2 * rule.runs:-rule.runs]):
+            rising.add(processor)
+        judged.append((processor, points[0], statistics.median(values[:rule.runs]), latest, ratio))
+    drifting = [row for row in judged if row[4] >= rule.threshold and row[0] not in rising]
     if len(drifting) < rule.min_processors:
         return None
     return Drift(name, unit, min((row[1] for row in judged), key=lambda run: run.timestamp), runs[-1],
                  min(row[4] for row in drifting), tuple(judged))
 
 
+def drift_cuts(runs, name, unit, steps, order):
+    """A time benchmark's steps up, and its steps down as steps up of its reciprocal, each as its first slow
+    run's position in `order` and whether it is a fall."""
+    reciprocals = [replace(run, values={name: 1 / run.values[name]}) for run in runs if run.values.get(name, 0) > 0]
+    return ([(order[step.first_slow.commit], False) for step in series_steps(runs, name, unit, steps)]
+            + [(order[step.first_slow.commit], True) for step in series_steps(reciprocals, name, unit, steps)])
+
+
 def find_drifts(runs, units, rule=DRIFT, steps=RULE, filed=None):
     """Every time benchmark that drifted up over the latest `rule.days` days, after the commit `filed` maps it
-    to where that is later. Its steps, as `steps` finds them, split what is compared while their rise holds,
-    so that a drift leaves out the jump of each step that holds and does not wait for one that was undone to
-    leave the window."""
+    to where that is later. Its steps up and down, as `steps` finds them in its times and in their
+    reciprocals, split what is compared while they hold, so that a drift leaves out the jump of each step that
+    holds, up or down, and does not wait for one that was undone to leave the window."""
     runs = landed(runs)
     if not runs:
         return []
@@ -268,8 +293,8 @@ def find_drifts(runs, units, rule=DRIFT, steps=RULE, filed=None):
     drifts = []
     for name in sorted({name for run in runs for name in run.values if units.get(name) in TIME_UNITS}):
         start = max(window, order[filed[name]] + 1) if name in (filed or {}) else window
-        cuts = [order[step.first_slow.commit] for step in series_steps(runs, name, units[name], steps)]
-        drift = series_drift(runs, name, units[name], start, cuts, rule)
+        drift = series_drift(runs, name, units[name], start, drift_cuts(runs, name, units[name], steps, order),
+                             rule, steps.threshold)
         if drift is not None:
             drifts.append(drift)
     return drifts
@@ -394,7 +419,7 @@ def render_drifts(drifts, repository, rule=DRIFT):
             lines.append(f"| {short_name(drift.benchmark)} | {processor} | `{first.commit[:8]}` "
                          f"| {amount(earlier, drift.unit)} | {amount(latest, drift.unit)} | {ratio_text(ratio)} |")
     lines += ["", f"Earlier and Latest are medians over a processor's first and last {rule.runs} runs compared; "
-              "the ratio leaves out the steps between them whose rise still holds. "
+              "the ratio leaves out the steps up and down between them that still hold. "
               "`.github/workflows/benchmarks.yml` opened this and does not rewrite it; "
               "CONTRIBUTING.md's benchmarks section says what counts as a drift."]
     return title, fitted(lines)
