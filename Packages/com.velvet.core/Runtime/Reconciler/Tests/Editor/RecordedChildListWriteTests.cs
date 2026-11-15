@@ -134,5 +134,22 @@ namespace Velvet.Tests
             // Assert
             Assert.That(_root[0].name, Is.EqualTo("first"));
         }
+
+        // GREEN_ON_BASE(refactor): the base inserts the replaced row at once, so the rank the exchange builds already
+        // holds it there.
+        [Test]
+        public void Given_AnEarlierRowReplacedAndALaterOneLosingItsZIndex_When_TheyPatchInOnePass_Then_TheRowsKeepTheirOrder()
+        {
+            // Arrange
+            var oldTree = new VNode[] { V.Div(name: "first"), V.Div(name: "second", className: "relative z-10") };
+            _reconciler.Reconcile(_root, Array.Empty<VNode>(), oldTree);
+            var newTree = new VNode[] { V.Label(text: "x", name: "first"), V.Div(name: "second", className: "relative") };
+
+            // Act
+            _reconciler.Reconcile(_root, oldTree, newTree);
+
+            // Assert
+            Assert.That(NamesOf(_root), Is.EqualTo("first,second"));
+        }
     }
 }

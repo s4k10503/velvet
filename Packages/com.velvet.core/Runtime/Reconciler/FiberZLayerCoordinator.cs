@@ -879,7 +879,6 @@ namespace Velvet
         // relocated, since a parked diff still addresses parent's slot occupants.
         private static void Arrange(ReconcilerContext ctx, VisualElement parent, bool parked)
         {
-            ChildListWrites.SyncLive(parent);
             if (!ctx.ZLayerHosts.TryGetValue(parent, out var record) && !HoldsTrackedChild(ctx, parent))
             {
                 return;

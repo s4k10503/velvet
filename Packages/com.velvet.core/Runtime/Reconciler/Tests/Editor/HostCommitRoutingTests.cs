@@ -80,18 +80,19 @@ namespace Velvet.Tests
         }
 
         // The calls FinishPass makes that write a child list or reconcile into one other than through the queue: the
-        // portal drain, the retired z-layer reals and the z-layer arrangement, and the two placement drains.
+        // portal drain, the retired z-layer reals, the z-layer teardown and arrangement, and the two placement drains.
         private static readonly string[] FinishPassPhase =
         {
             nameof(ChildReconciler) + "." + nameof(ChildReconciler.DrainPendingPortalMounts),
             nameof(FiberElementCleaner) + "." + nameof(FiberElementCleaner.ReleaseRetiredZLayerReals),
+            nameof(FiberZLayerCoordinator) + "." + nameof(FiberZLayerCoordinator.DrainTeardowns),
             nameof(FiberZLayerCoordinator) + "." + nameof(FiberZLayerCoordinator.ResortLayers),
             nameof(RingOverlay) + "." + nameof(RingOverlay.DrainPendingPlacements),
             nameof(BackdropFilterLayer) + "." + nameof(BackdropFilterLayer.DrainPendingPlacements),
         };
 
         [Test]
-        public void Given_FinishPass_When_ItsCallsAreRead_Then_TheRecordedWritesAreAppliedBeforeEveryChildListWriterItReaches()
+        public void Given_FinishPass_When_ItsCallsAreRead_Then_TheRecordedWritesAreAppliedBeforeTheWritersItNames()
         {
             // Arrange
             using var runtime = ModuleDefinition.ReadModule(typeof(V).Assembly.Location);
