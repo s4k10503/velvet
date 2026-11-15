@@ -1,0 +1,32 @@
+{
+ "detail": "EditMode: 1 failed: Given_ACommitThatStagedAParentAndItsChild_When_ThePassiveEffectsFlush_Then_NothingIsAllocated",
+ "file": "d0d4187e7f29188b92f0cea5405633fdd9b1d285c0a093c8bf07912916381433",
+ "killers": [
+  {
+   "case": "Velvet.Tests.RenderCommitAllocationTests.Given_ACommitThatStagedAParentAndItsChild_When_ThePassiveEffectsFlush_Then_NothingIsAllocated",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/RenderCommitAllocationTests.cs": "6c893082f4d1528704a487e3d3c623b36748cb864d3e9fe54f63dbbcd6a0b384",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/GCAllocationCanary.cs": "fc61cead251d89e031e7591ac080a706d0568f2f3427cd7cda1ec3c93b965e58",
+    "Packages/com.velvet.core/TestUtilities/GCAllocationProbe.cs": "492823c099cf4f4de89da0da69c98d45cfc042070d93e2d0c0b95773310ebc2c",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  }
+ ],
+ "measured_by": "43679514591",
+ "mutant": {
+  "after": ";",
+  "before": "_spareChildLists.Push(children);",
+  "column": 20,
+  "line": 191,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ReconcilerBufferPool.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "efc94e9a9ad1c1ccbedfd9246159c401daffbf985bbaac81f3de89f3a6c13467",
+ "verdict": "killed"
+}

@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "5bade70a7daf759d7549909635612eeb1a77c49197b2b72a8f9ccf41252f2cbc",
+ "killers": [],
+ "measured_by": "43679514591",
+ "mutant": {
+  "after": ";",
+  "before": "ScheduleStandaloneFlush(fiber);",
+  "column": 16,
+  "line": 339,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberWorkLoop.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "efc94e9a9ad1c1ccbedfd9246159c401daffbf985bbaac81f3de89f3a6c13467",
+ "verdict": "survived"
+}

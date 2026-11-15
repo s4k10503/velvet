@@ -1,0 +1,31 @@
+{
+ "detail": "EditMode: 1 failed: Given_AHelperBoundary_When_ItsParentRendersAgainWithNewChildren_Then_ItRendersTheNewChildren",
+ "file": "d0d4187e7f29188b92f0cea5405633fdd9b1d285c0a093c8bf07912916381433",
+ "killers": [
+  {
+   "case": "Velvet.Tests.VErrorBoundaryHelperTests.Given_AHelperBoundary_When_ItsParentRendersAgainWithNewChildren_Then_ItRendersTheNewChildren",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/VErrorBoundaryHelperTests.cs": "7ed29b3f88cd33433bbdff4eeb845a9f7e649c12afef5c6f0bdad95762ff6c2e",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  }
+ ],
+ "measured_by": "43679514591",
+ "mutant": {
+  "after": ";",
+  "before": "children.Clear();",
+  "column": 20,
+  "line": 190,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ReconcilerBufferPool.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "efc94e9a9ad1c1ccbedfd9246159c401daffbf985bbaac81f3de89f3a6c13467",
+ "verdict": "killed"
+}

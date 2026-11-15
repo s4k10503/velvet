@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "08dd8e49d57517e02c400d2dd316fb69633c67115def9acf12da6f044c41d0df",
+ "killers": [],
+ "measured_by": "43679514591",
+ "mutant": {
+  "after": ";",
+  "before": "ScheduleParkedPassResume(fiber);",
+  "column": 12,
+  "line": 465,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberCommitWork.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "efc94e9a9ad1c1ccbedfd9246159c401daffbf985bbaac81f3de89f3a6c13467",
+ "verdict": "survived"
+}

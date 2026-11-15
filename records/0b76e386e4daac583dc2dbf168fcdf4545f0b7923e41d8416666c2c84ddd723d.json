@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "80c182a0ad6fa2ba4a84ec3a710033c27ad9b05aeb3c1a86417c1fa2990b30ac",
+ "killers": [],
+ "measured_by": "43679514591",
+ "mutant": {
+  "after": ";",
+  "before": "_scopes.Clear();",
+  "column": 16,
+  "line": 96,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberContextSpine.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "efc94e9a9ad1c1ccbedfd9246159c401daffbf985bbaac81f3de89f3a6c13467",
+ "verdict": "survived"
+}

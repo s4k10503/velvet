@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode: mutation_check: the container's memory limit killed 1 process(es) during the launch",
+ "file": "d0d4187e7f29188b92f0cea5405633fdd9b1d285c0a093c8bf07912916381433",
+ "killers": [],
+ "measured_by": "43679514591",
+ "mutant": {
+  "after": ";",
+  "before": "ChildrenByParent.Clear();",
+  "column": 16,
+  "line": 193,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ReconcilerBufferPool.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "efc94e9a9ad1c1ccbedfd9246159c401daffbf985bbaac81f3de89f3a6c13467",
+ "verdict": "killed (the editor crashed)"
+}

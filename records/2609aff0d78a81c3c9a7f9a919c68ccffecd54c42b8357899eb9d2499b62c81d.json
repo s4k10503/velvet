@@ -1,0 +1,46 @@
+{
+ "detail": "EditMode: 3 failed: Given_ChildExposesHandle_When_Mounted_Then_ForwardedRefIsPopulated, Given_FactoryReadsDescendantElementRef_When_Mounted_Then_ObservesAttachedElement, Given_FactoryReadsDescendantElementRef_When_Mounted_Then_ParentRefHoldsBuiltHandle",
+ "file": "619a69017dfa88f803095cf3440ef3975ca3a7d4f3100d214cc6a195eb2816db",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ComponentRefForwardingTests.Given_ChildExposesHandle_When_Mounted_Then_ForwardedRefIsPopulated",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/ComponentRefForwardingTests.cs": "8522e9cf094f34cd933caaffc6b6501642aa7571d4296a330bd10f3047842c6a",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ComponentRefForwardingTests.Given_FactoryReadsDescendantElementRef_When_Mounted_Then_ObservesAttachedElement",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/ComponentRefForwardingTests.cs": "8522e9cf094f34cd933caaffc6b6501642aa7571d4296a330bd10f3047842c6a",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ComponentRefForwardingTests.Given_FactoryReadsDescendantElementRef_When_Mounted_Then_ParentRefHoldsBuiltHandle",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/ComponentRefForwardingTests.cs": "8522e9cf094f34cd933caaffc6b6501642aa7571d4296a330bd10f3047842c6a",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  }
+ ],
+ "measured_by": "43679514591",
+ "mutant": {
+  "after": ";",
+  "before": "roots.Add(entry);",
+  "column": 24,
+  "line": 907,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberEffects.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "efc94e9a9ad1c1ccbedfd9246159c401daffbf985bbaac81f3de89f3a6c13467",
+ "verdict": "killed"
+}
