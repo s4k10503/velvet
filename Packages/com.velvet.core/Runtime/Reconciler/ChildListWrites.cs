@@ -8,10 +8,9 @@ using UnityEngine.UIElements;
 namespace Velvet
 {
     // Every write Velvet makes to a child list goes through here, so the ContainerRows kept for each container stays
-    // equal to the live list. Each op updates the model first and then makes the UI Toolkit call at the index the model
-    // gave: a call that attaches the child can run a nested write into the same container (a layer hosted beside its
-    // element), and that write has to find the model already holding the child. RowModelRoutingTests fails when a type
-    // other than this one calls a child-list writer.
+    // equal to the live list. Each op updates the model first and then makes the UI Toolkit call, so a write nested
+    // inside that call (LogicalSlotCursor.Insert names one) finds the model already holding the child.
+    // RowModelRoutingTests fails when a type other than this one calls a child-list writer.
     //
     // A container's model is built from its live children the first time a write reaches it, and again whenever its
     // total no longer matches the live count, which is how a write made outside these ops (a user's own Add on an
@@ -19,7 +18,7 @@ namespace Velvet
     internal static class ChildListWrites
     {
         private static readonly ConditionalWeakTable<VisualElement, ContainerRows> s_rows = new();
-        private static readonly List<VisualElement> s_touched = new();
+        private static readonly HashSet<VisualElement> s_touched = new();
 
         internal static RowKind Classify(VisualElement element)
         {
@@ -153,13 +152,6 @@ namespace Velvet
             PruneIfEmpty(container);
         }
 
-        internal static void HierarchyRemoveAt(VisualElement parent, int index)
-        {
-            RemoveAtCore(parent, index);
-            parent.hierarchy.RemoveAt(index);
-            PruneIfEmpty(parent);
-        }
-
         private static void RemoveAtCore(VisualElement container, int index)
         {
             if (index < 0 || index >= container.hierarchy.childCount) return;
@@ -203,50 +195,22 @@ namespace Velvet
         internal static void HierarchySort(VisualElement parent, Comparison<VisualElement> comparison)
         {
             parent.hierarchy.Sort(comparison);
-            var rows = RowsOf(parent);
+            if (s_rows.TryGetValue(parent, out var rows))
+            {
+                rows.Clear();
+                Fill(rows, parent);
+            }
+            else
+            {
+                RowsOf(parent);
+            }
             Touch(parent);
-            rows.Clear();
-            Fill(rows, parent);
-        }
-
-        internal static void PlaceBehind(VisualElement element, VisualElement sibling)
-        {
-            element.PlaceBehind(sibling);
-            Resync(element.hierarchy.parent);
-        }
-
-        internal static void PlaceInFront(VisualElement element, VisualElement sibling)
-        {
-            element.PlaceInFront(sibling);
-            Resync(element.hierarchy.parent);
-        }
-
-        internal static void BringToFront(VisualElement element)
-        {
-            element.BringToFront();
-            Resync(element.hierarchy.parent);
-        }
-
-        internal static void SendToBack(VisualElement element)
-        {
-            element.SendToBack();
-            Resync(element.hierarchy.parent);
-        }
-
-        // The order a UI Toolkit placement call left, for the calls whose resulting index only UI Toolkit knows.
-        private static void Resync(VisualElement? container)
-        {
-            if (container == null) return;
-            var rows = RowsOf(container);
-            Touch(container);
-            rows.Clear();
-            Fill(rows, container);
         }
 
         [Conditional("UNITY_ASSERTIONS")]
         private static void Touch(VisualElement container)
         {
-            if (!s_touched.Contains(container)) s_touched.Add(container);
+            s_touched.Add(container);
         }
 
         // The start of a top-level pass: what was written before it, outside any pass, is not the pass's to verify.
@@ -259,9 +223,8 @@ namespace Velvet
         [Conditional("UNITY_ASSERTIONS")]
         internal static void VerifyTouched()
         {
-            for (var i = 0; i < s_touched.Count; i++)
+            foreach (var container in s_touched)
             {
-                var container = s_touched[i];
                 if (!s_rows.TryGetValue(container, out var rows)) continue;
                 var difference = Compare(rows, container);
                 if (difference == null) continue;

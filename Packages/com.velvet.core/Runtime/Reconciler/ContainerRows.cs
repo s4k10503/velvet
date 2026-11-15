@@ -1,6 +1,6 @@
 #nullable enable
-using System;
 using System.Collections.Generic;
+using System;
 using UnityEngine.UIElements;
 
 namespace Velvet
@@ -78,6 +78,14 @@ namespace Velvet
                 Elements[Length] = null!;
             }
 
+            internal void Empty()
+            {
+                Array.Clear(Elements, 0, Length);
+                Length = 0;
+                Rendered = 0;
+                Anchors = 0;
+            }
+
             internal void Tally(RowKind kind, int delta)
             {
                 if (kind == RowKind.Rendered) Rendered += delta;
@@ -88,21 +96,14 @@ namespace Velvet
         private readonly List<Block> _blocks = new();
         private Dictionary<VisualElement, Block>? _owner;
         private int _total;
+        private int _rendered;
 
         internal int TotalCount => _total;
 
         // The exclusive bound of the slot range: what LogicalChildSlots.Count returns.
-        internal int RenderedCount
-        {
-            get
-            {
-                var rendered = 0;
-                for (var b = 0; b < _blocks.Count; b++) rendered += _blocks[b].Rendered;
-                return rendered;
-            }
-        }
+        internal int RenderedCount => _rendered;
 
-        internal int SkippedCount => _total - RenderedCount;
+        internal int SkippedCount => _total - _rendered;
 
         internal VisualElement ElementAt(int physical)
         {
@@ -228,6 +229,7 @@ namespace Velvet
             }
             block.Insert(at, element, kind);
             _total++;
+            if (kind == RowKind.Rendered) _rendered++;
             _owner?.Add(element, block);
             if (block.Length > BlockMax) Split(block);
         }
@@ -235,7 +237,8 @@ namespace Velvet
         internal void Remove(VisualElement element)
         {
             if (!TryFind(element, out var block, out var at)) return;
-            block!.RemoveAt(at);
+            if (block!.Kinds[at] == RowKind.Rendered) _rendered--;
+            block.RemoveAt(at);
             _total--;
             _owner?.Remove(element);
             if (block.Length == 0 && _blocks.Count > 1) _blocks.Remove(block);
@@ -247,16 +250,22 @@ namespace Velvet
             if (!TryFind(element, out var block, out var at)) return;
             var old = block!.Kinds[at];
             if (old == kind) return;
+            if (old == RowKind.Rendered) _rendered--;
+            if (kind == RowKind.Rendered) _rendered++;
             block.Tally(old, -1);
             block.Tally(kind, 1);
             block.Kinds[at] = kind;
         }
 
+        // Keeps the first block's arrays, so a model rebuilt from the live list (ChildListWrites.RowsOf) allocates
+        // nothing for a container no larger than it was.
         internal void Clear()
         {
-            _blocks.Clear();
+            if (_blocks.Count > 1) _blocks.RemoveRange(1, _blocks.Count - 1);
+            if (_blocks.Count == 1) _blocks[0].Empty();
             _owner = null;
             _total = 0;
+            _rendered = 0;
         }
 
         private void Split(Block block)
