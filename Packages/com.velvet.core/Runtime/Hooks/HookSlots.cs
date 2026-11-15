@@ -91,28 +91,12 @@ namespace Velvet
         public object?[]? NextDeps { get; set; }
     }
 
-    // Shared probe for hook-slot values that may be memoized VNode roots. The recycle sweep must
-    // not return pooled objects a slot still holds: with stable inputs the SAME instance re-enters
-    // a later committed tree (e.g. V.When toggling a memoized subtree), so its pooled parts stay
-    // live across renders that omit it. Recognizes a node or any list of nodes (arrays and
-    // List&lt;VNode&gt; both satisfy the covariant IReadOnlyList) — a node buried inside a user
-    // composite (tuple / record) is NOT visible here; that boundary is part of the recycle
-    // contract documented on FiberTreeReturn.
-    internal static class HookSlotRecycleProbe
-    {
-        public static object? Probe(object? value)
-            => value is VNode || value is IReadOnlyList<VNode?> ? value : null;
-    }
-
     internal abstract class HookMemoValueSlot
     {
         public object?[]? LastDeps { get; set; }
         public object?[]? NextDeps { get; set; }
         public bool Committed { get; set; }
         public abstract void Commit();
-
-        // The committed value when it is a memoized VNode root — see HookSlotRecycleProbe.
-        public abstract object? RecycleMarkRoot { get; }
     }
 
     internal sealed class HookMemoValueSlot<T> : HookMemoValueSlot
@@ -120,18 +104,12 @@ namespace Velvet
         public T Value = default!;
         public T NextValue = default!;
 
-        // Evaluated once per instantiation so struct-valued slots skip the probe without the
-        // box-then-isinst the raw type test would emit on backends that cannot fold it.
-        private static readonly bool s_canHoldNodes = !typeof(T).IsValueType;
-
         public override void Commit()
         {
             Value = NextValue;
             LastDeps = NextDeps;
             Committed = true;
         }
-
-        public override object? RecycleMarkRoot => s_canHoldNodes ? HookSlotRecycleProbe.Probe(Value) : null;
     }
 
     internal abstract class HookDeferredValueSlot { }
@@ -524,20 +502,10 @@ namespace Velvet
     internal sealed class HookRefSlot
     {
         public object Ref { get; set; } = null!;
-
-        // The held Ref&lt;T&gt;'s current value when it is a VNode root (element-in-ref caching) —
-        // see HookSlotRecycleProbe. Ref is typed object here, so the probe goes through the
-        // ref's own accessor.
-        public object? RecycleMarkRoot => (Ref as IHookRefSetter)?.RecycleMarkRoot;
     }
 
     internal abstract class HookStateSlot
     {
-        // The node roots the slot holds that a recycle sweep must not return to the pool — see
-        // HookSlotRecycleProbe: the states it holds or staged, and the nodes its queued updates carry or computed,
-        // since the render that reaches a skipped update emits its node.
-        public abstract void VisitRecycleRoots(Action<object> visitRoot);
-
         public abstract void Commit();
 
         // Puts back what the committed state was when the render that last committed began, for a render whose
@@ -600,8 +568,6 @@ namespace Velvet
         // React's useState computes an update's result at the call while nothing is scheduled and bails out of
         // rendering on an equal one; its useReducer dispatch never does either.
         private readonly bool _computesAtTheCall;
-
-        private static readonly bool s_canHoldNodes = !typeof(TState).IsValueType;
 
         protected HookUpdateQueueSlot(TState seed, Func<TState, TAction, TState> reducer, bool computesAtTheCall)
         {
@@ -706,46 +672,6 @@ namespace Velvet
             }
             return false;
         }
-
-        // The node an action carries, for the actions that can carry one.
-        protected virtual object? Payload(TAction action) => action;
-
-        public override void VisitRecycleRoots(Action<object> visitRoot)
-        {
-            // MUTANT_SURVIVES(equivalent): a value-type state holds no node, so what the probes below would read through it marks nothing a render emits; the guard only skips boxing it.
-            if (!s_canHoldNodes) return;
-            Visit(visitRoot, Value, _baseState);
-            VisitQueued(visitRoot, _baseQueue);
-            VisitQueued(visitRoot, _pending);
-            // Between a Process and the Commit that adopts it, which a sweep reaches while a Suspense holds the
-            // commit of a render. Otherwise the staged fields are the committed ones, visited above.
-            // MUTANT_SURVIVES(equivalent): visiting the staged fields when they are the committed ones marks the same roots a second time.
-            if (ReferenceEquals(_nextBaseQueue, _baseQueue)) return;
-            // The staged queue holds only updates _baseQueue still holds, or copies of them, until the Commit
-            // adopts it, so it needs no visit of its own; the staged states can be a result no queued update names.
-            Visit(visitRoot, _nextValue, _nextBaseState);
-        }
-
-        private void VisitQueued(Action<object> visitRoot, List<HookUpdate<TState, TAction>>? updates)
-        {
-            if (updates == null) return;
-            foreach (var update in updates)
-            {
-                Visit(visitRoot, Payload(update.Action), update.EagerState);
-            }
-        }
-
-        private static void Visit(Action<object> visitRoot, object? first, object? second)
-        {
-            VisitOne(visitRoot, first);
-            VisitOne(visitRoot, second);
-        }
-
-        private static void VisitOne(Action<object> visitRoot, object? candidate)
-        {
-            var root = HookSlotRecycleProbe.Probe(candidate);
-            if (root != null) visitRoot(root);
-        }
     }
 
     // What UseState queues: the replacement value, or the function that computes it from the state before.
@@ -771,8 +697,6 @@ namespace Velvet
         public HookStateSlot(T seed) : base(seed, s_apply, computesAtTheCall: true)
         {
         }
-
-        protected override object? Payload(StateAction<T> action) => action.Value;
     }
 
     internal sealed class ReducerSlot<TState, TAction> : HookUpdateQueueSlot<TState, TAction>

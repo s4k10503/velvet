@@ -31,9 +31,6 @@ namespace Velvet
             }
         }
 
-        // A factory that takes from a pool before it builds its node calls this above that rent, under the
-        // ordering rule V.Draggable's own refusal states. The setter above refuses the same key, but only
-        // once the node's initializer runs, which is after such a factory's rent.
         internal static void RequireKey(string? key)
         {
             if (KeyHoldsDelimiter(key))
@@ -48,10 +45,7 @@ namespace Velvet
 
         // The first V.List mapping to place this node keys it in place; from then on it keeps that key — a
         // committed tree may still read the node by it, and within one mapping it is an earlier item's — so a
-        // different key takes a copy instead. The copy shares this node's props bag and event array, which the
-        // pool stops owning here: FiberTreeReturn returns a retired node's parts unless that node itself is
-        // marked live, whichever other node still reads them. The children array needs nothing, since
-        // FiberTreeReturn marks arrays themselves.
+        // different key takes a copy instead.
         internal VNode WithListKey(string? key)
         {
             if (!_placedByList)
@@ -69,7 +63,6 @@ namespace Velvet
             RequireKey(key);
             var copy = (VNode)MemberwiseClone();
             copy._key = key;
-            VNodePool.DisownParts(this);
             return copy;
         }
     }
@@ -752,12 +745,6 @@ namespace Velvet
         /// live tracking. Returns the ComponentContext instance reference.
         /// </summary>
         internal abstract object ContextKey { get; }
-
-        // The provided value when it is a VNode root (slot-injection via context): the recycle
-        // mark must treat it as live — a consumer may have committed the value's node into its own
-        // tree — while the sweep never returns it (leaking a provider-held node is recoverable;
-        // recycling a consumed one is not).
-        internal abstract object? BoxedValueForRecycleMark { get; }
     }
 
     /// <summary>
@@ -774,11 +761,6 @@ namespace Velvet
         internal override void PushContext(ComponentContextStack stack) => stack.Push(Context, Value);
 
         internal override void PopContext(ComponentContextStack stack) => stack.Pop(Context);
-
-        private static readonly bool s_canHoldNodes = !typeof(T).IsValueType;
-
-        internal override object? BoxedValueForRecycleMark
-            => s_canHoldNodes ? HookSlotRecycleProbe.Probe(Value) : null;
 
         internal override bool HasValueChanged(ContextProviderNode other)
         {

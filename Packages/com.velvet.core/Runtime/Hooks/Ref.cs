@@ -52,7 +52,5 @@ namespace Velvet
         public Func<VisualElement, Action> SetElement => _setElement;
 
         void IHookRefSetter.Set(object? value) => Current = value as T;
-
-        object? IHookRefSetter.RecycleMarkRoot => HookSlotRecycleProbe.Probe(Current);
     }
 }

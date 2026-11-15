@@ -41,8 +41,6 @@ namespace Velvet.Tests
             s_setGeneration = default;
             s_retargetRuns = 0;
             s_throwNow = false;
-            s_content = null;
-            s_fallback = null;
             s_keyedChildRuns = 0;
             s_setKeyedChild = default;
             RuntimeStateProbe.ClearPortalRegistry();
@@ -303,7 +301,7 @@ namespace Velvet.Tests
         public void Given_TwoContainersWhoseMemosCarryDifferentDependencies_When_ReRenderedWithBothUnchanged_Then_NeitherRunsItsFactoryAgain()
         {
             // Arrange — unequal dependency arrays, so a shared entry misses on whichever memo reaches it
-            // second, which reaches ReturnRetiredTree with the other's inner instead of returning it.
+            // second.
             var left = 0;
             var right = 0;
             VNode[] Tree() => new VNode[]
@@ -374,29 +372,6 @@ namespace Velvet.Tests
             Assert.That(
                 string.Join(",", Root.Query<Label>().ToList().Select(label => label.text)),
                 Is.EqualTo("favourite a,all a,all b"));
-        }
-
-        // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
-        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
-        [Test]
-        public void Given_OneMemoKeyInTwoKeyedFragmentsWithDifferentDependencies_When_TheyMount_Then_TheFirstsSubtreeStillHoldsWhatItRented()
-        {
-            // Arrange
-            ElementNode first = null;
-            var tree = new VNode[]
-            {
-                V.Fragment(new VNode?[] { V.MemoizedWithKey("section", () => first = V.Label(text: "first"), "one") }, key: "first"),
-                V.Fragment(new VNode?[] { V.MemoizedWithKey("section", () => V.Label(text: "second"), "two") }, key: "second"),
-            };
-
-            // Act
-            Reconciler.Reconcile(Root, Array.Empty<VNode>(), tree);
-
-            // Assert — the first label's text rides along, since what goes wrong is a bag going back to the pool
-            // while its label is on screen.
-            Assert.That(
-                (((Label)Root.ElementAt(0)).text, first.Props != null && RentedFromThePool(first.Props)),
-                Is.EqualTo(("first", true)));
         }
 
         private static int s_keyedChildRuns;
@@ -1128,125 +1103,6 @@ namespace Velvet.Tests
             // Assert
             Assert.That((before, TextIn(Root), leaf.Props.Text, builds),
                 Is.EqualTo(("retained", "retained", "retained", 2)));
-        }
-
-        private static bool RentedFromThePool(FiberElementProps props)
-            => ((HashSet<FiberElementProps>)typeof(VNodePool)
-                .GetField("s_ownedProps", BindingFlags.NonPublic | BindingFlags.Static)
-                .GetValue(null)).Contains(props);
-
-        // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
-        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
-        // Before that, as characterization: the base's disposal already returned every cached inner to the pool.
-        // Leaving that return out of `DisposeAndReturnCachedTrees` is what reddens this.
-        [Test]
-        public void Given_AReconcilerHoldingACachedInner_When_ItIsDisposed_Then_ThePropsTheInnerRentedGoBackToThePool()
-        {
-            // Arrange
-            var reconciler = new Reconciler();
-            ElementNode cached = null;
-            reconciler.Reconcile(new VisualElement(), Array.Empty<VNode>(), new VNode[]
-            {
-                V.Memoized(() => cached = V.Label(text: "cached"), 1),
-            });
-            var props = cached.Props;
-
-            // Act
-            reconciler.Dispose();
-
-            // Assert — the bag is compared to null too, since a label that rented none has nothing to return.
-            Assert.That((props != null, props != null && RentedFromThePool(props)), Is.EqualTo((true, false)));
-        }
-
-        // The props bags, event arrays and node arrays the pool counts as rented out.
-        private static (int Props, int EventArrays, int NodeArrays) Rented()
-            => VNodePoolTestAccess.RentedOutCountsForTest();
-
-        // The memo's subtree rents one of each: V.List a node array, and the Button a props bag and an event array.
-        [Component(Compiler = false)]
-        private static VNode SectionRentingEachPart()
-            => V.Memoized(
-                () => V.Div(children: V.List(new[] { "open" }, id => id, id => V.Button(text: id, onClick: () => { }))),
-                1);
-
-        [Component(Compiler = false)]
-        private static VNode HostOfTheRentingSection()
-            => V.Div(children: new VNode?[] { V.Component(SectionRentingEachPart) });
-
-        // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
-        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
-        // Before that, as characterization: the base kept every entry until its reconciler was disposed.
-        // Its disposal returned every cached inner, so nothing a memo rented stayed with the pool.
-        [Test]
-        public void Given_AMountHoldingAComponentWithAMemo_When_ItIsDisposed_Then_ThePoolCountsNothingTheMemoRentedAsRentedOut()
-        {
-            // Arrange — the component's unmount lets its entry go before the memo cache itself is disposed.
-            var before = Rented();
-            var mounted = V.Mount(new VisualElement(), V.Component(HostOfTheRentingSection, key: "host"));
-
-            // Act
-            mounted.Dispose();
-
-            // Assert
-            var after = Rented();
-            Assert.That(
-                (after.Props - before.Props, after.EventArrays - before.EventArrays, after.NodeArrays - before.NodeArrays),
-                Is.EqualTo((0, 0, 0)));
-        }
-
-        private static ElementNode s_content;
-        private static ElementNode s_fallback;
-
-        // The memo's subtree holds a Suspense, whose fallback is built beside its children though only one is shown.
-        [Component(Compiler = false)]
-        private static VNode SectionHoldingASuspense()
-            => V.Memoized(
-                () => V.Div(children: new VNode?[]
-                {
-                    V.Suspense(s_fallback = V.Label(text: "loading"), new VNode?[] { s_content = V.Label(text: "content") }),
-                }),
-                1);
-
-        [Component(Compiler = false)]
-        private static VNode HostOfTheSuspenseSection()
-        {
-            var (shown, setShown) = Hooks.UseState(true);
-            s_setShown = setShown;
-            return V.Div(children: new VNode?[] { shown ? V.Component(SectionHoldingASuspense) : null });
-        }
-
-        private static Stack<FiberElementProps> PooledPropsBags()
-            => (Stack<FiberElementProps>)typeof(VNodePool)
-                .GetField("s_propsPool", BindingFlags.NonPublic | BindingFlags.Static)
-                .GetValue(null);
-
-        // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
-        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
-        // Before that, as characterization: the base let no entry go before its reconciler's disposal.
-        // So nothing it cached reached the pool while the component unmounted; returning the subtree an eviction
-        // lets go of, rather than releasing it, is what reddens this.
-        [Test]
-        public void Given_AComponentWhoseMemoHeldASuspense_When_ItUnmounts_Then_ThePoolHandsOutNothingThatSubtreeHeld()
-        {
-            // Arrange — the pool starts empty, so a bag the unmount gave back to it is among what it hands out next.
-            PooledPropsBags().Clear();
-            _mounted = V.Mount(new VisualElement(), V.Component(HostOfTheSuspenseSection, key: "host"));
-            var held = new[] { s_content.Props, s_fallback.Props };
-            s_setShown.Invoke(false);
-            _mounted.FlushStateForTest();
-
-            // Act
-            var handedOut = new List<FiberElementProps>();
-            for (var pooled = PooledPropsBags().Count; pooled > 0; pooled--)
-            {
-                handedOut.Add(VNodePool.RentProps());
-            }
-            handedOut.ForEach(VNodePool.ReturnProps);
-
-            // Assert — the bags are compared to null too, since a label that rented none has nothing to hand out.
-            Assert.That(
-                (held.All(props => props != null), held.Any(handedOut.Contains)),
-                Is.EqualTo((true, false)));
         }
 
         // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.

@@ -16,6 +16,8 @@ namespace Velvet.Tests
     /// <item>It is computed again when the state it reads changes, and every label shows the current value either way.</item>
     /// <item>An array the body writes into after computing it is computed on every render that reaches it, since a
     /// cached one would carry the writes of the render before.</item>
+    /// <item>A dictionary of nodes is cached as such an array is, and a render that hits shows the nodes it was built
+    /// with.</item>
     /// </list>
     /// </summary>
     [TestFixture]
@@ -348,9 +350,8 @@ namespace Velvet.Tests
                 V.Label(text: Describe(4, second)));
         }
 
-        // GREEN_ON_BASE(characterization): the base builds the dictionary whenever the gate on the body misses.
         [Test]
-        public void Given_ADictionaryOfNodesReadByTwoScopes_When_AnotherStateChanges_Then_TheDictionaryIsBuiltAgain()
+        public void Given_ADictionaryOfNodesReadByTwoScopes_When_AnotherStateChanges_Then_TheDictionaryIsNotBuiltAgain()
         {
             // Arrange
             using var mounted = V.Mount(_root, V.Component(DictionaryOfNodes, key: "tabs"));
@@ -360,7 +361,37 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
 
             // Assert
-            Assert.That(s_calls[Builds], Is.EqualTo(4));
+            Assert.That(s_calls[Builds], Is.EqualTo(2));
+        }
+
+        // GREEN_ON_BASE(characterization): the base builds the dictionary again on that render, and shows the same labels.
+        [Test]
+        public void Given_ADictionaryOfNodesReadByTwoScopes_When_AnotherStateChanges_Then_TheLabelsShowTheNodesItWasBuiltWith()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(DictionaryOfNodes, key: "tabs"));
+
+            // Act
+            s_setSecond(5);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(LabelTexts(), Is.EqualTo(new[] { "tab0", "tab1", "4:5" }));
+        }
+
+        // GREEN_ON_BASE(characterization): the base builds the dictionary on every render, so it shows the new labels too.
+        [Test]
+        public void Given_ADictionaryOfNodesReadByTwoScopes_When_TheStateItIsBuiltFromChanges_Then_TheLabelsShowTheNewNodes()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(DictionaryOfNodes, key: "tabs"));
+
+            // Act
+            s_setFirst(3);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(LabelTexts(), Is.EqualTo(new[] { "tab3", "tab4", "4:0" }));
         }
 
         #endregion

@@ -22,8 +22,7 @@ namespace Velvet
         // A factory's own callback binding (onClick:, onValueChanged:) goes ahead of the caller's events:.
         // Callers pass `onX != null ? new XxxBinding { Handler = onX } : null` so the binding is allocated
         // only when a handler is supplied. The caller's array is handed on as it is when nothing goes
-        // ahead of it, and never written: a component may cache it across renders, and the pool clears
-        // only what it rented.
+        // ahead of it, and never written: a component may cache it across renders.
         private static FiberEventBinding[] Bindings(FiberEventBinding? own, FiberEventBinding[]? events)
         {
             if (events == null)
@@ -32,7 +31,7 @@ namespace Velvet
                 {
                     return EmptyEvents;
                 }
-                var single = VNodePool.RentSingleEventArray();
+                var single = new FiberEventBinding[1];
                 single[0] = own;
                 return single;
             }
@@ -42,7 +41,7 @@ namespace Velvet
                 return events;
             }
 
-            var bindings = VNodePool.RentEventArray(events.Length + 1);
+            var bindings = new FiberEventBinding[events.Length + 1];
             bindings[0] = own;
             Array.Copy(events, 0, bindings, 1, events.Length);
             return bindings;
@@ -77,7 +76,7 @@ namespace Velvet
             }
 
             var callers = callerEvents ?? EmptyEvents;
-            var events = VNodePool.RentEventArray(count + callers.Length);
+            var events = new FiberEventBinding[count + callers.Length];
             Array.Copy(callers, 0, events, count, callers.Length);
             var next = 0;
             if (onValueChanged != null) events[next++] = new ChangeEventBinding<string> { Handler = onValueChanged };
@@ -308,7 +307,7 @@ namespace Velvet
             FiberElementProps? props = null;
             if (verticalScrollerVisibility.HasValue || horizontalScrollerVisibility.HasValue || touchScrollBehavior.HasValue)
             {
-                props = VNodePool.RentProps();
+                props = new FiberElementProps();
                 props.ScrollView = new ScrollViewSettings(
                     verticalScrollerVisibility, horizontalScrollerVisibility, touchScrollBehavior);
             }
@@ -409,7 +408,7 @@ namespace Velvet
             FiberElementProps? props = null;
             if (text != null || tooltip != null || enabled.HasValue)
             {
-                props = VNodePool.RentProps();
+                props = new FiberElementProps();
                 props.Text = text;
                 props.Tooltip = tooltip;
                 props.Enabled = enabled;
@@ -495,7 +494,7 @@ namespace Velvet
             FiberElementProps? props = null;
             if (text != null)
             {
-                props = VNodePool.RentProps();
+                props = new FiberElementProps();
                 props.Text = text;
             }
             props = WithAttributes(props, data, aria);
@@ -567,7 +566,6 @@ namespace Velvet
             FiberEventBinding[]? events = null)
         {
             VNode.RequireKey(key);
-            // Above both rents below, so a refusal here strands no event array or bag this factory rented.
             RequireSliderDirection(direction, "V.Slider takes a member of SliderDirection as its direction.");
             if (step is { } stepValue && !(stepValue > 0f && float.IsFinite(stepValue)))
             {
@@ -580,7 +578,7 @@ namespace Velvet
             if (value.HasValue || lowValue.HasValue || highValue.HasValue || enabled.HasValue
                 || direction.HasValue || inverted.HasValue || step.HasValue)
             {
-                props = VNodePool.RentProps();
+                props = new FiberElementProps();
                 props.FieldValue = value;
                 props.Enabled = enabled;
                 props.Slider = (lowValue.HasValue || highValue.HasValue || direction.HasValue || inverted.HasValue
@@ -656,7 +654,6 @@ namespace Velvet
             FiberEventBinding[]? events = null)
         {
             VNode.RequireKey(key);
-            // Above both rents below, for V.Slider's reason.
             RequireSliderDirection(direction, "V.SliderInt takes a member of SliderDirection as its direction.");
             if (step is <= 0)
             {
@@ -668,7 +665,7 @@ namespace Velvet
             if (value.HasValue || lowValue.HasValue || highValue.HasValue || enabled.HasValue
                 || direction.HasValue || inverted.HasValue || step.HasValue)
             {
-                props = VNodePool.RentProps();
+                props = new FiberElementProps();
                 props.FieldValue = value;
                 props.Enabled = enabled;
                 props.SliderInt = (lowValue.HasValue || highValue.HasValue || direction.HasValue || inverted.HasValue
@@ -743,7 +740,7 @@ namespace Velvet
             FiberElementProps? props = null;
             if (value.HasValue || label != null || enabled.HasValue)
             {
-                props = VNodePool.RentProps();
+                props = new FiberElementProps();
                 props.FieldValue = value;
                 props.Text = label;
                 props.Enabled = enabled;
@@ -847,7 +844,7 @@ namespace Velvet
             FiberElementProps? props = null;
             if (value != null || label != null || declaresTextField || enabled.HasValue)
             {
-                props = VNodePool.RentProps();
+                props = new FiberElementProps();
                 props.FieldValue = value;
                 props.Text = label;
                 props.Enabled = enabled;
@@ -967,12 +964,10 @@ namespace Velvet
             FiberEventBinding[]? events = null)
         {
             VNode.RequireKey(key);
-            // Validated BEFORE renting pooled props so a throwing call leaks nothing (the settings
-            // constructor fail-fasts on an invalid scale for every construction path, this factory
-            // included). Always carried (even with a null camera): the patcher needs the settings on
-            // BOTH sides of a diff to see a camera arriving or leaving as a settings change.
+            // Always carried (even with a null camera): the patcher needs the settings on BOTH sides of a
+            // diff to see a camera arriving or leaving as a settings change.
             var sceneView = new SceneViewSettings(camera, resolutionScale);
-            var props = VNodePool.RentProps();
+            var props = new FiberElementProps();
             props.SceneView = sceneView;
 
             return new ElementNode
@@ -1040,12 +1035,10 @@ namespace Velvet
                 throw new ArgumentOutOfRangeException(nameof(playOn), playOn,
                     "V.Particles takes a member of PlayTrigger as its playOn.");
             }
-            // Validated BEFORE renting pooled props so a throwing call leaks nothing (the settings
-            // constructor fail-fasts on an invalid mapping for every construction path, this factory
-            // included). Always carried (even with a null effect): the patcher needs the settings on
-            // BOTH sides of a diff to see an effect arriving or leaving as a settings change.
+            // Always carried (even with a null effect): the patcher needs the settings on BOTH sides of a
+            // diff to see an effect arriving or leaving as a settings change.
             var particles = new ParticlesSettings(effect, playOn, pixelsPerUnit);
-            var props = VNodePool.RentProps();
+            var props = new FiberElementProps();
             props.Particles = particles;
 
             return new ElementNode
@@ -1154,7 +1147,7 @@ namespace Velvet
             FiberElementProps? props = null;
             if (value != null || choices != null || label != null || enabled.HasValue)
             {
-                props = VNodePool.RentProps();
+                props = new FiberElementProps();
                 props.FieldValue = value;
                 props.Text = label;
                 props.Enabled = enabled;
@@ -1212,7 +1205,7 @@ namespace Velvet
             FiberElementProps? props = null;
             if (enabled.HasValue)
             {
-                props = VNodePool.RentProps();
+                props = new FiberElementProps();
                 props.Enabled = enabled;
             }
             props = WithAttributes(props, data, aria);
@@ -1274,7 +1267,7 @@ namespace Velvet
             FiberElementProps? props = null;
             if (value.HasValue || label != null || enabled.HasValue)
             {
-                props = VNodePool.RentProps();
+                props = new FiberElementProps();
                 props.FieldValue = value;
                 props.Text = label;
                 props.Enabled = enabled;
@@ -1339,7 +1332,7 @@ namespace Velvet
             FiberElementProps? props = null;
             if (value.HasValue || choices != null || label != null || enabled.HasValue)
             {
-                props = VNodePool.RentProps();
+                props = new FiberElementProps();
                 props.FieldValue = value;
                 props.Text = label;
                 props.Enabled = enabled;
@@ -1403,7 +1396,7 @@ namespace Velvet
             FiberElementProps? props = null;
             if (value.HasValue || label != null || enabled.HasValue)
             {
-                props = VNodePool.RentProps();
+                props = new FiberElementProps();
                 props.FieldValue = value;
                 props.Text = label;
                 props.Enabled = enabled;
@@ -1466,28 +1459,17 @@ namespace Velvet
                 return EmptyChildren;
             }
 
-            var result = VNodePool.RentNodeArray(items.Count);
-            // The selector's key is not known until its item is mapped, so the refusal of one cannot be
-            // hoisted above this rent the way a key: parameter's is. Any throw out of the mapping gives
-            // the array back instead: a call that throws returns none, so nothing later can retire it.
-            try
+            var result = new VNode?[items.Count];
+            for (var i = 0; i < items.Count; i++)
             {
-                for (var i = 0; i < items.Count; i++)
+                var node = renderer(items[i]);
+                if (node != null)
                 {
-                    var node = renderer(items[i]);
-                    if (node != null)
-                    {
-                        // The selector key is authoritative over any key the renderer set, so the
-                        // list-mapping site owns the identity used for reconciliation.
-                        node = KeyListItem(node, keySelector(items[i]));
-                    }
-                    result[i] = node;
+                    // The selector key is authoritative over any key the renderer set, so the
+                    // list-mapping site owns the identity used for reconciliation.
+                    node = KeyListItem(node, keySelector(items[i]));
                 }
-            }
-            catch
-            {
-                VNodePool.ReturnNodeArray(result);
-                throw;
+                result[i] = node;
             }
 
             return result;
@@ -1517,25 +1499,16 @@ namespace Velvet
                 return EmptyChildren;
             }
 
-            var result = VNodePool.RentNodeArray(items.Count);
-            // Same ordering constraint as the overload above.
-            try
+            var result = new VNode?[items.Count];
+            for (var i = 0; i < items.Count; i++)
             {
-                for (var i = 0; i < items.Count; i++)
+                var node = renderer(items[i], i);
+                if (node != null)
                 {
-                    var node = renderer(items[i], i);
-                    if (node != null)
-                    {
-                        // Same authority as the overload above.
-                        node = KeyListItem(node, keySelector(items[i], i));
-                    }
-                    result[i] = node;
+                    // Same authority as the overload above.
+                    node = KeyListItem(node, keySelector(items[i], i));
                 }
-            }
-            catch
-            {
-                VNodePool.ReturnNodeArray(result);
-                throw;
+                result[i] = node;
             }
 
             return result;
@@ -1583,9 +1556,7 @@ namespace Velvet
             string? key = null)
         {
             // Refuses the key BEFORE List runs: C# evaluates that argument first, so leaving the
-            // refusal to the V.Fragment call below strands the child array List rented and whatever
-            // the renderer's nodes rented, with no Fragment built to carry them to a later
-            // retirement. Same ordering rule as V.Draggable's refusal above its own rent.
+            // refusal to the V.Fragment call below would run the renderer for every item ahead of it.
             VNode.RequireKey(key);
             return Fragment(List(items, keySelector, renderer), key);
         }
@@ -2203,9 +2174,6 @@ namespace Velvet
             FiberEventBinding[]? events = null)
         {
             VNode.RequireKey(key);
-            // Validated BEFORE renting pooled props so a throwing call leaks nothing (mirrors V.SceneView):
-            // the settings constructor fail-fasts on an invalid distanceFactor for every construction path,
-            // this factory included.
             var anchored = new AnchoredSettings(target, camera, offset ?? Vector2.zero, hideWhenBehindCamera,
                 occlude, occludeLayerMask, distanceFactor);
             var classNames = ParseClassNames(className);
@@ -2223,7 +2191,7 @@ namespace Velvet
                 outerClasses = stacking.ToArray();
                 innerClasses = rest.ToArray();
             }
-            var wrapperProps = VNodePool.RentProps();
+            var wrapperProps = new FiberElementProps();
             wrapperProps.Anchored = anchored;
             var inner = new ElementNode
             {
@@ -2375,7 +2343,7 @@ namespace Velvet
         // DndContextHost's element, built in its render once the store the settings carry exists.
         internal static ElementNode DndScopeElement(DndContextHost.Props scope, DndContextSettings settings)
         {
-            var mergedProps = WithAttributes(scope.ElementProps, scope.Data, scope.Aria) ?? VNodePool.RentProps();
+            var mergedProps = WithAttributes(scope.ElementProps, scope.Data, scope.Aria) ?? new FiberElementProps();
             mergedProps.DndContext = settings;
 
             return new ElementNode
@@ -2434,13 +2402,12 @@ namespace Velvet
             FiberEventBinding[]? events = null)
         {
             VNode.RequireKey(key);
-            // Above the rent below, so a refusal here strands no bag this factory rented.
             if (movement is not (DragMovement.Translate or DragMovement.None))
             {
                 throw new ArgumentOutOfRangeException(nameof(movement), movement,
                     "V.Draggable takes a member of DragMovement as its movement.");
             }
-            var mergedProps = WithAttributes(props, data, aria) ?? VNodePool.RentProps();
+            var mergedProps = WithAttributes(props, data, aria) ?? new FiberElementProps();
             mergedProps.Draggable = new DraggableSettings(
                 id, dragData, disabled, movement, activation, whileDraggingClass);
 
@@ -2494,7 +2461,7 @@ namespace Velvet
             FiberEventBinding[]? events = null)
         {
             VNode.RequireKey(key);
-            var mergedProps = WithAttributes(props, data, aria) ?? VNodePool.RentProps();
+            var mergedProps = WithAttributes(props, data, aria) ?? new FiberElementProps();
             mergedProps.Droppable = new DroppableSettings(
                 id, dropData, disabled, whileOverClass, whileDragActiveClass);
 
@@ -3385,7 +3352,7 @@ namespace Velvet
 
         // Threads data-[...] / aria-[...] attribute maps onto a typed widget's props bag so the matching
         // data-/aria- variants reach the typed factories (Toggle, Button, …), not just the props-bag elements
-        // (Div / Span). Rents a bag only when the factory did not already build one AND an attribute map is
+        // (Div / Span). Builds a bag only when the factory did not already build one AND an attribute map is
         // actually supplied; otherwise it returns the bag unchanged (often null). Keeps the VNode immutable:
         // the bag is finalized here, before the ElementNode is constructed.
         private static FiberElementProps? WithAttributes(
@@ -3395,7 +3362,7 @@ namespace Velvet
             {
                 return props;
             }
-            props ??= VNodePool.RentProps();
+            props ??= new FiberElementProps();
             if (data != null) props.Data = data;
             if (aria != null) props.Aria = aria;
             return props;

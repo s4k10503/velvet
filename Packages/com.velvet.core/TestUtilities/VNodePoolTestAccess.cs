@@ -1,14 +1,12 @@
 using System;
-using System.Collections.Generic;
 using System.Reflection;
 using UnityEngine.UIElements;
 
 namespace Velvet.TestUtilities
 {
     /// <summary>
-    /// Drains, fills and measures <c>VNodePool</c>'s process-wide recyclable-element pools, and reads its rented-out
-    /// sets and its rental journal. Every drain and every reading goes
-    /// through reflection because production types carry no test-only members, and because the pool type is
+    /// Drains, fills and measures <c>VNodePool</c>'s process-wide recyclable-element pools. Every drain and every
+    /// reading goes through reflection because production types carry no test-only members, and because the pool type is
     /// a private nested one that no signature here could name even if they did; a fill goes in through the
     /// pool's own return method.
     /// <para>
@@ -26,9 +24,6 @@ namespace Velvet.TestUtilities
         private const string SliderPoolFieldName = "s_sliderPool";
         private const string SliderIntPoolFieldName = "s_sliderIntPool";
         private const string TextFieldPoolFieldName = "s_textFieldPool";
-        private const string OwnedPropsFieldName = "s_ownedProps";
-        private const string OwnedNodeArraysFieldName = "s_ownedNodeArrays";
-        private const string RentalJournalFieldName = "s_rentalJournal";
         private const string ClearMethodName = "Clear";
         private const string CountPropertyName = "Count";
         private const int SaturationFillLimit = 1024;
@@ -81,40 +76,6 @@ namespace Velvet.TestUtilities
         // Bypasses: FiberElementCleaner — it returns TextFields no tree mounted, through ReturnTextField.
         public static bool SaturateTextFieldPoolForTest()
             => Saturate(TextFieldPoolFieldName, () => VNodePool.ReturnTextField(new TextField()));
-
-        // Bypasses: nothing — it reads how many props bags, event arrays and node arrays are rented out.
-        public static (int Props, int EventArrays, int NodeArrays) RentedOutCountsForTest()
-            => (Count(OwnedPropsFieldName), OwnedEventArrayCount(), Count(OwnedNodeArraysFieldName));
-
-        // The rented-out event arrays are every static HashSet<FiberEventBinding[]> the pool holds, found by
-        // that type and summed, so a fixture reading them names no field and reads the same however many
-        // sets the pool keeps them in.
-        private static int OwnedEventArrayCount()
-        {
-            var sets = 0;
-            var count = 0;
-            foreach (var field in typeof(VNodePool).GetFields(BindingFlags.Static | BindingFlags.NonPublic))
-            {
-                if (field.FieldType != typeof(HashSet<FiberEventBinding[]>)) continue;
-                sets++;
-                count += CountOf(field.GetValue(null)!);
-            }
-            if (sets == 0)
-            {
-                throw new MissingFieldException(typeof(VNodePool).FullName, "HashSet<FiberEventBinding[]>");
-            }
-            return count;
-        }
-
-        // Bypasses: nothing — it reads whether the pool counts a props bag as rented out.
-        public static bool IsRentedOutForTest(FiberElementProps props)
-            => ((HashSet<FiberElementProps>)Pool(OwnedPropsFieldName)).Contains(props);
-
-        // Bypasses: nothing — it reads how many rentals the journal holds.
-        public static int RentalJournalCountForTest => Count(RentalJournalFieldName);
-
-        // Bypasses: nothing — it reads the capacity the journal's backing array keeps.
-        public static int RentalJournalCapacityForTest => ((List<object>)Pool(RentalJournalFieldName)).Capacity;
 
         // Fills until a return stops deepening the pool rather than counting up to the cap: the cap is a
         // private constant, and a mirror of it here would go quietly wrong the day it moves.

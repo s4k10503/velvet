@@ -1,7 +1,6 @@
 using System.Collections.Generic;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
-using System.Linq;
 
 namespace Velvet.CodeGen
 {
@@ -53,45 +52,6 @@ namespace Velvet.CodeGen
                 if (_flow.Instructions[i].OpCode.Code == Code.Newarr || ReactiveScopeVolatility.IsCall(_flow.Instructions[i])) return true;
             }
             return false;
-        }
-
-        // Only a node, an array of nodes and a list of nodes are walked by the sweep that keeps a cached value's nodes out
-        // of the pool, so a value that can hold a node anywhere else is not cached.
-        private string? NodeHolderProblem(TypeReference type)
-        {
-            if (IsNodeList(type)) return null;
-            return ReachesNodes(type, new HashSet<string>(), 0) ? "it can hold nodes that nothing keeps out of the pool" : null;
-        }
-
-        private bool IsNodeList(TypeReference type)
-        {
-            if (type is ArrayType array) return array.Rank == 1 && IsNode(array.ElementType);
-            return type is GenericInstanceType generic && generic.ElementType.FullName == "System.Collections.Generic.List`1"
-                && generic.GenericArguments.Count == 1 && IsNode(generic.GenericArguments[0]);
-        }
-
-        private bool IsNode(TypeReference type) => type is not ArrayType && DerivesFromVNode(type);
-
-        private bool ReachesNodes(TypeReference type, HashSet<string> seen, int depth)
-        {
-            if (type.IsGenericParameter || type.IsPrimitive || type.FullName == "System.String") return false;
-            if (IsNode(type) || type.FullName == "System.Object") return true;
-            if (depth >= MaxAliasDepth) return true;
-            if (!seen.Add(type.FullName)) return false;
-            if (type is ArrayType array) return ReachesNodes(array.ElementType, seen, depth + 1);
-            if (type is GenericInstanceType generic && generic.GenericArguments.Any(each => ReachesNodes(each, seen, depth + 1)))
-            {
-                return true;
-            }
-            return !IsFrameworkType(type.FullName) && FieldsReachNodes(type, seen, depth);
-        }
-
-        private bool FieldsReachNodes(TypeReference type, HashSet<string> seen, int depth)
-        {
-            var definition = ScopeResolution.Type(type);
-            if (definition == null) return true;
-            if (definition.Fields.Any(field => !field.IsStatic && ReachesNodes(field.FieldType, seen, depth + 1))) return true;
-            return definition.BaseType is { } baseType && baseType.FullName != "System.Object" && ReachesNodes(baseType, seen, depth + 1);
         }
 
         // The run's value is cached, so the one object is handed to the code after it on every render that hits. That is

@@ -117,7 +117,7 @@ namespace Velvet
         {
             try
             {
-                UnmountShownRows(fiber, fallbackTree);
+                UnmountShownRows(fiber);
                 FiberCommitWork.ReconcileOwnRows(fiber, Array.Empty<VNode>(), fallbackTree, frameBudgetMs: 0);
             }
             catch (FiberSuspendSignal)
@@ -159,9 +159,8 @@ namespace Velvet
         // React reconciles a boundary's fallback against none of the children it replaces
         // (forceUnmountCurrentAndReconcile), so a component of the fallback with the type and key of one the boundary
         // showed mounts afresh rather than keeping that one's state. PreviousTree is emptied with the rows, so that it
-        // describes what the boundary holds while the fallback mounts, and the shown tree retires beside the fallback,
-        // which the factory may have built from nodes the two share.
-        private static void UnmountShownRows(ComponentFiber fiber, VNode?[] fallbackTree)
+        // describes what the boundary holds while the fallback mounts.
+        private static void UnmountShownRows(ComponentFiber fiber)
         {
             var shown = fiber.PreviousTree ?? Array.Empty<VNode>();
             FiberCommitWork.ReconcileOwnRows(fiber, shown, Array.Empty<VNode>(), frameBudgetMs: 0);
@@ -171,7 +170,6 @@ namespace Velvet
             // enclosing pass, the retirement at that pass's end (ReconcilerContext.RetireBoundaryStatesNotReRendered)
             // would come after the fallback had read them.
             fiber.Reconciler!.Context.ForgetRecordsOf(fiber);
-            FiberTreeReturn.ReturnRetiredTree(shown, fiber, alsoLive: fallbackTree);
         }
 
         // A render error below a boundary whose own render is the pass, caught inside that render's reconcile
@@ -358,11 +356,8 @@ namespace Velvet
             TakeQueuedReset(fiber);
             if (fiber.CaughtError is not var (error, info)) return bodyOutput;
             var fallback = TryInvokeFactory(fiber, error, info);
-            var fallbackTree = fallback == null ? null : new[] { fallback };
-            // Retired beside the fallback, which the factory may have built from nodes the body returned too.
-            FiberTreeReturn.ReturnRetiredTree(bodyOutput, fiber, alsoLive: fallbackTree);
-            if (fallbackTree == null) ExceptionDispatchInfo.Capture(error).Throw();
-            return fallbackTree!;
+            if (fallback == null) ExceptionDispatchInfo.Capture(error).Throw();
+            return new[] { fallback! };
         }
 
         // react-error-boundary's setState(initialState), which follows its onReset: queued as a state update is,

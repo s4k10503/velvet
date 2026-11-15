@@ -21,10 +21,6 @@ gates-act-value	Packages/com.velvet.core/Runtime/Component/Tests/Editor/VNodeBui
 gates-act-value	Packages/com.velvet.core/Runtime/Component/Tests/Editor/VNodeBuilderTests.cs	Velvet.Tests.VNodeBuilderTests.Given_Content_When_Text_Then_CreatesTextNodeWithContent	node
 gates-act-value	Packages/com.velvet.core/Runtime/Component/Tests/Editor/VNodeBuilderTests.cs	Velvet.Tests.VNodeBuilderTests.Given_Deps_When_Memo_Then_CreatesMemoNodeCarryingDeps	node
 gates-act-value	Packages/com.velvet.core/Runtime/Component/Tests/Editor/VNodeBuilderTests.cs	Velvet.Tests.VNodeBuilderTests.Given_RenderMethodAndKey_When_Component_Then_CarriesKey	node
-gates-act-value	Packages/com.velvet.core/Runtime/Component/Tests/Editor/VNodePoolTests.cs	Velvet.Tests.VNodePoolTests.Given_ReturnedEventArray_When_RentedAgain_Then_ElementIsCleared	reused
-gates-act-value	Packages/com.velvet.core/Runtime/Component/Tests/Editor/VNodePoolTests.cs	Velvet.Tests.VNodePoolTests.Given_ReturnedNodeArray_When_RentedAgain_Then_ElementsAreCleared	reused
-gates-act-value	Packages/com.velvet.core/Runtime/Component/Tests/Editor/VNodePoolTests.cs	Velvet.Tests.VNodePoolTests.Given_ReturnedPropsWithChoices_When_RentedAgain_Then_ChoicesAreReset	reused
-gates-act-value	Packages/com.velvet.core/Runtime/Component/Tests/Editor/VNodePoolTests.cs	Velvet.Tests.VNodePoolTests.Given_ReturnedProps_When_RentedAgain_Then_MutatedFieldsAreReset	reused
 gates-act-value	Packages/com.velvet.core/Runtime/Component/Tests/Editor/WidgetPoolHelperTests.cs	Velvet.Tests.LabelPoolHelperTests.Given_ReturnedLabel_When_RentedWithNewText_Then_TextReflectsCurrentRent	rented
 gates-act-value	Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionTweenDriverLifecycleTests.cs	Velvet.Tests.MotionTweenDriverLifecycleTests.Given_AStandaloneBezierEnter_When_ThePanelTicks_Then_TheElementSettlesAtItsAnimatePose	m
 gates-act-value	Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionTweenDriverLifecycleTests.cs	Velvet.Tests.MotionTweenDriverLifecycleTests.Given_AStandaloneSpringEnter_When_ThePanelTicks_Then_TheElementSettlesAtItsAnimatePose	m

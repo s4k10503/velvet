@@ -71,8 +71,6 @@ namespace Velvet
             // render-phase settle keeps them. (On a miss, Store stages the rebuilt result; without
             // this hit-side staging a discarded attempt's miss would otherwise be the last thing staged.)
             slot.NextDeps = slot.LastDeps;
-            // A hit drops what the body built ahead of its gate, which the cached tree's retirement never reaches.
-            VNodePool.DisownJournaledRentals();
             hit = slot;
             return true;
         }
@@ -100,11 +98,8 @@ namespace Velvet
             if (deps == null) throw new ArgumentNullException(nameof(deps));
             var fiber = Hooks.ResolveUncounted(memberName);
 #if UNITY_EDITOR
-            // The StrictMode diagnostic render is isolated from the commit: staging its throwaway
-            // output here would first spare that tree from the diagnostic's own retirement sweep
-            // (the mark reads NextCachedResult) and then strand it when the next real render
-            // restages the slot — one leaked subtree per double render. Mirrors the other
-            // externally-visible hook writes the diagnostic pass no-ops.
+            // The StrictMode diagnostic render stages nothing, as it registers no effect and makes no externally
+            // visible hook write (FiberRenderer.DoubleInvokeRenderForStrictMode).
             if (fiber.IsStrictDiagnosticPass) return null;
 #endif
             var index = firstSlot + scope;

@@ -559,30 +559,6 @@ namespace Velvet.Tests
 
         // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
         // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
-        // Before that, as characterization: the merge base retires the failed tree in the fallback's own reconcile.
-        // The catch taken in the walk retires it there instead, which this pins.
-        [Test]
-        public void Given_AFailedOutputHoldingPooledNodes_When_TheBoundaryCatchesOnAnUpdateAndTheMountIsDisposed_Then_ThePoolCountsNothingRentedOut()
-        {
-            // Arrange
-            var before = Rented();
-            var mounted = V.Mount(_root, V.Component(PooledHostRender, key: "host"), CaughtErrors.Unlogged);
-            s_throws = true;
-            s_setTick.Invoke(1);
-            mounted.FlushStateForTest();
-
-            // Act
-            mounted.Dispose();
-
-            // Assert
-            var after = Rented();
-            Assert.That(
-                (after.Props - before.Props, after.EventArrays - before.EventArrays, after.NodeArrays - before.NodeArrays),
-                Is.EqualTo((0, 0, 0)));
-        }
-
-        // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
-        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
         [Test]
         public void Given_ABoundaryThatCaughtInItsParentsUpdate_When_TheParentUpdatesAgain_Then_TheBoundaryKeepsItsFallbackAndTheSiblingUpdates()
         {
@@ -660,29 +636,6 @@ namespace Velvet.Tests
             s_setTick = setTick;
             return V.Div(children: new VNode[] { V.Component(SameKeyBoundaryRender, tick, key: "boundary") });
         }
-
-        [Component(Compiler = false, IsErrorBoundary = true)]
-        private static VNode PooledBoundaryRender(int tick)
-        {
-            Hooks.UseFallback(_ => V.Label(text: "fallback"));
-            return V.Fragment(new VNode[]
-            {
-                V.Div(children: V.List(new[] { "open" }, id => id, id => V.Button(text: id, onClick: () => { }))),
-                V.Component(ThrowerRender, key: "thrower"),
-            });
-        }
-
-        [Component(Compiler = false)]
-        private static VNode PooledHostRender()
-        {
-            var (tick, setTick) = Hooks.UseState(0);
-            s_setTick = setTick;
-            return V.Div(children: new VNode[] { V.Component(PooledBoundaryRender, tick, key: "boundary") });
-        }
-
-        // Read by reflection for the reason MemoCacheCollisionTests reads the same sets.
-        private static (int Props, int EventArrays, int NodeArrays) Rented()
-            => VNodePoolTestAccess.RentedOutCountsForTest();
 
         #endregion
 
@@ -2411,27 +2364,6 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(mounted.Root.Reconciler.Context.PresenceStates.Values.Single().Committed.Count, Is.EqualTo(1));
-        }
-
-        [Test]
-        public void Given_APresenceWhoseOwnerIsAnInlineChildOfAnAbortedPass_When_ItsGhostDropIsPutBack_Then_ThePutBackNodeKeepsItsPropsBag()
-        {
-            // Arrange
-            using var mounted = V.Mount(_root, V.Component(PoolGhostHostRender, key: "host"), CaughtErrors.Unlogged);
-            s_setPoolGhostTick.Invoke(1);
-            mounted.FlushStateForTest();
-            mounted.FlushEffectsForTest();
-
-            // Act
-            s_setPoolGhostTick.Invoke(2);
-            mounted.FlushStateForTest();
-
-            // Assert
-            var committed = mounted.Root.Reconciler.Context.PresenceStates.Values.Single().Committed;
-            Assert.That(
-                committed.Count == 1 && committed[0].node is ElementNode { Props: { } props }
-                    && VNodePoolTestAccess.IsRentedOutForTest(props),
-                Is.True);
         }
 
         private static Action<int> s_setPoolGhostTick;

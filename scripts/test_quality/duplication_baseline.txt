@@ -9,6 +9,7 @@
 0922acec390c	Runtime/Component/DndContextHost.cs,Runtime/Component/SortableHosts.cs
 092daeb1fa0d	Runtime/Hooks/FocusManager.cs,Runtime/Styling/RelationalTreeWatch.cs,Runtime/Styling/StyleCascade.cs
 093b40cd54e6	Runtime/Async/VelvetTaskSources.cs,Runtime/Async/VelvetTaskStateMachineRunners.cs
+0a20f2311fab	CodeGen/ReactiveScopeRegions.Hosts.cs,CodeGen/ReactiveScopeRegions.Values.cs
 0b382412f364	Editor/PlayerBuild/BundledShaderBuildInclusion.cs,Editor/PlayerBuild/BundledStyleSheetBuildInclusion.cs
 0cc521a3992b	Runtime/Component/DndContextHost.cs,Runtime/Component/SortableHosts.cs
 0cf2c6ead50e	Runtime/Hooks/UseFrameDispatcher.cs,Runtime/Styling/OutlineHosting.cs,Runtime/Styling/RingOverlay.cs,Runtime/Styling/SilhouetteFace.cs,Runtime/Styling/StyleAnimateDriver.cs
@@ -17,7 +18,6 @@
 0e98e1cb0635	Runtime/Async/VelvetTaskSources.cs,Runtime/Async/VelvetTaskStateMachineRunners.cs
 0f15f4bea12e	Editor/PlayerBuild/BundledShaderBuildInclusion.cs,Editor/PlayerBuild/BundledStyleSheetBuildInclusion.cs
 119723a8f816	Runtime/Styling/MotionNativeTransitionGuard.cs,Runtime/Styling/StyleArbitraryLonghands.cs
-120533914a99	TestUtilities/VNodePoolTestAccess.cs,TestUtilities/ZBandProbe.cs
 1349ca426eea	Runtime/Async/VelvetTaskSources.cs,Runtime/Async/VelvetTaskStateMachineRunners.cs
 14d8804b2217	Runtime/Styling/BezierTweenDriver.cs,Runtime/Styling/MotionSpringDriver.cs
 17d8196799c6	Runtime/Styling/StyleGapManipulator.cs,Runtime/Styling/StyleGridManipulator.cs
@@ -218,4 +218,5 @@ f8e5df703fca	Runtime/Reconciler/AnchoredDriver.cs,Runtime/Styling/StyleAnimation
 fa1504ac57c7	Runtime/Styling/BezierTweenDriver.cs,Runtime/Styling/MotionSpringDriver.cs
 fa1a44134bd5	Runtime/Preview/VelvetPreviewRegistry.cs,Runtime/Styling/MotionSlotContext.cs
 fab69eca30e8	Runtime/Styling/BezierTweenDriver.cs,Runtime/Styling/MotionSpringDriver.cs
+fb65b81d05af	CodeGen/ReactiveScopeRegions.Hosts.cs,CodeGen/ReactiveScopeRegions.Values.cs
 fc1c0dd0f836	Editor/PlayerBuild/BundledShaderBuildInclusion.cs,Editor/PlayerBuild/BundledStyleSheetBuildInclusion.cs

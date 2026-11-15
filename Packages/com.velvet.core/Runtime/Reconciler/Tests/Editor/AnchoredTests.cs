@@ -241,33 +241,6 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AnInvalidDistanceFactor_When_TheFactoryThrows_Then_NoPooledPropsLeak()
-        {
-            // Arrange — the factory rents a pooled props bag; a throwing validation must not leave it
-            // stranded in the pool's ownership ledger (each failing render would leak one).
-            var ledger = typeof(VNodePool).GetField("s_ownedProps",
-                System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
-            Assume.That(ledger, Is.Not.Null, "Precondition: the pool ownership ledger exists");
-            var set = ledger.GetValue(null);
-            var count = set.GetType().GetProperty("Count");
-            Assume.That(count, Is.Not.Null, "Precondition: the ledger exposes a count");
-            var before = (int)count.GetValue(set);
-
-            // Act
-            try
-            {
-                V.Anchored(_targetGo.transform, distanceFactor: 0f);
-            }
-            catch (ArgumentOutOfRangeException)
-            {
-            }
-
-            // Assert
-            var after = (int)count.GetValue(set);
-            Assert.That(after, Is.EqualTo(before));
-        }
-
-        [Test]
         public void Given_AnAnchoredElement_When_ItsTargetIsPatchedToADifferentTransform_Then_TheSameBindingIsReused()
         {
             // Arrange
