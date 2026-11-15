@@ -132,11 +132,14 @@ class on the runtime theme this project ships.
 A weight, italic or width class on an element with no `font-<name>` of its own keeps the family it inherits,
 as in CSS: `font-bold` inside a `font-serif` container selects the registered `Bold` entry of `serif`.
 The family is the one named by the nearest ancestor carrying a `font-<name>` class that Velvet rendered;
-an ancestor that has only a weight class names none. `DefaultFamily` applies when no such ancestor
-exists. A root whose `font-<name>` class Velvet did not render (a portal target, layer root or
-world-space panel root, or the root of another `V.Mount`) is not seen, so under one register the same
-family as the default as well, or `font-bold` below it selects the default family's `Bold` entry.
-`InheritedFontFamilyPanelTests` pins the inheritance.
+an ancestor that has only a weight class names none. Where none does, the family is the one that holds the font the
+element's parent resolves to, read after the panel has resolved its styles, so a font an author's stylesheet or inline
+style gives an element above it is the family the class keeps; a font no registered family holds is kept, and the
+weight or italic is emulated on it. `DefaultFamily` applies where the parent resolves to no font. A root whose
+`font-<name>` class Velvet did not render (a portal target, layer root or world-space panel root, or the root of
+another `V.Mount`) is not seen, so under one register the same family as the default as well, or `font-bold` below it
+selects the default family's `Bold` entry.
+`InheritedFontFamilyPanelTests` and `FontFamilyFacesPanelTests` pin the inheritance.
 
 Glyphs the assigned asset lacks still go through TextCore's fallback chain, which
 [Multilingual / CJK fallback](#multilingual--cjk-fallback) covers.
@@ -173,8 +176,9 @@ Register the new locale's families, and set `DefaultFamily` if it changes. `Velv
 when a family is registered or unregistered, when `DefaultFamily` changes and when `Clear` empties the
 registry, and the family written on the roots ([What `DefaultFamily` reaches](#what-defaultfamily-reaches))
 follows it at once, with no render: a label that takes its font from there shows the new family straight away.
-An element created after the change, such as one a new `key` mounts afresh, resolves its font classes against the
-registry as it then is.
+An element whose font a `font-<name>`, weight, italic or width class resolved resolves again against the registry
+as it then is: one naming a family, or inheriting a family a `font-<name>` ancestor names, at once, and one that takes
+its family from its parent's font at the next update of its panel after that font has changed.
 
 ## Tailwind text-utility parity vs. UI Toolkit
 

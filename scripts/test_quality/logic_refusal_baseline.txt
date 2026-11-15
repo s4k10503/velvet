@@ -120,6 +120,6 @@ Packages/com.velvet.core/Runtime/Styling/StyleVariantPayload.cs	6
 Packages/com.velvet.core/Runtime/Styling/StyleZIndexClass.cs	1
 Packages/com.velvet.core/Runtime/Styling/TransformOriginSparing.cs	2
 Packages/com.velvet.core/Runtime/Styling/VariantSignalSource.cs	1
-Packages/com.velvet.core/Runtime/Styling/VelvetFonts.cs	5
+Packages/com.velvet.core/Runtime/Styling/VelvetFonts.cs	6
 Packages/com.velvet.core/Runtime/Styling/VelvetPalette.cs	1
 Packages/com.velvet.core/Runtime/Styling/VelvetStyleUtilities.cs	1
