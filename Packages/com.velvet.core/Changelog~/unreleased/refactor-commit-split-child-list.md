@@ -1,7 +1,8 @@
 ### Changed
 
 - A callback that runs while a pass is still creating rows, such as the `onCreated` of `V.ScrollView`, reads the
-  child list of a container the pass did not create with the rows that pass has inserted so far left off; they are
-  on the list when the pass ends. A row created after two inserted rows read a `childCount` of 3 before and reads 1
-  now. In a pass resumed after a time-sliced park, the four rows created across the two slices read 0, 1, 2 and 3
-  before and read 0, 1, 1 and 1 now: the rows a slice inserts are on the list from the end of that slice.
+  child list of a container the pass did not create without the rows the pass has inserted so far. The rows are on the
+  list when the pass ends, and for a pass split across time slices when the slice that inserts them ends. For
+  example, in a container that held one row, a row created after two inserted rows read a `childCount` of 3 before and
+  reads 1 now; and with a pass that parks after its first row, the rows created in the resumed slice read the count
+  the parked slice left, where each used to read one more than the row before it.

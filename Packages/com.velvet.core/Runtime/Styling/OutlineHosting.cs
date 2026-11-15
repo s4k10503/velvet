@@ -312,10 +312,11 @@ namespace Velvet
         // elements come before element in tree order and before those whose elements come after it.
         private static void PlaceInTreeOrder(VisualElement host, VisualElement top, VisualElement element)
         {
-            var index = host.childCount;
-            for (var i = host.childCount - 1; i >= 0; i--)
+            var count = ChildListWrites.ChildCount(host);
+            var index = count;
+            for (var i = count - 1; i >= 0; i--)
             {
-                var child = host[i];
+                var child = ChildListWrites.ElementAtPhysical(host, i)!;
                 if (child == top)
                 {
                     continue;
@@ -327,12 +328,12 @@ namespace Velvet
                 }
                 index = i;
             }
-            var current = top.parent == host ? ChildListWrites.PhysicalIndexOf(host, top) : -1;
+            var current = ChildListWrites.ParentOf(top) == host ? ChildListWrites.PhysicalIndexOf(host, top) : -1;
             var target = current >= 0 && current < index ? index - 1 : index;
             if (current != target)
             {
                 ChildListWrites.RemoveFromHierarchy(top);
-                ChildListWrites.Insert(host, Math.Min(target, host.childCount), top);
+                ChildListWrites.Insert(host, Math.Min(target, ChildListWrites.ChildCount(host)), top);
             }
         }
 

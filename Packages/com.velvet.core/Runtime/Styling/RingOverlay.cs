@@ -455,7 +455,7 @@ namespace Velvet
                 // Re-read the element's index AFTER the removal — an overlay currently sitting before it
                 // shifts the element down one when it leaves.
                 ChildListWrites.RemoveFromHierarchy(binding.Overlay);
-                ChildListWrites.Insert(host, Mathf.Min(ChildListWrites.PhysicalIndexOf(host, element) + after, host.childCount), binding.Overlay);
+                ChildListWrites.Insert(host, Mathf.Min(ChildListWrites.PhysicalIndexOf(host, element) + after, ChildListWrites.ChildCount(host)), binding.Overlay);
             }
 
             SyncGeometry(element, binding, host);

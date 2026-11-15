@@ -14,6 +14,10 @@ namespace Velvet.Tests
     {
         private static string s_className = "";
         private static StateUpdater<bool> s_setReversed;
+        private static int[] s_before = { 0, 1, 2, 3 };
+        private static int[] s_after = { 3, 2, 1, 0 };
+        private static string s_hostClass = "";
+        private static bool s_outlineOnLast;
 
         protected override void LoadStyleSheets() => VelvetStyleUtilities.AttachTo(_window.rootVisualElement);
 
@@ -22,10 +26,18 @@ namespace Velvet.Tests
         {
             var (reversed, setReversed) = Hooks.UseState(false);
             s_setReversed = setReversed;
-            var order = new List<int> { 0, 1, 2, 3 };
-            if (reversed) order.Reverse();
-            return V.Div(name: "list", children: order
-                .Select(i => (VNode)V.Div(name: "r" + i, className: s_className, key: "k" + i)).ToArray());
+            var order = new List<int>(reversed ? s_after : s_before);
+            return V.Div(name: "list", className: s_hostClass, children: order
+                .Select(i => (VNode)V.Div(name: "r" + i, className: reversed && s_outlineOnLast && i == 1 ? s_className + " outline-2" : s_className, key: "k" + i)).ToArray());
+        }
+
+        [SetUp]
+        public void ResetOrders()
+        {
+            s_before = new[] { 0, 1, 2, 3 };
+            s_after = new[] { 3, 2, 1, 0 };
+            s_hostClass = "";
+            s_outlineOnLast = false;
         }
 
         private string ReverseAndRead()
@@ -65,6 +77,42 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(order, Is.EqualTo("r3,overlay,r2,overlay,r1,overlay,r0,overlay"));
+        }
+
+        [Test]
+        public void Given_RingRowsWhoseReorderAddsRowsAheadOfThem_When_TheyReorder_Then_EachBandStandsAfterItsRow()
+        {
+            // Arrange
+            s_className = "w-[40px] h-[40px] ring-2";
+            s_before = new[] { 0, 1 };
+            s_after = new[] { 2, 3, 1, 0 };
+
+            // Act
+            var order = ReverseAndRead();
+
+            // Assert
+            Assert.That(order, Is.EqualTo("r2,overlay,r3,overlay,r1,overlay,r0,overlay"));
+        }
+
+        [Test]
+        public void Given_ARowGainingAnOutlineInAHostThatTakesNewRowsAheadOfIt_When_TheyPatch_Then_TheOutlineNodeIsTheHostsLastChild()
+        {
+            // Arrange
+            s_hostClass = "opacity-90";
+            s_className = "w-[40px] h-[40px]";
+            s_before = new[] { 0, 1 };
+            s_after = new[] { 2, 0, 1 };
+            s_outlineOnLast = true;
+            using var mounted = V.Mount(_window.rootVisualElement, V.Component(Rows));
+            var list = _window.rootVisualElement.Q<VisualElement>("list");
+            ForcePanelUpdate(list.panel);
+
+            // Act
+            s_setReversed.Invoke(true);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(list.Children().Last().ClassListContains(RingOverlay.OutlineMarkerClass), Is.True);
         }
     }
 }

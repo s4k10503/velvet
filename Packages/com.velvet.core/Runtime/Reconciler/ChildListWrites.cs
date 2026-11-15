@@ -445,9 +445,8 @@ namespace Velvet
         // create updates the model and is recorded; the live list takes it where FinishPass starts (ApplyRecorded), in
         // the order recorded. The readers the walk has moved to the model (ParentOf, ChildCount, ElementAtPhysical and
         // the reads above) answer from it meanwhile, and a container with a recorded write is skipped by the checks that
-        // compare the model with the live list. A reader of a container's live child list calls SyncLive first. Any
-        // other write into such a container applies the recorded ones first, except one made while they apply, which
-        // is recorded behind them.
+        // compare the model with the live list. Any other write into such a container applies the recorded ones first,
+        // except one made while they apply, which is recorded behind them.
         private enum OpKind : byte { Insert, RemoveAt, RemoveChild }
 
         private struct Op
@@ -592,10 +591,12 @@ namespace Velvet
         }
 
         // For a reader of container's live child list: the recorded writes of the container apply first.
-        internal static void SyncLive(VisualElement container)
+        internal static void SyncLive(VisualElement container) => FlushIfPending(ContentOf(container), null);
+
+        // For a walk over subtrees the pass has not finished writing.
+        internal static void SyncAll()
         {
-            if (s_ops.Count == 0) return;
-            FlushIfPending(ContentOf(container), null);
+            if (s_ops.Count > 0 && !s_applying) ApplyRecorded();
         }
 
         private static void FlushIfPending(VisualElement? container, VisualElement? child)
