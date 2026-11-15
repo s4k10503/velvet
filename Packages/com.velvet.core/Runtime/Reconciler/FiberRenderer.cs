@@ -521,6 +521,7 @@ namespace Velvet
 
                 reconciling = !deferReconcile;
                 ReconcileRenderedTree(fiber, oldTree, newTree, frameBudgetMs, deferReconcile);
+                if (!deferReconcile && !fiber.IsDisposed) FiberErrorBoundary.ReportCarriedCatch(fiber);
 
                 // Reconciler can be nulled mid-render when a descendant disposes this fiber
                 // (e.g. an ErrorBoundary unmount cascade that re-enters this fiber's owner).
