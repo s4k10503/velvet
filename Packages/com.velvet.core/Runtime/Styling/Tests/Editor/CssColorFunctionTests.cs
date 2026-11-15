@@ -23,6 +23,7 @@ namespace Velvet.Tests
 
         private static bool Parses(string value) => StyleColorValueParser.TryParseColor(value.AsSpan(), out _);
 
+        // GREEN_ON_BASE(refactor): the rows are cases these methods already ran, with the same literals.
         [TestCase("rgb(255_0_0_/_50%)", 1f, 0f, 0f, 0.5f, TestName = "Given_SpaceSyntaxRgbWithSlashAlpha_When_Parsed_Then_ChannelsAndAlphaResolve")]
         [TestCase("rgb(100%_50%_0%)", 1f, 0.5f, 0f, 1f, TestName = "Given_RgbPercentages_When_Parsed_Then_HundredPercentIsTheFullChannel")]
         [TestCase("rgb(none_255_0)", 0f, 1f, 0f, 1f, TestName = "Given_ANoneRgbComponent_When_Parsed_Then_ItReadsAsZero")]

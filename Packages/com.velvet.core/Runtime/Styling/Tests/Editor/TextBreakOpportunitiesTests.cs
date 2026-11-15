@@ -24,6 +24,7 @@ namespace Velvet.Tests
                 .Select(i => paragraph.Substring(starts[i], ends[i] - starts[i])));
         }
 
+        // GREEN_ON_BASE(refactor): the rows are cases these methods already ran, with the same literals.
         [TestCase("aa bb cc", "aa|bb|cc", TestName = "Given_TwoSpaceSeparatedWords_When_Found_Then_EachIsAnItem")]
         [TestCase("a\tb  c", "a|b|c", TestName = "Given_ATabAndARunOfSpaces_When_Found_Then_BothAreGaps")]
         [TestCase("日本語", "日|本|語", TestName = "Given_Ideographs_When_Found_Then_TheyBreakBetweenEveryCharacter")]
@@ -55,6 +56,7 @@ namespace Velvet.Tests
             Assert.That(items, Is.EqualTo(expected));
         }
 
+        // GREEN_ON_BASE(refactor): the rows are cases these methods already ran, with the same literals.
         [TestCase("a\u00ADb", "a\u00AD|b", TestName = "Given_ASoftHyphen_When_FoundWithSoftHyphens_Then_ABreakFollowsIt")]
         public void Given_AParagraph_When_FoundWithSoftHyphens_Then_ItIsCutIntoTheExpectedItems(string paragraph, string expected)
         {
