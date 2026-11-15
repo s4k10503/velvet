@@ -577,7 +577,7 @@ namespace Velvet.Tests
 
         #endregion
 
-        #region Large keyed reorder (correctness at scale)
+        #region Large keyed reorder (hinted-search rewrite — correctness at scale)
 
         // These assert final order at a scale where a wrong move index would surface as a transposed pair. The
         // reorder's lookup cost is pinned by KeyedReorderRowReadScalingTests.
