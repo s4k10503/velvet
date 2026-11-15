@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "caa397ce0bcecd00a49c3e1da4abf1277a1ff749bd1f2d4de1d245a7afc32722",
+ "killers": [],
+ "measured_by": "43708851232",
+ "mutant": {
+  "after": ";",
+  "before": "ChildListWrites.RemoveFromHierarchy(element);",
+  "column": 24,
+  "line": 130,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/HostCommitQueue.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "5e7f3ea05d51d3347b1efe117704129307892f27510ec66bf3601001ec0ff3e0",
+ "verdict": "survived"
+}

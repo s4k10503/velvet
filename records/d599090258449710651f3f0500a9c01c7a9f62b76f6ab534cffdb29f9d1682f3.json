@@ -1,0 +1,31 @@
+{
+ "detail": "EditMode: 1 failed: Given_WorldSpacePanelsMounted_When_TheirTreeIsDisposedAndItsPanelTicks_Then_TheirHostRootsCanBeCollected",
+ "file": "30e897f8d34c7752bb37d5d6b0cd862e362449cb1d4369e190b74e468d457fea",
+ "killers": [
+  {
+   "case": "Velvet.Tests.PortalHostCarryTests.Given_WorldSpacePanelsMounted_When_TheirTreeIsDisposedAndItsPanelTicks_Then_TheirHostRootsCanBeCollected",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/PortalHostCarryTests.cs": "da038855311f733d8b4ac4f50f4625481bce5fb888e2a4f1348065daefa8ac9c",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26"
+   }
+  }
+ ],
+ "measured_by": "43708851232",
+ "mutant": {
+  "after": ";",
+  "before": "Exit(parent);",
+  "column": 16,
+  "line": 256,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ChildListWrites.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "5e7f3ea05d51d3347b1efe117704129307892f27510ec66bf3601001ec0ff3e0",
+ "verdict": "killed"
+}

@@ -1,0 +1,29 @@
+{
+ "detail": "EditMode: 1 failed: Given_AContainerEmptiedThroughTheWrites_When_ItsModelIsPeeked_Then_ThereIsNone",
+ "file": "30e897f8d34c7752bb37d5d6b0cd862e362449cb1d4369e190b74e468d457fea",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ContainerRowsTests.Given_AContainerEmptiedThroughTheWrites_When_ItsModelIsPeeked_Then_ThereIsNone",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ContainerRowsTests.cs": "3f56641cb61ac2962f3cd847bd8f1319f3a6827196e7ef6f96b4c1a2386f9de9",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/RowModelAccess.cs": "4f8be07dec1744b651672472e13b8587751035e1fc87a735e21af768dc339d10"
+   }
+  }
+ ],
+ "measured_by": "43708851232",
+ "mutant": {
+  "after": ";",
+  "before": "PruneIfEmpty(parent);",
+  "column": 12,
+  "line": 295,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ChildListWrites.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "5e7f3ea05d51d3347b1efe117704129307892f27510ec66bf3601001ec0ff3e0",
+ "verdict": "killed"
+}

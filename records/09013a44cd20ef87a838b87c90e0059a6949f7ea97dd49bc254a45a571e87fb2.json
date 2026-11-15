@@ -1,0 +1,23 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "bdf6e5e94935dca694372915d3215e0fb2a670ec44e20665529711ae01d67d79",
+ "killers": [],
+ "measured_by": "43708851232",
+ "mutant": {
+  "after": ">=",
+  "before": ">",
+  "column": 32,
+  "line": 82,
+  "operator": "boundary",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberPrimitiveElementPool.cs",
+  "shadowed": [
+   "line removed"
+  ]
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "5e7f3ea05d51d3347b1efe117704129307892f27510ec66bf3601001ec0ff3e0",
+ "verdict": "survived"
+}

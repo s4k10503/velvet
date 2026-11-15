@@ -1,0 +1,62 @@
+{
+ "detail": "EditMode: 4 failed among the 4 case(s) that ran the site: Given_ABoundaryWhoseFallbackSuspends_When_ItsParentRendersAgainBeforeTheReadResolves_Then_TheCatchIsReportedOnlyAfterTheReadResolves, Given_AnErrorBoundaryWhoseFallbackSuspends_When_AChildsOwnRenderThrowsAndTheReadResolves_Then_TheBoundaryShowsItsFallbackAndReportsTheCatchOnce, Given_AnErrorBoundaryWhoseFallbackSuspends_When_ALayoutEffectThrowsAtMount_Then_TheMountReturnsAndTheBoundaryShowsItsFallbackAndReportsTheCatchOnce",
+ "file": "4430e9c59e71865e50310bca9092af0f06c297b2504da8190e6ead09c4fcd30a",
+ "killers": [
+  {
+   "case": "Velvet.Tests.FallbackSuspendEventLogTests(UIToolkit).Given_ABoundaryWhoseFallbackSuspends_When_ItsParentRendersAgainBeforeTheReadResolves_Then_TheCatchIsReportedOnlyAfterTheReadResolves",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/FallbackSuspendEventLogTests.cs": "1d3a43582241d3cb023a07088b56e3be3b0286e8d938eca905feab049755209e",
+    "Packages/com.velvet.core/TestUtilities/EventLog.cs": "e191b8d91d56ab6eb1633a8f37e5282dd11f4cbfd649b59ab27deab3a1e4b490",
+    "Packages/com.velvet.core/TestUtilities/EventLogRenderer.cs": "59fbaf33c955e917c5359940c3d0a0f090fefdc0d2a41b370a75eb6ce7304abe",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  },
+  {
+   "case": "Velvet.Tests.FallbackSuspendEventLogTests(UIToolkit).Given_ASuspenseAboveABoundaryWhoseFallbackSuspends_When_AChildsOwnRenderThrowsAndTheReadResolves_Then_TheBoundaryShowsItsFallbackAndReportsTheCatchOnce",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/FallbackSuspendEventLogTests.cs": "1d3a43582241d3cb023a07088b56e3be3b0286e8d938eca905feab049755209e",
+    "Packages/com.velvet.core/TestUtilities/EventLog.cs": "e191b8d91d56ab6eb1633a8f37e5282dd11f4cbfd649b59ab27deab3a1e4b490",
+    "Packages/com.velvet.core/TestUtilities/EventLogRenderer.cs": "59fbaf33c955e917c5359940c3d0a0f090fefdc0d2a41b370a75eb6ce7304abe",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  },
+  {
+   "case": "Velvet.Tests.FallbackSuspendEventLogTests(UIToolkit).Given_AnErrorBoundaryWhoseFallbackSuspends_When_AChildsOwnRenderThrowsAndTheReadResolves_Then_TheBoundaryShowsItsFallbackAndReportsTheCatchOnce",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/FallbackSuspendEventLogTests.cs": "1d3a43582241d3cb023a07088b56e3be3b0286e8d938eca905feab049755209e",
+    "Packages/com.velvet.core/TestUtilities/EventLog.cs": "e191b8d91d56ab6eb1633a8f37e5282dd11f4cbfd649b59ab27deab3a1e4b490",
+    "Packages/com.velvet.core/TestUtilities/EventLogRenderer.cs": "59fbaf33c955e917c5359940c3d0a0f090fefdc0d2a41b370a75eb6ce7304abe",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  },
+  {
+   "case": "Velvet.Tests.FallbackSuspendEventLogTests(UIToolkit).Given_AnErrorBoundaryWhoseFallbackSuspends_When_ALayoutEffectThrowsAtMount_Then_TheMountReturnsAndTheBoundaryShowsItsFallbackAndReportsTheCatchOnce",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/FallbackSuspendEventLogTests.cs": "1d3a43582241d3cb023a07088b56e3be3b0286e8d938eca905feab049755209e",
+    "Packages/com.velvet.core/TestUtilities/EventLog.cs": "e191b8d91d56ab6eb1633a8f37e5282dd11f4cbfd649b59ab27deab3a1e4b490",
+    "Packages/com.velvet.core/TestUtilities/EventLogRenderer.cs": "59fbaf33c955e917c5359940c3d0a0f090fefdc0d2a41b370a75eb6ce7304abe",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  }
+ ],
+ "measured_by": "43708851232",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 69,
+  "line": 276,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberErrorBoundary.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "5e7f3ea05d51d3347b1efe117704129307892f27510ec66bf3601001ec0ff3e0",
+ "verdict": "killed"
+}

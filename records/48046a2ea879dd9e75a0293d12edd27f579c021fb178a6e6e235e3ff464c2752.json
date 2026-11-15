@@ -1,0 +1,58 @@
+{
+ "detail": "EditMode: 3 failed: Given_AForeignReorderThatWasAnnounced_When_ThePassEnds_Then_NothingIsLogged, Given_ANestedInsertAtTheSameIndexFromTheChildsDetach_When_TheChildIsInsertedThere_Then_TheModelHoldsTheLiveOrder, Given_AWriteBetweenPassesThenAForeignReorder_When_APassBegins_Then_TheDriftIsLogged",
+ "file": "30e897f8d34c7752bb37d5d6b0cd862e362449cb1d4369e190b74e468d457fea",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ContainerRowsPanelTests.Given_AForeignReorderThatWasAnnounced_When_ThePassEnds_Then_NothingIsLogged",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ContainerRowsPanelTests.cs": "ff4867e910f90dccc66640096ab863a72eed407cad52fc884ea05ff6d29d4b29",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ContainerRowsTests.cs": "3f56641cb61ac2962f3cd847bd8f1319f3a6827196e7ef6f96b4c1a2386f9de9",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/RowModelAccess.cs": "4f8be07dec1744b651672472e13b8587751035e1fc87a735e21af768dc339d10",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ContainerRowsPanelTests.Given_ANestedInsertAtTheSameIndexFromTheChildsDetach_When_TheChildIsInsertedThere_Then_TheModelHoldsTheLiveOrder",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ContainerRowsPanelTests.cs": "ff4867e910f90dccc66640096ab863a72eed407cad52fc884ea05ff6d29d4b29",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ContainerRowsTests.cs": "3f56641cb61ac2962f3cd847bd8f1319f3a6827196e7ef6f96b4c1a2386f9de9",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/RowModelAccess.cs": "4f8be07dec1744b651672472e13b8587751035e1fc87a735e21af768dc339d10",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ContainerRowsPanelTests.Given_AWriteBetweenPassesThenAForeignReorder_When_APassBegins_Then_TheDriftIsLogged",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ContainerRowsPanelTests.cs": "ff4867e910f90dccc66640096ab863a72eed407cad52fc884ea05ff6d29d4b29",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ContainerRowsTests.cs": "3f56641cb61ac2962f3cd847bd8f1319f3a6827196e7ef6f96b4c1a2386f9de9",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/RowModelAccess.cs": "4f8be07dec1744b651672472e13b8587751035e1fc87a735e21af768dc339d10",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  }
+ ],
+ "measured_by": "43708851232",
+ "mutant": {
+  "after": ";",
+  "before": "Exit(container);",
+  "column": 16,
+  "line": 272,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ChildListWrites.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "5e7f3ea05d51d3347b1efe117704129307892f27510ec66bf3601001ec0ff3e0",
+ "verdict": "killed"
+}

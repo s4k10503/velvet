@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "08fad0a8dc2d7df5d0df2d3d2e326e0b3af6c351e1b2b2d87c8c00add43b17c0",
+ "killers": [],
+ "measured_by": "43708851232",
+ "mutant": {
+  "after": ";",
+  "before": "Registration = null;",
+  "column": 12,
+  "line": 44,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Routing/RouteBlockerSlot.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "5e7f3ea05d51d3347b1efe117704129307892f27510ec66bf3601001ec0ff3e0",
+ "verdict": "survived"
+}

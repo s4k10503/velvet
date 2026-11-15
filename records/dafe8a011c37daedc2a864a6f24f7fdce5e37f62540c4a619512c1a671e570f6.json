@@ -1,0 +1,23 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "329a6d67d74a97bceee918f45180735c9bccd2c0e95d4bb17ff561f86c3d45fa",
+ "killers": [],
+ "measured_by": "43708851232",
+ "mutant": {
+  "after": "true",
+  "before": "false",
+  "column": 20,
+  "line": 294,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ContainerRows.cs",
+  "shadowed": [
+   "line removed"
+  ]
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "5e7f3ea05d51d3347b1efe117704129307892f27510ec66bf3601001ec0ff3e0",
+ "verdict": "survived"
+}

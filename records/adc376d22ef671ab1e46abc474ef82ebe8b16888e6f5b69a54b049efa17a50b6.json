@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "e55553290e6212c4f5b3c589d9e0dbf7132246d0fc24f5b69c550b15f9cd8a9f",
+ "killers": [],
+ "measured_by": "43708851232",
+ "mutant": {
+  "after": ";",
+  "before": "ChildListWrites.RemoveFromHierarchy(overlay);",
+  "column": 16,
+  "line": 131,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/FaceBorderOverlay.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "5e7f3ea05d51d3347b1efe117704129307892f27510ec66bf3601001ec0ff3e0",
+ "verdict": "survived"
+}

@@ -1,0 +1,114 @@
+{
+ "detail": "EditMode: 18 failed: Given_TheShippedAssemblies_When_TheirCallGraphIsRead_Then_NoAssemblyVisibleMethodIsUnreachable, Given_AMountedRoute_When_ADifferentRouteMatches_Then_TheDepartedScopeIsDisposedAndOneReplacesIt, Given_RoutedOutletWithScope_When_ReconcilerDisposed_Then_ScopeIsDisposed",
+ "file": "b3e55f7b32b785483bfef81976e6dcaec5d2248c7136234185d28360a62b3a2e",
+ "killers": [
+  {
+   "case": "Velvet.Tests.OutletTests.Given_AMountedRoute_When_ADifferentRouteMatches_Then_TheDepartedScopeIsDisposedAndOneReplacesIt",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ButtonChildPoolReuseTests.cs": "0531a5fe43bec4ffe1998b02b1fb81e990435f1ea72a803dd14610afcab1aa51",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/OutletTests.cs": "1bfca6c3e3b3673570eb6fa4b16e5107a56644da52ae64a9f2a4df371eb45e29",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166",
+    "Packages/com.velvet.core/TestUtilities/TestRouteScopeFactory.cs": "acb928c1d9fc6ab60a83a3e2ed50cee8c8572ba3ba97f2667a269164f0e6214d",
+    "Packages/com.velvet.core/TestUtilities/VNodePoolTestAccess.cs": "0b34227c0501b0b06aafcc9acba0c02b9136f4cc2959498d5f22b3db63a22681",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.OutletTests.Given_RoutedOutletWithScope_When_ReconcilerDisposed_Then_ScopeIsDisposed",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ButtonChildPoolReuseTests.cs": "0531a5fe43bec4ffe1998b02b1fb81e990435f1ea72a803dd14610afcab1aa51",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/OutletTests.cs": "1bfca6c3e3b3673570eb6fa4b16e5107a56644da52ae64a9f2a4df371eb45e29",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166",
+    "Packages/com.velvet.core/TestUtilities/TestRouteScopeFactory.cs": "acb928c1d9fc6ab60a83a3e2ed50cee8c8572ba3ba97f2667a269164f0e6214d",
+    "Packages/com.velvet.core/TestUtilities/VNodePoolTestAccess.cs": "0b34227c0501b0b06aafcc9acba0c02b9136f4cc2959498d5f22b3db63a22681",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.RouteElementlessTests.Given_TwoRoutesWithNoElement_When_NavigatingFromOneToTheOther_Then_TheOutletTakesTheNewRoutesScope",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouteElementlessTests.cs": "e6ceaa17a37014c9a1cd3969a9f1a83feab2c2109c9dfcfec20589a0abfacad1",
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouteTestStubs.cs": "e6362642a4a6570b2b683eaa7ec1727a3cd53cd6de1d54a6164cd2248d03b3c2",
+    "Packages/com.velvet.core/TestUtilities/CancellationTokenStateProbe.cs": "1344802a4cabd68e13bb57149f007230f5fcb7785eb33f0af4f1445f53b92657",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166",
+    "Packages/com.velvet.core/TestUtilities/TestRouteScopeFactory.cs": "acb928c1d9fc6ab60a83a3e2ed50cee8c8572ba3ba97f2667a269164f0e6214d",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.RouteScopeDisposalFailureTests.Given_AFactoryThatThrowsOnCreate_When_TheAppFirstMounts_Then_TheThrowDoesNotEscapeTheReconcile",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/RouteScopeDisposalFailureTests.cs": "5c39775658f166acd4e853d4381364cf4b825fb10b96932832715aa990f1a5f4",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/ContainedFailureLog.cs": "623706a4b6e77e60fac7e83f93a59bf4d7050a549fd238f0de705adb0795fbae"
+   }
+  },
+  {
+   "case": "Velvet.Tests.RouteScopeDisposalFailureTests.Given_AFactoryThatThrowsOnCreate_When_TheRouteChanges_Then_TheThrowDoesNotEscapeTheReconcile",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/RouteScopeDisposalFailureTests.cs": "5c39775658f166acd4e853d4381364cf4b825fb10b96932832715aa990f1a5f4",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/ContainedFailureLog.cs": "623706a4b6e77e60fac7e83f93a59bf4d7050a549fd238f0de705adb0795fbae"
+   }
+  },
+  {
+   "case": "Velvet.Tests.RouteScopeDisposalFailureTests.Given_ARouteScopeDisposeThatThrows_When_APresenceBesideItIsRemoved_Then_ThePresenceRendersAsItDoesWithoutTheFailure",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/RouteScopeDisposalFailureTests.cs": "5c39775658f166acd4e853d4381364cf4b825fb10b96932832715aa990f1a5f4",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/ContainedFailureLog.cs": "623706a4b6e77e60fac7e83f93a59bf4d7050a549fd238f0de705adb0795fbae"
+   }
+  },
+  {
+   "case": "Velvet.Tests.RouteScopeDisposalFailureTests.Given_ARouteScopeDisposeThatThrows_When_TheOutletIsRemoved_Then_TheThrowStaysInside",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/RouteScopeDisposalFailureTests.cs": "5c39775658f166acd4e853d4381364cf4b825fb10b96932832715aa990f1a5f4",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/ContainedFailureLog.cs": "623706a4b6e77e60fac7e83f93a59bf4d7050a549fd238f0de705adb0795fbae"
+   }
+  },
+  {
+   "case": "Velvet.Tests.RouteScopeDisposalFailureTests.Given_ARouteScopeDisposeThatThrows_When_TheOutletLeavesTheRouteThenTakesAnother_Then_TheDepartedScopeIsDisposedOnce",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/RouteScopeDisposalFailureTests.cs": "5c39775658f166acd4e853d4381364cf4b825fb10b96932832715aa990f1a5f4",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/ContainedFailureLog.cs": "623706a4b6e77e60fac7e83f93a59bf4d7050a549fd238f0de705adb0795fbae"
+   }
+  },
+  {
+   "case": "Velvet.Tests.RouteScopeDisposalFailureTests.Given_ARouteScopeDisposeThatThrows_When_TheRouteChanges_Then_TheDepartedScopeIsNotSweptAgain",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/RouteScopeDisposalFailureTests.cs": "5c39775658f166acd4e853d4381364cf4b825fb10b96932832715aa990f1a5f4",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/ContainedFailureLog.cs": "623706a4b6e77e60fac7e83f93a59bf4d7050a549fd238f0de705adb0795fbae"
+   }
+  },
+  {
+   "case": "Velvet.Tests.RouteScopeDisposalFailureTests.Given_ARouteScopeDisposeThatThrows_When_TheRouteChanges_Then_TheIncomingRouteStillGetsAScope",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/RouteScopeDisposalFailureTests.cs": "5c39775658f166acd4e853d4381364cf4b825fb10b96932832715aa990f1a5f4",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/ContainedFailureLog.cs": "623706a4b6e77e60fac7e83f93a59bf4d7050a549fd238f0de705adb0795fbae"
+   }
+  }
+ ],
+ "measured_by": "43708851232",
+ "mutant": {
+  "after": ";",
+  "before": "FiberOutletScope.SyncRenderingOutletScope((match!.Route, router?.ScopeFactory), identity, s_createScope);",
+  "column": 12,
+  "line": 62,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Routing/RouteOutlet.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "5e7f3ea05d51d3347b1efe117704129307892f27510ec66bf3601001ec0ff3e0",
+ "verdict": "killed"
+}

@@ -1,0 +1,31 @@
+{
+ "detail": "EditMode: 1 failed: Given_APortalIntoTheElementOfTwiceTheSiblingsAfterIt_When_Mounted_Then_WhatThePortalAddsToReadingThatElementAtMostDoubles",
+ "file": "329a6d67d74a97bceee918f45180735c9bccd2c0e95d4bb17ff561f86c3d45fa",
+ "killers": [
+  {
+   "case": "Velvet.Tests.CommitWorkCostTests.Given_APortalIntoTheElementOfTwiceTheSiblingsAfterIt_When_Mounted_Then_WhatThePortalAddsToReadingThatElementAtMostDoubles",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/CommitWorkCostTests.cs": "90eabee5f3650e7dc7101a4470131b79fa1dabc03eb974fe2dd13eef6566b607",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/GCAllocationProbe.cs": "492823c099cf4f4de89da0da69c98d45cfc042070d93e2d0c0b95773310ebc2c",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  }
+ ],
+ "measured_by": "43708851232",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 54,
+  "line": 118,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ContainerRows.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "5e7f3ea05d51d3347b1efe117704129307892f27510ec66bf3601001ec0ff3e0",
+ "verdict": "killed"
+}

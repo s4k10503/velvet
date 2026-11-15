@@ -1,0 +1,32 @@
+{
+ "detail": "EditMode: 1 failed among the 811 case(s) that ran the site: Given_AConstantRetryDelay_When_AnOperationFailsTenTimes_Then_EveryRetryWaitsForIt",
+ "file": "a6d28efdf1efed3bd73e4f51f507589c80dde039ba7ac08fedeb913e0b700393",
+ "killers": [
+  {
+   "case": "Velvet.Tests.RetryPolicyTests.Given_AConstantRetryDelay_When_AnOperationFailsTenTimes_Then_EveryRetryWaitsForIt",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Async/Tests/Editor/RetryPolicyTests.cs": "3b2c0c2fda95b64549ca5a19f6d2d9500e4b3e100bec97b7f592bc2eb65c175c",
+    "Packages/com.velvet.core/TestUtilities/VelvetTaskFrameDriverTestExtensions.cs": "0e6fdaecfb53c37e3943edddc49923eddecd4a9cb293d2bd2a77fc06e81a3e75"
+   }
+  }
+ ],
+ "measured_by": "43708851232",
+ "mutant": {
+  "after": ">=",
+  "before": ">",
+  "column": 49,
+  "line": 19,
+  "operator": "boundary",
+  "path": "Packages/com.velvet.core/Runtime/Async/AwaitContinuationGate.cs",
+  "shadowed": [
+   "clause removed",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "5e7f3ea05d51d3347b1efe117704129307892f27510ec66bf3601001ec0ff3e0",
+ "verdict": "killed"
+}

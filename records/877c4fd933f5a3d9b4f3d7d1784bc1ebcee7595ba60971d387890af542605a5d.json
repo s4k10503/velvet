@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "a9871ba947d9e002fbb7fbbbd40079322dda232454bb987681a249afc8cc98c2",
+ "killers": [],
+ "measured_by": "43708851232",
+ "mutant": {
+  "after": ";",
+  "before": "ChildListWrites.Reclassify(overlay);",
+  "column": 12,
+  "line": 289,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/RingOverlay.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "5e7f3ea05d51d3347b1efe117704129307892f27510ec66bf3601001ec0ff3e0",
+ "verdict": "survived"
+}
