@@ -56,6 +56,8 @@ namespace Velvet.Tests
             return readsAtFrom > 0 && readsAtTo > 0 ? (double)readsAtTo / readsAtFrom : double.NaN;
         }
 
+        // GREEN_ON_BASE(characterization): the base already reads Count from the row model, which an earlier change moved
+        // there. Scanning the live child list again for Count turns it red.
         [Test]
         public void Given_ALabelListInOneContainer_When_ItsCountIsAskedAtEightTimesTheLength_Then_TheContainerReadsGrowLessThanOneAndAHalfTimes()
         {
@@ -70,6 +72,8 @@ namespace Velvet.Tests
             Assert.That(growth, Is.LessThan(1.5));
         }
 
+        // GREEN_ON_BASE(characterization): the base already reads ToLogical from the row model, which an earlier change moved
+        // there. Scanning the live child list again for ToLogical turns it red.
         [Test]
         public void Given_ALabelListInOneContainer_When_ALogicalIndexIsAskedAtEightTimesTheLength_Then_TheContainerReadsGrowLessThanOneAndAHalfTimes()
         {
