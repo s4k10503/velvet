@@ -1621,7 +1621,11 @@ and is carried into a version exactly as the fragments beside it are. The `upm` 
 directory.
 
 1. Close the version in `Packages/com.velvet.core/CHANGELOG.md` and bump `version` in
-   `package.json` to match. Run `scripts/release/compile_changelog.py` first: it writes that
+   `package.json` to match. The version is the one `scripts/release/next_version.py` prints, never
+   one chosen by hand: a major when `## [Unreleased — breaking]` holds an entry, a minor when
+   `PublicAPI.txt` gains a member against the previous release's `vX.Y.Z-main` tag or
+   `## [Unreleased]` carries an `### Added` entry, a patch otherwise, and `published_check.py`
+   refuses a closing change that names another. Run `scripts/release/compile_changelog.py` first: it writes that
    composed reading into the file and deletes the fragments, so the sections hold every entry
    before anything else is done to them, and `published_check.py` refuses a change
    that closes a version while `## [Unreleased]` still lists an entry, which is what renaming it

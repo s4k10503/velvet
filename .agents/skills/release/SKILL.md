@@ -60,8 +60,9 @@ CONTRIBUTING.md's release section owns, and `scripts/release/test_release_notes.
 any other release that carries one. Write them fresh: a bullet copied verbatim from a
 long-form entry below fails the same script, because the note would then say the same thing twice.
 
-Bump `version` in `Packages/com.velvet.core/package.json` to match. SemVer against the previous
-release: a `feat` on `main` makes it a minor, a breaking change makes it a major.
+Bump `version` in `Packages/com.velvet.core/package.json` to match. Do not pick the number: run
+`python3 scripts/release/next_version.py` before closing the changelog and use the version it
+prints, and `published_check.py` refuses a closing change that names another.
 
 Give the new version a row in `SECURITY.md`'s supported-versions table, and mark there what happens to
 the series it succeeds. `supported_versions_check.py` refuses a release the table does not cover with
