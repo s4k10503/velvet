@@ -496,6 +496,8 @@ namespace Velvet
         private void ApplyPostChildrenClassPasses(VisualElement element, string[] oldClassNames,
             string[] newClassNames, bool clipActive)
         {
+            // The gap and child-variant manipulators configured below read the live child list.
+            ChildListWrites.SyncLive(element);
             (oldClassNames, newClassNames) = (AsWritten(element, oldClassNames), AsWritten(element, newClassNames));
             // Before gap / divide / grid: on a SHARED style property ([&>*]:ml-[2px] alongside gap-x-4) those
             // three own the edge and must win, exactly as they already win over a child's own explicit margin
@@ -3125,7 +3127,7 @@ namespace Velvet
             // element's own post-children pass re-derives again (idempotent) to catch a later child-set change,
             // and the settled-flush sweep (RefreshHasVariants) covers a deep independent re-render. A childless
             // element has nothing to scan yet.
-            if (element.childCount > 0)
+            if (ChildListWrites.ChildCount(element) > 0)
             {
                 EvaluateHasClass(_ctx, element, rules);
             }
@@ -3141,9 +3143,10 @@ namespace Velvet
             foreach (var rule in rules)
             {
                 var on = false;
-                foreach (var child in element.Children())
+                var content = element.contentContainer;
+                for (var i = 0; i < ChildListWrites.HierarchyCount(content); i++)
                 {
-                    if (SubtreeCarriesClass(child, rule.ClassName!))
+                    if (SubtreeCarriesClass(ChildListWrites.HierarchyChild(content, i), rule.ClassName!))
                     {
                         on = true;
                         break;
@@ -3163,9 +3166,9 @@ namespace Velvet
             {
                 return true;
             }
-            for (var i = 0; i < root.hierarchy.childCount; i++)
+            for (var i = 0; i < ChildListWrites.HierarchyCount(root); i++)
             {
-                if (SubtreeCarriesClass(root.hierarchy[i], cls))
+                if (SubtreeCarriesClass(ChildListWrites.HierarchyChild(root, i), cls))
                 {
                     return true;
                 }

@@ -78,5 +78,38 @@ namespace Velvet.Tests
             Assert.That(string.Join("\n", missing.Concat(offenders)), Is.Empty,
                 "write the child list through HostCommitQueue");
         }
+
+        // The calls FinishPass makes that reach a writer outside the queue (the z-layer arrangement and its retired
+        // reals, the portal drain, the ring placements).
+        private static readonly string[] FinishPassPhase =
+        {
+            nameof(ChildReconciler.DrainPendingPortalMounts),
+            nameof(FiberElementCleaner.ReleaseRetiredZLayerReals),
+            nameof(FiberZLayerCoordinator.ResortLayers),
+            nameof(RingOverlay.DrainPendingPlacements),
+        };
+
+        [Test]
+        public void Given_FinishPass_When_ItsCallsAreRead_Then_TheRecordedWritesAreAppliedBeforeEveryChildListWriterItReaches()
+        {
+            // Arrange
+            using var runtime = ModuleDefinition.ReadModule(typeof(V).Assembly.Location);
+            var finishPass = runtime.GetType(typeof(Reconciler).FullName).Methods.Single(method => method.Name == "FinishPass");
+            var calls = finishPass.Body.Instructions
+                .Where(instruction => instruction.Operand is MethodReference)
+                .Select(instruction => (Offset: instruction.Offset, Name: ((MethodReference)instruction.Operand).Name))
+                .ToList();
+            var apply = calls.Where(call => call.Name == nameof(HostCommitQueue.EndRecordedPass)).Select(call => call.Offset)
+                .DefaultIfEmpty(int.MaxValue).Min();
+
+            // Act
+            var early = FinishPassPhase
+                .Where(name => calls.Any(call => call.Name == name && call.Offset < apply))
+                .ToList();
+            var missing = FinishPassPhase.Where(name => calls.All(call => call.Name != name)).Select(name => "missing: " + name);
+
+            // Assert
+            Assert.That(string.Join("\n", early.Select(name => "before the apply: " + name).Concat(missing)), Is.Empty);
+        }
     }
 }

@@ -5,11 +5,11 @@ using UnityEngine.UIElements;
 namespace Velvet
 {
     // Ops for the writes a reconcile makes into a container: its child list, the rows each fiber and each Portal is
-    // recorded at, a Suspense's hide and reveal, and the fibers it drops. The container can be one the same walk
-    // created — a new element's children reconcile through the same diff — and nothing here tells that apart from
-    // a committed one. ChildReconciler, GeneralPathReconciler, ChildElementPlacement and NodePatchWalk call no
-    // child-list writer of their own (HostCommitRoutingTests), though a method they call can. Each op applies where it
-    // is called.
+    // recorded at, a Suspense's hide and reveal, and the fibers it drops. ChildReconciler, GeneralPathReconciler,
+    // ChildElementPlacement and NodePatchWalk call no child-list writer of their own (HostCommitRoutingTests), though a
+    // method they call can. The inserts and the moves among them are recorded into a container the pass did not create
+    // and applied where FinishPass starts (ChildListWrites owns which, and the reads that answer meanwhile); every
+    // other op applies where it is called.
     internal sealed class HostCommitQueue
     {
         private readonly ReconcilerContext _ctx;
@@ -21,11 +21,20 @@ namespace Velvet
             _cleaner = new FiberElementCleaner(ctx);
         }
 
-        internal void Insert(VisualElement parent, int physical, VisualElement child) => ChildListWrites.Insert(parent, physical, child);
+        internal void Insert(VisualElement parent, int physical, VisualElement child)
+        {
+            ChildListWrites.ViaQueue++;
+            try { ChildListWrites.Insert(parent, physical, child); }
+            finally { ChildListWrites.ViaQueue--; }
+        }
 
         // Where LogicalChildSlots.ToPhysical puts a child at the slot.
         internal void InsertAtSlot(VisualElement parent, int slot, VisualElement child)
-            => ChildListWrites.InsertAtSlot(parent, slot, child);
+        {
+            ChildListWrites.ViaQueue++;
+            try { ChildListWrites.InsertAtSlot(parent, slot, child); }
+            finally { ChildListWrites.ViaQueue--; }
+        }
 
         // Takes element out of parent with everything it holds released (FiberElementCleaner). Nothing is done
         // where element is no longer parent's child.
@@ -55,6 +64,17 @@ namespace Velvet
             HashSet<int> lisIndices,
             int slotStart)
         {
+            ChildListWrites.ViaQueue++;
+            try { ReorderRecorded(parent, newElements, lisIndices, slotStart); }
+            finally { ChildListWrites.ViaQueue--; }
+        }
+
+        private void ReorderRecorded(
+            VisualElement parent,
+            List<(VisualElement? element, bool isExisting)> newElements,
+            HashSet<int> lisIndices,
+            int slotStart)
+        {
             // The element that follows this whole range in the LIVE tree — the anchor for the range's right-most
             // element. The range currently occupies a contiguous block of its still-parented elements starting at
             // slotStart (Pass 2 Remove compacted out the dropped ones; freshly created elements are NOT yet
@@ -68,7 +88,7 @@ namespace Velvet
             var liveCount = 0;
             foreach (var (element, _) in newElements)
             {
-                if (element != null && element.parent == parent) liveCount++;
+                if (element != null && ChildListWrites.ParentOf(element) == parent) liveCount++;
             }
             // The first element PAST this range, by logical slot: the anchor everything in the range is
             // inserted before. Converted, because a leading z-container or an invisible child inside the
@@ -77,7 +97,7 @@ namespace Velvet
             var afterLogical = slotStart + liveCount;
             var afterIndex = LogicalChildSlots.ToPhysical(parent, afterLogical);
             var afterRangeAnchor = afterLogical < LogicalChildSlots.Count(parent)
-                ? parent.ElementAt(afterIndex)
+                ? ChildListWrites.ElementAtPhysical(parent, afterIndex)
                 : null;
 
             for (var i = newElements.Count - 1; i >= 0; i--)
@@ -86,12 +106,12 @@ namespace Velvet
 
                 var (element, isExisting) = newElements[i];
                 if (element == null) continue;
-                if (isExisting && element.parent == parent)
+                if (isExisting && ChildListWrites.ParentOf(element) == parent)
                 {
                     var removeAt = ChildListWrites.PhysicalIndexOf(parent, element);
                     if (removeAt >= 0)
                     {
-                        ChildListWrites.RemoveAt(parent, removeAt);
+                        ChildListWrites.RemoveAtForMove(parent, removeAt);
                     }
                     else
                     {
@@ -104,9 +124,9 @@ namespace Velvet
                 // on malformed input (e.g. a duplicate key orphaned the neighbour). Appending to the absolute end
                 // would drop it past a following tenant's rows; fall back to the range's right boundary so it
                 // stays within this fiber's slot range.
-                if (nextSibling != null && nextSibling.parent != parent)
+                if (nextSibling != null && ChildListWrites.ParentOf(nextSibling) != parent)
                 {
-                    nextSibling = afterRangeAnchor != null && afterRangeAnchor.parent == parent ? afterRangeAnchor : null;
+                    nextSibling = afterRangeAnchor != null && ChildListWrites.ParentOf(afterRangeAnchor) == parent ? afterRangeAnchor : null;
                 }
 
                 if (nextSibling != null)
@@ -122,6 +142,22 @@ namespace Velvet
                     ChildListWrites.Insert(parent, end, element);
                 }
             }
+        }
+
+        // Ends the pass's recording where FinishPass starts: what the pass recorded goes to the live lists, or, where its
+        // walk threw, is forgotten along with the elements only it held.
+        internal void EndRecordedPass(bool walked)
+        {
+            if (walked)
+            {
+                ChildListWrites.EndRecording();
+                return;
+            }
+            var orphans = ChildListWrites.DropRecorded();
+            if (orphans.Count == 0) return;
+            _ctx.ComponentRegistry.DisposeFibersUnder(orphans);
+            foreach (var orphan in orphans) _cleaner.ReturnRolledBackOrphan(orphan);
+            orphans.Clear();
         }
 
         // A Suspense's hide of one of its outermost host elements.

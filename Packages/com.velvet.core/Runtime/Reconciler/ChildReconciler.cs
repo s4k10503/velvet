@@ -1878,7 +1878,7 @@ namespace Velvet
         {
             foreach (var (element, isExisting) in elements)
             {
-                if (isExisting || element!.parent != null) continue;
+                if (isExisting || ChildListWrites.ParentOf(element!) != null) continue;
                 ReleaseUnplacedElement(element);
             }
         }
@@ -1997,7 +1997,7 @@ namespace Velvet
                     var duplicateElement = _factory.CreateElement(newNode);
                     newElements.Add((duplicateElement, false));
                     if (_ctx.IsAborted) return true;
-                    UnityEngine.Debug.Assert(duplicateElement.parent == null,
+                    UnityEngine.Debug.Assert(ChildListWrites.ParentOf(duplicateElement) == null,
                         "[ChildReconciler] _factory.CreateElement must return an orphaned VisualElement (no parent).");
                     return false;
                 }
@@ -2022,7 +2022,7 @@ namespace Velvet
                     var newElement = _factory.CreateElement(newNode);
                     newElements.Add((newElement, false));
                     if (_ctx.IsAborted) return true;
-                    UnityEngine.Debug.Assert(newElement.parent == null,
+                    UnityEngine.Debug.Assert(ChildListWrites.ParentOf(newElement) == null,
                         "[ChildReconciler] _factory.CreateElement must return an orphaned VisualElement (no parent).");
                 }
             }
@@ -2031,7 +2031,7 @@ namespace Velvet
                 var newElement = _factory.CreateElement(newNode);
                 newElements.Add((newElement, false));
                 if (_ctx.IsAborted) return true;
-                UnityEngine.Debug.Assert(newElement.parent == null,
+                UnityEngine.Debug.Assert(ChildListWrites.ParentOf(newElement) == null,
                     "[ChildReconciler] _factory.CreateElement must return an orphaned VisualElement (no parent).");
             }
 

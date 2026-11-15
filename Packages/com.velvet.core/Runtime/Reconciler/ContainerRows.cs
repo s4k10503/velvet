@@ -104,6 +104,9 @@ namespace Velvet
         // Set when a change to the live list is announced that no ChildListWrites op made; the next sync rebuilds.
         internal bool Stale;
 
+        // The recorded writes that have changed this model and not the live list (ChildListWrites.ApplyRecorded).
+        internal int Pending;
+
         private int BlockCount => _blocks?.Count ?? 1;
 
         private Block BlockAt(int index) => _blocks == null ? _first : _blocks[index];

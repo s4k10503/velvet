@@ -103,8 +103,8 @@ namespace Velvet
             {
                 return info;
             }
-            var firstIndex = target.IndexOf(info.First);
-            var lastIndex = target.IndexOf(info.Last);
+            var firstIndex = ChildListWrites.PhysicalIndexOf(target, info.First);
+            var lastIndex = ChildListWrites.PhysicalIndexOf(target, info.Last);
             if (firstIndex < 0 || lastIndex < firstIndex)
             {
                 return info;
@@ -1788,7 +1788,7 @@ namespace Velvet
         internal VisualElement? PortalHoldingRow(VisualElement row, VisualElement parent)
         {
             if (PortalState.Count == 0) return null;
-            var index = LogicalChildSlots.ToLogical(parent, parent.IndexOf(row));
+            var index = LogicalChildSlots.ToLogical(parent, ChildListWrites.PhysicalIndexOf(parent, row));
             VisualElement? holder = null;
             var holderStart = -1;
             foreach (var entry in PortalState)

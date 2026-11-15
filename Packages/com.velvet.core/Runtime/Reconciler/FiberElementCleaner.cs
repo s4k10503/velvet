@@ -17,12 +17,12 @@ namespace Velvet
 
         public void RemoveElement(VisualElement parent, int index)
         {
-            if (index < 0 || index >= parent.childCount)
+            var element = ChildListWrites.ElementAtPhysical(parent, index);
+            if (element == null)
             {
                 return;
             }
 
-            var element = parent.ElementAt(index);
             var poolable = PoolableOccupantOf(element);
             CleanupElement(element, element.panel, IsDiscardedAfterCleanup(element, poolable) ? element : null);
             RemoveCleaned(parent, element);
@@ -653,7 +653,8 @@ namespace Velvet
             // invisible child sits anywhere inside the portal's range.
             var physicalSlotStart = LogicalChildSlots.ToPhysical(target, portalInfo.SlotStart);
             var slotEnd = LogicalChildSlots.ToPhysical(target, portalInfo.SlotStart + portalInfo.SlotLength);
-            if (slotEnd > target.childCount) slotEnd = target.childCount;
+            var targetCount = ChildListWrites.ChildCount(target);
+            if (slotEnd > targetCount) slotEnd = targetCount;
             // Read before any is cleaned: a cleanup can take a child hosted before its element out of the target
             // (RemoveCleaned), which would move the indices still to be visited.
             var range = new List<VisualElement>(Math.Max(slotEnd - physicalSlotStart, 0));

@@ -252,6 +252,7 @@ namespace Velvet
             {
                 profilerScope = s_reconcileMarker.Auto();
                 ChildListWrites.BeginPass();
+                ChildListWrites.BeginRecording();
                 _ctx.RelationalTreeWatch.Watch(parent?.panel);
             }
 
@@ -369,6 +370,7 @@ namespace Velvet
         private void FinishPass(VisualElement? reconciledInto, bool walked)
         {
             _ctx.PointerEventsWalkHeld++;
+            _ctx.HostCommit.EndRecordedPass(walked);
             // The abort flag stops sibling work inside the pass that just ended; the deferred
             // host mounts below are commit work for placeholders that SURVIVED it. A boundary
             // rollback detaches its failed subtree's placeholders (the drain's per-entry
@@ -509,6 +511,7 @@ namespace Velvet
             // the probe a discrete event dispatched synchronously inside a slice would re-enter the
             // reconciler on the stack.
             var isTopLevel = _ctx.SharedReconcileDepth == 0;
+            if (isTopLevel) ChildListWrites.BeginRecording();
 
             // A resume continues the pass an earlier slice suspended, so a setup it queues carries that
             // pass — see Reconcile's own bracket for why the stamp is put back rather than cleared.
