@@ -847,6 +847,11 @@ namespace Velvet
         /// <summary>The VNode array fixed by the previous reconcile. Serves as the "old" side for the next reconcile.</summary>
         internal VNode?[]? PreviousTree { get; set; }
 
+        // The last array FiberContextSpine asked whether this fiber's output holds a node that pushes context, and
+        // the answer, so a spine walk over an unchanged output reads it rather than scanning the output again.
+        internal VNode?[]? ContextFreeOutput { get; set; }
+        internal bool ContextFreeOutputAnswer { get; set; }
+
         // The output a reconcile of this fiber's own rows is writing ahead of PreviousTree, which takes it only once that
         // reconcile has returned, for a FiberContextSpine rebuilt meanwhile to read in its place — the drains that end a
         // pass run inside its reconcile. FiberCommitWork.ReconcileRows owns when it is set and cleared.

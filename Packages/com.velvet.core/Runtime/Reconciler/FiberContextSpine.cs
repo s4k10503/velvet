@@ -210,6 +210,7 @@ namespace Velvet
 
                 var tree = OwnOutput(ancestor, child);
                 if (tree == null || tree.Length == 0) continue;
+                if (PushesNoContext(ancestor, tree)) continue;
 
                 var isInline = registry.TryGetInlineKey(child, out _, out _, out var childScope, out var childContainer);
                 if (!isInline && child.MountPoint == null) continue;
@@ -237,6 +238,47 @@ namespace Velvet
         }
 
         private static readonly InlineKeyClaims s_claims = new();
+
+        // Whether nothing in tree can push onto the cursor, so the walk of it would push nothing whichever child it
+        // looked for. A walk visits every sibling before the one it wants, so skipping it keeps an isolated render's
+        // cost off the length of the list its output holds. Memo inner nodes are not in the tree, so a MemoNode
+        // counts as a pusher.
+        private static bool PushesNoContext(ComponentFiber ancestor, VNode?[] tree)
+        {
+            if (!ReferenceEquals(ancestor.ContextFreeOutput, tree))
+            {
+                ancestor.ContextFreeOutputAnswer = HoldsNoPusher(tree);
+                ancestor.ContextFreeOutput = tree;
+            }
+            return ancestor.ContextFreeOutputAnswer;
+        }
+
+        private static bool HoldsNoPusher(VNode?[]? nodes)
+        {
+            if (nodes == null) return true;
+            foreach (var node in nodes)
+            {
+                switch (node)
+                {
+                    case ContextProviderNode or MotionNode or MemoNode:
+                        return false;
+                    case FragmentNode fragment:
+                        if (!HoldsNoPusher(fragment.Children)) return false;
+                        break;
+                    case BaseElementNode element:
+                        if (!HoldsNoPusher(element.Children)) return false;
+                        break;
+                    case SuspenseNode suspense:
+                        if (!HoldsNoPusher(suspense.Children)) return false;
+                        if (suspense.Fallback != null && !HoldsNoPusher(new[] { suspense.Fallback })) return false;
+                        break;
+                    case AnimatePresenceNode presence:
+                        if (!HoldsNoPusher(presence.Children)) return false;
+                        break;
+                }
+            }
+            return true;
+        }
 
         // The output of ancestor's that a keyed walk to child reads. Where child was last reached from the baseline of
         // ancestor's parked pass, that pass has not reached child yet, and the Providers around child are still the
