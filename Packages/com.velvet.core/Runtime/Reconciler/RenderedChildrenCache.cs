@@ -10,20 +10,9 @@ namespace Velvet
     // first read it: a change made to its children while the cache is held, by a callback the pass runs, is not seen.
     internal sealed class RenderedChildrenCache
     {
-        // An instance per holder on the stack, so a pass nested in another takes one of its own.
-        private static readonly Stack<RenderedChildrenCache> s_pool = new();
-
         private readonly Dictionary<VisualElement, List<VisualElement>> _of = new();
         private readonly Dictionary<(VisualElement Container, VisualElement Child), (int Index, int Slot)> _positionOf = new();
         private readonly Stack<List<VisualElement>> _spare = new();
-
-        internal static RenderedChildrenCache Rent() => s_pool.Count > 0 ? s_pool.Pop() : new RenderedChildrenCache();
-
-        internal void Return()
-        {
-            Clear();
-            s_pool.Push(this);
-        }
 
         internal void Clear()
         {
