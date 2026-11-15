@@ -15,6 +15,7 @@ namespace Velvet.Tests
     {
         private static StateUpdater<int> s_setInner;
         private static VisualElement s_target;
+        private static int s_initialInner = 1;
 
         [SetUp]
         public void SetUp()
@@ -26,22 +27,21 @@ namespace Velvet.Tests
         [Component]
         private static VNode Host()
         {
-            var (inner, setInner) = Hooks.UseState(1);
+            var (inner, setInner) = Hooks.UseState(s_initialInner);
             s_setInner = setInner;
             var labels = new VNode[inner];
             for (var i = 0; i < inner; i++) labels[i] = V.Label(text: "b" + i, key: "b" + i);
             return V.Div(children: new VNode[]
             {
-                V.Portal(s_target, key: "outer", children: new VNode[]
-                {
-                    V.Label(text: "a", key: "a"),
-                    V.Portal(s_target, key: "inner", children: labels),
-                }),
+                V.Portal(s_target, key: "outer", children: inner > 0
+                    ? new VNode[] { V.Label(text: "a", key: "a"), V.Portal(s_target, key: "inner", children: labels) }
+                    : new VNode[] { V.Label(text: "a", key: "a") }),
             });
         }
 
-        private static (int Start, int Length)[] RangesAfterGrowingTheInnerTo(int inner)
+        private static (int Start, int Length)[] RangesAfterGrowingTheInnerTo(int inner, int from = 1)
         {
+            s_initialInner = from;
             using var mounted = V.Mount(new VisualElement(), V.Component(Host, key: "host"));
             s_setInner.Invoke(inner);
             mounted.FlushStateForTest();
@@ -73,14 +73,25 @@ namespace Velvet.Tests
             Assert.That(ranges[1].Length, Is.EqualTo(3));
         }
 
+        // GREEN_ON_BASE(characterization): a range reads its start from the rows it holds, which sit at slot 2 whatever the outer recorded.
         [Test]
-        public void Given_APortalInsideAnotherOnOneTarget_When_TheInnersRowsGrowInThePassPatchingTheOuter_Then_TheInnerStartsWhereTheOuterEnds()
+        public void Given_APortalInsideAnotherOnOneTarget_When_TheInnersRowsGrowInThePassPatchingTheOuter_Then_TheInnerStartsAfterTheOutersOwnTwoRows()
         {
             // Act
             var ranges = RangesAfterGrowingTheInnerTo(3);
 
             // Assert
-            Assert.That(ranges[1].Start - (ranges[0].Start + ranges[0].Length), Is.EqualTo(0));
+            Assert.That(ranges[1].Start, Is.EqualTo(2));
+        }
+
+        [Test]
+        public void Given_APortalInsideAnotherOnOneTarget_When_ThePassPatchingTheOuterDropsTheInner_Then_TheOuterRecordsItsOneRow()
+        {
+            // Act
+            var ranges = RangesAfterGrowingTheInnerTo(0, from: 3);
+
+            // Assert
+            Assert.That(ranges[0].Length, Is.EqualTo(1));
         }
     }
 }

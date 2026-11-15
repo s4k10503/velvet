@@ -683,6 +683,8 @@ namespace Velvet
             PortalSlotTracker.ShiftRangesBehind(_ctx.PortalState.Stored, target, element, portalInfo, -portalInfo.SlotLength);
             FiberCommitWork.ShiftTenantsAfterPortalRange(
                 _ctx.ComponentRegistry, target, element, portalInfo, -portalInfo.SlotLength);
+            // The rows it removed leave the count a Portal patched around this one reads, as its own growth would.
+            _ctx.PortalRowGrowth[target] = _ctx.PortalRowGrowth.GetValueOrDefault(target) - portalInfo.SlotLength;
         }
 
         // Empties a Portal's slot range on the element it is mounted into and leaves it in exactly the

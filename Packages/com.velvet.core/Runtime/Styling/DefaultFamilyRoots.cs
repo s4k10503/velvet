@@ -128,11 +128,14 @@ namespace Velvet
         private static void Apply(VisualElement? scope = null)
         {
             var asset = DefaultAsset();
-            // MUTANT_SURVIVES(equivalent, line removed): the loop below skips a collected element's entry whether or
-            // not it is taken out here; taking it out keeps entries of trees nobody disposed from piling up.
+            // MUTANT_SURVIVES(equivalent, boundary): which count prunes moves no decision; a pruned entry and one left
+            // in place are both skipped below, and a scoped call reads the subtree, not this list.
             if (scope == null || s_held.Count >= s_pruneAt)
             {
+                // MUTANT_SURVIVES(equivalent, line removed): the loops below skip a collected element's entry whether
+                // or not it is taken out here; taking it out keeps entries of trees nobody disposed from piling up.
                 s_held.RemoveAll(s_collected);
+                // MUTANT_SURVIVES(equivalent, line removed): the threshold only spaces the prunes of a scoped call.
                 s_pruneAt = Math.Max(32, s_held.Count * 2);
             }
 

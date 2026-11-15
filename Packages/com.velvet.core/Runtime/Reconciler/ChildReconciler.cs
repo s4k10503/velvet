@@ -446,8 +446,6 @@ namespace Velvet
                 // reconcile can be identified afterwards and stamped with the context needed to reconstruct
                 // their enclosing Providers on an isolated re-render (the spine cannot otherwise reach them).
                 var drainAnchor = declaringFiber ?? _ctx.FiberStack.Current;
-                var appendedFrom = drainAnchor?.BeginAppendLog() ?? 0;
-                var drained = false;
                 // The nested Reconcile below re-enters ChildReconciler.Reconcile on THIS SAME instance, whose
                 // entry unconditionally discards PendingIndexedState/PendingKeyedState as stale state left by a
                 // finished pass — correct for a genuine fresh top-level call, but wrong here: this drain runs
@@ -485,6 +483,8 @@ namespace Velvet
                 var enclosingPresenceChild = _ctx.EnclosingPresenceChild;
                 _ctx.EnclosingPresenceChild = _ctx.PresenceChildOf(placeholder);
                 var mountSuspended = false;
+                // Opened last, closed first in the finally below whatever the mount does.
+                var appendedFrom = drainAnchor?.BeginAppendLog() ?? 0;
                 try
                 {
                     PointerEventsScope.NoteReconciledInto(_ctx, resolvedTarget);
@@ -492,16 +492,17 @@ namespace Velvet
                         slotStart: slotStart);
                     // The mount half of the structural pass FiberNodePatcher.PatchSelfPost runs for a Portal.
                     _patcher.ApplyStructuralVariants(resolvedTarget);
-                    drained = true;
+                    StampDrainedChildren(drainAnchor, appendedFrom, contextSnapshot, children, logicalParent);
                 }
                 catch (FiberSuspendSignal)
                 {
-                    drained = true;
                     mountSuspended = true;
                     RemoveRowsFrom(resolvedTarget, slotStart);
+                    StampDrainedChildren(drainAnchor, appendedFrom, contextSnapshot, children, logicalParent);
                 }
                 finally
                 {
+                    drainAnchor?.EndAppendLog();
                     _ctx.EnclosingPresenceChild = enclosingPresenceChild;
                     _ctx.ExitPortalChildKeyScope(enclosingChildScope);
                     if (declaringFiber != null) _ctx.FiberStack.Pop();
@@ -514,10 +515,7 @@ namespace Velvet
                         }
                     }
                     _parkSetAside = setAside;
-                    if (!drained) drainAnchor?.EndAppendLog();
                 }
-                StampDrainedChildren(drainAnchor, appendedFrom, contextSnapshot, children, logicalParent);
-                drainAnchor?.EndAppendLog();
                 // The growth this mount contributed, in logical slots — the same basis as slotStart.
                 var slotLength = LogicalChildSlots.Count(resolvedTarget) - slotStart;
                 _ctx.PortalState[placeholder] = new PortalSlotInfo(
