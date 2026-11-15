@@ -7,27 +7,17 @@ using System.Threading;
 
 namespace Velvet
 {
-    internal sealed class HookBlockerSlot : IDisposable
+    // The slot UseBlocker keeps on a fiber. What it registers, and with what, is its subclass's: the core
+    // commits it and disposes it and names nothing of what it holds.
+    internal abstract class HookBlockerSlot : IDisposable
     {
-        public IDisposable? Registration { get; set; }
-        public RouteBlockerState State { get; init; } = null!;
         public object?[]? LastDeps { get; set; }
         public object?[]? NextDeps { get; set; }
-        // The router the registration is held against: a render under a different router registers anew
-        // whatever the deps say.
-        public Router? LastRouter { get; set; }
-        public Router? NextRouter { get; set; }
-        // The predicate the settle hands the registration; null when the committed one stands.
-        public Func<BlockerFunctionArgs, bool>? NextPredicate { get; set; }
 
-        public void Dispose()
-        {
-            // Detached first: the disposal returns the state to Idle, and a fiber being torn down has no render
-            // left to run for it.
-            State.StateChanged = null;
-            Registration?.Dispose();
-            Registration = null;
-        }
+        // Applies what the render staged; reached at the commit, once per slot.
+        public abstract void Commit();
+
+        public abstract void Dispose();
     }
 
     internal sealed class HookErrorBoundaryKeysSlot
