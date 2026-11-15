@@ -177,6 +177,7 @@ namespace Velvet.Tests
             return null;
         }
 
+        // GREEN_ON_BASE(refactor): the model is compared with the same scan as before; only the helper that walks the list moved into this fixture.
         [TestCase(12)]
         [TestCase(700)]
         public void Given_RandomWrites_When_EverySlotIsConverted_Then_ToPhysicalMatchesTheScan(int size)
@@ -191,6 +192,7 @@ namespace Velvet.Tests
             Assert.That(report, Is.Empty);
         }
 
+        // GREEN_ON_BASE(refactor): the model is compared with the same scan as before; only the helper that walks the list moved into this fixture.
         [TestCase(12)]
         [TestCase(700)]
         public void Given_RandomWrites_When_EverySlotIsAsked_Then_TryGetPhysicalMatchesTheScan(int size)
@@ -205,6 +207,7 @@ namespace Velvet.Tests
             Assert.That(report, Is.Empty);
         }
 
+        // GREEN_ON_BASE(refactor): the model is compared with the same scan as before; only the helper that walks the list moved into this fixture.
         [TestCase(12)]
         [TestCase(700)]
         public void Given_RandomWrites_When_EveryPhysicalIndexIsConverted_Then_ToLogicalMatchesTheScan(int size)
@@ -219,6 +222,7 @@ namespace Velvet.Tests
             Assert.That(report, Is.Empty);
         }
 
+        // GREEN_ON_BASE(refactor): the model is compared with the same scan as before; only the helper that walks the list moved into this fixture.
         [TestCase(12)]
         [TestCase(700)]
         public void Given_RandomWrites_When_RowsAreCounted_Then_RenderedCountMatchesTheScan(int size)
@@ -233,6 +237,7 @@ namespace Velvet.Tests
             Assert.That(report, Is.Empty);
         }
 
+        // GREEN_ON_BASE(refactor): the model is compared with the same scan as before; only the helper that walks the list moved into this fixture.
         [TestCase(12)]
         [TestCase(700)]
         public void Given_RandomWrites_When_EveryChildIsLookedUp_Then_PhysicalIndexOfIsItsChildIndex(int size)
@@ -247,6 +252,7 @@ namespace Velvet.Tests
             Assert.That(report, Is.Empty);
         }
 
+        // GREEN_ON_BASE(refactor): the model is compared with the same scan as before; only the helper that walks the list moved into this fixture.
         [TestCase(12)]
         [TestCase(700)]
         public void Given_RandomWrites_When_EveryChildIsLookedUp_Then_SlotOfMatchesTheScan(int size)
@@ -261,6 +267,7 @@ namespace Velvet.Tests
             Assert.That(report, Is.Empty);
         }
 
+        // GREEN_ON_BASE(refactor): reads the model through the surface step 1 added, which this change leaves as it was.
         [TestCase(12)]
         [TestCase(700)]
         public void Given_RandomWrites_When_TheModelIsRead_Then_ItHoldsTheLiveChildrenInOrder(int size)
@@ -275,6 +282,7 @@ namespace Velvet.Tests
             Assert.That(report, Is.Empty);
         }
 
+        // GREEN_ON_BASE(refactor): reads the model through the surface step 1 added, which this change leaves as it was.
         [Test]
         public void Given_AForeignMoveThatKeepsTheEndsAndAWriteAfterIt_When_APassBegins_Then_TheModelHoldsTheLiveOrder()
         {
@@ -297,6 +305,7 @@ namespace Velvet.Tests
             Assert.That(CompareOrder(parent, RowModelAccess.Peek(parent)!), Is.Null);
         }
 
+        // GREEN_ON_BASE(refactor): reads the model through the surface step 1 added, which this change leaves as it was.
         [Test]
         public void Given_AChildAlreadyInside_When_ItIsAddedAgain_Then_TheModelFollowsItToTheEnd()
         {
@@ -314,6 +323,7 @@ namespace Velvet.Tests
             Assert.That(CompareOrder(parent, RowModelAccess.Peek(parent)!), Is.Null);
         }
 
+        // GREEN_ON_BASE(refactor): reads the model through the surface step 1 added, which this change leaves as it was.
         [Test]
         public void Given_AChildMovedToAnotherContainer_When_ItsFormerContainerIsEmptied_Then_ItKeepsNoModel()
         {
@@ -330,6 +340,7 @@ namespace Velvet.Tests
             Assert.That(RowModelAccess.Peek(from), Is.Null);
         }
 
+        // GREEN_ON_BASE(refactor): reads the model through the surface step 1 added, which this change leaves as it was.
         [Test]
         public void Given_ABigModelWhoseLastChildWasMovedBehindItsBack_When_TheNextWriteArrives_Then_TheModelHoldsTheLiveOrder()
         {
@@ -345,6 +356,7 @@ namespace Velvet.Tests
             Assert.That(CompareOrder(parent, RowModelAccess.Peek(parent)!), Is.Null);
         }
 
+        // GREEN_ON_BASE(refactor): reads the model through the surface step 1 added, which this change leaves as it was.
         [Test]
         public void Given_AnInteriorMoveBehindTheModelsBackThatWasAnnounced_When_TheNextWriteArrives_Then_TheModelHoldsTheLiveOrder()
         {
@@ -361,6 +373,7 @@ namespace Velvet.Tests
             Assert.That(CompareOrder(parent, RowModelAccess.Peek(parent)!), Is.Null);
         }
 
+        // GREEN_ON_BASE(refactor): reads the model through the surface step 1 added, which this change leaves as it was.
         [Test]
         public void Given_AChildAddedBehindTheModelsBack_When_TheNextWriteArrives_Then_TheModelHoldsEveryChild()
         {
@@ -376,6 +389,7 @@ namespace Velvet.Tests
             Assert.That(RowModelAccess.Peek(parent)!.TotalCount, Is.EqualTo(3));
         }
 
+        // GREEN_ON_BASE(refactor): reads the model through the surface step 1 added, which this change leaves as it was.
         [Test]
         public void Given_ALeadingMarkerAndARenderedChild_When_TheMarkerIsReclassifiedAsTrailing_Then_AnAppendLandsBeforeIt()
         {
@@ -395,6 +409,7 @@ namespace Velvet.Tests
             Assert.That(RowModelAccess.ToPhysical(RowModelAccess.Peek(parent)!, 1), Is.EqualTo(LogicalChildSlots.ToPhysical(parent, 1)));
         }
 
+        // GREEN_ON_BASE(refactor): reads the model through the surface step 1 added, which this change leaves as it was.
         [Test]
         public void Given_AContainerEmptiedThroughTheWrites_When_ItsModelIsPeeked_Then_ThereIsNone()
         {
@@ -410,6 +425,7 @@ namespace Velvet.Tests
             Assert.That(RowModelAccess.Peek(parent), Is.Null);
         }
 
+        // GREEN_ON_BASE(refactor): reads the model through the surface step 1 added, which this change leaves as it was.
         [Test]
         public void Given_AWriteThatReorderedBehindTheModelsBack_When_TheVerifierRuns_Then_ItLogsTheDrift()
         {
