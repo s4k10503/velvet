@@ -286,9 +286,9 @@ namespace Velvet
         private static bool IsPlaced(VisualElement element, VisualElement? mountRoot)
         {
             var top = element;
-            while (ChildListWrites.ParentOf(top) != null)
+            for (var up = ChildListWrites.ParentOf(top); up != null; up = ChildListWrites.ParentOf(top))
             {
-                top = ChildListWrites.ParentOf(top);
+                top = up;
             }
 
             return top.panel != null || ReferenceEquals(top, mountRoot);

@@ -1,4 +1,3 @@
-using System;
 using NUnit.Framework;
 using UnityEngine.UIElements;
 using Velvet.TestUtilities;
@@ -15,7 +14,6 @@ namespace Velvet.Tests
         private VisualElement _root = null!;
         private static StateUpdater<int> s_setTick;
         private static ComponentFiber s_childFiber;
-        private static int s_cleanups;
 
         [SetUp]
         public void SetUp()
@@ -23,14 +21,12 @@ namespace Velvet.Tests
             _root = new VisualElement();
             s_setTick = default;
             s_childFiber = null;
-            s_cleanups = 0;
         }
 
         [Component]
         private static VNode ChildRender()
         {
             s_childFiber = FiberAmbientStack.Current;
-            Hooks.UseLayoutEffect(() => (Action)(() => s_cleanups++), Array.Empty<object>());
             return V.Label(text: "child");
         }
 

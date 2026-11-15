@@ -36,12 +36,21 @@ namespace Velvet
         private bool IsDiscardedAfterCleanup(VisualElement element, VisualElement poolable)
             => PoolKindOf(poolable) == PoolKind.None && !HoldsAPortalTarget(element);
 
+        private static bool IsBelow(VisualElement root, VisualElement target)
+        {
+            for (var e = ChildListWrites.ParentOf(target); e != null; e = ChildListWrites.ParentOf(e))
+            {
+                if (ReferenceEquals(e, root)) return true;
+            }
+            return false;
+        }
+
         private bool HoldsAPortalTarget(VisualElement root)
         {
             foreach (var range in _ctx.PortalState.Stored.Values)
             {
                 var target = range.Target;
-                if (target != null && root.Contains(target)) return true;
+                if (target != null && IsBelow(root, target)) return true;
             }
             return false;
         }

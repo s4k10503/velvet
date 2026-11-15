@@ -2964,7 +2964,7 @@ namespace Velvet
         // presence expanding in a deferred mount (no emission around it) takes as its enclosing child.
         internal PresenceChildContext? PresenceChildOf(VisualElement element)
         {
-            for (var ancestor = element; ancestor != null; ancestor = ancestor.parent)
+            for (var ancestor = element; ancestor != null; ancestor = ChildListWrites.ParentOf(ancestor))
             {
                 if (PresenceChildRoots.TryGetValue(ancestor, out var owner))
                 {

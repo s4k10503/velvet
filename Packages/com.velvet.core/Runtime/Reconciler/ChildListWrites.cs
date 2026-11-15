@@ -497,8 +497,8 @@ namespace Velvet
 
         // What element.hierarchy.childCount and element.hierarchy[index] answer where nothing is recorded, and what the
         // model holds where a write is: a read of a descendant that builds no model.
-        internal static int HierarchyCount(VisualElement element)
-            => s_rows.TryGetValue(element, out var rows) && rows.Pending > 0 ? rows.TotalCount : element.hierarchy.childCount;
+        internal static int HierarchyCount(VisualElement? element)
+            => element == null ? 0 : s_rows.TryGetValue(element, out var rows) && rows.Pending > 0 ? rows.TotalCount : element.hierarchy.childCount;
 
         internal static VisualElement HierarchyChild(VisualElement element, int index)
             => s_rows.TryGetValue(element, out var rows) && rows.Pending > 0 ? rows.ElementAt(index) : element.hierarchy[index];

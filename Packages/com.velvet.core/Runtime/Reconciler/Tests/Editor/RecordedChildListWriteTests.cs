@@ -151,5 +151,21 @@ namespace Velvet.Tests
             // Assert
             Assert.That(NamesOf(_root), Is.EqualTo("first,second"));
         }
+
+        // GREEN_ON_BASE(refactor): the base reads the list's child count through the element, which a ListView answers
+        // with none, and walks nothing; what this pins is that the teardown still does.
+        [Test]
+        public void Given_AMountedListView_When_ItsRowIsRemoved_Then_TheTeardownThrowsNothing()
+        {
+            // Arrange
+            var oldTree = new VNode[] { V.ListView() };
+            _reconciler.Reconcile(_root, Array.Empty<VNode>(), oldTree);
+
+            // Act
+            TestDelegate removal = () => _reconciler.Reconcile(_root, oldTree, Array.Empty<VNode>());
+
+            // Assert
+            Assert.That(removal, Throws.Nothing);
+        }
     }
 }

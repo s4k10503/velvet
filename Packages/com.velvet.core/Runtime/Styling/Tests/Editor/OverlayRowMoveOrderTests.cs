@@ -78,8 +78,8 @@ namespace Velvet.Tests
             Assert.That(order, Is.EqualTo("r3,overlay,r2,overlay,r1,overlay,r0,overlay"));
         }
 
-        // GREEN_ON_BASE(refactor): the base moves each row at once, so each band is placed against a list that already
-        // holds the rows ahead of it.
+        // GREEN_ON_BASE(refactor): on the base the moved row's band is placed as the row moves, and the two rows
+        // inserted afterwards land ahead of it.
         [Test]
         public void Given_RingRowsWhoseReorderAddsTwoRowsAheadOfThem_When_TheyReorder_Then_TheBandOfTheMovedRowStandsDirectlyAfterIt()
         {
