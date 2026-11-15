@@ -295,16 +295,7 @@ namespace Velvet
             try
             {
                 ordered = TakeBatch(ctx, scope, roots);
-                // The pass that rides this commit left it the cleanups of the refs it replaces, which run ahead of
-                // every cleanup of the layout effects and so of every setup.
-                ctx.DetachReplacedRefs(scope);
-                // A fiber a cleanup's catch unmounts in this pass has had these lists cleared by its unmount.
-                for (var i = 0; i < ordered.Count; i++)
-                {
-                    var (fiber, isMount) = ordered[i];
-                    RunInsertionEffects(fiber, mountDoubleInvoke: isMount);
-                    HookEffectExecutor.RunCleanups(fiber, fiber.PendingLayoutEffects);
-                }
+                RunCleanupPass(ctx, ordered, ctx.TakeRefAttaches(scope));
                 RunLayoutSetups(ctx, ordered, ctx.TakeRefAttaches(scope), reportCutoff);
                 // A setup that mounted more inline children, a boundary's fallback among them, pushed them onto
                 // the stack: they are a follow-up commit, which CommitStrandedLayoutWork runs once every commit
@@ -321,6 +312,37 @@ namespace Velvet
                 StageReleasedPassiveEffects(ctx);
                 if (ordered != null) ctx.BufferPool.ReturnCommitEntryList(ordered);
             }
+        }
+
+        // The cleanup pass: the batch's insertion effects and layout cleanups, and the cleanups of the refs the pass
+        // that rides the commit replaces, each where React's mutation walk reaches its element
+        // (FiberRefPlacement). A fiber a cleanup's catch unmounts in this pass has had its lists cleared by its
+        // unmount.
+        private static void RunCleanupPass(
+            ReconcilerContext ctx, List<(ComponentFiber Fiber, bool IsMount)> ordered, List<PendingRefAttach> refs)
+        {
+            if (refs.Count == 0)
+            {
+                for (var i = 0; i < ordered.Count; i++) RunFiberCleanups(ordered[i].Fiber, ordered[i].IsMount);
+                return;
+            }
+            var steps = FiberRefPlacement.Interleave(ctx, ordered, refs);
+            for (var i = 0; i < steps.Count; i++)
+            {
+                if (steps[i].IsRef)
+                {
+                    ctx.DetachReplacedRef(steps[i].Ref.Element);
+                    continue;
+                }
+                var (fiber, isMount) = ordered[steps[i].FiberIndex];
+                RunFiberCleanups(fiber, isMount);
+            }
+        }
+
+        private static void RunFiberCleanups(ComponentFiber fiber, bool isMount)
+        {
+            RunInsertionEffects(fiber, mountDoubleInvoke: isMount);
+            HookEffectExecutor.RunCleanups(fiber, fiber.PendingLayoutEffects);
         }
 
         // The setup pass: the batch's imperative handles and layout setups, and the ref setups, in the order
@@ -372,8 +394,8 @@ namespace Velvet
             // After every cleanup of the commit, so what the insertion effects and layout cleanups wrote is in the
             // layout the setups read, and per fiber, so what an earlier setup wrote is in it too.
             if (FiberLayoutReflow.ReadsLayout(fiber)) FiberLayoutReflow.LayOutFor(ctx, fiber);
-            FiberHookCommit.RunImperativeHandleSlots(fiber);
-            HookEffectExecutor.RunFactoriesAndClear(fiber, fiber.PendingLayoutEffects, mountDoubleInvoke: isMount);
+            HookEffectExecutor.RunFactoriesAndClear(
+                fiber, fiber.PendingLayoutEffects, mountDoubleInvoke: isMount, withImperativeHandles: true);
             DeliverCaughtErrors(ctx, fiber, reportCutoff);
         }
 
