@@ -137,8 +137,10 @@ namespace Velvet
                 {
                     // The physical position just after the last rendered child, so a trailing invisible
                     // child (a filter bounds spacer) stays last through the reorder — parent.Add would
-                    // append past it.
+                    // append past it. The ring and face border nodes that child hosts stand behind it and
+                    // stay with it.
                     var end = LogicalChildSlots.ToPhysical(parent, LogicalChildSlots.Count(parent));
+                    end = PastHostedOverlays(parent, end);
                     ChildListWrites.Insert(parent, end, element);
                 }
             }
@@ -147,6 +149,20 @@ namespace Velvet
         // Ends the pass's recording where FinishPass starts: what the pass recorded goes to the live lists, whether its
         // walk returned or threw.
         internal void EndRecordedPass() => ChildListWrites.EndRecording();
+
+        // The index past the ring and face border nodes standing at index: a row's own, which go with it. The outline
+        // nodes a stacking root keeps after its rows carry the ring marker class as well and are not the row's.
+        private static int PastHostedOverlays(VisualElement parent, int index)
+        {
+            var total = ChildListWrites.ChildCount(parent);
+            while (index < total && ChildListWrites.ElementAtPhysical(parent, index) is { } hosted
+                   && !hosted.ClassListContains(RingOverlay.OutlineMarkerClass)
+                   && (hosted.ClassListContains(RingOverlay.MarkerClass) || hosted.ClassListContains(FaceBorderOverlay.MarkerClass)))
+            {
+                index++;
+            }
+            return index;
+        }
 
         // A Suspense's hide of one of its outermost host elements.
         internal void Hide(VisualElement element)

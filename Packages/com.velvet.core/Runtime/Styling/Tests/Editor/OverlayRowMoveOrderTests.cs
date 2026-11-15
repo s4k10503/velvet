@@ -78,26 +78,19 @@ namespace Velvet.Tests
             Assert.That(order, Is.EqualTo("r3,overlay,r2,overlay,r1,overlay,r0,overlay"));
         }
 
-        // GREEN_ON_BASE(refactor): on the base the moved row's band is placed as the row moves, and the two rows
-        // inserted afterwards land ahead of it.
         [Test]
-        public void Given_RingRowsWhoseReorderAddsTwoRowsAheadOfThem_When_TheyReorder_Then_TheBandOfTheMovedRowStandsDirectlyAfterIt()
+        public void Given_RingRowsWhoseReorderAddsTwoRowsAheadOfThem_When_TheyReorder_Then_EachBandStandsAfterItsRowWithoutALayoutPass()
         {
             // Arrange
             s_className = "w-[40px] h-[40px] ring-2";
             s_before = new[] { 0, 1, 2 };
             s_after = new[] { 3, 4, 1, 2, 0 };
-            using var mounted = V.Mount(_window.rootVisualElement, V.Component(Rows));
-            var list = _window.rootVisualElement.Q<VisualElement>("list");
-            ForcePanelUpdate(list.panel);
 
             // Act
-            s_setReversed.Invoke(true);
-            mounted.FlushStateForTest();
+            var order = ReverseAndRead();
 
             // Assert
-            var moved = list.Q<VisualElement>("r0");
-            Assert.That(list[list.IndexOf(moved) + 1].ClassListContains(RingOverlay.MarkerClass), Is.True);
+            Assert.That(order, Is.EqualTo("r3,overlay,r4,overlay,r1,overlay,r2,overlay,r0,overlay"));
         }
 
         // GREEN_ON_BASE(refactor): as the ring case above, for the outline nodes a stacking-root host keeps after its rows.

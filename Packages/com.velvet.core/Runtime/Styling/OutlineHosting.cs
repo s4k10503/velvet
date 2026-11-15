@@ -359,14 +359,14 @@ namespace Velvet
             {
                 return 1;
             }
-            var parent = pathA[i].parent;
+            var parent = ChildListWrites.ParentOf(pathA[i]);
             return parent == null ? 0 : ChildListWrites.PhysicalIndexOf(parent, pathA[i]).CompareTo(ChildListWrites.PhysicalIndexOf(parent, pathB[i]));
         }
 
         private static List<VisualElement> PathOf(VisualElement e)
         {
             var path = new List<VisualElement>();
-            for (var a = e; a != null; a = a.parent)
+            for (var a = e; a != null; a = ChildListWrites.ParentOf(a))
             {
                 path.Insert(0, a);
             }
