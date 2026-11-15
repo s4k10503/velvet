@@ -96,7 +96,7 @@ namespace Velvet
             element.UnregisterCallback(binding.OnAttach);
             binding.StateTick.Pause();
             // The layer lives in the element's parent, so it does not leave with the element's own subtree.
-            binding.Layer.RemoveFromHierarchy();
+            ChildListWrites.RemoveFromHierarchy(binding.Layer);
         }
 
         // A change of the declared backdrop-filter: transitioned where an entry runs for it, by CSS's interpolation
@@ -187,8 +187,8 @@ namespace Velvet
             }
             if (layer.parent != host || host.IndexOf(layer) != host.IndexOf(element) - 1)
             {
-                layer.RemoveFromHierarchy();
-                host.Insert(host.IndexOf(element), layer);
+                ChildListWrites.RemoveFromHierarchy(layer);
+                ChildListWrites.Insert(host, host.IndexOf(element), layer);
             }
             var x = element.layout.x;
             var y = element.layout.y;

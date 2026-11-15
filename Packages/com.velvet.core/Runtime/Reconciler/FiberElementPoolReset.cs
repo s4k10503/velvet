@@ -86,7 +86,7 @@ namespace Velvet
                 {
                     continue;
                 }
-                container.RemoveAt(i);
+                ChildListWrites.RemoveAt(container, i);
             }
         }
 

@@ -58,7 +58,7 @@ namespace Velvet
                 : parent.IndexOf(element);
             if (at >= 0)
             {
-                parent.RemoveAt(at);
+                ChildListWrites.RemoveAt(parent, at);
             }
         }
 
@@ -75,7 +75,7 @@ namespace Velvet
         {
             if (!ReferenceEquals(poolable, removed))
             {
-                poolable.RemoveFromHierarchy();
+                ChildListWrites.RemoveFromHierarchy(poolable);
             }
             ReturnToPool(poolable);
         }
@@ -109,7 +109,7 @@ namespace Velvet
                 // The factory records stacking facts on the wrapper, which the inner's cleanup below does not reach.
                 _ctx.ClearElementSideTables(element);
                 _ctx.WrapperToInnerMap.Remove(element);
-                innerOfWrapper.RemoveFromHierarchy();
+                ChildListWrites.RemoveFromHierarchy(innerOfWrapper);
                 ReturnRolledBackOrphan(innerOfWrapper);
                 return;
             }
@@ -792,7 +792,7 @@ namespace Velvet
             foreach (var (real, poolable) in retired)
             {
                 FiberZLayerCoordinator.ForgetRetired(real);
-                real.RemoveFromHierarchy();
+                ChildListWrites.RemoveFromHierarchy(real);
                 ReturnOccupantToPool(real, poolable);
             }
         }

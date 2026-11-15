@@ -62,13 +62,13 @@ namespace Velvet
             var parent = wrapper.parent;
             if (parent == null)
             {
-                element.RemoveFromHierarchy();
+                ChildListWrites.RemoveFromHierarchy(element);
                 return;
             }
             var index = parent.IndexOf(wrapper);
-            element.RemoveFromHierarchy();
-            wrapper.RemoveFromHierarchy();
-            parent.Insert(index, element);
+            ChildListWrites.RemoveFromHierarchy(element);
+            ChildListWrites.RemoveFromHierarchy(wrapper);
+            ChildListWrites.Insert(parent, index, element);
         }
 
         // True when the class list carries an inline filter — a static filter-* utility or the animate-hue

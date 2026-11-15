@@ -105,8 +105,8 @@ namespace Velvet
             _renderedKeys = Array.Empty<string?>();
             _renderedElements = Array.Empty<VisualElement>();
 
-            _scrollView.contentContainer.Add(_spacer);
-            _scrollView.contentContainer.Add(_visibleContainer);
+            ChildListWrites.Add(_scrollView.contentContainer, _spacer);
+            ChildListWrites.Add(_scrollView.contentContainer, _visibleContainer);
 
             _scrollView.RegisterCallback<GeometryChangedEvent>(OnGeometryChanged);
             _scrollView.verticalScroller.valueChanged += OnVerticalScrollValueChanged;
@@ -591,7 +591,7 @@ namespace Velvet
 
             DisposeUntakenRows();
 
-            _visibleContainer.Clear();
+            ChildListWrites.Clear(_visibleContainer);
             _renderedNodes = Array.Empty<VNode>();
             _renderedKeys = Array.Empty<string?>();
             _renderedElements = Array.Empty<VisualElement>();
@@ -612,7 +612,7 @@ namespace Velvet
             {
                 if (!LogicalChildSlots.IsInvisible(_visibleContainer[i]))
                 {
-                    _visibleContainer.RemoveAt(i);
+                    ChildListWrites.RemoveAt(_visibleContainer, i);
                 }
             }
             var offset = (float)OffsetOf(newFirst);
@@ -630,7 +630,7 @@ namespace Velvet
                     var length = (float)(OffsetOf(newFirst + i + 1) - OffsetOf(newFirst + i));
                     if (_horizontal) newElements[i].style.width = length;
                     else newElements[i].style.height = length;
-                    _visibleContainer.Add(_reconciler.SlotOccupantForController(newElements[i]));
+                    ChildListWrites.Add(_visibleContainer, _reconciler.SlotOccupantForController(newElements[i]));
                 }
             }
         }
@@ -646,7 +646,7 @@ namespace Velvet
                     _reconciler.CleanupElementForController(_renderedElements[i]);
                 }
             }
-            _visibleContainer.Clear();
+            ChildListWrites.Clear(_visibleContainer);
             _renderedNodes = Array.Empty<VNode>();
             _renderedKeys = Array.Empty<string?>();
             _renderedElements = Array.Empty<VisualElement>();

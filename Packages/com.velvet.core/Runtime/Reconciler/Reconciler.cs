@@ -251,6 +251,7 @@ namespace Velvet
             if (isTopLevel)
             {
                 profilerScope = s_reconcileMarker.Auto();
+                ChildListWrites.BeginPass();
             }
 
             // Put back rather than cleared, and held across FinishTopLevelPass below: that boundary runs
@@ -345,6 +346,7 @@ namespace Velvet
         {
             TakeAbort();
             FinishPass(reconciledInto, walked);
+            ChildListWrites.VerifyTouched();
         }
 
         private void TakeAbort()

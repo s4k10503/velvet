@@ -1,0 +1,329 @@
+using System;
+using System.Collections.Generic;
+using System.Text;
+using NUnit.Framework;
+using UnityEngine;
+using UnityEngine.TestTools;
+using UnityEngine.UIElements;
+
+namespace Velvet.Tests
+{
+    /// <summary>
+    /// <see cref="ContainerRows"/> answers what <see cref="LogicalChildSlots"/> answers by scanning the live child
+    /// list, for a container written only through <see cref="ChildListWrites"/>. Every case drives random writes over
+    /// real <c>VisualElement</c>s — rendered children, a trailing-kind marker and a leading-kind marker, inserted,
+    /// removed, moved, sorted and reclassified — and compares one answer with the scan's after each write. Sizes
+    /// 12 and 700 put one block and several blocks under the same writes.
+    /// </summary>
+    [TestFixture]
+    internal sealed class ContainerRowsTests
+    {
+        private const int Writes = 400;
+
+        private static VisualElement NewChild(System.Random random)
+        {
+            var child = new VisualElement();
+            switch (random.Next(5))
+            {
+                case 0:
+                    child.AddToClassList(SilhouetteBoundsSpacer.MarkerClass);
+                    break;
+                case 1:
+                    child.AddToClassList(RingOverlay.InsetMarkerClass);
+                    break;
+            }
+            return child;
+        }
+
+        // Applies one random write to parent through ChildListWrites and calls check after it.
+        private static string Drive(int size, int seed, Func<VisualElement, ContainerRows, string?> check)
+        {
+            var random = new System.Random(seed);
+            var parent = new VisualElement();
+            for (var i = 0; i < size; i++) ChildListWrites.Add(parent, NewChild(random));
+            var report = new StringBuilder();
+            for (var step = 0; step < Writes && report.Length == 0; step++)
+            {
+                var count = parent.childCount;
+                switch (random.Next(7))
+                {
+                    case 0:
+                    case 1:
+                        ChildListWrites.Insert(parent, random.Next(count + 1), NewChild(random));
+                        break;
+                    case 2:
+                        if (count > 0) ChildListWrites.RemoveAt(parent, random.Next(count));
+                        break;
+                    case 3:
+                        if (count > 0) ChildListWrites.RemoveFromHierarchy(parent[random.Next(count)]);
+                        break;
+                    case 4:
+                        if (count > 0)
+                        {
+                            var moved = parent[random.Next(count)];
+                            ChildListWrites.Insert(parent, random.Next(count), moved);
+                        }
+                        break;
+                    case 5:
+                        if (count > 0)
+                        {
+                            var flipped = parent[random.Next(count)];
+                            flipped.EnableInClassList(SilhouetteBoundsSpacer.MarkerClass,
+                                !flipped.ClassListContains(SilhouetteBoundsSpacer.MarkerClass));
+                            ChildListWrites.Reclassify(flipped);
+                        }
+                        break;
+                    default:
+                        var keys = new Dictionary<VisualElement, int>();
+                        for (var i = 0; i < count; i++) keys[parent[i]] = random.Next(1000) * 1000 + i;
+                        ChildListWrites.HierarchySort(parent, (a, b) => keys[a].CompareTo(keys[b]));
+                        break;
+                }
+                var rows = ChildListWrites.Peek(parent);
+                if (rows == null)
+                {
+                    if (parent.childCount != 0) report.Append($"step {step}: no model for {parent.childCount} children");
+                    continue;
+                }
+                var difference = check(parent, rows);
+                if (difference != null) report.Append($"step {step}: {difference}");
+            }
+            return report.ToString();
+        }
+
+        private static string? CompareToPhysical(VisualElement parent, ContainerRows rows)
+        {
+            for (var slot = -1; slot <= parent.childCount + 1; slot++)
+            {
+                var expected = LogicalChildSlots.ToPhysical(parent, slot);
+                var actual = rows.ToPhysical(slot);
+                if (expected != actual) return $"ToPhysical({slot}) {actual}, scan {expected}";
+            }
+            return null;
+        }
+
+        private static string? CompareTryGetPhysical(VisualElement parent, ContainerRows rows)
+        {
+            for (var slot = -1; slot <= parent.childCount + 1; slot++)
+            {
+                var expected = LogicalChildSlots.TryGetPhysical(parent, slot, out var expectedAt);
+                var actual = rows.TryGetPhysical(slot, out var actualAt);
+                if (expected != actual || expectedAt != actualAt)
+                {
+                    return $"TryGetPhysical({slot}) {actual}/{actualAt}, scan {expected}/{expectedAt}";
+                }
+            }
+            return null;
+        }
+
+        private static string? CompareToLogical(VisualElement parent, ContainerRows rows)
+        {
+            for (var physical = -1; physical <= parent.childCount + 1; physical++)
+            {
+                var expected = LogicalChildSlots.ToLogical(parent, physical);
+                var actual = rows.ToLogical(physical);
+                if (expected != actual) return $"ToLogical({physical}) {actual}, scan {expected}";
+            }
+            return null;
+        }
+
+        private static string? CompareCount(VisualElement parent, ContainerRows rows)
+            => rows.RenderedCount == LogicalChildSlots.Count(parent)
+                ? null
+                : $"RenderedCount {rows.RenderedCount}, scan {LogicalChildSlots.Count(parent)}";
+
+        private static string? ComparePhysicalIndexOf(VisualElement parent, ContainerRows rows)
+        {
+            for (var i = 0; i < parent.childCount; i++)
+            {
+                if (rows.PhysicalIndexOf(parent[i]) != i) return $"PhysicalIndexOf of child {i} is {rows.PhysicalIndexOf(parent[i])}";
+            }
+            return null;
+        }
+
+        private static string? CompareSlotOf(VisualElement parent, ContainerRows rows)
+        {
+            var slot = 0;
+            for (var i = 0; i < parent.childCount; i++)
+            {
+                var expected = LogicalChildSlots.IsInvisible(parent[i]) ? -1 : slot++;
+                if (rows.SlotOf(parent[i]) != expected) return $"SlotOf child {i} is {rows.SlotOf(parent[i])}, scan {expected}";
+            }
+            return null;
+        }
+
+        private static string? CompareOrder(VisualElement parent, ContainerRows rows)
+        {
+            if (rows.TotalCount != parent.childCount) return $"TotalCount {rows.TotalCount}, live {parent.childCount}";
+            for (var i = 0; i < parent.childCount; i++)
+            {
+                if (!ReferenceEquals(rows.ElementAt(i), parent[i])) return $"ElementAt({i}) is another element";
+            }
+            return null;
+        }
+
+        [TestCase(12)]
+        [TestCase(700)]
+        public void Given_RandomWrites_When_EverySlotIsConverted_Then_ToPhysicalMatchesTheScan(int size)
+        {
+            // Arrange
+            var check = (Func<VisualElement, ContainerRows, string?>)CompareToPhysical;
+
+            // Act
+            var report = Drive(size, 1, check);
+
+            // Assert
+            Assert.That(report, Is.Empty);
+        }
+
+        [TestCase(12)]
+        [TestCase(700)]
+        public void Given_RandomWrites_When_EverySlotIsAsked_Then_TryGetPhysicalMatchesTheScan(int size)
+        {
+            // Arrange
+            var check = (Func<VisualElement, ContainerRows, string?>)CompareTryGetPhysical;
+
+            // Act
+            var report = Drive(size, 2, check);
+
+            // Assert
+            Assert.That(report, Is.Empty);
+        }
+
+        [TestCase(12)]
+        [TestCase(700)]
+        public void Given_RandomWrites_When_EveryPhysicalIndexIsConverted_Then_ToLogicalMatchesTheScan(int size)
+        {
+            // Arrange
+            var check = (Func<VisualElement, ContainerRows, string?>)CompareToLogical;
+
+            // Act
+            var report = Drive(size, 3, check);
+
+            // Assert
+            Assert.That(report, Is.Empty);
+        }
+
+        [TestCase(12)]
+        [TestCase(700)]
+        public void Given_RandomWrites_When_RowsAreCounted_Then_RenderedCountMatchesTheScan(int size)
+        {
+            // Arrange
+            var check = (Func<VisualElement, ContainerRows, string?>)CompareCount;
+
+            // Act
+            var report = Drive(size, 4, check);
+
+            // Assert
+            Assert.That(report, Is.Empty);
+        }
+
+        [TestCase(12)]
+        [TestCase(700)]
+        public void Given_RandomWrites_When_EveryChildIsLookedUp_Then_PhysicalIndexOfIsItsChildIndex(int size)
+        {
+            // Arrange
+            var check = (Func<VisualElement, ContainerRows, string?>)ComparePhysicalIndexOf;
+
+            // Act
+            var report = Drive(size, 5, check);
+
+            // Assert
+            Assert.That(report, Is.Empty);
+        }
+
+        [TestCase(12)]
+        [TestCase(700)]
+        public void Given_RandomWrites_When_EveryChildIsLookedUp_Then_SlotOfMatchesTheScan(int size)
+        {
+            // Arrange
+            var check = (Func<VisualElement, ContainerRows, string?>)CompareSlotOf;
+
+            // Act
+            var report = Drive(size, 6, check);
+
+            // Assert
+            Assert.That(report, Is.Empty);
+        }
+
+        [TestCase(12)]
+        [TestCase(700)]
+        public void Given_RandomWrites_When_TheModelIsRead_Then_ItHoldsTheLiveChildrenInOrder(int size)
+        {
+            // Arrange
+            var check = (Func<VisualElement, ContainerRows, string?>)CompareOrder;
+
+            // Act
+            var report = Drive(size, 7, check);
+
+            // Assert
+            Assert.That(report, Is.Empty);
+        }
+
+        [Test]
+        public void Given_AChildAddedBehindTheModelsBack_When_TheNextWriteArrives_Then_TheModelHoldsEveryChild()
+        {
+            // Arrange
+            var parent = new VisualElement();
+            ChildListWrites.Add(parent, new VisualElement());
+            parent.Add(new VisualElement());
+
+            // Act
+            ChildListWrites.Add(parent, new VisualElement());
+
+            // Assert
+            Assert.That(ChildListWrites.Peek(parent)!.TotalCount, Is.EqualTo(3));
+        }
+
+        [Test]
+        public void Given_ALeadingMarkerAndARenderedChild_When_TheMarkerIsReclassifiedAsTrailing_Then_AnAppendLandsBeforeIt()
+        {
+            // Arrange
+            var parent = new VisualElement();
+            var marker = new VisualElement();
+            marker.AddToClassList(RingOverlay.InsetMarkerClass);
+            ChildListWrites.Add(parent, marker);
+            ChildListWrites.Add(parent, new VisualElement());
+            marker.RemoveFromClassList(RingOverlay.InsetMarkerClass);
+            marker.AddToClassList(SilhouetteBoundsSpacer.MarkerClass);
+
+            // Act
+            ChildListWrites.Reclassify(marker);
+
+            // Assert
+            Assert.That(ChildListWrites.Peek(parent)!.ToPhysical(1), Is.EqualTo(LogicalChildSlots.ToPhysical(parent, 1)));
+        }
+
+        [Test]
+        public void Given_AContainerEmptiedThroughTheWrites_When_ItsModelIsPeeked_Then_ThereIsNone()
+        {
+            // Arrange
+            var parent = new VisualElement();
+            var child = new VisualElement();
+            ChildListWrites.Add(parent, child);
+
+            // Act
+            ChildListWrites.RemoveFromHierarchy(child);
+
+            // Assert
+            Assert.That(ChildListWrites.Peek(parent), Is.Null);
+        }
+
+        [Test]
+        public void Given_AWriteThatReorderedBehindTheModelsBack_When_TheVerifierRuns_Then_ItLogsTheDrift()
+        {
+            // Arrange
+            var parent = new VisualElement();
+            ChildListWrites.Add(parent, new VisualElement());
+            ChildListWrites.Add(parent, new VisualElement());
+            parent[0].BringToFront();
+            LogAssert.Expect(LogType.Assert, new System.Text.RegularExpressions.Regex("ContainerRows drifted"));
+
+            // Act
+            ChildListWrites.VerifyTouched();
+
+            // Assert
+            Assert.That(ChildListWrites.Peek(parent)!.ElementAt(0), Is.SameAs(parent[0]));
+        }
+    }
+}

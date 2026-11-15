@@ -167,7 +167,7 @@ namespace Velvet
                 style = { position = Position.Absolute },
             };
             band.generateVisualContent += paint;
-            overlay.Add(band);
+            ChildListWrites.Add(overlay, band);
             return band;
         }
 
@@ -286,6 +286,7 @@ namespace Velvet
             var overlay = binding.Overlay;
             overlay.EnableInClassList(MarkerClass, !inside);
             overlay.EnableInClassList(InsetMarkerClass, inside);
+            ChildListWrites.Reclassify(overlay);
             if (!inside)
             {
                 return;
@@ -313,7 +314,7 @@ namespace Velvet
             binding.StateTick?.Pause();
             // The overlays live in the element's PARENT and in the outline's host rather than in its own subtree,
             // so they do not leave with it — a detach that skipped this would strand a live band.
-            binding.Overlay.RemoveFromHierarchy();
+            ChildListWrites.RemoveFromHierarchy(binding.Overlay);
             OutlineHosting.Remove(binding);
             s_byElement.Remove(element);
         }
@@ -453,8 +454,8 @@ namespace Velvet
             {
                 // Re-read the element's index AFTER the removal — an overlay currently sitting before it
                 // shifts the element down one when it leaves.
-                binding.Overlay.RemoveFromHierarchy();
-                host.Insert(Mathf.Min(host.IndexOf(element) + after, host.childCount), binding.Overlay);
+                ChildListWrites.RemoveFromHierarchy(binding.Overlay);
+                ChildListWrites.Insert(host, Mathf.Min(host.IndexOf(element) + after, host.childCount), binding.Overlay);
             }
 
             SyncGeometry(element, binding, host);
@@ -470,8 +471,8 @@ namespace Velvet
             var overlay = binding.Overlay;
             if (overlay.parent != element || element.hierarchy.IndexOf(overlay) != 0)
             {
-                overlay.RemoveFromHierarchy();
-                element.hierarchy.Insert(0, overlay);
+                ChildListWrites.RemoveFromHierarchy(overlay);
+                ChildListWrites.HierarchyInsert(element, 0, overlay);
             }
 
             Stretch(overlay);

@@ -622,7 +622,7 @@ namespace Velvet
             binding.Runs.Clear();
             foreach (var layer in binding.Layers)
             {
-                layer.RemoveFromHierarchy();
+                ChildListWrites.RemoveFromHierarchy(layer);
             }
             binding.Layers.Clear();
             binding.LayerBlends.Clear();
@@ -773,7 +773,7 @@ namespace Velvet
             var needed = binding.Runs.Count - FirstLayerRun(binding);
             while (layers.Count > needed)
             {
-                layers[^1].RemoveFromHierarchy();
+                ChildListWrites.RemoveFromHierarchy(layers[^1]);
                 layers.RemoveAt(layers.Count - 1);
                 binding.LayerBlends.RemoveAt(binding.LayerBlends.Count - 1);
             }
@@ -798,7 +798,7 @@ namespace Velvet
                 // MUTANT_SURVIVES(equivalent, equality): flipping the parent clause re-inserts a layer at the index it already holds, and a layer that is not a child of the element still fails the index clause; the layer registers no callback but its paint, so the re-insert costs a hierarchy change and nothing a caller can see.
                 if (layers[i].parent != element || element.IndexOf(layers[i]) != i)
                 {
-                    element.Insert(i, layers[i]);
+                    ChildListWrites.Insert(element, i, layers[i]);
                 }
             }
             while (binding.TargetExtents.Count > layers.Count + 1)

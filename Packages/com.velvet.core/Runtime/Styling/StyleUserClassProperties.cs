@@ -146,10 +146,10 @@ namespace Velvet
             var blank = new VisualElement { pickingMode = PickingMode.Ignore };
             var probe = new VisualElement { pickingMode = PickingMode.Ignore };
             probe.AddToClassList(cls);
-            container.Add(blank);
-            container.Add(probe);
+            ChildListWrites.Add(container, blank);
+            ChildListWrites.Add(container, probe);
             container.RegisterCallback<GeometryChangedEvent>(_ => Finish(container, blank, probe, cls, cache));
-            host.Add(container);
+            ChildListWrites.Add(host, container);
         }
 
         private static void Finish(VisualElement container, VisualElement blank, VisualElement probe, string cls,
@@ -160,7 +160,7 @@ namespace Velvet
                 return;
             }
             var properties = Differing(blank, probe);
-            container.RemoveFromHierarchy();
+            ChildListWrites.RemoveFromHierarchy(container);
             cache.Known[cls] = properties;
             if (!cache.Waiting.Remove(cls, out var waiting))
             {
