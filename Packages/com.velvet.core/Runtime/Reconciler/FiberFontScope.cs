@@ -19,8 +19,8 @@ namespace Velvet
     // With no font-<name> ancestor, an inheritor takes the family that holds the font its parent resolves to, and
     // that font alone where no family holds it: a font an author's stylesheet or inline style gives an element above
     // it is what a weight or italic class keeps. That font is read from the parent's resolvedStyle, so it is read
-    // again at every update of the panel (Tick) for as long as such an inheritor exists, there being no event of its
-    // own for a stylesheet giving an ancestor one.
+    // again at every update of the panel (Tick) for as long as an inheritor with no named family exists, there being no
+    // event of its own for a stylesheet giving an ancestor one.
     //
     // A change to the registry resolves every element the tables hold again: one naming a family, or inheriting a
     // named one, at once; one inheriting its parent's font once that font has been read again.
@@ -63,7 +63,9 @@ namespace Velvet
         private readonly System.Predicate<VisualElement> _settle;
         private readonly List<VisualElement> _buffer = new();
         private VisualElement? _mountRoot;
+        private VisualElement? _anchor;
         private IVisualElementScheduledItem? _follow;
+        private bool _wantsFollow;
 
         static FiberFontScope()
         {
@@ -105,8 +107,11 @@ namespace Velvet
                 else
                 {
                     Inheritors[element] = new Inheritor(entry.Intent, null, entry.Seen, ChangeWait);
+                    _wantsFollow = true;
                 }
             }
+
+            Follow();
         }
 
         internal string? InheritedFamily(VisualElement element)
@@ -142,6 +147,17 @@ namespace Velvet
             var foreign = named == null && seen != null && family == null;
             StyleFontResolver.ApplyResolved(element, intent, family, foreign);
             Inheritors[element] = new Inheritor(intent, named, seen, 0);
+            _wantsFollow |= named == null;
+        }
+
+        // Starts the per-update read once an inheritor with no named family exists and an anchor to schedule it on is known.
+        private void Follow()
+        {
+            if (_wantsFollow && _follow == null && _anchor != null)
+            {
+                _follow = _anchor.schedule.Execute(Tick).Every(0);
+                _wantsFollow = false;
+            }
         }
 
         // Resolves the element's font request and records it. created is true on the create path, where
@@ -199,47 +215,53 @@ namespace Velvet
         // ancestor says nothing about the family that ancestor will be given.
         internal void Drain(VisualElement? mountRoot)
         {
-            if (Inheritors.Count > 0 && _follow == null && mountRoot != null)
+            _anchor ??= mountRoot;
+            if (_pending.Count > 0)
             {
-                _follow = mountRoot.schedule.Execute(Tick).Every(0);
+                _mountRoot = mountRoot;
+                _pending.RemoveWhere(_settle);
+                _mountRoot = null;
             }
 
-            if (_pending.Count == 0)
-            {
-                return;
-            }
-
-            _mountRoot = mountRoot;
-            _pending.RemoveWhere(_settle);
-            _mountRoot = null;
+            Follow();
         }
 
-        // Reads again the font each inheritor with no named family takes from its parent. The follow stops once no
-        // inheritor is left, which is also where a disposed context's emptied tables leave it.
+        // Reads again the font each inheritor with no named family takes from its parent, and stops once none is left,
+        // which is also where a disposed context's emptied tables leave it.
         private void Tick()
         {
-            if (Inheritors.Count == 0)
+            _buffer.Clear();
+            var unnamed = false;
+            foreach (var pair in Inheritors)
+            {
+                var entry = pair.Value;
+                if (entry.Named != null)
+                {
+                    continue;
+                }
+
+                unnamed = true;
+                if (entry.Wait > 0 || ParentFont(pair.Key) != entry.Seen)
+                {
+                    _buffer.Add(pair.Key);
+                }
+            }
+
+            if (!unnamed)
             {
                 _follow?.Pause();
                 _follow = null;
                 return;
             }
 
-            _buffer.Clear();
-            _buffer.AddRange(Inheritors.Keys);
             foreach (var element in _buffer)
             {
                 var entry = Inheritors[element];
-                if (entry.Named != null)
-                {
-                    continue;
-                }
-
                 if (entry.Wait == 1 || ParentFont(element) != entry.Seen)
                 {
                     Resolve(element, entry.Intent);
                 }
-                else if (entry.Wait > 1)
+                else
                 {
                     Inheritors[element] = new Inheritor(entry.Intent, null, entry.Seen, entry.Wait - 1);
                 }

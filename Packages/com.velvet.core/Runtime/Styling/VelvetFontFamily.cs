@@ -88,9 +88,12 @@ namespace Velvet
             float stretch) =>
             Match(requested, italicFace, stretch);
 
-        // Whether asset is the upright or italic asset an entry holds directly; an entry named by address is not read.
-        internal bool Holds(FontAsset asset) =>
-            weights != null && weights.Exists(entry => entry != null && (entry.upright == asset || entry.italic == asset));
+        // Whether asset is one an entry holds, a direct reference winning over its address as TryGetAsset has it; load
+        // gives the asset an address resolves to.
+        internal bool Holds(FontAsset asset, Func<string?, FontAsset?> load) =>
+            weights != null && weights.Exists(entry => entry != null
+                && ((entry.upright != null ? entry.upright : load(entry.uprightAddress)) == asset
+                    || (entry.italic != null ? entry.italic : load(entry.italicAddress)) == asset));
 
         private VelvetFontWeightEntry? Match(VelvetFontWeight requested, bool? italicFace, float stretch)
         {

@@ -158,5 +158,33 @@ namespace Velvet.Tests
             // Assert
             Assert.That(Target(root).style.unityFontDefinition.value.fontAsset, Is.SameAs(s_serifBoldReplacement));
         }
+
+        private static void SeedAddress(string key, FontAsset asset)
+        {
+            var field = typeof(VelvetFonts).GetField("_addrCache",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+            ((System.Collections.Generic.Dictionary<string, FontAsset>)field.GetValue(null))[key] = asset;
+        }
+
+        [Test]
+        public void Given_AFamilyRegisteredByAddressOnly_When_ABoldLabelMountsUnderTheDefaultFamily_Then_TheLabelResolvesThatFamilysBold()
+        {
+            // Arrange
+            SeedAddress("Fonts/Sans", s_sans);
+            SeedAddress("Fonts/SansBold", s_sansBold);
+            VelvetFonts.Register(new VelvetFontFamily("sans",
+                new VelvetFontWeightEntry { weight = VelvetFontWeight.Normal, uprightAddress = "Fonts/Sans" },
+                new VelvetFontWeightEntry { weight = VelvetFontWeight.Bold, uprightAddress = "Fonts/SansBold" }));
+            VelvetFonts.DefaultFamily = "sans";
+            var root = new VisualElement();
+            _host.Root.Add(root);
+
+            // Act
+            _mounted = V.Mount(root, BoldLabel());
+            RunAFrame();
+
+            // Assert
+            Assert.That(Target(root).style.unityFontDefinition.value.fontAsset, Is.SameAs(s_sansBold));
+        }
     }
 }

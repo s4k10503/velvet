@@ -6,4 +6,5 @@
   emulated on it, where the face was taken from `VelvetFonts.DefaultFamily` before.
 - A change to the font registry, whether `DefaultFamily` changing, a family registered or unregistered or the registry
   cleared, now reaches the elements whose font a `font-<name>` or weight class resolved, which kept the asset they
-  first resolved until they were created again.
+  first resolved until they were created again. The elements that inherit their parent's font are
+  read again at each update of their panel only while one with no `font-<name>` ancestor exists.

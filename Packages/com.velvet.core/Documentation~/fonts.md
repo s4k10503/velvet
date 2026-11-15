@@ -137,8 +137,8 @@ element's parent resolves to, read after the panel has resolved its styles, so a
 style gives an element above it is the family the class keeps; a font no registered family holds is kept, and the
 weight or italic is emulated on it. `DefaultFamily` applies where the parent resolves to no font. A root whose
 `font-<name>` class Velvet did not render (a portal target, layer root or world-space panel root, or the root of
-another `V.Mount`) is not seen, so under one register the same family as the default as well, or `font-bold` below it
-selects the default family's `Bold` entry.
+another `V.Mount`) names no family: a weight class below it takes the family that holds the font that root resolves
+to, the default family's where nothing else gives it one.
 `InheritedFontFamilyPanelTests` and `FontFamilyFacesPanelTests` pin the inheritance.
 
 Glyphs the assigned asset lacks still go through TextCore's fallback chain, which
