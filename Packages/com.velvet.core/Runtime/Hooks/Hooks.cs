@@ -738,7 +738,7 @@ namespace Velvet
 
             if (index < fiber.BlockerSlots.Count)
             {
-                var existing = fiber.BlockerSlots[index];
+                var existing = (RouteBlockerSlot)fiber.BlockerSlots[index];
 
                 // Compare against the committed deps. The registration change is staged and made at the
                 // render-phase settle, so a discarded attempt cannot leave its throwaway predicate closure
@@ -762,7 +762,7 @@ namespace Velvet
                     RequestRender(fiber);
                 }
             };
-            fiber.BlockerSlots.Add(new HookBlockerSlot
+            fiber.BlockerSlots.Add(new RouteBlockerSlot
             {
                 State = state,
                 NextDeps = deps,

@@ -180,24 +180,8 @@ namespace Velvet
             for (var i = 0; i < slots.Count; i++)
             {
                 var slot = slots[i];
-                var predicate = slot.NextPredicate;
-                if (predicate != null)
-                {
-                    if (slot.Registration != null && ReferenceEquals(slot.LastRouter, slot.NextRouter))
-                    {
-                        // Swapped in place rather than re-registered: the router consults the Blocker
-                        // registered last, and a re-registration would move this one to the end.
-                        RouteBlockerManager.UpdatePredicate(slot.Registration, predicate);
-                    }
-                    else
-                    {
-                        slot.Registration?.Dispose();
-                        slot.Registration = slot.NextRouter!.RouteBlockerManager.Register(predicate, slot.State);
-                    }
-                }
+                slot.Commit();
                 slot.LastDeps = slot.NextDeps;
-                slot.LastRouter = slot.NextRouter;
-                slot.NextPredicate = null;
             }
         }
     }

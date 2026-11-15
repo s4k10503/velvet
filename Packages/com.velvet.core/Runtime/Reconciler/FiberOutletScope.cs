@@ -10,13 +10,14 @@ namespace Velvet
         internal readonly struct Entry
         {
             internal object RouteIdentity { get; init; }
-            internal IRouteScope Scope { get; init; }
+            internal System.IDisposable Scope { get; init; }
         }
 
         // Called from the Outlet's render for the route it is about to render. Reaching a route the held
-        // scope was not built for is what replaces it.
-        internal static void SyncRenderingOutletScope(RouteDefinition? route, object routeIdentity,
-            IRouteScopeFactory? scopeFactory)
+        // scope was not built for is what replaces it. What the scope is, and what builds it, is the caller's;
+        // the state is handed to the builder rather than captured by a closure the render would allocate.
+        internal static void SyncRenderingOutletScope<TState>(TState state, object routeIdentity,
+            System.Func<TState, System.IDisposable?> createScope)
         {
             var fiber = FiberAmbientStack.Current;
             var ctx = fiber?.Reconciler?.Context;
@@ -37,7 +38,7 @@ namespace Velvet
                 Release(ctx, fiber, held);
             }
 
-            var scope = CreateOutletScope(ctx, route, scopeFactory);
+            var scope = CreateOutletScope(ctx, state, createScope);
             if (scope != null)
             {
                 ctx.OutletScopes[fiber] = new Entry { RouteIdentity = routeIdentity, Scope = scope };
@@ -87,16 +88,12 @@ namespace Velvet
         // render reads the factory, so a boundary reaches the failure as it reaches a render error, and an
         // application that wants a scope-less route refused still gets to refuse it. A drop-and-log -- what
         // Release above does with the departing scope's Dispose -- would have decided that for it.
-        private static IRouteScope? CreateOutletScope(ReconcilerContext ctx, RouteDefinition? route,
-            IRouteScopeFactory? scopeFactory)
+        private static System.IDisposable? CreateOutletScope<TState>(ReconcilerContext ctx, TState state,
+            System.Func<TState, System.IDisposable?> createScope)
         {
-            if (scopeFactory == null)
-            {
-                return null;
-            }
             try
             {
-                return scopeFactory.CreateScope(route, null);
+                return createScope(state);
             }
             catch (System.Exception exception)
             {
