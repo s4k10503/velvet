@@ -33,7 +33,7 @@ namespace Velvet
         }
 
         // The model of a container that has one, as it stands: a read that never builds or checks. Private until a
-        // reader moves onto the model; the tests reach it by reflection (RowModelAccess).
+        // caller needs one that does not build; the tests reach it by reflection (RowModelAccess).
         private static ContainerRows? Peek(VisualElement container)
             => s_rows.TryGetValue(container, out var rows) ? rows : null;
 
@@ -145,6 +145,21 @@ namespace Velvet
             if (full ? Compare(rows, container) == null : Agrees(rows, container, -1)) return;
             rows.Clear();
             Fill(rows, container);
+        }
+
+        // What LogicalChildSlots.Count and ToLogical answer, from the model of the container's content element, which is
+        // built here when the container has children and no model.
+        internal static int RenderedCount(VisualElement container)
+        {
+            var content = ContentOf(container);
+            return content.hierarchy.childCount == 0 ? 0 : Synced(content, -1).RenderedCount;
+        }
+
+        internal static int ToLogical(VisualElement container, int physical)
+        {
+            var content = ContentOf(container);
+            var count = content.hierarchy.childCount;
+            return count == 0 ? 0 : Synced(content, Math.Min(physical, count) - 1).ToLogical(physical);
         }
 
         // For a role or class change that writes no child list, which flips what Classify answers for a child that

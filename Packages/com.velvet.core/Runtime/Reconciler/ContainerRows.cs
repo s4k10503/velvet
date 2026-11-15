@@ -182,7 +182,7 @@ namespace Velvet
         }
 
         // LogicalChildSlots.ToLogical, over the model.
-        private int ToLogical(int physical)
+        internal int ToLogical(int physical)
         {
             if (physical <= 0) return 0;
             var limit = Math.Min(physical, _total);

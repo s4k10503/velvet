@@ -9,8 +9,8 @@ using UnityEngine.UIElements;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// <see cref="ContainerRows"/> answers what <see cref="LogicalChildSlots"/> answers by scanning the live child
-    /// list, for a container written only through <see cref="ChildListWrites"/>. Every case drives random writes over
+    /// <see cref="ContainerRows"/> answers what a scan of the live child list answers (<see cref="LogicalChildSlots"/>
+    /// for the conversions it still scans, a walk in this fixture for the count and <c>ToLogical</c>), for a container written only through <see cref="ChildListWrites"/>. Every case drives random writes over
     /// real <c>VisualElement</c>s — rendered children, a trailing-kind marker and a leading-kind marker, inserted,
     /// removed, moved, sorted and reclassified — and compares one answer with the scan's after each write. Sizes
     /// 12 and 700 put one block and several blocks under the same writes.
@@ -121,7 +121,7 @@ namespace Velvet.Tests
         {
             for (var physical = -1; physical <= parent.childCount + 1; physical++)
             {
-                var expected = LogicalChildSlots.ToLogical(parent, physical);
+                var expected = ScanToLogical(parent, physical);
                 var actual = RowModelAccess.ToLogical(rows, physical);
                 if (expected != actual) return $"ToLogical({physical}) {actual}, scan {expected}";
             }
@@ -129,9 +129,23 @@ namespace Velvet.Tests
         }
 
         private static string? CompareCount(VisualElement parent, ContainerRows rows)
-            => rows.RenderedCount == LogicalChildSlots.Count(parent)
+            => rows.RenderedCount == ScanCount(parent)
                 ? null
-                : $"RenderedCount {rows.RenderedCount}, scan {LogicalChildSlots.Count(parent)}";
+                : $"RenderedCount {rows.RenderedCount}, scan {ScanCount(parent)}";
+
+        // A walk of the live child list: LogicalChildSlots.Count and ToLogical read the model, so comparing the model
+        // with them would compare it with itself.
+        private static int ScanCount(VisualElement parent) => ScanToLogical(parent, parent.childCount);
+
+        private static int ScanToLogical(VisualElement parent, int physical)
+        {
+            var rendered = 0;
+            for (var i = 0; i < Math.Min(physical, parent.childCount); i++)
+            {
+                if (!LogicalChildSlots.IsInvisible(parent[i])) rendered++;
+            }
+            return rendered;
+        }
 
         private static string? ComparePhysicalIndexOf(VisualElement parent, ContainerRows rows)
         {
