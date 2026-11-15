@@ -113,8 +113,7 @@ namespace Velvet
         }
 
         // The rows Portal patches have recorded as their own on target so far, so a Portal patched around another on
-        // the same target leaves them out of its own length. Only a window open on a Portal of target reads it, and that
-        // Portal holds a range there, so the entry goes with the last range and a target no range is on keeps none.
+        // the same target leaves them out of its own length. The entry goes with the last range on target.
         internal int GrowthOn(VisualElement target) => _growth.GetValueOrDefault(target);
 
         internal void AddGrowth(VisualElement target, int by)
