@@ -602,7 +602,7 @@ namespace Velvet
         {
             var clipped = _ctx.ClipPathBindings.TryGetValue(element, out var clip) && !clip.Correction;
             var wants = !clipped && node.LayoutId != null && MotionLayoutIdDriver.Corrects(appliedClasses)
-                && MotionLayoutIdDriver.HasLayoutIdAncestor(element.hierarchy.parent, _ctx);
+                && MotionLayoutIdDriver.HasLayoutIdAncestor(ChildListWrites.ParentOf(element), _ctx);
             if (wants == _appliers.HasLayoutIdCorrection(element))
             {
                 if (wants) ClipPathLayoutBox.SyncClasses(element);
@@ -3295,7 +3295,7 @@ namespace Velvet
         private static void ReevaluateHasOnAncestorChain(
             ReconcilerContext ctx, VisualElement root, bool hasClass, bool hasManip)
         {
-            for (var e = root; e != null; e = e.parent)
+            for (var e = root; e != null; e = ChildListWrites.ParentOf(e))
             {
                 if (hasClass && ctx.HasClassVariants.TryGetValue(e, out var rules))
                 {

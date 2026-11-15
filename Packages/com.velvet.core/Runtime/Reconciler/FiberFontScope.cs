@@ -121,7 +121,7 @@ namespace Velvet
                 return null;
             }
 
-            for (var ancestor = element.parent; ancestor != null; ancestor = ancestor.parent)
+            for (var ancestor = ChildListWrites.ParentOf(element); ancestor != null; ancestor = ChildListWrites.ParentOf(ancestor))
             {
                 if (Families.TryGetValue(ancestor, out var named))
                 {
@@ -135,7 +135,7 @@ namespace Velvet
         // The font the element's parent resolves to; null before the panel has resolved one.
         private static FontAsset? ParentFont(VisualElement element)
         {
-            var asset = element.hierarchy.parent?.resolvedStyle.unityFontDefinition.fontAsset;
+            var asset = ChildListWrites.ParentOf(element)?.resolvedStyle.unityFontDefinition.fontAsset;
             return LineBoxFont.SourceOf(asset) ?? asset;
         }
 
@@ -286,9 +286,9 @@ namespace Velvet
         private static bool IsPlaced(VisualElement element, VisualElement? mountRoot)
         {
             var top = element;
-            while (top.parent != null)
+            while (ChildListWrites.ParentOf(top) != null)
             {
-                top = top.parent;
+                top = ChildListWrites.ParentOf(top);
             }
 
             return top.panel != null || ReferenceEquals(top, mountRoot);

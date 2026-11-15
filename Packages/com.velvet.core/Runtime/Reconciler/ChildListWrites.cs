@@ -593,11 +593,6 @@ namespace Velvet
         // For a reader of container's live child list: the recorded writes of the container apply first.
         internal static void SyncLive(VisualElement container) => FlushIfPending(ContentOf(container), null);
 
-        // For a walk over subtrees the pass has not finished writing.
-        internal static void SyncAll()
-        {
-            if (s_ops.Count > 0 && !s_applying) ApplyRecorded();
-        }
 
         private static void FlushIfPending(VisualElement? container, VisualElement? child)
         {

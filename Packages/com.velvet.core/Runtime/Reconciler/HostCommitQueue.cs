@@ -151,17 +151,13 @@ namespace Velvet
         // A Suspense's hide of one of its outermost host elements.
         internal void Hide(VisualElement element)
         {
-            ChildListWrites.SyncAll();
             SuspenseHiddenElements.Hide(element);
             _ctx.DetachRefsWhileHidden(element);
         }
 
         internal void ApplyOffscreenChanges(List<(int Row, VisualElement Element, bool Hidden)>? displayChanges,
             List<(ComponentFiber Fiber, bool Hidden)>? offscreenChanges)
-        {
-            ChildListWrites.SyncAll();
-            SuspenseOffscreenCommit.Apply(_ctx, displayChanges, offscreenChanges);
-        }
+            => SuspenseOffscreenCommit.Apply(_ctx, displayChanges, offscreenChanges);
 
         // Where a walk placed a component's rows.
         internal void PlaceRows(ComponentFiber fiber, int slotStart, int count)
@@ -188,10 +184,7 @@ namespace Velvet
         // old side reached and its new side did not, whose disposal comes after them (DisposeOrphans), and the rows
         // it removes.
         internal DeletionCommit BeginDeletion(VisualElement? container, int slotStart, OldSlotOccupants occupants)
-        {
-            ChildListWrites.SyncAll();
-            return DeletionCommit.Begin(_ctx, _cleaner, container, slotStart, occupants);
-        }
+            => DeletionCommit.Begin(_ctx, _cleaner, container, slotStart, occupants);
         internal void DisposeOrphans(List<ComponentFiber> oldFibers, HashSet<ComponentFiber> newFibers)
         {
             if (oldFibers.Count == 0) return;

@@ -324,7 +324,7 @@ namespace Velvet
         // element whose facts changed before the drain (a custom property that stopped resolving) takes its slot.
         internal static void ResolveQueuedMount(ReconcilerContext ctx, VisualElement placeholder, ZLayerMountNode node)
         {
-            var parent = placeholder.parent;
+            var parent = ChildListWrites.ParentOf(placeholder);
             // The parent alone cannot say the pair was torn down: a placeholder inside an element whose creation
             // failed is still parented by that element when this drains. The mapping can, since TakeReal removes it
             // before the real element is pooled.
@@ -478,11 +478,11 @@ namespace Velvet
             }
             var placeholder = PlaceholderOf(ctx, real);
             // Still queued: the drain reads the facts again.
-            if (placeholder != null && real.parent == null)
+            if (placeholder != null && ChildListWrites.ParentOf(real) == null)
             {
                 return;
             }
-            var parent = placeholder?.parent ?? real.parent;
+            var parent = placeholder != null ? ChildListWrites.ParentOf(placeholder) : ChildListWrites.ParentOf(real);
             if (parent == null)
             {
                 return;
@@ -530,7 +530,8 @@ namespace Velvet
 
         private static void MarkGhostParent(ReconcilerContext ctx, VisualElement ghost)
         {
-            var parent = PlaceholderOf(ctx, ghost)?.parent ?? ghost.parent;
+            var ghostPlaceholder = PlaceholderOf(ctx, ghost);
+            var parent = ghostPlaceholder != null ? ChildListWrites.ParentOf(ghostPlaceholder) : ChildListWrites.ParentOf(ghost);
             if (parent != null)
             {
                 MarkPending(ctx, parent);
@@ -545,14 +546,14 @@ namespace Velvet
                 : null;
 
         private static VisualElement? ParentOf(ReconcilerContext ctx, VisualElement real)
-            => ctx.ZLayerMembers.TryGetValue(real, out var member) ? member.StackingParent : real.parent;
+            => ctx.ZLayerMembers.TryGetValue(real, out var member) ? member.StackingParent : ChildListWrites.ParentOf(real);
 
         // Relocates real, still at its declared slot, out of it: a fresh placeholder takes the slot at the same
         // physical index (real becomes invisible to the slot arithmetic in the same step, so the placeholder holds
         // the slot). Nothing leaves the panel; Arrange sorts real into its band.
         private static void RelocateFromOrdinarySlot(ReconcilerContext ctx, VisualElement real, StackingFacts facts)
         {
-            var parent = real.parent!;
+            var parent = ChildListWrites.ParentOf(real)!;
             var placeholder = CreatePlaceholder();
             Hold(placeholder, Role.Slot, real);
             Hold(real, RoleFor(facts.Z), null, placeholder);
@@ -568,7 +569,7 @@ namespace Velvet
         // is over.
         private static void RelocateToOrdinarySlot(ReconcilerContext ctx, VisualElement placeholder, VisualElement real)
         {
-            var parent = placeholder.parent!;
+            var parent = ChildListWrites.ParentOf(placeholder)!;
             Exchange(parent, placeholder, real);
             ctx.NoteSlotOccupantChanged(placeholder, real);
             Retire(ctx, placeholder);
@@ -599,7 +600,7 @@ namespace Velvet
             ctx.PinnedGhosts.Remove(real);
             Release(placeholder);
             ctx.ZLayerMembers.Remove(real);
-            var parent = real.parent;
+            var parent = ChildListWrites.ParentOf(real);
             if (parent == null)
             {
                 Release(real);
@@ -626,7 +627,7 @@ namespace Velvet
                 index = ChildListWrites.PhysicalIndexOf(parent, member.Placeholder);
                 return index >= 0;
             }
-            parent = element.parent;
+            parent = ChildListWrites.ParentOf(element);
             index = parent == null ? -1 : ChildListWrites.PhysicalIndexOf(parent, element);
             return parent != null && index >= 0;
         }
@@ -641,7 +642,7 @@ namespace Velvet
             }
             foreach (var retired in ctx.PendingZLayerRemovals)
             {
-                if (retired.parent is { } parent)
+                if (ChildListWrites.ParentOf(retired) is { } parent)
                 {
                     Realign(ctx, parent);
                     ChildListWrites.RemoveFromHierarchy(retired);
@@ -701,7 +702,7 @@ namespace Velvet
             s_arrivals.AddRange(ctx.StackingArrivals.Keys);
             foreach (var real in s_arrivals)
             {
-                var parent = (PlaceholderOf(ctx, real) ?? real).hierarchy.parent;
+                var parent = ChildListWrites.ParentOf(PlaceholderOf(ctx, real) ?? real);
                 if (parent != null)
                 {
                     ctx.StackingParents.TryAdd(parent, default);
@@ -944,7 +945,7 @@ namespace Velvet
                 entry.Reset(child, real, entries.Count);
                 entries.Add(entry);
                 // A placeholder whose element never joined the parent (a drain an abort cut short) keeps it.
-                if (!ReferenceEquals(real, child) && !ReferenceEquals(real.parent, parent))
+                if (!ReferenceEquals(real, child) && !ReferenceEquals(ChildListWrites.ParentOf(real), parent))
                 {
                     entry.Detached = true;
                     continue;
@@ -1379,7 +1380,7 @@ namespace Velvet
             s_retiredHere.Clear();
             foreach (var retired in ctx.PendingZLayerRemovals)
             {
-                if (ReferenceEquals(retired.parent, parent))
+                if (ReferenceEquals(ChildListWrites.ParentOf(retired), parent))
                 {
                     s_retiredHere.Add(retired);
                 }

@@ -29,7 +29,7 @@ namespace Velvet
         // wrap/unwrap during the patch swaps which element occupies the slot.
         internal VisualElement ResolveOuter(VisualElement element)
         {
-            var parent = element.parent;
+            var parent = ChildListWrites.ParentOf(element);
             return parent != null
                 && _ctx.WrapperToInnerMap.TryGetValue(parent, out var inner)
                 && ReferenceEquals(inner, element)
@@ -59,7 +59,7 @@ namespace Velvet
         // contract asks.
         internal static void RemoveWrapperRestoreInner(VisualElement element, VisualElement wrapper)
         {
-            var parent = wrapper.parent;
+            var parent = ChildListWrites.ParentOf(wrapper);
             if (parent == null)
             {
                 ChildListWrites.RemoveFromHierarchy(element);
@@ -113,7 +113,7 @@ namespace Velvet
                 return true;
             }
             if (!StyleInputBoxSurface.IsBox(element)
-                || !ctx.VariantGateClasses.TryGetValue(element.parent, out var control)
+                || !ctx.VariantGateClasses.TryGetValue(ChildListWrites.ParentOf(element), out var control)
                 || control.Reconciled == null)
             {
                 return false;

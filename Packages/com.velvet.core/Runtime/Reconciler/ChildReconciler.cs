@@ -348,7 +348,7 @@ namespace Velvet
                 // the rollback), and an ErrorBoundary abort mid-drain reaches the later entries
                 // with the pass already dead. Mounting would create — or populate — a host for a
                 // subtree that no longer exists, so skip without touching any host.
-                if (_ctx.IsAborted || placeholder.parent == null)
+                if (_ctx.IsAborted || ChildListWrites.ParentOf(placeholder) == null)
                 {
                     continue;
                 }

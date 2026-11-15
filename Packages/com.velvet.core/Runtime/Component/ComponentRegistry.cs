@@ -597,7 +597,7 @@ namespace Velvet
         // The row of the container that holds anchor, or -1 for an anchor that is the container or outside it.
         private static int RowHolding(VisualElement? anchor, VisualElement container, Dictionary<VisualElement, int> rowOf)
         {
-            for (var ve = anchor; ve != null && ve != container; ve = ve.parent)
+            for (var ve = anchor; ve != null && ve != container; ve = ChildListWrites.ParentOf(ve))
             {
                 if (rowOf.TryGetValue(ve, out var row)) return row;
             }
@@ -716,10 +716,9 @@ namespace Velvet
             {
                 (into ??= new List<ComponentFiber>()).Add(wrapped);
             }
-            var hierarchy = element.hierarchy;
-            for (var i = 0; i < hierarchy.childCount; i++)
+            for (var i = 0; i < ChildListWrites.HierarchyCount(element); i++)
             {
-                CollectFibersInSubtree(hierarchy[i], ref into);
+                CollectFibersInSubtree(ChildListWrites.HierarchyChild(element, i), ref into);
             }
         }
 
@@ -770,7 +769,7 @@ namespace Velvet
 
         private static bool IsInsideAny(VisualElement? mountPoint, HashSet<VisualElement> roots)
         {
-            for (var ve = mountPoint; ve != null; ve = ve.parent)
+            for (var ve = mountPoint; ve != null; ve = ChildListWrites.ParentOf(ve))
             {
                 if (roots.Contains(ve)) return true;
             }

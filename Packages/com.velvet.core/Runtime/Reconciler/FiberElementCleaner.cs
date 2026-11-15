@@ -799,9 +799,10 @@ namespace Velvet
         // all children are processed.
         private void CleanupDescendants(VisualElement element, VisualElement? excluded = null)
         {
-            for (var i = 0; i < element.childCount; i++)
+            var content = element.contentContainer;
+            for (var i = 0; i < ChildListWrites.HierarchyCount(content); i++)
             {
-                var child = element.ElementAt(i);
+                var child = ChildListWrites.HierarchyChild(content, i);
                 if (child == excluded)
                 {
                     continue;
