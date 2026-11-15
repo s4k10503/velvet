@@ -152,26 +152,40 @@ namespace Velvet
         {
             var slots = fiber.ImperativeHandleSlots;
             if (slots == null) return;
-            for (var i = 0; i < slots.Count; i++)
+            RunImperativeHandlesBefore(slots, 0, int.MaxValue);
+        }
+
+        // The handles declared ahead of the layout effect at the given index, from next on: React's
+        // mountImperativeHandle is a layout effect, so a handle sets up at its place among them. Returns the
+        // index of the first handle not run.
+        internal static int RunImperativeHandlesBefore(
+            List<HookImperativeHandleSlot> slots, int next, int layoutEffectIndex)
+        {
+            while (next < slots.Count && slots[next].LayoutEffectsBefore <= layoutEffectIndex)
             {
-                var slot = slots[i];
-                if (slot.NextFactory == null) continue;
-                // Adopt a swapped ref atomically with the write below: detach the previous parent ref,
-                // point at the new one, then write the (recomputed or committed) handle in the same step.
-                if (!ReferenceEquals(slot.HandleRef, slot.NextHandleRef))
-                {
-                    slot.HandleRef?.Set(null);
-                    slot.HandleRef = slot.NextHandleRef;
-                }
-                if (slot.NextNeedsRecompute)
-                {
-                    slot.Handle = slot.NextFactory();
-                }
-                slot.HandleRef?.Set(slot.Handle);
-                slot.LastDeps = slot.NextDeps;
-                slot.Factory = slot.NextFactory;
-                slot.NextFactory = null;
+                RunImperativeHandleSlot(slots[next++]);
             }
+            return next;
+        }
+
+        private static void RunImperativeHandleSlot(HookImperativeHandleSlot slot)
+        {
+            if (slot.NextFactory == null) return;
+            // Adopt a swapped ref atomically with the write below: detach the previous parent ref,
+            // point at the new one, then write the (recomputed or committed) handle in the same step.
+            if (!ReferenceEquals(slot.HandleRef, slot.NextHandleRef))
+            {
+                slot.HandleRef?.Set(null);
+                slot.HandleRef = slot.NextHandleRef;
+            }
+            if (slot.NextNeedsRecompute)
+            {
+                slot.Handle = slot.NextFactory();
+            }
+            slot.HandleRef?.Set(slot.Handle);
+            slot.LastDeps = slot.NextDeps;
+            slot.Factory = slot.NextFactory;
+            slot.NextFactory = null;
         }
 
         internal static void CommitBlockerSlots(List<HookBlockerSlot>? slots)

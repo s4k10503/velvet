@@ -26,11 +26,17 @@ namespace Velvet
         // every fiber FIRST, then a tree-wide setup phase — without re-running the cleanups that
         // RunPendingEffects bundles in. Callers that want the single-fiber cleanup→setup
         // pair should call RunPendingEffects instead.
-        internal static void RunFactoriesAndClear(ComponentFiber fiber, List<HookEffectSlot>? pending, bool mountDoubleInvoke = false)
+        internal static void RunFactoriesAndClear(
+            ComponentFiber fiber, List<HookEffectSlot>? pending, bool mountDoubleInvoke = false,
+            bool withImperativeHandles = false)
         {
-            if (pending == null || pending.Count == 0) return;
+            if (pending == null || pending.Count == 0)
+            {
+                if (withImperativeHandles) FiberHookCommit.RunImperativeHandleSlots(fiber);
+                return;
+            }
 
-            RunFactories(fiber, pending);
+            RunFactories(fiber, pending, withImperativeHandles);
 
 #if UNITY_EDITOR
             // StrictMode diagnostic: on mount, run an extra cleanup -> setup
@@ -41,18 +47,25 @@ namespace Velvet
             if (mountDoubleInvoke && FiberStrictMode.Enabled)
             {
                 RunCleanups(fiber, pending);
-                RunFactories(fiber, pending);
+                RunFactories(fiber, pending, withImperativeHandles: false);
             }
 #endif
 
             pending.Clear();
         }
 
-        private static void RunFactories(ComponentFiber fiber, List<HookEffectSlot> pending)
+        private static void RunFactories(ComponentFiber fiber, List<HookEffectSlot> pending, bool withImperativeHandles)
         {
+            var handles = withImperativeHandles ? fiber.ImperativeHandleSlots : null;
+            var nextHandle = 0;
             for (var i = 0; i < pending.Count; i++)
             {
                 var entry = pending[i];
+                if (handles != null)
+                {
+                    nextHandle = FiberHookCommit.RunImperativeHandlesBefore(
+                        handles, nextHandle, fiber.LayoutEffects!.IndexOf(entry));
+                }
                 try
                 {
                     entry.Cleanup = entry.EffectFactory?.Invoke();
@@ -66,6 +79,7 @@ namespace Velvet
                     if (fiber.IsDisposed) return;
                 }
             }
+            if (handles != null) FiberHookCommit.RunImperativeHandlesBefore(handles, nextHandle, int.MaxValue);
         }
 
         internal static void RunCleanups(ComponentFiber fiber, List<HookEffectSlot>? entries)
