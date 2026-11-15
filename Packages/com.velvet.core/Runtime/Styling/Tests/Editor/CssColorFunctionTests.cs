@@ -23,144 +23,33 @@ namespace Velvet.Tests
 
         private static bool Parses(string value) => StyleColorValueParser.TryParseColor(value.AsSpan(), out _);
 
-        [Test]
-        public void Given_SpaceSyntaxRgbWithSlashAlpha_When_Parsed_Then_ChannelsAndAlphaResolve()
+        [TestCase("rgb(255_0_0_/_50%)", 1f, 0f, 0f, 0.5f, TestName = "Given_SpaceSyntaxRgbWithSlashAlpha_When_Parsed_Then_ChannelsAndAlphaResolve")]
+        [TestCase("rgb(100%_50%_0%)", 1f, 0.5f, 0f, 1f, TestName = "Given_RgbPercentages_When_Parsed_Then_HundredPercentIsTheFullChannel")]
+        [TestCase("rgb(none_255_0)", 0f, 1f, 0f, 1f, TestName = "Given_ANoneRgbComponent_When_Parsed_Then_ItReadsAsZero")]
+        [TestCase("rgb(0_0_255/0.25)", 0f, 0f, 1f, 0.25f, TestName = "Given_ASlashWithoutSpaces_When_Parsed_Then_TheAlphaStillResolves")]
+        [TestCase("rgb(0_0_255_/_none)", 0f, 0f, 1f, 0f, TestName = "Given_ANoneAlpha_When_Parsed_Then_ItReadsAsZero")]
+        [TestCase("rgb(0_0_255_/_1.5)", 0f, 0f, 1f, 1f, TestName = "Given_AnAlphaAboveOne_When_Parsed_Then_ItIsClampedToOne")]
+        [TestCase("rgb(300_-20_0)", 1f, 0f, 0f, 1f, TestName = "Given_SpaceSyntaxChannelsOutsideTheRange_When_Parsed_Then_TheyAreClamped")]
+        [TestCase("rgb(255,0,0,0.25)", 1f, 0f, 0f, 0.25f, TestName = "Given_LegacyRgbWithAFourthArgument_When_Parsed_Then_ItIsTheAlpha")]
+        [TestCase("rgba(0,0,255)", 0f, 0f, 1f, 1f, TestName = "Given_LegacyRgbaWithThreeArguments_When_Parsed_Then_ItIsOpaque")]
+        [TestCase("rgb(300,-20,0,2)", 1f, 0f, 0f, 1f, TestName = "Given_LegacyChannelsOutsideTheRange_When_Parsed_Then_TheyAreClamped")]
+        [TestCase("rgb(100%,_0%,_50%,_50%)", 1f, 0f, 0.5f, 0.5f, TestName = "Given_LegacyPercentages_When_Parsed_Then_HundredPercentIsTheFullChannel")]
+        [TestCase("rgb(127.5,0,0)", 0.5f, 0f, 0f, 1f, TestName = "Given_AFractionalChannel_When_Parsed_Then_ItIsKept")]
+        [TestCase("rgb(+2.55e2_0_0)", 1f, 0f, 0f, 1f, TestName = "Given_ASignedExponentNumber_When_Parsed_Then_ItIsANumber")]
+        [TestCase("RGB(255_0_0)", 1f, 0f, 0f, 1f, TestName = "Given_AnUppercaseFunctionName_When_Parsed_Then_ItIsRead")]
+        [TestCase("hsl(210_40%_50%)", 0.3f, 0.5f, 0.7f, 1f, TestName = "Given_SpaceSyntaxHsl_When_Parsed_Then_ItIsTheSpecificationsSrgb")]
+        [TestCase("hsl(210_40_50)", 0.3f, 0.5f, 0.7f, 1f, TestName = "Given_HslSaturationAndLightnessAsNumbers_When_Parsed_Then_TheyReadAsPercentages")]
+        [TestCase("hsla(120,100%,25%,0.5)", 0f, 0.5f, 0f, 0.5f, TestName = "Given_LegacyHslaWithAlpha_When_Parsed_Then_ChannelsAndAlphaResolve")]
+        [TestCase("hsl(0.5turn,100%,50%)", 0f, 1f, 1f, 1f, TestName = "Given_LegacyHslWithAnAngleUnit_When_Parsed_Then_TheHueReadsInThatUnit")]
+        [TestCase("hsl(none_100%_50%)", 1f, 0f, 0f, 1f, TestName = "Given_ANoneHue_When_Parsed_Then_ItReadsAsZeroDegrees")]
+        [TestCase("hsl(120_100%_75%)", 0.5f, 1f, 0.5f, 1f, TestName = "Given_AHslLighterThanHalf_When_Parsed_Then_ItMixesTowardWhite")]
+        public void Given_AColourFunction_When_Parsed_Then_ItIsTheSpecificationsSrgb(string value, float r, float g, float b, float a)
         {
             // Act
-            var color = Parse("rgb(255_0_0_/_50%)");
+            var color = Parse(value);
 
             // Assert
-            Assert.That(color, Is.EqualTo(new[] { 1f, 0f, 0f, 0.5f }).Within(Tolerance));
-        }
-
-        [Test]
-        public void Given_RgbPercentages_When_Parsed_Then_HundredPercentIsTheFullChannel()
-        {
-            // Act
-            var color = Parse("rgb(100%_50%_0%)");
-
-            // Assert
-            Assert.That(color, Is.EqualTo(new[] { 1f, 0.5f, 0f, 1f }).Within(Tolerance));
-        }
-
-        [Test]
-        public void Given_ANoneRgbComponent_When_Parsed_Then_ItReadsAsZero()
-        {
-            // Act
-            var color = Parse("rgb(none_255_0)");
-
-            // Assert
-            Assert.That(color, Is.EqualTo(new[] { 0f, 1f, 0f, 1f }).Within(Tolerance));
-        }
-
-        [Test]
-        public void Given_ASlashWithoutSpaces_When_Parsed_Then_TheAlphaStillResolves()
-        {
-            // Act
-            var color = Parse("rgb(0_0_255/0.25)");
-
-            // Assert
-            Assert.That(color, Is.EqualTo(new[] { 0f, 0f, 1f, 0.25f }).Within(Tolerance));
-        }
-
-        [Test]
-        public void Given_ANoneAlpha_When_Parsed_Then_ItReadsAsZero()
-        {
-            // Act
-            var color = Parse("rgb(0_0_255_/_none)");
-
-            // Assert
-            Assert.That(color, Is.EqualTo(new[] { 0f, 0f, 1f, 0f }).Within(Tolerance));
-        }
-
-        [Test]
-        public void Given_AnAlphaAboveOne_When_Parsed_Then_ItIsClampedToOne()
-        {
-            // Act
-            var color = Parse("rgb(0_0_255_/_1.5)");
-
-            // Assert
-            Assert.That(color, Is.EqualTo(new[] { 0f, 0f, 1f, 1f }).Within(Tolerance));
-        }
-
-        [Test]
-        public void Given_SpaceSyntaxChannelsOutsideTheRange_When_Parsed_Then_TheyAreClamped()
-        {
-            // Act
-            var color = Parse("rgb(300_-20_0)");
-
-            // Assert
-            Assert.That(color, Is.EqualTo(new[] { 1f, 0f, 0f, 1f }).Within(Tolerance));
-        }
-
-        [Test]
-        public void Given_LegacyRgbWithAFourthArgument_When_Parsed_Then_ItIsTheAlpha()
-        {
-            // Act
-            var color = Parse("rgb(255,0,0,0.25)");
-
-            // Assert
-            Assert.That(color, Is.EqualTo(new[] { 1f, 0f, 0f, 0.25f }).Within(Tolerance));
-        }
-
-        [Test]
-        public void Given_LegacyRgbaWithThreeArguments_When_Parsed_Then_ItIsOpaque()
-        {
-            // Act
-            var color = Parse("rgba(0,0,255)");
-
-            // Assert
-            Assert.That(color, Is.EqualTo(new[] { 0f, 0f, 1f, 1f }).Within(Tolerance));
-        }
-
-        [Test]
-        public void Given_LegacyChannelsOutsideTheRange_When_Parsed_Then_TheyAreClamped()
-        {
-            // Act
-            var color = Parse("rgb(300,-20,0,2)");
-
-            // Assert
-            Assert.That(color, Is.EqualTo(new[] { 1f, 0f, 0f, 1f }).Within(Tolerance));
-        }
-
-        [Test]
-        public void Given_LegacyPercentages_When_Parsed_Then_HundredPercentIsTheFullChannel()
-        {
-            // Act
-            var color = Parse("rgb(100%,_0%,_50%,_50%)");
-
-            // Assert
-            Assert.That(color, Is.EqualTo(new[] { 1f, 0f, 0.5f, 0.5f }).Within(Tolerance));
-        }
-
-        [Test]
-        public void Given_AFractionalChannel_When_Parsed_Then_ItIsKept()
-        {
-            // Act
-            var color = Parse("rgb(127.5,0,0)");
-
-            // Assert
-            Assert.That(color, Is.EqualTo(new[] { 0.5f, 0f, 0f, 1f }).Within(Tolerance));
-        }
-
-        [Test]
-        public void Given_ASignedExponentNumber_When_Parsed_Then_ItIsANumber()
-        {
-            // Act
-            var color = Parse("rgb(+2.55e2_0_0)");
-
-            // Assert
-            Assert.That(color, Is.EqualTo(new[] { 1f, 0f, 0f, 1f }).Within(Tolerance));
-        }
-
-        [Test]
-        public void Given_AnUppercaseFunctionName_When_Parsed_Then_ItIsRead()
-        {
-            // Act
-            var color = Parse("RGB(255_0_0)");
-
-            // Assert
-            Assert.That(color, Is.EqualTo(new[] { 1f, 0f, 0f, 1f }).Within(Tolerance));
+            Assert.That(color, Is.EqualTo(new[] { r, g, b, a }).Within(Tolerance));
         }
 
         // Each declined value sits beside the nearest value the grammar reads, so a grammar declining
@@ -247,46 +136,6 @@ namespace Velvet.Tests
             Assert.That(parsed, Is.False);
         }
 
-        [Test]
-        public void Given_SpaceSyntaxHsl_When_Parsed_Then_ItIsTheSpecificationsSrgb()
-        {
-            // Act
-            var color = Parse("hsl(210_40%_50%)");
-
-            // Assert
-            Assert.That(color, Is.EqualTo(new[] { 0.3f, 0.5f, 0.7f, 1f }).Within(Tolerance));
-        }
-
-        [Test]
-        public void Given_HslSaturationAndLightnessAsNumbers_When_Parsed_Then_TheyReadAsPercentages()
-        {
-            // Act
-            var color = Parse("hsl(210_40_50)");
-
-            // Assert
-            Assert.That(color, Is.EqualTo(new[] { 0.3f, 0.5f, 0.7f, 1f }).Within(Tolerance));
-        }
-
-        [Test]
-        public void Given_LegacyHslaWithAlpha_When_Parsed_Then_ChannelsAndAlphaResolve()
-        {
-            // Act
-            var color = Parse("hsla(120,100%,25%,0.5)");
-
-            // Assert
-            Assert.That(color, Is.EqualTo(new[] { 0f, 0.5f, 0f, 0.5f }).Within(Tolerance));
-        }
-
-        [Test]
-        public void Given_LegacyHslWithAnAngleUnit_When_Parsed_Then_TheHueReadsInThatUnit()
-        {
-            // Act
-            var color = Parse("hsl(0.5turn,100%,50%)");
-
-            // Assert
-            Assert.That(color, Is.EqualTo(new[] { 0f, 1f, 1f, 1f }).Within(Tolerance));
-        }
-
         [TestCase("hsl(180deg_100%_50%)")]
         [TestCase("hsl(0.5turn_100%_50%)")]
         [TestCase("hsl(200grad_100%_50%)")]
@@ -310,16 +159,6 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(color, Is.EqualTo(new[] { 0f, 0f, 1f, 1f }).Within(Tolerance));
-        }
-
-        [Test]
-        public void Given_ANoneHue_When_Parsed_Then_ItReadsAsZeroDegrees()
-        {
-            // Act
-            var color = Parse("hsl(none_100%_50%)");
-
-            // Assert
-            Assert.That(color, Is.EqualTo(new[] { 1f, 0f, 0f, 1f }).Within(Tolerance));
         }
 
         [TestCase("hsl(0_-50%_50%)")]
@@ -351,16 +190,6 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(color, Is.EqualTo(new[] { 1f / 3f, 1f / 3f, 1f / 3f, 1f }).Within(Tolerance));
-        }
-
-        [Test]
-        public void Given_AHslLighterThanHalf_When_Parsed_Then_ItMixesTowardWhite()
-        {
-            // Act
-            var color = Parse("hsl(120_100%_75%)");
-
-            // Assert
-            Assert.That(color, Is.EqualTo(new[] { 0.5f, 1f, 0.5f, 1f }).Within(Tolerance));
         }
 
         [Test]
