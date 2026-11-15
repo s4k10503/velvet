@@ -177,13 +177,20 @@ namespace Velvet
         internal static void ApplyIntent(VisualElement element, in FontIntent intent, FiberFontScope? scope,
             bool created)
         {
-            var inherited = intent.HasFamily ? null : scope?.InheritedFamily(element);
-            ApplyResolved(element, intent, inherited);
-            scope?.Track(element, intent, inherited, created);
+            if (scope == null)
+            {
+                ApplyResolved(element, intent, null, foreign: false);
+                return;
+            }
+
+            scope.Apply(element, intent, created);
         }
 
-        // inherited is the family an ancestor names, read only when the request names none of its own.
-        internal static void ApplyResolved(VisualElement element, in FontIntent intent, string? inherited)
+        // inherited is the family an ancestor names or an inherited font belongs to, read only when the request names
+        // none of its own. foreign is an inherited font no family holds, which a weight or italic request then
+        // emulates on that font where DefaultFamily would otherwise have been chosen.
+        internal static void ApplyResolved(VisualElement element, in FontIntent intent, string? inherited,
+            bool foreign)
         {
             var weight = intent.HasWeight ? intent.Weight : VelvetFontWeight.Normal;
             var family = intent.HasFamily ? intent.Family : inherited;
@@ -199,6 +206,12 @@ namespace Velvet
                 asset = addrAsset;
                 residualBold = (int)weight >= 600;
                 residualItalic = intent.Italic;
+            }
+            else if (foreign && !intent.HasFamily)
+            {
+                asset = null;
+                residualBold = false;
+                residualItalic = false;
             }
             else
             {

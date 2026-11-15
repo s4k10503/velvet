@@ -154,6 +154,36 @@ namespace Velvet
             }
         }
 
+        private static FontAsset? LoadAddress(string? key)
+        {
+            TryLoadAddressableFont(key, out var asset);
+            return asset;
+        }
+
+        // The name of the family that holds asset, the default family first where several do; null where none does.
+        internal static string? FamilyOf(FontAsset? asset)
+        {
+            if (asset == null)
+            {
+                return null;
+            }
+
+            if (_defaultFamily != null && _families.TryGetValue(_defaultFamily, out var preferred) && preferred.Holds(asset, LoadAddress))
+            {
+                return _defaultFamily;
+            }
+
+            foreach (var pair in _families)
+            {
+                if (pair.Value.Holds(asset, LoadAddress))
+                {
+                    return pair.Key;
+                }
+            }
+
+            return null;
+        }
+
         /// <summary>True when a family with the given name is registered.</summary>
         public static bool IsRegistered(string? familyName) => NameKeyedRegistry.IsRegistered(familyName, _families);
 
