@@ -29,6 +29,7 @@ namespace Velvet
             // Weak, so a tree nobody disposed does not keep the element it was mounted on alive through this.
             public readonly WeakReference<VisualElement> Element;
             public int Holds;
+            public readonly long HeldAt = s_heldCount++;
 
             // What the last write here put on the element, or null for a write taking it back.
             public FontAsset? Written;
@@ -56,12 +57,16 @@ namespace Velvet
 
         private static readonly ConditionalWeakTable<VisualElement, Root> s_roots = new();
         private static readonly List<Root> s_held = new();
+        private static readonly List<Root> s_scoped = new();
+        private static readonly Comparison<Root> s_byHeldOrder = static (a, b) => a.HeldAt.CompareTo(b.HeldAt);
+        private static long s_heldCount;
+        private static int s_pruneAt = 32;
         private static readonly Predicate<Root> s_collected = static root => !root.Element.TryGetTarget(out _);
 
         private static readonly string[] s_definition = { "-unity-font-definition" };
         private static readonly string[] s_legacy = { "-unity-font" };
 
-        static DefaultFamilyRoots() => VelvetFonts.FontsChanged += Apply;
+        static DefaultFamilyRoots() => VelvetFonts.FontsChanged += () => Apply();
 
         // StyleFontResolver wrote element's inline font from its classes, or cleared it: what is there is not this
         // class's to take back, and where it was cleared the default family may be written again.
@@ -83,7 +88,7 @@ namespace Velvet
             }
 
             root.Holds++;
-            Apply();
+            Apply(element);
             return new Release(element, root);
         }
 
@@ -110,25 +115,63 @@ namespace Velvet
                     Decide(_element, _root, null);
                 }
 
-                Apply();
+                Apply(_element);
             }
         }
 
         private static FontAsset? DefaultAsset()
             => VelvetFonts.Resolve(null, VelvetFontWeight.Normal, italic: false).Asset;
 
-        private static void Apply()
+        // Decides again each held element a hold or release of scope can change the decision of: scope itself and the
+        // elements below it, whose InsideAnother and AuthorFont read scope, in the order they were held. Without a
+        // scope, every held element, which is what a change of the default family needs.
+        private static void Apply(VisualElement? scope = null)
         {
             var asset = DefaultAsset();
             // MUTANT_SURVIVES(equivalent, line removed): the loop below skips a collected element's entry whether or
             // not it is taken out here; taking it out keeps entries of trees nobody disposed from piling up.
-            s_held.RemoveAll(s_collected);
-            foreach (var root in s_held)
+            if (scope == null || s_held.Count >= s_pruneAt)
+            {
+                s_held.RemoveAll(s_collected);
+                s_pruneAt = Math.Max(32, s_held.Count * 2);
+            }
+
+            if (scope == null)
+            {
+                foreach (var root in s_held)
+                {
+                    if (root.Element.TryGetTarget(out var element))
+                    {
+                        Decide(element, root, asset);
+                    }
+                }
+
+                return;
+            }
+
+            s_scoped.Clear();
+            CollectHeldAtOrUnder(scope);
+            s_scoped.Sort(s_byHeldOrder);
+            foreach (var root in s_scoped)
             {
                 if (root.Element.TryGetTarget(out var element))
                 {
                     Decide(element, root, asset);
                 }
+            }
+
+            s_scoped.Clear();
+        }
+
+        // Read off the subtree rather than tested root by root, so a hold costs what its own rows are rather than
+        // every element held.
+        private static void CollectHeldAtOrUnder(VisualElement element)
+        {
+            if (s_roots.TryGetValue(element, out var root)) s_scoped.Add(root);
+            var hierarchy = element.hierarchy;
+            for (var i = 0; i < hierarchy.childCount; i++)
+            {
+                CollectHeldAtOrUnder(hierarchy[i]);
             }
         }
 

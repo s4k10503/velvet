@@ -338,7 +338,6 @@ namespace Velvet
         // suspended by patching this Portal.
         internal bool DrainPendingPortalMounts()
         {
-            HashSet<ComponentFiber>? childFibersBefore = null;
             var suspended = false;
             while (_ctx.PendingPortalMounts.Count > 0)
             {
@@ -443,11 +442,12 @@ namespace Velvet
                 // detached-item scope (Reconciler.BeginDetachedItemScope). A Portal reconciled outside any
                 // component body has no declaring fiber, and then neither side has one to key on.
                 var declaringFiber = logicalParent is { IsDisposed: false } ? logicalParent : null;
-                // Snapshot the anchor's direct children before, so the fibers added by this Portal's
+                // Marks where the anchor's direct children stand, so the fibers added by this Portal's
                 // reconcile can be identified afterwards and stamped with the context needed to reconstruct
                 // their enclosing Providers on an isolated re-render (the spine cannot otherwise reach them).
                 var drainAnchor = declaringFiber ?? _ctx.FiberStack.Current;
-                CaptureAnchorChildren(drainAnchor, ref childFibersBefore);
+                var appendedFrom = drainAnchor?.BeginAppendLog() ?? 0;
+                var drained = false;
                 // The nested Reconcile below re-enters ChildReconciler.Reconcile on THIS SAME instance, whose
                 // entry unconditionally discards PendingIndexedState/PendingKeyedState as stale state left by a
                 // finished pass — correct for a genuine fresh top-level call, but wrong here: this drain runs
@@ -492,9 +492,11 @@ namespace Velvet
                         slotStart: slotStart);
                     // The mount half of the structural pass FiberNodePatcher.PatchSelfPost runs for a Portal.
                     _patcher.ApplyStructuralVariants(resolvedTarget);
+                    drained = true;
                 }
                 catch (FiberSuspendSignal)
                 {
+                    drained = true;
                     mountSuspended = true;
                     RemoveRowsFrom(resolvedTarget, slotStart);
                 }
@@ -512,8 +514,10 @@ namespace Velvet
                         }
                     }
                     _parkSetAside = setAside;
+                    if (!drained) drainAnchor?.EndAppendLog();
                 }
-                StampDrainedChildren(drainAnchor, childFibersBefore, contextSnapshot, children, logicalParent);
+                StampDrainedChildren(drainAnchor, appendedFrom, contextSnapshot, children, logicalParent);
+                drainAnchor?.EndAppendLog();
                 // The growth this mount contributed, in logical slots — the same basis as slotStart.
                 var slotLength = LogicalChildSlots.Count(resolvedTarget) - slotStart;
                 _ctx.PortalState[placeholder] = new PortalSlotInfo(
@@ -575,30 +579,17 @@ namespace Velvet
             }
         }
 
-        // Taken by ref so one set serves the whole drain loop: each entry's snapshot is consumed by its own
-        // StampDrainedChildren call before the next entry clears it.
-        private static void CaptureAnchorChildren(ComponentFiber? anchor, ref HashSet<ComponentFiber>? before)
-        {
-            if (anchor == null) return;
-            (before ??= new HashSet<ComponentFiber>()).Clear();
-            for (var f = anchor.Child; f != null; f = f.Sibling)
-            {
-                before.Add(f);
-            }
-        }
-
         // Stamps the fibers this drain entry just added under anchor with what an isolated re-render needs
-        // to rebuild their enclosing Providers — the same diff-against-a-before-set that
+        // to rebuild their enclosing Providers — the same read of what was appended since a mark that
         // FiberNodePatcher.StampNewTopLevelChildren applies on the patch half of the pair.
         private static void StampDrainedChildren(
-            ComponentFiber? anchor, HashSet<ComponentFiber>? before,
+            ComponentFiber? anchor, int appendedFrom,
             List<KeyValuePair<object, object>>? contextSnapshot, VNode?[] children, ComponentFiber? logicalParent)
         {
             if (anchor == null) return;
             DetachedMountContext? detachedContext = null;
-            for (var f = anchor.Child; f != null; f = f.Sibling)
+            foreach (var f in anchor.AppendedSince(appendedFrom))
             {
-                if (before!.Contains(f)) continue;
                 detachedContext ??= new DetachedMountContext(contextSnapshot, children, anchor, logicalParent);
                 f.DetachedMountContext = detachedContext;
             }

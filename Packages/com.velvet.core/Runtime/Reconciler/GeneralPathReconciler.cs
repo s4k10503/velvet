@@ -1737,14 +1737,15 @@ namespace Velvet
         private void SetPrimaryHidden(
             InlineWalk walk, GeneralCommitState commit, int from, int to, ComponentFiber? boundaryFiber, bool hidden)
         {
-            var roots = new HashSet<VisualElement>();
+            var portals = new PortalsByAncestor(_ctx);
+            var roots = portals.Roots;
             for (var i = from; i < to; i++)
             {
                 // CommitLeaf records an element for every leaf it commits.
                 var row = commit.NewElements[i].element!;
                 if (_ctx.ZLayerPlaceholders.TryGetValue(row, out var relocated)) row = relocated;
                 if (!hidden && walk.HiddenPrimaryElements.Contains(row)) continue;
-                AddWithPortalChildren(row, roots, i, commit, walk, hidden);
+                AddWithPortalChildren(row, i, commit, walk, hidden, portals);
             }
             foreach (var (fiber, placeholder) in HeldFibers(roots))
             {
@@ -1773,15 +1774,44 @@ namespace Velvet
             }
         }
 
-        private void AddWithPortalChildren(VisualElement element, HashSet<VisualElement> roots, int row,
-            GeneralCommitState commit, InlineWalk walk, bool hidden)
+        // Each element a placed Portal's placeholder is under, itself included, to the placeholders under it in
+        // PortalState order, so a root finds the Portals it holds without reading every Portal's state.
+        private sealed class PortalsByAncestor
         {
+            private readonly Dictionary<VisualElement, List<VisualElement>> _under = new();
+
+            internal HashSet<VisualElement> Roots { get; } = new();
+
+            internal PortalsByAncestor(ReconcilerContext ctx)
+            {
+                foreach (var (placeholder, slots) in ctx.PortalState)
+                {
+                    if (slots.Target == null) continue;
+                    for (var ve = placeholder; ve != null; ve = ve.parent)
+                    {
+                        if (!_under.TryGetValue(ve, out var under)) _under[ve] = under = new List<VisualElement>();
+                        under.Add(placeholder);
+                    }
+                }
+            }
+
+            internal List<VisualElement>? Under(VisualElement element)
+                => _under.TryGetValue(element, out var under) ? under : null;
+        }
+
+        private void AddWithPortalChildren(VisualElement element, int row,
+            GeneralCommitState commit, InlineWalk walk, bool hidden, PortalsByAncestor portals)
+        {
+            var roots = portals.Roots;
             roots.Add(element);
             if (hidden) walk.HiddenPrimaryElements.Add(element);
             (commit.DisplayChanges ??= new()).Add((row, element, hidden));
-            foreach (var (placeholder, slots) in _ctx.PortalState)
+            var candidates = portals.Under(element);
+            if (candidates == null) return;
+            foreach (var placeholder in candidates)
             {
-                if (slots.Target == null || HolderOf(placeholder, roots) != element) continue;
+                var slots = _ctx.PortalState[placeholder];
+                if (HolderOf(placeholder, roots) != element) continue;
                 for (var slot = slots.SlotStart; slot < slots.SlotStart + slots.SlotLength; slot++)
                 {
                     var portalRow = ChildListWrites.RowAt(slots.Target, slot);
@@ -1789,7 +1819,7 @@ namespace Velvet
                     // A relocated row is hidden or revealed as the element it stands for, as SetPrimaryHidden takes a
                     // row of the walk's own.
                     if (_ctx.ZLayerPlaceholders.TryGetValue(portalRow, out var relocated)) portalRow = relocated;
-                    AddWithPortalChildren(portalRow, roots, row, commit, walk, hidden);
+                    AddWithPortalChildren(portalRow, row, commit, walk, hidden, portals);
                 }
             }
         }

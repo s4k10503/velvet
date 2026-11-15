@@ -103,8 +103,8 @@ namespace Velvet
             {
                 return info;
             }
-            var firstIndex = target.IndexOf(info.First);
-            var lastIndex = target.IndexOf(info.Last);
+            var firstIndex = ChildListWrites.PhysicalIndexOf(target, info.First);
+            var lastIndex = ChildListWrites.PhysicalIndexOf(target, info.Last);
             if (firstIndex < 0 || lastIndex < firstIndex)
             {
                 return info;

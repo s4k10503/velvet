@@ -109,7 +109,7 @@ namespace Velvet
         internal struct PortalSelfPatch
         {
             internal ComponentFiber? DeclaringFiber;
-            internal HashSet<ComponentFiber>? ChildFibersBefore;
+            internal int ChildrenAppendedFrom;
             internal PortalSlotInfo PrevState;
             internal int BeforeTailCount;
             internal InlineTenancy? Tenancy;
@@ -1380,34 +1380,25 @@ namespace Velvet
             }
         }
 
-        // Captures declaringFiber's current direct children, in a set rented from the shared pool, so a later
-        // diff against its children after a patch can tell which ones are new (see StampNewTopLevelChildren).
-        private ComponentFiber? CaptureDeclaringChildFibers(out HashSet<ComponentFiber>? childFibersBefore)
+        // Marks where declaringFiber's children stand, so StampNewTopLevelChildren can tell which ones the patch
+        // added. Paired with EndAppendLog on the returned fiber.
+        private ComponentFiber? CaptureDeclaringChildFibers(out int appendedFrom)
         {
             var declaringFiber = _ctx.FiberStack.Current;
-            childFibersBefore = null;
-            if (declaringFiber != null)
-            {
-                childFibersBefore = _ctx.BufferPool.RentFiberSet();
-                for (var f = declaringFiber.Child; f != null; f = f.Sibling)
-                {
-                    childFibersBefore.Add(f);
-                }
-            }
+            appendedFrom = declaringFiber?.BeginAppendLog() ?? 0;
             return declaringFiber;
         }
 
-        // Stamps DetachedMountContext on every top-level child of declaringFiber NOT present in
-        // childFibersBefore — the fibers this patch's reconcile of its children just created — with what an
+        // Stamps DetachedMountContext on every top-level child of declaringFiber appended since
+        // appendedFrom — the fibers this patch's reconcile of its children just created — with what an
         // isolated re-render of them needs to rebuild their enclosing Providers, as the drain's
         // StampDrainedChildren does for a mount. Shared by every patch of a mounted Portal and WorldSpace.
         private void StampNewTopLevelChildren(
-            ComponentFiber declaringFiber, HashSet<ComponentFiber> childFibersBefore, VNode?[]? descendantNodes)
+            ComponentFiber declaringFiber, int appendedFrom, VNode?[]? descendantNodes)
         {
             DetachedMountContext? detached = null;
-            for (var f = declaringFiber.Child; f != null; f = f.Sibling)
+            foreach (var f in declaringFiber.AppendedSince(appendedFrom))
             {
-                if (childFibersBefore.Contains(f)) continue;
                 detached ??= new DetachedMountContext(_ctx.ComponentContextStack.SnapshotTops(),
                     descendantNodes, declaringFiber, declaringFiber);
                 f.DetachedMountContext = detached;
@@ -1522,9 +1513,9 @@ namespace Velvet
             // gain its first ones on a LATER patch, and a Portal that heals onto a target registered after it
             // mounted creates them here. FiberStack.Current is the declaring fiber (RenderAndReconcile keeps it
             // pushed for the whole patch of its own returned tree), the parent those children register under. The
-            // "before" snapshot is rented from the shared pool, since this runs on every patch of a mounted Portal,
-            // and rented last: the walk calls this right before the try whose finally returns it (ClosePortalRange).
-            patch.Portal.DeclaringFiber = CaptureDeclaringChildFibers(out patch.Portal.ChildFibersBefore);
+            // append log is opened last: the walk calls this right before the try whose finally closes it
+            // (ClosePortalRange).
+            patch.Portal.DeclaringFiber = CaptureDeclaringChildFibers(out patch.Portal.ChildrenAppendedFrom);
         }
 
         // Runs whether or not the children's reconcile returned: one that unwinds — a boundary above catching a
@@ -1546,15 +1537,12 @@ namespace Velvet
                 }
                 if (mounted && portal.DeclaringFiber != null)
                 {
-                    StampNewTopLevelChildren(portal.DeclaringFiber, portal.ChildFibersBefore!, portal.StampedChildren);
+                    StampNewTopLevelChildren(portal.DeclaringFiber, portal.ChildrenAppendedFrom, portal.StampedChildren);
                 }
             }
             finally
             {
-                if (portal.ChildFibersBefore != null)
-                {
-                    _ctx.BufferPool.ReturnFiberSet(portal.ChildFibersBefore);
-                }
+                portal.DeclaringFiber?.EndAppendLog();
             }
         }
 
