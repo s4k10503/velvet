@@ -166,6 +166,8 @@ namespace Velvet.Tests
             ((System.Collections.Generic.Dictionary<string, FontAsset>)field.GetValue(null))[key] = asset;
         }
 
+        // GREEN_ON_BASE(characterization): the base resolves a family registered by address alone by its name; this pins
+        // that the family-of-font lookup keeps matching an address's asset. Removing the address match from Holds turns it red.
         [Test]
         public void Given_AFamilyRegisteredByAddressOnly_When_ABoldLabelMountsUnderTheDefaultFamily_Then_TheLabelResolvesThatFamilysBold()
         {
