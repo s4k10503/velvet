@@ -1106,7 +1106,6 @@ namespace Velvet
         {
             _ctx.ClearSuspenseState();
             _ctx.PortalState.Clear();
-            _ctx.PortalRowGrowth.Clear();
             _ctx.PendingPortalMounts.Clear();
             // MUTANT_SURVIVES(equivalent): as at the pass boundary, an entry outliving its queue is never read.
             _ctx.PendingHostPlaceholders.Clear();

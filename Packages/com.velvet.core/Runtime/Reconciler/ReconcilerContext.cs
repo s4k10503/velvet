@@ -49,6 +49,7 @@ namespace Velvet
         private readonly Dictionary<VisualElement, PortalSlotInfo> _map = new();
         private readonly Dictionary<VisualElement, TargetEnd> _ends = new();
         private readonly Dictionary<VisualElement, int> _rangesOn = new();
+        private readonly Dictionary<VisualElement, int> _growth = new();
 
         public int Count => _map.Count;
 
@@ -108,13 +109,28 @@ namespace Velvet
             _map.Clear();
             _ends.Clear();
             _rangesOn.Clear();
+            _growth.Clear();
+        }
+
+        // The rows Portal patches have recorded as their own on target so far, so a Portal patched around another on
+        // the same target leaves them out of its own length. Only a window open on a Portal of target reads it, and that
+        // Portal holds a range there, so the entry goes with the last range and a target no range is on keeps none.
+        internal int GrowthOn(VisualElement target) => _growth.GetValueOrDefault(target);
+
+        internal void AddGrowth(VisualElement target, int by)
+        {
+            if (_rangesOn.ContainsKey(target)) _growth[target] = _growth.GetValueOrDefault(target) + by;
         }
 
         private void CountOn(VisualElement? target, int by)
         {
             if (target == null) return;
             var count = _rangesOn.GetValueOrDefault(target) + by;
-            if (count == 0) _rangesOn.Remove(target);
+            if (count == 0)
+            {
+                _rangesOn.Remove(target);
+                _growth.Remove(target);
+            }
             else _rangesOn[target] = count;
         }
 
@@ -1585,10 +1601,6 @@ namespace Velvet
         // it by something that did not shift the recorded start does not move it; the shifts keep the
         // recording that a range with no rows to read is addressed by.
         public PortalRangeTable PortalState { get; } = new();
-
-        // The rows Portal patches have recorded as their own on each target so far, so a Portal patched around
-        // another on the same target leaves them out of its own length.
-        internal Dictionary<VisualElement, int> PortalRowGrowth { get; } = new();
 
         // The reconciles of a Portal target's own children in progress, by target: FiberCommitWork.OpenOwnRows owns
         // what each frame holds. An element's own children never reconcile inside themselves, so one frame each.

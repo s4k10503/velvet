@@ -625,6 +625,9 @@ namespace Velvet
                 return;
             }
 
+            // The rows it removes leave the count a Portal patched around this one reads, as its own growth would. Before
+            // the removal of its range, which takes the target's entry with the last one.
+            if (portalInfo.Target != null) _ctx.PortalState.Stored.AddGrowth(portalInfo.Target, -portalInfo.SlotLength);
             _ctx.PortalState.Remove(element);
             // The RESOLVED target recorded at mount: the same removal works for registry, layer and
             // world-space portals, and it stays correct even if a registry id was re-registered to
@@ -683,8 +686,6 @@ namespace Velvet
             PortalSlotTracker.ShiftRangesBehind(_ctx.PortalState.Stored, target, element, portalInfo, -portalInfo.SlotLength);
             FiberCommitWork.ShiftTenantsAfterPortalRange(
                 _ctx.ComponentRegistry, target, element, portalInfo, -portalInfo.SlotLength);
-            // The rows it removed leave the count a Portal patched around this one reads, as its own growth would.
-            _ctx.PortalRowGrowth[target] = _ctx.PortalRowGrowth.GetValueOrDefault(target) - portalInfo.SlotLength;
         }
 
         // Empties a Portal's slot range on the element it is mounted into and leaves it in exactly the
