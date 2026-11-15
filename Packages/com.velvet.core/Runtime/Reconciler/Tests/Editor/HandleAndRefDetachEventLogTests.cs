@@ -138,6 +138,8 @@ namespace Velvet.Tests
             Assert.That(log.ToString(), Is.EqualTo("render:H lay-x:A lay-x:B lay:A handle:H lay:B"));
         }
 
+        // GREEN_ON_BASE(characterization): the base runs every handle ahead of the layout setups, which is also React's
+        // order when the handle is declared first. Running every handle after the fiber's layout setups turns it red.
         [Test]
         public void Given_AHandleDeclaredBeforeEveryLayoutEffect_When_ItMounts_Then_TheHandleSetsUpFirst()
         {
