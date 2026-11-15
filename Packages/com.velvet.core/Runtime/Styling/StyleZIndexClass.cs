@@ -16,8 +16,10 @@ namespace Velvet
         // Cheap early-out gate: true when ANY class looks like a z-* utility (after stripping a leading "-").
         public static bool HasZIndexClass(string[] classNames)
         {
-            return StyleIntegerUtility.HasToken(classNames, Prefix);
+            return StyleClassFamilies.Has(classNames, StyleClassFamily.ZIndex);
         }
+
+        internal static bool IsZIndexToken(string cls) => StyleIntegerUtility.IsTokenClass(cls, Prefix);
 
         // Whether cls is one HasZIndexClass counts as a z-* utility.
         public static bool IsZIndexClass(string cls)

@@ -100,10 +100,12 @@ namespace Velvet
         public static bool IsAnimateClass(string cls)
             => !string.IsNullOrEmpty(cls) && cls.StartsWith(Prefix, StringComparison.Ordinal);
 
+        // The gate ahead of TryExtract, which holds only while every token TryParseToken reads is an IsAnimateClass.
+        internal static bool HasAnimateClass(string[] classNames)
+            => StyleClassFamilies.Has(classNames, StyleClassFamily.Animate);
+
         // Resolves the winning animate-* utility: the LAST recognized token wins (cascade). Returns false
-        // when none is present, or when the winner is animate-none (an explicit cancel). This is itself the
-        // gate — a no-animation element pays one per-class probe pass, not two — so the reconciler calls it
-        // directly with no separate Has* pre-scan.
+        // when none is present, or when the winner is animate-none (an explicit cancel).
         public static bool TryExtract(string[] classNames, out AnimateSpec spec)
         {
             spec = default;

@@ -222,19 +222,10 @@ namespace Velvet
         // and no binding.
         public static bool HasShadowClass(string[] classNames)
         {
-            if (classNames == null)
-            {
-                return false;
-            }
-            foreach (var cls in classNames)
-            {
-                if (IsShadowClass(cls) || IsInsetLayerClass(cls))
-                {
-                    return true;
-                }
-            }
-            return false;
+            return StyleClassFamilies.Has(classNames, StyleClassFamily.Shadow);
         }
+
+        internal static bool IsShadowToken(string cls) => IsShadowClass(cls) || IsInsetLayerClass(cls);
 
         // What one of shadow-* and inset-shadow-* holds: its size's layers as written, the size's /N, which replaces
         // the alpha of each layer's colour, and the family's colour class, which takes the place of each layer's

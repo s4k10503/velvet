@@ -40,6 +40,13 @@ namespace Velvet.TestUtilities
             // Bypasses: what MountedTreeTestExtensions.DrainForTest bypasses, which it calls.
             public override void DrainForTest() => _tree.DrainForTest();
 
+            // Bypasses: what FiberBatchSchedulerTestExtensions.DrainDelayedForTest and MountedTreeTestExtensions.FlushEffectsForTest bypass, which it calls.
+            public override void DrainTransitionsForTest()
+            {
+                _tree.GetSchedulerForTest().DrainDelayedForTest();
+                _tree.FlushEffectsForTest();
+            }
+
             public override void Dispose() => _tree.Dispose();
         }
     }
@@ -53,6 +60,13 @@ namespace Velvet.TestUtilities
         /// </summary>
         // Bypasses: what each renderer's drain bypasses; UIToolkitTree's is MountedTreeTestExtensions.DrainForTest's.
         public abstract void DrainForTest();
+
+        /// <summary>
+        /// As <see cref="DrainForTest"/>, and renders the Transition-lane work queued too, after the work queued on
+        /// the other lanes.
+        /// </summary>
+        // Bypasses: what each renderer's drain bypasses; UIToolkitTree's is FiberBatchSchedulerTestExtensions.DrainDelayedForTest's and MountedTreeTestExtensions.FlushEffectsForTest's.
+        public abstract void DrainTransitionsForTest();
 
         /// <summary>Unmounts the tree.</summary>
         public abstract void Dispose();

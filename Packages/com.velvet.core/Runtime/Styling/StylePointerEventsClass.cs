@@ -20,6 +20,12 @@ namespace Velvet
         // lands bare, which is the form this matches.
         public static bool IsPointerEventsToken(string cls) => cls == NoneClassName || cls == AutoClassName;
 
+        internal static bool HasPointerEventsClass(string[] classNames)
+            => StyleClassFamilies.Has(classNames, StyleClassFamily.PointerEvents);
+
+        internal static bool IsModeToken(string cls)
+            => IsPointerEventsToken(StyleArbitraryValueResolver.StripImportant(cls, out _));
+
         // An important token outranks an unmarked one wherever it sits, as an !important declaration does; between
         // two of the same weight the later decides, the order the variant gate composes its payloads in.
         public static PointerEventsMode Read(string[] classNames)

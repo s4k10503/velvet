@@ -59,14 +59,17 @@ namespace Velvet
             }
             foreach (var cls in classNames)
             {
-                // Same pass-over as StyleEaseCurve.NoteClasses: a peel leaves a suffix of its class.
-                if (cls != null && cls.EndsWith(FilterTransitionClass, StringComparison.Ordinal)
-                    && StyleVariantClass.LeafOf(cls) == FilterTransitionClass)
+                if (IsFilterTransitionToken(cls))
                 {
                     return true;
                 }
             }
             return false;
         }
+
+        // Same pass-over as StyleEaseCurve.IsTimingToken: a peel leaves a suffix of its class.
+        internal static bool IsFilterTransitionToken(string cls)
+            => cls != null && cls.EndsWith(FilterTransitionClass, StringComparison.Ordinal)
+                && StyleVariantClass.LeafOf(cls) == FilterTransitionClass;
     }
 }
