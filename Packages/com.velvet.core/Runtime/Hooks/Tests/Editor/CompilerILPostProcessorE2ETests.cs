@@ -865,30 +865,6 @@ namespace Velvet.Tests
             return V.Label(text: first + "/" + second);
         }
 
-        private static System.Action<int> s_rowParentSetTick = null!;
-        private static int s_rowBuilds;
-
-        private static string CountRowBuild()
-        {
-            s_rowBuilds++;
-            return "value";
-        }
-
-        // The list ahead of the hook rents a node array, and its button a props bag and an event array; a memo
-        // hit drops all three with the gate's pops.
-        [Component]
-        public static VNode SiblingAheadOfNestedHookComponent()
-            => V.Div("row", V.Div(children: V.List(new[] { "add" }, id => id, id => V.Button(text: id, onClick: () => { }))),
-                V.Label(text: Hooks.UseStore(s_countStore, value => value).ToString(), name: CountRowBuild()));
-
-        [Component]
-        public static VNode SiblingRowParent()
-        {
-            var (_, setTick) = Hooks.UseState(0);
-            s_rowParentSetTick = setTick;
-            return V.Component(SiblingAheadOfNestedHookComponent, key: "row");
-        }
-
         #region Woven shapes (gate + commit injected)
 
         [Test]
@@ -1879,27 +1855,6 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(_root.Q<Label>()?.text, Is.EqualTo("1/9"), "The second element of the pair reaches the label");
-        }
-
-        [Test]
-        public void Given_SiblingBuiltAheadOfNestedHook_When_ParentReRendersWithEqualDeps_Then_NoRentedPropsAreLeftBehind()
-        {
-            // Arrange
-            s_rowBuilds = 0;
-            using var mounted = V.Mount(_root, V.Component(SiblingRowParent, key: "row-parent"));
-            var before = VNodePoolTestAccess.RentedOutCountsForTest();
-
-            // Act
-            s_rowParentSetTick(1);
-            mounted.FlushStateForTest();
-
-            // Assert — one build means the second render hit the memo, which is the render that drops the sibling.
-            var after = VNodePoolTestAccess.RentedOutCountsForTest();
-            Assert.That(
-                (s_rowBuilds, after.Props - before.Props, after.EventArrays - before.EventArrays,
-                    after.NodeArrays - before.NodeArrays),
-                Is.EqualTo((1, 0, 0, 0)),
-                "A memo hit leaves nothing the sibling rented ahead of the gate in the pool's rented sets");
         }
 
         #endregion

@@ -287,13 +287,6 @@ namespace Velvet
             fiber.DischargeTransitionEnrolments();
             fiber.ReleaseTransitionSlotOwnership();
 
-            // A mid-pass unmount takes its own deferred inline baselines with it: the end-of-pass
-            // drain would otherwise sweep them AFTER this teardown nulls PreviousTree, disposes the
-            // slots, and severs Parent — an empty mark set that would recycle ancestor-held memoized
-            // nodes still owed a comeback render. Sweeping here, while the chain is intact, keeps
-            // those protections; outside a pass the queue is simply empty.
-            ReclaimDeferredInlineEntries(fiber);
-
             // React's deletion reaches a component ahead of what it rendered: this fiber's cleanups run before its
             // rows are reconciled away below, whose components are taken down the same way. The rest of what this
             // fiber holds — DI scopes, subscriptions, CTS — is released after them.
@@ -303,30 +296,8 @@ namespace Velvet
             // from the actual DOM contents; FiberElementCleaner.RemoveElement silently skips
             // out-of-range indices so only existing elements are removed. Any pending
             // PendingIndexedState is cleared at the top of this Reconcile call.
-            // The committed tree, the parked baseline, and the fiber's own slot-held node roots
-            // (collected BEFORE the slots are disposed below) are retired together at the bottom of
-            // this method, AFTER slot disposal: with this fiber's own slots already empty, the
-            // sweep's live mark reduces to ancestor-held memoized roots (nodes that flowed into
-            // this tree as props and survive for their owner's comeback render), so everything this
-            // fiber alone held — including a node a slot cached while it was toggled out of the
-            // output — is recycled instead of stranding when the slot lists are cleared.
-            var slotRoots = FiberTreeReturn.CollectSlotRootsForUnmount(fiber);
-            if (fiber.IsDisposed)
-            {
-                // Terminal teardown (Dispose sets the flag before calling here): state slots never
-                // serve a remount, so their element-in-state roots retire with everything else. This
-                // must happen INSIDE Unmount, while the parent chain is still attached — the final
-                // sweep's mark walks that chain, and ancestor-held nodes that flowed into this
-                // fiber's state stay spared. The slots are cleared now so the sweep's own mark does
-                // not re-spare its targets; disposed setters are no-ops, so nothing repopulates them.
-                var stateRoots = FiberTreeReturn.CollectStateSlotRootsForDispose(fiber);
-                if (stateRoots != null)
-                {
-                    (slotRoots ??= new System.Collections.Generic.List<VNode>()).AddRange(stateRoots);
-                }
-                fiber.StateSlots?.Clear();
-            }
-            VNode?[]? retiredTree = null;
+            // Terminal teardown (Dispose sets the flag before calling here): state slots never serve a remount.
+            if (fiber.IsDisposed) fiber.StateSlots?.Clear();
             if (fiber.MountPoint != null && fiber.PreviousTree != null)
             {
                 // Push this fiber while reconciling its tree to empty so the old-side walk looks up its
@@ -344,9 +315,6 @@ namespace Velvet
                     PopFiber(unmountPushedOnto);
                 }
             }
-            // Captured unconditionally: a fiber whose MountPoint is already gone still owes its
-            // committed tree's pooled parts back to the pool.
-            retiredTree = fiber.PreviousTree;
 
             FiberOutletScope.Release(fiber);
             fiber.DisposeBlockerSlots();
@@ -383,12 +351,7 @@ namespace Velvet
             fiber.PreviousTree = null;
             fiber.SourceNode = null;
             fiber.SourceTree = null;
-            fiber.Reconciler?.Context.ParkedBaselineFibers.Remove(fiber);
-            // Detach the parked baseline BEFORE the sweep — the mark treats owner.PendingOldTree as
-            // live, and a still-attached reference would spare this very sweep's target.
-            var parkedTree = fiber.PendingOldTree;
             fiber.PendingOldTree = null;
-            FiberTreeReturn.ReturnRetiredTreesForUnmount(fiber, retiredTree, parkedTree, slotRoots);
             fiber.Reconciler?.Dispose();
             fiber.Reconciler = null;
 
@@ -499,7 +462,6 @@ namespace Velvet
             // runs against an aborted / discarded output.
             VNode?[]? diagnosticCommittedTree = null;
 #endif
-            VNode?[]? prevPendingOldTree = null;
             VNode?[]? oldTree = null;
             VNode?[]? newTree = null;
             var reconciling = false;
@@ -542,7 +504,7 @@ namespace Velvet
                 SettleHooks(fiber, committedPendingInsertionCount, committedPendingEffectCount, deferReconcile,
                     ownedJournal != null);
 
-                newTree = FiberErrorBoundary.OutputOf(fiber, FiberTreeReturn.NormalizeToArray(rendered));
+                newTree = FiberErrorBoundary.OutputOf(fiber, FiberBeginWork.NormalizeToArray(rendered));
                 oldTree = fiber.PreviousTree ?? Array.Empty<VNode>();
 
                 if (fiber.Reconciler?.HasPendingWork == true)
@@ -555,15 +517,7 @@ namespace Velvet
                     FiberCommitWork.DrainPendingWork(fiber);
                 }
 
-                prevPendingOldTree = fiber.PendingOldTree;
                 fiber.PendingOldTree = null;
-                if (prevPendingOldTree != null)
-                {
-                    // The parked baseline is no longer read by a paused pass once captured here (the
-                    // force-drain above completed any remaining work), so retirement sweeps elsewhere
-                    // stop treating it as live.
-                    fiber.Reconciler?.Context.ParkedBaselineFibers.Remove(fiber);
-                }
 
                 reconciling = !deferReconcile;
                 ReconcileRenderedTree(fiber, oldTree, newTree, frameBudgetMs, deferReconcile);
@@ -575,27 +529,18 @@ namespace Velvet
                 var reconciler = fiber.Reconciler;
                 // FinishTopLevelPass samples the abort flag before the ref-setup drain it ends with, so a
                 // boundary catching inside that drain is not in the sample — this fiber's own included.
-                if (reconciler == null || reconciler.LastTopLevelWasAborted || fiber.FallbackReplacedPreviousTree)
+                // A disposed fiber must not retain its newly rendered tree (post-commit would no longer see
+                // it). Aborted reconciles are likewise discarded so the next render starts from the pre-throw
+                // PreviousTree.
+                if (reconciler != null && !reconciler.LastTopLevelWasAborted && !fiber.FallbackReplacedPreviousTree)
                 {
-                    // A disposed fiber must not retain its newly rendered tree (post-commit
-                    // would no longer see it). Aborted reconciles are likewise discarded so the
-                    // next render starts from the pre-throw PreviousTree. Only the DISCARDED output
-                    // (and a superseded parked baseline) retire here — never oldTree, which IS the
-                    // retained PreviousTree baseline and must keep its pooled parts.
-                    FiberTreeReturn.ReturnRetiredTree(newTree, fiber);
-                    FiberCommitWork.ReturnSupersededParkedBaseline(fiber, prevPendingOldTree, oldTree);
-                }
-                else
-                {
-                    // Commit the new tree BEFORE retiring the old one so the recycle sweep can mark
-                    // the committed state live (a memo hit legitimately shares nodes across the two).
                     fiber.PreviousTree = newTree;
                     retainedOutput = true;
                     // A pass of this fiber that completes renders whatever an earlier one suspended on.
                     fiber.SuspendedOn = null;
                     fiber.SuspendedInTransition = false;
                     fiber.RenderOwed = false;
-                    FiberCommitWork.ReturnOldTreeAfterReconcile(fiber, reconciler, oldTree, prevPendingOldTree, deferReconcile);
+                    FiberCommitWork.ParkOldTreeIfPending(fiber, reconciler, oldTree, deferReconcile);
 #if UNITY_EDITOR
                     // The double-invoke diagnostic compares this fiber's own body output against a re-render of
                     // the same body, so it is independent of reconcile / commit timing. Inline mounts
@@ -611,16 +556,7 @@ namespace Velvet
             }
             catch (Exception ex)
             {
-                FiberCommitWork.ReturnSupersededParkedBaseline(fiber, prevPendingOldTree, oldTree);
-                if (fiber.PendingOldTree != null)
-                {
-                    fiber.Reconciler?.Context.ParkedBaselineFibers.Remove(fiber);
-                    // Detach before retiring: the sweep's own mark treats owner.PendingOldTree as
-                    // live, and a still-attached reference would spare this very sweep's target.
-                    var abortedBaseline = fiber.PendingOldTree;
-                    fiber.PendingOldTree = null;
-                    FiberTreeReturn.ReturnRetiredTree(abortedBaseline, fiber);
-                }
+                fiber.PendingOldTree = null;
                 fiber.PendingLayoutEffects?.Clear();
                 FiberHookCommit.TruncateTo(fiber.PendingInsertionEffects, committedPendingInsertionCount);
                 // Unlike the layout list above (rebuilt every render and flushed synchronously),
@@ -694,7 +630,7 @@ namespace Velvet
         // (PortalSlotInfo.ChildrenPending). The cached output of this render is dropped: CommitSettledValues has
         // promoted it, and a retry that took it would diff this tree against itself, which the indexed diff skips.
         // A walk that parked is retained the same way, its baseline parked for the resume
-        // (FiberCommitWork.ReturnOldTreeAfterReconcile): the rows it placed are on the target and the resume places
+        // (FiberCommitWork.ParkOldTreeIfPending): the rows it placed are on the target and the resume places
         // the rest, so a retry diffing from the older tree would create the placed ones again.
         private static void RetainWalkedTree(ComponentFiber fiber, Exception signal, VNode?[] newTree, VNode?[] oldTree)
         {
@@ -706,7 +642,7 @@ namespace Velvet
             }
             fiber.PreviousTree = newTree;
             fiber.InvalidateMemoCache();
-            FiberCommitWork.ReturnOldTreeAfterReconcile(fiber, reconciler, oldTree, null, deferReconcile: false);
+            FiberCommitWork.ParkOldTreeIfPending(fiber, reconciler, oldTree, deferReconcile: false);
             fiber.ParkedPassSuspended = reconciler.HasPendingWork;
             fiber.RenderCount++;
         }
@@ -753,22 +689,6 @@ namespace Velvet
             }
         }
 
-        // Sweeps and removes this fiber's own entries from the context's deferred inline-baseline
-        // queue — see the Unmount call site for why this must run before teardown empties the
-        // fiber's mark roots.
-        private static void ReclaimDeferredInlineEntries(ComponentFiber fiber)
-        {
-            var queue = fiber.Reconciler?.Context.DeferredInlineOldTreeReturns;
-            if (queue == null || queue.Count == 0) return;
-            for (var i = queue.Count - 1; i >= 0; i--)
-            {
-                if (!ReferenceEquals(queue[i].Owner, fiber)) continue;
-                var tree = queue[i].Tree;
-                queue.RemoveAt(i);
-                FiberTreeReturn.ReturnRetiredTree(tree, fiber);
-            }
-        }
-
         // Pushes this fiber onto the Reconciler-side FiberStack. When a new Component is created during
         // Reconcile, ComponentRegistry uses FiberStack.Current as the parent to AppendChild.
         // Returns the stack pushed onto, or null when there was none; PopFiber takes it back. The stack is
@@ -794,7 +714,6 @@ namespace Velvet
         // ComponentFiber.IsStrictDiagnosticPass makes effect registration and externally
         // visible hook writes (e.g. UseImperativeHandle.Set) no-ops, so the committed effect factory and parent
         // refs are untouched.
-        // The diagnostic tree is never reconciled; it is recursively returned to the VNode pool here.
         // A throw during the diagnostic render is caught and logged only — the valid commit stands.
         // This pass writes no hook-count baseline; a hook call past one throws into the catch below.
         // A render-phase setState observed during the diagnostic is logged as impure and
@@ -806,10 +725,9 @@ namespace Velvet
             if (fiber.CaughtError != null) return;
             // The mount root's Body is a constant passthrough closure over the caller-built tree
             // (V.Mount wires `() => tree` — the only CreateRoot caller), so a second invocation
-            // returns the SAME node graph the commit owns: there is no render purity to validate,
-            // and recycling the diagnostic output would wipe the committed tree's props/events in
-            // place and alias them into the shared pools. Nested component fibers still run the
-            // diagnostic individually, which is where the real coverage lives.
+            // returns the SAME node graph the commit owns: there is no render purity to validate.
+            // Nested component fibers still run the diagnostic individually, which is where the real
+            // coverage lives.
             if (fiber.Parent == null) return;
 
             var committedSignature = FiberStrictMode.ComputeSignature(committedTree);
@@ -823,7 +741,6 @@ namespace Velvet
             // consumer would read the context default here and report a spurious "impure render" divergence.
             // A nested diagnostic (depth > 0) already has the cursor populated by the enclosing expansion.
             var contextSpine = RebuildsContextSpine(fiber) ? FiberContextSpine.Push(fiber) : default;
-            VNode?[]? diagnosticTree = null;
             try
             {
                 FiberBeginWork.ResetHookIndex(fiber);
@@ -833,7 +750,7 @@ namespace Velvet
                 fiber.HasRenderPhaseUpdate = false;
                 // The diagnostic re-runs the BODY through the same render-phase window the real
                 // render-phase loop uses — the impure-setState check below reads the flag it sets.
-                diagnosticTree = FiberTreeReturn.NormalizeToArray(FiberBeginWork.InvokeBodyInRenderPhase(fiber));
+                var diagnosticTree = FiberBeginWork.NormalizeToArray(FiberBeginWork.InvokeBodyInRenderPhase(fiber));
 
                 var diagnosticSignature = FiberStrictMode.ComputeSignature(diagnosticTree);
                 if (!string.Equals(committedSignature, diagnosticSignature, StringComparison.Ordinal))
@@ -868,11 +785,6 @@ namespace Velvet
             }
             finally
             {
-                // The diagnostic tree is discarded (never reconciled), so its pooled props / events /
-                // child arrays have no later retirement point — recycle it here to avoid a pool drain.
-                // The owner mark is essential: a memo hit during the diagnostic render returns the
-                // COMMITTED cached subtree, so parts of this discarded tree are the live tree.
-                FiberTreeReturn.ReturnRetiredTree(diagnosticTree, fiber);
                 contextSpine.Unwind();
                 // Discard the diagnostic's staged context reads; the committed list stays as the
                 // real render left it.

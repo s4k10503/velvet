@@ -35,7 +35,7 @@ namespace Velvet
             // default unprevented, so the navigation is bound after every binding the caller passed, on the
             // click those share.
             var callers = p.Events ?? Array.Empty<FiberEventBinding>();
-            var events = VNodePool.RentEventArray(callers.Length + 1);
+            var events = new FiberEventBinding[callers.Length + 1];
             Array.Copy(callers, events, callers.Length);
             events[callers.Length] = new ClickedEventBinding { Handler = onClick };
 

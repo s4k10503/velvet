@@ -439,24 +439,5 @@ namespace Velvet.Tests
             // Assert
             Assert.That(PendingCount(slot), Is.EqualTo(0), "A setter of an unmounted component queues nothing");
         }
-
-        [Test]
-        public void Given_AStagedRenderThatNeverCommitted_When_TheRecycleSweepVisitsTheSlot_Then_TheStateItComputedIsVisited()
-        {
-            // Arrange — the reducer returns a node no queued action names
-            using var mounted = V.Mount(_root, V.Component(RunsRender, key: "runs"));
-            var staged = V.Button(text: "staged");
-            var slot = new ReducerSlot<VNode, int>(null, (_, _) => staged);
-            slot.Enqueue(1, FiberUpdatePriority.Normal);
-            slot.Process(ComponentOf(mounted), FiberUpdatePriority.Normal);
-            var visited = new List<object>();
-
-            // Act
-            slot.VisitRecycleRoots(visited.Add);
-
-            // Assert
-            Assert.That(visited.Exists(root => ReferenceEquals(root, staged)), Is.True,
-                "A render a Suspense holds back has computed a state the slot will adopt, so the sweep spares its node");
-        }
     }
 }

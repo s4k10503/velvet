@@ -11,8 +11,7 @@ namespace Velvet.Tests
     /// writes into each component method and reading the <see cref="MemoizationReportAttribute"/> it leaves there.
     /// <list type="bullet">
     /// <item>Only a value the run computes is a candidate; a local copied from another is not.</item>
-    /// <item>A value whose type can hold a node anywhere but in a node, an array of nodes or a list of nodes is declined,
-    /// and a type nested nine levels deep is taken to hold one.</item>
+    /// <item>A value is cached whatever its type nests or holds, a node in a field included.</item>
     /// <item>A value handed on through locals, members or calls the build reads as pure is followed eight steps deep,
     /// and declined past that, or where it is handed to code that may write into it.</item>
     /// <item>A value that starts with the node it is built from is gated ahead of that node.</item>
@@ -114,9 +113,6 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base caches a computed object of a class whose fields hold no node.
-        // Removing the `FieldsReachNodes` clause from `ReachesNodes`, reading `==` as `!=` where `FieldsReachNodes`
-        // tests the resolved definition, or `!=` as `==` where it compares the base type with `System.Object`, reads
-        // the class as one that can hold a node and declines it.
         [Test]
         public void Given_AComputedObjectWhoseFieldsHoldNoNode_When_Compiled_Then_OneValueGateIsWritten()
         {
@@ -146,39 +142,6 @@ namespace Velvet.Tests
             Assert.That(gates, Is.EqualTo(1));
         }
 
-        private sealed class Leaf
-        {
-            public int Value;
-        }
-
-        private sealed class Pair
-        {
-            public Leaf First = new();
-            public Leaf Second = new();
-        }
-
-        private static Pair MakePair(int seed) => new();
-
-        [Component]
-        private static VNode ComputesAPairOfLeaves(int seed, int other)
-        {
-            var pair = MakePair(seed);
-            return V.Div("pair", V.Text(pair.ToString()), V.Text(Convert.ToString(other)));
-        }
-
-        // GREEN_ON_BASE(characterization): the base caches an object whose two fields are of one class that holds no node.
-        // Returning true where `ReachesNodes` meets a type it has already seen reads the second field as one that can
-        // hold a node and declines the value.
-        [Test]
-        public void Given_AComputedObjectWithTwoFieldsOfOneClass_When_Compiled_Then_OneValueGateIsWritten()
-        {
-            // Act
-            var gates = ValueGates(nameof(ComputesAPairOfLeaves));
-
-            // Assert
-            Assert.That(gates, Is.EqualTo(1));
-        }
-
         #endregion
 
         #region Nodes in an array and in a list
@@ -190,9 +153,7 @@ namespace Velvet.Tests
             return V.Div("outer", V.Div("inner", nodes), V.Text(Convert.ToString(other)));
         }
 
-        // GREEN_ON_BASE(characterization): the base caches an array of nodes, whose nodes the sweep keeps out of the pool.
-        // Removing the `IsNodeList` guard from `NodeHolderProblem`, or reading `==` as `!=` where `IsNodeList` tests the
-        // array's rank, declines it as a value that can hold nodes.
+        // GREEN_ON_BASE(characterization): the base caches an array of nodes.
         [Test]
         public void Given_AComputedArrayOfNodes_When_Compiled_Then_OneValueGateIsWritten()
         {
@@ -226,9 +187,7 @@ namespace Velvet.Tests
             return V.Div("outer", V.Div("inner", Enumerable.ToArray(nodes)), V.Text(Convert.ToString(other)));
         }
 
-        // GREEN_ON_BASE(characterization): the base caches a list of nodes, whose nodes the sweep keeps out of the pool.
-        // Reading `==` as `!=` where `IsNodeList` compares the generic type with `List`1`, or where it counts the type
-        // arguments, declines it as a value that can hold nodes.
+        // GREEN_ON_BASE(characterization): the base caches a list of nodes.
         [Test]
         public void Given_AComputedListOfNodes_When_Compiled_Then_OneValueGateIsWritten()
         {
@@ -241,7 +200,7 @@ namespace Velvet.Tests
 
         #endregion
 
-        #region Types nested to the depth the walk follows
+        #region Types nested nine deep
 
         private sealed class C0 { public C1 Next = null!; }
         private sealed class C1 { public C2 Next = null!; }
@@ -262,17 +221,14 @@ namespace Velvet.Tests
             return V.Div("chain", V.Text(chain.ToString()), V.Text(Convert.ToString(other)));
         }
 
-        // GREEN_ON_BASE(characterization): the base takes a class reached through eight fields to hold a node.
-        // Reading `>=` as `>` where `ReachesNodes` compares the depth with `MaxAliasDepth`, or `+` as `-` where
-        // `FieldsReachNodes` steps into a field, follows the chain to its end and caches the value.
         [Test]
-        public void Given_AComputedObjectWhoseFieldsNestNineClassesDeep_When_Compiled_Then_TheReportSaysItCanHoldNodes()
+        public void Given_AComputedObjectWhoseFieldsNestNineClassesDeep_When_Compiled_Then_OneValueGateIsWritten()
         {
             // Act
-            var declined = DeclinesTheValue(nameof(ComputesAChainOfNineClasses), "it can hold nodes that nothing keeps out of the pool");
+            var gates = ValueGates(nameof(ComputesAChainOfNineClasses));
 
             // Assert
-            Assert.That(declined, Is.True);
+            Assert.That(gates, Is.EqualTo(1));
         }
 
         private static int[][][][][][][][][] MakeGrid(int seed) => new int[1][][][][][][][][];
@@ -284,17 +240,14 @@ namespace Velvet.Tests
             return V.Div("grid", V.Text(grid.ToString()), V.Text(Convert.ToString(other)));
         }
 
-        // GREEN_ON_BASE(characterization): the base takes an array nested nine deep to hold a node.
-        // Reading `+` as `-` where `ReachesNodes` steps into an array's elements follows the arrays to the number
-        // they hold and caches the value.
         [Test]
-        public void Given_AComputedArrayNestedNineDeep_When_Compiled_Then_TheReportSaysItCanHoldNodes()
+        public void Given_AComputedArrayNestedNineDeep_When_Compiled_Then_OneValueGateIsWritten()
         {
             // Act
-            var declined = DeclinesTheValue(nameof(ComputesAnArrayNestedNineDeep), "it can hold nodes that nothing keeps out of the pool");
+            var gates = ValueGates(nameof(ComputesAnArrayNestedNineDeep));
 
             // Assert
-            Assert.That(declined, Is.True);
+            Assert.That(gates, Is.EqualTo(1));
         }
 
         private static List<List<List<List<List<List<List<List<List<int>>>>>>>>> MakeNest(int seed) => new();
@@ -306,17 +259,42 @@ namespace Velvet.Tests
             return V.Div("nest", V.Text(nest.ToString()), V.Text(Convert.ToString(other)));
         }
 
-        // GREEN_ON_BASE(characterization): the base takes a list nested nine deep to hold a node.
-        // Reading `+` as `-` where `ReachesNodes` steps into a type argument follows the lists to the number they
-        // hold and caches the value.
         [Test]
-        public void Given_AComputedListNestedNineDeep_When_Compiled_Then_TheReportSaysItCanHoldNodes()
+        public void Given_AComputedListNestedNineDeep_When_Compiled_Then_OneValueGateIsWritten()
         {
             // Act
-            var declined = DeclinesTheValue(nameof(ComputesAListNestedNineDeep), "it can hold nodes that nothing keeps out of the pool");
+            var gates = ValueGates(nameof(ComputesAListNestedNineDeep));
 
             // Assert
-            Assert.That(declined, Is.True);
+            Assert.That(gates, Is.EqualTo(1));
+        }
+
+        #endregion
+
+        #region A value that holds a node
+
+        private sealed class Captioned
+        {
+            public VNode Caption = null!;
+        }
+
+        private static Captioned MakeCaptioned(string text) => new() { Caption = V.Label(text: text) };
+
+        [Component]
+        private static VNode ComputesAValueHoldingANode(string text, int other)
+        {
+            var captioned = MakeCaptioned(text);
+            return V.Div("captioned", V.Text(captioned.ToString()), V.Text(Convert.ToString(other)));
+        }
+
+        [Test]
+        public void Given_AComputedObjectHoldingANodeInAField_When_Compiled_Then_OneValueGateIsWritten()
+        {
+            // Act
+            var gates = ValueGates(nameof(ComputesAValueHoldingANode));
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(1));
         }
 
         #endregion

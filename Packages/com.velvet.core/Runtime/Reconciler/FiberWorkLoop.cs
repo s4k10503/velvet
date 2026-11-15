@@ -9,7 +9,7 @@ namespace Velvet
     // classification + queue enrollment, the flush / continue driver loop that turns pending
     // lanes into RenderAndReconcile passes, transition-starvation promotion, and the
     // discrete-event Urgent gate. The render core (RenderAndReconcile) lives in FiberRenderer, with
-    // hook-slot commit in FiberHookCommit and committed-tree pooling in FiberTreeReturn; this class drives it.
+    // hook-slot commit in FiberHookCommit; this class drives it.
     internal static class FiberWorkLoop
     {
         // The FlushState invocation at which a continuously-pending Transition lane is promoted
@@ -736,12 +736,7 @@ namespace Velvet
                 }
                 else
                 {
-                    fiber.Reconciler?.Context.ParkedBaselineFibers.Remove(fiber);
-                    // Detach before retiring: the sweep's own mark treats owner.PendingOldTree as
-                    // live, and a still-attached reference would spare this very sweep's target.
-                    var completedBaseline = fiber.PendingOldTree;
                     fiber.PendingOldTree = null;
-                    FiberTreeReturn.ReturnRetiredTree(completedBaseline, fiber);
                     SettleCompletedTransition(fiber);
                     // Ahead of the effect commit below, so its layout effects read the holders without the
                     // entries the settle took down.
@@ -779,11 +774,7 @@ namespace Velvet
                     if (parkedContext != null) FiberEffects.CommitStrandedLayoutWork(parkedContext);
                     return;
                 }
-                fiber.Reconciler?.Context.ParkedBaselineFibers.Remove(fiber);
-                // Detach before retiring — same self-mark hazard as the completion path above.
-                var abortedBaseline = fiber.PendingOldTree;
                 fiber.PendingOldTree = null;
-                FiberTreeReturn.ReturnRetiredTree(abortedBaseline, fiber);
                 if (ex is FiberSuspendSignal)
                 {
                     // Same exit as FlushState's: the transition this slice belonged to has not committed.

@@ -21,7 +21,6 @@ namespace Velvet.Tests
     /// <item>A factory that gives no fallback on such a render passes the error to the boundary above, as it does
     /// at the catch.</item>
     /// <item>With the StrictMode double render on, rendering its fallback again reports no impure render.</item>
-    /// <item>What its body renders on those renders goes back to the pool.</item>
     /// </list>
     /// </summary>
     [TestFixture]
@@ -310,55 +309,6 @@ namespace Velvet.Tests
 
             // Assert — an error log fails the case as well
             LogAssert.NoUnexpectedReceived();
-        }
-
-        // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
-        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
-        // Before that, as characterization: the merge base commits and later retires what this body renders.
-        // A boundary showing its fallback discards it at each render instead, and handing it back is what this pins.
-        [Test]
-        public void Given_ABoundaryShowingItsFallbackWhoseBodyRentsPooledNodes_When_ItRendersAgainAndIsDisposed_Then_ThePoolCountsNothingRentedOut()
-        {
-            // Arrange
-            s_throws = true;
-            var before = Rented();
-            var mounted = V.Mount(_root, V.Component(PooledHostRender, key: "host"), CaughtErrors.Unlogged);
-            s_setTick.Invoke(1);
-            mounted.FlushStateForTest();
-            s_setTick.Invoke(2);
-            mounted.FlushStateForTest();
-
-            // Act
-            mounted.Dispose();
-
-            // Assert
-            var after = Rented();
-            Assert.That(
-                (after.Props - before.Props, after.EventArrays - before.EventArrays, after.NodeArrays - before.NodeArrays),
-                Is.EqualTo((0, 0, 0)));
-        }
-
-        // Read by reflection for the reason MemoCacheCollisionTests reads the same sets.
-        private static (int Props, int EventArrays, int NodeArrays) Rented()
-            => VNodePoolTestAccess.RentedOutCountsForTest();
-
-        [Component(Compiler = false, IsErrorBoundary = true)]
-        private static VNode PooledBoundaryRender(int tick)
-        {
-            Hooks.UseFallback(_ => V.Label(text: "fallback"));
-            return V.Fragment(new VNode[]
-            {
-                V.Div(children: V.List(new[] { "open" }, id => id, id => V.Button(text: id + tick, onClick: () => { }))),
-                V.Component(ThrowerRender, key: "thrower"),
-            });
-        }
-
-        [Component(Compiler = false)]
-        private static VNode PooledHostRender()
-        {
-            var (tick, setTick) = Hooks.UseState(0);
-            s_setTick = setTick;
-            return V.Div(children: new VNode[] { V.Component(PooledBoundaryRender, tick, key: "boundary") });
         }
 
         [Component(Compiler = false)]

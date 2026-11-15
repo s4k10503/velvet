@@ -6,114 +6,60 @@ using Velvet.TestUtilities;
 namespace Velvet.Tests.Performance
 {
     /// <summary>
-    /// Allocation benchmarks for VNodePool.
-    /// Measures the GC-allocation reduction when the pool is enabled.
+    /// What one <c>V.Label</c>, <c>V.Div</c> or <c>V.Button</c> call allocates.
     /// </summary>
     [TestFixture]
     public class VNodePoolBenchmarks
     {
         #region B-2-a: Allocation measurement for V.Label / V.Div / V.Button
 
-        // GREEN_ON_BASE(refactor): a benchmark asserts nothing about its numbers, so it is green wherever its body completes.
-        // This change takes its counts from BenchmarkRun, and one iteration still runs the whole body.
+        // GREEN_ON_BASE(characterization): a benchmark asserts nothing about its numbers, so the base runs it green.
         [Test, Performance]
         public void VLabel_Allocation()
         {
-            WarmUpPool(() => V.Label(text: "warmup"), 10);
+            WarmUp(() => V.Label(text: "warmup"), 10);
 
-            Measure.Method(() =>
-            {
-                var node = V.Label(text: "hello");
-                ReturnNodeProps(node);
-            })
-            .GC()
-            .WarmupCount(BenchmarkRun.Warmup(5))
-            .MeasurementCount(BenchmarkRun.Measurements(30))
-            .Run();
+            Measure.Method(() => GC.KeepAlive(V.Label(text: "hello")))
+                .GC()
+                .WarmupCount(BenchmarkRun.Warmup(5))
+                .MeasurementCount(BenchmarkRun.Measurements(30))
+                .Run();
         }
 
-        // GREEN_ON_BASE(refactor): a benchmark asserts nothing about its numbers, so it is green wherever its body completes.
-        // This change takes its counts from BenchmarkRun, and one iteration still runs the whole body.
+        // GREEN_ON_BASE(characterization): a benchmark asserts nothing about its numbers, so the base runs it green.
         [Test, Performance]
         public void VDiv_Allocation()
         {
-            WarmUpPool(() => V.Div("warmup-class"), 10);
+            WarmUp(() => V.Div("warmup-class"), 10);
 
-            Measure.Method(() =>
-            {
-                var node = V.Div("my-class");
-                ReturnNodeProps(node);
-            })
-            .GC()
-            .WarmupCount(BenchmarkRun.Warmup(5))
-            .MeasurementCount(BenchmarkRun.Measurements(30))
-            .Run();
+            Measure.Method(() => GC.KeepAlive(V.Div("my-class")))
+                .GC()
+                .WarmupCount(BenchmarkRun.Warmup(5))
+                .MeasurementCount(BenchmarkRun.Measurements(30))
+                .Run();
         }
 
-        // GREEN_ON_BASE(refactor): a benchmark asserts nothing about its numbers, so it is green wherever its body completes.
-        // This change takes its counts from BenchmarkRun, and one iteration still runs the whole body.
+        // GREEN_ON_BASE(characterization): a benchmark asserts nothing about its numbers, so the base runs it green.
         [Test, Performance]
         public void VButton_Allocation()
         {
-            WarmUpPool(() => V.Button(text: "warmup"), 10);
+            WarmUp(() => V.Button(text: "warmup"), 10);
 
-            Measure.Method(() =>
-            {
-                var node = V.Button(text: "click me");
-                ReturnNodeProps(node);
-            })
-            .GC()
-            .WarmupCount(BenchmarkRun.Warmup(5))
-            .MeasurementCount(BenchmarkRun.Measurements(30))
-            .Run();
+            Measure.Method(() => GC.KeepAlive(V.Button(text: "click me")))
+                .GC()
+                .WarmupCount(BenchmarkRun.Warmup(5))
+                .MeasurementCount(BenchmarkRun.Measurements(30))
+                .Run();
         }
 
         #endregion
 
-        #region B-2-b: RentProps / ReturnProps cycle cost
-
-        // GREEN_ON_BASE(refactor): a benchmark asserts nothing about its numbers, so it is green wherever its body completes.
-        // This change takes its counts from BenchmarkRun, and one iteration still runs the whole body.
-        [Test, Performance]
-        public void RentReturnProps_Cycle()
+        private static void WarmUp(Func<VNode> factory, int count)
         {
-            // Fill the pool
-            for (int i = 0; i < 5; i++)
+            for (var i = 0; i < count; i++)
             {
-                VNodePool.ReturnProps(new FiberElementProps());
-            }
-
-            Measure.Method(() =>
-            {
-                var props = VNodePool.RentProps();
-                VNodePool.ReturnProps(props);
-            })
-            .GC()
-            .WarmupCount(BenchmarkRun.Warmup(5))
-            .MeasurementCount(BenchmarkRun.Measurements(30))
-            .Run();
-        }
-
-        #endregion
-
-        #region Helpers
-
-        private static void WarmUpPool(Func<VNode> factory, int count)
-        {
-            for (int i = 0; i < count; i++)
-            {
-                ReturnNodeProps(factory());
+                GC.KeepAlive(factory());
             }
         }
-
-        private static void ReturnNodeProps(VNode node)
-        {
-            if (node is ElementNode en && en.Props != null)
-            {
-                VNodePool.ReturnProps(en.Props);
-            }
-        }
-
-        #endregion
     }
 }

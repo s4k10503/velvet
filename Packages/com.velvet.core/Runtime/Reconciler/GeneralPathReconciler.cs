@@ -100,12 +100,10 @@ namespace Velvet
             // Which element an old leaf is, read before the walk and again where a drain wrote into the container
             // (OldSlotOccupants.ResolveAgain).
             public OldSlotOccupants OldOccupants = null!;
-            // What a presence's removals of this walk keep until the removals run: the retirement of the
-            // dropped ghosts' trees, applied once FinalizeGeneralCommit has removed their leaves, and the put-back
-            // of the presence's per-key records and the unstaging of the settles it staged, applied where the walk
-            // throws or an abort skips the removals, since the next walk reads those records to find the leaves
-            // still on screen and stages those settles again.
-            public List<Action>? AfterRemovals;
+            // What a presence's removals of this walk keep until the removals run: the put-back of the presence's
+            // per-key records and the unstaging of the settles it staged, applied where the walk throws or an abort
+            // skips the removals, since the next walk reads those records to find the leaves still on screen and
+            // stages those settles again.
             public List<Action>? PutBackRemovals;
             // What a presence's drops of this walk dispose once the walk is known to commit, ahead of the removals:
             // the fibers under a dropped ghost's anchor, which an abort leaves standing with the leaves.
@@ -228,7 +226,6 @@ namespace Velvet
                     if (commit.BeforeRemovals != null) foreach (var dispose in commit.BeforeRemovals) dispose();
                     FinalizeGeneralCommit(commit, deletion);
                     ApplyOffscreenChanges(commit);
-                    if (commit.AfterRemovals != null) foreach (var retire in commit.AfterRemovals) retire();
                 }
                 else
                 {
@@ -1263,12 +1260,8 @@ namespace Velvet
                 // one, and the original error goes no further, as PropagateException stops at a disposed boundary.
                 if (boundary.IsDisposed) return;
                 // Published only once the fallback has expanded: a catch on the aborting path during that
-                // expansion reconciles this boundary's rows from the tree they still hold, the failed one. The
-                // fallback is committed before the failed tree retires, so that the sweep's owner mark spares a node
-                // the two share.
-                var failedTree = boundary.PreviousTree;
+                // expansion reconciles this boundary's rows from the tree they still hold, the failed one.
                 boundary.PreviousTree = caught.FallbackTree;
-                FiberTreeReturn.ReturnRetiredTree(failedTree, boundary);
                 if (boundary.FallbackContentFailed)
                 {
                     // The fallback's own error went to the boundaries above and none caught it in this walk;
@@ -1422,12 +1415,7 @@ namespace Velvet
             var innerPosition = FiberKeying.MemoInner(position, memo.Key, nodeIndex);
             var memoPosition = FiberKeying.MemoAt(
                 _ctx.FiberStack.Current, _ctx.PortalChildKeyScopeHere, memo.Key, position, innerPosition);
-            var (inner, previousCached) = _ctx.FiberMemoCache.GetOrCompute(memoPosition, walk.Parent, memo);
-            if (previousCached != null)
-            {
-                FiberTreeReturn.ReturnRetiredTree(
-                    FiberTreeReturn.NormalizeToArray(previousCached), _ctx.FiberStack.Current, _ctx.FiberMemoCache);
-            }
+            var inner = _ctx.FiberMemoCache.GetOrCompute(memoPosition, walk.Parent, memo);
             if (inner == null) return;
             // Recurse under this memo's own position, not the parent's: an inner Component's slot key
             // and a nested Memo's own position both extend it, and MemoScope and WalkPathKind own what
@@ -2509,12 +2497,6 @@ namespace Velvet
             // must retire with them, or a pooled element could be resurrected as a later
             // dispatch target.
             RetirePresenceKeyEntries(state, key);
-            // Leaving the committed set is the ghost node's last live root (presence bookkeeping
-            // was what kept it alive past its emitting render), so its pooled objects retire once the
-            // removals have run.
-            var boundary = pass.BoundaryFiber;
-            (commit.AfterRemovals ??= new List<Action>()).Add(
-                () => FiberTreeReturn.ReturnRetiredTree(FiberTreeReturn.NormalizeToArray(node), boundary));
         }
 
         // Whether key's child holds a V.Motion, its anchor or one below up to an inner presence's children, as any
@@ -3155,7 +3137,7 @@ namespace Velvet
                 var wasExitComplete = state.ExitComplete.Remove(key);
                 if (wasExiting || wasExitComplete)
                 {
-                    RetireReplacedGhostNode(state, prevCommitted, key, node, pass.BoundaryFiber);
+                    RetireReplacedGhostNode(state, prevCommitted, key, node);
                 }
                 // The key is present again. If a completed exit's ghost was still awaiting its drop and the
                 // re-entry mounted a FRESH element (the detached ghost can't be reproduced, so the new
@@ -3227,11 +3209,6 @@ namespace Velvet
             DisposeGhostFibersOnceCommitted(commit, state, key);
             RemovePresenceCommittedEntry(state.Committed, key);
             RetirePresenceKeyEntries(state, key);
-            // A ghost's node is the presence's alone to keep; a present child's belongs to the render that gave it.
-            if (!wasExiting && !wasExitComplete) return;
-            var boundary = pass.BoundaryFiber;
-            (commit.AfterRemovals ??= new List<Action>()).Add(
-                () => FiberTreeReturn.ReturnRetiredTree(FiberTreeReturn.NormalizeToArray(node), boundary));
         }
 
         // A live key whose anchor was created again under the same key — a type flip — remounts with an enter, as a
@@ -3258,24 +3235,18 @@ namespace Velvet
             };
         }
 
-        // The re-entry replaces the ghost's node in the committed set. The OLD node was kept alive only by
-        // presence bookkeeping (a ghost is never part of the boundary's own render output), so this
-        // replacement is its last reference — retire it. The entry leaves state.Committed first, or the
-        // sweep's mark (which reads that list) would spare its own target; prevCommitted is a copy, so the
-        // caller's loop over it is unaffected.
+        // The re-entry replaces the ghost's node in the committed set. prevCommitted is a copy, so the caller's loop
+        // over it is unaffected.
         private static void RetireReplacedGhostNode(
             ReconcilerContext.PresenceBoundaryState state,
             List<(string key, VNode node)> prevCommitted,
             string key,
-            VNode node,
-            ComponentFiber? boundaryFiber)
+            VNode node)
         {
             var ghostNode = FindPresenceCommittedNode(prevCommitted, key);
             if (ghostNode == null || ReferenceEquals(ghostNode, node)) return;
 
             RemovePresenceCommittedEntry(state.Committed, key);
-            FiberTreeReturn.ReturnRetiredTree(
-                FiberTreeReturn.NormalizeToArray(ghostNode), boundaryFiber);
         }
 
         // A re-entry's half of the descendant exits StartPresenceExit started. A variant exit returns to the

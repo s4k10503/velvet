@@ -55,8 +55,6 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base already clears this slot field on invalidation; no case asserted it before.
-        // Before any settle: the recycle sweep marks a node held as the committed value live
-        // (FiberTreeReturn.VisitDisposableSlotRoots), so one the invalidation left would stay protected.
         [Test]
         public void Given_ASlotWithACommittedValue_When_Invalidated_Then_ItHoldsNoCommittedValue()
         {

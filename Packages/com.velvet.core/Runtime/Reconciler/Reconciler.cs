@@ -251,10 +251,6 @@ namespace Velvet
             if (isTopLevel)
             {
                 profilerScope = s_reconcileMarker.Auto();
-                // Stage pooled-object releases for the span of the pass so nothing retired mid-pass
-                // (a boundary fallback swap, a mid-pass unmount) can be re-rented by a later factory
-                // call in the SAME pass — see VNodePool's staging region.
-                VNodePool.BeginReleaseScope();
             }
 
             // Put back rather than cleared, and held across FinishTopLevelPass below: that boundary runs
@@ -288,12 +284,6 @@ namespace Velvet
                         }
                         finally
                         {
-                            // Flush releases staged during the pass (AFTER the drain above, which stages
-                            // more). Guaranteed even if the drain throws (its mark pass can execute a user
-                            // IReadOnlyList via the slot probes): a skipped flush would wedge the pool in
-                            // staging mode for the process lifetime — every later return staged, never
-                            // flushed, pools starving — with no recovery outside the editor's domain reload.
-                            VNodePool.EndReleaseScope();
                             // MUTANT_SURVIVES(equivalent): AutoScope.Dispose ends the profiler sample its
                             // Auto() opened and writes nothing else, so no tree, element or pool this pass
                             // touched reads differently without it.
@@ -439,10 +429,6 @@ namespace Velvet
                 // compares, and placed after the portal drain above so a wrapper the drain's own nested
                 // reconciles rendered is marked before the marks are read.
                 _ctx.RetireBoundaryStatesNotReRendered();
-                // Return the inline children's old trees (queued by SubsumeFiberIntoThisPass) to the
-                // VNode pool now that the whole pass is done using them as patch baselines — deferred
-                // to here to avoid a mid-pass use-after-return that duplicates re-expanded subtrees.
-                FiberTreeReturn.DrainDeferredInlineOldTreeReturns(_ctx);
                 // A ring overlay is hosted beside the element it rings, so it can only be placed once that
                 // element is in its final parent. At create time it is not — the factory builds the element
                 // and the caller inserts it afterwards, and a z-* element is relocated again by the portal
@@ -526,9 +512,6 @@ namespace Velvet
             var enclosingPass = _ctx.CurrentPass;
             _ctx.CurrentPass = this;
             _ctx.SharedReconcileDepth++;
-            // A resume slice rents and returns pooled objects like the original pass, so it gets the
-            // same release staging bracket (nested entries are depth-counted inside VNodePool).
-            VNodePool.BeginReleaseScope();
             var resumed = false;
             try
             {
@@ -566,7 +549,6 @@ namespace Velvet
                 }
                 finally
                 {
-                    VNodePool.EndReleaseScope();
                     _ctx.CurrentPass = enclosingPass;
                 }
             }
@@ -808,7 +790,7 @@ namespace Velvet
             _ctx.EventManager.Clear();
             _ctx.ComponentRegistry.Dispose();
             _ctx.PendingCaughtErrorReports.Clear();
-            _ctx.FiberMemoCache.DisposeAndReturnCachedTrees();
+            _ctx.FiberMemoCache.Clear();
             _ctx.WrapperToInnerMap.Clear();
             // Hosts go last: destroying a layer or world-space host takes its runtime-created panel with
             // it, and every pass above detaches from elements that may be mounted inside one.

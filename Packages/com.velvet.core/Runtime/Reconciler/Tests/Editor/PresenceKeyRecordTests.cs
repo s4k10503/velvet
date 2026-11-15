@@ -13,15 +13,13 @@ namespace Velvet.Tests
     /// drop of an exit that finished, and a mode="wait" render withholding a committed child while another child's
     /// exit runs.
     /// <list type="bullet">
-    /// <item>Once that render commits, the presence keeps no exit anchor and no Motion element for the key, and a
-    /// withheld key whose exit had finished gives its exited node back to the pool.</item>
+    /// <item>Once that render commits, the presence keeps no exit anchor and no Motion element for the key.</item>
     /// <item>Where an abort stopped that render before its removals, the presence puts back its committed children in
     /// their order, and a withheld key's exit, its pending settle and its initial: false record.</item>
     /// <item>Such a render stopped by an abort leaves a withheld key's descendant exit running, so the key's exit
     /// can still settle, and a tree disposed while an exit waits on the passive flush completes that exit first, as
     /// React flushes a root's pending passive effects before unmounting it, and an exit still playing completes
     /// once at the disposal, as Framer lets it run out and calls onExitComplete.</item>
-    /// <item>A key coming back in a render an abort stopped keeps the node that render gave it.</item>
     /// <item>A key removed, added again and removed again before the passive flush completes its last exit with the
     /// onExitComplete the last removing render gave, and the quiet exit its return cut short completes nothing of an
     /// exit it plays after.</item>
@@ -191,32 +189,6 @@ namespace Velvet.Tests
             Assert.That(Holds(mounted, "MotionElements", "x"), Is.False);
         }
 
-        [Test]
-        public void Given_AWaitModeKeyWhoseExitFinished_When_ItComesBackWhileAnotherKeyIsLeaving_Then_ItsExitedNodeGoesBackToThePool()
-        {
-            // Arrange — "x" leaves with nothing to animate and finishes in the passive flush, while "k" plays an exit
-            s_mode = AnimatePresenceMode.Wait;
-            s_children = tick => tick switch
-            {
-                0 => new[] { Plain("x"), Fading("k") },
-                1 => Array.Empty<VNode>(),
-                _ => new[] { Plain("x") },
-            };
-            using var mounted = Mount();
-            s_setTick.Invoke(1);
-            mounted.FlushStateForTest();
-            mounted.FlushEffectsForTest();
-            var exited = Presence(mounted)?.Committed.FirstOrDefault(entry => entry.key == "x").node;
-
-            // Act — mode="wait" withholds "x" while "k" is leaving
-            s_setTick.Invoke(2);
-            mounted.FlushStateForTest();
-
-            // Assert
-            Assert.That(exited is ElementNode { Props: { } props } && !VNodePoolTestAccess.IsRentedOutForTest(props),
-                Is.True);
-        }
-
         // GREEN_ON_BASE(characterization): the base completed each removal with the callback its own render gave.
         // It removed the key at once each time.
         [Test]
@@ -349,27 +321,6 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(s_exitCallbacks.Count, Is.EqualTo(1));
-        }
-
-        // GREEN_ON_BASE(characterization): the base mounted the returning key afresh in that render and kept its node.
-        [Test]
-        public void Given_AKeyComingBackInARenderAnAbortStopped_When_ThatRenderEnds_Then_ItsCommittedNodeKeepsItsPropsBag()
-        {
-            // Arrange — "a" leaves with nothing to animate, and its exit waits on a passive flush nothing here runs
-            s_children = tick => tick == 1 ? Array.Empty<VNode>() : new[] { Plain("a") };
-            s_abortAt = 2;
-            using var mounted = Mount();
-            s_setTick.Invoke(1);
-            mounted.FlushStateForTest();
-
-            // Act — "a" comes back while still leaving, and the boundary aborts that render
-            s_setTick.Invoke(2);
-            mounted.FlushStateForTest();
-
-            // Assert
-            var committed = Presence(mounted)?.Committed.FirstOrDefault(entry => entry.key == "a").node;
-            Assert.That(committed is ElementNode { Props: { } props } && VNodePoolTestAccess.IsRentedOutForTest(props),
-                Is.True);
         }
 
         private MountedTree Mount() => V.Mount(_root, V.Component(HostRender, key: "host"), CaughtErrors.Unlogged);

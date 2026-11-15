@@ -41,8 +41,6 @@ namespace Velvet
         public static VNode Render(Props props)
         {
             var handle = Hooks.UseRef(() => new DragOverlayHandle()).Current!;
-            // Held in a ref so a retirement of the tree that showed them leaves their pooled parts alone while the
-            // drop animation shows them again.
             var retained = Hooks.UseRef<VNode?[]>();
             var (_, setVersion) = Hooks.UseState(0);
             // MUTANT_SURVIVES(equivalent, arithmetic): the version is discarded above, and a step of one either way differs from the value the slot holds, which is all the re-render asks.
@@ -65,7 +63,7 @@ namespace Velvet
                 shown = children;
             }
 
-            var positionerProps = VNodePool.RentProps();
+            var positionerProps = new FiberElementProps();
             positionerProps.DragOverlay = new DragOverlaySettings
             {
                 DropAnimation = props.DropAnimation,

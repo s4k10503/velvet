@@ -34,10 +34,8 @@ namespace Velvet
         // would keep it.
         private readonly Dictionary<object, HashSet<Entry>> _entriesByReferent = new();
 
-        public (VNode result, VNode? previousCached) GetOrCompute(
-            MemoPosition position, VisualElement? container, MemoNode memo)
+        public VNode GetOrCompute(MemoPosition position, VisualElement? container, MemoNode memo)
         {
-            VNode? previousCached = null;
             if (_cache.TryGetValue((position, container), out var entry))
             {
                 // Two hit conditions, because a null dependency array is "no dependency array" rather than "an
@@ -51,9 +49,8 @@ namespace Velvet
                     || (memo.Dependencies != null && ObjectIs.AreEqualDeps(entry.Deps, memo.Dependencies)))
                 {
                     HandIn(entry, memo);
-                    return (entry.Cached, null);
+                    return entry.Cached;
                 }
-                previousCached = entry.Cached;
             }
 
             var result = memo.Factory();
@@ -73,13 +70,7 @@ namespace Velvet
             HandIn(entry, memo);
             entry.Deps = memo.Dependencies;
             entry.Cached = result;
-            return (result, previousCached);
-        }
-
-        internal void MarkCachedTrees(HashSet<object> live)
-        {
-            foreach (var entry in _cache.Values)
-                FiberTreeReturn.MarkNode(entry.Cached, live);
+            return result;
         }
 
         private static void HandIn(Entry entry, MemoNode memo)
@@ -129,10 +120,6 @@ namespace Velvet
                 UnfileFromReferent(entry.Position.Owner, entry);
                 UnfileFromReferent(entry.Position.PortalScope, entry);
                 UnfileFromReferent(entry.Container, entry);
-                // Released rather than returned: the teardown that lets the entry go can still hold the cached
-                // subtree's elements in the hierarchy when it does, and a returned part is the pool's to hand
-                // out again.
-                FiberTreeReturn.Release(FiberTreeReturn.NormalizeToArray(entry.Cached));
             }
         }
 
@@ -173,15 +160,8 @@ namespace Velvet
             if (entries.Count == 0) _entriesByReferent.Remove(referent);
         }
 
-        // Called at reconciler disposal: the whole mounted tree is torn down with it, so there is no
-        // committed successor to spare (a cached inner shared with an already-retired committed tree is
-        // a harmless overlap — pool returns are idempotent).
-        public void DisposeAndReturnCachedTrees()
+        public void Clear()
         {
-            foreach (var entry in _cache.Values)
-            {
-                FiberTreeReturn.ReturnRetiredTree(FiberTreeReturn.NormalizeToArray(entry.Cached), owner: null);
-            }
             _cache.Clear();
             _entriesByPosition.Clear();
             _entriesByReferent.Clear();
