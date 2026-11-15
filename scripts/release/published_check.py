@@ -528,12 +528,16 @@ def main():
                drain_reason(composed_base, composed_result, tags),
                "leaves the breaking section wrong for the version it closes",
                "the breaking section suits whatever this closes")
+        try:
+            derived = derived_version_reason(
+                composed_base, composed_result,
+                lambda previous: next_version.public_api_gained_since(
+                    project, previous, args.result, read_at),
+                tags)
+        except next_version.Unreadable as failure:
+            derived = f"the version this closes cannot be checked, because {failure}"
         report(f"{args.base}..{args.result}",
-               derived_version_reason(
-                   composed_base, composed_result,
-                   lambda previous: next_version.public_api_gained_since(
-                       project, previous, args.result, read_at),
-                   tags),
+               derived,
                "closes a version other than the one the tree derives",
                "the version this closes is the one the tree derives")
         report(f"{args.base}..{args.result}",

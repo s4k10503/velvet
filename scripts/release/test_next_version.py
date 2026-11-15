@@ -4,10 +4,13 @@
 Run: python3 scripts/test_quality/run_suite.py scripts/release/test_next_version.py
 """
 
+import subprocess
 import unittest
 
 from next_version import (
+    Unreadable,
     api_gained,
+    public_api_gained_since,
     added_entries,
     derive,
     newest_reachable_release,
@@ -51,13 +54,6 @@ class DeriveTests(unittest.TestCase):
 
         # Assert
         self.assertEqual("3.0.1", derivation.version)
-
-    def test_Given_APreviousReleaseWhoseApiCouldNotBeRead_When_Derived_Then_TheReasonSaysSo(self):
-        # Act
-        derivation = derive("3.0.0", [], None, [])
-
-        # Assert
-        self.assertIn("could not be read", derivation.reason)
 
     def test_Given_TheReasonForAMinor_When_Derived_Then_TheFirstGainedLineIsQuoted(self):
         # Act
@@ -151,6 +147,33 @@ class NormalisationTests(unittest.TestCase):
         self.assertEqual(["method Velvet.V.A(System.Func`1[System.Int32]): System.Void"], gained)
 
 
+class GainedSinceTests(unittest.TestCase):
+    @staticmethod
+    def reading(missing):
+        def read_at(project, ref, path):
+            if ref == missing:
+                raise subprocess.CalledProcessError(128, "git", stderr="fatal: invalid object name")
+            return "[Velvet] method Velvet.V.A(): System.Void"
+        return read_at
+
+    def test_Given_TheReleaseTagIsMissing_When_TheGainIsRead_Then_TheTagIsNamedAsUnreadable(self):
+        # Act / Assert
+        with self.assertRaisesRegex(Unreadable, "cannot be read at v3.0.0-main"):
+            public_api_gained_since(".", "3.0.0", "HEAD", self.reading("v3.0.0-main"))
+
+    def test_Given_TheRevisionIsMissing_When_TheGainIsRead_Then_TheRevisionIsNamedAsUnreadable(self):
+        # Act / Assert
+        with self.assertRaisesRegex(Unreadable, "cannot be read at HEAD"):
+            public_api_gained_since(".", "3.0.0", "HEAD", self.reading("HEAD"))
+
+    def test_Given_BothReadable_When_TheGainIsRead_Then_TheDifferenceIsReturned(self):
+        # Act
+        gained = public_api_gained_since(".", "3.0.0", "HEAD", self.reading(None))
+
+        # Assert
+        self.assertEqual([], gained)
+
+
 class AddedEntriesTests(unittest.TestCase):
     CHANGELOG = """# Changelog
 
@@ -193,6 +216,26 @@ class NewestReleaseTests(unittest.TestCase):
 
         # Assert
         self.assertEqual("2.10.0", newest)
+
+    def test_Given_ANewerTagOnTheLineThatTheRevisionDoesNotHave_When_TheNewestIsAsked_Then_ItIsRefused(self):
+        # Arrange
+        def git(project, *args):
+            return "v2.1.4-main\n" if "--merged" in args else "v2.1.4-main\nv2.1.5-main\nv3.0.0-main\n"
+
+        # Act / Assert
+        with self.assertRaisesRegex(Unreadable, "v2.1.5-main"):
+            newest_reachable_release(".", "HEAD", git)
+
+    def test_Given_ANewerTagOnAnotherLine_When_TheNewestIsAsked_Then_TheLinesOwnIsNamed(self):
+        # Arrange
+        def git(project, *args):
+            return "v2.1.4-main\n" if "--merged" in args else "v2.1.4-main\nv3.0.0-main\n"
+
+        # Act
+        newest = newest_reachable_release(".", "HEAD", git)
+
+        # Assert
+        self.assertEqual("2.1.4", newest)
 
     def test_Given_NoReleaseTag_When_TheNewestIsAsked_Then_NoneIsReturned(self):
         # Act

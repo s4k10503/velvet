@@ -100,11 +100,7 @@ def first_line(entry):
 
 def derive(previous, breaking, gained, added):
     """The bump `previous` takes given the breaking entries, the API members gained and the `### Added`
-    entries, with the version it makes and why.
-
-    `gained` is None where the previous release's `PublicAPI.txt` could not be read, which leaves the
-    minor to the `### Added` entries alone and says so.
-    """
+    entries, with the version it makes and why."""
     if breaking:
         bump = "major"
         reason = (f"'## [{release_notes.BREAKING_SECTION}]' holds {len(breaking)} "
@@ -123,10 +119,8 @@ def derive(previous, breaking, gained, added):
         reason = "; ".join(parts)
     else:
         bump = "patch"
-        reason = (f"'## [{release_notes.BREAKING_SECTION}]' is empty, "
-                  + ("PublicAPI.txt gains no line, " if gained is not None
-                     else "the previous release's PublicAPI.txt could not be read, ")
-                  + f"and '## [{release_notes.OPEN_SECTION}]' carries no `### Added` entry")
+        reason = (f"'## [{release_notes.BREAKING_SECTION}]' is empty, PublicAPI.txt gains no line, "
+                  f"and '## [{release_notes.OPEN_SECTION}]' carries no `### Added` entry")
     return Derivation(bump, bumped(previous, bump), reason)
 
 
@@ -134,22 +128,50 @@ def tag_of(version):
     return f"{TAG_PREFIX}{version}{TAG_SUFFIX}"
 
 
-def newest_reachable_release(project, rev, git):
-    """The newest version whose `vX.Y.Z-main` tag `rev` descends from, or None."""
-    listed = git(project, "tag", "--merged", rev, "--list", f"{TAG_PREFIX}*{TAG_SUFFIX}").split()
-    versions = [name[len(TAG_PREFIX):-len(TAG_SUFFIX)] for name in listed]
-    versions = [version for version in versions if SEMVER.match(version)]
-    return max(versions, key=parse_version, default=None)
+class Unreadable(Exception):
+    """What a derivation needs and cannot read: refused rather than read as nothing gained."""
+
+
+def release_versions(listing):
+    names = (name[len(TAG_PREFIX):-len(TAG_SUFFIX)] for name in listing.split())
+    return [name for name in names if SEMVER.match(name)]
+
+
+def newest_reachable_release(project, rev, run_git):
+    """The newest version whose `vX.Y.Z-main` tag `rev` descends from, or None.
+
+    Raises `Unreadable` where the line carries a newer release tag that `rev` does not descend from:
+    the diff would then be taken against a release the line has already moved past.
+    """
+    pattern = f"{TAG_PREFIX}*{TAG_SUFFIX}"
+    reachable = release_versions(run_git(project, "tag", "--merged", rev, "--list", pattern))
+    newest = max(reachable, key=parse_version, default=None)
+    if newest is None:
+        return None
+    line = [version for version in release_versions(run_git(project, "tag", "--list", pattern))
+            if parse_version(version)[0] == parse_version(newest)[0]]
+    latest = max(line, key=parse_version)
+    if parse_version(latest) > parse_version(newest):
+        raise Unreadable(f"{rev} descends from {tag_of(newest)} but the line's newest release tag is "
+                         f"{tag_of(latest)}, which it does not descend from: derive from a revision "
+                         f"that has it")
+    return newest
 
 
 def public_api_gained_since(project, version, rev, read_at):
-    """What `PublicAPI.txt` at `rev` gained against release `version`'s tag, or None where either
-    cannot be read."""
-    try:
-        return api_gained(read_at(project, tag_of(version), PUBLIC_API_PATH),
-                          read_at(project, rev, PUBLIC_API_PATH))
-    except subprocess.CalledProcessError:
-        return None
+    """What `PublicAPI.txt` at `rev` gained against release `version`'s tag.
+
+    Raises `Unreadable` naming the revision it could not read, since a gain it cannot see would
+    otherwise read as none and let an addition through as a patch.
+    """
+    texts = []
+    for ref in (tag_of(version), rev):
+        try:
+            texts.append(read_at(project, ref, PUBLIC_API_PATH))
+        except subprocess.CalledProcessError as failure:
+            raise Unreadable(f"{PUBLIC_API_PATH} cannot be read at {ref} "
+                             f"(is the tag fetched?): {(failure.stderr or '').strip()}") from failure
+    return api_gained(*texts)
 
 
 def main(argv=None):
@@ -161,17 +183,22 @@ def main(argv=None):
 
     import published_check
     project = Path(args.project).resolve()
-    previous = newest_reachable_release(project, args.rev, published_check.git)
-    if previous is None:
-        print(f"{args.rev} descends from no {TAG_PREFIX}X.Y.Z{TAG_SUFFIX} tag, so there is no "
-              f"release to derive a version from (is the clone missing its tags?)", file=sys.stderr)
+    try:
+        previous = newest_reachable_release(project, args.rev, published_check.git)
+        if previous is None:
+            raise Unreadable(f"{args.rev} descends from no {TAG_PREFIX}X.Y.Z{TAG_SUFFIX} tag, so "
+                             f"there is no release to derive a version from "
+                             f"(is the clone missing its tags?)")
+        gained = public_api_gained_since(project, previous, args.rev, published_check.read_at)
+    except Unreadable as failure:
+        print(failure, file=sys.stderr)
         return 1
 
     changelog = published_check.changelog_at(project, args.rev)
     derivation = derive(
         previous,
         published_check.section_entries(changelog, release_notes.BREAKING_SECTION),
-        public_api_gained_since(project, previous, args.rev, published_check.read_at),
+        gained,
         added_entries(changelog, release_notes.OPEN_SECTION))
     print(f"previous release: {previous} ({tag_of(previous)})")
     print(f"bump: {derivation.bump}")

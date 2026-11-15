@@ -599,8 +599,11 @@ class GitReadingTests(unittest.TestCase):
         self.stack = contextlib.ExitStack()
         self.addCleanup(self.stack.close)
 
-    def repository(self, changelog=PUBLISHED, package=None, tags=("v2.0.1",)):
+    def repository(self, changelog=PUBLISHED, package=None, tags=("v2.0.1",), public_api=None):
         path = Path(self.stack.enter_context(tempfile.TemporaryDirectory()))
+        if public_api is not None:
+            (path / "Packages/com.velvet.core").mkdir(parents=True)
+            (path / "Packages/com.velvet.core/PublicAPI.txt").write_text(public_api)
         git(path, "init", "--quiet", "--initial-branch", "main")
         git(path, "config", "user.email", "test@example.invalid")
         git(path, "config", "user.name", "Test")
@@ -698,23 +701,35 @@ class GitReadingTests(unittest.TestCase):
         self.assertIn("2.1.0 is not a major and '## [Unreleased — breaking]' still lists 1 entry",
                       said)
 
-    def test_Given_APatchClosingOverAnAddedEntry_When_Read_Then_TheDerivedMinorIsNamed(self):
-        # Arrange — the previous release is tagged the way the dispatch tags it, which is where the
-        # derivation finds it.
+    def closing_a_patch(self, tags):
+        """What the command says of a change closing 2.0.2 over an open section with an Added entry,
+        in a repository whose tags are `tags`."""
         path = self.repository(changelog=PUBLISHED, package=package_json(version="2.0.2"),
-                               tags=("v2.0.1", "v2.0.1-main"))
+                               tags=tags, public_api="[Velvet] method Velvet.V.A(): System.Void")
         (path / CHANGELOG_PATH).write_text(PUBLISHED.replace("## [Unreleased]", "## [2.0.2] - 2026-09-01"))
         git(path, "commit", "--quiet", "-a", "-m", "release")
         argv = ["published_check.py", "--project", str(path), "--base", "HEAD~1", "--result", "HEAD"]
         err = io.StringIO()
-
-        # Act
         with mock.patch.object(sys, "argv", argv), contextlib.redirect_stderr(err), \
                 contextlib.redirect_stdout(io.StringIO()):
             published_check.main()
+        return err.getvalue()
 
-        # Assert
-        self.assertIn("the version this tree derives is 2.1.0, a minor", err.getvalue())
+    def test_Given_APatchClosingOverAnAddedEntry_When_Read_Then_TheDerivedMinorIsNamed(self):
+        # Arrange — the previous release is tagged the way the dispatch tags it, which is where the
+        # derivation finds it.
+        said = self.closing_a_patch(("v2.0.1", "v2.0.1-main"))
+
+        # Act / Assert
+        self.assertIn("the version this tree derives is 2.1.0, a minor", said)
+
+    def test_Given_APatchWhosePreviousReleaseTagIsMissing_When_Read_Then_ItIsRefusedAsUnreadable(self):
+        # Arrange — a clone without the tag cannot show what the API gained, which is not the same
+        # as nothing gained.
+        said = self.closing_a_patch(("v2.0.1",))
+
+        # Act / Assert
+        self.assertIn("cannot be read at v2.0.1-main", said)
 
     # GREEN_ON_BASE(refactor): the case is unchanged; only the repository it builds gained a config that turns maintenance off.
     def test_Given_AReleaseLeavingAFragmentUncompiled_When_Read_Then_TheFragmentIsNamed(self):
