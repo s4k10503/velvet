@@ -359,6 +359,8 @@ namespace Velvet
         public Func<object>? Factory;
         public IHookRefSetter? NextHandleRef;
         public bool NextNeedsRecompute;
+        // The component's layout effects declared ahead of the handle, after which it sets up among them.
+        public int LayoutEffectsBefore;
     }
 
     internal sealed class HookMemoSlot
