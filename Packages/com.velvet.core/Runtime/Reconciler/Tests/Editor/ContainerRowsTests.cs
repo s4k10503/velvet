@@ -496,5 +496,22 @@ namespace Velvet.Tests
             // Assert
             Assert.That(RowModelAccess.Peek(parent)!.ElementAt(0), Is.SameAs(parent[0]));
         }
+
+        [Test]
+        public void Given_AScrollViewWrittenThroughItsHierarchy_When_ThePlacedChildIsLookedUp_Then_ItsHierarchyIndexIsAnswered()
+        {
+            // Arrange
+            var scroll = new ScrollView();
+            var first = new VisualElement();
+            var second = new VisualElement();
+            ChildListWrites.HierarchyAdd(scroll, first);
+            ChildListWrites.HierarchyInsert(scroll, 0, second);
+
+            // Act
+            var index = ChildListWrites.HierarchyIndexOf(scroll, second);
+
+            // Assert
+            Assert.That(index, Is.EqualTo(scroll.hierarchy.IndexOf(second)));
+        }
     }
 }

@@ -133,6 +133,8 @@ namespace Velvet.Tests
             Assert.That(string.Join("\n", offenders), Is.Empty, "read the child list through ChildListWrites");
         }
 
+        // GREEN_ON_BASE(construction): both sides are this assembly's own text, and nothing of the base's behaviour is
+        // pinned. Delete the `IsInvisible` call from `SearchingReader.Skips` and this is what reddens.
         [Test]
         public void Given_ReadersThatSearchTheLiveListTwoWays_When_TheScanReadsThem_Then_ItFindsBoth()
         {

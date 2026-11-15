@@ -336,7 +336,7 @@ namespace Velvet
             Realign(ctx, parent);
             if (!IsExplicit(ctx, real, ctx.StackingFacts.TryGetValue(real, out var facts) ? facts : null, parent))
             {
-                ChildListWrites.HierarchyInsert(parent, ChildListWrites.PhysicalIndexOf(parent, placeholder), real);
+                ChildListWrites.HierarchyInsert(parent, ChildListWrites.HierarchyIndexOf(parent, placeholder), real);
                 ctx.ZLayerPlaceholders.Remove(placeholder);
                 Release(placeholder);
                 Release(real);
@@ -558,7 +558,7 @@ namespace Velvet
             Hold(real, RoleFor(facts.Z), null, placeholder);
             ctx.ZLayerPlaceholders[placeholder] = real;
             ctx.ZLayerMembers[real] = new ZLayerMember(placeholder, parent, facts.Z, facts.Order);
-            ChildListWrites.HierarchyInsert(parent, ChildListWrites.PhysicalIndexOf(parent, real), placeholder);
+            ChildListWrites.HierarchyInsert(parent, ChildListWrites.HierarchyIndexOf(parent, real), placeholder);
             ctx.NoteSlotOccupantChanged(real, placeholder);
             MarkPending(ctx, parent);
         }
