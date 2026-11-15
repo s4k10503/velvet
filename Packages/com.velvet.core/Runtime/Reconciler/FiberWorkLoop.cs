@@ -336,7 +336,7 @@ namespace Velvet
             {
                 // No live Reconciler (disposed mid-flight): fall back to the per-fiber schedule so the
                 // request is not silently dropped while the fiber is still mounted.
-                fiber.MountPoint?.schedule.Execute(() => FlushState(fiber));
+                ScheduleStandaloneFlush(fiber);
                 return;
             }
 
@@ -349,6 +349,11 @@ namespace Velvet
                 scheduler.ScheduleDelayed(fiber);
             }
         }
+
+        // Kept out of ScheduleFlush, whose every call would otherwise build this closure
+        // (RenderCommitAllocationTests).
+        private static void ScheduleStandaloneFlush(ComponentFiber fiber)
+            => fiber.MountPoint?.schedule.Execute(() => FlushState(fiber));
 
         // Flushes the dirty state and runs RenderAndReconcile + the layout-effect commit.
         // Normally invoked automatically via schedule.Execute.
@@ -727,7 +732,7 @@ namespace Velvet
                 // reads it.
                 if (fiber.Reconciler?.HasPendingWork == true)
                 {
-                    mountPoint.schedule.Execute(() => PanelSchedulerCallback.Run(mountPoint, fiber, ContinueReconcile));
+                    ScheduleNextSlice(mountPoint, fiber);
                 }
                 else
                 {
@@ -792,6 +797,11 @@ namespace Velvet
                 FiberRenderer.PopFiber(pushedOnto);
             }
         }
+
+        // Kept out of ContinueReconcile, whose every call would otherwise build this closure
+        // (RenderCommitAllocationTests).
+        private static void ScheduleNextSlice(UnityEngine.UIElements.VisualElement mountPoint, ComponentFiber fiber)
+            => mountPoint.schedule.Execute(() => PanelSchedulerCallback.Run(mountPoint, fiber, ContinueReconcile));
 
         private static void PromoteStarvedTransitionLane(ComponentFiber fiber)
         {

@@ -462,8 +462,13 @@ namespace Velvet
         {
             if (deferReconcile || reconciler == null || !reconciler.HasPendingWork) return;
             fiber.PendingOldTree = oldTree;
-            fiber.MountPoint?.schedule.Execute(
-                () => PanelSchedulerCallback.Run(fiber.MountPoint, fiber, FiberWorkLoop.ContinueReconcile));
+            ScheduleParkedPassResume(fiber);
         }
+
+        // Kept out of ParkOldTreeIfPending, whose every call would otherwise build this closure
+        // (RenderCommitAllocationTests).
+        private static void ScheduleParkedPassResume(ComponentFiber fiber)
+            => fiber.MountPoint?.schedule.Execute(
+                () => PanelSchedulerCallback.Run(fiber.MountPoint, fiber, FiberWorkLoop.ContinueReconcile));
     }
 }

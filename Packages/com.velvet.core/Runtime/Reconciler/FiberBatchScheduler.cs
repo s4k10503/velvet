@@ -145,6 +145,10 @@ namespace Velvet
         // (immediate or delayed) is ever live at a time. Cleared after each drain to release fiber refs for GC.
         private readonly List<ComponentFiber> _drainBuffer = new();
 
+        private readonly Action _runImmediateCallback;
+
+        internal FiberBatchScheduler() => _runImmediateCallback = RunImmediateCallback;
+
         // Records the tree-stable element on which drain callbacks are registered. Called once when the
         // root fiber that owns this context mounts.
         internal void SetAnchor(VisualElement anchor) => _anchor = anchor;
@@ -212,7 +216,7 @@ namespace Velvet
             if (_immediateScheduled || _anchor == null) return;
             _immediateScheduled = true;
             ScheduledCallbackCount++;
-            _anchor.schedule.Execute(RunImmediateCallback);
+            _anchor.schedule.Execute(_runImmediateCallback);
         }
 
         private void RunImmediateCallback()

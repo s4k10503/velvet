@@ -25,7 +25,6 @@ Packages/com.velvet.core/Runtime/Reconciler/FiberBackdropApplier.cs	1
 Packages/com.velvet.core/Runtime/Reconciler/FiberBorderStyleApplier.cs	1
 Packages/com.velvet.core/Runtime/Reconciler/FiberBoxShadowApplier.cs	1
 Packages/com.velvet.core/Runtime/Reconciler/FiberClipPathApplier.cs	2
-Packages/com.velvet.core/Runtime/Reconciler/FiberEffects.cs	2
 Packages/com.velvet.core/Runtime/Reconciler/FiberElementCleaner.cs	1
 Packages/com.velvet.core/Runtime/Reconciler/FiberEventBindingManager.cs	2
 Packages/com.velvet.core/Runtime/Reconciler/FiberFocusNavigator.cs	14
