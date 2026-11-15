@@ -11,6 +11,6 @@
 
 ### Changed
 
-- A `[Component]` body's computed value that can hold a node in a field, a tuple or a collection other than an array
-  or a `List<T>` of nodes is now cached as any other value is. The memoization report used to decline it with "it can
+- A `[Component]` body's computed value that can hold a node in a field or in a collection other than an array or a
+  `List<T>` of nodes is now cached as any other value is. The memoization report used to decline it with "it can
   hold nodes that nothing keeps out of the pool".

@@ -31,9 +31,6 @@ namespace Velvet
             }
         }
 
-        // A factory that takes from a pool before it builds its node calls this above that rent, under the
-        // ordering rule V.Draggable's own refusal states. The setter above refuses the same key, but only
-        // once the node's initializer runs, which is after such a factory's rent.
         internal static void RequireKey(string? key)
         {
             if (KeyHoldsDelimiter(key))
