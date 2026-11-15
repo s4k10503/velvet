@@ -31,7 +31,7 @@ namespace Velvet.Tests
             ChildListWrites.Add(destination, child);
 
             // Assert
-            Assert.That(ChildListWrites.Peek(destination)!.TotalCount, Is.EqualTo(destination.childCount));
+            Assert.That(RowModelAccess.Peek(destination)!.TotalCount, Is.EqualTo(destination.childCount));
         }
 
         [Test]
@@ -53,7 +53,7 @@ namespace Velvet.Tests
             ChildListWrites.Insert(destination, 1, child);
 
             // Assert
-            Assert.That(ContainerRowsTests.CompareOrder(destination, ChildListWrites.Peek(destination)!), Is.Null);
+            Assert.That(ContainerRowsTests.CompareOrder(destination, RowModelAccess.Peek(destination)!), Is.Null);
         }
 
         [Test]
@@ -71,7 +71,7 @@ namespace Velvet.Tests
             ChildListWrites.BeginPass();
 
             // Assert
-            Assert.That(ChildListWrites.Peek(container)!.ElementAt(0), Is.SameAs(container[0]));
+            Assert.That(RowModelAccess.Peek(container)!.ElementAt(0), Is.SameAs(container[0]));
         }
 
         [Test]
@@ -89,7 +89,7 @@ namespace Velvet.Tests
             ChildListWrites.VerifyTouched();
 
             // Assert
-            Assert.That(ChildListWrites.Peek(container)!.ElementAt(0), Is.SameAs(container[0]));
+            Assert.That(RowModelAccess.Peek(container)!.ElementAt(0), Is.SameAs(container[0]));
         }
     }
 }

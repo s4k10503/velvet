@@ -80,7 +80,7 @@ namespace Velvet.Tests
                         ChildListWrites.HierarchySort(parent, (a, b) => keys[a].CompareTo(keys[b]));
                         break;
                 }
-                var rows = ChildListWrites.Peek(parent);
+                var rows = RowModelAccess.Peek(parent);
                 if (rows == null)
                 {
                     if (parent.childCount != 0) report.Append($"step {step}: no model for {parent.childCount} children");
@@ -97,7 +97,7 @@ namespace Velvet.Tests
             for (var slot = -1; slot <= parent.childCount + 1; slot++)
             {
                 var expected = LogicalChildSlots.ToPhysical(parent, slot);
-                var actual = rows.ToPhysical(slot);
+                var actual = RowModelAccess.ToPhysical(rows, slot);
                 if (expected != actual) return $"ToPhysical({slot}) {actual}, scan {expected}";
             }
             return null;
@@ -108,7 +108,7 @@ namespace Velvet.Tests
             for (var slot = -1; slot <= parent.childCount + 1; slot++)
             {
                 var expected = LogicalChildSlots.TryGetPhysical(parent, slot, out var expectedAt);
-                var actual = rows.TryGetPhysical(slot, out var actualAt);
+                var actual = RowModelAccess.TryGetPhysical(rows, slot, out var actualAt);
                 if (expected != actual || expectedAt != actualAt)
                 {
                     return $"TryGetPhysical({slot}) {actual}/{actualAt}, scan {expected}/{expectedAt}";
@@ -122,7 +122,7 @@ namespace Velvet.Tests
             for (var physical = -1; physical <= parent.childCount + 1; physical++)
             {
                 var expected = LogicalChildSlots.ToLogical(parent, physical);
-                var actual = rows.ToLogical(physical);
+                var actual = RowModelAccess.ToLogical(rows, physical);
                 if (expected != actual) return $"ToLogical({physical}) {actual}, scan {expected}";
             }
             return null;
@@ -137,7 +137,7 @@ namespace Velvet.Tests
         {
             for (var i = 0; i < parent.childCount; i++)
             {
-                if (rows.PhysicalIndexOf(parent[i]) != i) return $"PhysicalIndexOf of child {i} is {rows.PhysicalIndexOf(parent[i])}";
+                if (RowModelAccess.PhysicalIndexOf(rows, parent[i]) != i) return $"PhysicalIndexOf of child {i} is {RowModelAccess.PhysicalIndexOf(rows, parent[i])}";
             }
             return null;
         }
@@ -148,7 +148,7 @@ namespace Velvet.Tests
             for (var i = 0; i < parent.childCount; i++)
             {
                 var expected = LogicalChildSlots.IsInvisible(parent[i]) ? -1 : slot++;
-                if (rows.SlotOf(parent[i]) != expected) return $"SlotOf child {i} is {rows.SlotOf(parent[i])}, scan {expected}";
+                if (RowModelAccess.SlotOf(rows, parent[i]) != expected) return $"SlotOf child {i} is {RowModelAccess.SlotOf(rows, parent[i])}, scan {expected}";
             }
             return null;
         }
@@ -280,7 +280,7 @@ namespace Velvet.Tests
             ChildListWrites.BeginPass();
 
             // Assert
-            Assert.That(CompareOrder(parent, ChildListWrites.Peek(parent)!), Is.Null);
+            Assert.That(CompareOrder(parent, RowModelAccess.Peek(parent)!), Is.Null);
         }
 
         [Test]
@@ -297,7 +297,7 @@ namespace Velvet.Tests
             ChildListWrites.Add(parent, first);
 
             // Assert
-            Assert.That(CompareOrder(parent, ChildListWrites.Peek(parent)!), Is.Null);
+            Assert.That(CompareOrder(parent, RowModelAccess.Peek(parent)!), Is.Null);
         }
 
         [Test]
@@ -313,7 +313,7 @@ namespace Velvet.Tests
             ChildListWrites.Add(to, child);
 
             // Assert
-            Assert.That(ChildListWrites.Peek(from), Is.Null);
+            Assert.That(RowModelAccess.Peek(from), Is.Null);
         }
 
         [Test]
@@ -328,7 +328,7 @@ namespace Velvet.Tests
             ChildListWrites.Add(parent, new VisualElement());
 
             // Assert
-            Assert.That(CompareOrder(parent, ChildListWrites.Peek(parent)!), Is.Null);
+            Assert.That(CompareOrder(parent, RowModelAccess.Peek(parent)!), Is.Null);
         }
 
         [Test]
@@ -344,7 +344,7 @@ namespace Velvet.Tests
             ChildListWrites.Add(parent, new VisualElement());
 
             // Assert
-            Assert.That(CompareOrder(parent, ChildListWrites.Peek(parent)!), Is.Null);
+            Assert.That(CompareOrder(parent, RowModelAccess.Peek(parent)!), Is.Null);
         }
 
         [Test]
@@ -359,7 +359,7 @@ namespace Velvet.Tests
             ChildListWrites.Add(parent, new VisualElement());
 
             // Assert
-            Assert.That(ChildListWrites.Peek(parent)!.TotalCount, Is.EqualTo(3));
+            Assert.That(RowModelAccess.Peek(parent)!.TotalCount, Is.EqualTo(3));
         }
 
         [Test]
@@ -378,7 +378,7 @@ namespace Velvet.Tests
             ChildListWrites.Reclassify(marker);
 
             // Assert
-            Assert.That(ChildListWrites.Peek(parent)!.ToPhysical(1), Is.EqualTo(LogicalChildSlots.ToPhysical(parent, 1)));
+            Assert.That(RowModelAccess.ToPhysical(RowModelAccess.Peek(parent)!, 1), Is.EqualTo(LogicalChildSlots.ToPhysical(parent, 1)));
         }
 
         [Test]
@@ -393,7 +393,7 @@ namespace Velvet.Tests
             ChildListWrites.RemoveFromHierarchy(child);
 
             // Assert
-            Assert.That(ChildListWrites.Peek(parent), Is.Null);
+            Assert.That(RowModelAccess.Peek(parent), Is.Null);
         }
 
         [Test]
@@ -410,7 +410,7 @@ namespace Velvet.Tests
             ChildListWrites.VerifyTouched();
 
             // Assert
-            Assert.That(ChildListWrites.Peek(parent)!.ElementAt(0), Is.SameAs(parent[0]));
+            Assert.That(RowModelAccess.Peek(parent)!.ElementAt(0), Is.SameAs(parent[0]));
         }
     }
 }

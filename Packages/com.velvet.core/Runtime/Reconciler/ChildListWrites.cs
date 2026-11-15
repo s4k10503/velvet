@@ -23,6 +23,7 @@ namespace Velvet
         private static readonly ConditionalWeakTable<VisualElement, ContainerRows> s_rows = new();
         private static readonly HashSet<VisualElement> s_touched = new();
         private static readonly HashSet<VisualElement> s_nested = new();
+        private static readonly List<VisualElement> s_flight = new();
         private static int s_open;
 
         internal static RowKind Classify(VisualElement element)
@@ -31,12 +32,10 @@ namespace Velvet
             return LogicalChildSlots.StaysFirst(element) ? RowKind.LeadingInvisible : RowKind.Invisible;
         }
 
-        // The model of a container that has one, as it stands: a read that never builds or checks.
-        internal static ContainerRows? Peek(VisualElement container)
+        // The model of a container that has one, as it stands: a read that never builds or checks. Private until a
+        // reader moves onto the model; the tests reach it by reflection (RowModelAccess).
+        private static ContainerRows? Peek(VisualElement container)
             => s_rows.TryGetValue(container, out var rows) ? rows : null;
-
-        // The model of container, built or rebuilt when it does not match the live list.
-        internal static ContainerRows RowsOf(VisualElement container) => Synced(container, -1);
 
         private static ContainerRows Synced(VisualElement container, int readAt)
         {
@@ -81,13 +80,29 @@ namespace Velvet
 
         // An announced change to a hierarchy (RelationalTreeWatch hears them from the panel) that none of these ops is
         // making marks the models of the element and its parent stale. One made inside an op's UI Toolkit call is that
-        // op's own.
+        // op's own, except for a container the op is not writing (NoteDuringOp).
         internal static void NoteHierarchyChange(VisualElement element)
         {
-            if (s_open > 0) return;
+            if (s_open > 0)
+            {
+                NoteDuringOp(element);
+                NoteDuringOp(element.hierarchy.parent);
+                return;
+            }
             if (s_rows.TryGetValue(element, out var own)) own.Stale = true;
             var parent = element.hierarchy.parent;
             if (parent != null && s_rows.TryGetValue(parent, out var rows)) rows.Stale = true;
+        }
+
+        // A change announced inside an op's UI Toolkit call to a container the op is not writing is UI Toolkit's own
+        // reaction to the op (a composite field moving its input between containers). The op ends with that container
+        // compared whole; the op's own containers are settled anyway.
+        private static void NoteDuringOp(VisualElement? container)
+        {
+            if (container != null && s_rows.TryGetValue(container, out _) && !s_flight.Contains(container))
+            {
+                s_nested.Add(container);
+            }
         }
 
         // The element UI Toolkit's own child-list calls on parent write into: parent itself, or the content container
@@ -107,12 +122,14 @@ namespace Velvet
             if (s_open > 0) s_nested.Add(container);
             var rows = Synced(container, readAt);
             s_open++;
+            s_flight.Add(container);
             Touch(container);
             return rows;
         }
 
         private static void Exit(VisualElement container)
         {
+            s_flight.RemoveAt(s_flight.Count - 1);
             if (--s_open > 0) return;
             var nestedRan = s_nested.Count > 0;
             Settle(container, nestedRan);
@@ -143,6 +160,14 @@ namespace Velvet
 
         // The model goes with the element: a container returned to a pool or released keeps no children's rows.
         internal static void Drop(VisualElement container) => s_rows.Remove(container);
+
+        // Every model under root goes: for a control that rebuilds its own containers in a way that writes no child
+        // list through here (a TextField changing multiline), where the models would otherwise outlive the structure.
+        internal static void DropSubtree(VisualElement root)
+        {
+            Drop(root);
+            foreach (var child in root.hierarchy.Children()) DropSubtree(child);
+        }
 
         internal static void Insert(VisualElement parent, int index, VisualElement child)
             => InsertCore(ContentOf(parent), index, child, viaHierarchy: false, parent);
@@ -339,7 +364,7 @@ namespace Velvet
         }
 
         private static string Describe(VisualElement element)
-            => $"{element.GetType().Name} '{element.name}' [{string.Join(" ", element.GetClasses())}]";
+            => $"{element.GetType().Name} '{element.name}'";
 
         private static string? Compare(ContainerRows rows, VisualElement container)
         {

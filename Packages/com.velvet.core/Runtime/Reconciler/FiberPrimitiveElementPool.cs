@@ -269,6 +269,10 @@ namespace Velvet
                 textField.multiline = true;
                 textField.verticalScrollerVisibility = ScrollerVisibility.Hidden;
             }
+            // Before multiline goes off, which takes the scroll view's container out of the field: the models under
+            // it are dropped while the field still reaches them. SelectionTextOverlayLayoutPanelTests holds the
+            // multiline case.
+            ChildListWrites.DropSubtree(textField);
             textField.multiline = false;
             textField.generateVisualContent = null;
             // Same pair, and the same reason, as FiberSliderPoolHelper.

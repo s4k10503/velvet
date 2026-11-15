@@ -141,12 +141,8 @@ namespace Velvet
 
         internal bool Contains(VisualElement element) => TryFind(element, out _, out _);
 
-        // Rendered for an element the model does not hold.
-        internal RowKind KindOf(VisualElement element)
-            => TryFind(element, out var block, out var at) ? block!.Kinds[at] : RowKind.Rendered;
-
         // LogicalChildSlots.ToPhysical, over the model.
-        internal int ToPhysical(int logical)
+        private int ToPhysical(int logical)
         {
             if (logical < 0) logical = 0;
             var start = 0;
@@ -179,14 +175,14 @@ namespace Velvet
         }
 
         // LogicalChildSlots.TryGetPhysical, over the model.
-        internal bool TryGetPhysical(int logical, out int physical)
+        private bool TryGetPhysical(int logical, out int physical)
         {
             physical = ToPhysical(logical);
             return logical >= 0 && physical < _total && KindAt(physical) == RowKind.Rendered;
         }
 
         // LogicalChildSlots.ToLogical, over the model.
-        internal int ToLogical(int physical)
+        private int ToLogical(int physical)
         {
             if (physical <= 0) return 0;
             var limit = Math.Min(physical, _total);
@@ -209,7 +205,7 @@ namespace Velvet
             return rendered;
         }
 
-        internal int PhysicalIndexOf(VisualElement element)
+        private int PhysicalIndexOf(VisualElement element)
         {
             if (!TryFind(element, out var block, out var at)) return -1;
             var start = 0;
@@ -218,7 +214,7 @@ namespace Velvet
         }
 
         // The slot a Rendered element holds, or -1.
-        internal int SlotOf(VisualElement element)
+        private int SlotOf(VisualElement element)
         {
             if (!TryFind(element, out var block, out var at) || block!.Kinds[at] != RowKind.Rendered) return -1;
             var rendered = 0;
