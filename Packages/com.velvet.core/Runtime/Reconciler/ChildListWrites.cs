@@ -30,7 +30,8 @@ namespace Velvet
         internal static RowKind Classify(VisualElement element)
         {
             if (!LogicalChildSlots.IsInvisible(element)) return RowKind.Rendered;
-            return LogicalChildSlots.StaysFirst(element) ? RowKind.LeadingInvisible : RowKind.Invisible;
+            if (LogicalChildSlots.StaysFirst(element)) return RowKind.LeadingInvisible;
+            return LogicalChildSlots.IsHostedAfterItsRow(element) ? RowKind.Hosted : RowKind.Invisible;
         }
 
         // The child count of a container: the live list's, or the model's where a write is recorded and not yet applied.

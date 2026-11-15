@@ -92,6 +92,12 @@ namespace Velvet
                 || child.ClassListContains(ParticlesDriver.LayerMarkerClass)
                 || child.ClassListContains(RingOverlay.InsetMarkerClass);
 
+        // The nodes a rendered child hosts behind itself: the ring band beside it and the face border over its box. The
+        // outline overlay a stacking root keeps after all its rows carries the ring marker class too and is not one.
+        internal static bool IsHostedAfterItsRow(VisualElement child)
+            => (child.ClassListContains(RingOverlay.MarkerClass) && !child.ClassListContains(RingOverlay.OutlineMarkerClass))
+               || child.ClassListContains(FaceBorderOverlay.MarkerClass);
+
         /// <summary>
         /// The logical slot a physical child index occupies — the number of rendered children before it.
         /// For an invisible child this is the slot it sits in front of.

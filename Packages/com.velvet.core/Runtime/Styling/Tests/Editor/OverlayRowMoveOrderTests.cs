@@ -39,14 +39,15 @@ namespace Velvet.Tests
             s_hostClass = "";
         }
 
-        private string ReverseAndRead()
+        private string ReverseAndRead(int layoutPassesBefore = 1)
         {
             using var mounted = V.Mount(_window.rootVisualElement, V.Component(Rows));
             var list = _window.rootVisualElement.Q<VisualElement>("list");
-            ForcePanelUpdate(list.panel);
+            for (var pass = 0; pass < layoutPassesBefore; pass++) ForcePanelUpdate(list.panel);
             s_setReversed.Invoke(true);
             mounted.FlushStateForTest();
-            return string.Join(",", list.Children().Select(child => child.name.StartsWith("r") ? child.name : "overlay"));
+            return string.Join(",", list.Children().Select(child => child.ClassListContains(RingOverlay.OutlineMarkerClass) ? "out"
+                : child.name.StartsWith("r") ? child.name : "overlay"));
         }
 
         // GREEN_ON_BASE(refactor): the base moves each row at once, so the attach that ends each move places the
@@ -93,7 +94,8 @@ namespace Velvet.Tests
             Assert.That(order, Is.EqualTo("r3,overlay,r4,overlay,r1,overlay,r2,overlay,r0,overlay"));
         }
 
-        // GREEN_ON_BASE(refactor): as the ring case above, for the outline nodes a stacking-root host keeps after its rows.
+        // GREEN_ON_BASE(refactor): on the base the moved row's outline node is placed as the row moves, and the rows
+        // inserted afterwards land ahead of the outline nodes the host keeps after its rows.
         [Test]
         public void Given_OutlinedRowsInAHostWhoseReorderAddsTwoRowsAheadOfThem_When_TheyReorder_Then_TheOutlineNodesFollowTheTreeOrderOfTheirRows()
         {
@@ -121,6 +123,37 @@ namespace Velvet.Tests
             var args = new object?[] { node, null };
             table.GetType().GetMethod("TryGetValue")!.Invoke(table, args);
             return ((VisualElement?)args[1])?.name ?? "none";
+        }
+
+        [Test]
+        public void Given_RingRowsOfAList_When_ARowIsAppended_Then_TheLastRowsBandStaysBesideItsRow()
+        {
+            // Arrange
+            s_className = "w-[40px] h-[40px] ring-2";
+            s_before = new[] { 0, 1 };
+            s_after = new[] { 0, 1, 2 };
+
+            // Act
+            var order = ReverseAndRead();
+
+            // Assert
+            Assert.That(order, Is.EqualTo("r0,overlay,r1,overlay,r2,overlay"));
+        }
+
+        [Test]
+        public void Given_OutlinedRowsInAHostOfAList_When_ARowIsAppended_Then_TheRowStaysAheadOfTheOutlineNodes()
+        {
+            // Arrange
+            s_hostClass = "opacity-90";
+            s_className = "w-[40px] h-[40px] outline-2";
+            s_before = new[] { 0, 1 };
+            s_after = new[] { 0, 1, 2 };
+
+            // Act
+            var order = ReverseAndRead();
+
+            // Assert
+            Assert.That(order, Does.Not.Match("out,(r[0-9]|overlay)"));
         }
     }
 }

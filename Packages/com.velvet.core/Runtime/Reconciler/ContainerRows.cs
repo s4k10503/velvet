@@ -7,12 +7,14 @@ namespace Velvet
 {
     // What a physical child of a container is to slot counting. Mirrors LogicalChildSlots.IsInvisible and StaysFirst:
     // a child is Rendered when it holds a logical slot, LeadingInvisible when it holds none and an append steps over
-    // it, and Invisible when it holds none and an append stops before it.
+    // it, Hosted when it holds none and stands behind the rendered child it decorates, so an append steps over it
+    // there, and Invisible when it holds none and an append stops before it.
     internal enum RowKind : byte
     {
         Rendered,
         LeadingInvisible,
         Invisible,
+        Hosted,
     }
 
     // The physical children of one container in order, each with its RowKind, so that the counts and conversions
