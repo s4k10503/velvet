@@ -23,20 +23,10 @@ namespace Velvet
     /// physical index.
     /// </para>
     /// <para>
-    /// Cost, and where it is NOT paid. <see cref="Count"/> and <see cref="ToLogical"/> read the container's
-    /// <c>ContainerRows</c> through <c>ChildListWrites</c>, which builds that model from the child list once and keeps
-    /// it beside every write. <see cref="ToPhysical"/> stops at the requested slot. <see cref="TryGetPhysical"/>
-    /// answers "is the slot occupied" and "where" in one walk. That walk is proportional to the slot index,
-    /// and every child it passes is asked <see cref="IsInvisible"/>, so a loop calling these once per child is
-    /// quadratic in the child count, and whatever <see cref="IsInvisible"/> costs is paid that many times. A
-    /// diff reads its old rows into <see cref="OldSlotOccupants"/> rather than once per child, and removes them
-    /// by element, which <c>HostCommitQueue</c> searches for from where that read found it. What it still asks
-    /// by slot, a <see cref="LogicalSlotCursor"/> answers, walking on or back from the last slot it resolved, not
-    /// a cached count, which every insert and remove would have to invalidate: the general path's leaf commit,
-    /// <c>ChildReconciler</c>'s check of each slot the indexed diff patches and of each old row keyed Pass 2 takes
-    /// (<c>AssertDomIndexInvariant</c>), and the inserts of its loops (<see cref="LogicalSlotCursor.Insert"/>).
-    /// <c>PatchOrReplaceAtSlot</c>'s insert takes the caller's cursor too, but in the indexed diff that cursor stood
-    /// on the row the replacement has just removed, so the insert there still walks from the first child.
+    /// <see cref="Count"/>, <see cref="ToLogical"/>, <see cref="ToPhysical"/> and <see cref="TryGetPhysical"/> read
+    /// the container's <c>ContainerRows</c> through <c>ChildListWrites</c>, which builds that model from the child list
+    /// once and keeps it beside every write, so a call costs a few block counts and one block rather than the child
+    /// list.
     /// </para>
     /// </remarks>
     internal static class LogicalChildSlots
@@ -57,17 +47,18 @@ namespace Velvet
             => container == null ? 0 : ChildListWrites.RenderedCount(container);
 
         /// <summary>
-        /// Whether a rendered child currently occupies <paramref name="logical"/>, and where. One walk
-        /// instead of a <see cref="Count"/> bound check followed by a <see cref="ToPhysical"/> — the pair
-        /// the hot per-child loops used to do, where the bound check alone scanned the whole child list.
+        /// Whether a rendered child currently occupies <paramref name="logical"/>, and where.
         /// <paramref name="physical"/> is the append position when the slot is empty, so a caller that
         /// inserts on the false branch needs no second call.
         /// </summary>
         internal static bool TryGetPhysical(VisualElement container, int logical, out int physical)
         {
-            physical = ToPhysical(container, logical);
-            return logical >= 0 && physical < container.childCount
-                && !IsInvisible(container[physical]);
+            if (container == null)
+            {
+                physical = 0;
+                return false;
+            }
+            return ChildListWrites.TryGetPhysical(container, logical, out physical);
         }
 
         /// <summary>
@@ -86,48 +77,15 @@ namespace Velvet
         /// which is why BackdropFilterLayer places its layer again at the reconcile boundary.
         /// </remarks>
         internal static int ToPhysical(VisualElement container, int logical)
-        {
-            if (container == null)
-            {
-                return 0;
-            }
-            var physicalCount = container.childCount;
-            if (logical < 0)
-            {
-                logical = 0;
-            }
-            var rendered = 0;
-            // Where an append lands, decided by the invisible child's KIND rather than its position. The
-            // kinds have opposite contracts: an element in the back z band, a SceneView's camera feed, a
-            // Particles element's layers and an inset ring band must stay ahead of every rendered child, while
-            // the front band and a filter bounds spacer must stay last. So an append steps over a leading one of
-            // the first four — slot 0 of a parent holding nothing else resolves AFTER it — and stops before
-            // everything else.
-            // Deciding this positionally instead ("anything invisible seen before the first rendered child is
-            // leading") sent an append past a bounds spacer on a parent whose rendered children had all been
-            // removed.
-            var appendAt = 0;
-            for (var i = 0; i < physicalCount; i++)
-            {
-                var child = container[i];
-                if (IsInvisible(child))
-                {
-                    if (StaysFirst(child))
-                    {
-                        appendAt = i + 1;
-                    }
-                    continue;
-                }
-                if (rendered == logical)
-                {
-                    return i;
-                }
-                rendered++;
-                appendAt = i + 1;
-            }
-            return appendAt;
-        }
+            => container == null ? 0 : ChildListWrites.ToPhysical(container, logical);
 
+        // Where an append lands is decided by the invisible child's KIND rather than its position. The kinds have
+        // opposite contracts: an element in the back z band, a SceneView's camera feed, a Particles element's layers and
+        // an inset ring band must stay ahead of every rendered child, while the front band and a filter bounds spacer
+        // must stay last. So an append steps over a leading one of the first four — slot 0 of a parent holding nothing
+        // else resolves AFTER it — and stops before everything else. Deciding this positionally instead ("anything
+        // invisible seen before the first rendered child is leading") sent an append past a bounds spacer on a parent
+        // whose rendered children had all been removed.
         internal static bool StaysFirst(VisualElement child)
             => FiberZLayerCoordinator.IsBackBandMember(child)
                 || child.ClassListContains(SceneViewDriver.FeedMarkerClass)
@@ -140,153 +98,5 @@ namespace Velvet
         /// </summary>
         internal static int ToLogical(VisualElement container, int physical)
             => container == null || physical <= 0 ? 0 : ChildListWrites.ToLogical(container, physical);
-    }
-
-    /// <summary>
-    /// <see cref="LogicalChildSlots.TryGetPhysical"/> for one container, resolved from the last slot this
-    /// cursor found occupied rather than from the start of the child list, walking on to a slot above it and
-    /// back to one below it, so a caller pays the distance between consecutive slots rather than each slot's
-    /// index.
-    /// </summary>
-    /// <remarks>
-    /// The remembered slot is trusted only while its element still sits at the remembered physical index;
-    /// otherwise the call walks from the start. A single insert or removal before that element moves it,
-    /// which the check sees, and one after it is counted by the walk on. The check misses an insert and a
-    /// removal before it that cancel out where exactly one of them is a rendered child, so hold a cursor only across
-    /// a loop in which the container's rendered children keep their slots.
-    /// </remarks>
-    internal struct LogicalSlotCursor
-    {
-        private VisualElement _container;
-        private VisualElement _occupant;
-        private int _logical;
-        private int _physical;
-
-        /// <summary>
-        /// Same answer as <see cref="LogicalChildSlots.TryGetPhysical"/>, including its append position on
-        /// the false branch.
-        /// </summary>
-        internal bool TryGetPhysical(VisualElement container, int logical, out int physical)
-        {
-            if (IsCurrentFor(container))
-            {
-                // MUTANT_SURVIVES(equivalent, boundary): no caller asks again for the slot the cursor remembers, and for
-                // that slot the walk back gives up, leaving the walk from the start to give the answer the walk on gives.
-                if (logical >= _logical ? WalkForward(container, logical, out physical) : WalkBack(container, logical, out physical))
-                {
-                    return true;
-                }
-            }
-            if (!LogicalChildSlots.TryGetPhysical(container, logical, out physical))
-            {
-                return false;
-            }
-            Remember(container, logical, physical);
-            return true;
-        }
-
-        /// <summary>
-        /// Inserts <paramref name="element"/>, a rendered child, through <paramref name="host"/> where
-        /// <see cref="LogicalChildSlots.ToPhysical"/> puts a child at <paramref name="logical"/>, and remembers it as
-        /// the slot's occupant. A caller inserting at ascending slots pays the distance from the slot it last inserted
-        /// at rather than the slot's index; an append, past the last rendered child, is the common case.
-        /// </summary>
-        internal void Insert(HostCommitQueue host, VisualElement container, int logical, VisualElement element)
-        {
-            var physical = IsCurrentFor(container) && logical > _logical
-                ? InsertIndexFrom(container, logical)
-                : LogicalChildSlots.ToPhysical(container, logical);
-            host.Insert(container, physical, element);
-            // An insert into a container on a panel can put a sibling ahead of the element before this returns (a
-            // layer hosted before its element), which moves it past where it was put; the slot is remembered only
-            // while the element still stands there, and the next call walks from the start otherwise.
-            if (physical < container.childCount && ReferenceEquals(container[physical], element))
-            {
-                Remember(container, logical, physical);
-            }
-            else
-            {
-                _container = null;
-            }
-        }
-
-        // ToPhysical's answer for a slot above the remembered one, which holds its own rendered occupant: the walk
-        // starts after it, with the append position ToPhysical would have reached at it.
-        private int InsertIndexFrom(VisualElement container, int logical)
-        {
-            var rendered = _logical;
-            var appendAt = _physical + 1;
-            var physicalCount = container.childCount;
-            for (var i = _physical + 1; i < physicalCount; i++)
-            {
-                var child = container[i];
-                if (LogicalChildSlots.IsInvisible(child))
-                {
-                    if (LogicalChildSlots.StaysFirst(child))
-                    {
-                        appendAt = i + 1;
-                    }
-                    continue;
-                }
-                rendered++;
-                if (rendered == logical)
-                {
-                    return i;
-                }
-                appendAt = i + 1;
-            }
-            return appendAt;
-        }
-
-        private bool IsCurrentFor(VisualElement container)
-            => ReferenceEquals(_container, container)
-                && _physical < container.childCount
-                && ReferenceEquals(container[_physical], _occupant);
-
-        private bool WalkForward(VisualElement container, int logical, out int physical)
-        {
-            var rendered = _logical;
-            var physicalCount = container.childCount;
-            for (physical = _physical; physical < physicalCount; physical++)
-            {
-                if (LogicalChildSlots.IsInvisible(container[physical]))
-                {
-                    continue;
-                }
-                if (rendered == logical)
-                {
-                    Remember(container, logical, physical);
-                    return true;
-                }
-                rendered++;
-            }
-            return false;
-        }
-
-        private bool WalkBack(VisualElement container, int logical, out int physical)
-        {
-            var remaining = _logical - logical;
-            for (physical = _physical - 1; physical != -1; physical--)
-            {
-                if (LogicalChildSlots.IsInvisible(container[physical]))
-                {
-                    continue;
-                }
-                if (--remaining == 0)
-                {
-                    Remember(container, logical, physical);
-                    return true;
-                }
-            }
-            return false;
-        }
-
-        private void Remember(VisualElement container, int logical, int physical)
-        {
-            _container = container;
-            _occupant = container[physical];
-            _logical = logical;
-            _physical = physical;
-        }
     }
 }

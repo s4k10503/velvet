@@ -7,7 +7,7 @@ namespace Velvet.Tests
     /// <summary>
     /// Specifies that reconciling a list of labels whose rows are kept and patched makes a number of
     /// contentContainer calls on their container proportional to the list, not to its square: what a diff still asks
-    /// by slot of each row it patches is answered from the slot it asked before rather than from the first child.
+    /// by slot of each row it patches is answered from the container's row model rather than by walking its children.
     /// One case for the indexed diff, which asks whether each slot it patches is occupied, and one each for the
     /// synchronous and the time-sliced keyed Pass 2, which ask it of each old row they take, wherever
     /// UNITY_ASSERTIONS is defined, as it is in the editor.

@@ -6,8 +6,8 @@ namespace Velvet.Tests
 {
     /// <summary>
     /// Specifies that a parent re-render of a container holding a list of inline components makes a number of
-    /// contentContainer calls on the container proportional to the list, not to its square: where the order
-    /// holds, each old leaf the walk takes is found from the one before it rather than from the first child.
+    /// contentContainer calls on the container proportional to the list, not to its square: each old
+    /// leaf the walk takes is found from the container's row model rather than by walking its children.
     /// </summary>
     [TestFixture]
     internal sealed class GeneralPathSlotLookupScalingTests

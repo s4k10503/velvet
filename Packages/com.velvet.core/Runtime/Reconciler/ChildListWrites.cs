@@ -9,7 +9,7 @@ namespace Velvet
 {
     // Every write the runtime assembly makes to a child list goes through here (RowModelRoutingTests), and each op
     // updates the ContainerRows of the container beside the write: the model first and then the UI Toolkit call, so a
-    // write nested inside that call (LogicalSlotCursor.Insert names one) finds the child already in the model; only
+    // write nested inside that call finds the child already in the model; only
     // HierarchySort makes its call first and rebuilds after.
     //
     // A model is checked against the live list when an op starts: its count, its first and last child and the child at
@@ -161,6 +161,71 @@ namespace Velvet
             var count = content.hierarchy.childCount;
             return count == 0 ? 0 : Synced(content, Math.Min(physical, count) - 1).ToLogical(physical);
         }
+
+        // What LogicalChildSlots.ToPhysical and TryGetPhysical answer. The slot's element is compared with the live
+        // child at the index the model gave, so a model that drifted where the cheap probes do not look is rebuilt
+        // before the answer is returned.
+        internal static int ToPhysical(VisualElement container, int logical)
+        {
+            var content = ContentOf(container);
+            if (content.hierarchy.childCount == 0) return 0;
+            var rows = Synced(content, -1);
+            var physical = rows.ToPhysical(logical);
+            if (!AgreesAt(rows, content, physical))
+            {
+                rows = Rebuilt(rows, content);
+                physical = rows.ToPhysical(logical);
+            }
+            return physical;
+        }
+
+        internal static bool TryGetPhysical(VisualElement container, int logical, out int physical)
+        {
+            var content = ContentOf(container);
+            if (content.hierarchy.childCount == 0)
+            {
+                physical = 0;
+                return false;
+            }
+            var rows = Synced(content, -1);
+            var found = rows.TryGetPhysical(logical, out physical);
+            if (!AgreesAt(rows, content, physical))
+            {
+                rows = Rebuilt(rows, content);
+                found = rows.TryGetPhysical(logical, out physical);
+            }
+            return found;
+        }
+
+        private static bool AgreesAt(ContainerRows rows, VisualElement content, int physical)
+            => s_open > 0 || physical >= content.hierarchy.childCount
+                || ReferenceEquals(rows.ElementAt(physical), content.hierarchy[physical]);
+
+        private static ContainerRows Rebuilt(ContainerRows rows, VisualElement content)
+        {
+            rows.Clear();
+            Fill(rows, content);
+            return rows;
+        }
+
+        // The index of the child in the container's list, or -1 where it is not one of its children.
+        internal static int PhysicalIndexOf(VisualElement container, VisualElement element)
+        {
+            var content = ContentOf(container);
+            return content.hierarchy.childCount == 0 ? -1 : Synced(content, -1).PhysicalIndexOf(element);
+        }
+
+        // Appends the rendered children at slots [slotStart, end) to into, as OldSlotOccupants reads them.
+        internal static void Rows(VisualElement container, int slotStart, int end, List<VisualElement?> into)
+        {
+            var content = ContentOf(container);
+            if (content.hierarchy.childCount == 0) return;
+            Synced(content, -1).Rows(slotStart, end, into);
+        }
+
+        // Inserts a rendered child where LogicalChildSlots.ToPhysical puts a child at the slot.
+        internal static void InsertAtSlot(VisualElement parent, int slot, VisualElement child)
+            => Insert(parent, ToPhysical(parent, slot), child);
 
         // For a role or class change that writes no child list, which flips what Classify answers for a child that
         // stays where it is: FiberZLayerCoordinator's Hold and Release, and RingOverlay's mode switch.

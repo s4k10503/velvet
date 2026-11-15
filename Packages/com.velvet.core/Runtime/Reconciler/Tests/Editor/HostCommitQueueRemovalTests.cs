@@ -5,8 +5,7 @@ namespace Velvet.Tests
 {
     /// <summary>
     /// Specifies that <see cref="HostCommitQueue.Remove"/> takes the element it names out of the parent wherever the
-    /// element now stands relative to the index it is searched from — at it, below it, above it, or with that index
-    /// past the last child — and takes nothing out where the element is not a child.
+    /// element stands — first, in the middle or last — and takes nothing out where the element is not a child.
     /// </summary>
     [TestFixture]
     internal sealed class HostCommitQueueRemovalTests
@@ -36,55 +35,42 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AChildAtTheIndexItIsSearchedFrom_When_Removed_Then_ItIsTheOneThatLeaves()
+        public void Given_AMiddleChild_When_Removed_Then_ItIsTheOneThatLeaves()
         {
             // Arrange
             var parent = ParentOf("a", "b", "c");
 
             // Act
-            Host.Remove(parent, parent[1], near: 1);
+            Host.Remove(parent, parent[1]);
 
             // Assert
             Assert.That(Names(parent), Is.EqualTo("a,c"));
         }
 
         [Test]
-        public void Given_TheFirstChildSearchedForFromTheLast_When_Removed_Then_ItIsTheOneThatLeaves()
+        public void Given_TheFirstChild_When_Removed_Then_ItIsTheOneThatLeaves()
         {
             // Arrange
             var parent = ParentOf("a", "b", "c", "d");
 
             // Act
-            Host.Remove(parent, parent[0], near: 3);
+            Host.Remove(parent, parent[0]);
 
             // Assert
             Assert.That(Names(parent), Is.EqualTo("b,c,d"));
         }
 
         [Test]
-        public void Given_TheLastChildSearchedForFromTheFirst_When_Removed_Then_ItIsTheOneThatLeaves()
+        public void Given_TheLastChild_When_Removed_Then_ItIsTheOneThatLeaves()
         {
             // Arrange
             var parent = ParentOf("a", "b", "c", "d");
 
             // Act
-            Host.Remove(parent, parent[3], near: 0);
+            Host.Remove(parent, parent[3]);
 
             // Assert
             Assert.That(Names(parent), Is.EqualTo("a,b,c"));
-        }
-
-        [Test]
-        public void Given_AnIndexPastTheLastChild_When_AChildIsRemovedSearchingFromIt_Then_ItIsTheOneThatLeaves()
-        {
-            // Arrange
-            var parent = ParentOf("a", "b", "c");
-
-            // Act
-            Host.Remove(parent, parent[1], near: 10);
-
-            // Assert
-            Assert.That(Names(parent), Is.EqualTo("a,c"));
         }
 
         [Test]
@@ -94,7 +80,7 @@ namespace Velvet.Tests
             var parent = ParentOf("a", "b", "c");
 
             // Act
-            Host.Remove(parent, new VisualElement { name = "x" }, near: 1);
+            Host.Remove(parent, new VisualElement { name = "x" });
 
             // Assert
             Assert.That(Names(parent), Is.EqualTo("a,b,c"));
@@ -107,7 +93,7 @@ namespace Velvet.Tests
             var parent = new VisualElement();
 
             // Act + Assert
-            Assert.That(() => Host.Remove(parent, new VisualElement(), near: 0), Throws.Nothing);
+            Assert.That(() => Host.Remove(parent, new VisualElement()), Throws.Nothing);
         }
     }
 }

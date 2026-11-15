@@ -21,32 +21,18 @@ namespace Velvet
             _cleaner = new FiberElementCleaner(ctx);
         }
 
-        // At the index LogicalSlotCursor resolved for the child's slot.
         internal void Insert(VisualElement parent, int physical, VisualElement child) => ChildListWrites.Insert(parent, physical, child);
+
+        // Where LogicalChildSlots.ToPhysical puts a child at the slot.
+        internal void InsertAtSlot(VisualElement parent, int slot, VisualElement child)
+            => ChildListWrites.InsertAtSlot(parent, slot, child);
 
         // Takes element out of parent with everything it holds released (FiberElementCleaner). Nothing is done
         // where element is no longer parent's child.
-        internal void Remove(VisualElement parent, VisualElement element, int near)
+        internal void Remove(VisualElement parent, VisualElement element)
         {
-            var at = IndexNear(parent, element, near);
+            var at = ChildListWrites.PhysicalIndexOf(parent, element);
             if (at >= 0) _cleaner.RemoveElement(parent, at);
-        }
-
-        // parent.IndexOf(element), searched outward from near, the index the caller last knew the element at, so a
-        // removal costs how far the element has moved since rather than its index. IndexOfNear gives up after a short
-        // window because its seed is another element's position; this one's is the element's own.
-        private static int IndexNear(VisualElement parent, VisualElement element, int near)
-        {
-            var count = parent.childCount;
-            if (count == 0) return -1;
-            var at = System.Math.Clamp(near, 0, count - 1);
-            if (ReferenceEquals(parent[at], element)) return at;
-            for (int below = at - 1, above = at + 1; below >= 0 || above < count; below--, above++)
-            {
-                if (below >= 0 && ReferenceEquals(parent[below], element)) return below;
-                if (above < count && ReferenceEquals(parent[above], element)) return above;
-            }
-            return -1;
         }
 
         // Re-places the non-LIS elements so the slot range [slotStart, slotStart + count) ends up in

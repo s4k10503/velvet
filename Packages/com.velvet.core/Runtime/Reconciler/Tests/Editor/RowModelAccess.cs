@@ -5,8 +5,7 @@ using UnityEngine.UIElements;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// The row model's readers, which no shipped code calls until a step moves a reader onto the model, reached by
-    /// reflection from the cases that pin them.
+    /// The row model's readers, reached by reflection from the cases that pin them.
     /// </summary>
     internal static class RowModelAccess
     {
