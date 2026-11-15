@@ -136,6 +136,10 @@ namespace Velvet
                 FiberLogger.LogError("ErrorBoundary",
                     "FiberRenderer: reconciling the fallback UI threw an exception. The original exception is preserved.");
                 FiberLogger.LogException("ErrorBoundary", reconcileEx);
+                // The error of an element's constructor arrives wrapped in a TargetInvocationException.
+                fiber.FallbackReconcileFailure = reconcileEx is System.Reflection.TargetInvocationException { InnerException: { } inner }
+                    ? inner
+                    : reconcileEx;
                 return false;
             }
             if (fiber.IsDisposed)
@@ -196,7 +200,10 @@ namespace Velvet
         internal static void PassOnTheCaughtError(ComponentFiber boundary, BoundaryCaughtSignal caught)
         {
             DropTheSwapsErrors(boundary);
-            ComponentBoundarySearch.PropagateException(boundary, caught.Thrower, caught.Error, isRenderError: true);
+            // A fallback that could not be created is what the boundary above is handed, as React hands it the error of
+            // the fallback's render rather than the one the fallback was for.
+            var error = TakeFallbackReconcileFailure(boundary) ?? caught.Error;
+            ComponentBoundarySearch.PropagateException(boundary, caught.Thrower, error, isRenderError: true);
         }
 
         private static VNode? TryInvokeFactory(ComponentFiber fiber, Exception originalException, ErrorInfo info)
@@ -260,10 +267,26 @@ namespace Velvet
             fiber.IsShowingFallback = true;
             fiber.FallbackContentFailed = false;
             bool result;
+            var reportOwed = false;
             ErrorInfo? info;
             try
             {
                 result = TryShowFallback(fiber, throwingFiber, exception, out info);
+            }
+            catch (FiberSuspendSignal) when (ctx.SuspensePrimaryDepth == 0)
+            {
+                // The swap has taken the failed rows down, and the throwing fiber with them, so the pass it started
+                // has no fiber left to retry. The boundary holds the error and renders its fallback again when the
+                // read resolves (OutputOf), reporting the catch then, as React reports it from the commit that shows it.
+                fiber.CaughtError = (exception, InfoFor(fiber, throwingFiber));
+                fiber.CatchUnreported = true;
+                ctx.DropCompletions(failedCompletions);
+                DropTheSwapsErrors(fiber);
+                FiberRenderer.SuspendPassOwner(fiber, FiberWorkLoop.IsRenderingTransitionLane);
+                if (ctx.SharedReconcileDepth > ctx.RangeBracketDepth) fiber.Reconciler?.SetAborted();
+                info = null;
+                result = true;
+                reportOwed = true;
             }
             finally
             {
@@ -279,12 +302,23 @@ namespace Velvet
                 // CommitPhaseCatchAbortLeakTests holds that. A VirtualList range's bracket adds a depth that is no pass
                 // here (ReconcilerContext.RangeBracketDepth).
                 if (ctx.SharedReconcileDepth > ctx.RangeBracketDepth) fiber.Reconciler.SetAborted();
+                if (reportOwed) return true;
                 RecordCatch(ctx, fiber, exception, info!);
                 FiberEffects.CommitStrandedLayoutWork(ctx);
                 return true;
             }
             DropTheSwapsErrors(fiber);
-            return false;
+            var failure = TakeFallbackReconcileFailure(fiber);
+            if (failure == null) return false;
+            ComponentBoundarySearch.PropagateException(fiber, throwingFiber, failure, isRenderError);
+            return true;
+        }
+
+        private static Exception? TakeFallbackReconcileFailure(ComponentFiber boundary)
+        {
+            var failure = boundary.FallbackReconcileFailure;
+            boundary.FallbackReconcileFailure = null;
+            return failure;
         }
 
         // An error that is not a render of the fallback's content — a cleanup or a ref of what the swap removes or
@@ -355,6 +389,11 @@ namespace Velvet
             // After the body, which reads what the boundary held before this render as the library's prevState.
             TakeQueuedReset(fiber);
             if (fiber.CaughtError is not var (error, info)) return bodyOutput;
+            if (fiber.CatchUnreported)
+            {
+                fiber.CatchUnreported = false;
+                RecordCatch(fiber.Reconciler!.Context, fiber, error, info);
+            }
             var fallback = TryInvokeFactory(fiber, error, info);
             if (fallback == null) ExceptionDispatchInfo.Capture(error).Throw();
             return new[] { fallback! };

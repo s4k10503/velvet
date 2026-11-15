@@ -181,16 +181,13 @@ namespace Velvet.Tests
         [TestFixture]
         internal sealed class UIToolkitOnlyFallbacks
         {
-            // GREEN_ON_BASE(characterization): the base hands the error a boundary's failed fallback could not show to the one above.
-            // Have ShowFallbackTree return true where a fallback's reconcile threw and `ins:OF ref:OF lay:OF` drops out.
             [Test]
             public void Given_ABoundaryWhoseFallbackElementCannotBeCreated_When_ItsChildsOwnRenderThrows_Then_TheBoundaryAboveShowsItsFallback()
             {
-                // Arrange — the catch's report is left out: the boundary above is handed X's error here, and the
-                // constructor's in React
+                // Arrange
                 var log = new EventLog();
                 using var mounted = V.Mount(new VisualElement(), log.Provide(V.Component(OuterOfARefusingFallback)),
-                    CaughtErrors.Unlogged);
+                    log.ReportingErrors());
                 mounted.DrainForTest();
                 log.Clear();
                 LogAssert.Expect(LogType.Error, new Regex("reconciling the fallback UI threw"));
@@ -202,7 +199,7 @@ namespace Velvet.Tests
                 mounted.DrainForTest();
 
                 // Assert
-                Assert.That(log.ToString(), Is.EqualTo("ins-x:X lay-x:X ref-x:X ins:OF ref:OF lay:OF"));
+                Assert.That(log.ToString(), Is.EqualTo("ins-x:X lay-x:X ref-x:X ins:OF ref:OF lay:OF caught:Outer:thrown by the constructor"));
             }
         }
     }

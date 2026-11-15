@@ -954,6 +954,14 @@ namespace Velvet
         // suspends, which discards the render that caught, where that expansion's own walk reached the boundary.
         internal (Exception Error, ErrorInfo Info)? CaughtError { get; set; }
 
+        // Set where the boundary caught an error whose fallback suspended: the catch is reported by the render that
+        // shows the fallback (FiberErrorBoundary.OutputOf), not at the catch.
+        internal bool CatchUnreported { get; set; }
+
+        // What made the boundary's swap to its fallback fail, where reconciling the fallback threw rather than a
+        // render inside it: the error the boundary above is handed (FiberErrorBoundary.TryCatch).
+        internal Exception? FallbackReconcileFailure { get; set; }
+
         // The onReset the last committed render of Hooks.UseErrorBoundaryReset passed, as the library calls this.props'.
         internal Action<ErrorBoundaryResetDetails>? OnErrorBoundaryReset { get; set; }
 
