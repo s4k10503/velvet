@@ -5,9 +5,10 @@ using UnityEngine.UIElements;
 
 namespace Velvet
 {
-    // What a physical child of a container is to slot counting. Mirrors LogicalChildSlots.IsInvisible and StaysFirst:
+    // What a physical child of a container is to slot counting. Mirrors LogicalChildSlots.IsInvisible, StaysFirst and
+    // IsHostedAfterItsRow:
     // a child is Rendered when it holds a logical slot, LeadingInvisible when it holds none and an append steps over
-    // it, Hosted when it holds none and stands behind the rendered child it decorates, so an append steps over it
+    // it, Hosted when it holds none and stands after the rendered child it decorates, so an append steps over it
     // there, and Invisible when it holds none and an append stops before it.
     internal enum RowKind : byte
     {

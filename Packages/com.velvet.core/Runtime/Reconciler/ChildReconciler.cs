@@ -157,7 +157,8 @@ namespace Velvet
             }
             var newElement = _factory.CreateElement(newNode);
             // ToPhysical clamps by construction — a slot past the last rendered child resolves to the
-            // position just after it — so the caller no longer chooses between two index formulas.
+            // position after it and the nodes hosted after it — so the caller no longer chooses between two index
+            // formulas.
             _host.InsertAtSlot(parent, logicalIndex, newElement);
             return _ctx.IsAborted;
         }

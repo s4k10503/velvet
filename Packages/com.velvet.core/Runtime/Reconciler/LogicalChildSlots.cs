@@ -66,9 +66,9 @@ namespace Velvet
         /// </summary>
         /// <remarks>
         /// For <paramref name="logical"/> equal to (or past) <see cref="Count"/> this returns the position
-        /// just AFTER the last rendered child rather than the end of the child list, so an append lands
-        /// before a trailing invisible run instead of after it — the placement the filter bounds spacer
-        /// depends on. An element in the back z band is the exception: an append steps over it, so slot 0 of a
+        /// after the last rendered child and the nodes hosted after it (a ring band, a face border) rather than the
+        /// end of the child list, so an append lands before a trailing invisible run instead of after it — the
+        /// placement the filter bounds spacer depends on. An element in the back z band is the exception: an append steps over it, so slot 0 of a
         /// parent holding nothing else resolves after it.
         /// Insert semantics follow from the same rule: inserting at a logical slot puts the new child
         /// immediately before the child currently holding that slot, and so after every invisible child between
@@ -83,7 +83,8 @@ namespace Velvet
         // opposite contracts: an element in the back z band, a SceneView's camera feed, a Particles element's layers and
         // an inset ring band must stay ahead of every rendered child, while the front band and a filter bounds spacer
         // must stay last. So an append steps over a leading one of the first four — slot 0 of a parent holding nothing
-        // else resolves AFTER it — and stops before everything else. Deciding this positionally instead ("anything
+        // else resolves AFTER it — and over a node hosted after its row (IsHostedAfterItsRow), and stops before every
+        // other. Deciding this positionally instead ("anything
         // invisible seen before the first rendered child is leading") sent an append past a bounds spacer on a parent
         // whose rendered children had all been removed.
         internal static bool StaysFirst(VisualElement child)
@@ -92,7 +93,7 @@ namespace Velvet
                 || child.ClassListContains(ParticlesDriver.LayerMarkerClass)
                 || child.ClassListContains(RingOverlay.InsetMarkerClass);
 
-        // The nodes a rendered child hosts behind itself: the ring band beside it and the face border over its box. The
+        // The nodes a rendered child hosts after itself: the ring band beside it and the face border over its box. The
         // outline overlay a stacking root keeps after all its rows carries the ring marker class too and is not one.
         internal static bool IsHostedAfterItsRow(VisualElement child)
             => (child.ClassListContains(RingOverlay.MarkerClass) && !child.ClassListContains(RingOverlay.OutlineMarkerClass))

@@ -39,11 +39,18 @@ namespace Velvet.Tests
             s_hostClass = "";
         }
 
-        private string ReverseAndRead(int layoutPassesBefore = 1)
+        private string ReverseAndRead(int layoutPassesBefore = 1, bool faceNodes = false)
         {
             using var mounted = V.Mount(_window.rootVisualElement, V.Component(Rows));
             var list = _window.rootVisualElement.Q<VisualElement>("list");
             for (var pass = 0; pass < layoutPassesBefore; pass++) ForcePanelUpdate(list.panel);
+            if (faceNodes)
+            {
+                foreach (var row in list.Children().Where(child => child.name.StartsWith("r")).ToList())
+                {
+                    FaceBorderOverlay.Ensure(row, (_, _, _) => { });
+                }
+            }
             s_setReversed.Invoke(true);
             mounted.FlushStateForTest();
             return string.Join(",", list.Children().Select(child => child.ClassListContains(RingOverlay.OutlineMarkerClass) ? "out"
@@ -94,8 +101,8 @@ namespace Velvet.Tests
             Assert.That(order, Is.EqualTo("r3,overlay,r4,overlay,r1,overlay,r2,overlay,r0,overlay"));
         }
 
-        // GREEN_ON_BASE(refactor): on the base the moved row's outline node is placed as the row moves, and the rows
-        // inserted afterwards land ahead of the outline nodes the host keeps after its rows.
+        // GREEN_ON_BASE(refactor): the case passes on the base, where the outline nodes' owners also read in the tree
+        // order of their rows after the reorder.
         [Test]
         public void Given_OutlinedRowsInAHostWhoseReorderAddsTwoRowsAheadOfThem_When_TheyReorder_Then_TheOutlineNodesFollowTheTreeOrderOfTheirRows()
         {
@@ -140,6 +147,8 @@ namespace Velvet.Tests
             Assert.That(order, Is.EqualTo("r0,overlay,r1,overlay,r2,overlay"));
         }
 
+        // GREEN_ON_BASE(characterization): the outline nodes a stacking root keeps stay after its rows on the base, which
+        // the hosted row kind must not change.
         [Test]
         public void Given_OutlinedRowsInAHostOfAList_When_ARowIsAppended_Then_TheRowStaysAheadOfTheOutlineNodes()
         {
@@ -153,7 +162,37 @@ namespace Velvet.Tests
             var order = ReverseAndRead();
 
             // Assert
-            Assert.That(order, Does.Not.Match("out,(r[0-9]|overlay)"));
+            Assert.That(order, Is.EqualTo("r0,overlay,r1,overlay,r2,overlay,out,out,out"));
+        }
+
+        [Test]
+        public void Given_FaceBorderedRowsOfAList_When_ARowIsAppended_Then_TheLastRowsFaceBorderStaysBesideItsRow()
+        {
+            // Arrange
+            s_className = "w-[40px] h-[40px]";
+            s_before = new[] { 0, 1 };
+            s_after = new[] { 0, 1, 2 };
+
+            // Act
+            var order = ReverseAndRead(faceNodes: true);
+
+            // Assert
+            Assert.That(order, Is.EqualTo("r0,overlay,r1,overlay,r2"));
+        }
+
+        [Test]
+        public void Given_RingAndFaceBorderRowsOfAList_When_ARowMovesToTheEnd_Then_TheRowsStandInTheDeclaredOrderWithTheirNodes()
+        {
+            // Arrange
+            s_className = "w-[40px] h-[40px] ring-2";
+            s_before = new[] { 0, 1 };
+            s_after = new[] { 1, 0 };
+
+            // Act
+            var order = ReverseAndRead(faceNodes: true);
+
+            // Assert
+            Assert.That(order, Is.EqualTo("r1,overlay,overlay,r0,overlay,overlay"));
         }
     }
 }

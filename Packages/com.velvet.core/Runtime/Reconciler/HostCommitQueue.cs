@@ -135,9 +135,9 @@ namespace Velvet
                 }
                 else
                 {
-                    // The physical position just after the last rendered child, so a trailing invisible
-                    // child (a filter bounds spacer) stays last through the reorder — parent.Add would
-                    // append past it.
+                    // The physical position after the last rendered child and the nodes hosted after it, so a
+                    // trailing invisible child (a filter bounds spacer) stays last through the reorder — parent.Add
+                    // would append past it.
                     var end = LogicalChildSlots.ToPhysical(parent, LogicalChildSlots.Count(parent));
                     ChildListWrites.Insert(parent, end, element);
                 }
