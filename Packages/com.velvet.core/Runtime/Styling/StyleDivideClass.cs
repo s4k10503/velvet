@@ -98,29 +98,18 @@ namespace Velvet
             ["8"] = 8f,
         };
 
-        // Single-token half of HasDivideClass. Its own predicate so the prefix has ONE definition — both
-        // the array scan below and the variant-payload gate (StyleVariantPayload) resolve the family here.
+        // Single-token half of HasDivideClass. Its own predicate so the prefix has ONE definition — the family
+        // reading (StyleClassFamilies), the variant-payload gate (StyleVariantPayload) and StyleFamilyOrder resolve
+        // the family here.
         public static bool IsDivideToken(string cls)
             => !string.IsNullOrEmpty(cls)
                 && StyleArbitraryValueResolver.StripImportant(cls, out _).StartsWith("divide-", StringComparison.Ordinal);
 
         // Cheap early-out gate: true when ANY class belongs to the divide family, important tokens included.
-        // Allocates only for a token that carries a bang. Used to skip the full TryExtract scan on the ~99%
-        // of elements with no divide class.
+        // Used to skip the full TryExtract scan on the ~99% of elements with no divide class.
         public static bool HasDivideClass(string[] classNames)
         {
-            if (classNames == null)
-            {
-                return false;
-            }
-            foreach (var cls in classNames)
-            {
-                if (IsDivideToken(cls))
-                {
-                    return true;
-                }
-            }
-            return false;
+            return StyleClassFamilies.Has(classNames, StyleClassFamily.Divide);
         }
 
         // Scans classNames for the divide utilities and accumulates the axis + width (last axis class

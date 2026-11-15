@@ -44,7 +44,9 @@ namespace Velvet
         internal void ApplyAnimateOnPatch(VisualElement element, string[] classNames)
         {
             var bound = _ctx.AnimationBindings.TryGetValue(element, out var binding);
-            var want = StyleAnimateClass.TryExtract(classNames, out var spec);
+            AnimateSpec spec = default;
+            var want = StyleAnimateClass.HasAnimateClass(classNames)
+                && StyleAnimateClass.TryExtract(classNames, out spec);
             // A pan mode needs a gradient showing; if it is gone or covered, the motion cannot run.
             if (want && IsPanMode(spec.Mode) && !HasGradientShowing(element))
             {

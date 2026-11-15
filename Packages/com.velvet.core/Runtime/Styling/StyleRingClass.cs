@@ -149,18 +149,7 @@ namespace Velvet
         // full parse on the ~99% of elements that carry no ring/outline class and no binding.
         public static bool HasRingClass(string[] classNames)
         {
-            if (classNames == null)
-            {
-                return false;
-            }
-            foreach (var cls in classNames)
-            {
-                if (IsRingClass(cls))
-                {
-                    return true;
-                }
-            }
-            return false;
+            return StyleClassFamilies.Has(classNames, StyleClassFamily.Ring);
         }
 
         // The ring's slots and the outline's are kept apart, as Tailwind v4 writes each family's width, colour and

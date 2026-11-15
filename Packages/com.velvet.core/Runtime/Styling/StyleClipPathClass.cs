@@ -214,7 +214,7 @@ namespace Velvet
             }
             foreach (var cls in classNames)
             {
-                // Same pass-over as StyleEaseCurve.NoteClasses: the leaf tested below is part of its class.
+                // Same pass-over as StyleEaseCurve.IsTimingToken: the leaf tested below is part of its class.
                 if (string.IsNullOrEmpty(cls) || cls.IndexOf(ArbitraryPrefix, StringComparison.Ordinal) == -1)
                 {
                     continue;
