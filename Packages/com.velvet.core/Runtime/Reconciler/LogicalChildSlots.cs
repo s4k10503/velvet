@@ -23,8 +23,9 @@ namespace Velvet
     /// physical index.
     /// </para>
     /// <para>
-    /// Cost, and where it is NOT paid. <see cref="ToPhysical"/> stops at the requested slot; <c>Count</c>
-    /// scans the whole child list, so it must not sit inside a per-child loop. <see cref="TryGetPhysical"/>
+    /// Cost, and where it is NOT paid. <see cref="Count"/> and <see cref="ToLogical"/> read the container's
+    /// <c>ContainerRows</c> through <c>ChildListWrites</c>, which builds that model from the child list once and keeps
+    /// it beside every write. <see cref="ToPhysical"/> stops at the requested slot. <see cref="TryGetPhysical"/>
     /// answers "is the slot occupied" and "where" in one walk. That walk is proportional to the slot index,
     /// and every child it passes is asked <see cref="IsInvisible"/>, so a loop calling these once per child is
     /// quadratic in the child count, and whatever <see cref="IsInvisible"/> costs is paid that many times. A
@@ -53,22 +54,7 @@ namespace Velvet
         /// what the reconciler addresses by slot, not the physical children.
         /// </summary>
         internal static int Count(VisualElement container)
-        {
-            if (container == null)
-            {
-                return 0;
-            }
-            var rendered = 0;
-            var physicalCount = container.childCount;
-            for (var i = 0; i < physicalCount; i++)
-            {
-                if (!IsInvisible(container[i]))
-                {
-                    rendered++;
-                }
-            }
-            return rendered;
-        }
+            => container == null ? 0 : ChildListWrites.RenderedCount(container);
 
         /// <summary>
         /// Whether a rendered child currently occupies <paramref name="logical"/>, and where. One walk
@@ -153,23 +139,7 @@ namespace Velvet
         /// For an invisible child this is the slot it sits in front of.
         /// </summary>
         internal static int ToLogical(VisualElement container, int physical)
-        {
-            if (container == null || physical <= 0)
-            {
-                return 0;
-            }
-            var limit = physical < container.childCount ? physical : container.childCount;
-            var rendered = 0;
-            for (var i = 0; i < limit; i++)
-            {
-                if (!IsInvisible(container[i]))
-                {
-                    rendered++;
-                }
-            }
-            return rendered;
-        }
-
+            => container == null || physical <= 0 ? 0 : ChildListWrites.ToLogical(container, physical);
     }
 
     /// <summary>

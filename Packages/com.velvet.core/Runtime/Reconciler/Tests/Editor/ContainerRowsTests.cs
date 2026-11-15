@@ -9,8 +9,8 @@ using UnityEngine.UIElements;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// <see cref="ContainerRows"/> answers what <see cref="LogicalChildSlots"/> answers by scanning the live child
-    /// list, for a container written only through <see cref="ChildListWrites"/>. Every case drives random writes over
+    /// <see cref="ContainerRows"/> answers what a scan of the live child list answers (<see cref="LogicalChildSlots"/>
+    /// for the conversions it still scans, a walk in this fixture for the count and <c>ToLogical</c>), for a container written only through <see cref="ChildListWrites"/>. Every case drives random writes over
     /// real <c>VisualElement</c>s — rendered children, a trailing-kind marker and a leading-kind marker, inserted,
     /// removed, moved, sorted and reclassified — and compares one answer with the scan's after each write. Sizes
     /// 12 and 700 put one block and several blocks under the same writes.
@@ -121,7 +121,7 @@ namespace Velvet.Tests
         {
             for (var physical = -1; physical <= parent.childCount + 1; physical++)
             {
-                var expected = LogicalChildSlots.ToLogical(parent, physical);
+                var expected = ScanToLogical(parent, physical);
                 var actual = RowModelAccess.ToLogical(rows, physical);
                 if (expected != actual) return $"ToLogical({physical}) {actual}, scan {expected}";
             }
@@ -129,9 +129,23 @@ namespace Velvet.Tests
         }
 
         private static string? CompareCount(VisualElement parent, ContainerRows rows)
-            => rows.RenderedCount == LogicalChildSlots.Count(parent)
+            => rows.RenderedCount == ScanCount(parent)
                 ? null
-                : $"RenderedCount {rows.RenderedCount}, scan {LogicalChildSlots.Count(parent)}";
+                : $"RenderedCount {rows.RenderedCount}, scan {ScanCount(parent)}";
+
+        // A walk of the live child list: LogicalChildSlots.Count and ToLogical read the model, so comparing the model
+        // with them would compare it with itself.
+        private static int ScanCount(VisualElement parent) => ScanToLogical(parent, parent.childCount);
+
+        private static int ScanToLogical(VisualElement parent, int physical)
+        {
+            var rendered = 0;
+            for (var i = 0; i < Math.Min(physical, parent.childCount); i++)
+            {
+                if (!LogicalChildSlots.IsInvisible(parent[i])) rendered++;
+            }
+            return rendered;
+        }
 
         private static string? ComparePhysicalIndexOf(VisualElement parent, ContainerRows rows)
         {
@@ -163,6 +177,7 @@ namespace Velvet.Tests
             return null;
         }
 
+        // GREEN_ON_BASE(refactor): the model is compared with the same scan as before; only the helper that walks the list moved into this fixture.
         [TestCase(12)]
         [TestCase(700)]
         public void Given_RandomWrites_When_EverySlotIsConverted_Then_ToPhysicalMatchesTheScan(int size)
@@ -177,6 +192,7 @@ namespace Velvet.Tests
             Assert.That(report, Is.Empty);
         }
 
+        // GREEN_ON_BASE(refactor): the model is compared with the same scan as before; only the helper that walks the list moved into this fixture.
         [TestCase(12)]
         [TestCase(700)]
         public void Given_RandomWrites_When_EverySlotIsAsked_Then_TryGetPhysicalMatchesTheScan(int size)
@@ -191,6 +207,7 @@ namespace Velvet.Tests
             Assert.That(report, Is.Empty);
         }
 
+        // GREEN_ON_BASE(refactor): the model is compared with the same scan as before; only the helper that walks the list moved into this fixture.
         [TestCase(12)]
         [TestCase(700)]
         public void Given_RandomWrites_When_EveryPhysicalIndexIsConverted_Then_ToLogicalMatchesTheScan(int size)
@@ -205,6 +222,7 @@ namespace Velvet.Tests
             Assert.That(report, Is.Empty);
         }
 
+        // GREEN_ON_BASE(refactor): the model is compared with the same scan as before; only the helper that walks the list moved into this fixture.
         [TestCase(12)]
         [TestCase(700)]
         public void Given_RandomWrites_When_RowsAreCounted_Then_RenderedCountMatchesTheScan(int size)
@@ -219,6 +237,7 @@ namespace Velvet.Tests
             Assert.That(report, Is.Empty);
         }
 
+        // GREEN_ON_BASE(refactor): the model is compared with the same scan as before; only the helper that walks the list moved into this fixture.
         [TestCase(12)]
         [TestCase(700)]
         public void Given_RandomWrites_When_EveryChildIsLookedUp_Then_PhysicalIndexOfIsItsChildIndex(int size)
@@ -233,6 +252,7 @@ namespace Velvet.Tests
             Assert.That(report, Is.Empty);
         }
 
+        // GREEN_ON_BASE(refactor): the model is compared with the same scan as before; only the helper that walks the list moved into this fixture.
         [TestCase(12)]
         [TestCase(700)]
         public void Given_RandomWrites_When_EveryChildIsLookedUp_Then_SlotOfMatchesTheScan(int size)
@@ -247,6 +267,7 @@ namespace Velvet.Tests
             Assert.That(report, Is.Empty);
         }
 
+        // GREEN_ON_BASE(refactor): reads the model through the surface step 1 added, which this change leaves as it was.
         [TestCase(12)]
         [TestCase(700)]
         public void Given_RandomWrites_When_TheModelIsRead_Then_ItHoldsTheLiveChildrenInOrder(int size)
@@ -261,6 +282,7 @@ namespace Velvet.Tests
             Assert.That(report, Is.Empty);
         }
 
+        // GREEN_ON_BASE(refactor): reads the model through the surface step 1 added, which this change leaves as it was.
         [Test]
         public void Given_AForeignMoveThatKeepsTheEndsAndAWriteAfterIt_When_APassBegins_Then_TheModelHoldsTheLiveOrder()
         {
@@ -283,6 +305,7 @@ namespace Velvet.Tests
             Assert.That(CompareOrder(parent, RowModelAccess.Peek(parent)!), Is.Null);
         }
 
+        // GREEN_ON_BASE(refactor): reads the model through the surface step 1 added, which this change leaves as it was.
         [Test]
         public void Given_AChildAlreadyInside_When_ItIsAddedAgain_Then_TheModelFollowsItToTheEnd()
         {
@@ -300,6 +323,7 @@ namespace Velvet.Tests
             Assert.That(CompareOrder(parent, RowModelAccess.Peek(parent)!), Is.Null);
         }
 
+        // GREEN_ON_BASE(refactor): reads the model through the surface step 1 added, which this change leaves as it was.
         [Test]
         public void Given_AChildMovedToAnotherContainer_When_ItsFormerContainerIsEmptied_Then_ItKeepsNoModel()
         {
@@ -316,6 +340,7 @@ namespace Velvet.Tests
             Assert.That(RowModelAccess.Peek(from), Is.Null);
         }
 
+        // GREEN_ON_BASE(refactor): reads the model through the surface step 1 added, which this change leaves as it was.
         [Test]
         public void Given_ABigModelWhoseLastChildWasMovedBehindItsBack_When_TheNextWriteArrives_Then_TheModelHoldsTheLiveOrder()
         {
@@ -331,6 +356,7 @@ namespace Velvet.Tests
             Assert.That(CompareOrder(parent, RowModelAccess.Peek(parent)!), Is.Null);
         }
 
+        // GREEN_ON_BASE(refactor): reads the model through the surface step 1 added, which this change leaves as it was.
         [Test]
         public void Given_AnInteriorMoveBehindTheModelsBackThatWasAnnounced_When_TheNextWriteArrives_Then_TheModelHoldsTheLiveOrder()
         {
@@ -347,6 +373,7 @@ namespace Velvet.Tests
             Assert.That(CompareOrder(parent, RowModelAccess.Peek(parent)!), Is.Null);
         }
 
+        // GREEN_ON_BASE(refactor): reads the model through the surface step 1 added, which this change leaves as it was.
         [Test]
         public void Given_AChildAddedBehindTheModelsBack_When_TheNextWriteArrives_Then_TheModelHoldsEveryChild()
         {
@@ -362,6 +389,7 @@ namespace Velvet.Tests
             Assert.That(RowModelAccess.Peek(parent)!.TotalCount, Is.EqualTo(3));
         }
 
+        // GREEN_ON_BASE(refactor): reads the model through the surface step 1 added, which this change leaves as it was.
         [Test]
         public void Given_ALeadingMarkerAndARenderedChild_When_TheMarkerIsReclassifiedAsTrailing_Then_AnAppendLandsBeforeIt()
         {
@@ -381,6 +409,7 @@ namespace Velvet.Tests
             Assert.That(RowModelAccess.ToPhysical(RowModelAccess.Peek(parent)!, 1), Is.EqualTo(LogicalChildSlots.ToPhysical(parent, 1)));
         }
 
+        // GREEN_ON_BASE(refactor): reads the model through the surface step 1 added, which this change leaves as it was.
         [Test]
         public void Given_AContainerEmptiedThroughTheWrites_When_ItsModelIsPeeked_Then_ThereIsNone()
         {
@@ -396,6 +425,7 @@ namespace Velvet.Tests
             Assert.That(RowModelAccess.Peek(parent), Is.Null);
         }
 
+        // GREEN_ON_BASE(refactor): reads the model through the surface step 1 added, which this change leaves as it was.
         [Test]
         public void Given_AWriteThatReorderedBehindTheModelsBack_When_TheVerifierRuns_Then_ItLogsTheDrift()
         {
