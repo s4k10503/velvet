@@ -3144,7 +3144,8 @@ namespace Velvet
             {
                 var on = false;
                 var content = element.contentContainer;
-                for (var i = 0; i < ChildListWrites.HierarchyCount(content); i++)
+                var count = ChildListWrites.HierarchyCount(content);
+                for (var i = 0; i < count; i++)
                 {
                     if (SubtreeCarriesClass(ChildListWrites.HierarchyChild(content, i), rule.ClassName!))
                     {
@@ -3166,7 +3167,8 @@ namespace Velvet
             {
                 return true;
             }
-            for (var i = 0; i < ChildListWrites.HierarchyCount(root); i++)
+            var count = ChildListWrites.HierarchyCount(root);
+            for (var i = 0; i < count; i++)
             {
                 if (SubtreeCarriesClass(ChildListWrites.HierarchyChild(root, i), cls))
                 {

@@ -370,7 +370,6 @@ namespace Velvet
         private void FinishPass(VisualElement? reconciledInto, bool walked)
         {
             _ctx.PointerEventsWalkHeld++;
-            _ctx.HostCommit.EndRecordedPass(walked);
             // The abort flag stops sibling work inside the pass that just ended; the deferred
             // host mounts below are commit work for placeholders that SURVIVED it. A boundary
             // rollback detaches its failed subtree's placeholders (the drain's per-entry
@@ -385,6 +384,7 @@ namespace Velvet
             _ctx.IsAborted = false;
             try
             {
+                _ctx.HostCommit.EndRecordedPass();
                 try
                 {
                     var suspended = ChildPass.DrainPendingPortalMounts();

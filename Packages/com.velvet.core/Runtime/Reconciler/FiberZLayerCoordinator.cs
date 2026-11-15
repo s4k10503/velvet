@@ -763,6 +763,7 @@ namespace Velvet
             {
                 return;
             }
+            ChildListWrites.SyncLive(parent);
             var children = s_layout;
             children.Clear();
             for (var i = 0; i < parent.hierarchy.childCount; i++)
@@ -777,6 +778,7 @@ namespace Velvet
         // Moves a to b's index and b to a's, leaving every other child where it is.
         private static void Exchange(VisualElement parent, VisualElement a, VisualElement b)
         {
+            ChildListWrites.SyncLive(parent);
             var rank = new Dictionary<VisualElement, int>(parent.hierarchy.childCount);
             for (var i = 0; i < parent.hierarchy.childCount; i++)
             {
@@ -877,6 +879,7 @@ namespace Velvet
         // relocated, since a parked diff still addresses parent's slot occupants.
         private static void Arrange(ReconcilerContext ctx, VisualElement parent, bool parked)
         {
+            ChildListWrites.SyncLive(parent);
             if (!ctx.ZLayerHosts.TryGetValue(parent, out var record) && !HoldsTrackedChild(ctx, parent))
             {
                 return;

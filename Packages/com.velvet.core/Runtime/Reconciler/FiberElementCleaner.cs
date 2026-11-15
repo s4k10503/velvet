@@ -799,6 +799,7 @@ namespace Velvet
         // all children are processed.
         private void CleanupDescendants(VisualElement element, VisualElement? excluded = null)
         {
+            ChildListWrites.SyncLive(element);
             for (var i = 0; i < element.childCount; i++)
             {
                 var child = element.ElementAt(i);

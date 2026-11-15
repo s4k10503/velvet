@@ -312,6 +312,7 @@ namespace Velvet
         // elements come before element in tree order and before those whose elements come after it.
         private static void PlaceInTreeOrder(VisualElement host, VisualElement top, VisualElement element)
         {
+            ChildListWrites.SyncLive(host);
             var index = host.childCount;
             for (var i = host.childCount - 1; i >= 0; i--)
             {

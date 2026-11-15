@@ -444,8 +444,9 @@ namespace Velvet
         // Inside a pass, an insert or a move the walk makes through HostCommitQueue into a container the pass did not
         // create updates the model and is recorded; the live list takes it where FinishPass starts (ApplyRecorded), in
         // the order recorded. The readers the walk has moved to the model (ParentOf, ChildCount, ElementAtPhysical and
-        // the reads above) answer from it meanwhile, a container with a recorded write is skipped by the checks that
-        // compare the model with the live list, and a reader of the live list calls SyncLive first. Any other write into
+        // the reads above) answer from it meanwhile, and a container with a recorded write is skipped by the checks that
+        // compare the model with the live list. A reader of the live list that calls SyncLive first sees the writes
+        // applied; the callers of SyncLive are the ones that read before they write. Any other write into
         // such a container applies the recorded ones first, except one made while they apply, which is recorded behind
         // them.
         private enum OpKind : byte { Insert, RemoveAt, RemoveChild }
@@ -465,7 +466,6 @@ namespace Velvet
         private static readonly Dictionary<VisualElement, VisualElement?> s_pendingParent = new();
         private static readonly HashSet<VisualElement> s_pendingContainers = new();
         private static readonly HashSet<VisualElement> s_created = new();
-        private static readonly HashSet<VisualElement> s_dropped = new();
         private static bool s_recording;
         private static bool s_applying;
 
@@ -658,31 +658,6 @@ namespace Velvet
             s_recording = false;
             ApplyRecorded();
             s_created.Clear();
-        }
-
-        // Ends recording and forgets what it recorded: each model goes back to its live list, and the elements the
-        // forgotten inserts held that nothing parents are returned, for the caller to release.
-        internal static HashSet<VisualElement> DropRecorded()
-        {
-            s_recording = false;
-            s_dropped.Clear();
-            foreach (var op in s_ops)
-            {
-                if (op.Kind == OpKind.Insert && op.Child.hierarchy.parent == null) s_dropped.Add(op.Child);
-            }
-            s_ops.Clear();
-            s_pendingParent.Clear();
-            s_created.Clear();
-            foreach (var container in s_pendingContainers)
-            {
-                if (s_rows.TryGetValue(container, out var rows))
-                {
-                    rows.Pending = 0;
-                    Rebuilt(rows, container);
-                }
-            }
-            s_pendingContainers.Clear();
-            return s_dropped;
         }
 
         // A container with no children keeps no model.

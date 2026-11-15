@@ -79,14 +79,15 @@ namespace Velvet.Tests
                 "write the child list through HostCommitQueue");
         }
 
-        // The calls FinishPass makes that reach a writer outside the queue (the z-layer arrangement and its retired
-        // reals, the portal drain, the ring placements).
+        // The calls FinishPass makes that write a child list or reconcile into one other than through the queue: the
+        // portal drain, the retired z-layer reals and the z-layer arrangement, and the two placement drains.
         private static readonly string[] FinishPassPhase =
         {
-            nameof(ChildReconciler.DrainPendingPortalMounts),
-            nameof(FiberElementCleaner.ReleaseRetiredZLayerReals),
-            nameof(FiberZLayerCoordinator.ResortLayers),
-            nameof(RingOverlay.DrainPendingPlacements),
+            nameof(ChildReconciler) + "." + nameof(ChildReconciler.DrainPendingPortalMounts),
+            nameof(FiberElementCleaner) + "." + nameof(FiberElementCleaner.ReleaseRetiredZLayerReals),
+            nameof(FiberZLayerCoordinator) + "." + nameof(FiberZLayerCoordinator.ResortLayers),
+            nameof(RingOverlay) + "." + nameof(RingOverlay.DrainPendingPlacements),
+            nameof(BackdropFilterLayer) + "." + nameof(BackdropFilterLayer.DrainPendingPlacements),
         };
 
         [Test]
@@ -97,9 +98,10 @@ namespace Velvet.Tests
             var finishPass = runtime.GetType(typeof(Reconciler).FullName).Methods.Single(method => method.Name == "FinishPass");
             var calls = finishPass.Body.Instructions
                 .Where(instruction => instruction.Operand is MethodReference)
-                .Select(instruction => (Offset: instruction.Offset, Name: ((MethodReference)instruction.Operand).Name))
+                .Select(instruction => (Offset: instruction.Offset,
+                    Name: ((MethodReference)instruction.Operand).DeclaringType.Name + "." + ((MethodReference)instruction.Operand).Name))
                 .ToList();
-            var apply = calls.Where(call => call.Name == nameof(HostCommitQueue.EndRecordedPass)).Select(call => call.Offset)
+            var apply = calls.Where(call => call.Name == nameof(HostCommitQueue) + "." + nameof(HostCommitQueue.EndRecordedPass)).Select(call => call.Offset)
                 .DefaultIfEmpty(int.MaxValue).Min();
 
             // Act

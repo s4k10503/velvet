@@ -150,6 +150,7 @@ namespace Velvet
             var parent = _input.hierarchy.parent;
             if (parent != null && drawing.hierarchy.parent != parent)
             {
+                ChildListWrites.SyncLive(parent);
                 ChildListWrites.HierarchyInsert(parent, parent.hierarchy.IndexOf(_input) + 1, drawing);
                 foreach (var cls in _input.GetClasses())
                 {

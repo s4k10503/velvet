@@ -144,21 +144,9 @@ namespace Velvet
             }
         }
 
-        // Ends the pass's recording where FinishPass starts: what the pass recorded goes to the live lists, or, where its
-        // walk threw, is forgotten along with the elements only it held.
-        internal void EndRecordedPass(bool walked)
-        {
-            if (walked)
-            {
-                ChildListWrites.EndRecording();
-                return;
-            }
-            var orphans = ChildListWrites.DropRecorded();
-            if (orphans.Count == 0) return;
-            _ctx.ComponentRegistry.DisposeFibersUnder(orphans);
-            foreach (var orphan in orphans) _cleaner.ReturnRolledBackOrphan(orphan);
-            orphans.Clear();
-        }
+        // Ends the pass's recording where FinishPass starts: what the pass recorded goes to the live lists, whether its
+        // walk returned or threw.
+        internal void EndRecordedPass() => ChildListWrites.EndRecording();
 
         // A Suspense's hide of one of its outermost host elements.
         internal void Hide(VisualElement element)
