@@ -15,7 +15,8 @@ namespace Velvet
     // A model is checked against the live list when an op starts: its count, its first and last child and the child at
     // the index the op reads, plus whether a change was announced that no op made (NoteHierarchyChange). A model that
     // fails is rebuilt from the live list. An op nested in an open op's UI Toolkit call rebuilds nothing, since the
-    // outer op's child is in neither list yet; the containers both wrote are checked when the outermost op ends.
+    // outer op's child is in neither list yet; the containers both wrote are compared child for child when the
+    // outermost op ends.
     // The probes do not read every child, so VerifyTouched compares whole lists for the containers writes reached.
     internal static class ChildListWrites
     {
@@ -113,15 +114,18 @@ namespace Velvet
         private static void Exit(VisualElement container)
         {
             if (--s_open > 0) return;
-            Settle(container);
-            foreach (var nested in s_nested) Settle(nested);
+            var nestedRan = s_nested.Count > 0;
+            Settle(container, nestedRan);
+            foreach (var nested in s_nested) Settle(nested, full: true);
             s_nested.Clear();
         }
 
-        // After the outermost op: a model that no longer matches the live list is rebuilt.
-        private static void Settle(VisualElement container)
+        // After the outermost op: a model that no longer matches the live list is rebuilt. Where a nested op ran, the
+        // lists are compared child for child, since two writes that each moved a child can leave the probes agreeing.
+        private static void Settle(VisualElement container, bool full)
         {
-            if (!s_rows.TryGetValue(container, out var rows) || Agrees(rows, container, -1)) return;
+            if (!s_rows.TryGetValue(container, out var rows)) return;
+            if (full ? Compare(rows, container) == null : Agrees(rows, container, -1)) return;
             rows.Clear();
             Fill(rows, container);
         }
@@ -299,9 +303,9 @@ namespace Velvet
         private static void Touch(VisualElement container) => s_touched.Add(container);
 
         // The start of a top-level pass: what was written since the last verification, outside any pass, is checked
-        // before the pass's own writes start the set over. For those, a container off any panel is left out, and a
-        // different child count is read as a foreign change and rebuilt silently, since nothing tells a write Velvet
-        // made to a panel's root from the engine clearing it when the panel goes.
+        // before the pass's own writes start the set over. For those, a different child count is read as a foreign
+        // change and rebuilt silently, since nothing tells a write Velvet made to a panel's root from the engine
+        // clearing it when the panel goes.
         [Conditional("UNITY_ASSERTIONS")]
         internal static void BeginPass() => Verify(carried: true);
 
@@ -324,7 +328,6 @@ namespace Velvet
                     Fill(rows, container);
                     continue;
                 }
-                if (carried && container.panel == null) continue;
                 var difference = Compare(rows, container);
                 if (difference == null) continue;
                 UnityEngine.Debug.LogAssertion(

@@ -153,7 +153,7 @@ namespace Velvet.Tests
             return null;
         }
 
-        private static string? CompareOrder(VisualElement parent, ContainerRows rows)
+        internal static string? CompareOrder(VisualElement parent, ContainerRows rows)
         {
             if (rows.TotalCount != parent.childCount) return $"TotalCount {rows.TotalCount}, live {parent.childCount}";
             for (var i = 0; i < parent.childCount; i++)
@@ -259,6 +259,28 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(report, Is.Empty);
+        }
+
+        [Test]
+        public void Given_AForeignMoveThatKeepsTheEndsAndAWriteAfterIt_When_APassBegins_Then_TheModelHoldsTheLiveOrder()
+        {
+            // Arrange
+            var parent = new VisualElement();
+            var moved = new VisualElement();
+            ChildListWrites.Add(parent, new VisualElement());
+            ChildListWrites.Add(parent, moved);
+            ChildListWrites.Add(parent, new VisualElement());
+            ChildListWrites.Add(parent, new VisualElement());
+            parent.Remove(moved);
+            parent.Insert(2, moved);
+            ChildListWrites.Insert(parent, 3, new VisualElement());
+            LogAssert.Expect(LogType.Assert, new System.Text.RegularExpressions.Regex("ContainerRows drifted"));
+
+            // Act
+            ChildListWrites.BeginPass();
+
+            // Assert
+            Assert.That(CompareOrder(parent, ChildListWrites.Peek(parent)!), Is.Null);
         }
 
         [Test]

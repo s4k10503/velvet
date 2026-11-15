@@ -35,6 +35,28 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ANestedInsertAtTheSameIndexFromTheChildsDetach_When_TheChildIsInsertedThere_Then_TheModelHoldsTheLiveOrder()
+        {
+            // Arrange
+            var root = _window.rootVisualElement;
+            var source = new VisualElement();
+            var destination = new VisualElement();
+            ChildListWrites.Add(root, source);
+            ChildListWrites.Add(root, destination);
+            ChildListWrites.Add(destination, new VisualElement());
+            ChildListWrites.Add(destination, new VisualElement());
+            var child = new VisualElement();
+            ChildListWrites.Add(source, child);
+            child.RegisterCallback<DetachFromPanelEvent>(_ => ChildListWrites.Insert(destination, 1, new VisualElement()));
+
+            // Act
+            ChildListWrites.Insert(destination, 1, child);
+
+            // Assert
+            Assert.That(ContainerRowsTests.CompareOrder(destination, ChildListWrites.Peek(destination)!), Is.Null);
+        }
+
+        [Test]
         public void Given_AWriteBetweenPassesThenAForeignReorder_When_APassBegins_Then_TheDriftIsLogged()
         {
             // Arrange
