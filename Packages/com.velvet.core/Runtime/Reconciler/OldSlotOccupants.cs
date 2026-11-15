@@ -5,7 +5,7 @@ using UnityEngine.UIElements;
 
 namespace Velvet
 {
-    // The element each old leaf of one container occupies, read from the live child list, beside the element a patch
+    // The element each old leaf of one container occupies, read from the container's row model, beside the element a patch
     // of it reaches through a wrapper. Entry i is old leaf i, at logical slot slotStart + i; a slot nothing occupied
     // is null. Resolve reads at once; Defer reads at the first entry taken or at EnsureResolved, so a pass that takes
     // none and never parks reads nothing into this instance. The diff takes the element it patches, reuses or removes
@@ -20,7 +20,6 @@ namespace Velvet
     {
         private readonly List<VisualElement?> _occupants = new();
         private readonly List<VisualElement?> _resolved = new();
-        private readonly List<int> _physical = new();
         // What the last Resolve or Defer was asked, for EnsureResolved and ResolveAgain, and whether the list has been
         // read for it.
         private VisualElement? _parent;
@@ -35,10 +34,6 @@ namespace Velvet
 
         // The element a patch of the old leaf is handed (FiberNodePatcher.ResolveWrapped of the occupant).
         internal VisualElement? Resolved(int index) => Entry(_resolved, index, null);
-
-        // The child index the occupant stood at when the list was read, which a removal of it searches from
-        // (HostCommitQueue.Remove); -1 where the slot had none.
-        internal int PhysicalAtEntry(int index) => Entry(_physical, index, -1);
 
         private T Entry<T>(List<T> entries, int index, T none)
         {
@@ -67,36 +62,22 @@ namespace Velvet
             if (!_read && _parent != null) Read();
         }
 
-        // One walk over the child list, bounded by slotLimit as the indexed diff's slot-missing guard is: where a
-        // caller passes a following tenant's start, that tenant's rows are not taken for this container's.
+        // The rows the container's model holds at slots [slotStart, slotStart + count), cut off at slotLimit as the
+        // indexed diff's slot-missing guard is: where a caller passes a following tenant's start, that tenant's rows
+        // are not taken for this container's.
         private void Read()
         {
-            var parent = _parent!;
-            var end = Math.Min(_slotStart + _count, _slotLimit);
-            var logical = 0;
-            var physicalCount = parent.childCount;
-            for (var physical = 0; physical < physicalCount && logical < end; physical++)
+            ChildListWrites.Rows(_parent!, _slotStart, Math.Min(_slotStart + _count, _slotLimit), _occupants);
+            for (var i = 0; i < _occupants.Count; i++)
             {
-                var child = parent[physical];
-                if (LogicalChildSlots.IsInvisible(child))
-                {
-                    continue;
-                }
-                if (logical >= _slotStart)
-                {
-                    _occupants.Add(child);
-                    _resolved.Add(_patcher!.ResolveWrapped(child));
-                    _physical.Add(physical);
-                }
-                logical++;
+                _resolved.Add(_patcher!.ResolveWrapped(_occupants[i]!));
             }
             // MUTANT_SURVIVES(equivalent): an entry padded past the count reads as an index past the entries does.
-            // Entry answers such an index with the same null and -1 written here.
+            // Entry answers such an index with the same null written here.
             while (_occupants.Count < _count)
             {
                 _occupants.Add(null);
                 _resolved.Add(null);
-                _physical.Add(-1);
             }
             _read = true;
         }
@@ -126,7 +107,6 @@ namespace Velvet
         {
             _occupants.Clear();
             _resolved.Clear();
-            _physical.Clear();
             _parent = null;
             _slotStart = 0;
             _count = 0;

@@ -142,7 +142,7 @@ namespace Velvet
         internal bool Contains(VisualElement element) => TryFind(element, out _, out _);
 
         // LogicalChildSlots.ToPhysical, over the model.
-        private int ToPhysical(int logical)
+        internal int ToPhysical(int logical)
         {
             if (logical < 0) logical = 0;
             var start = 0;
@@ -175,10 +175,40 @@ namespace Velvet
         }
 
         // LogicalChildSlots.TryGetPhysical, over the model.
-        private bool TryGetPhysical(int logical, out int physical)
+        internal bool TryGetPhysical(int logical, out int physical)
         {
             physical = ToPhysical(logical);
             return logical >= 0 && physical < _total && KindAt(physical) == RowKind.Rendered;
+        }
+
+        // Appends the rendered children at slots [slotStart, end) to into, fewer where the container holds fewer.
+        internal void Rows(int slotStart, int end, List<VisualElement?> into)
+        {
+            end = Math.Min(end, _rendered);
+            if (slotStart >= end) return;
+            var skip = slotStart;
+            var b = 0;
+            while (b < BlockCount && skip >= BlockAt(b).Rendered)
+            {
+                skip -= BlockAt(b).Rendered;
+                b++;
+            }
+            var want = end - slotStart;
+            for (; b < BlockCount && want > 0; b++)
+            {
+                var block = BlockAt(b);
+                for (var i = 0; i < block.Length && want > 0; i++)
+                {
+                    if (block.Kinds[i] != RowKind.Rendered) continue;
+                    if (skip > 0)
+                    {
+                        skip--;
+                        continue;
+                    }
+                    into.Add(block.Elements[i]);
+                    want--;
+                }
+            }
         }
 
         // LogicalChildSlots.ToLogical, over the model.
@@ -205,7 +235,7 @@ namespace Velvet
             return rendered;
         }
 
-        private int PhysicalIndexOf(VisualElement element)
+        internal int PhysicalIndexOf(VisualElement element)
         {
             if (!TryFind(element, out var block, out var at)) return -1;
             var start = 0;

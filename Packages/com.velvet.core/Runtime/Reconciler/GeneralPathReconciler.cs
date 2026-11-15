@@ -94,9 +94,6 @@ namespace Velvet
             // OffscreenChanges, which would have hidden or shown their effects to match, is never applied.
             public List<(ComponentFiber Fiber, bool IsOffscreen, VisualElement? HiddenUnder,
                 ComponentFiber? OffscreenUnder)>? OffscreenBefore;
-            // Whether an old leaf's slot is still occupied is asked through it; LogicalSlotCursor owns what it saves
-            // and when it falls back.
-            public LogicalSlotCursor OldSlots;
             // Which element an old leaf is, read before the walk and again where a drain wrote into the container
             // (OldSlotOccupants.ResolveAgain).
             public OldSlotOccupants OldOccupants = null!;
@@ -393,7 +390,7 @@ namespace Velvet
             {
                 return -1;
             }
-            return commit.OldSlots.TryGetPhysical(commit.Parent!, commit.SlotStart + oldIndex, out _) ? oldIndex : -1;
+            return LogicalChildSlots.TryGetPhysical(commit.Parent!, commit.SlotStart + oldIndex, out _) ? oldIndex : -1;
         }
 
         // Emits one expanded leaf under the key its position gives it: commits it in place under live context
@@ -637,7 +634,7 @@ namespace Velvet
             {
                 var index = removed![i].Index;
                 var old = commit.OldOccupants.Occupant(index);
-                if (old != null) _ctx.HostCommit.Remove(parent, old, commit.OldOccupants.PhysicalAtEntry(index));
+                if (old != null) _ctx.HostCommit.Remove(parent, old);
             }
             // LIS reorder over the post-removal DOM positions, from slotStart for the reason above.
             var range = new ChildElementPlacement.PlacementRange

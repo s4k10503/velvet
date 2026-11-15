@@ -8,7 +8,7 @@ namespace Velvet.Tests
     /// <summary>
     /// Specifies that a container whose children grow from none to a list makes a number of contentContainer
     /// calls proportional to the list, not to its square: each insert of the loop that adds the rows is placed
-    /// from the one before it rather than from the first child. One case per kind of list, since the keyed and
+    /// from the container's row model rather than by walking its children. One case per kind of list, since the keyed and
     /// the indexed diff add their rows in loops of their own.
     /// </summary>
     /// <remarks>

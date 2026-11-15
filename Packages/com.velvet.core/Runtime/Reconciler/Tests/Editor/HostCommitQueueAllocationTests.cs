@@ -73,7 +73,7 @@ namespace Velvet.Tests.Performance
                 child = children[next++ % children.Count];
                 parent.Add(child);
             };
-            Action remove = () => Host.Remove(parent, child, parent.childCount - 1);
+            Action remove = () => Host.Remove(parent, child);
             putBack();
             remove();
 
