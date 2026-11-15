@@ -153,10 +153,10 @@ namespace Velvet
 
         internal static void Remove(RingBinding binding)
         {
-            binding.OutlineOverlay.RemoveFromHierarchy();
+            ChildListWrites.RemoveFromHierarchy(binding.OutlineOverlay);
             foreach (var proxy in binding.OutlineClips)
             {
-                proxy.RemoveFromHierarchy();
+                ChildListWrites.RemoveFromHierarchy(proxy);
             }
             binding.OutlineClips.Clear();
         }
@@ -196,7 +196,7 @@ namespace Velvet
                 var proxy = binding.OutlineClips[i];
                 if (chain.parent != proxy)
                 {
-                    proxy.Add(chain);
+                    ChildListWrites.Add(proxy, chain);
                 }
                 chain = proxy;
             }
@@ -240,7 +240,7 @@ namespace Velvet
             while (binding.OutlineClips.Count > count)
             {
                 var last = binding.OutlineClips[binding.OutlineClips.Count - 1];
-                last.RemoveFromHierarchy();
+                ChildListWrites.RemoveFromHierarchy(last);
                 binding.OutlineClips.RemoveAt(binding.OutlineClips.Count - 1);
             }
             while (binding.OutlineClips.Count < count)
@@ -257,13 +257,13 @@ namespace Velvet
             }
             if (count > 0 && binding.OutlineOverlay.parent != null && !binding.OutlineClips.Contains(binding.OutlineOverlay.parent))
             {
-                binding.OutlineOverlay.RemoveFromHierarchy();
+                ChildListWrites.RemoveFromHierarchy(binding.OutlineOverlay);
             }
             for (var i = 1; i < count; i++)
             {
                 if (binding.OutlineClips[i].parent != binding.OutlineClips[i - 1])
                 {
-                    binding.OutlineClips[i].RemoveFromHierarchy();
+                    ChildListWrites.RemoveFromHierarchy(binding.OutlineClips[i]);
                 }
             }
         }
@@ -331,8 +331,8 @@ namespace Velvet
             var target = current >= 0 && current < index ? index - 1 : index;
             if (current != target)
             {
-                top.RemoveFromHierarchy();
-                host.Insert(Math.Min(target, host.childCount), top);
+                ChildListWrites.RemoveFromHierarchy(top);
+                ChildListWrites.Insert(host, Math.Min(target, host.childCount), top);
             }
         }
 

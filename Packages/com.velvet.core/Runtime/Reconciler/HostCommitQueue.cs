@@ -22,7 +22,7 @@ namespace Velvet
         }
 
         // At the index LogicalSlotCursor resolved for the child's slot.
-        internal void Insert(VisualElement parent, int physical, VisualElement child) => parent.Insert(physical, child);
+        internal void Insert(VisualElement parent, int physical, VisualElement child) => ChildListWrites.Insert(parent, physical, child);
 
         // Takes element out of parent with everything it holds released (FiberElementCleaner). Nothing is done
         // where element is no longer parent's child.
@@ -123,11 +123,11 @@ namespace Velvet
                     if (removeAt >= 0)
                     {
                         removeHint = removeAt;
-                        parent.RemoveAt(removeAt);
+                        ChildListWrites.RemoveAt(parent, removeAt);
                     }
                     else
                     {
-                        element.RemoveFromHierarchy();
+                        ChildListWrites.RemoveFromHierarchy(element);
                     }
                 }
 
@@ -144,7 +144,7 @@ namespace Velvet
                 if (nextSibling != null)
                 {
                     var pos = IndexOfNear(parent, nextSibling, insertHint);
-                    parent.Insert(pos, element);
+                    ChildListWrites.Insert(parent, pos, element);
                     insertHint = pos;
                 }
                 else
@@ -153,7 +153,7 @@ namespace Velvet
                     // child (a filter bounds spacer) stays last through the reorder — parent.Add would
                     // append past it.
                     var end = LogicalChildSlots.ToPhysical(parent, LogicalChildSlots.Count(parent));
-                    parent.Insert(end, element);
+                    ChildListWrites.Insert(parent, end, element);
                     insertHint = end;
                 }
             }

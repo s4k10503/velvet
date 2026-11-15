@@ -57,7 +57,7 @@ namespace Velvet
             _input.UnregisterCallback<FocusOutEvent>(OnFocusOut);
             // MUTANT_SURVIVES(equivalent): _drawing is cleared below, so a GeometryChangedEvent reaching this overlay later finds no drawing to place.
             _input.UnregisterCallback<GeometryChangedEvent>(OnInputGeometryChanged);
-            _drawing?.RemoveFromHierarchy();
+            if (_drawing != null) ChildListWrites.RemoveFromHierarchy(_drawing);
             // MUTANT_SURVIVES(equivalent): with the poll paused and FocusIn and GeometryChanged unregistered, the one callback left, OnFocusOut, only sets display on a drawing already removed from the hierarchy.
             _drawing = null;
         }
@@ -150,7 +150,7 @@ namespace Velvet
             var parent = _input.hierarchy.parent;
             if (parent != null && drawing.hierarchy.parent != parent)
             {
-                parent.hierarchy.Insert(parent.hierarchy.IndexOf(_input) + 1, drawing);
+                ChildListWrites.HierarchyInsert(parent, parent.hierarchy.IndexOf(_input) + 1, drawing);
                 foreach (var cls in _input.GetClasses())
                 {
                     if (cls != StyleTextInputColors.InputTextClass)

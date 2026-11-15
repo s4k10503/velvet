@@ -128,12 +128,12 @@ namespace Velvet
             var host = overlay.parent;
             if (!deferHierarchy || host == null)
             {
-                overlay.RemoveFromHierarchy();
+                ChildListWrites.RemoveFromHierarchy(overlay);
             }
             else
             {
                 overlay.style.display = DisplayStyle.None;
-                host.schedule.Execute(() => overlay.RemoveFromHierarchy());
+                host.schedule.Execute(() => ChildListWrites.RemoveFromHierarchy(overlay));
             }
             RingOverlay.Replace(element);
         }
@@ -148,8 +148,8 @@ namespace Velvet
             }
             if (host.IndexOf(binding.Overlay) != host.IndexOf(element) + 1)
             {
-                binding.Overlay.RemoveFromHierarchy();
-                host.Insert(host.IndexOf(element) + 1, binding.Overlay);
+                ChildListWrites.RemoveFromHierarchy(binding.Overlay);
+                ChildListWrites.Insert(host, host.IndexOf(element) + 1, binding.Overlay);
                 RingOverlay.Replace(element);
             }
             var style = binding.Overlay.style;

@@ -33,7 +33,7 @@ namespace Velvet
             // the control's own structure rather than a previous tenant's content. They reach the same
             // outcome by exclusion instead (FiberElementPoolReset.DetachForeignChildren).
             // PoolableWidgetChildBaselineTests pins which types those are.
-            if (button.childCount > 0) button.Clear();
+            if (button.childCount > 0) ChildListWrites.Clear(button);
 
             FiberElementPoolReset.ResetClassListAndCommon(button, TextElement.ussClassName, Button.ussClassName);
             FiberElementPoolReset.ResetTextElementState(button);
@@ -79,7 +79,7 @@ namespace Velvet
             // Same detach rule, and the same duplicate-on-reuse failure, as FiberButtonPoolHelper. A Label
             // reaches it through V.Custom<Label>(children: ...), which mounts an exact pooled Label and
             // expands the children into it.
-            if (label.childCount > 0) label.Clear();
+            if (label.childCount > 0) ChildListWrites.Clear(label);
 
             FiberElementPoolReset.ResetClassListAndCommon(label, TextElement.ussClassName, Label.ussClassName);
             FiberElementPoolReset.ResetTextElementState(label);
@@ -269,6 +269,10 @@ namespace Velvet
                 textField.multiline = true;
                 textField.verticalScrollerVisibility = ScrollerVisibility.Hidden;
             }
+            // Before multiline goes off, which takes the scroll view's container out of the field: the models under
+            // it are dropped while the field still reaches them. SelectionTextOverlayLayoutPanelTests holds the
+            // multiline case.
+            ChildListWrites.DropSubtree(textField);
             textField.multiline = false;
             textField.generateVisualContent = null;
             // Same pair, and the same reason, as FiberSliderPoolHelper.

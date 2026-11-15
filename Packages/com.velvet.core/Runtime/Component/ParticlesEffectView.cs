@@ -48,7 +48,7 @@ namespace Velvet
             {
                 view.style.unityMaterial = new StyleMaterialDefinition(material);
             }
-            element.Insert(0, view);
+            ChildListWrites.Insert(element, 0, view);
             binding.EffectLayer = view;
         }
 
@@ -126,7 +126,7 @@ namespace Velvet
                 binding.EffectTexture.Release();
                 VelvetObjectUtil.Destroy(binding.EffectTexture);
             }
-            binding.EffectLayer?.RemoveFromHierarchy();
+            if (binding.EffectLayer != null) ChildListWrites.RemoveFromHierarchy(binding.EffectLayer);
             binding.EffectHost = null;
             binding.EffectCamera = null;
             binding.EffectTexture = null;

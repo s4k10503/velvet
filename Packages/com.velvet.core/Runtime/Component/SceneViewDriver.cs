@@ -243,7 +243,7 @@ namespace Velvet
             var feed = binding.Feed!;
             if (feed.parent != element || element.IndexOf(feed) != 0)
             {
-                element.Insert(0, feed);
+                ChildListWrites.Insert(element, 0, feed);
             }
             var s = element.resolvedStyle;
             feed.style.left = s.paddingLeft;
@@ -504,7 +504,7 @@ namespace Velvet
             // resizes; once the texture itself is gone there is nothing left to stay continuous with,
             // so the next texture this binding creates derives its basis fresh from that size alone.
             binding.WidthWasQuantizedAxis = null;
-            binding.Feed!.RemoveFromHierarchy();
+            ChildListWrites.RemoveFromHierarchy(binding.Feed!);
             element.MarkDirtyRepaint();
         }
 

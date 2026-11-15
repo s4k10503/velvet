@@ -142,7 +142,7 @@ namespace Velvet
             // (spec null at rest) leaves overflow visible so the unclipped element is not rectangle-clipped;
             // SyncClipPathGeometry toggles overflow as the mask comes and goes.
             wrapper.style.overflow = spec != null ? Overflow.Hidden : Overflow.Visible;
-            wrapper.Add(element); // reparents element from its current parent (if any) into the wrapper
+            ChildListWrites.Add(wrapper, element); // reparents element from its current parent (if any) into the wrapper
 
             var binding = new ClipPathBinding(wrapper) { Spec = spec, Inner = element, Correction = correction };
             if (!correction)
@@ -173,7 +173,7 @@ namespace Velvet
             }
             var index = parent.IndexOf(element);
             var wrapper = BuildClipPathWrapper(element, spec, correction); // removes element from parent
-            parent.Insert(index, wrapper);
+            ChildListWrites.Insert(parent, index, wrapper);
         }
 
         // The wrapper a rotated layoutId Motion inside a stretching one is drawn through, so the counter-scale

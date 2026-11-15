@@ -730,6 +730,7 @@ namespace Velvet
         // key the table does not hold, so this is a no-op for any table the element was never registered in.
         internal void ClearElementSideTables(VisualElement element)
         {
+            ChildListWrites.Drop(element);
             foreach (var table in _pureElementSideTables)
             {
                 if (table.Count != 0)

@@ -339,17 +339,17 @@ namespace Velvet
             Realign(ctx, parent);
             if (!IsExplicit(ctx, real, ctx.StackingFacts.TryGetValue(real, out var facts) ? facts : null, parent))
             {
-                parent.hierarchy.Insert(parent.hierarchy.IndexOf(placeholder), real);
+                ChildListWrites.HierarchyInsert(parent, parent.hierarchy.IndexOf(placeholder), real);
                 ctx.ZLayerPlaceholders.Remove(placeholder);
-                s_held.Remove(placeholder);
-                s_held.Remove(real);
-                parent.hierarchy.Remove(placeholder);
+                Release(placeholder);
+                Release(real);
+                ChildListWrites.HierarchyRemove(parent, placeholder);
                 MarkPending(ctx, parent);
                 return;
             }
             Hold(real, RoleFor(facts.Z), null, placeholder);
             ctx.ZLayerMembers[real] = new ZLayerMember(placeholder, parent, facts.Z, facts.Order);
-            parent.hierarchy.Add(real);
+            ChildListWrites.HierarchyAdd(parent, real);
             MarkPending(ctx, parent);
         }
 
@@ -363,7 +363,7 @@ namespace Velvet
             }
             var anchor = AnchorOf(oldReal);
             Hold(newReal, held.Role, held.Partner, held.Slot);
-            s_held.Remove(oldReal);
+            Release(oldReal);
             if (held.Slot != null)
             {
                 Hold(held.Slot, Role.Slot, newReal);
@@ -561,7 +561,7 @@ namespace Velvet
             Hold(real, RoleFor(facts.Z), null, placeholder);
             ctx.ZLayerPlaceholders[placeholder] = real;
             ctx.ZLayerMembers[real] = new ZLayerMember(placeholder, parent, facts.Z, facts.Order);
-            parent.hierarchy.Insert(parent.hierarchy.IndexOf(real), placeholder);
+            ChildListWrites.HierarchyInsert(parent, parent.hierarchy.IndexOf(real), placeholder);
             ctx.NoteSlotOccupantChanged(real, placeholder);
             MarkPending(ctx, parent);
         }
@@ -576,7 +576,7 @@ namespace Velvet
             ctx.NoteSlotOccupantChanged(placeholder, real);
             Retire(ctx, placeholder);
             RetireAnchorOf(ctx, real);
-            s_held.Remove(real);
+            Release(real);
             ctx.ZLayerPlaceholders.Remove(placeholder);
             ctx.ZLayerMembers.Remove(real);
             if (ctx.ZLayerHosts.TryGetValue(parent, out var record))
@@ -600,12 +600,12 @@ namespace Velvet
             }
             // MUTANT_SURVIVES(equivalent, line removed): TakeReal's one caller cleans real up next, and that cleanup's ClearElementSideTables drops the same pin; until then real is held dead or detached, which Arrange passes over, and InsidePinnedGhost, the pin's other reader, asks only as an exit starts, which that teardown cancels.
             ctx.PinnedGhosts.Remove(real);
-            s_held.Remove(placeholder);
+            Release(placeholder);
             ctx.ZLayerMembers.Remove(real);
             var parent = real.parent;
             if (parent == null)
             {
-                s_held.Remove(real);
+                Release(real);
                 return real;
             }
             // The caller removes the placeholder by its index, which takes whatever layout node sits there.
@@ -617,7 +617,7 @@ namespace Velvet
         }
 
         // Forgets a retired real element FiberElementCleaner has taken back out of its parent.
-        internal static void ForgetRetired(VisualElement real) => s_held.Remove(real);
+        internal static void ForgetRetired(VisualElement real) => Release(real);
 
         // The (logical parent, logical index) a peer-/group- source search must walk from: a relocated element's
         // PLACEHOLDER position (its declared position among its siblings), not its physical one.
@@ -647,10 +647,10 @@ namespace Velvet
                 if (retired.parent is { } parent)
                 {
                     Realign(ctx, parent);
-                    retired.RemoveFromHierarchy();
+                    ChildListWrites.RemoveFromHierarchy(retired);
                     MarkPending(ctx, parent);
                 }
-                s_held.Remove(retired);
+                Release(retired);
             }
             ctx.PendingZLayerRemovals.Clear();
         }
@@ -721,9 +721,19 @@ namespace Velvet
                 held.Role = role;
                 held.Partner = partner;
                 held.Slot = slot;
-                return;
             }
-            s_held.Add(element, new Held { Role = role, Partner = partner, Slot = slot });
+            else
+            {
+                s_held.Add(element, new Held { Role = role, Partner = partner, Slot = slot });
+            }
+            ChildListWrites.Reclassify(element);
+        }
+
+        // The other flip of what ChildListWrites.Classify answers for an element: it holds no role any more.
+        private static void Release(VisualElement element)
+        {
+            s_held.Remove(element);
+            ChildListWrites.Reclassify(element);
         }
 
         private static Role RoleFor(int? z) => z switch
@@ -776,7 +786,7 @@ namespace Velvet
                 rank[parent.hierarchy[i]] = i;
             }
             (rank[a], rank[b]) = (rank[b], rank[a]);
-            parent.hierarchy.Sort((x, y) => rank[x].CompareTo(rank[y]));
+            ChildListWrites.HierarchySort(parent, (x, y) => rank[x].CompareTo(rank[y]));
         }
 
         // Whether parent lays its children out as flex or grid items, the only ones a flex order moves in CSS. The
@@ -1032,7 +1042,7 @@ namespace Velvet
                 {
                     s_rank[s_desired[i]] = i;
                 }
-                parent.hierarchy.Sort(s_compareRank);
+                ChildListWrites.HierarchySort(parent, s_compareRank);
                 s_rank.Clear();
                 return true;
             }
@@ -1065,7 +1075,7 @@ namespace Velvet
                 var placeholder = CreatePlaceholder();
                 Hold(placeholder, Role.Slot, entry.Real);
                 ctx.ZLayerPlaceholders[placeholder] = entry.Real;
-                parent.hierarchy.Add(placeholder);
+                ChildListWrites.HierarchyAdd(parent, placeholder);
                 entry.Slot = placeholder;
                 // MUTANT_SURVIVES(equivalent, literal): where SortToDesiredOrder then moves no child, the slots already stand in declared order, so FlowChildren, which each walker reads, gives the sequence the walkers last applied to.
                 changed = true;
@@ -1074,7 +1084,7 @@ namespace Velvet
             {
                 Retire(ctx, entry.Slot);
                 RetireAnchorOf(ctx, entry.Real);
-                s_held.Remove(entry.Real);
+                Release(entry.Real);
                 ctx.ZLayerPlaceholders.Remove(entry.Slot);
                 ctx.ZLayerMembers.Remove(entry.Real);
                 entry.Slot = entry.Real;
@@ -1189,7 +1199,7 @@ namespace Velvet
         {
             var anchor = CreateAnchor();
             Hold(anchor, Role.Anchor, real);
-            parent.hierarchy.Add(anchor);
+            ChildListWrites.HierarchyAdd(parent, anchor);
             return anchor;
         }
 
@@ -1377,8 +1387,8 @@ namespace Velvet
             }
             foreach (var retired in s_retiredHere)
             {
-                retired.RemoveFromHierarchy();
-                s_held.Remove(retired);
+                ChildListWrites.RemoveFromHierarchy(retired);
+                Release(retired);
                 ctx.PendingZLayerRemovals.Remove(retired);
             }
             s_retiredHere.Clear();

@@ -71,9 +71,9 @@ namespace Velvet
             {
                 if (spacer.parent == caster)
                 {
-                    caster.Remove(spacer);
+                    ChildListWrites.Remove(caster, spacer);
                 }
-                caster.Add(spacer);
+                ChildListWrites.Add(caster, spacer);
             }
 
             if (aabbLocal.width > 0f && aabbLocal.height > 0f
@@ -140,7 +140,7 @@ namespace Velvet
             }
             if (ReferenceEquals(spacer.parent, caster))
             {
-                caster.Remove(spacer);
+                ChildListWrites.Remove(caster, spacer);
             }
             spacer = null;
         }
