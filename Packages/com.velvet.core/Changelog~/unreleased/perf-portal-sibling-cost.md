@@ -1,8 +1,8 @@
 ### Performance
 
-- Mounting, hiding and revealing many sibling Portals no longer costs the square of their count. A Suspense hiding a
-  primary of 1,000 Portals into one target takes 0.25 s where it took 17.7 s, and the work per Portal grows by about
-  twice from 250 to 1,000 Portals rather than by about eight times. The hide looks up the Portals under each hidden
-  root and the fibers each Portal owns by index, a Portal's children are told apart from the ones before them without
-  reading every child of the declaring component, and a portal row's hold on the default font family decides again
-  only the held elements it can change.
+- Mounting, hiding and revealing many sibling Portals no longer costs the square of their count. Hiding a Suspense
+  primary of 1,000 Portals into one target takes about 0.1 s where it took 17.7 s, and the time per Portal measured the
+  same from 250 to 1,000 Portals within about 20% (mount 66 against 69 microseconds, hide 94 against 112, reveal 73
+  against 79). Unmounting many sibling Portals was not measured and still reads every held range once per Portal.
+- Keyed siblings under a Suspense, whose keys carry the boundary's scope in front, no longer all hash alike in the
+  reconciler's tables, so a long list of them no longer costs the square of its length to place.

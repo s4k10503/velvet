@@ -1502,7 +1502,7 @@ namespace Velvet
             // stored in. Measuring this physically let an invisible child arriving on the target — a portal
             // child gaining a filter, or a negative z — inflate the recorded length by one, which then
             // shifted every downstream portal's SlotStart and made the cleanup walk over-remove.
-            patch.Portal.BeforeTailCount = LogicalChildSlots.Count(target);
+            patch.Portal.BeforeTailCount = LogicalChildSlots.Count(target) - _ctx.PortalRowGrowth.GetValueOrDefault(target);
             // What a reconcile nested in this one already moved the starts on target for is left out of the
             // shift below, for the reason FiberCommitWork.RowCountWindow gives.
             patch.Portal.Tenancy = _ctx.ComponentRegistry.TenancyOf(target);
@@ -1559,7 +1559,7 @@ namespace Velvet
             var shiftedBefore = tenancy?.ShiftedRows ?? 0;
             var beforeTailCount = LogicalChildSlots.Count(target);
             _host.RemoveRows(target, inserted.SlotStart, inserted.SlotLength);
-            RecordPatchedPortalRange(placeholder, target, inserted, beforeTailCount, tenancy, shiftedBefore);
+            RecordPatchedPortalRange(placeholder, target, inserted, beforeTailCount - _ctx.PortalRowGrowth.GetValueOrDefault(target), tenancy, shiftedBefore);
         }
 
         private void RecordPatchedPortalRange(
@@ -1569,8 +1569,13 @@ namespace Velvet
             // (beforeTailCount - prevState.SlotLength) is the count of target children that do NOT belong to
             // this Portal's slot — unchanged by the reconcile above. Subtracting it from the new total
             // isolates this Portal's new slot length without re-counting the foreign children.
-            var newSlotLength = LogicalChildSlots.Count(target) - (beforeTailCount - prevState.SlotLength);
+            // A Portal patched inside this one's reconcile on the same target adds its rows to the count, and
+            // they are its own: it recorded them in PortalRowGrowth.
+            // beforeTailCount is read net of what those had recorded by then, so the same net count is taken here.
+            var grown = _ctx.PortalRowGrowth.GetValueOrDefault(target);
+            var newSlotLength = LogicalChildSlots.Count(target) - grown - (beforeTailCount - prevState.SlotLength);
             var delta = newSlotLength - prevState.SlotLength;
+            _ctx.PortalRowGrowth[target] = grown + delta;
 
             // The RESOLVED target is written back: a portal that mounted before its id registered
             // recorded no target, and the first healing patch must fill it in so the slot-shift

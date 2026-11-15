@@ -12,7 +12,6 @@ namespace Velvet.Tests
     [TestFixture]
     internal sealed class ComponentFiberAppendLogTests
     {
-        // GREEN_ON_BASE(construction): the base has no append log, so the case cannot build there.
         [Test]
         public void Given_ChildrenAppendedBeforeAndAfterAMark_When_AppendedSinceIsRead_Then_OnlyTheOnesAfterItAreReturned()
         {
@@ -32,7 +31,6 @@ namespace Velvet.Tests
             Assert.That(appended, Is.EqualTo(new[] { after }));
         }
 
-        // GREEN_ON_BASE(construction): the base has no append log, so the case cannot build there.
         [Test]
         public void Given_AChildAppendedAfterAMarkAndThenRemoved_When_AppendedSinceIsRead_Then_ItIsNotReturned()
         {
@@ -52,7 +50,6 @@ namespace Velvet.Tests
             Assert.That(appended, Is.EqualTo(new[] { kept }));
         }
 
-        // GREEN_ON_BASE(construction): the base has no append log, so the case cannot build there.
         [Test]
         public void Given_TwoReadersOnOneParent_When_TheInnerOneCloses_Then_TheOuterOneStillReadsItsChildren()
         {
@@ -73,7 +70,6 @@ namespace Velvet.Tests
             Assert.That(appended, Is.EqualTo(new[] { first, second }));
         }
 
-        // GREEN_ON_BASE(construction): the base has no append log, so the case cannot build there.
         [Test]
         public void Given_TheLastReaderHasClosedTheLog_When_AChildIsAppended_Then_TheParentKeepsNoLog()
         {

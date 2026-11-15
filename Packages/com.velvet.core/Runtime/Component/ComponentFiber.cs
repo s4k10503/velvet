@@ -1194,6 +1194,9 @@ namespace Velvet
             if (--_appendLogReaders == 0) _appendLog = null;
         }
 
+        // Where the next appended child lands in the log, which a reader moves its mark to once it has read up to it.
+        internal int AppendLogPosition => _appendLog!.Count;
+
         // The children appended since mark that are still children of this fiber.
         internal IEnumerable<ComponentFiber> AppendedSince(int mark)
         {

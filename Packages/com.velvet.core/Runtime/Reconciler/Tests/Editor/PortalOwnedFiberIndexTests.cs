@@ -9,21 +9,22 @@ namespace Velvet.Tests
     /// <summary>
     /// Specifies the registry's index of the inline fibers each Portal placeholder owns, which the hide of a
     /// Suspense, the cleanup of a Portal and the drain of a Portal's children read in place of a test of every
-    /// registered fiber: it lists a fiber under the placeholder it is stamped with once mounted, and under none once
-    /// the Portal leaves.
+    /// registered fiber: it lists a fiber under the placeholder it is stamped with once mounted, under none once
+    /// the Portal leaves, and under the new placeholder once a restamp moves it. Each read answers -1 where the
+    /// registry holds no such index.
     /// </summary>
     [TestFixture]
     internal sealed class PortalOwnedFiberIndexTests
     {
         private VisualElement _root;
-        private VisualElement _target;
-        private StateUpdater<int> _setPortals;
+        private static StateUpdater<int> s_setPortals;
+        private static VisualElement s_target;
 
         [SetUp]
         public void SetUp()
         {
             _root = new VisualElement();
-            _target = new VisualElement();
+            s_target = new VisualElement();
             FiberStrictMode.Enabled = false;
         }
 
@@ -43,57 +44,166 @@ namespace Velvet.Tests
             return V.Div(children: portals);
         }
 
-        private static StateUpdater<int> s_setPortals;
-        private static VisualElement s_target;
+        private static IDictionary IndexOf(ComponentRegistry registry)
+            => (IDictionary)typeof(ComponentRegistry)
+                .GetField("_inlineFibersOfPortal", BindingFlags.Instance | BindingFlags.NonPublic)?.GetValue(registry);
 
-        private static string IndexSummary(MountedTree mounted)
+        private static int PlaceholdersIndexed(MountedTree mounted)
+            => IndexOf(mounted.Root.Reconciler.Context.ComponentRegistry)?.Count ?? -1;
+
+        private static int FibersIndexed(MountedTree mounted)
         {
-            var registry = mounted.Root.Reconciler.Context.ComponentRegistry;
-            var index = (IDictionary)typeof(ComponentRegistry)
-                .GetField("_inlineFibersOfPortal", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(registry);
+            var index = IndexOf(mounted.Root.Reconciler.Context.ComponentRegistry);
+            if (index == null) return -1;
             var fibers = 0;
-            var agree = true;
+            foreach (DictionaryEntry entry in index) fibers += ((ICollection)entry.Value).Count;
+            return fibers;
+        }
+
+        private static int FibersIndexedUnderAPlaceholderTheyAreNotStampedWith(MountedTree mounted)
+        {
+            var index = IndexOf(mounted.Root.Reconciler.Context.ComponentRegistry);
+            if (index == null) return -1;
+            var strays = 0;
             foreach (DictionaryEntry entry in index)
             {
                 foreach (ComponentFiber fiber in (IEnumerable)entry.Value)
                 {
-                    fibers++;
-                    agree &= ReferenceEquals(fiber.OwningPortalPlaceholder, entry.Key);
+                    if (!ReferenceEquals(fiber.OwningPortalPlaceholder, entry.Key)) strays++;
                 }
             }
-            return $"{index.Count} placeholders, {fibers} fibers, stamps agree: {agree}";
+            return strays;
         }
 
-        // GREEN_ON_BASE(construction): the base has no index, so the case cannot build there.
-        [Test]
-        public void Given_TwoPortalsEachRenderingAComponent_When_TheTreeMounts_Then_EachFiberIsIndexedUnderItsOwnPlaceholder()
+        private static void RenderHost(MountedTree mounted, int portals)
         {
-            // Arrange
-            s_target = _target;
-            using var mounted = V.Mount(_root, V.Component(Host, key: "host"));
-
-            // Act
-            var summary = IndexSummary(mounted);
-
-            // Assert
-            Assert.That(summary, Is.EqualTo("2 placeholders, 2 fibers, stamps agree: True"));
-        }
-
-        // GREEN_ON_BASE(construction): the base has no index, so the case cannot build there.
-        [Test]
-        public void Given_TwoMountedPortals_When_OneIsRenderedAway_Then_OnlyTheOtherIsIndexed()
-        {
-            // Arrange
-            s_target = _target;
-            using var mounted = V.Mount(_root, V.Component(Host, key: "host"));
-
-            // Act
-            s_setPortals.Invoke(1);
+            s_setPortals.Invoke(portals);
             mounted.FlushStateForTest();
             mounted.GetSchedulerForTest().DrainImmediateForTest();
+        }
+
+        [Test]
+        public void Given_TwoPortalsEachRenderingAComponent_When_TheTreeMounts_Then_TwoPlaceholdersAreIndexed()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(Host, key: "host"));
+
+            // Act
+            var indexed = PlaceholdersIndexed(mounted);
 
             // Assert
-            Assert.That(IndexSummary(mounted), Is.EqualTo("1 placeholders, 1 fibers, stamps agree: True"));
+            Assert.That(indexed, Is.EqualTo(2));
+        }
+
+        [Test]
+        public void Given_TwoPortalsEachRenderingAComponent_When_TheTreeMounts_Then_EachFiberIsIndexedOnce()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(Host, key: "host"));
+
+            // Act
+            var indexed = FibersIndexed(mounted);
+
+            // Assert
+            Assert.That(indexed, Is.EqualTo(2));
+        }
+
+        [Test]
+        public void Given_TwoPortalsEachRenderingAComponent_When_TheTreeMounts_Then_NoFiberIsIndexedUnderAPlaceholderItIsNotStampedWith()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(Host, key: "host"));
+
+            // Act
+            var strays = FibersIndexedUnderAPlaceholderTheyAreNotStampedWith(mounted);
+
+            // Assert
+            Assert.That(strays, Is.EqualTo(0));
+        }
+
+        [Test]
+        public void Given_TwoMountedPortals_When_OneIsRenderedAway_Then_OnlyTheOthersPlaceholderIsIndexed()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(Host, key: "host"));
+
+            // Act
+            RenderHost(mounted, 1);
+
+            // Assert
+            Assert.That(PlaceholdersIndexed(mounted), Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_TwoMountedPortals_When_OneIsRenderedAway_Then_OnlyItsFiberStaysIndexed()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(Host, key: "host"));
+
+            // Act
+            RenderHost(mounted, 1);
+
+            // Assert
+            Assert.That(FibersIndexed(mounted), Is.EqualTo(1));
+        }
+
+        private static bool Restamp(ComponentRegistry registry, ComponentFiber fiber, VisualElement placeholder)
+        {
+            var restamp = typeof(ComponentRegistry).GetMethod("RestampOwningPortal", BindingFlags.Instance | BindingFlags.NonPublic);
+            if (restamp == null) return false;
+            restamp.Invoke(registry, new object[] { fiber, placeholder });
+            return true;
+        }
+
+        // A fiber registered inline the way the registry's own table cases write it, stamped and indexed under first.
+        private static (ComponentRegistry Registry, ComponentFiber Fiber) RegisteredUnder(VisualElement first)
+        {
+            var registry = new ComponentRegistry(new ReconcilerContext());
+            var fiber = new ComponentFiber { OwningPortalPlaceholder = first };
+            var key = (fiber.Parent, (VisualElement)null, new VisualElement(), new object(), new object());
+            var table = (IDictionary)typeof(ComponentRegistry)
+                .GetField("_inlineFiberToKey", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(registry);
+            table[fiber] = key;
+            typeof(ComponentRegistry).GetMethod("IndexUnderOwningPortal", BindingFlags.Instance | BindingFlags.NonPublic)
+                ?.Invoke(registry, new object[] { fiber });
+            return (registry, fiber);
+        }
+
+        private static int IndexedUnder(ComponentRegistry registry, VisualElement placeholder)
+        {
+            var index = IndexOf(registry);
+            if (index == null) return -1;
+            return index.Contains(placeholder) ? ((ICollection)index[placeholder]).Count : 0;
+        }
+
+        [Test]
+        public void Given_AnIndexedFiber_When_ItIsRestampedWithAnotherPlaceholder_Then_TheOldPlaceholderHoldsNoFiber()
+        {
+            // Arrange
+            var first = new VisualElement();
+            var second = new VisualElement();
+            var (registry, fiber) = RegisteredUnder(first);
+
+            // Act
+            Restamp(registry, fiber, second);
+
+            // Assert
+            Assert.That(IndexedUnder(registry, first), Is.EqualTo(0));
+        }
+
+        [Test]
+        public void Given_AnIndexedFiber_When_ItIsRestampedWithAnotherPlaceholder_Then_TheNewPlaceholderHoldsIt()
+        {
+            // Arrange
+            var first = new VisualElement();
+            var second = new VisualElement();
+            var (registry, fiber) = RegisteredUnder(first);
+
+            // Act
+            Restamp(registry, fiber, second);
+
+            // Assert
+            Assert.That(IndexedUnder(registry, second), Is.EqualTo(1));
         }
     }
 }

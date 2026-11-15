@@ -225,7 +225,8 @@ namespace Velvet
                 }
                 ranges.Add((pair.Key, pair.Value.SlotStart, pair.Value.SlotLength));
             }
-            // Ranges on one target do not overlap, so ParentOf finds the one holding a slot by its start.
+            // ParentOf finds the range holding a slot by its start, which takes the ranges on one target to be
+            // disjoint; NestedPortalRangeTests pins that for a Portal inside another's children.
             foreach (var ranges in _portalsOf.Values) ranges.Sort(s_byStart);
         }
 
