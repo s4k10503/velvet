@@ -215,6 +215,11 @@ namespace Velvet
             return content.hierarchy.childCount == 0 ? -1 : Synced(content, -1).PhysicalIndexOf(element);
         }
 
+        // The index of the child in container's own hierarchy list, for a container written through HierarchyInsert,
+        // whose model is keyed on container itself where PhysicalIndexOf reads the one its content element holds.
+        internal static int HierarchyIndexOf(VisualElement container, VisualElement element)
+            => container.hierarchy.childCount == 0 ? -1 : Synced(container, -1).PhysicalIndexOf(element);
+
         // Appends the rendered children at slots [slotStart, end) to into, as OldSlotOccupants reads them.
         internal static void Rows(VisualElement container, int slotStart, int end, List<VisualElement?> into)
         {

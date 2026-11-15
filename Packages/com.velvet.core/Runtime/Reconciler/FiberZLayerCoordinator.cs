@@ -123,16 +123,13 @@ namespace Velvet
         // a `:last-child` selector matches. Null when container holds no declared child.
         internal static VisualElement? LastDeclaredChild(VisualElement container)
         {
-            for (var i = container.childCount - 1; i >= 0; i--)
+            var rendered = ChildListWrites.RenderedCount(container);
+            var last = rendered == 0 ? null : ChildListWrites.RowAt(container, rendered - 1);
+            if (last != null)
             {
-                var child = container[i];
-                if (LogicalChildSlots.IsInvisible(child))
-                {
-                    continue;
-                }
-                return s_held.TryGetValue(child, out var held) && held.Role == Role.Slot && held.Partner != null
+                return s_held.TryGetValue(last, out var held) && held.Role == Role.Slot && held.Partner != null
                     ? held.Partner
-                    : child;
+                    : last;
             }
             return null;
         }
@@ -339,7 +336,7 @@ namespace Velvet
             Realign(ctx, parent);
             if (!IsExplicit(ctx, real, ctx.StackingFacts.TryGetValue(real, out var facts) ? facts : null, parent))
             {
-                ChildListWrites.HierarchyInsert(parent, parent.hierarchy.IndexOf(placeholder), real);
+                ChildListWrites.HierarchyInsert(parent, ChildListWrites.HierarchyIndexOf(parent, placeholder), real);
                 ctx.ZLayerPlaceholders.Remove(placeholder);
                 Release(placeholder);
                 Release(real);
@@ -561,7 +558,7 @@ namespace Velvet
             Hold(real, RoleFor(facts.Z), null, placeholder);
             ctx.ZLayerPlaceholders[placeholder] = real;
             ctx.ZLayerMembers[real] = new ZLayerMember(placeholder, parent, facts.Z, facts.Order);
-            ChildListWrites.HierarchyInsert(parent, parent.hierarchy.IndexOf(real), placeholder);
+            ChildListWrites.HierarchyInsert(parent, ChildListWrites.HierarchyIndexOf(parent, real), placeholder);
             ctx.NoteSlotOccupantChanged(real, placeholder);
             MarkPending(ctx, parent);
         }
@@ -626,11 +623,11 @@ namespace Velvet
             if (ctx.ZLayerMembers.TryGetValue(element, out var member))
             {
                 parent = member.StackingParent;
-                index = parent.IndexOf(member.Placeholder);
+                index = ChildListWrites.PhysicalIndexOf(parent, member.Placeholder);
                 return index >= 0;
             }
             parent = element.parent;
-            index = parent?.IndexOf(element) ?? -1;
+            index = parent == null ? -1 : ChildListWrites.PhysicalIndexOf(parent, element);
             return parent != null && index >= 0;
         }
 

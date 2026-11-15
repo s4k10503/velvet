@@ -327,7 +327,7 @@ namespace Velvet
                 }
                 index = i;
             }
-            var current = top.parent == host ? host.IndexOf(top) : -1;
+            var current = top.parent == host ? ChildListWrites.PhysicalIndexOf(host, top) : -1;
             var target = current >= 0 && current < index ? index - 1 : index;
             if (current != target)
             {
@@ -359,7 +359,7 @@ namespace Velvet
                 return 1;
             }
             var parent = pathA[i].parent;
-            return parent == null ? 0 : parent.IndexOf(pathA[i]).CompareTo(parent.IndexOf(pathB[i]));
+            return parent == null ? 0 : ChildListWrites.PhysicalIndexOf(parent, pathA[i]).CompareTo(ChildListWrites.PhysicalIndexOf(parent, pathB[i]));
         }
 
         private static List<VisualElement> PathOf(VisualElement e)
