@@ -242,8 +242,8 @@ namespace Velvet
 
             internal Awaiter(VelvetTask task) => _task = task;
 
-            // A completed task still yields inside a transition callback — see FiberWorkLoop.DefersAwaitContinuations.
-            public bool IsCompleted => IsSettled && !FiberWorkLoop.DefersAwaitContinuations;
+            // A completed task still yields inside a transition callback — see AwaitContinuationGate.Defers.
+            public bool IsCompleted => IsSettled && !AwaitContinuationGate.Defers;
 
             private bool IsSettled =>
                 _task._source == null || _task._source.GetStatus(_task._version).IsCompleted();
@@ -258,9 +258,9 @@ namespace Velvet
 
             public void OnCompleted(Action continuation)
             {
-                if (IsSettled && FiberWorkLoop.DefersAwaitContinuations)
+                if (IsSettled && AwaitContinuationGate.Defers)
                 {
-                    FiberWorkLoop.DeferAwaitContinuation(continuation);
+                    AwaitContinuationGate.Defer(continuation);
                     return;
                 }
                 OnCompleted(continuation, VelvetMainThread.IsCurrent);

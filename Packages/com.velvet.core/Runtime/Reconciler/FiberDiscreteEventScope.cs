@@ -33,7 +33,7 @@ namespace Velvet
             {
                 try
                 {
-                    // What a transition action deferred past an await (FiberWorkLoop.DefersAwaitContinuations)
+                    // What a transition action deferred past an await (AwaitContinuationGate.Defers)
                     // runs once the handler has returned and ahead of this event's flush, which commits it.
                     if (!wasInDiscreteEvent) FiberWorkLoop.DrainDeferredAwaitContinuations();
                 }

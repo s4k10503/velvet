@@ -331,6 +331,10 @@ jobs:
 
       - run: python3 scripts/test_quality/run_suite.py scripts/release/test_published_check.py
 
+      - run: python3 scripts/test_quality/run_suite.py scripts/release/test_next_version.py
+
+      - run: python3 scripts/test_quality/run_suite.py scripts/release/test_derived_version.py
+
       - id: base
         run: python3 scripts/ci/change_base.py >> "$GITHUB_OUTPUT"
 

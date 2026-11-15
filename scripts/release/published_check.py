@@ -53,6 +53,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+import next_version
 from release_notes import (
     BREAKING_SECTION,
     DEFAULT_CHANGELOG,
@@ -91,13 +92,23 @@ def released_versions(changelog_text):
             if RELEASE_DATE.search(line)]
 
 
-def is_major_bump(released, version):
-    """Whether `version` opens a new major against the release below it in `released`.
+def bump_of(released, version):
+    """`major`, `minor` or `patch`: how `version` differs from the release below it in `released`.
 
-    The last of them has nothing below it and is nobody's bump.
+    None for the last of them, which has nothing below it and is nobody's bump.
     """
     below = released.index(version) + 1
-    return below < len(released) and version.split(".")[0] != released[below].split(".")[0]
+    if below >= len(released):
+        return None
+    this, previous = version.split("."), released[below].split(".")
+    if this[0] != previous[0]:
+        return "major"
+    return "minor" if this[1] != previous[1] else "patch"
+
+
+def is_major_bump(released, version):
+    """Whether `version` opens a new major against the release below it in `released`."""
+    return bump_of(released, version) == "major"
 
 
 def section_entries(changelog_text, version):
@@ -273,6 +284,35 @@ def drain_reason(base_changelog, result_changelog, tags=()):
                 f"it ships the break, or make the edit in a change that closes no version — putting "
                 f"the entry back is what this asks for, not emptying the section.")
 
+    return None
+
+
+def derived_version_reason(base_changelog, result_changelog, gained_since, tags=()):
+    """Why a version this change closes is not the one the repository derives for it, or None.
+
+    The derivation is `next_version.derive`'s, asked once per closed version of what sits below it:
+    the breaking section as the base held it, which a major drains and so the result no longer shows,
+    and the `### Added` entries the base's open section held or the closed section now holds.
+    `gained_since(previous)` is what `PublicAPI.txt` gained against that release, None where it
+    cannot be read.
+    """
+    after = released_versions(result_changelog)
+    breaking = section_entries(base_changelog, BREAKING_SECTION)
+    for version in closing_versions(base_changelog, result_changelog, tags):
+        bump = bump_of(after, version)
+        if bump is None:
+            continue
+        previous = after[after.index(version) + 1]
+        derived = next_version.derive(
+            previous, breaking, gained_since(previous),
+            next_version.added_entries(base_changelog, OPEN_SECTION)
+            + next_version.added_entries(result_changelog, version))
+        if derived.version != version:
+            return (f"{version} closes as a {bump} over {previous}, and the version this tree "
+                    f"derives is {derived.version}, a {derived.bump}: {derived.reason}.\n"
+                    f"CONTRIBUTING.md's release section owns the rule and "
+                    f"scripts/release/next_version.py prints the derivation, so the number is "
+                    f"read off the tree rather than chosen.")
     return None
 
 
@@ -488,6 +528,18 @@ def main():
                drain_reason(composed_base, composed_result, tags),
                "leaves the breaking section wrong for the version it closes",
                "the breaking section suits whatever this closes")
+        try:
+            derived = derived_version_reason(
+                composed_base, composed_result,
+                lambda previous: next_version.public_api_gained_since(
+                    project, previous, args.result, read_at),
+                tags)
+        except next_version.Unreadable as failure:
+            derived = f"the version this closes cannot be checked, because {failure}"
+        report(f"{args.base}..{args.result}",
+               derived,
+               "closes a version other than the one the tree derives",
+               "the version this closes is the one the tree derives")
         report(f"{args.base}..{args.result}",
                left_open_reason(composed_base, composed_result, tags),
                "closes a version over entries it leaves unreleased",

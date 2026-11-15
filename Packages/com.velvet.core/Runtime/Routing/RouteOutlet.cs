@@ -7,6 +7,10 @@ namespace Velvet
     // Not beside its factory in Component/V.cs: same reason Navigate is not — this body calls hooks.
     internal static class RouteOutlet
     {
+        // No factory is no scope.
+        private static readonly Func<(RouteDefinition?, IRouteScopeFactory?), IDisposable?> s_createScope =
+            static state => state.Item2?.CreateScope(state.Item1, null);
+
         // The body creates and releases the Outlet's route scope as it renders, which a cache hit would skip.
         [Component(Compiler = false)]
         public static VNode Render(object? outletContext)
@@ -55,7 +59,7 @@ namespace Velvet
             {
                 identity = routeElement.ResolvedIdentity;
             }
-            FiberOutletScope.SyncRenderingOutletScope(match!.Route, identity, router?.ScopeFactory);
+            FiberOutletScope.SyncRenderingOutletScope((match!.Route, router?.ScopeFactory), identity, s_createScope);
 
             // Depth+1 so a nested Outlet in the route's subtree resolves the following match, and the
             // Outlet's own context value so the route can read it back through Hooks.UseOutletContext.

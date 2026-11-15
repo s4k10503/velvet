@@ -214,21 +214,6 @@ namespace Velvet
             ScheduleRerender(fiber, forceUrgent || IsInDiscreteEvent ? FiberUpdatePriority.Urgent : FiberUpdatePriority.Normal);
         }
 
-        // JavaScript's await resumes in a microtask, once the code that called startTransition has returned, so
-        // nothing an action runs past an await is in the transition it started. An await of a VelvetTask that
-        // had already completed is held to that: its continuation runs once a discrete handler has returned,
-        // or on the next main-thread tick outside one. An awaiter Velvet does not own (Task, ValueTask,
-        // Awaitable) is not, since C# continues inline wherever the awaiter reports completion;
-        // UseTransitionTests pins that side with an await of Task.CompletedTask.
-        internal static bool DefersAwaitContinuations => OpenTransitionScopes.Count > 0 && VelvetMainThread.IsCurrent;
-
-        private static readonly Queue<Action> DeferredAwaitContinuations = new();
-
-        internal static void DeferAwaitContinuation(Action continuation) => DeferredAwaitContinuations.Enqueue(continuation);
-
-        // VelvetMainThread.Capture drops the drain it had posted, and this queue goes with it.
-        internal static void DiscardDeferredAwaitContinuations() => DeferredAwaitContinuations.Clear();
-
         // Reached as each scope closes. Inside a discrete handler FiberDiscreteEventScope drains the queue once
         // the handler returns, so the handler's own later writes land first; elsewhere the drain waits for the
         // main thread's next tick.
@@ -236,7 +221,7 @@ namespace Velvet
         {
             // MUTANT_SURVIVES(equivalent): a drain posted with nothing queued, or one posted beside the discrete
             // handler's own, finds the queue empty and runs nothing.
-            if (IsInDiscreteEvent || DeferredAwaitContinuations.Count == 0)
+            if (IsInDiscreteEvent || AwaitContinuationGate.Queued.Count == 0)
             {
                 return;
             }
@@ -247,7 +232,7 @@ namespace Velvet
         // flush follows the drain.
         internal static void DrainDeferredAwaitContinuations()
         {
-            while (DeferredAwaitContinuations.TryDequeue(out var continuation))
+            while (AwaitContinuationGate.Queued.TryDequeue(out var continuation))
             {
                 RunContained(continuation);
             }
@@ -959,6 +944,7 @@ namespace Velvet
         private static void RunInTransitionScope(HookTransitionSlot slot, Action body)
         {
             OpenTransitionScopes.Add(slot);
+            AwaitContinuationGate.OpenScopes = OpenTransitionScopes.Count;
             try
             {
                 body();
@@ -966,6 +952,7 @@ namespace Velvet
             finally
             {
                 OpenTransitionScopes.RemoveAt(OpenTransitionScopes.Count - 1);
+                AwaitContinuationGate.OpenScopes = OpenTransitionScopes.Count;
                 ScheduleDeferredAwaitContinuations();
             }
         }
@@ -978,6 +965,7 @@ namespace Velvet
         private static T RunInTransitionScope<T>(HookTransitionSlot slot, Func<T> body)
         {
             OpenTransitionScopes.Add(slot);
+            AwaitContinuationGate.OpenScopes = OpenTransitionScopes.Count;
             try
             {
                 return body();
@@ -985,6 +973,7 @@ namespace Velvet
             finally
             {
                 OpenTransitionScopes.RemoveAt(OpenTransitionScopes.Count - 1);
+                AwaitContinuationGate.OpenScopes = OpenTransitionScopes.Count;
                 ScheduleDeferredAwaitContinuations();
             }
         }

@@ -106,7 +106,7 @@ namespace Velvet
                 {
                     _pending.Clear();
                 }
-                FiberWorkLoop.DiscardDeferredAwaitContinuations();
+                AwaitContinuationGate.Discard();
             }
 
             _captured = true;

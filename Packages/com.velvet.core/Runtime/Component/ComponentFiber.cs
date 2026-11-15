@@ -952,7 +952,33 @@ namespace Velvet
         // a new location, as React Router's boundary resets there, by a reset FiberErrorBoundary.QueueReset
         // queued, which is react-error-boundary's, and by a Suspense expansion whose primary
         // suspends, which discards the render that caught, where that expansion's own walk reached the boundary.
-        internal (Exception Error, ErrorInfo Info)? CaughtError { get; set; }
+        internal (Exception Error, ErrorInfo Info)? CaughtError
+        {
+            get => _caughtError;
+            set
+            {
+                _caughtError = value;
+                if (value != null) return;
+                CatchUnreported = false;
+                CatchReportedFromCarry = false;
+            }
+        }
+
+        private (Exception Error, ErrorInfo Info)? _caughtError;
+
+        // Set where the boundary caught an error whose fallback suspended: the catch is reported by the first render
+        // whose fallback reconciles without suspending (FiberErrorBoundary.ReportCarriedCatch), not at the catch. Clearing
+        // CaughtError clears it.
+        internal bool CatchUnreported { get; set; }
+
+        // Set once ReportCarriedCatch has queued the report, until the commit delivers it: a Suspense whose primary
+        // suspends discards the report, and the boundary then owes it again rather than forgetting the catch
+        // (GeneralPathReconciler.ForgetCatchesOfTheDiscardedPrimary).
+        internal bool CatchReportedFromCarry { get; set; }
+
+        // What made the boundary's swap to its fallback fail, where reconciling the fallback threw rather than a
+        // render inside it: the error the boundary above is handed (FiberErrorBoundary.TryCatch).
+        internal Exception? FallbackReconcileFailure { get; set; }
 
         // The onReset the last committed render of Hooks.UseErrorBoundaryReset passed, as the library calls this.props'.
         internal Action<ErrorBoundaryResetDetails>? OnErrorBoundaryReset { get; set; }
