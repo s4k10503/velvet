@@ -73,7 +73,7 @@ namespace Velvet.Tests
             var tree = new VNode[]
             {
                 V.Div(name: "first", refCallback: _ => throw new InvalidOperationException(FailureMessage)),
-                V.Div(name: "second", refCallback: element => { second = element; return null; }),
+                V.Div(name: "second", refCallback: element => { second = element; return RefCleanup.None; }),
             };
             ExpectContainedFailure();
 
@@ -124,7 +124,7 @@ namespace Velvet.Tests
             // Act — a per-render lambda is a fresh identity, so the patch cycles the installed ref.
             var patched = new VNode[]
             {
-                V.Div(name: "host", refCallback: element => { replacement = element; return null; }),
+                V.Div(name: "host", refCallback: element => { replacement = element; return RefCleanup.None; }),
             };
             var escaped = EscapesFrom(() => Reconciler.Reconcile(Root, mounted, patched));
 
@@ -158,7 +158,7 @@ namespace Velvet.Tests
             {
                 V.Button(name: "host",
                     wrapElement: _ => throw new InvalidOperationException(FailureMessage),
-                    refCallback: element => { captured = element; return null; }),
+                    refCallback: element => { captured = element; return RefCleanup.None; }),
             };
             ExpectContainedFailure();
 
@@ -277,7 +277,7 @@ namespace Velvet.Tests
             => V.Div(name: "failing", refCallback: _ =>
             {
                 if (attempt > 0) throw new InvalidOperationException(FailureMessage);
-                return null;
+                return RefCleanup.None;
             });
 
         [Component(IsErrorBoundary = true)]
@@ -372,7 +372,7 @@ namespace Velvet.Tests
         private static Action ClickTheTrigger(VisualElement element)
         {
             element.parent?.Q<Button>("trigger")?.SimulateClick();
-            return null;
+            return RefCleanup.None;
         }
 
         #endregion

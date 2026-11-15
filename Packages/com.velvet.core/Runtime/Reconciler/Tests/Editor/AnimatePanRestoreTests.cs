@@ -26,7 +26,7 @@ namespace Velvet.Tests
                 new BackgroundPosition(BackgroundPositionKeyword.Left, new Length(10f)));
             element.style.backgroundPositionY = new StyleBackgroundPosition(
                 new BackgroundPosition(BackgroundPositionKeyword.Top, new Length(6f)));
-            return null;
+            return RefCleanup.None;
         };
 
         [SetUp]

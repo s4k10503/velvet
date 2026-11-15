@@ -291,19 +291,19 @@ namespace Velvet.Tests
         private static readonly Func<VisualElement, Action> s_colour = element =>
         {
             element.style.backgroundColor = Color.red;
-            return null;
+            return RefCleanup.None;
         };
 
         private static readonly Func<VisualElement, Action> s_widen = element =>
         {
             element.style.width = WidenedWidth;
-            return null;
+            return RefCleanup.None;
         };
 
         private static readonly Func<VisualElement, Action> s_readWidened = _ =>
         {
             s_widthRead = s_root.Q<VisualElement>("widened").layout.width;
-            return null;
+            return RefCleanup.None;
         };
 
         private static readonly Func<VisualElement, Action> s_widenPanelRoot = _ =>
@@ -311,26 +311,26 @@ namespace Velvet.Tests
             s_widthBefore = s_root.layout.width;
             var panelRoot = s_root.panel.visualTree;
             panelRoot.style.width = panelRoot.layout.width + RootGrowth;
-            return null;
+            return RefCleanup.None;
         };
 
         private static readonly Func<VisualElement, Action> s_readRootWidth = _ =>
         {
             s_widthRead = s_root.layout.width;
-            return null;
+            return RefCleanup.None;
         };
 
         private static readonly Func<VisualElement, Action> s_moveRootChild = _ =>
         {
             s_stayingPositionBefore = s_stayingRootChild.layout.position;
             s_movedRootChild.BringToFront();
-            return null;
+            return RefCleanup.None;
         };
 
         private static readonly Func<VisualElement, Action> s_readStayingRootChild = _ =>
         {
             s_stayingMovedBy = (s_stayingRootChild.layout.position - s_stayingPositionBefore).magnitude;
-            return null;
+            return RefCleanup.None;
         };
 
         // Reads the root element's width in a layout effect each time its colour changes.

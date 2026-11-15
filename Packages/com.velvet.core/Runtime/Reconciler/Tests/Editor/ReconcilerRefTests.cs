@@ -43,7 +43,7 @@ namespace Velvet.Tests
             VisualElement captured = null;
             var tree = new VNode[]
             {
-                V.Button(text: "click me", refCallback: el => { captured = el; return null; }),
+                V.Button(text: "click me", refCallback: el => { captured = el; return RefCleanup.None; }),
             };
 
             // Act
@@ -63,7 +63,7 @@ namespace Velvet.Tests
             VisualElement capturedOnPatch = null;
             var tree1 = new VNode[]
             {
-                V.Label(text: "old", refCallback: el => { capturedOnCreate = el; return null; }),
+                V.Label(text: "old", refCallback: el => { capturedOnCreate = el; return RefCleanup.None; }),
             };
             Reconciler.Reconcile(Root, Array.Empty<VNode>(), tree1);
             var poolSaturated = VNodePoolTestAccess.SaturateLabelPoolForTest();
@@ -71,7 +71,7 @@ namespace Velvet.Tests
             // Act
             var tree2 = new VNode[]
             {
-                V.Label(text: "new", refCallback: el => { capturedOnPatch = el; return null; }),
+                V.Label(text: "new", refCallback: el => { capturedOnPatch = el; return RefCleanup.None; }),
             };
             Reconciler.Reconcile(Root, tree1, tree2);
 
@@ -180,7 +180,7 @@ namespace Velvet.Tests
             // Act
             var tree2 = new VNode[]
             {
-                V.Label(text: "patch-target", refCallback: _ => { newSetupCount++; return null; }),
+                V.Label(text: "patch-target", refCallback: _ => { newSetupCount++; return RefCleanup.None; }),
             };
             Reconciler.Reconcile(Root, tree1, tree2);
 
@@ -203,7 +203,7 @@ namespace Velvet.Tests
             // Act
             var tree2 = new VNode[]
             {
-                V.Label(text: "patch-target", refCallback: _ => { newSetupCount++; return null; }),
+                V.Label(text: "patch-target", refCallback: _ => { newSetupCount++; return RefCleanup.None; }),
             };
             Reconciler.Reconcile(Root, tree1, tree2);
 
