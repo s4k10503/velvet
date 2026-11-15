@@ -1462,6 +1462,41 @@ namespace Velvet.Tests
             Assert.That((registeredBeforeTheMove, stillRegisteredAtTrackedPosition), Is.EqualTo((true, true)));
         }
 
+        [Component]
+        private static VNode ReverseZManagedHost()
+        {
+            var reversed = Hooks.UseStore(s_moveStore, x => x);
+            var rows = new VNode[5];
+            for (var i = 0; i < 5; i++)
+            {
+                var className = i == 0 ? "absolute -z-10" : i == 2 ? "absolute z-10" : null;
+                rows[reversed ? 4 - i : i] = V.Div(name: "r" + i, key: "r" + i, className: className);
+            }
+            return V.Div(name: "list", className: "relative", children: rows);
+        }
+
+        // GREEN_ON_BASE(refactor): the base places this order too; the case pins the placement of rows with a back-band
+        // and a front-band element among them, whose real elements the row model counts as no slot.
+        [Test]
+        public void Given_KeyedRowsWithABackAndAFrontBandElementAmongThem_When_TheyAreReversed_Then_EachRealElementKeepsItsBandAndEachPlaceholderItsRow()
+        {
+            // Arrange
+            using var store = new ToggleStore<bool>(false);
+            s_moveStore = store;
+            var root = new VisualElement();
+            using var mounted = V.Mount(root, V.Component(ReverseZManagedHost, key: "root"));
+            var placeholders = mounted.Root.Reconciler.Context.ZLayerPlaceholders;
+
+            // Act
+            store.Set(true);
+            mounted.FlushStateForTest();
+
+            // Assert
+            var physical = root.Q<VisualElement>("list").Children().Select(child =>
+                placeholders.TryGetValue(child, out var held) ? "[" + held.name + "]" : child.name);
+            Assert.That(string.Join(",", physical), Is.EqualTo("r0,r4,r3,[r2],r1,[r0],r2"));
+        }
+
         #endregion
 
         #region Nested stacking parents
