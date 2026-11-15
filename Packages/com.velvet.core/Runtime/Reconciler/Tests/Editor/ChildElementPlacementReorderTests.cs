@@ -68,6 +68,8 @@ namespace Velvet.Tests
             return hashes;
         }
 
+        // GREEN_ON_BASE(refactor): the base leaves children already in order unhashed too; the case keeps that
+        // shortcut while the pass that does move reads the row model.
         [Test]
         public void Given_ChildrenAlreadyInTheListedOrder_When_TheyAreReordered_Then_NoChildIsHashed()
         {
@@ -78,7 +80,8 @@ namespace Velvet.Tests
             Assert.That(hashes, Is.EqualTo(0));
         }
 
-        // GREEN_ON_BASE(characterization): the instrument for the case above: a pass that moves a child hashes the base's own position table.
+        // GREEN_ON_BASE(characterization): the instrument for the case above: a pass that moves a child hashes, through
+        // the base's position table there and through the row model's lookups here.
         [Test]
         public void Given_AChildListedOutOfOrder_When_TheChildrenAreReordered_Then_ChildrenAreHashed()
         {
@@ -89,7 +92,8 @@ namespace Velvet.Tests
             Assert.That(hashes, Is.GreaterThan(0));
         }
 
-        // GREEN_ON_BASE(characterization): the base already reports this order, which the shortcut has to leave to the pass that moves.
+        // GREEN_ON_BASE(characterization): the base reports this order too; the case holds it now that the creation-order
+        // check reads each kept child's position from the row model.
         [Test]
         public void Given_AChildListedAheadOfTheOnesBeforeIt_When_TheChildrenAreReordered_Then_TheOrderIsReportedAsOutOfCreationOrder()
         {
