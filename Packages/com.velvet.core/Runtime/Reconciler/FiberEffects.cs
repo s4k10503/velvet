@@ -666,14 +666,16 @@ namespace Velvet
             // any fiber stages — so this return is never on it — is held by PassiveEffectDrainArmingTests.
             if (anchor == null) return;
             context.PassiveEffectDrainScheduled = true;
+            context.PassiveEffectDrainAnchor = anchor;
             anchor.schedule.Execute(context.PassiveEffectDrainCallback ??= PassiveEffectDrainCallback(context));
         }
 
-        // Reads the anchor as the drain runs rather than as it is armed, which is the same element: SetAnchor runs
-        // once per context.
+        // Runs under the element the drain was armed on, which stays on the context when a dispose between the arming
+        // and the run nulls the scheduler's anchor. One field serves every registration still waiting, since each
+        // arming writes the same element: a context's anchor is set once.
         private static Action PassiveEffectDrainCallback(ReconcilerContext context)
             => () => PanelSchedulerCallback.Run(
-                context.BatchScheduler.Anchor, context, static ctx => DrainPassiveEffects(ctx));
+                context.PassiveEffectDrainAnchor, context, static ctx => DrainPassiveEffects(ctx));
 
         // An exit with nothing to animate, whose child the pass that just ended removed, settles in the
         // passive-effect flush, after the effects that flush runs, as Framer Motion settles it after that commit.

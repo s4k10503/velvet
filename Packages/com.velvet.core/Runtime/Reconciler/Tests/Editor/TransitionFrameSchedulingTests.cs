@@ -234,6 +234,31 @@ namespace Velvet.Tests
                 "A request from another panel's pass waits for an admission on this panel's next pass");
         }
 
+        // GREEN_ON_BASE(characterization): the base ran the drain under the anchor it was armed on, which the dispose
+        // after the arming leaves in this panel.
+        [Test]
+        public void Given_ADrainArmedWhileATreeUnmounts_When_ItRequestsATransitionRenderOfAnotherTreeInThePanel_Then_ThatRenderRunsOnTheNextPass()
+        {
+            // Arrange — the completion is staged by a cleanup the dispose runs, after it has run the completions
+            // already staged and before it clears the scheduler, so only the drain that staging armed runs it
+            var disposedRoot = new VisualElement();
+            var transitionRoot = new VisualElement();
+            _sim.rootVisualElement.Add(disposedRoot);
+            _sim.rootVisualElement.Add(transitionRoot);
+            s_transitionLaneRenders = 0;
+            using var mounted = V.Mount(transitionRoot, V.Component(CountsTransitionLaneRendersRender, key: "counted"));
+            var disposed = V.Mount(disposedRoot, V.Component(StagesATransitionOnUnmountRender, key: "stages"));
+            disposed.Dispose();
+
+            // Act
+            _sim.FrameUpdateMs(FrameMs);
+            _sim.FrameUpdateMs(FrameMs);
+
+            // Assert
+            Assert.That(s_transitionLaneRenders, Is.EqualTo(1),
+                "A Transition-lane render requested inside this panel's pass is drained on the pass after it");
+        }
+
         [Test]
         public void Given_ADeferredInputChangedInAClickHandler_When_TwoFramesPass_Then_TheDeferredValueHasCommitted()
         {
@@ -481,6 +506,29 @@ namespace Velvet.Tests
             }), Array.Empty<object>());
             return V.Label();
         }
+
+        private static int s_transitionLaneRenders;
+        private static ComponentFiber s_countedFiber;
+
+        [Component(Compiler = false)]
+        private static VNode CountsTransitionLaneRendersRender()
+        {
+            s_countedFiber = FiberAmbientStack.Current;
+            if (FiberWorkLoop.IsRenderingTransitionLane) s_transitionLaneRenders++;
+            return V.Label();
+        }
+
+        [Component(Compiler = false)]
+        private static VNode StagesATransitionOnUnmountRender()
+        {
+            var context = FiberAmbientStack.Current!.Reconciler!.Context;
+            Hooks.UseLayoutEffect(
+                () => () => FiberEffects.StagePassiveCompletion(context, RequestTheCountedTransition),
+                Array.Empty<object>());
+            return V.Label();
+        }
+
+        private static void RequestTheCountedTransition() => FiberWorkLoop.RequestTransitionRerender(s_countedFiber);
 
         [Component(Compiler = false)]
         private static VNode DeferredRender()

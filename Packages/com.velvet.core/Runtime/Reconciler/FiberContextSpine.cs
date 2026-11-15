@@ -75,8 +75,8 @@ namespace Velvet
             // that array still holds the nodes of the render that captured it, which ComponentFiber.SourceNode no
             // longer names.
             internal VNode?[]? OwnOutput { get; init; }
-            // One per Push, cleared at each edge. An element's children are reconciled by a new walk,
-            // so PushScope starts their occurrence count over where that walk's claim does.
+            // One instance shared by every Push, cleared at each edge. An element's children are reconciled by a
+            // new walk, so PushScope starts their occurrence count over where that walk's claim does.
             internal InlineKeyClaims Claims { get; init; }
         }
 

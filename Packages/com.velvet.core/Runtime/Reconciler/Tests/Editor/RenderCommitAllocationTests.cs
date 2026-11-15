@@ -17,8 +17,8 @@ namespace Velvet.Tests
     [Category("Performance")]
     internal sealed class RenderCommitAllocationTests
     {
-        // The count measured when this case was written. An upper bound, so a change that takes a further
-        // allocation off the path leaves the case green.
+        // The case asserts at most this many blocks, so a change that takes a further allocation off the path
+        // leaves it green.
         private const int RenderAndCommitBlocks = 40;
 
         private static readonly ComponentContext<string> s_theme = ComponentContext<string>.Create("default");
