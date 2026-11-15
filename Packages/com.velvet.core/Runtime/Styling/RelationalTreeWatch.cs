@@ -56,6 +56,7 @@ namespace Velvet
 
         private void OnChanged(VisualElement element, bool reordered)
         {
+            ChildListWrites.NoteHierarchyChange(element);
             if (_scheduled || _ctx.SharedReconcileDepth > 0 || _ctx.PointerEventsWalkHeld > 0)
             {
                 return;

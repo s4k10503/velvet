@@ -61,7 +61,8 @@ namespace Velvet.Tests
                         if (count > 0)
                         {
                             var moved = parent[random.Next(count)];
-                            ChildListWrites.Insert(parent, random.Next(count), moved);
+                            if (random.Next(3) == 0) ChildListWrites.Add(parent, moved);
+                            else ChildListWrites.Insert(parent, random.Next(count + 1), moved);
                         }
                         break;
                     case 5:
@@ -258,6 +259,70 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(report, Is.Empty);
+        }
+
+        [Test]
+        public void Given_AChildAlreadyInside_When_ItIsAddedAgain_Then_TheModelFollowsItToTheEnd()
+        {
+            // Arrange
+            var parent = new VisualElement();
+            var first = new VisualElement();
+            ChildListWrites.Add(parent, first);
+            ChildListWrites.Add(parent, new VisualElement());
+            ChildListWrites.Add(parent, new VisualElement());
+
+            // Act
+            ChildListWrites.Add(parent, first);
+
+            // Assert
+            Assert.That(CompareOrder(parent, ChildListWrites.Peek(parent)!), Is.Null);
+        }
+
+        [Test]
+        public void Given_AChildMovedToAnotherContainer_When_ItsFormerContainerIsEmptied_Then_ItKeepsNoModel()
+        {
+            // Arrange
+            var from = new VisualElement();
+            var to = new VisualElement();
+            var child = new VisualElement();
+            ChildListWrites.Add(from, child);
+
+            // Act
+            ChildListWrites.Add(to, child);
+
+            // Assert
+            Assert.That(ChildListWrites.Peek(from), Is.Null);
+        }
+
+        [Test]
+        public void Given_ABigModelWhoseLastChildWasMovedBehindItsBack_When_TheNextWriteArrives_Then_TheModelHoldsTheLiveOrder()
+        {
+            // Arrange
+            var parent = new VisualElement();
+            for (var i = 0; i < 300; i++) ChildListWrites.Add(parent, new VisualElement());
+            parent[0].BringToFront();
+
+            // Act
+            ChildListWrites.Add(parent, new VisualElement());
+
+            // Assert
+            Assert.That(CompareOrder(parent, ChildListWrites.Peek(parent)!), Is.Null);
+        }
+
+        [Test]
+        public void Given_AnInteriorMoveBehindTheModelsBackThatWasAnnounced_When_TheNextWriteArrives_Then_TheModelHoldsTheLiveOrder()
+        {
+            // Arrange
+            var parent = new VisualElement();
+            for (var i = 0; i < 300; i++) ChildListWrites.Add(parent, new VisualElement());
+            parent[100].PlaceBehind(parent[200]);
+            ChildListWrites.NoteHierarchyChange(parent[100]);
+
+            // Act
+            ChildListWrites.Add(parent, new VisualElement());
+
+            // Assert
+            Assert.That(CompareOrder(parent, ChildListWrites.Peek(parent)!), Is.Null);
         }
 
         [Test]

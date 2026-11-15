@@ -7,18 +7,22 @@ using UnityEngine.UIElements;
 
 namespace Velvet
 {
-    // Every write Velvet makes to a child list goes through here, so the ContainerRows kept for each container stays
-    // equal to the live list. Each op updates the model first and then makes the UI Toolkit call, so a write nested
-    // inside that call (LogicalSlotCursor.Insert names one) finds the model already holding the child.
-    // RowModelRoutingTests fails when a type other than this one calls a child-list writer.
+    // Every write the runtime assembly makes to a child list goes through here (RowModelRoutingTests), and each op
+    // updates the ContainerRows of the container beside the write: the model first and then the UI Toolkit call, so a
+    // write nested inside that call (LogicalSlotCursor.Insert names one) finds the child already in the model; only
+    // HierarchySort makes its call first and rebuilds after.
     //
-    // A container's model is built from its live children the first time a write reaches it, and again whenever its
-    // total no longer matches the live count, which is how a write made outside these ops (a user's own Add on an
-    // element Velvet adopted) is noticed at the next write; the end-of-pass verifier reads the rest.
+    // A model is checked against the live list when an op starts: its count, its first and last child and the child at
+    // the index the op reads, plus whether a change was announced that no op made (NoteHierarchyChange). A model that
+    // fails is rebuilt from the live list. An op nested in an open op's UI Toolkit call rebuilds nothing, since the
+    // outer op's child is in neither list yet; the containers both wrote are checked when the outermost op ends.
+    // The probes do not read every child, so VerifyTouched compares whole lists for the containers writes reached.
     internal static class ChildListWrites
     {
         private static readonly ConditionalWeakTable<VisualElement, ContainerRows> s_rows = new();
         private static readonly HashSet<VisualElement> s_touched = new();
+        private static readonly HashSet<VisualElement> s_nested = new();
+        private static int s_open;
 
         internal static RowKind Classify(VisualElement element)
         {
@@ -26,35 +30,63 @@ namespace Velvet
             return LogicalChildSlots.StaysFirst(element) ? RowKind.LeadingInvisible : RowKind.Invisible;
         }
 
-        // The model of a container that has one, as it stands: a read that never builds.
+        // The model of a container that has one, as it stands: a read that never builds or checks.
         internal static ContainerRows? Peek(VisualElement container)
             => s_rows.TryGetValue(container, out var rows) ? rows : null;
 
-        // The model of container, built or rebuilt from its live children when it does not match them.
-        internal static ContainerRows RowsOf(VisualElement container)
+        // The model of container, built or rebuilt when it does not match the live list.
+        internal static ContainerRows RowsOf(VisualElement container) => Synced(container, -1);
+
+        private static ContainerRows Synced(VisualElement container, int readAt)
         {
-            if (s_rows.TryGetValue(container, out var rows))
-            {
-                if (rows.TotalCount == container.hierarchy.childCount) return rows;
-                rows.Clear();
-            }
-            else
+            if (!s_rows.TryGetValue(container, out var rows))
             {
                 rows = new ContainerRows();
                 s_rows.Add(container, rows);
+                Fill(rows, container);
             }
-            Fill(rows, container);
+            else if (s_open == 0 && !Agrees(rows, container, readAt))
+            {
+                rows.Clear();
+                Fill(rows, container);
+            }
             return rows;
+        }
+
+        // The cheap probes: stale mark, count, first and last child, and the child at readAt.
+        private static bool Agrees(ContainerRows rows, VisualElement container, int readAt)
+        {
+            var count = container.hierarchy.childCount;
+            if (rows.Stale || rows.TotalCount != count) return false;
+            if (count == 0) return true;
+            if (!ReferenceEquals(rows.FirstElement, container.hierarchy[0])
+                || !ReferenceEquals(rows.LastElement, container.hierarchy[count - 1]))
+            {
+                return false;
+            }
+            return readAt < 0 || readAt >= count || ReferenceEquals(rows.ElementAt(readAt), container.hierarchy[readAt]);
         }
 
         private static void Fill(ContainerRows rows, VisualElement container)
         {
             var count = container.hierarchy.childCount;
+            rows.Reserve(count);
             for (var i = 0; i < count; i++)
             {
                 var child = container.hierarchy[i];
                 rows.Insert(i, child, Classify(child));
             }
+        }
+
+        // An announced change to a hierarchy (RelationalTreeWatch hears them from the panel) that none of these ops is
+        // making marks the models of the element and its parent stale. One made inside an op's UI Toolkit call is that
+        // op's own.
+        internal static void NoteHierarchyChange(VisualElement element)
+        {
+            if (s_open > 0) return;
+            if (s_rows.TryGetValue(element, out var own)) own.Stale = true;
+            var parent = element.hierarchy.parent;
+            if (parent != null && s_rows.TryGetValue(parent, out var rows)) rows.Stale = true;
         }
 
         // The element UI Toolkit's own child-list calls on parent write into: parent itself, or the content container
@@ -69,11 +101,29 @@ namespace Velvet
             return content;
         }
 
-        // Takes child out of whichever model holds it, ahead of a call that makes UI Toolkit detach it first.
-        private static void Detach(VisualElement child)
+        private static ContainerRows Enter(VisualElement container, int readAt)
         {
-            var old = child.hierarchy.parent;
-            if (old != null && s_rows.TryGetValue(old, out var rows)) rows.Remove(child);
+            if (s_open > 0) s_nested.Add(container);
+            var rows = Synced(container, readAt);
+            s_open++;
+            Touch(container);
+            return rows;
+        }
+
+        private static void Exit(VisualElement container)
+        {
+            if (--s_open > 0) return;
+            Settle(container);
+            foreach (var nested in s_nested) Settle(nested);
+            s_nested.Clear();
+        }
+
+        // After the outermost op: a model that no longer matches the live list is rebuilt.
+        private static void Settle(VisualElement container)
+        {
+            if (!s_rows.TryGetValue(container, out var rows) || Agrees(rows, container, -1)) return;
+            rows.Clear();
+            Fill(rows, container);
         }
 
         // For a role or class change that writes no child list, which flips what Classify answers for a child that
@@ -105,82 +155,120 @@ namespace Velvet
         internal static void HierarchyAdd(VisualElement parent, VisualElement child)
             => InsertCore(parent, parent.hierarchy.childCount, child, viaHierarchy: true, parent);
 
+        // UI Toolkit refuses an index past the child count as it stood before it detaches the child, then detaches it
+        // and puts it at the index, clamped to the list it has left. The model takes the same two steps.
         private static void InsertCore(VisualElement container, int index, VisualElement child, bool viaHierarchy,
             VisualElement caller)
         {
-            var rows = RowsOf(container);
-            Touch(container);
-            var inside = child.hierarchy.parent != null && ReferenceEquals(child.hierarchy.parent, container);
-            var length = container.hierarchy.childCount - (inside ? 1 : 0);
-            if (index >= 0 && index <= length)
+            var left = child.hierarchy.parent;
+            var rows = Enter(container, Math.Min(index, container.hierarchy.childCount - 1));
+            try
             {
-                Detach(child);
-                rows.Insert(index, child, Classify(child));
+                if (index >= 0 && index <= container.hierarchy.childCount)
+                {
+                    if (left != null && s_rows.TryGetValue(left, out var leftRows))
+                    {
+                        leftRows.Remove(child);
+                        Touch(left);
+                    }
+                    rows.Insert(Math.Min(index, rows.TotalCount), child, Classify(child));
+                }
+                if (viaHierarchy) container.hierarchy.Insert(index, child);
+                else caller.Insert(index, child);
             }
-            if (viaHierarchy) container.hierarchy.Insert(index, child);
-            else caller.Insert(index, child);
+            finally
+            {
+                Exit(container);
+            }
+            if (left != null && !ReferenceEquals(left, container)) PruneIfEmpty(left);
         }
 
         internal static void Remove(VisualElement parent, VisualElement child)
         {
             var container = ContentOf(parent);
-            if (child.hierarchy.parent != null && ReferenceEquals(child.hierarchy.parent, container))
+            var rows = Enter(container, -1);
+            try
             {
-                RowsOf(container).Remove(child);
-                Touch(container);
+                if (ReferenceEquals(child.hierarchy.parent, container)) rows.Remove(child);
+                parent.Remove(child);
             }
-            parent.Remove(child);
+            finally
+            {
+                Exit(container);
+            }
             PruneIfEmpty(container);
         }
 
         internal static void HierarchyRemove(VisualElement parent, VisualElement child)
         {
-            if (child.hierarchy.parent != null && ReferenceEquals(child.hierarchy.parent, parent))
+            var rows = Enter(parent, -1);
+            try
             {
-                RowsOf(parent).Remove(child);
-                Touch(parent);
+                if (ReferenceEquals(child.hierarchy.parent, parent)) rows.Remove(child);
+                parent.hierarchy.Remove(child);
             }
-            parent.hierarchy.Remove(child);
+            finally
+            {
+                Exit(parent);
+            }
             PruneIfEmpty(parent);
         }
 
         internal static void RemoveAt(VisualElement parent, int index)
         {
             var container = ContentOf(parent);
-            RemoveAtCore(container, index);
-            parent.RemoveAt(index);
+            var rows = Enter(container, index);
+            try
+            {
+                if (index >= 0 && index < container.hierarchy.childCount) rows.Remove(container.hierarchy[index]);
+                parent.RemoveAt(index);
+            }
+            finally
+            {
+                Exit(container);
+            }
             PruneIfEmpty(container);
-        }
-
-        private static void RemoveAtCore(VisualElement container, int index)
-        {
-            if (index < 0 || index >= container.hierarchy.childCount) return;
-            var rows = RowsOf(container);
-            Touch(container);
-            rows.Remove(container.hierarchy[index]);
         }
 
         internal static void RemoveFromHierarchy(VisualElement child)
         {
             var parent = child.hierarchy.parent;
-            if (parent != null)
+            if (parent == null)
             {
-                RowsOf(parent).Remove(child);
-                Touch(parent);
+                child.RemoveFromHierarchy();
+                return;
             }
-            child.RemoveFromHierarchy();
-            if (parent != null) PruneIfEmpty(parent);
+            var rows = Enter(parent, -1);
+            try
+            {
+                rows.Remove(child);
+                child.RemoveFromHierarchy();
+            }
+            finally
+            {
+                Exit(parent);
+            }
+            PruneIfEmpty(parent);
         }
 
         internal static void Clear(VisualElement parent)
         {
             var container = ContentOf(parent);
-            if (container.hierarchy.childCount > 0)
+            if (container.hierarchy.childCount == 0)
             {
-                RowsOf(container).Clear();
-                Touch(container);
+                parent.Clear();
+                return;
             }
-            parent.Clear();
+            var rows = Enter(container, -1);
+            try
+            {
+                rows.Clear();
+                parent.Clear();
+            }
+            finally
+            {
+                Exit(container);
+            }
             PruneIfEmpty(container);
         }
 
@@ -194,38 +282,49 @@ namespace Velvet
         // model never has to reproduce it.
         internal static void HierarchySort(VisualElement parent, Comparison<VisualElement> comparison)
         {
-            parent.hierarchy.Sort(comparison);
-            if (s_rows.TryGetValue(parent, out var rows))
+            var rows = Enter(parent, -1);
+            try
             {
+                parent.hierarchy.Sort(comparison);
                 rows.Clear();
                 Fill(rows, parent);
             }
-            else
+            finally
             {
-                RowsOf(parent);
+                Exit(parent);
             }
-            Touch(parent);
         }
 
         [Conditional("UNITY_ASSERTIONS")]
-        private static void Touch(VisualElement container)
-        {
-            s_touched.Add(container);
-        }
+        private static void Touch(VisualElement container) => s_touched.Add(container);
 
-        // The start of a top-level pass: what was written before it, outside any pass, is not the pass's to verify.
+        // The start of a top-level pass: what was written since the last verification, outside any pass, is checked
+        // before the pass's own writes start the set over. For those, a container off any panel is left out, and a
+        // different child count is read as a foreign change and rebuilt silently, since nothing tells a write Velvet
+        // made to a panel's root from the engine clearing it when the panel goes.
         [Conditional("UNITY_ASSERTIONS")]
-        internal static void BeginPass() => s_touched.Clear();
+        internal static void BeginPass() => Verify(carried: true);
 
-        // The end of a top-level pass: every container the pass wrote is compared with its model, element for
-        // element and kind for kind, and a container that differs is reported and rebuilt. Never throws, and never runs
-        // per op.
+        // The end of a top-level pass: every container its writes reached, as a write's source container or its
+        // destination, is compared with its model, child for child and kind for kind. One a foreign change was
+        // announced for is rebuilt silently. A difference is reported and the model rebuilt. Never throws, and never
+        // runs per op.
         [Conditional("UNITY_ASSERTIONS")]
-        internal static void VerifyTouched()
+        internal static void VerifyTouched() => Verify(carried: false);
+
+        private static void Verify(bool carried)
         {
+            if (s_open > 0) return;
             foreach (var container in s_touched)
             {
                 if (!s_rows.TryGetValue(container, out var rows)) continue;
+                if (rows.Stale || (carried && rows.TotalCount != container.hierarchy.childCount))
+                {
+                    rows.Clear();
+                    Fill(rows, container);
+                    continue;
+                }
+                if (carried && container.panel == null) continue;
                 var difference = Compare(rows, container);
                 if (difference == null) continue;
                 UnityEngine.Debug.LogAssertion(
@@ -246,7 +345,10 @@ namespace Velvet
             for (var i = 0; i < count; i++)
             {
                 var live = container.hierarchy[i];
-                if (!ReferenceEquals(rows.ElementAt(i), live)) return $"index {i} holds {Describe(rows.ElementAt(i))} in the model and {Describe(live)} live";
+                if (!ReferenceEquals(rows.ElementAt(i), live))
+                {
+                    return $"index {i} holds {Describe(rows.ElementAt(i))} in the model and {Describe(live)} live";
+                }
                 if (rows.KindAt(i) != Classify(live)) return $"index {i} is {rows.KindAt(i)}, classifies as {Classify(live)}";
             }
             return null;

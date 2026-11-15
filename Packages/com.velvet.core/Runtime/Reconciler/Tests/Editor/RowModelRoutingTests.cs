@@ -1,7 +1,9 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Mono.Cecil;
 using NUnit.Framework;
+using UnityEngine.UIElements;
 
 namespace Velvet.Tests
 {
@@ -9,8 +11,10 @@ namespace Velvet.Tests
     /// Fails when a type other than <see cref="ChildListWrites"/> calls a child-list writer of <c>VisualElement</c>,
     /// of one of its subclasses or of its <c>Hierarchy</c> (<c>ChildListWriters</c>), because a write made there leaves
     /// the <see cref="ContainerRows"/> of that container behind. Read from the compiled assembly, so a call is found by
-    /// what it calls and not by its spelling. <c>PrivateSubtrees</c> names the types that write only into an element
-    /// they built and own, which no walk addresses by slot.
+    /// what it calls and not by its spelling, and only for the runtime assembly: <c>Velvet.Editor</c> and user code
+    /// write child lists too. <c>PrivateSubtrees</c> names the types that write only into an element they built and
+    /// own, which no walk addresses by slot. The control case reads the same scan over a type of this assembly that
+    /// writes six ways, so a scan that stopped finding calls fails it.
     /// </summary>
     [TestFixture]
     internal sealed class RowModelRoutingTests
@@ -45,16 +49,9 @@ namespace Velvet.Tests
             return outer.FullName;
         }
 
-        [Test]
-        public void Given_TheRuntimeAssembly_When_ItsCallsAreRead_Then_OnlyChildListWritesWritesAChildList()
-        {
-            // Arrange
-            using var runtime = ModuleDefinition.ReadModule(typeof(V).Assembly.Location);
-            var exempt = new HashSet<string>(PrivateSubtrees) { typeof(ChildListWrites).FullName! };
-
-            // Act
-            var offenders = runtime.GetTypes()
-                .Where(type => !exempt.Contains(OuterName(type)!))
+        private static List<string> OffendersIn(ModuleDefinition module, Func<TypeDefinition, bool> included)
+            => module.GetTypes()
+                .Where(included)
                 .SelectMany(type => type.Methods)
                 .Where(method => method.HasBody)
                 .SelectMany(method => method.Body.Instructions
@@ -65,10 +62,46 @@ namespace Velvet.Tests
                     .Select(callee => $"{method.DeclaringType.FullName}.{method.Name} calls "
                         + $"{callee!.DeclaringType.Name}.{callee.Name}"))
                 .Distinct()
-                .OrderBy(line => line);
+                .OrderBy(line => line)
+                .ToList();
+
+        // Six ways to write a child list, none through ChildListWrites.
+        private static class Offender
+        {
+            internal static void Add(VisualElement parent, VisualElement child) => parent.Add(child);
+            internal static void HierarchyAdd(VisualElement parent, VisualElement child) => parent.hierarchy.Add(child);
+            internal static void Insert(VisualElement parent, VisualElement child) => parent.Insert(0, child);
+            internal static void Detach(VisualElement child) => child.RemoveFromHierarchy();
+            internal static void Reorder(VisualElement child) => child.BringToFront();
+            internal static Action<VisualElement> MethodGroup(VisualElement parent) => parent.Add;
+        }
+
+        [Test]
+        public void Given_TheRuntimeAssembly_When_ItsCallsAreRead_Then_OnlyChildListWritesWritesAChildList()
+        {
+            // Arrange
+            using var runtime = ModuleDefinition.ReadModule(typeof(V).Assembly.Location);
+            var exempt = new HashSet<string>(PrivateSubtrees) { typeof(ChildListWrites).FullName! };
+
+            // Act
+            var offenders = OffendersIn(runtime, type => !exempt.Contains(OuterName(type)!));
 
             // Assert
             Assert.That(string.Join("\n", offenders), Is.Empty, "write the child list through ChildListWrites");
+        }
+
+        [Test]
+        public void Given_ATypeThatWritesAChildListSixWays_When_TheScanReadsIt_Then_ItFindsEveryWay()
+        {
+            // Arrange
+            using var tests = ModuleDefinition.ReadModule(typeof(RowModelRoutingTests).Assembly.Location);
+
+            // Act
+            var offenders = OffendersIn(tests, type => OuterName(type) == typeof(RowModelRoutingTests).FullName
+                && type.Name.StartsWith("Offender", StringComparison.Ordinal));
+
+            // Assert
+            Assert.That(offenders, Has.Count.EqualTo(6));
         }
     }
 }

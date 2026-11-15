@@ -17,9 +17,9 @@ namespace Velvet
 
     // The physical children of one container in order, each with its RowKind, so that the counts and conversions
     // LogicalChildSlots answers by scanning the child list are answered from per-block counts instead. A block holds
-    // up to BlockMax children; a container that fits one block has no element table, and a larger one keeps an
-    // element-to-block table, so a lookup by element scans one block at most. ChildListWrites owns every instance and
-    // keeps it equal to the live child list.
+    // up to BlockMax children. A container that fits one block keeps it in a field and has no element table; a larger
+    // one keeps a list of blocks and an element-to-block table, so a lookup by element scans one block at most.
+    // ChildListWrites updates every instance beside each write it makes and compares it with the live list.
     internal sealed class ContainerRows
     {
         internal const int BlockMax = 128;
@@ -34,8 +34,8 @@ namespace Velvet
 
             internal Block(int capacity)
             {
-                Elements = new VisualElement[capacity];
-                Kinds = new RowKind[capacity];
+                Elements = capacity == 0 ? Array.Empty<VisualElement>() : new VisualElement[capacity];
+                Kinds = capacity == 0 ? Array.Empty<RowKind>() : new RowKind[capacity];
             }
 
             internal int IndexOf(VisualElement element)
@@ -47,14 +47,16 @@ namespace Velvet
                 return -1;
             }
 
+            internal void Reserve(int capacity)
+            {
+                if (Elements.Length >= capacity) return;
+                Array.Resize(ref Elements, capacity);
+                Array.Resize(ref Kinds, capacity);
+            }
+
             internal void Insert(int at, VisualElement element, RowKind kind)
             {
-                if (Length == Elements.Length)
-                {
-                    var capacity = Math.Min(Math.Max(Length * 2, 4), BlockMax + 1);
-                    Array.Resize(ref Elements, capacity);
-                    Array.Resize(ref Kinds, capacity);
-                }
+                if (Length == Elements.Length) Reserve(Math.Min(Math.Max(Length * 2, 4), BlockMax + 1));
                 if (at < Length)
                 {
                     Array.Copy(Elements, at, Elements, at + 1, Length - at);
@@ -93,10 +95,18 @@ namespace Velvet
             }
         }
 
-        private readonly List<Block> _blocks = new();
+        private Block _first = new(0);
+        private List<Block>? _blocks;
         private Dictionary<VisualElement, Block>? _owner;
         private int _total;
         private int _rendered;
+
+        // Set when a change to the live list is announced that no ChildListWrites op made; the next sync rebuilds.
+        internal bool Stale;
+
+        private int BlockCount => _blocks?.Count ?? 1;
+
+        private Block BlockAt(int index) => _blocks == null ? _first : _blocks[index];
 
         internal int TotalCount => _total;
 
@@ -104,6 +114,18 @@ namespace Velvet
         internal int RenderedCount => _rendered;
 
         internal int SkippedCount => _total - _rendered;
+
+        internal VisualElement? FirstElement => _total == 0 ? null : BlockAt(0).Elements[0];
+
+        internal VisualElement? LastElement
+        {
+            get
+            {
+                if (_total == 0) return null;
+                var block = BlockAt(BlockCount - 1);
+                return block.Elements[block.Length - 1];
+            }
+        }
 
         internal VisualElement ElementAt(int physical)
         {
@@ -128,9 +150,9 @@ namespace Velvet
         {
             if (logical < 0) logical = 0;
             var start = 0;
-            for (var b = 0; b < _blocks.Count; b++)
+            for (var b = 0; b < BlockCount; b++)
             {
-                var block = _blocks[b];
+                var block = BlockAt(b);
                 if (logical < block.Rendered)
                 {
                     for (var i = 0; i < block.Length; i++)
@@ -143,9 +165,9 @@ namespace Velvet
                 start += block.Length;
             }
             // Past the last rendered child: just after the last child an append steps over.
-            for (var b = _blocks.Count - 1; b >= 0; b--)
+            for (var b = BlockCount - 1; b >= 0; b--)
             {
-                var block = _blocks[b];
+                var block = BlockAt(b);
                 start -= block.Length;
                 if (block.Anchors == 0) continue;
                 for (var i = block.Length - 1; i >= 0; i--)
@@ -169,9 +191,9 @@ namespace Velvet
             if (physical <= 0) return 0;
             var limit = Math.Min(physical, _total);
             var rendered = 0;
-            for (var b = 0; b < _blocks.Count && limit > 0; b++)
+            for (var b = 0; b < BlockCount && limit > 0; b++)
             {
-                var block = _blocks[b];
+                var block = BlockAt(b);
                 if (limit >= block.Length)
                 {
                     rendered += block.Rendered;
@@ -191,7 +213,7 @@ namespace Velvet
         {
             if (!TryFind(element, out var block, out var at)) return -1;
             var start = 0;
-            for (var b = 0; b < _blocks.Count && !ReferenceEquals(_blocks[b], block); b++) start += _blocks[b].Length;
+            for (var b = 0; b < BlockCount && !ReferenceEquals(BlockAt(b), block); b++) start += BlockAt(b).Length;
             return start + at;
         }
 
@@ -200,7 +222,7 @@ namespace Velvet
         {
             if (!TryFind(element, out var block, out var at) || block!.Kinds[at] != RowKind.Rendered) return -1;
             var rendered = 0;
-            for (var b = 0; b < _blocks.Count && !ReferenceEquals(_blocks[b], block); b++) rendered += _blocks[b].Rendered;
+            for (var b = 0; b < BlockCount && !ReferenceEquals(BlockAt(b), block); b++) rendered += BlockAt(b).Rendered;
             for (var i = 0; i < at; i++)
             {
                 if (block.Kinds[i] == RowKind.Rendered) rendered++;
@@ -208,19 +230,19 @@ namespace Velvet
             return rendered;
         }
 
+        // Sizes the first block for count children, so filling a model from a live list grows nothing.
+        internal void Reserve(int count)
+        {
+            if (_blocks == null) _first.Reserve(Math.Min(count, BlockMax + 1));
+        }
+
         internal void Insert(int physical, VisualElement element, RowKind kind)
         {
             Block block;
             int at;
-            if (_blocks.Count == 0)
+            if (physical >= _total)
             {
-                block = new Block(4);
-                _blocks.Add(block);
-                at = 0;
-            }
-            else if (physical >= _total)
-            {
-                block = _blocks[^1];
+                block = BlockAt(BlockCount - 1);
                 at = block.Length;
             }
             else
@@ -230,7 +252,7 @@ namespace Velvet
             block.Insert(at, element, kind);
             _total++;
             if (kind == RowKind.Rendered) _rendered++;
-            _owner?.Add(element, block);
+            if (_owner != null) _owner[element] = block;
             if (block.Length > BlockMax) Split(block);
         }
 
@@ -241,8 +263,14 @@ namespace Velvet
             block.RemoveAt(at);
             _total--;
             _owner?.Remove(element);
-            if (block.Length == 0 && _blocks.Count > 1) _blocks.Remove(block);
-            if (_blocks.Count == 1) _owner = null;
+            if (_blocks == null) return;
+            if (block.Length == 0) _blocks.Remove(block);
+            if (_blocks.Count == 1)
+            {
+                _first = _blocks[0];
+                _blocks = null;
+                _owner = null;
+            }
         }
 
         internal void Reclassify(VisualElement element, RowKind kind)
@@ -257,19 +285,22 @@ namespace Velvet
             block.Kinds[at] = kind;
         }
 
-        // Keeps the first block's arrays, so a model rebuilt from the live list (ChildListWrites.RowsOf) allocates
-        // nothing for a container no larger than it was.
+        // Keeps the first block's arrays, so a model rebuilt from the live list allocates nothing for a container no
+        // larger than it was.
         internal void Clear()
         {
-            if (_blocks.Count > 1) _blocks.RemoveRange(1, _blocks.Count - 1);
-            if (_blocks.Count == 1) _blocks[0].Empty();
+            if (_blocks != null) _first = _blocks[0];
+            _first.Empty();
+            _blocks = null;
             _owner = null;
             _total = 0;
             _rendered = 0;
+            Stale = false;
         }
 
         private void Split(Block block)
         {
+            if (_blocks == null) _blocks = new List<Block> { _first };
             var index = _blocks.IndexOf(block);
             var half = block.Length / 2;
             var tail = new Block(BlockMax + 1);
@@ -290,9 +321,9 @@ namespace Velvet
 
         private Block BlockAtPhysical(int physical, out int inBlock)
         {
-            for (var b = 0; b < _blocks.Count; b++)
+            for (var b = 0; b < BlockCount; b++)
             {
-                var block = _blocks[b];
+                var block = BlockAt(b);
                 if (physical < block.Length)
                 {
                     inBlock = physical;
@@ -307,10 +338,10 @@ namespace Velvet
         {
             block = null;
             at = -1;
-            if (_blocks.Count == 0) return false;
+            if (_total == 0) return false;
             if (_owner == null)
             {
-                block = _blocks[0];
+                block = _first;
             }
             else if (!_owner.TryGetValue(element, out block))
             {
