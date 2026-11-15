@@ -42,7 +42,7 @@ namespace Velvet.Tests
             el.style.whiteSpace = WhiteSpace.Normal;
             el.style.unityFontDefinition = new StyleFontDefinition(FontDefinition.FromFont(
                 UnityEngine.Resources.GetBuiltinResource<UnityEngine.Font>("LegacyRuntime.ttf")));
-            return RefCleanup.None;
+            return null;
         };
 
         private RenderTexturePanelHost _host;

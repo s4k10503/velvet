@@ -817,7 +817,7 @@ namespace Velvet
             {
                 try
                 {
-                    ReconcilerContext.RunRefDetach(installedRef);
+                    installedRef.Cleanup?.Invoke();
                 }
                 catch (System.Exception ex)
                 {

@@ -82,7 +82,7 @@ namespace Velvet.Tests
             => _ =>
             {
                 s_log.Add("ref:" + name + (tick > 0 ? ":" + tick : string.Empty));
-                return RefCleanup.None;
+                return null;
             };
 
         // Reads the ref under test the moment its layout effect runs on mount.
@@ -614,7 +614,7 @@ namespace Velvet.Tests
             s_log.Add("clicker:click");
             element.parent.Q<UnityEngine.UIElements.Button>("go").SimulateClick();
             s_log.Add("clicker:after");
-            return RefCleanup.None;
+            return null;
         };
 
         private static Func<VisualElement, Action> Tracking(int phase)
@@ -673,7 +673,7 @@ namespace Velvet.Tests
         private static readonly Func<VisualElement, Action> s_attachA1 = _ =>
         {
             s_log.Add("attach:A1");
-            return RefCleanup.None;
+            return null;
         };
 
         // A's ref moves from its first callback to its second in phase one, and the first callback's cleanup writes the
@@ -974,7 +974,7 @@ namespace Velvet.Tests
                             refCallback: element =>
                             {
                                 s_log.Add("attach");
-                                return RefCleanup.None;
+                                return null;
                             }),
                     }),
             });

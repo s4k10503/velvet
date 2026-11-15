@@ -829,7 +829,7 @@ namespace Velvet.Tests
             return V.Div(name: "hidden-with-ref", refCallback: _ =>
             {
                 s_hiddenRefTick = tick;
-                return RefCleanup.None;
+                return null;
             });
         }
 
@@ -958,7 +958,7 @@ namespace Velvet.Tests
         private static readonly Func<VisualElement, Action> s_measuringRef = element =>
         {
             s_widthReadInRef = element.layout.width;
-            return RefCleanup.None;
+            return null;
         };
 
         #endregion
@@ -1017,7 +1017,7 @@ namespace Velvet.Tests
             var clickOnAttach = Hooks.UseCallback<Func<VisualElement, Action>>(element =>
             {
                 element.Q<Button>().SimulateClick();
-                return RefCleanup.None;
+                return null;
             }, Array.Empty<object>());
             return V.Div(refCallback: clickOnAttach, children: new VNode[]
             {
@@ -1048,7 +1048,7 @@ namespace Velvet.Tests
             var measure = Hooks.UseCallback<Func<VisualElement, Action>>(element =>
             {
                 s_rowHeightsReadInRef[label] = element.layout.height;
-                return RefCleanup.None;
+                return null;
             }, label);
             return V.Div(className: $"h-[{RowHeight}px]", name: $"row-{label}", refCallback: measure);
         }

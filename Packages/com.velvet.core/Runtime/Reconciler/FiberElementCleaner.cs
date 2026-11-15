@@ -282,7 +282,7 @@ namespace Velvet
             // in, so the rows it had not reached yet stay in the tree.
             try
             {
-                ReconcilerContext.RunRefDetach(installedRef);
+                installedRef.Cleanup?.Invoke();
             }
             catch (System.Exception exception)
             {

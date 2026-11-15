@@ -354,7 +354,7 @@ namespace Velvet.Tests
             el.style.whiteSpace = WhiteSpace.NoWrap;
             el.style.unityFontDefinition = new StyleFontDefinition(FontDefinition.FromFont(
                 Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf")));
-            return RefCleanup.None;
+            return null;
         };
 
         private IEnumerator MountOverlinedLabel(string name, bool clip)

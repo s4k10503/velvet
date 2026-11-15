@@ -104,7 +104,7 @@ namespace Velvet.Tests
         {
             s_selfRemoved = element;
             element.parent?.Q<UnityEngine.UIElements.Button>("trigger")?.SimulateClick();
-            return RefCleanup.None;
+            return null;
         }
 
         // The same dispatch, returning the cleanup a setup that acquired a resource would return.
@@ -223,25 +223,25 @@ namespace Velvet.Tests
         private static Action ClickTheDropTrigger(VisualElement element)
         {
             element.parent?.Q<UnityEngine.UIElements.Button>("drop-trigger")?.SimulateClick();
-            return RefCleanup.None;
+            return null;
         }
 
         private static Action CountTargetAttach(VisualElement element)
         {
             s_targetAttaches++;
-            return RefCleanup.None;
+            return null;
         }
 
         private static Action ClickTheRebindTrigger(VisualElement element)
         {
             element.parent?.Q<UnityEngine.UIElements.Button>("rebind-trigger")?.SimulateClick();
-            return RefCleanup.None;
+            return null;
         }
 
         private static Action CountReboundAttach(VisualElement element)
         {
             s_reboundAttaches++;
-            return RefCleanup.None;
+            return null;
         }
 
         // The dropper's setup is queued ahead of the target's, so the write its click commits reaches the
@@ -286,13 +286,13 @@ namespace Velvet.Tests
         {
             element.parent?.Q<UnityEngine.UIElements.Button>("show-trigger")?.SimulateClick();
             element.parent?.Q<UnityEngine.UIElements.Button>("hide-trigger")?.SimulateClick();
-            return RefCleanup.None;
+            return null;
         }
 
         private static Action CountTransientAttach(VisualElement element)
         {
             s_transientAttaches++;
-            return RefCleanup.None;
+            return null;
         }
 
         [Component]
@@ -517,7 +517,7 @@ namespace Velvet.Tests
             {
                 sibling.Reconcile(siblingRoot, Array.Empty<VNode>(), new VNode[]
                 {
-                    V.Label(name: "unrelated", refCallback: element => { attached = element; return RefCleanup.None; }),
+                    V.Label(name: "unrelated", refCallback: element => { attached = element; return null; }),
                 });
             }
 
@@ -567,7 +567,7 @@ namespace Velvet.Tests
                 keySelector: item => item,
                 itemHeight: 50f,
                 renderer: item => V.Label(text: item, key: item,
-                    refCallback: element => { attached = element; return RefCleanup.None; }),
+                    refCallback: element => { attached = element; return null; }),
                 overscan: 0);
             var scrollView = new ScrollView(ScrollViewMode.Vertical);
             using var controller = new FiberVirtualListController(scrollView, node, Reconciler);
@@ -623,7 +623,7 @@ namespace Velvet.Tests
             var tree = new VNode[]
             {
                 V.Div(name: "first", refCallback: first.SetElement),
-                V.Div(name: "second", refCallback: _ => { seen = first.Current; return RefCleanup.None; }),
+                V.Div(name: "second", refCallback: _ => { seen = first.Current; return null; }),
             };
 
             // Act
@@ -681,7 +681,7 @@ namespace Velvet.Tests
             Func<VisualElement, Action> replacement = _ =>
             {
                 replacementAttaches++;
-                return RefCleanup.None;
+                return null;
             };
             var rebound = new VNode[] { V.Div(name: "host", refCallback: replacement) };
             VNode[] first = null;
@@ -690,7 +690,7 @@ namespace Velvet.Tests
                 V.Div(name: "host", refCallback: _ =>
                 {
                     Reconciler.Reconcile(Root, first, rebound);
-                    return RefCleanup.None;
+                    return null;
                 }),
             };
 

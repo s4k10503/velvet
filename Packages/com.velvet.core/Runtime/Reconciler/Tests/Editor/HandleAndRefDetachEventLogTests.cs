@@ -78,39 +78,6 @@ namespace Velvet.Tests
         }
 
         [Component]
-        private static VNode ReturnsNoCleanup()
-        {
-            var (shown, _) = EventLog.UseState("Shown", true);
-            EventLog.UseRender("P");
-            var log = EventLog.UseLog();
-            var noCleanup = Hooks.UseCallback<Func<VisualElement, Action>>(element =>
-            {
-                log.Add(element == null ? "ref-null:N" : "ref:N");
-                return null!;
-            }, Array.Empty<object>());
-            return V.Div(children: new VNode?[] { shown ? V.Div(key: "d", refCallback: noCleanup) : null });
-        }
-
-        [Component]
-        private static VNode ReturnsNoCleanupThenSwaps()
-        {
-            var (swapped, _) = EventLog.UseState("Swapped", false);
-            EventLog.UseRender("P");
-            var log = EventLog.UseLog();
-            var refN = Hooks.UseCallback<Func<VisualElement, Action>>(element =>
-            {
-                log.Add(element == null ? "ref-null:N" : "ref:N");
-                return null!;
-            }, Array.Empty<object>());
-            var refM = Hooks.UseCallback<Func<VisualElement, Action>>(element =>
-            {
-                log.Add(element == null ? "ref-null:M" : "ref:M");
-                return null!;
-            }, Array.Empty<object>());
-            return V.Div(refCallback: swapped ? refM : refN);
-        }
-
-        [Component]
         private static VNode ChildOne(bool dep)
         {
             EventLog.UseRender("C1");
@@ -197,40 +164,6 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(log.ToString(), Is.EqualTo("lay:A handle:H"));
-        }
-
-        [Test]
-        public void Given_ARefCallbackThatReturnedNoCleanup_When_ItsElementLeaves_Then_TheCallbackHearsNull()
-        {
-            // Arrange
-            var log = new EventLog();
-            using var mounted = _renderer.Mount(log.Provide(V.Component(ReturnsNoCleanup)));
-            mounted.DrainForTest();
-            log.Clear();
-
-            // Act
-            log.Setter<bool>("Shown").Invoke(false);
-            mounted.DrainForTest();
-
-            // Assert
-            Assert.That(log.ToString(), Is.EqualTo("render:P ref-null:N"));
-        }
-
-        [Test]
-        public void Given_ARefCallbackThatReturnedNoCleanup_When_ItIsReplaced_Then_TheOldCallbackHearsNullBeforeTheNewOneAttaches()
-        {
-            // Arrange
-            var log = new EventLog();
-            using var mounted = _renderer.Mount(log.Provide(V.Component(ReturnsNoCleanupThenSwaps)));
-            mounted.DrainForTest();
-            log.Clear();
-
-            // Act
-            log.Setter<bool>("Swapped").Invoke(true);
-            mounted.DrainForTest();
-
-            // Assert
-            Assert.That(log.ToString(), Is.EqualTo("render:P ref-null:N ref:M"));
         }
 
         [Test]

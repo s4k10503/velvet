@@ -2280,25 +2280,12 @@ namespace Velvet
             RefCallbacks.Remove(element);
             try
             {
-                RunRefDetach(installed);
+                installed.Cleanup?.Invoke();
             }
             catch (System.Exception exception)
             {
                 ContainUserCallbackFailure(FiberStack.Current, exception);
             }
-        }
-
-        // The cleanup an entry holds while its callback's setup is still to run or running: an element that leaves
-        // then has had no setup to detach, so RunRefDetach must not call the callback with null for it.
-        private static readonly System.Action s_refSetupRunning = static () => { };
-
-        // A callback that returned a cleanup is detached by it. One that returned none is called with null, as
-        // React 19's safelyDetachRef calls a ref that returned no cleanup.
-        internal static void RunRefDetach(
-            (System.Func<VisualElement, System.Action> Callback, System.Action? Cleanup) installed)
-        {
-            if (installed.Cleanup != null) installed.Cleanup();
-            else installed.Callback(null!);
         }
 
         // The refs of the elements a Suspense keeps hidden, detached as React 18 detaches a hidden tree's host refs,
@@ -2506,11 +2493,10 @@ namespace Velvet
             // of being held back. Recorded only afterwards, the removal would find no entry and the
             // write below would then add one for an element no tree holds, past the removal that
             // would have taken it.
-            RefCallbacks[element] = (callback, s_refSetupRunning);
+            RefCallbacks[element] = (callback, null);
             // A callback that reads its element's box here reads it laid out, as in React's layout phase.
             FiberLayoutReflow.LayOutFor(this, element, owner);
-            // A setup that throws leaves this, so its detach does not call the callback that just failed.
-            System.Action? cleanup = s_refSetupRunning;
+            System.Action? cleanup = null;
             try
             {
                 cleanup = InOwnersFrame(owner, callback, element);
@@ -2573,15 +2559,15 @@ namespace Velvet
             VisualElement element, System.Func<VisualElement, System.Action> callback, ComponentFiber? owner)
         {
             if (!RefCallbacks.TryGetValue(element, out var installed)) return;
-            // The entry already carries the queued callback once its replaced ref has detached.
-            if (ReferenceEquals(installed.Callback, callback)) return;
+            var replaced = installed.Cleanup;
+            if (replaced == null) return;
             // Ahead of the cleanup: a boundary catching its failure can take the element out, and
             // finding the replaced entry there, FiberElementCleaner would run the cleanup a second time.
-            RefCallbacks[element] = (callback, s_refSetupRunning);
+            RefCallbacks[element] = (callback, null);
             // Its failure goes where a setup's does, and the setup still runs.
             try
             {
-                InOwnersFrame(owner, _ => { RunRefDetach(installed); return null; }, element);
+                InOwnersFrame(owner, _ => { replaced(); return null; }, element);
             }
             catch (System.Exception exception)
             {

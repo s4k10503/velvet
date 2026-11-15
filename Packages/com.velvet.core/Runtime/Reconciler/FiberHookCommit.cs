@@ -152,7 +152,7 @@ namespace Velvet
         {
             var slots = fiber.ImperativeHandleSlots;
             if (slots == null) return;
-            for (var i = 0; i < slots.Count; i++) RunImperativeHandleSlot(slots[i]);
+            RunImperativeHandlesBefore(slots, 0, int.MaxValue);
         }
 
         // The handles declared ahead of the layout effect at the given index, from next on: React's
