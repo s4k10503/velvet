@@ -3580,6 +3580,8 @@ namespace Velvet
         // live sibling order, so a child added / removed / reordered updates first:/last:/odd:/even: across
         // the whole list. Runs at the same hook as gap/divide (after children reconcile). Stateless and
         // idempotent, with a cheap global early-out when no structural variant exists anywhere.
+        private readonly List<VisualElement?> _structuralRows = new();
+
         internal void ApplyStructuralVariants(VisualElement container)
         {
             if (container == null || _ctx.StructuralVariants.Count == 0)
@@ -3589,22 +3591,18 @@ namespace Velvet
 
             // The reconciler-invisible children — a filter bounds spacer, a relocated z-* element, a ring
             // band — are not logical siblings, so first:/last:/nth must neither count them nor
-            // land on one. Walking logical slots and converting each to a physical index does both, wherever
-            // in the child list they happen to sit.
-            // One walk over the physical children, collecting the ruled ones before any payload is written:
-            // a payload can add an invisible sibling (a filter bounds spacer), which would shift a walk
-            // still reading the child list. Logical slot is the running count of non-invisible children, the
-            // inverse of LogicalChildSlots.ToPhysical, so no per-slot conversion rescans the list.
+            // land on one. The rendered children are the slots, read from the row model in one call, wherever the
+            // invisible ones sit. The ruled ones are collected before any payload is written: a payload can add an
+            // invisible sibling (a filter bounds spacer).
             List<(VisualElement Element, int Index, List<(StyleStructuralKind Kind, int N, string[] Payloads,
                 int[] Declarations, long Priority)> Rules)>? ruled = null;
-            var count = 0;
-            for (var physical = 0; physical < container.childCount; physical++)
+            var slotOccupants = _structuralRows;
+            slotOccupants.Clear();
+            ChildListWrites.Rows(container, 0, int.MaxValue, slotOccupants);
+            var count = slotOccupants.Count;
+            for (var slot = 0; slot < count; slot++)
             {
-                var slotOccupant = container[physical];
-                if (LogicalChildSlots.IsInvisible(slotOccupant))
-                {
-                    continue;
-                }
+                var slotOccupant = slotOccupants[slot]!;
                 // A z-managed child's slot holds its PLACEHOLDER, not the element the rules were registered
                 // against (ApplyStructuralVariantConfig keys by the real element / its own wrapper) — resolve
                 // through the z-registry first, then the ordinary wrapper unwrap (the slot may ALSO hold a
@@ -3613,10 +3611,10 @@ namespace Velvet
                     _ctx.ZLayerPlaceholders.TryGetValue(slotOccupant, out var real) ? real : slotOccupant);
                 if (_ctx.StructuralVariants.TryGetValue(inner, out var rules))
                 {
-                    (ruled ??= new()).Add((inner, count, rules));
+                    (ruled ??= new()).Add((inner, slot, rules));
                 }
-                count++;
             }
+            slotOccupants.Clear();
             if (ruled == null)
             {
                 return;

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 using NUnit.Framework;
 using UnityEngine;
@@ -117,6 +118,31 @@ namespace Velvet.Tests
             return null;
         }
 
+        private static string? CompareRowAt(VisualElement parent, ContainerRows rows)
+        {
+            for (var slot = -1; slot <= parent.childCount + 1; slot++)
+            {
+                var expected = LogicalChildSlots.TryGetPhysical(parent, slot, out var physical) ? parent[physical] : null;
+                if (!ReferenceEquals(expected, rows.RowAt(slot))) return $"RowAt({slot}) is not the scan's child";
+            }
+            return null;
+        }
+
+        private static string? ComparePhysicalRange(VisualElement parent, ContainerRows rows)
+        {
+            var count = parent.childCount;
+            var found = new List<VisualElement>();
+            foreach (var (start, end) in new[] { (0, count), (count / 3, count - count / 4), (count - 1, count + 2), (-2, 2) })
+            {
+                found.Clear();
+                rows.PhysicalRange(start, end, found);
+                var expected = new List<VisualElement>();
+                for (var i = Math.Max(start, 0); i < Math.Min(end, count); i++) expected.Add(parent[i]);
+                if (!expected.SequenceEqual(found)) return $"PhysicalRange({start}, {end}) holds {found.Count} children, scan {expected.Count}";
+            }
+            return null;
+        }
+
         private static string? CompareToLogical(VisualElement parent, ContainerRows rows)
         {
             for (var physical = -1; physical <= parent.childCount + 1; physical++)
@@ -202,6 +228,34 @@ namespace Velvet.Tests
 
             // Act
             var report = Drive(size, 2, check);
+
+            // Assert
+            Assert.That(report, Is.Empty);
+        }
+
+        [TestCase(12)]
+        [TestCase(700)]
+        public void Given_RandomWrites_When_EverySlotIsRead_Then_RowAtIsTheChildTheScanFinds(int size)
+        {
+            // Arrange
+            var check = (Func<VisualElement, ContainerRows, string?>)CompareRowAt;
+
+            // Act
+            var report = Drive(size, 7, check);
+
+            // Assert
+            Assert.That(report, Is.Empty);
+        }
+
+        [TestCase(12)]
+        [TestCase(700)]
+        public void Given_RandomWrites_When_PhysicalRangesAreRead_Then_PhysicalRangeIsTheScansSlice(int size)
+        {
+            // Arrange
+            var check = (Func<VisualElement, ContainerRows, string?>)ComparePhysicalRange;
+
+            // Act
+            var report = Drive(size, 8, check);
 
             // Assert
             Assert.That(report, Is.Empty);

@@ -538,11 +538,11 @@ namespace Velvet
             // The children it mounted are the last of target's, so TryGetPhysical declines that slot.
             for (var slot = slotStart; slot < slotStart + slotLength; slot++)
             {
-                if (LogicalChildSlots.TryGetPhysical(target, slot, out var physical))
+                var row = ChildListWrites.RowAt(target, slot);
+                if (row != null)
                 {
                     // A relocated row is hidden as the element it stands for, as
                     // GeneralPathReconciler.AddWithPortalChildren hides it.
-                    var row = target[physical];
                     if (_ctx.ZLayerPlaceholders.TryGetValue(row, out var relocated)) row = relocated;
                     _host.Hide(row);
                 }

@@ -1738,21 +1738,13 @@ namespace Velvet
             InlineWalk walk, GeneralCommitState commit, int from, int to, ComponentFiber? boundaryFiber, bool hidden)
         {
             var roots = new HashSet<VisualElement>();
-            _targetRows = RenderedChildrenCache.Rent();
-            try
+            for (var i = from; i < to; i++)
             {
-                for (var i = from; i < to; i++)
-                {
-                    // CommitLeaf records an element for every leaf it commits.
-                    var row = commit.NewElements[i].element!;
-                    if (_ctx.ZLayerPlaceholders.TryGetValue(row, out var relocated)) row = relocated;
-                    if (!hidden && walk.HiddenPrimaryElements.Contains(row)) continue;
-                    AddWithPortalChildren(row, roots, i, commit, walk, hidden);
-                }
-            }
-            finally
-            {
-                _targetRows.Return();
+                // CommitLeaf records an element for every leaf it commits.
+                var row = commit.NewElements[i].element!;
+                if (_ctx.ZLayerPlaceholders.TryGetValue(row, out var relocated)) row = relocated;
+                if (!hidden && walk.HiddenPrimaryElements.Contains(row)) continue;
+                AddWithPortalChildren(row, roots, i, commit, walk, hidden);
             }
             foreach (var (fiber, placeholder) in HeldFibers(roots))
             {
@@ -1781,10 +1773,6 @@ namespace Velvet
             }
         }
 
-        // The rows of the Portal targets a SetPrimaryHidden call reaches, each target read once for the call, which
-        // rents it; AddWithPortalChildren runs only inside that call.
-        private RenderedChildrenCache? _targetRows;
-
         private void AddWithPortalChildren(VisualElement element, HashSet<VisualElement> roots, int row,
             GeneralCommitState commit, InlineWalk walk, bool hidden)
         {
@@ -1794,12 +1782,12 @@ namespace Velvet
             foreach (var (placeholder, slots) in _ctx.PortalState)
             {
                 if (slots.Target == null || HolderOf(placeholder, roots) != element) continue;
-                var rows = _targetRows!.Of(slots.Target);
-                for (var slot = slots.SlotStart; slot < slots.SlotStart + slots.SlotLength && slot < rows.Count; slot++)
+                for (var slot = slots.SlotStart; slot < slots.SlotStart + slots.SlotLength; slot++)
                 {
+                    var portalRow = ChildListWrites.RowAt(slots.Target, slot);
+                    if (portalRow == null) break;
                     // A relocated row is hidden or revealed as the element it stands for, as SetPrimaryHidden takes a
                     // row of the walk's own.
-                    var portalRow = rows[slot];
                     if (_ctx.ZLayerPlaceholders.TryGetValue(portalRow, out var relocated)) portalRow = relocated;
                     AddWithPortalChildren(portalRow, roots, row, commit, walk, hidden);
                 }
@@ -2546,8 +2534,8 @@ namespace Velvet
             var target = portal.Target!;
             for (var slot = portal.SlotStart; slot < portal.SlotStart + portal.SlotLength; slot++)
             {
-                if (LogicalChildSlots.TryGetPhysical(target, slot, out var physical)
-                    && HoldsAMotionUnder(target.hierarchy[physical], roots)) return true;
+                var row = ChildListWrites.RowAt(target, slot);
+                if (row != null && HoldsAMotionUnder(row, roots)) return true;
             }
             return false;
         }
@@ -2785,10 +2773,8 @@ namespace Velvet
             var count = 0;
             for (var slot = portal.SlotStart; slot < portal.SlotStart + portal.SlotLength; slot++)
             {
-                if (LogicalChildSlots.TryGetPhysical(target, slot, out var physical))
-                {
-                    count += CollectDescendantExitsUnder(target.hierarchy[physical], inheritedExit, frame, in walk);
-                }
+                var row = ChildListWrites.RowAt(target, slot);
+                if (row != null) count += CollectDescendantExitsUnder(row, inheritedExit, frame, in walk);
             }
             return count;
         }

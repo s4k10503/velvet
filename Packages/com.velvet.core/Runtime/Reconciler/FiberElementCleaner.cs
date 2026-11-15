@@ -656,11 +656,9 @@ namespace Velvet
             if (slotEnd > target.childCount) slotEnd = target.childCount;
             // Read before any is cleaned: a cleanup can take a child hosted before its element out of the target
             // (RemoveCleaned), which would move the indices still to be visited.
-            var range = new List<VisualElement>(slotEnd - physicalSlotStart);
-            for (var i = slotEnd - 1; i >= physicalSlotStart; i--)
-            {
-                range.Add(target.ElementAt(i));
-            }
+            var range = new List<VisualElement>(Math.Max(slotEnd - physicalSlotStart, 0));
+            ChildListWrites.PhysicalRange(target, physicalSlotStart, slotEnd, range);
+            range.Reverse();
             foreach (var child in range)
             {
                 // An invisible child inside the range belongs to whichever paint owns it, not to the portal.

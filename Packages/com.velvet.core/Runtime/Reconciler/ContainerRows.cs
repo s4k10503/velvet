@@ -211,6 +211,26 @@ namespace Velvet
             }
         }
 
+        // The rendered child holding the slot, or null where none does.
+        internal VisualElement? RowAt(int logical)
+            => TryGetPhysical(logical, out var physical) ? ElementAt(physical) : null;
+
+        // Appends the children at physical indices [start, end) to into, fewer where the container holds fewer.
+        internal void PhysicalRange(int start, int end, List<VisualElement> into)
+        {
+            start = Math.Max(start, 0);
+            end = Math.Min(end, _total);
+            if (start >= end) return;
+            var block = BlockAtPhysical(start, out var at);
+            var b = 0;
+            while (!ReferenceEquals(BlockAt(b), block)) b++;
+            for (var want = end - start; want > 0; b++, at = 0)
+            {
+                block = BlockAt(b);
+                for (; at < block.Length && want > 0; at++, want--) into.Add(block.Elements[at]);
+            }
+        }
+
         // LogicalChildSlots.ToLogical, over the model.
         internal int ToLogical(int physical)
         {

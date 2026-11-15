@@ -80,8 +80,8 @@ namespace Velvet
             VisualElement? last = null;
             if (info.Target != null && info.SlotLength > 0)
             {
-                first = RowAt(info.Target, info.SlotStart);
-                last = RowAt(info.Target, info.SlotStart + info.SlotLength - 1);
+                first = ChildListWrites.RowAt(info.Target, info.SlotStart);
+                last = ChildListWrites.RowAt(info.Target, info.SlotStart + info.SlotLength - 1);
             }
             _stored[placeholder] = info with { First = first, Last = last };
         }
@@ -95,9 +95,6 @@ namespace Velvet
                 _stored[placeholder] = Resolve(info) with { First = null, Last = null };
             }
         }
-
-        private static VisualElement? RowAt(VisualElement target, int slot)
-            => LogicalChildSlots.TryGetPhysical(target, slot, out var physical) ? target[physical] : null;
 
         private static PortalSlotInfo Resolve(PortalSlotInfo info)
         {
@@ -1734,6 +1731,7 @@ namespace Velvet
         private readonly Dictionary<VisualElement, System.IDisposable> _portalRowFamilies = new();
         private readonly HashSet<VisualElement> _portalRows = new();
         private readonly List<VisualElement> _portalRowsLeft = new();
+        private readonly List<VisualElement?> _portalRowRange = new();
 
         // Brings the held rows in line with the rows the portals hold now. Called where a pass has placed every row.
         internal void SyncPortalRowFamilies()
@@ -1746,16 +1744,16 @@ namespace Velvet
                 var target = info.Target;
                 if (target == null || !SamePanelPortalBridges.ContainsKey(target)) continue;
 
-                for (var slot = info.SlotStart; slot < info.SlotStart + info.SlotLength; slot++)
+                _portalRowRange.Clear();
+                ChildListWrites.Rows(target, info.SlotStart, info.SlotStart + info.SlotLength, _portalRowRange);
+                foreach (var occupant in _portalRowRange)
                 {
-                    if (LogicalChildSlots.TryGetPhysical(target, slot, out var physical))
-                    {
-                        // A row FiberZLayerCoordinator relocates keeps only a placeholder in its slot.
-                        var occupant = target[physical];
-                        _portalRows.Add(ZLayerPlaceholders.TryGetValue(occupant, out var real) ? real : occupant);
-                    }
+                    // A row FiberZLayerCoordinator relocates keeps only a placeholder in its slot.
+                    _portalRows.Add(ZLayerPlaceholders.TryGetValue(occupant!, out var real) ? real : occupant!);
                 }
             }
+
+            _portalRowRange.Clear();
 
             _portalRowsLeft.Clear();
             foreach (var row in _portalRowFamilies.Keys)

@@ -223,6 +223,28 @@ namespace Velvet
             Synced(content, -1).Rows(slotStart, end, into);
         }
 
+        // The rendered child holding the slot, or null where none does: what TryGetPhysical finds, read as the element.
+        internal static VisualElement? RowAt(VisualElement container, int logical)
+        {
+            var content = ContentOf(container);
+            if (content.hierarchy.childCount == 0) return null;
+            var rows = Synced(content, -1);
+            var row = rows.RowAt(logical);
+            if (!AgreesAt(rows, content, rows.ToPhysical(logical)))
+            {
+                row = Rebuilt(rows, content).RowAt(logical);
+            }
+            return row;
+        }
+
+        // Appends the children at physical indices [start, end) to into, in order.
+        internal static void PhysicalRange(VisualElement container, int start, int end, List<VisualElement> into)
+        {
+            var content = ContentOf(container);
+            if (content.hierarchy.childCount == 0) return;
+            Synced(content, Math.Min(start, content.hierarchy.childCount - 1)).PhysicalRange(start, end, into);
+        }
+
         // Inserts a rendered child where LogicalChildSlots.ToPhysical puts a child at the slot.
         internal static void InsertAtSlot(VisualElement parent, int slot, VisualElement child)
             => Insert(parent, ToPhysical(parent, slot), child);
