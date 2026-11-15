@@ -18,10 +18,14 @@ namespace Velvet
         // A fiber no walk has placed yet (MountSlotCount still -1) is passed over: its start is where a walk
         // still in progress means to put it, and a boundary catching in that walk would be bounded short of
         // its own rows.
+        // The chain lists the placed fibers of one mount point in the order of their starts, so the first
+        // later one met is the nearest, and a placed fiber's earlier siblings start no later than it does.
+        // InlineSlotChainOrderTests pins that order; an unplaced fiber has no place in it, so its walk starts
+        // from the head.
         private static int NextInlineSiblingSlotStart(ComponentFiber fiber)
         {
-            var limit = int.MaxValue;
-            var first = fiber.Parent?.Child ?? fiber.Sibling;
+            // MUTANT_SURVIVES(equivalent): a placed fiber holding no rows reading from the head returns the same limit, since the head's walk meets the same first later start; only the walk is longer.
+            var first = fiber.MountSlotCount >= 0 ? fiber.Sibling : fiber.Parent?.Child ?? fiber.Sibling;
             for (var sibling = first; sibling != null; sibling = sibling.Sibling)
             {
                 if (!ReferenceEquals(sibling, fiber)
@@ -32,13 +36,12 @@ namespace Velvet
                     // ReconcilerInlineSlotDesyncTests pins as never produced by a component.
                     && sibling.MountSlotCount >= 0
                     && sibling.MountPoint == fiber.MountPoint
-                    && sibling.MountSlotStart > fiber.MountSlotStart
-                    && sibling.MountSlotStart < limit)
+                    && sibling.MountSlotStart > fiber.MountSlotStart)
                 {
-                    limit = sibling.MountSlotStart;
+                    return sibling.MountSlotStart;
                 }
             }
-            return limit;
+            return int.MaxValue;
         }
 
         // The mount point's rendered child count, in LOGICAL slots — the basis every stored slotStart
