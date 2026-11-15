@@ -1,0 +1,117 @@
+{
+ "detail": "EditMode: 9 failed: Given_ALinkWhoseClickHandlerLeavesTheDefault_When_Clicked_Then_TheHandlerRunsAndThenItNavigates, Given_ALinkWhoseClickHandlerPreventsTheDefault_When_Clicked_Then_ItDoesNotNavigate, Given_ANavLinkWhoseClickHandlerLeavesTheDefault_When_Clicked_Then_TheHandlerRunsAndThenItNavigates; 1 other editor(s) were up",
+ "file": "c590a70333bbd628c98aaeefcc1827c9bc4be3cad1478539ddec10c5e5cdfcb7",
+ "killers": [
+  {
+   "case": "Velvet.Tests.RouteLinkEventsTests.Given_ALinkWhoseClickHandlerLeavesTheDefault_When_Clicked_Then_TheHandlerRunsAndThenItNavigates",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouteLinkEventsTests.cs": "d54db543faa30640033ae5ca8101142482285be9030445ddfdca318daaf16ec8",
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouteTestMounts.cs": "f8401ad8b6f8ad1cafcdf5c1960ff0f082f4d876c6ee34e32e4d3d8cc7566653",
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouteTestStubs.cs": "e6362642a4a6570b2b683eaa7ec1727a3cd53cd6de1d54a6164cd2248d03b3c2",
+    "Packages/com.velvet.core/TestUtilities/CancellationTokenStateProbe.cs": "1344802a4cabd68e13bb57149f007230f5fcb7785eb33f0af4f1445f53b92657",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.RouteLinkEventsTests.Given_ALinkWhoseClickHandlerPreventsTheDefault_When_Clicked_Then_ItDoesNotNavigate",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouteLinkEventsTests.cs": "d54db543faa30640033ae5ca8101142482285be9030445ddfdca318daaf16ec8",
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouteTestMounts.cs": "f8401ad8b6f8ad1cafcdf5c1960ff0f082f4d876c6ee34e32e4d3d8cc7566653",
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouteTestStubs.cs": "e6362642a4a6570b2b683eaa7ec1727a3cd53cd6de1d54a6164cd2248d03b3c2",
+    "Packages/com.velvet.core/TestUtilities/CancellationTokenStateProbe.cs": "1344802a4cabd68e13bb57149f007230f5fcb7785eb33f0af4f1445f53b92657",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.RouteLinkEventsTests.Given_ANavLinkWhoseClickHandlerLeavesTheDefault_When_Clicked_Then_TheHandlerRunsAndThenItNavigates",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouteLinkEventsTests.cs": "d54db543faa30640033ae5ca8101142482285be9030445ddfdca318daaf16ec8",
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouteTestMounts.cs": "f8401ad8b6f8ad1cafcdf5c1960ff0f082f4d876c6ee34e32e4d3d8cc7566653",
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouteTestStubs.cs": "e6362642a4a6570b2b683eaa7ec1727a3cd53cd6de1d54a6164cd2248d03b3c2",
+    "Packages/com.velvet.core/TestUtilities/CancellationTokenStateProbe.cs": "1344802a4cabd68e13bb57149f007230f5fcb7785eb33f0af4f1445f53b92657",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.RouteLinkEventsTests.Given_ANavLinkWhoseClickHandlerPreventsTheDefault_When_Clicked_Then_ItDoesNotNavigate",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouteLinkEventsTests.cs": "d54db543faa30640033ae5ca8101142482285be9030445ddfdca318daaf16ec8",
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouteTestMounts.cs": "f8401ad8b6f8ad1cafcdf5c1960ff0f082f4d876c6ee34e32e4d3d8cc7566653",
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouteTestStubs.cs": "e6362642a4a6570b2b683eaa7ec1727a3cd53cd6de1d54a6164cd2248d03b3c2",
+    "Packages/com.velvet.core/TestUtilities/CancellationTokenStateProbe.cs": "1344802a4cabd68e13bb57149f007230f5fcb7785eb33f0af4f1445f53b92657",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.RouteLinkTests.Given_BareSegmentNavLink_When_RenderedAtANestedOutletDepth_Then_AppliesActiveClass",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouteLinkTests.cs": "35af13c76bed67863bf79ecaf44f018c5a606963d8825032b6e5a6d74bfe49d5",
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouteTestMounts.cs": "f8401ad8b6f8ad1cafcdf5c1960ff0f082f4d876c6ee34e32e4d3d8cc7566653",
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouteTestStubs.cs": "e6362642a4a6570b2b683eaa7ec1727a3cd53cd6de1d54a6164cd2248d03b3c2",
+    "Packages/com.velvet.core/TestUtilities/CancellationTokenStateProbe.cs": "1344802a4cabd68e13bb57149f007230f5fcb7785eb33f0af4f1445f53b92657",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.RouteLinkTests.Given_LinkWithPathRelativeRouting_When_Clicked_Then_DotDotDropsOneSegment",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouteLinkTests.cs": "35af13c76bed67863bf79ecaf44f018c5a606963d8825032b6e5a6d74bfe49d5",
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouteTestMounts.cs": "f8401ad8b6f8ad1cafcdf5c1960ff0f082f4d876c6ee34e32e4d3d8cc7566653",
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouteTestStubs.cs": "e6362642a4a6570b2b683eaa7ec1727a3cd53cd6de1d54a6164cd2248d03b3c2",
+    "Packages/com.velvet.core/TestUtilities/CancellationTokenStateProbe.cs": "1344802a4cabd68e13bb57149f007230f5fcb7785eb33f0af4f1445f53b92657",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.RouteLinkTests.Given_NavLinkWhoseTargetCarriesAFragment_When_LocationMatchesItsPath_Then_AppliesActiveClass",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouteLinkTests.cs": "35af13c76bed67863bf79ecaf44f018c5a606963d8825032b6e5a6d74bfe49d5",
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouteTestMounts.cs": "f8401ad8b6f8ad1cafcdf5c1960ff0f082f4d876c6ee34e32e4d3d8cc7566653",
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouteTestStubs.cs": "e6362642a4a6570b2b683eaa7ec1727a3cd53cd6de1d54a6164cd2248d03b3c2",
+    "Packages/com.velvet.core/TestUtilities/CancellationTokenStateProbe.cs": "1344802a4cabd68e13bb57149f007230f5fcb7785eb33f0af4f1445f53b92657",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.RouteLinkTests.Given_NavLinkWithPathRelativeRouting_When_TargetResolvesToTheLocation_Then_AppliesActiveClass",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouteLinkTests.cs": "35af13c76bed67863bf79ecaf44f018c5a606963d8825032b6e5a6d74bfe49d5",
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouteTestMounts.cs": "f8401ad8b6f8ad1cafcdf5c1960ff0f082f4d876c6ee34e32e4d3d8cc7566653",
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouteTestStubs.cs": "e6362642a4a6570b2b683eaa7ec1727a3cd53cd6de1d54a6164cd2248d03b3c2",
+    "Packages/com.velvet.core/TestUtilities/CancellationTokenStateProbe.cs": "1344802a4cabd68e13bb57149f007230f5fcb7785eb33f0af4f1445f53b92657",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.RouteLinkTests.Given_RelativeNavLink_When_LocationIsUnderTheResolvedTarget_Then_AppliesActiveClass",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouteLinkTests.cs": "35af13c76bed67863bf79ecaf44f018c5a606963d8825032b6e5a6d74bfe49d5",
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouteTestMounts.cs": "f8401ad8b6f8ad1cafcdf5c1960ff0f082f4d876c6ee34e32e4d3d8cc7566653",
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouteTestStubs.cs": "e6362642a4a6570b2b683eaa7ec1727a3cd53cd6de1d54a6164cd2248d03b3c2",
+    "Packages/com.velvet.core/TestUtilities/CancellationTokenStateProbe.cs": "1344802a4cabd68e13bb57149f007230f5fcb7785eb33f0af4f1445f53b92657",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  }
+ ],
+ "measured_by": "43677809827",
+ "mutant": {
+  "after": "-",
+  "before": "+",
+  "column": 61,
+  "line": 38,
+  "operator": "arithmetic",
+  "path": "Packages/com.velvet.core/Runtime/Routing/RouteLink.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "ca542a9ec04d33282d97f1a15a21653eb0e1e5c4c19bf089280fa66e8bc16ece",
+ "verdict": "killed"
+}

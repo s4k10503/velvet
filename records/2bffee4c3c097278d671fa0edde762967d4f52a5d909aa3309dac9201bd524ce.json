@@ -1,0 +1,28 @@
+{
+ "detail": "EditMode: 1 failed among the 25 case(s) that ran the site: Given_VSliderIntWithEveryMember_When_Built_Then_TheNodeIsTheFactorysSliderInt",
+ "file": "843b0f5d8354447312e488a9c3feeee96bf1ac17df63a290e92391e17dd74282",
+ "killers": [
+  {
+   "case": "Velvet.Tests.VBuilderInitializerTests.Given_VSliderIntWithEveryMember_When_Built_Then_TheNodeIsTheFactorysSliderInt",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/VBuilderInitializerTests.cs": "76877858064f92940ff83fccb9ab1c81b373f758f2fe704e58f510e33daf6cff"
+   }
+  }
+ ],
+ "measured_by": "43677809827",
+ "mutant": {
+  "after": ";",
+  "before": "props = new FiberElementProps();",
+  "column": 16,
+  "line": 668,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Component/V.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "ca542a9ec04d33282d97f1a15a21653eb0e1e5c4c19bf089280fa66e8bc16ece",
+ "verdict": "killed"
+}

@@ -1,0 +1,86 @@
+{
+ "detail": "EditMode: 8 failed among the 56 case(s) that ran the site: Given_AComponentNodeHeldAcrossRenders_When_ItsItemsKeyMovesOn_Then_TheRowItLeftIsUnmounted, Given_AComponentWhoseListWarned_When_ItRendersTheListAgain_Then_NoFurtherWarningIsLogged, Given_AKeySelectorReturningNull_When_AComponentRendersTheList_Then_AWarningNamesTheComponent",
+ "file": "843b0f5d8354447312e488a9c3feeee96bf1ac17df63a290e92391e17dd74282",
+ "killers": [
+  {
+   "case": "Velvet.Tests.VListTests.Given_AComponentNodeHeldAcrossRenders_When_ItsItemsKeyMovesOn_Then_TheRowItLeftIsUnmounted",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/VListTests.cs": "48cf58d45895062629dfdbec57886634e1c7797cfbe2e0aff66ba407fdc27525",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  },
+  {
+   "case": "Velvet.Tests.VListTests.Given_AComponentWhoseListWarned_When_ItRendersTheListAgain_Then_NoFurtherWarningIsLogged",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/VListTests.cs": "48cf58d45895062629dfdbec57886634e1c7797cfbe2e0aff66ba407fdc27525",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  },
+  {
+   "case": "Velvet.Tests.VListTests.Given_AKeySelectorReturningNull_When_AComponentRendersTheList_Then_AWarningNamesTheComponent",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/VListTests.cs": "48cf58d45895062629dfdbec57886634e1c7797cfbe2e0aff66ba407fdc27525",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  },
+  {
+   "case": "Velvet.Tests.VListTests.Given_ANodeAListPlacedBefore_When_ListedUnderAKeyHoldingTheDelimiter_Then_ItIsRefused",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/VListTests.cs": "48cf58d45895062629dfdbec57886634e1c7797cfbe2e0aff66ba407fdc27525",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  },
+  {
+   "case": "Velvet.Tests.VListTests.Given_ARendererReturningOneNodeForEveryItem_When_Listed_Then_EachSlotCarriesItsOwnItemsKey",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/VListTests.cs": "48cf58d45895062629dfdbec57886634e1c7797cfbe2e0aff66ba407fdc27525",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  },
+  {
+   "case": "Velvet.Tests.VListTests.Given_AnElementNodeHeldAcrossRenders_When_ItsItemsKeyMovesOn_Then_ItsRowIsBuiltAgain",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/VListTests.cs": "48cf58d45895062629dfdbec57886634e1c7797cfbe2e0aff66ba407fdc27525",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  },
+  {
+   "case": "Velvet.Tests.VListTests.Given_Items_When_Listed_Then_EachSlotCarriesSelectorKey",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/VListTests.cs": "48cf58d45895062629dfdbec57886634e1c7797cfbe2e0aff66ba407fdc27525",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  },
+  {
+   "case": "Velvet.Tests.VListTests.Given_RendererSetKey_When_Listed_Then_SelectorKeyOverridesIt",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/VListTests.cs": "48cf58d45895062629dfdbec57886634e1c7797cfbe2e0aff66ba407fdc27525",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  }
+ ],
+ "measured_by": "43677809827",
+ "mutant": {
+  "after": ";",
+  "before": "node = KeyListItem(node, keySelector(items[i]));",
+  "column": 20,
+  "line": 1470,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Component/V.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "ca542a9ec04d33282d97f1a15a21653eb0e1e5c4c19bf089280fa66e8bc16ece",
+ "verdict": "killed"
+}

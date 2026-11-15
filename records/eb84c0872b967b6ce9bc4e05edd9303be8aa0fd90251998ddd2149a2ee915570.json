@@ -1,0 +1,33 @@
+{
+ "detail": "EditMode: 1 failed: Given_AReconcilerHoldingMemoEntries_When_ItIsDisposed_Then_TheCacheHoldsNothing",
+ "file": "325203db3d866cd26822a956b87bddda9ded12ad06e231573b2fe46eb98b5a39",
+ "killers": [
+  {
+   "case": "Velvet.Tests.MemoCacheCollisionTests.Given_AReconcilerHoldingMemoEntries_When_ItIsDisposed_Then_TheCacheHoldsNothing",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MemoCacheCollisionTests.cs": "ba02cbc27cc07e609f988661a2189ef5b0ed00ebfa806155c9f26c692cd7f556",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/RuntimeStateProbe.cs": "f5d4ec6298d8c5f2eb33b23fa83fc5788fc9c99583dc56c3cdc4243476aa9fce"
+   }
+  }
+ ],
+ "measured_by": "43677809827",
+ "mutant": {
+  "after": ";",
+  "before": "_ctx.FiberMemoCache.Clear();",
+  "column": 12,
+  "line": 793,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/Reconciler.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "ca542a9ec04d33282d97f1a15a21653eb0e1e5c4c19bf089280fa66e8bc16ece",
+ "verdict": "killed"
+}

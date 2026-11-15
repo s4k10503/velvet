@@ -1,0 +1,102 @@
+{
+ "detail": "EditMode: 169 failed: Given_APlainChildBuiltInACachedScope_When_TheParentRendersAgain_Then_TheChildDoesNotRenderAgain, Given_APlainChildInATreeTheParentsBodyGateReturns_When_TheGrandparentRendersAgain_Then_TheChildDoesNotRenderAgain, Given_BclVirtualCallAheadOfTheHook_When_Woven_Then_InjectsBothMemoCalls",
+ "file": "41d5943deb711b9b8d27053f0206c37bcca339133661e949d7f47b2d01ccbc38",
+ "killers": [
+  {
+   "case": "Velvet.Tests.CachedChildNodeBailTests.Given_APlainChildBuiltInACachedScope_When_TheParentRendersAgain_Then_TheChildDoesNotRenderAgain",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/CachedChildNodeBailTests.cs": "3e5527145d3f9df6d4ae7c034b2040aff098fe4917f96750935d4340afba1ff8",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  },
+  {
+   "case": "Velvet.Tests.CachedChildNodeBailTests.Given_APlainChildInATreeTheParentsBodyGateReturns_When_TheGrandparentRendersAgain_Then_TheChildDoesNotRenderAgain",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/CachedChildNodeBailTests.cs": "3e5527145d3f9df6d4ae7c034b2040aff098fe4917f96750935d4340afba1ff8",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  },
+  {
+   "case": "Velvet.Tests.CompilerILPostProcessorE2ETests.Given_BclVirtualCallAheadOfTheHook_When_Woven_Then_InjectsBothMemoCalls",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/CompilerILPostProcessorE2ETests.cs": "e0edd0e66bd2cdb46f81bb7319913c381cfbd9322d5f0c9dc1affe2e66d938fe",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  },
+  {
+   "case": "Velvet.Tests.CompilerILPostProcessorE2ETests.Given_CustomHookComposingASafeHook_When_Woven_Then_InjectsBothMemoCalls",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/CompilerILPostProcessorE2ETests.cs": "e0edd0e66bd2cdb46f81bb7319913c381cfbd9322d5f0c9dc1affe2e66d938fe",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  },
+  {
+   "case": "Velvet.Tests.CompilerILPostProcessorE2ETests.Given_DeconstructionPattern_When_Woven_Then_InjectsBothMemoCalls",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/CompilerILPostProcessorE2ETests.cs": "e0edd0e66bd2cdb46f81bb7319913c381cfbd9322d5f0c9dc1affe2e66d938fe",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  },
+  {
+   "case": "Velvet.Tests.CompilerILPostProcessorE2ETests.Given_DelegateInvokeComponent_When_Woven_Then_InjectsBothMemoCalls",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/CompilerILPostProcessorE2ETests.cs": "e0edd0e66bd2cdb46f81bb7319913c381cfbd9322d5f0c9dc1affe2e66d938fe",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  },
+  {
+   "case": "Velvet.Tests.CompilerILPostProcessorE2ETests.Given_DispatchInsideALambdaHandedToAHook_When_Woven_Then_InjectsBothMemoCalls",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/CompilerILPostProcessorE2ETests.cs": "e0edd0e66bd2cdb46f81bb7319913c381cfbd9322d5f0c9dc1affe2e66d938fe",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  },
+  {
+   "case": "Velvet.Tests.CompilerILPostProcessorE2ETests.Given_MemoizedPropsComponentWithHook_When_Woven_Then_InjectsBothMemoCalls",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/CompilerILPostProcessorE2ETests.cs": "e0edd0e66bd2cdb46f81bb7319913c381cfbd9322d5f0c9dc1affe2e66d938fe",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  },
+  {
+   "case": "Velvet.Tests.CompilerILPostProcessorE2ETests.Given_MultipleReturnsAfterHookSection_When_Woven_Then_InjectsBothMemoCalls",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/CompilerILPostProcessorE2ETests.cs": "e0edd0e66bd2cdb46f81bb7319913c381cfbd9322d5f0c9dc1affe2e66d938fe",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  },
+  {
+   "case": "Velvet.Tests.CompilerILPostProcessorE2ETests.Given_PlainComponentWithHook_When_Woven_Then_InjectsBothMemoCalls",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/CompilerILPostProcessorE2ETests.cs": "e0edd0e66bd2cdb46f81bb7319913c381cfbd9322d5f0c9dc1affe2e66d938fe",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  }
+ ],
+ "measured_by": "43677809827",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 26,
+  "line": 221,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/CodeGen/ReactiveScopeRegions.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "ca542a9ec04d33282d97f1a15a21653eb0e1e5c4c19bf089280fa66e8bc16ece",
+ "verdict": "killed"
+}

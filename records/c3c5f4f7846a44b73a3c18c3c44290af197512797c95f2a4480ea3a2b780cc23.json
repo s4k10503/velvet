@@ -1,0 +1,28 @@
+{
+ "detail": "EditMode: 1 failed among the 37 case(s) that ran the site: Given_EveryElementFactoryWithItsOwnCallback_When_CalledWithItAndAnEventsArray_Then_ItsOwnBindingLeadsTheCallersBindings",
+ "file": "843b0f5d8354447312e488a9c3feeee96bf1ac17df63a290e92391e17dd74282",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ElementFactoryEventsInventoryTests.Given_EveryElementFactoryWithItsOwnCallback_When_CalledWithItAndAnEventsArray_Then_ItsOwnBindingLeadsTheCallersBindings",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/ElementFactoryEventsInventoryTests.cs": "47357a454cf8a251525736bc8522ca0be8d1293939d638e152c54ecfe1978880"
+   }
+  }
+ ],
+ "measured_by": "43677809827",
+ "mutant": {
+  "after": "-",
+  "before": "+",
+  "column": 52,
+  "line": 79,
+  "operator": "arithmetic",
+  "path": "Packages/com.velvet.core/Runtime/Component/V.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "ca542a9ec04d33282d97f1a15a21653eb0e1e5c4c19bf089280fa66e8bc16ece",
+ "verdict": "killed"
+}

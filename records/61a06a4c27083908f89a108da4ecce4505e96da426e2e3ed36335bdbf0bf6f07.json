@@ -1,0 +1,28 @@
+{
+ "detail": "EditMode: 1 failed among the 2 case(s) that ran the site: Given_ValueLabelAndCallback_When_IntegerField_Then_RecordsValueTextAndBinding",
+ "file": "843b0f5d8354447312e488a9c3feeee96bf1ac17df63a290e92391e17dd74282",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ElementFactoryNewElementTests.Given_ValueLabelAndCallback_When_IntegerField_Then_RecordsValueTextAndBinding",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/ElementFactoryNewElementTests.cs": "7318d2613237513d418ec15202cdc85dd53d92724b7fb6d56ce97279b79ff576"
+   }
+  }
+ ],
+ "measured_by": "43677809827",
+ "mutant": {
+  "after": ";",
+  "before": "props = new FiberElementProps();",
+  "column": 16,
+  "line": 1399,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Component/V.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "ca542a9ec04d33282d97f1a15a21653eb0e1e5c4c19bf089280fa66e8bc16ece",
+ "verdict": "killed"
+}
