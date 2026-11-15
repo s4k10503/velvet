@@ -185,10 +185,10 @@ namespace Velvet
             {
                 return;
             }
-            if (layer.parent != host || host.IndexOf(layer) != host.IndexOf(element) - 1)
+            if (layer.parent != host || ChildListWrites.PhysicalIndexOf(host, layer) != ChildListWrites.PhysicalIndexOf(host, element) - 1)
             {
                 ChildListWrites.RemoveFromHierarchy(layer);
-                ChildListWrites.Insert(host, host.IndexOf(element), layer);
+                ChildListWrites.Insert(host, ChildListWrites.PhysicalIndexOf(host, element), layer);
             }
             var x = element.layout.x;
             var y = element.layout.y;
@@ -222,7 +222,7 @@ namespace Velvet
         {
             // Should a sibling stand between the layer and the element, it would paint over the filtered backdrop.
             var host = parent;
-            var next = host == null ? -1 : host.IndexOf(this) + 1;
+            var next = host == null ? -1 : ChildListWrites.PhysicalIndexOf(host, this) + 1;
             if (host == null || next >= host.childCount || host[next] != _element)
             {
                 return;

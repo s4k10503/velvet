@@ -14,7 +14,9 @@ namespace Velvet.Tests
     /// what it calls and not by its spelling, and only for the runtime assembly: <c>Velvet.Editor</c> and user code
     /// write child lists too. <c>PrivateSubtrees</c> names the types that write only into an element they built and
     /// own, which no walk addresses by slot. The control case reads the same scan over a type of this assembly that
-    /// writes six ways, so a scan that stopped finding calls fails it.
+    /// writes six ways, so a scan that stopped finding calls fails it. A second scan fails when a method of
+    /// <c>MovedReaders</c> searches the live child list (<c>IndexOf</c>, or <see cref="LogicalChildSlots.IsInvisible"/>
+    /// over each child) rather than reading the row model; its control reads a type that does both.
     /// </summary>
     [TestFixture]
     internal sealed class RowModelRoutingTests
@@ -29,6 +31,40 @@ namespace Velvet.Tests
         private static readonly HashSet<string> PrivateSubtrees = new()
         {
         };
+
+        // Methods whose reads of a container's child list come from its row model, so a search over the live list or a
+        // walk testing each child for a slot must not come back into them. Grows as readers move.
+        private static readonly HashSet<string> MovedReaders = new()
+        {
+            "Velvet.RingOverlay.PlaceBeside",
+            "Velvet.FaceBorderOverlay.Place",
+            "Velvet.BackdropFilterLayer.Place",
+            "Velvet.BackdropFilterLayer.ImmediateRepaint",
+            "Velvet.OutlineHosting.PlaceInTreeOrder",
+            "Velvet.OutlineHosting.CompareTreeOrder",
+            "Velvet.ParticlesDriver.SyncLayers",
+            "Velvet.SilhouetteBoundsSpacer.IsAfterAllRenderedChildren",
+            "Velvet.FiberZLayerCoordinator.TryGetLogicalPosition",
+            "Velvet.FiberZLayerCoordinator.LastDeclaredChild",
+            "Velvet.FiberVirtualListController.RebuildVisibleContainer",
+        };
+
+        private static bool IsListSearch(MethodReference callee)
+            => (callee.Name == "IndexOf" && IsVisualElementType(callee.DeclaringType))
+                || (callee.Name == "IsInvisible" && callee.DeclaringType.Name == nameof(LogicalChildSlots));
+
+        private static List<string> SearchesIn(ModuleDefinition module, Func<MethodDefinition, bool> included)
+            => module.GetTypes()
+                .SelectMany(type => type.Methods)
+                .Where(method => method.HasBody && included(method))
+                .SelectMany(method => method.Body.Instructions
+                    .Select(instruction => instruction.Operand as MethodReference)
+                    .Where(callee => callee != null && IsListSearch(callee))
+                    .Select(callee => $"{method.DeclaringType.FullName}.{method.Name} calls "
+                        + $"{callee!.DeclaringType.Name}.{callee.Name}"))
+                .Distinct()
+                .OrderBy(line => line)
+                .ToList();
 
         // Resolved through the loaded assemblies, which Cecil's own resolver cannot reach for engine types.
         private static bool IsVisualElementType(TypeReference? type)
@@ -74,6 +110,40 @@ namespace Velvet.Tests
             internal static void Detach(VisualElement child) => child.RemoveFromHierarchy();
             internal static void Reorder(VisualElement child) => child.BringToFront();
             internal static Action<VisualElement> MethodGroup(VisualElement parent) => parent.Add;
+        }
+
+        // Two list searches, one of each kind the scan reads.
+        private static class SearchingReader
+        {
+            internal static int Index(VisualElement parent, VisualElement child) => parent.IndexOf(child);
+            internal static bool Skips(VisualElement child) => LogicalChildSlots.IsInvisible(child);
+        }
+
+        [Test]
+        public void Given_TheRuntimeAssembly_When_TheMovedReadersAreRead_Then_NoneSearchesTheLiveChildList()
+        {
+            // Arrange
+            using var runtime = ModuleDefinition.ReadModule(typeof(V).Assembly.Location);
+
+            // Act
+            var offenders = SearchesIn(runtime,
+                method => MovedReaders.Contains($"{method.DeclaringType.FullName}.{method.Name}"));
+
+            // Assert
+            Assert.That(string.Join("\n", offenders), Is.Empty, "read the child list through ChildListWrites");
+        }
+
+        [Test]
+        public void Given_ReadersThatSearchTheLiveListTwoWays_When_TheScanReadsThem_Then_ItFindsBoth()
+        {
+            // Arrange
+            using var tests = ModuleDefinition.ReadModule(typeof(RowModelRoutingTests).Assembly.Location);
+
+            // Act
+            var offenders = SearchesIn(tests, method => method.DeclaringType.Name == nameof(SearchingReader));
+
+            // Assert
+            Assert.That(offenders, Has.Count.EqualTo(2));
         }
 
         [Test]
