@@ -92,7 +92,6 @@ namespace Velvet.Tests
             Assert.That(at2000, Is.EqualTo(at250));
         }
 
-        // GREEN_ON_BASE(construction): the base has no ContextFreeOutput to read, so the case cannot be built there.
         [Test]
         public void Given_AListWhoseOutputHoldsNoProvider_When_ARowUpdates_Then_TheListFiberHoldsItsOutputAsFreeOfContext()
         {
@@ -107,7 +106,7 @@ namespace Velvet.Tests
 
             // Assert
             var list = mounted.Root;
-            Assert.That(list.ContextFreeOutputAnswer && ReferenceEquals(list.ContextFreeOutput, list.PreviousTree), Is.True);
+            Assert.That(list.ContextFreeOutputAnswer ? list.ContextFreeOutput : null, Is.SameAs(list.PreviousTree));
         }
 
         // GREEN_ON_BASE(characterization): the base walks the whole output and pushes the Provider, so the row reads its value there as well.
