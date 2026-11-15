@@ -8,10 +8,10 @@ namespace Velvet.Tests
     /// <summary>
     /// Pins what a tree commits when the fallback of an error boundary suspends after the boundary's swap has already
     /// disposed the child that threw, as one <see cref="EventLog"/> string per case, each what react-reconciler 19.1
-    /// commits for the same tree: with no Suspense above, <c>throwException</c> leaves a concurrent root suspended
-    /// without committing, and the boundary shows its fallback and reports the catch once the read resolves. The cases
-    /// register no effect on the child that threw, since Velvet runs its cleanups at the swap where React runs them at
-    /// that later commit.
+    /// commits for the same tree: the boundary shows its fallback and reports the catch once, in the commit after the
+    /// read resolves (with no Suspense above, <c>throwException</c> leaves a concurrent root suspended until then). The
+    /// cases leave out what comes before that commit, and register no effect on the child that threw, since Velvet runs
+    /// its cleanups at the swap where React runs them in that commit.
     /// </summary>
     [TestFixtureSource(typeof(EventLogRenderer), nameof(EventLogRenderer.All))]
     internal sealed class FallbackSuspendEventLogTests
@@ -48,7 +48,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AnErrorBoundaryWhoseFallbackSuspends_When_AChildsOwnRenderThrows_Then_NothingIsCommittedUntilTheReadResolves()
+        public void Given_AnErrorBoundaryWhoseFallbackSuspends_When_AChildsOwnRenderThrowsAndTheReadResolves_Then_TheBoundaryShowsItsFallbackAndReportsTheCatchOnce()
         {
             // Arrange
             var log = new EventLog();
@@ -85,7 +85,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AnErrorBoundaryWhoseFallbackSuspends_When_ALayoutEffectThrowsAtMount_Then_TheMountReturns()
+        public void Given_AnErrorBoundaryWhoseFallbackSuspends_When_ALayoutEffectThrowsAtMount_Then_TheMountReturnsAndTheBoundaryShowsItsFallbackAndReportsTheCatchOnce()
         {
             // Arrange
             var log = new EventLog();
@@ -100,6 +100,63 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(log.ToString(), Is.EqualTo("| ins:IF ref:IF lay:IF caught:Inner:thrown by the layout effect"));
+        }
+
+        [Component]
+        private static VNode SuspenseAroundTheCatchingBoundary(Gate gate)
+            => V.Suspense(
+                fallback: V.Div(),
+                children: new VNode[] { V.Component(SuspendingFallbackBoundary, gate, key: "inner") });
+
+        [Test]
+        public void Given_ASuspenseAboveABoundaryWhoseFallbackSuspends_When_AChildsOwnRenderThrowsAndTheReadResolves_Then_TheBoundaryShowsItsFallbackAndReportsTheCatchOnce()
+        {
+            // Arrange
+            var log = new EventLog();
+            var gate = new Gate();
+            using var mounted = _renderer.Mount(log.Provide(V.Component(SuspenseAroundTheCatchingBoundary, gate)), log.ReportingErrors());
+            mounted.DrainForTest();
+            log.Clear();
+
+            // Act
+            log.Setter<int>("Tick").Invoke(1);
+            mounted.DrainForTest();
+            log.Clear();
+            gate.Source?.TrySetResult(5);
+            mounted.DrainForTest();
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("ins:IF ref:IF lay:IF caught:Inner:thrown by X"));
+        }
+
+        [Component]
+        private static VNode RerenderingParent(Gate gate)
+        {
+            EventLog.UseState("Parent", 0);
+            return V.Component(SuspendingFallbackBoundary, gate, key: "inner");
+        }
+
+        [Test]
+        public void Given_ABoundaryWhoseFallbackSuspends_When_ItsParentRendersAgainBeforeTheReadResolves_Then_TheCatchIsReportedOnlyAfterTheReadResolves()
+        {
+            // Arrange
+            var log = new EventLog();
+            var gate = new Gate();
+            using var mounted = _renderer.Mount(log.Provide(V.Component(RerenderingParent, gate)), log.ReportingErrors());
+            mounted.DrainForTest();
+            log.Setter<int>("Tick").Invoke(1);
+            mounted.DrainForTest();
+            log.Clear();
+
+            // Act
+            log.Setter<int>("Parent").Invoke(1);
+            mounted.DrainForTest();
+            log.Add("|");
+            gate.Source?.TrySetResult(5);
+            mounted.DrainForTest();
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("| ins:IF ref:IF lay:IF caught:Inner:thrown by X"));
         }
     }
 }

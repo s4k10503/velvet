@@ -277,7 +277,8 @@ namespace Velvet
             {
                 // The swap has taken the failed rows down, and the throwing fiber with them, so the pass it started
                 // has no fiber left to retry. The boundary holds the error and renders its fallback again when the
-                // read resolves (OutputOf), reporting the catch then, as React reports it from the commit that shows it.
+                // read resolves (OutputOf), and reports the catch from the render whose fallback then reconciles
+                // (ReportCarriedCatch), as React reports it from the commit that shows it.
                 fiber.CaughtError = (exception, InfoFor(fiber, throwingFiber));
                 fiber.CatchUnreported = true;
                 ctx.DropCompletions(failedCompletions);
@@ -362,6 +363,7 @@ namespace Velvet
         internal static void RecordCatch(ReconcilerContext ctx, ComponentFiber fiber, Exception exception, ErrorInfo info)
         {
             fiber.CaughtError = (exception, info);
+            fiber.CatchReportedFromCarry = false;
             ctx.PendingCaughtErrorReports.Add((fiber, exception, info, ctx.NextCaughtErrorSequence++));
             var taken = ctx.ErrorsDuringFallbackSwap;
             var tookAny = false;
@@ -389,14 +391,19 @@ namespace Velvet
             // After the body, which reads what the boundary held before this render as the library's prevState.
             TakeQueuedReset(fiber);
             if (fiber.CaughtError is not var (error, info)) return bodyOutput;
-            if (fiber.CatchUnreported)
-            {
-                fiber.CatchUnreported = false;
-                RecordCatch(fiber.Reconciler!.Context, fiber, error, info);
-            }
             var fallback = TryInvokeFactory(fiber, error, info);
             if (fallback == null) ExceptionDispatchInfo.Capture(error).Throw();
             return new[] { fallback! };
+        }
+
+        // The catch OutputOf's fallback was rendered for, where the fallback it suspended in at the catch has now been
+        // reconciled without suspending again: the report belongs to the commit that shows it.
+        internal static void ReportCarriedCatch(ComponentFiber fiber)
+        {
+            if (!fiber.CatchUnreported || fiber.CaughtError is not var (error, info)) return;
+            fiber.CatchUnreported = false;
+            RecordCatch(fiber.Reconciler!.Context, fiber, error, info);
+            fiber.CatchReportedFromCarry = true;
         }
 
         // react-error-boundary's setState(initialState), which follows its onReset: queued as a state update is,

@@ -1232,7 +1232,11 @@ namespace Velvet
                 {
                     boundary.CatchesInTheWalk = false;
                 }
-                if (caught == null) return;
+                if (caught == null)
+                {
+                    FiberErrorBoundary.ReportCarriedCatch(boundary);
+                    return;
+                }
 
                 RollbackCommitTo(commit, preCount, fibersBefore, walk.NewFibers);
                 _ctx.PendingCompletions.RemoveRange(
@@ -1690,8 +1694,18 @@ namespace Velvet
                 var inThisWalk = !fibersBefore.Contains(boundary) && newFibers.Contains(boundary);
                 var inAKeptElement = HolderOf(boundary.MountPoint, keptElements) != null;
                 if (!inThisWalk && !inAKeptElement) continue;
-                boundary.CaughtError = null;
                 reports.RemoveAt(i);
+                if (boundary.CatchReportedFromCarry)
+                {
+                    // The catch was made outside this walk, before the fallback suspended: React keeps it, and
+                    // reports it from the commit that reveals the fallback.
+                    boundary.CatchReportedFromCarry = false;
+                    boundary.CatchUnreported = true;
+                }
+                else
+                {
+                    boundary.CaughtError = null;
+                }
                 // A memoized boundary would otherwise bail on the retry and expand the fallback it holds.
                 FiberWorkLoop.RequestRenderFromHook(boundary);
             }
