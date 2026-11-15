@@ -274,6 +274,11 @@ namespace Velvet
         public Dictionary<VisualElement, int> RentElementIndexMap() => _elementIndexMapPool.Rent();
         public void ReturnElementIndexMap(Dictionary<VisualElement, int> map) => _elementIndexMapPool.Return(map);
 
+        private readonly ClearablePool<List<VisualElement?>> _rowReadPool = new(l => l.Clear());
+
+        public List<VisualElement?> RentRowRead() => _rowReadPool.Rent();
+        public void ReturnRowRead(List<VisualElement?> list) => _rowReadPool.Return(list);
+
         #endregion
     }
 }

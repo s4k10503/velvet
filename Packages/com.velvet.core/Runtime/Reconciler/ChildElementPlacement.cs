@@ -89,28 +89,24 @@ namespace Velvet
             var lisResult = pool.RentIntList();
             try
             {
-                // range.ScanStart / slotStart / both lengths are LOGICAL, so the scan bounds are converted
-                // before they can index the DOM (LogicalChildSlots). Physically walking from a logical
-                // slotStart used to be correct only because the entry gate had already folded a leading
-                // z-container's offset in; with an invisible child anywhere in the range it both under-covers
-                // the retained rows — the last one then maps to -1, reads as a created orphan, and is
-                // detached and re-attached on every re-render — and skews every recorded position.
-                var physicalScanStart = LogicalChildSlots.ToPhysical(parent!, range.ScanStart);
-                var physicalRangeEnd = Math.Min(parent!.childCount,
-                    LogicalChildSlots.ToPhysical(parent!, slotStart + Math.Max(range.OldLen, range.LogicalNewLen)));
-                // Slot-local positions in O(N). parent.IndexOf per element would be
-                // O(childCount) x newElements.Count = O(N^2). An invisible child in the range is simply not
-                // recorded, so it can never be picked as an anchor.
-                var logicalPos = range.ScanStart - slotStart;
-                for (var idx = physicalScanStart; idx < physicalRangeEnd; idx++)
+                // Slot-local position of each rendered child in the range, read from the row model: one read
+                // for the whole range rather than parent.IndexOf per element, which would be O(N^2). A child that holds no
+                // slot (a spacer, an overlay, a relocated element) is not among the rows, so it is never an anchor
+                // and never takes a position.
+                var rows = pool.RentRowRead();
+                try
                 {
-                    var child = parent!.ElementAt(idx);
-                    if (SilhouetteBoundsSpacer.IsSpacer(child))
+                    ChildListWrites.Rows(parent!, range.ScanStart, slotStart + Math.Max(range.OldLen, range.LogicalNewLen), rows);
+                    var logicalPos = range.ScanStart - slotStart;
+                    foreach (var child in rows)
                     {
-                        continue;
+                        domPosMap[child!] = logicalPos;
+                        logicalPos++;
                     }
-                    domPosMap[child] = logicalPos;
-                    logicalPos++;
+                }
+                finally
+                {
+                    pool.ReturnRowRead(rows);
                 }
 
                 // Current position of each committed element, in new order.
@@ -212,32 +208,24 @@ namespace Velvet
 
         // A kept element whose new place is ahead of one kept before it, or a created one ahead of a kept one: the
         // components inside a created element are created after those inside every kept one.
-        private bool PlacesOutOfCreationOrder(
+        private static bool PlacesOutOfCreationOrder(
             VisualElement parent, System.Collections.Generic.List<(VisualElement? element, bool isExisting)> newElements)
         {
-            var positions = _pool.RentElementIndexMap();
-            try
+            var lastKept = -1;
+            var createdSeen = false;
+            foreach (var (element, isExisting) in newElements)
             {
-                for (var i = 0; i < parent.childCount; i++) positions[parent.ElementAt(i)] = i;
-                var lastKept = -1;
-                var createdSeen = false;
-                foreach (var (element, isExisting) in newElements)
+                if (element == null) continue;
+                var position = isExisting ? ChildListWrites.PhysicalIndexOf(parent, element) : -1;
+                if (position < 0)
                 {
-                    if (element == null) continue;
-                    if (!isExisting || !positions.TryGetValue(element, out var position))
-                    {
-                        createdSeen = true;
-                        continue;
-                    }
-                    if (createdSeen || position < lastKept) return true;
-                    lastKept = position;
+                    createdSeen = true;
+                    continue;
                 }
-                return false;
+                if (createdSeen || position < lastKept) return true;
+                lastKept = position;
             }
-            finally
-            {
-                _pool.ReturnElementIndexMap(positions);
-            }
+            return false;
         }
     }
 }

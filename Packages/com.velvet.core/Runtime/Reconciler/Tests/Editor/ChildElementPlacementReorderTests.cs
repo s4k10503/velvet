@@ -7,9 +7,9 @@ namespace Velvet.Tests
     /// <summary>
     /// Specifies what a reorder pass does with children that are already in the order the list names.
     /// <list type="bullet">
-    /// <item>It leaves them without building a position table of the container: each child is hashed once by that
-    /// table to insert it and once to look it up, which the hashes of the children count.</item>
-    /// <item>A pass that does move a child does build the table, so the count above is a count of that work and not of
+    /// <item>It leaves them without looking any of them up in the container's row model: a container of several
+    /// blocks finds a child by hashing it, which the hashes of the children count.</item>
+    /// <item>A pass that does move a child does look them up, so the count above is a count of that work and not of
     /// nothing, and it still reports the order the components in the moved children were created in.</item>
     /// </list>
     /// </summary>
@@ -38,6 +38,9 @@ namespace Velvet.Tests
             }
         }
 
+        // Wide enough for the row model to keep several blocks and find a child by hash.
+        private const int Wide = 300;
+
         private static (VisualElement Parent, HashedChild[] Children, List<(VisualElement? element, bool isExisting)> NewElements)
             Arranged(int count, int[] newOrder)
         {
@@ -50,12 +53,14 @@ namespace Velvet.Tests
             }
             var newElements = new List<(VisualElement? element, bool isExisting)>();
             foreach (var index in newOrder) newElements.Add((children[index], true));
+            ChildListWrites.PhysicalIndexOf(parent, children[0]);
+            foreach (var child in children) child.Hashes = 0;
             return (parent, children, newElements);
         }
 
         private int HashesOfAReorderWith(int[] newOrder, HashSet<int> anchors)
         {
-            var (parent, children, newElements) = Arranged(5, newOrder);
+            var (parent, children, newElements) = Arranged(Wide, newOrder);
             var placement = Placement();
             placement.ReorderToNewElementOrder(parent, newElements, anchors, slotStart: 0);
             var hashes = 0;
@@ -63,6 +68,8 @@ namespace Velvet.Tests
             return hashes;
         }
 
+        // GREEN_ON_BASE(refactor): the base leaves children already in order unhashed too; the case keeps that
+        // shortcut while the pass that does move reads the row model.
         [Test]
         public void Given_ChildrenAlreadyInTheListedOrder_When_TheyAreReordered_Then_NoChildIsHashed()
         {
@@ -73,7 +80,8 @@ namespace Velvet.Tests
             Assert.That(hashes, Is.EqualTo(0));
         }
 
-        // GREEN_ON_BASE(characterization): the instrument for the case above: a pass that moves a child hashes the base's own position table.
+        // GREEN_ON_BASE(characterization): the instrument for the case above: a pass that moves a child hashes, through
+        // the base's position table there and through the row model's lookups here.
         [Test]
         public void Given_AChildListedOutOfOrder_When_TheChildrenAreReordered_Then_ChildrenAreHashed()
         {
@@ -84,7 +92,8 @@ namespace Velvet.Tests
             Assert.That(hashes, Is.GreaterThan(0));
         }
 
-        // GREEN_ON_BASE(characterization): the base already reports this order, which the shortcut has to leave to the pass that moves.
+        // GREEN_ON_BASE(characterization): the base reports this order too; the case holds it now that the creation-order
+        // check reads each kept child's position from the row model.
         [Test]
         public void Given_AChildListedAheadOfTheOnesBeforeIt_When_TheChildrenAreReordered_Then_TheOrderIsReportedAsOutOfCreationOrder()
         {
