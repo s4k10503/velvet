@@ -739,7 +739,6 @@ namespace Velvet
                 _ctx.ComponentRegistry, target, element, portalInfo, -portalInfo.SlotLength);
         }
 
-        // The state keyed by the placeholder. The retarget release reaches it through CleanupPortal alone.
         private void ForgetPortalPlaceholder(VisualElement placeholder)
         {
             _ctx.PrunePresencePortalState(placeholder);

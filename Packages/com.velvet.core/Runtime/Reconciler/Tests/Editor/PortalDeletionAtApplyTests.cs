@@ -84,8 +84,8 @@ namespace Velvet.Tests
                 V.WorldSpace(Vector3.zero, key: "ws", children: new VNode[] { V.Div(name: "in-world") }),
             });
 
-        // The deleted row, the Portal after it that stays and the watcher after both sit in elements of their own, so the
-        // watcher renders in a walk of a container after the one that decides the deletion.
+        // The deleted row and the watcher after it sit in elements of their own, so the watcher renders in a walk of a
+        // container after the one that decides the deletion.
         [Component]
         private static VNode PortalBesideAWatcher(Target target)
         {
@@ -97,6 +97,31 @@ namespace Velvet.Tests
             });
         }
 
+        private sealed record Held(string Kind, VisualElement Target);
+
+        private static VNode RowOf(string kind) => kind switch
+        {
+            "label" => V.Label(text: "x"),
+            "hover" => V.Div(className: "hover:bg-red-500", name: "hovered"),
+            _ => V.Component(Probed, new Named("D"), key: "d"),
+        };
+
+        [Component]
+        private static VNode HoldsAPortalOfKind(Held held)
+            => V.Div(name: "holder", children: new VNode[] { V.Portal(held.Target, new VNode[] { RowOf(held.Kind) }, key: "p") });
+
+        [Component]
+        private static VNode KindBesideAWatcher(Held held)
+        {
+            var (shown, _) = EventLog.UseState("Shown", true);
+            return V.Div(children: new VNode[]
+            {
+                V.Div(key: "a", children: new VNode[] { shown ? V.Component(HoldsAPortalOfKind, held, key: "h") : null }),
+                V.Div(key: "b", children: new VNode[] { V.Component(Watcher, shown, key: "w") }),
+            });
+        }
+
+        // The Portals share a target, the second of them held by a component that bails where its props are equal.
         [Component]
         private static VNode PortalsOnOneTarget(Target target)
         {
@@ -222,6 +247,80 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(Names(target), Is.EqualTo("two"));
+        }
+
+        // GREEN_ON_BASE(refactor): the base releases the bridge in the same pass too.
+        [Test]
+        public void Given_ADeletedRowHoldingTheOnlyPortalOnATarget_When_ThePassEnds_Then_TheTargetKeepsNoBridge()
+        {
+            // Arrange
+            var log = new EventLog();
+            var ctx = Mounted(log, V.Component(KindBesideAWatcher, new Held("probed", new VisualElement())), new VisualElement());
+            var bound = ctx.SamePanelPortalBridges.Count;
+
+            // Act
+            log.Setter<bool>("Shown").Invoke(false);
+            _mounted.DrainForTest();
+
+            // Assert — a target that never held a bridge reads as its own value, which the expected one is not
+            Assert.That(bound > 0 ? ctx.SamePanelPortalBridges.Count : -1, Is.EqualTo(0));
+        }
+
+        // GREEN_ON_BASE(refactor): the base returns the Portal's rows to their pools in the same pass too.
+        [Test]
+        public void Given_ADeletedRowHoldingAPortalOfALabel_When_ThePassEnds_Then_TheLabelWasResetForReuse()
+        {
+            // Arrange — a pool with room, which resets what it takes
+            for (var i = 0; i < 40; i++) VNodePool.RentLabel(string.Empty);
+            var log = new EventLog();
+            var target = new VisualElement();
+            Mounted(log, V.Component(KindBesideAWatcher, new Held("label", target)), new VisualElement());
+            var label = (Label)target[0];
+
+            // Act
+            log.Setter<bool>("Shown").Invoke(false);
+            _mounted.DrainForTest();
+
+            // Assert
+            Assert.That(label.text, Is.EqualTo(string.Empty));
+        }
+
+        // GREEN_ON_BASE(refactor): the base releases the Portal's rows in the same pass too.
+        [Test]
+        public void Given_ADeletedRowHoldingAPortalOfAHoveredElement_When_ThePassEnds_Then_TheElementHoldsFewerCallbacks()
+        {
+            // Arrange
+            var log = new EventLog();
+            var target = new VisualElement();
+            Mounted(log, V.Component(KindBesideAWatcher, new Held("hover", target)), new VisualElement());
+            var row = target[0];
+            var before = CallbackRegistryProbe.BubbleUpCallbackCount(row);
+
+            // Act
+            log.Setter<bool>("Shown").Invoke(false);
+            _mounted.DrainForTest();
+
+            // Assert — a row that held no callback to begin with is not fewer
+            Assert.That(CallbackRegistryProbe.BubbleUpCallbackCount(row) < before, Is.True);
+        }
+
+        // GREEN_ON_BASE(refactor): the base takes the Portal down in the walk as well, since its target goes with the row.
+        [Test]
+        public void Given_ADeletedRowHoldingAPortalIntoAnElementInsideIt_When_TheParentStopsRenderingIt_Then_ThePortalsCleanupsRunBeforeARowAfterItRenders()
+        {
+            // Arrange
+            var log = new EventLog();
+            var target = new VisualElement();
+            var mountAt = new VisualElement();
+            Mounted(log, V.Component(KindBesideAWatcher, new Held("probed", target)), mountAt);
+            mountAt.Q<VisualElement>("holder").Add(target);
+
+            // Act
+            log.Setter<bool>("Shown").Invoke(false);
+            _mounted.DrainForTest();
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("ins-x:D lay-x:D render:W="));
         }
 
         [Test]

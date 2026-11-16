@@ -149,7 +149,6 @@ namespace Velvet.Tests
         [TestCase("_removedRows")]
         [TestCase("_orphanRows")]
         [TestCase("_portalsUnderRoots")]
-        [TestCase("_portalRows")]
         [TestCase("_orphans")]
         [TestCase("_collected")]
         [TestCase("_fibers")]
@@ -170,6 +169,21 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(EntriesLeftInPooledWalks(field), Is.EqualTo(0));
+        }
+
+        [Test]
+        public void Given_ADeletionOfAComponentHoldingAPortal_When_ItHasEnded_Then_NoPooledWalkKeepsARowOfIt()
+        {
+            // Arrange
+            using var mounted = V.Mount(new VisualElement(), V.Component(PortalHolderHost, new Target(new VisualElement())));
+            mounted.DrainForTest();
+
+            // Act
+            s_setShown.Invoke(false);
+            mounted.DrainForTest();
+
+            // Assert
+            Assert.That(System.Linq.Enumerable.Sum(PooledWalks(), walk => walk.PortalRows.Count), Is.EqualTo(0));
         }
 
         [Test]
