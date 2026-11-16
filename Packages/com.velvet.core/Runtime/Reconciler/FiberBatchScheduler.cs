@@ -88,8 +88,8 @@ namespace Velvet
         // because the danger is the reconcile-on-stack, not the tier.
         private bool _draining;
 
-        // Reports whether a reconcile pass is currently on the stack (SharedReconcileDepth > 0) or this context's pass
-        // is applying its recorded writes, registered by the owning Reconciler. _draining alone does not cover a
+        // Reports whether a reconcile pass is currently on the stack (SharedReconcileDepth > 0) or a pass of any context
+        // records or applies its writes, registered by the owning Reconciler. _draining alone does not cover a
         // time-sliced resume (ContinueReconcile): a resume is scheduled via schedule.Execute, not through Drain, so
         // _draining is false while it runs even though a reconcile is on the stack. FlushImmediate also blocks on this
         // probe so a discrete event dispatched synchronously inside a slice cannot re-enter the reconciler, nor one an
@@ -157,7 +157,8 @@ namespace Velvet
         // whole context too, so it needs the same tree stability the tier drains do.
         internal VisualElement? Anchor => _anchor;
 
-        // Registers a probe reporting whether a reconcile pass is currently on the stack or applying its recorded writes.
+        // Registers a probe reporting whether a reconcile pass is currently on the stack or a pass of any context records
+        // or applies its writes.
         // Called once by the owning Reconciler so FlushImmediate can block a synchronous discrete-event flush during
         // a time-sliced resume, which runs outside the batch Drain (so _draining is false)
         // yet still has a reconcile on the stack.
@@ -659,8 +660,8 @@ namespace Velvet
         }
 
         // Whether a drain of the immediate tier can start from here: no drain of either tier, no reconcile pass on the
-        // stack and no apply of this context's recorded writes. FlushImmediate checks the first and the last of these; a drain of the immediate tier that
-        // is running renders what is queued itself.
+        // stack and no pass of any context recording or applying. FlushImmediate checks _draining and the other two, and
+        // not whether a drain of the immediate tier is running, which renders what is queued itself.
         internal bool CanFlushImmediate => !_draining && !_inImmediateDrain && !(_reconcileActiveProbe?.Invoke() ?? false);
 
         // Marks the immediate tier's work as sync-lane work, which a drain that renders it follows with the passive

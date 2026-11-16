@@ -481,8 +481,8 @@ namespace Velvet
         // (ParentOf, ChildCount, ElementAtPhysical and the reads above) answer from it meanwhile, and a container with a recorded write is
         // skipped by the checks that compare the model with the live list. Insert, Remove, RemoveAt, RemoveFromHierarchy,
         // HierarchyRemove and Clear made into such a container, or of a child one holds, are recorded behind them too,
-        // and so is one made while they apply. HierarchySort sorts the live list, so it applies the writes an enclosing pass
-        // of another context holds for the container first.
+        // and so is one made while they apply. HierarchySort sorts the live list, so it is called where no pass is open
+        // (FiberZLayerCoordinator waits for that), which an assertion checks.
         //
         // The list, and the parents it leaves pending, belong to the ReconcilePass that recorded them, and s_current is
         // the one that is recording or applying, innermost first. Outside every pass nothing is recorded: ParentOf
@@ -513,6 +513,31 @@ namespace Velvet
         // Whether a pass is recording or its recorded writes are applying, whatever it has recorded. Where passes of two
         // contexts are open at once this answers for the innermost.
         internal static bool PassIsOpen => s_current is { Recording: true } or { Applying: true };
+
+        // The schedulers of contexts that asked for a flush while a pass of another context was open, which they were
+        // refused (HoldsFlush) and which FlushHeld makes where the outermost pass has ended.
+        private static readonly List<FiberBatchScheduler> s_heldFlushes = new();
+
+        // Whether a flush asked for by the context whose pass is own is held back by an open pass: any context's, since
+        // none renders while another's writes are recorded or applying. A context other than the one holding the pass
+        // is flushed where the outermost pass ends; the one holding it renders what it queued by its own entry points.
+        internal static bool HoldsFlush(FiberBatchScheduler scheduler, ReconcilePass own)
+        {
+            if (!PassIsOpen) return false;
+            if (!own.Recording && !own.Applying && !s_heldFlushes.Contains(scheduler)) s_heldFlushes.Add(scheduler);
+            return true;
+        }
+
+        // Makes the flushes HoldsFlush refused, once no pass is open.
+        internal static void FlushHeld()
+        {
+            if (s_heldFlushes.Count == 0 || PassIsOpen) return;
+            var held = s_heldFlushes.ToArray();
+            // MUTANT_SURVIVES(equivalent, line removed): a scheduler left in the list is asked to flush again where the next
+            // pass ends and finds nothing queued.
+            s_heldFlushes.Clear();
+            foreach (var scheduler in held) scheduler.FlushImmediate();
+        }
 
         // A pass that starts while another is open leaves the other's recorded writes where they are. It reads the
         // model through the passes that enclose it (ParentOf, HoldingPass), and an insert, a removal or a move it makes
@@ -703,9 +728,6 @@ namespace Velvet
 
         // Whether a pass is recording writes it has not applied yet.
         internal static bool IsRecording => s_current is { Recording: true, Applying: false };
-
-        // Whether the recorded writes are being applied.
-        internal static bool IsApplying => s_current is { Applying: true };
 
         // Whether a patch of element waits for the pass to end: one made where a pass records, to an element that has a
         // live or a recorded parent. An element with neither is written at once.
@@ -929,9 +951,6 @@ namespace Velvet
         // model never has to reproduce it.
         internal static void HierarchySort(VisualElement parent, Comparison<VisualElement> comparison)
         {
-            // A container a pass of another context still holds is sorted once that pass's ops are on the live list, since
-            // the sort rebuilds the model from it.
-            if (EnclosingHoldingPass(parent, null) is { } holding) Apply(holding);
             UnityEngine.Debug.Assert(HoldingPass(parent, null) == null,
                 "HierarchySort sorts the live list of a container that still has recorded writes.");
             var rows = Enter(parent, -1);

@@ -211,24 +211,24 @@ namespace Velvet.Tests
             return V.Div();
         }
 
-        // Its second row is a delayed field, which the walk patches at once.
+        // Its second row is relocated by its z class, so the walk patches it at once.
         [Component]
-        private static VNode DropsBesideADelayedField(bool shown)
+        private static VNode DropsBesideARelocatedRow(bool shown)
             => V.Fragment(
                 V.Label(text: shown ? "b" : "b2", refCallback: element =>
                 {
                     s_label = (Label)element;
                     return () => { };
                 }),
-                V.TextField(value: shown ? "1" : "2", isDelayed: true),
+                V.Div(name: "r", className: shown ? "absolute z-10" : "absolute z-10 p-1"),
                 shown ? V.Component(ProbedAtTheLabel, new Named("E"), key: "e") : null);
 
         [Component]
-        private static VNode DelayedFieldBeforeTheDeletions()
+        private static VNode RelocatedRowBeforeTheDeletions()
         {
             var (shown, _) = EventLog.UseState("Shown", true);
             return V.Fragment(
-                V.Component(DropsBesideADelayedField, shown, key: "b"),
+                V.Component(DropsBesideARelocatedRow, shown, key: "b"),
                 shown ? V.Component(Probed, new Named("F"), key: "f") : null);
         }
 
@@ -277,7 +277,7 @@ namespace Velvet.Tests
         {
             // Arrange
             var log = new EventLog();
-            using var mounted = _renderer.Mount(log.Provide(V.Component(DelayedFieldBeforeTheDeletions)));
+            using var mounted = _renderer.Mount(log.Provide(V.Component(RelocatedRowBeforeTheDeletions)));
             mounted.DrainForTest();
             log.Clear();
 
@@ -285,7 +285,7 @@ namespace Velvet.Tests
             log.Setter<bool>("Shown").Invoke(false);
             mounted.DrainForTest();
 
-            // Assert — E's cleanup runs at its owner's turn, ahead of the label's update, as it does without the delayed field
+            // Assert — E's cleanup runs at its owner's turn, ahead of the label's update, as it does without the relocated row
             Assert.That(log.ToString(), Is.EqualTo("ins-x:F lay-x:F ins-x:E lay-x:E@b"));
         }
 
@@ -443,20 +443,20 @@ namespace Velvet.Tests
         }
 
         [Component]
-        private static VNode RowlessThenADelayedField()
+        private static VNode RowlessThenARelocatedRow()
         {
             var (shown, _) = EventLog.UseState("Shown", true);
             return V.Fragment(
                 V.Component(DropsARowless, shown, key: "l"),
-                V.Component(DropsBesideADelayedField, shown, key: "b"));
+                V.Component(DropsBesideARelocatedRow, shown, key: "b"));
         }
 
         [Test]
-        public void Given_AComponentRenderingNothingDeletedAheadOfAnOwnerWithADelayedField_When_BothAreDeleted_Then_TheComponentsDeletionRunsFirst()
+        public void Given_AComponentRenderingNothingDeletedAheadOfAnOwnerWithARelocatedRow_When_BothAreDeleted_Then_TheComponentsDeletionRunsFirst()
         {
             // Arrange
             var log = new EventLog();
-            using var mounted = _renderer.Mount(log.Provide(V.Component(RowlessThenADelayedField)));
+            using var mounted = _renderer.Mount(log.Provide(V.Component(RowlessThenARelocatedRow)));
             mounted.DrainForTest();
             log.Clear();
 
@@ -735,6 +735,89 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(log.ToString(), Is.EqualTo("flush:False"));
+        }
+
+        private static Button s_otherButton;
+        private static int s_otherRenders;
+        private static int s_otherBefore;
+        private static string s_seenInside;
+        private static ComponentFiber s_clickerOwner;
+        private static StateUpdater<bool> s_showClicker;
+
+        [Component]
+        private static VNode AnotherRoot()
+        {
+            var (count, setCount) = Hooks.UseState(0);
+            s_otherRenders++;
+            return V.Button(text: count.ToString(), onClick: () => setCount.Invoke(count + 1), refCallback: element =>
+            {
+                s_otherButton = (Button)element;
+                return () => { };
+            });
+        }
+
+        // Clicks the button of another root where its layout cleanup runs, and records how often that root has rendered.
+        [Component]
+        private static VNode ClicksAnotherRoot()
+        {
+            Hooks.UseLayoutEffect(() => () =>
+            {
+                s_otherButton.SimulateClick();
+                s_seenInside = "inside:" + (s_otherRenders - s_otherBefore);
+            }, Array.Empty<object>());
+            return V.Div();
+        }
+
+        [Component]
+        private static VNode OwnerOfTheClicker()
+        {
+            var (shown, setShown) = Hooks.UseState(true);
+            s_clickerOwner = FiberAmbientStack.Current;
+            s_showClicker = setShown;
+            return V.Fragment(shown ? V.Component(ClicksAnotherRoot, key: "c") : null);
+        }
+
+        private static (MountedTree Owner, MountedTree Other) MountTheTwoRoots()
+        {
+            FiberStrictMode.Enabled = false;
+            var owner = V.Mount(new VisualElement(), V.Component(OwnerOfTheClicker));
+            var other = V.Mount(new VisualElement(), V.Component(AnotherRoot));
+            s_otherBefore = s_otherRenders;
+            return (owner, other);
+        }
+
+        [Test]
+        public void Given_AnApplyThatFiresAHandlerOfAnotherRoot_When_ThatHandlerAsksForAFlush_Then_TheOtherRootHasNotRenderedInsideTheApply()
+        {
+            // Arrange
+            var (owner, other) = MountTheTwoRoots();
+            using var ownerTree = owner;
+            using var otherTree = other;
+            s_showClicker.Invoke(false);
+
+            // Act
+            FiberWorkLoop.FlushState(s_clickerOwner);
+
+            // Assert
+            Assert.That(s_seenInside, Is.EqualTo("inside:0"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base rendered the other root inside the apply, so it has rendered by the
+        // time control returns; the case pins that the hold does not leave it a frame behind.
+        [Test]
+        public void Given_AnApplyThatFiresAHandlerOfAnotherRoot_When_TheOutermostPassEnds_Then_TheOtherRootHasRenderedBeforeControlReturns()
+        {
+            // Arrange
+            var (owner, other) = MountTheTwoRoots();
+            using var ownerTree = owner;
+            using var otherTree = other;
+            s_showClicker.Invoke(false);
+
+            // Act
+            FiberWorkLoop.FlushState(s_clickerOwner);
+
+            // Assert
+            Assert.That(s_otherRenders - s_otherBefore, Is.EqualTo(1));
         }
     }
 }

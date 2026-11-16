@@ -74,8 +74,8 @@ namespace Velvet
         private static readonly VisualElement s_nowhere = new();
 
         // Called from FiberNodePatcher.PatchMotionPost for a MotionNode carrying a LayoutId, once the
-        // patch's own writes are made; its post-children class passes and its children's halves are recorded and not yet
-        // applied, so what they write is not on the element yet. element.layout still holds the PRE-patch
+        // patch's own writes are made; where a pass records, its post-children class passes and its children's halves are
+        // recorded and not yet applied, so what they write is not on the element yet. element.layout still holds the PRE-patch
         // resolved rect at this point (this frame's Yoga pass has not run yet) — capturing it now is the
         // same "read .layout synchronously before the mutation that invalidates it" pattern
         // GeneralPathReconciler.PinExitingChildOutOfFlow uses for a PopLayout exit. The NEW rect is not

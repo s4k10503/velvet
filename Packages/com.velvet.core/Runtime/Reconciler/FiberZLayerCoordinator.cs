@@ -430,11 +430,7 @@ namespace Velvet
             facts = facts with { Z = resolvedZ };
             Track(ctx, real, facts);
             Settle(ctx, real, facts);
-            if (ArrangesAtOnce(ctx))
-            {
-                DrainTeardowns(ctx);
-                ResortLayers(ctx);
-            }
+            ArrangeNowOrLater(ctx);
         }
 
         // A flex order a custom property supplies classElement changed with no patch of it.
@@ -448,11 +444,7 @@ namespace Velvet
             facts = facts with { Order = order };
             Track(ctx, real, facts);
             Settle(ctx, real, facts);
-            if (ArrangesAtOnce(ctx))
-            {
-                DrainTeardowns(ctx);
-                ResortLayers(ctx);
-            }
+            ArrangeNowOrLater(ctx);
         }
 
         // A variant re-derived real's class source, which outside a pass nothing follows: the parent is arranged at
@@ -462,11 +454,7 @@ namespace Velvet
         {
             var facts = Record(ctx, real, classElement, declared, resolved, anchored);
             Settle(ctx, real, facts);
-            if (ArrangesAtOnce(ctx))
-            {
-                DrainTeardowns(ctx);
-                ResortLayers(ctx);
-            }
+            ArrangeNowOrLater(ctx);
         }
 
         // A variant moved slot's position utility (`md:absolute`) on or off: its parent's arrangement may change.
@@ -479,41 +467,86 @@ namespace Velvet
                 return;
             }
             MarkPending(ctx, parent);
-            if (ArrangesAtOnce(ctx))
-            {
-                DrainTeardowns(ctx);
-                ResortLayers(ctx);
-            }
+            ArrangeNowOrLater(ctx);
         }
 
         // A variant moved control's flex or grid utility on or off: whether its children take a flex order changed.
         internal static void OnContainerToggled(ReconcilerContext ctx, VisualElement control)
         {
             MarkPending(ctx, control);
-            if (ArrangesAtOnce(ctx))
+            ArrangeNowOrLater(ctx);
+        }
+
+        // Outside any pass nothing drains after a toggle, so the parent is arranged at once. Where a pass of any context is
+        // open the arrangement waits for the end of the outermost one: the arrangement sorts the live list and rebuilds
+        // its model, which would drop ops still recorded behind, and a context with no pass of its own has no
+        // FinishPass to arrange it. A context inside its own walk is arranged by its FinishPass.
+        private static void ArrangeNowOrLater(ReconcilerContext ctx)
+        {
+            if (ctx.SharedReconcileDepth > 0) return;
+            if (ChildListWrites.PassIsOpen)
             {
+                Defer(ctx);
+                return;
+            }
+            DrainTeardowns(ctx);
+            ResortLayers(ctx);
+        }
+
+        // The contexts whose settles and arrangement wait for the outermost open pass to end.
+        private static readonly List<ReconcilerContext> s_deferred = new();
+
+        private static void Defer(ReconcilerContext ctx)
+        {
+            if (!s_deferred.Contains(ctx)) s_deferred.Add(ctx);
+        }
+
+        // Whether FinishPass of ctx leaves its settles and its arrangement to the end of the outermost open pass, which
+        // it does where a pass of any context is still open.
+        internal static bool Defers(ReconcilerContext ctx)
+        {
+            if (!ChildListWrites.PassIsOpen) return false;
+            Defer(ctx);
+            return true;
+        }
+
+        // Whether ctx has settles or an arrangement waiting for the end of the outermost pass.
+        internal static bool IsDeferred(ReconcilerContext ctx) => s_deferred.Contains(ctx);
+
+        // Where the outermost pass has ended: the settles and the arrangement each context left to it, in the order they
+        // were left.
+        internal static void RunDeferred()
+        {
+            var at = 0;
+            while (at < s_deferred.Count && !ChildListWrites.PassIsOpen)
+            {
+                var ctx = s_deferred[at];
+                // A context in the middle of a range render the controller opened has no pass to arrange it at the end of.
+                if (!ctx.IsDisposed && ctx.SharedReconcileDepth > 0)
+                {
+                    at++;
+                    continue;
+                }
+                s_deferred.RemoveAt(at);
+                if (ctx.IsDisposed) continue;
+                SettlePatched(ctx);
                 DrainTeardowns(ctx);
                 ResortLayers(ctx);
             }
         }
 
-        // Outside any pass nothing drains after a toggle, so the parent is arranged at once. A toggle a recorded patch op
-        // makes as the pass applies its writes is inside one: the arrangement sorts the live list and rebuilds its model,
-        // which would drop the ops still recorded behind, so FinishPass arranges it after the apply.
-        private static bool ArrangesAtOnce(ReconcilerContext ctx)
-            => ctx.SharedReconcileDepth == 0 && !ChildListWrites.IsApplying;
-
         private static void Settle(ReconcilerContext ctx, VisualElement real, StackingFacts? facts)
         {
             // Returning an element to its slot exchanges it with its placeholder by a sort of the live list, which writes
-            // recorded behind it, or ops still to apply, would find changed. A settle asked for while this context's pass
-            // records or applies is made where the pass has applied what it recorded (SettlePatched), from the facts held
-            // then, and from the queue of the context that asked for it.
-            if (ctx.Pass.Recording || ctx.Pass.Applying)
+            // recorded behind it, or ops still to apply, would find changed. A settle asked for while a pass of any
+            // context is open is made where the outermost has ended, from the facts held then, and from the queue of the
+            // context that asked for it.
+            if (ChildListWrites.PassIsOpen)
             {
                 // MUTANT_SURVIVES(equivalent, literal): an entry with no patcher is settled from the facts held for its
                 // real element, so the anchored flag it carries is never read.
                 ctx.PendingSettles.Add(new ReconcilerContext.QueuedSettle(real, null, null, false, 0));
+                Defer(ctx);
                 return;
             }
             SettleNow(ctx, real, facts);

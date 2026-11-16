@@ -146,7 +146,10 @@ namespace Velvet.Tests
             ChildListWrites.BeginRecording(_first.Context.Pass);
             _first.Context.HostCommit.Insert(parent, 1, new VisualElement());
             ChildListWrites.BeginRecording(_second.Context.Pass);
-            ChildListWrites.RemoveAtForMove(parent, 3);
+            using (ChildListWrites.QueueWrite())
+            {
+                ChildListWrites.RemoveAtForMove(parent, 3);
+            }
 
             // Act
             ChildListWrites.EndRecording(_second.Context.Pass);
@@ -172,6 +175,91 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(ChildListWrites.IsRecording, Is.False);
+        }
+
+        private static VNode[] ZRow()
+            => new VNode[]
+            {
+                V.Div(name: "parent", className: "relative", children: new VNode[]
+                {
+                    V.Div(name: "z", className: "absolute z-10"),
+                    V.Div(name: "after"),
+                }),
+            };
+
+        [Test]
+        public void Given_APassOfAnotherContextBeginningInsideAWalk_When_ItEnds_Then_ItsRelocationWaitsForTheWalk()
+        {
+            // Arrange
+            var rootB = new VisualElement();
+            bool? held = null;
+            var treeA = new VNode[]
+            {
+                V.ScrollView(onCreated: _ =>
+                {
+                    _second.Reconcile(rootB, System.Array.Empty<VNode>(), ZRow());
+                    held = FiberZLayerCoordinator.PlaceholderOf(_second.Context, rootB.Q<VisualElement>("z")) == null;
+                }),
+            };
+
+            // Act
+            _first.Reconcile(new VisualElement(), System.Array.Empty<VNode>(), treeA);
+
+            // Assert
+            Assert.That(held, Is.EqualTo(true));
+        }
+
+        // GREEN_ON_BASE(characterization): the base settled the nested pass where it ended, ahead of the walk's end.
+        [Test]
+        public void Given_APassOfAnotherContextBeginningInsideAWalk_When_TheWalksPassEnds_Then_ItsRelocationIsMade()
+        {
+            // Arrange
+            var rootB = new VisualElement();
+            var treeA = new VNode[]
+            {
+                V.ScrollView(onCreated: _ => _second.Reconcile(rootB, System.Array.Empty<VNode>(), ZRow())),
+            };
+
+            // Act
+            _first.Reconcile(new VisualElement(), System.Array.Empty<VNode>(), treeA);
+
+            // Assert
+            Assert.That(FiberZLayerCoordinator.PlaceholderOf(_second.Context, rootB.Q<VisualElement>("z")), Is.Not.Null);
+        }
+
+        [Test]
+        public void Given_APassOpenInOneContext_When_AnotherContextWithNoPassRestacksAnElement_Then_ItStaysRelocatedUntilThePassEnds()
+        {
+            // Arrange
+            var rootB = new VisualElement();
+            _second.Reconcile(rootB, System.Array.Empty<VNode>(), ZRow());
+            var z = rootB.Q<VisualElement>("z");
+            ChildListWrites.BeginRecording(_first.Context.Pass);
+
+            // Act
+            FiberZLayerCoordinator.Restack(_second.Context, z, null);
+
+            // Assert
+            Assert.That(FiberZLayerCoordinator.PlaceholderOf(_second.Context, z), Is.Not.Null);
+        }
+
+        // GREEN_ON_BASE(characterization): the base restacked at once, with no pass open, as it does where the open one ends.
+        [Test]
+        public void Given_ARestackLeftWhileAPassWasOpen_When_ThePassEnds_Then_TheElementIsBackInItsSlot()
+        {
+            // Arrange
+            var rootB = new VisualElement();
+            _second.Reconcile(rootB, System.Array.Empty<VNode>(), ZRow());
+            var z = rootB.Q<VisualElement>("z");
+            ChildListWrites.BeginRecording(_first.Context.Pass);
+            FiberZLayerCoordinator.Restack(_second.Context, z, null);
+
+            // Act
+            ChildListWrites.EndRecording(_first.Context.Pass);
+            FiberZLayerCoordinator.RunDeferred();
+
+            // Assert
+            Assert.That(FiberZLayerCoordinator.PlaceholderOf(_second.Context, z), Is.Null);
         }
 
         [Test]

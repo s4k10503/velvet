@@ -127,9 +127,10 @@ namespace Velvet
                 _ctx.SetReconcilerBridge(this);
                 // Lets the batch scheduler block a synchronous discrete-event flush while any reconcile
                 // pass (including a time-sliced resume that runs outside the batch Drain) is on the stack, and while
-                // this context's pass applies its recorded writes, which run after the pass has left the stack and which a
-                // handler one of them fires must not render inside.
-                _ctx.BatchScheduler.SetReconcileActiveProbe(() => _ctx.SharedReconcileDepth > 0 || _ctx.Pass.Applying);
+                // a pass of any context records or applies its writes, which run after the pass has left the stack and which
+                // a handler one of them fires must not render inside: React renders no root inside another's commit.
+                _ctx.BatchScheduler.SetReconcileActiveProbe(
+                    () => _ctx.SharedReconcileDepth > 0 || ChildListWrites.HoldsFlush(_ctx.BatchScheduler, _ctx.Pass));
                 _ctx.BatchScheduler.SetIntakeDropCallback(_ctx.DropAllCaptures);
                 _ctx.BatchScheduler.SetPassiveEffectFlush(() => FiberEffects.FlushPendingPassiveEffects(_ctx));
                 // Brackets each drain to drive (1) the UseStore tearing guard — pinning is active only inside a
@@ -352,6 +353,10 @@ namespace Velvet
             TakeAbort();
             FinishPass(reconciledInto, walked);
             ChildListWrites.VerifyTouched();
+            // Where this was the outermost pass: the settles and arrangements the contexts left to it, and the flushes a
+            // context was refused while a pass was open, as React flushes the sync work of every root where a commit ends.
+            FiberZLayerCoordinator.RunDeferred();
+            ChildListWrites.FlushHeld();
         }
 
         private void TakeAbort()
@@ -400,7 +405,7 @@ namespace Velvet
                 }
                 finally
                 {
-                    FiberZLayerCoordinator.SettlePatched(_ctx);
+                    if (!FiberZLayerCoordinator.Defers(_ctx)) FiberZLayerCoordinator.SettlePatched(_ctx);
                 }
                 try
                 {
@@ -424,8 +429,11 @@ namespace Velvet
                     finally
                     {
                         ElementCleaner.ReleaseRetiredZLayerReals();
-                        FiberZLayerCoordinator.DrainTeardowns(_ctx);
-                        FiberZLayerCoordinator.ResortLayers(_ctx);
+                        if (!FiberZLayerCoordinator.Defers(_ctx))
+                        {
+                            FiberZLayerCoordinator.DrainTeardowns(_ctx);
+                            FiberZLayerCoordinator.ResortLayers(_ctx);
+                        }
                     }
                 }
                 applyFailure?.Throw();
@@ -438,7 +446,7 @@ namespace Velvet
                 // drain (a boundary inside a portal's children) is consumed at this boundary
                 // the same way.
                 _ctx.PendingPortalMounts.Clear();
-                _ctx.PendingSettles.Clear();
+                if (!FiberZLayerCoordinator.IsDeferred(_ctx)) _ctx.PendingSettles.Clear();
                 _ctx.CleanedElements.Clear();
                 // MUTANT_SURVIVES(equivalent): the set is read only for a placeholder the drain has just dequeued,
                 // and each placeholder is queued once, where FiberNodeFactory creates it, so an entry outliving
