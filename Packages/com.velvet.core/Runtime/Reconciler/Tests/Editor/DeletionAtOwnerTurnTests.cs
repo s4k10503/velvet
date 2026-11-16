@@ -711,6 +711,7 @@ namespace Velvet.Tests
         private static int s_otherPassive;
         private static int s_otherPassiveBefore;
         private static bool s_otherClickQueues;
+        private static bool s_clickOnCleanup;
         private static StateUpdater<int> s_setOther;
         private static ComponentFiber s_clickerOwner;
         private static StateUpdater<bool> s_showClicker;
@@ -744,6 +745,7 @@ namespace Velvet.Tests
         {
             Hooks.UseLayoutEffect(() => () =>
             {
+                if (!s_clickOnCleanup) return;
                 s_otherButton.SimulateClick();
                 s_seenInside = "inside:" + (s_otherRenders - s_otherBefore);
             }, Array.Empty<object>());
@@ -763,9 +765,11 @@ namespace Velvet.Tests
             }, new object[] { shown });
             return V.Fragment(
                 shown ? V.Component(ClicksAnotherRoot, key: "c") : null,
+                // Captures shown, so that each render makes a new callback and the ref is attached again; a callback that
+                // captured nothing would be one cached delegate, which a patch carrying it leaves installed.
                 V.Div(refCallback: _ =>
                 {
-                    s_ref = "attached by the owner";
+                    s_ref = shown ? "attached by the owner, shown" : "attached by the owner";
                     return () => { };
                 }));
         }
@@ -774,6 +778,7 @@ namespace Velvet.Tests
         {
             FiberStrictMode.Enabled = false;
             s_otherClickQueues = true;
+            s_clickOnCleanup = true;
             var owner = V.Mount(new VisualElement(), V.Component(OwnerOfTheClicker));
             var other = V.Mount(new VisualElement(), V.Component(AnotherRoot));
             s_shared = "before the owner";
@@ -849,6 +854,7 @@ namespace Velvet.Tests
 
             // Act
             FiberWorkLoop.FlushState(s_clickerOwner);
+            s_clickOnCleanup = false;
 
             // Assert
             Assert.That(s_otherRenders, Is.EqualTo(before));
