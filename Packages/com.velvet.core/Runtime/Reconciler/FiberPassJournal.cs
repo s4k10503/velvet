@@ -46,6 +46,11 @@ namespace Velvet
     {
         private readonly List<SuspenseRender> _hooks = new();
         private readonly List<SubsumedRender> _subsumed = new();
+        // What each fiber and tenancy held before the pass first wrote it. The write sites are the setters of
+        // ComponentFiber.MountSlotStart, ComponentFiber.MountSlotCount and InlineTenancy.ShiftedRows, so a writer
+        // added later is journaled with the rest. Rollback reads them; Abandon does not.
+        private readonly Dictionary<ComponentFiber, (int Start, int Count)> _slots = new();
+        private readonly Dictionary<InlineTenancy, int> _shiftedRows = new();
         private ComponentFiber? _owner;
 
         internal bool IsOpen => _owner != null;
@@ -70,6 +75,35 @@ namespace Velvet
             _subsumed.Add(new SubsumedRender(fiber, before));
         }
 
+        // Called by the setters before the first write of a pass, so the entry is the value the pass found.
+        internal void RecordSlots(ComponentFiber fiber)
+        {
+            if (_owner == null) return;
+            _slots.TryAdd(fiber, (fiber.MountSlotStart, fiber.MountSlotCount));
+        }
+
+        internal void RecordShiftedRows(InlineTenancy tenancy)
+        {
+            if (_owner == null) return;
+            _shiftedRows.TryAdd(tenancy, tenancy.ShiftedRows);
+        }
+
+        // Puts back what the pass wrote on the fiber side. Copied out first, since the restoring writes pass through
+        // the recording setters.
+        internal void Rollback()
+        {
+            var slots = new List<KeyValuePair<ComponentFiber, (int Start, int Count)>>(_slots);
+            var shifted = new List<KeyValuePair<InlineTenancy, int>>(_shiftedRows);
+            foreach (var (fiber, before) in slots)
+            {
+                fiber.MountSlotStart = before.Start;
+                fiber.MountSlotCount = before.Count;
+            }
+            foreach (var (tenancy, before) in shifted) tenancy.ShiftedRows = before;
+            _slots.Clear();
+            _shiftedRows.Clear();
+        }
+
         internal void Close()
         {
             try
@@ -84,6 +118,8 @@ namespace Velvet
             {
                 _hooks.Clear();
                 _subsumed.Clear();
+                _slots.Clear();
+                _shiftedRows.Clear();
                 _owner = null;
             }
         }

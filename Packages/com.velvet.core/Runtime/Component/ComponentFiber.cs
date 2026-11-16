@@ -799,7 +799,17 @@ namespace Velvet
         /// moved by <c>FiberCommitWork.PropagateInlineSlotShift</c> and
         /// <c>FiberCommitWork.ShiftTenantsAfterPortalRange</c>.
         /// </summary>
-        internal int MountSlotStart { get; set; }
+        internal int MountSlotStart
+        {
+            get => _mountSlotStart;
+            set
+            {
+                Reconciler?.Context.Pass.Journal.RecordSlots(this);
+                _mountSlotStart = value;
+            }
+        }
+
+        private int _mountSlotStart;
 
         /// <summary>
         /// Number of slots in <see cref="MountPoint"/>.children currently owned by this fiber.
@@ -809,7 +819,17 @@ namespace Velvet
         /// <c>FiberCommitWork.PropagateInlineSlotShift</c> when this fiber's rows change or those of a fiber
         /// they hold do.
         /// </summary>
-        internal int MountSlotCount { get; set; } = -1;
+        internal int MountSlotCount
+        {
+            get => _mountSlotCount;
+            set
+            {
+                Reconciler?.Context.Pass.Journal.RecordSlots(this);
+                _mountSlotCount = value;
+            }
+        }
+
+        private int _mountSlotCount = -1;
 
         /// <summary>
         /// True when this fiber's output VEs sit directly in <see cref="MountPoint"/>.children at
