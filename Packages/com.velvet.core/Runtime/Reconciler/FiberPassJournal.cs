@@ -32,6 +32,10 @@ namespace Velvet
         }
     }
 
+    // What a fiber held in the three members a pass writes beside the trees it reconciles.
+    internal readonly record struct FiberTrees(
+        VNode?[]? Previous, VNode?[]? PendingOld, UnityEngine.UIElements.VisualElement? OwningPortal);
+
     // An inline fiber a pass rendered in place, with what it held before the render.
     internal readonly record struct SubsumedRender(ComponentFiber Fiber, FiberInputs Before);
 
@@ -47,10 +51,13 @@ namespace Velvet
         private readonly List<SuspenseRender> _hooks = new();
         private readonly List<SubsumedRender> _subsumed = new();
         // What each fiber and tenancy held before the pass first wrote it. The write sites are the setters of
-        // ComponentFiber.MountSlotStart, ComponentFiber.MountSlotCount and InlineTenancy.ShiftedRows, so a writer
-        // added later is journaled with the rest. Rollback reads them; Abandon does not.
+        // ComponentFiber.MountSlotStart, MountSlotCount, PreviousTree, PendingOldTree and OwningPortalPlaceholder
+        // and of InlineTenancy.ShiftedRows, so a writer added later is journaled with the rest. Rollback reads
+        // them; Abandon does not.
         private readonly Dictionary<ComponentFiber, (int Start, int Count)> _slots = new();
         private readonly Dictionary<InlineTenancy, int> _shiftedRows = new();
+        // The trees and the Portal stamp of a fiber are kept together: a write to any of the three records all of them.
+        private readonly Dictionary<ComponentFiber, FiberTrees> _trees = new();
         private ComponentFiber? _owner;
 
         internal bool IsOpen => _owner != null;
@@ -82,6 +89,12 @@ namespace Velvet
             _slots.TryAdd(fiber, (fiber.MountSlotStart, fiber.MountSlotCount));
         }
 
+        internal void RecordTrees(ComponentFiber fiber)
+        {
+            if (_owner == null) return;
+            _trees.TryAdd(fiber, new FiberTrees(fiber.PreviousTree, fiber.PendingOldTree, fiber.OwningPortalPlaceholder));
+        }
+
         internal void RecordShiftedRows(InlineTenancy tenancy)
         {
             if (_owner == null) return;
@@ -94,14 +107,22 @@ namespace Velvet
         {
             var slots = new List<KeyValuePair<ComponentFiber, (int Start, int Count)>>(_slots);
             var shifted = new List<KeyValuePair<InlineTenancy, int>>(_shiftedRows);
+            var trees = new List<KeyValuePair<ComponentFiber, FiberTrees>>(_trees);
             foreach (var (fiber, before) in slots)
             {
                 fiber.MountSlotStart = before.Start;
                 fiber.MountSlotCount = before.Count;
             }
             foreach (var (tenancy, before) in shifted) tenancy.ShiftedRows = before;
+            foreach (var (fiber, before) in trees)
+            {
+                fiber.PreviousTree = before.Previous;
+                fiber.PendingOldTree = before.PendingOld;
+                fiber.OwningPortalPlaceholder = before.OwningPortal;
+            }
             _slots.Clear();
             _shiftedRows.Clear();
+            _trees.Clear();
         }
 
         internal void Close()
@@ -120,6 +141,7 @@ namespace Velvet
                 _subsumed.Clear();
                 _slots.Clear();
                 _shiftedRows.Clear();
+                _trees.Clear();
                 _owner = null;
             }
         }

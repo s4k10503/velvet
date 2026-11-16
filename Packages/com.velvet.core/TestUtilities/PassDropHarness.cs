@@ -19,7 +19,7 @@ namespace Velvet.TestUtilities
     internal sealed class PassDropHarness
     {
         private readonly FiberPassJournal _journal;
-        private readonly List<(string Label, Func<string> Read, string Before)> _entries = new();
+        private readonly List<(string Label, Func<object?> Read, object? Before)> _entries = new();
 
         private PassDropHarness(ReconcilerContext context, ComponentFiber owner)
         {
@@ -44,7 +44,7 @@ namespace Velvet.TestUtilities
             foreach (var (label, read, before) in _entries)
             {
                 var after = read();
-                if (after != before) differences.Add($"{label}: {before} -> {after}");
+                if (!Same(before, after)) differences.Add($"{label}: {Describe(before)} -> {Describe(after)}");
             }
             return differences;
         }
@@ -57,8 +57,11 @@ namespace Velvet.TestUtilities
             fibers.AddRange(ComponentRegistryProbe.WrapperFibers(registry));
             foreach (var fiber in fibers)
             {
-                var label = $"{fiber.Body?.Method.Name ?? "fiber"}#{ordinal++} slots";
-                Add(label, () => $"{fiber.MountSlotStart},{fiber.MountSlotCount}");
+                var label = $"{fiber.Body?.Method.Name ?? "fiber"}#{ordinal++}";
+                Add($"{label} slots", () => $"{fiber.MountSlotStart},{fiber.MountSlotCount}");
+                Add($"{label} previous tree", () => fiber.PreviousTree);
+                Add($"{label} pending old tree", () => fiber.PendingOldTree);
+                Add($"{label} owning portal", () => fiber.OwningPortalPlaceholder);
             }
             foreach (var (container, tenancy) in ComponentRegistryProbe.Tenancies(registry))
             {
@@ -66,7 +69,22 @@ namespace Velvet.TestUtilities
             }
         }
 
-        private void Add(string label, Func<string> read) => _entries.Add((label, read, read()));
+        private void Add(string label, Func<object?> read) => _entries.Add((label, read, read()));
+
+        // A string is compared by value and every other reading by reference: the trees and the Portal stamp are
+        // arrays and elements, whose identity is what a restore has to give back.
+        private static bool Same(object? before, object? after)
+            => before is string ? Equals(before, after) : ReferenceEquals(before, after);
+
+        private static string Describe(object? reading)
+            => reading switch
+            {
+                null => "null",
+                string text => text,
+                Array array => $"{reading.GetType().Name}[{array.Length}]@{System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(array)}",
+                VisualElement element => $"{element.GetType().Name} '{element.name}'",
+                _ => reading.ToString(),
+            };
     }
 
     /// <summary>Reaches the indexes of a <see cref="ComponentRegistry"/>, which are private.</summary>

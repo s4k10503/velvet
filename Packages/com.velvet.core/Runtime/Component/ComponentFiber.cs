@@ -851,7 +851,17 @@ namespace Velvet
         /// reached instead through the parent index (ComponentRegistry.DisposeInlineFibersOwnedByPortal owns
         /// which is which).
         /// </summary>
-        internal UnityEngine.UIElements.VisualElement? OwningPortalPlaceholder { get; set; }
+        internal UnityEngine.UIElements.VisualElement? OwningPortalPlaceholder
+        {
+            get => _owningPortalPlaceholder;
+            set
+            {
+                Reconciler?.Context.Pass.Journal.RecordTrees(this);
+                _owningPortalPlaceholder = value;
+            }
+        }
+
+        private UnityEngine.UIElements.VisualElement? _owningPortalPlaceholder;
 
         // The presence and key of the AnimatePresence child this fiber was last expanded inside. A presence this
         // fiber, or a fiber below it, first mounts in a render of its own has no emission of that child around
@@ -865,7 +875,17 @@ namespace Velvet
         internal bool BlocksInitialEnters { get; set; }
 
         /// <summary>The VNode array fixed by the previous reconcile. Serves as the "old" side for the next reconcile.</summary>
-        internal VNode?[]? PreviousTree { get; set; }
+        internal VNode?[]? PreviousTree
+        {
+            get => _previousTree;
+            set
+            {
+                Reconciler?.Context.Pass.Journal.RecordTrees(this);
+                _previousTree = value;
+            }
+        }
+
+        private VNode?[]? _previousTree;
 
         // The last array FiberContextSpine asked whether this fiber's output holds a node that pushes context, and
         // the answer, so a spine walk over an unchanged output reads it rather than scanning the output again.
@@ -914,7 +934,17 @@ namespace Velvet
         internal bool FallbackReplacedPreviousTree { get; set; }
 
         /// <summary>Reference to the previous tree retained during a pending time-sliced reconcile.</summary>
-        internal VNode?[]? PendingOldTree { get; set; }
+        internal VNode?[]? PendingOldTree
+        {
+            get => _pendingOldTree;
+            set
+            {
+                Reconciler?.Context.Pass.Journal.RecordTrees(this);
+                _pendingOldTree = value;
+            }
+        }
+
+        private VNode?[]? _pendingOldTree;
 
         /// <summary>
         /// Frame budget (milliseconds) chosen for the in-flight reconcile by the lane that started it. A resume
