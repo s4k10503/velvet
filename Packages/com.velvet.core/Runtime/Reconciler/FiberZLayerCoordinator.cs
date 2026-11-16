@@ -381,14 +381,31 @@ namespace Velvet
         }
 
         // Patch-time entry: real (the slot's element, read through its placeholder) was patched to declared /
-        // resolved. Explicit facts relocate it at once and their loss returns it to its slot at once, so the slot
-        // occupant changes only where the patching diff expects it to; a relocation its siblings decide waits for
-        // the end of the pass (Arrange).
+        // resolved. Explicit facts relocate it and their loss returns it to its slot, where the pass's recorded writes
+        // have applied; a relocation its siblings decide waits for the end of the pass (Arrange). Outside a recording
+        // pass the settle runs at once.
         internal static void OnPatched(ReconcilerContext ctx, VisualElement real, VisualElement classElement,
             string[] declared, string[] resolved, bool anchored)
         {
             var facts = Record(ctx, real, classElement, declared, resolved, anchored);
+            if (ChildListWrites.IsRecording)
+            {
+                ctx.PendingSettles.Add((real, facts));
+                return;
+            }
             Settle(ctx, real, facts);
+        }
+
+        // Decides the stacking of what a pass patched, once its recorded writes have applied: the patch returned the
+        // occupant its slot held before, which this swaps for the placeholder or the element itself where the facts say so.
+        internal static void SettlePatched(ReconcilerContext ctx)
+        {
+            var pending = ctx.PendingSettles;
+            for (var i = 0; i < pending.Count; i++)
+            {
+                Settle(ctx, pending[i].Real, pending[i].Facts);
+            }
+            pending.Clear();
         }
 
         // The z a custom property supplies classElement changed with no patch of it; null is no integer, which

@@ -385,6 +385,7 @@ namespace Velvet
             try
             {
                 _ctx.HostCommit.EndRecordedPass();
+                FiberZLayerCoordinator.SettlePatched(_ctx);
                 try
                 {
                     var suspended = ChildPass.DrainPendingPortalMounts();

@@ -598,6 +598,9 @@ namespace Velvet
         // one staged behind them would land after the removal it belongs to.
         internal static int PatchPhase;
 
+        // Whether a pass is recording writes it has not applied yet.
+        internal static bool IsRecording => s_recording && !s_applying;
+
         // Whether a patch of element waits for the pass to end: one a patch half makes where a pass records, to an
         // element that has a live or a recorded parent. An element with neither is written at once.
         internal static bool StagesPatch(VisualElement element)
