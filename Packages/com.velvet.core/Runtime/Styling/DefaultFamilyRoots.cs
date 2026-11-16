@@ -31,6 +31,10 @@ namespace Velvet
             public int Holds;
             public readonly long HeldAt = s_heldCount++;
 
+            // Set by the release that took the last hold. s_held keeps the entry until the next prune rather than
+            // searching for it, so the release costs the same whatever else is held.
+            public bool Released;
+
             // What the last write here put on the element, or null for a write taking it back.
             public FontAsset? Written;
 
@@ -61,7 +65,8 @@ namespace Velvet
         private static readonly Comparison<Root> s_byHeldOrder = static (a, b) => a.HeldAt.CompareTo(b.HeldAt);
         private static long s_heldCount;
         private static int s_pruneAt = 32;
-        private static readonly Predicate<Root> s_collected = static root => !root.Element.TryGetTarget(out _);
+        private static readonly Predicate<Root> s_collected =
+            static root => root.Released || !root.Element.TryGetTarget(out _);
 
         private static readonly string[] s_definition = { "-unity-font-definition" };
         private static readonly string[] s_legacy = { "-unity-font" };
@@ -111,7 +116,7 @@ namespace Velvet
                 if (--_root.Holds == 0)
                 {
                     s_roots.Remove(_element);
-                    s_held.Remove(_root);
+                    _root.Released = true;
                     Decide(_element, _root, null);
                 }
 
@@ -128,12 +133,12 @@ namespace Velvet
         private static void Apply(VisualElement? scope = null)
         {
             var asset = DefaultAsset();
-            // MUTANT_SURVIVES(equivalent, boundary): which count prunes moves no decision; a pruned entry and one left
-            // in place are both skipped below, and a scoped call reads the subtree, not this list.
+            // MUTANT_SURVIVES(equivalent, boundary): which count prunes moves no decision; a scoped call reads the
+            // subtree, not this list.
             if (scope == null || s_held.Count >= s_pruneAt)
             {
-                // MUTANT_SURVIVES(equivalent, line removed): the loops below skip a collected element's entry whether
-                // or not it is taken out here; taking it out keeps entries of trees nobody disposed from piling up.
+                // What the unscoped loop below reads is what this leaves, so a released root is taken out here: it
+                // would be decided again, and its element written, otherwise.
                 s_held.RemoveAll(s_collected);
                 // MUTANT_SURVIVES(equivalent, line removed): the threshold only spaces the prunes of a scoped call.
                 s_pruneAt = Math.Max(32, s_held.Count * 2);
