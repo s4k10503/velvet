@@ -1154,6 +1154,7 @@ namespace Velvet
             {
                 _caughtError = value;
                 if (value != null) return;
+                CarriedEarlierCaptures = null;
                 CatchUnreported = false;
                 CatchReportedFromCarry = false;
             }
@@ -1165,6 +1166,9 @@ namespace Velvet
         // whose fallback reconciles without suspending (FiberErrorBoundary.ReportCarriedCatch), not at the catch. Clearing
         // CaughtError clears it.
         internal bool CatchUnreported { get; set; }
+
+        // The captures taken with the one CaughtError holds, which FiberErrorBoundary.ReportCarriedCatch reports ahead of it.
+        internal List<(Exception Error, ErrorInfo Info)>? CarriedEarlierCaptures { get; set; }
 
         // Set once ReportCarriedCatch has queued the report, until the commit delivers it: a Suspense whose primary
         // suspends discards the report, and the boundary then owes it again rather than forgetting the catch

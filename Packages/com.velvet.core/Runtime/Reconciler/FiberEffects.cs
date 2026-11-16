@@ -211,6 +211,12 @@ namespace Velvet
         private static bool FlushCaptures(ReconcilerContext ctx)
         {
             var oldest = CommitErrors.OldestOwed(ctx);
+            // A render a commit's own user code started left its boundary's captures where they were, with the
+            // boundary no longer queued.
+            foreach (var boundary in ctx.BoundariesOwedCaptures)
+            {
+                if (!boundary.IsDirty) FiberWorkLoop.ScheduleRerender(boundary, FiberUpdatePriority.Urgent);
+            }
             ctx.FlushingCaptures = true;
             try
             {

@@ -404,7 +404,7 @@ namespace Velvet
         // The errors a commit captured below the boundary (CommitErrors.Capture), caught here as a catch is, each
         // reported in capture order; the newest is the one its fallback is handed, as React's getDerivedStateFromError
         // takes each and keeps the last. A render that a commit's own user code starts leaves them for the render
-        // the commit's end asks for. The rows the boundary showed go first, so the fallback mounts afresh as it does
+        // the commit's end asks for (FiberEffects.FlushCaptures). The rows the boundary showed go first, so the fallback mounts afresh as it does
         // where TryCatch swaps it in, and a cleanup of those rows that throws is taken as one of the swap is, and
         // reported after the captures. Inside a parent's walk the unmount would take rows that walk already holds, so
         // the fallback is reconciled against them instead.
@@ -413,11 +413,7 @@ namespace Velvet
             var captures = fiber.PendingCaptures;
             if (captures == null || captures.Count == 0) return;
             var ctx = fiber.Reconciler!.Context;
-            if (ctx.InCommitPhase)
-            {
-                FiberWorkLoop.ScheduleRerender(fiber, FiberUpdatePriority.Urgent);
-                return;
-            }
+            if (ctx.InCommitPhase) return;
             var taken = captures.ToArray();
             ctx.DropCapturesOf(fiber);
             if (ctx.SharedReconcileDepth == 0)
@@ -432,9 +428,16 @@ namespace Velvet
                     fiber.IsShowingFallback = false;
                 }
             }
-            for (var i = 0; i < taken.Length - 1; i++) QueueCatch(ctx, fiber, taken[i].Error, taken[i].Info);
+            // Reported by the render that reconciles the fallback without suspending (ReportCarriedCatch), as React
+            // calls the update's callback from the commit that shows the fallback, which a fallback that suspends
+            // does not reach.
+            for (var i = 0; i < taken.Length - 1; i++)
+            {
+                (fiber.CarriedEarlierCaptures ??= new()).Add((taken[i].Error, taken[i].Info));
+            }
             var last = taken[taken.Length - 1];
-            RecordCatch(ctx, fiber, last.Error, last.Info);
+            fiber.CaughtError = (last.Error, last.Info);
+            fiber.CatchUnreported = true;
         }
 
         // The catch OutputOf's fallback was rendered for, where the fallback it suspended in at the catch has now been
@@ -443,6 +446,12 @@ namespace Velvet
         {
             if (!fiber.CatchUnreported || fiber.CaughtError is not var (error, info)) return;
             fiber.CatchUnreported = false;
+            var earlier = fiber.CarriedEarlierCaptures;
+            fiber.CarriedEarlierCaptures = null;
+            if (earlier != null)
+            {
+                foreach (var capture in earlier) QueueCatch(fiber.Reconciler!.Context, fiber, capture.Error, capture.Info);
+            }
             RecordCatch(fiber.Reconciler!.Context, fiber, error, info);
             fiber.CatchReportedFromCarry = true;
         }
