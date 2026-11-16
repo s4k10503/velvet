@@ -197,13 +197,31 @@ namespace Velvet.Tests
             Assert.That(log.ToString(), Is.EqualTo("ins-x:T lay-x:T ins-x:D lay-x:D"));
         }
 
-        // Its second row is a delayed field, which the walk patches at once, applying the writes recorded before it.
+        private static Label s_label;
+
+        // Logs the text of the label beside it where its layout cleanup runs, which the label's own write has reached only
+        // where the pass applied it before then.
+        [Component]
+        private static VNode ProbedAtTheLabel(Named props)
+        {
+            var log = EventLog.UseLog();
+            Hooks.UseInsertionEffect(() => () => log.Add("ins-x:" + props.Name), Array.Empty<object>());
+            Hooks.UseLayoutEffect(() => () => log.Add("lay-x:" + props.Name + "@" + s_label.text), Array.Empty<object>());
+            return V.Div();
+        }
+
+        // Its second row is a delayed field, which the walk patches at once, applying the writes recorded before it, the
+        // label's among them.
         [Component]
         private static VNode DropsBesideADelayedField(bool shown)
             => V.Fragment(
-                V.Label(text: shown ? "b" : "b2"),
+                V.Label(text: shown ? "b" : "b2", refCallback: element =>
+                {
+                    s_label = (Label)element;
+                    return () => { };
+                }),
                 V.TextField(value: shown ? "1" : "2", isDelayed: true),
-                shown ? V.Component(Probed, new Named("E"), key: "e") : null);
+                shown ? V.Component(ProbedAtTheLabel, new Named("E"), key: "e") : null);
 
         [Component]
         private static VNode DelayedFieldBeforeTheDeletions()
@@ -227,8 +245,8 @@ namespace Velvet.Tests
             log.Setter<bool>("Shown").Invoke(false);
             mounted.DrainForTest();
 
-            // Assert
-            Assert.That(log.ToString(), Is.EqualTo("ins-x:F lay-x:F ins-x:E lay-x:E"));
+            // Assert — the label's text is what the flush that applied its write ahead of the walk's end leaves for E's cleanup
+            Assert.That(log.ToString(), Is.EqualTo("ins-x:F lay-x:F ins-x:E lay-x:E@b2"));
         }
 
         [Component]
@@ -340,7 +358,239 @@ namespace Velvet.Tests
             Assert.That(log.ToString(), Is.EqualTo("ins-x:D lay-x:D ins-x:E lay-x:E"));
         }
 
-        [TestCase("_turn.Fiber")]
+        // Renders nothing, so its deletion holds no row of the container's.
+        [Component]
+        private static VNode Rowless(Named props)
+        {
+            EventLog.UseInsertionAndLayoutEffects(props.Name, Array.Empty<object>());
+            return V.Fragment(Array.Empty<VNode>());
+        }
+
+        [Component]
+        private static VNode DropsARowless(bool shown)
+            => V.Fragment(shown ? V.Component(Rowless, new Named("A"), key: "a") : null);
+
+        [Component]
+        private static VNode RowlessThenAList()
+        {
+            var (shown, _) = EventLog.UseState("Shown", true);
+            return V.Fragment(
+                V.Component(DropsARowless, shown, key: "l"),
+                V.Component(HoldsAList, shown, key: "b"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base's one plan places a component that renders nothing at the row its
+        // slot names, so it is taken down in tree order.
+        [Test]
+        public void Given_AComponentRenderingNothingDeletedAheadOfAListWhoseRowCannotWait_When_BothAreDeleted_Then_TheComponentsDeletionRunsFirst()
+        {
+            // Arrange
+            var log = new EventLog();
+            var root = new VisualElement();
+            using var mounted = V.Mount(root, log.Provide(V.Component(RowlessThenAList)));
+            mounted.DrainForTest();
+            mounted.Root.Reconciler!.Context.VirtualListControllers[root.Q<ScrollView>()]
+                .UpdateVisibleRange(scrollY: 0f, viewportHeight: 50f);
+            mounted.DrainForTest();
+            log.Clear();
+
+            // Act
+            log.Setter<bool>("Shown").Invoke(false);
+            mounted.DrainForTest();
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("ins-x:A lay-x:A ins-x:R lay-x:R"));
+        }
+
+        [Component]
+        private static VNode RowlessThenADelayedField()
+        {
+            var (shown, _) = EventLog.UseState("Shown", true);
+            return V.Fragment(
+                V.Component(DropsARowless, shown, key: "l"),
+                V.Component(DropsBesideADelayedField, shown, key: "b"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base's one plan takes a component that renders nothing down in tree order.
+        [Test]
+        public void Given_AComponentRenderingNothingDeletedAheadOfAnOwnerWhoseDelayedFieldFlushesTheWalk_When_BothAreDeleted_Then_TheComponentsDeletionRunsFirst()
+        {
+            // Arrange
+            var log = new EventLog();
+            using var mounted = _renderer.Mount(log.Provide(V.Component(RowlessThenADelayedField)));
+            mounted.DrainForTest();
+            log.Clear();
+
+            // Act
+            log.Setter<bool>("Shown").Invoke(false);
+            mounted.DrainForTest();
+
+            // Assert — the label's text is what the flush that applied its write ahead of the walk's end leaves for E's cleanup
+            Assert.That(log.ToString(), Is.EqualTo("ins-x:A lay-x:A ins-x:E lay-x:E@b2"));
+        }
+
+        [Component]
+        private static VNode DivWithAFragmentThenAFragment()
+        {
+            var (shown, _) = EventLog.UseState("Shown", true);
+            return V.Fragment(
+                V.Div(key: "x", children: new VNode[]
+                {
+                    V.Label(text: "l"),
+                    V.Fragment(shown ? V.Component(Probed, new Named("D"), key: "d") : null),
+                }),
+                V.Fragment(shown ? V.Component(Probed, new Named("E"), key: "e") : null));
+        }
+
+        // GREEN_ON_BASE(characterization): the base queues the element's container ahead of the outer one, which is React's
+        // order for a Fragment of an element's children before the Fragment after the element. The two Fragments sit at the
+        // same position of two walks, which a turn named by position alone cannot tell apart.
+        [Test]
+        public void Given_AFragmentInAnElementAheadOfAFragmentOfItsOwner_When_BothDeleteAComponent_Then_TheElementsDeletionRunsFirst()
+        {
+            // Arrange
+            var log = new EventLog();
+            using var mounted = _renderer.Mount(log.Provide(V.Component(DivWithAFragmentThenAFragment)));
+            mounted.DrainForTest();
+            log.Clear();
+
+            // Act
+            log.Setter<bool>("Shown").Invoke(false);
+            mounted.DrainForTest();
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("ins-x:D lay-x:D ins-x:E lay-x:E"));
+        }
+
+        [Component]
+        private static VNode XThenAProviderDroppingAFragment()
+        {
+            var (shown, _) = EventLog.UseState("Shown", true);
+            return V.Fragment(
+                V.Component(DropsX, shown, key: "l"),
+                V.Provider(s_context, 1, new VNode[]
+                {
+                    shown ? V.Fragment(new VNode[] { V.Component(Probed, new Named("E"), key: "e") }, key: "k") : null,
+                }));
+        }
+
+        // GREEN_ON_BASE(characterization): the base's one plan takes the container in tree order, as React reaches the
+        // Provider after the component before it and deletes the Fragment under it there.
+        [Test]
+        public void Given_AProviderDroppingAFragmentHoldingAComponent_When_AComponentBeforeItDeletesToo_Then_TheComponentsDeletionRunsFirst()
+        {
+            // Arrange
+            var log = new EventLog();
+            using var mounted = _renderer.Mount(log.Provide(V.Component(XThenAProviderDroppingAFragment)));
+            mounted.DrainForTest();
+            log.Clear();
+
+            // Act
+            log.Setter<bool>("Shown").Invoke(false);
+            mounted.DrainForTest();
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("ins-x:X lay-x:X ins-x:E lay-x:E"));
+        }
+
+        [Component]
+        private static VNode DropsCAndX()
+        {
+            var (shown, _) = EventLog.UseState("Shown", true);
+            return V.Fragment(
+                V.Component(DropsX, shown, key: "l"),
+                V.Memoized(() => shown ? V.Component(Probed, new Named("C"), key: "c") : V.Label(text: "none"), shown));
+        }
+
+        // The component the memoized element holds is a child of the component that rendered it, whose deletions run ahead of
+        // those of its children.
+        [Test]
+        public void Given_AMemoizedElementDroppingAComponentAfterAComponentThatDeletesToo_When_BothAreDeleted_Then_TheMemoizedOnesDeletionRunsFirst()
+        {
+            // Arrange
+            var log = new EventLog();
+            using var mounted = _renderer.Mount(log.Provide(V.Component(DropsCAndX)));
+            mounted.DrainForTest();
+            log.Clear();
+
+            // Act
+            log.Setter<bool>("Shown").Invoke(false);
+            mounted.DrainForTest();
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("ins-x:C lay-x:C ins-x:X lay-x:X"));
+        }
+
+        private sealed class Gate
+        {
+            internal VelvetTaskCompletionSource<int> Source;
+        }
+
+        private sealed record ReaderProps(int Blocked, Gate Gate);
+
+        [Component]
+        private static VNode Reader(ReaderProps props)
+        {
+            var value = Hooks.Use(() => props.Blocked > 0
+                ? (props.Gate.Source = new VelvetTaskCompletionSource<int>()).Task
+                : VelvetTask.FromResult(0), props.Blocked);
+            return V.Label(text: "reader:" + value);
+        }
+
+        [Component]
+        private static VNode XThenASuspenseShowingItsFallback(Gate gate)
+        {
+            var (shown, _) = EventLog.UseState("Shown", true);
+            var (blocked, _) = EventLog.UseState("Block", 0);
+            return V.Fragment(
+                V.Component(DropsX, shown, key: "l"),
+                V.Suspense(
+                    fallback: V.Component(Probed, new Named("F"), key: "f"),
+                    children: new VNode[] { V.Component(Reader, new ReaderProps(blocked, gate), key: "reader") }));
+        }
+
+        // GREEN_ON_BASE(characterization): the base's one plan takes the container in tree order, as React deletes the
+        // fallback at the Suspense's turn, after the component before it.
+        [Test]
+        public void Given_ASuspenseRevealingItsPrimary_When_AComponentBeforeItDeletesInTheSamePass_Then_TheComponentsDeletionRunsFirst()
+        {
+            // Arrange
+            var log = new EventLog();
+            var gate = new Gate();
+            using var mounted = _renderer.Mount(log.Provide(V.Component(XThenASuspenseShowingItsFallback, gate)),
+                new MountOptions { OnCaughtError = (_, _) => { } });
+            mounted.DrainForTest();
+            log.Setter<int>("Block").Invoke(1);
+            mounted.DrainForTest();
+            log.Clear();
+
+            // Act
+            log.Setter<int>("Block").Invoke(0);
+            log.Setter<bool>("Shown").Invoke(false);
+            mounted.DrainForTest();
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("ins-x:X lay-x:X ins-x:F lay-x:F"));
+        }
+
+        [Test]
+        public void Given_AContainerDeletingAtTwoOwnersTurns_When_BothHaveEnded_Then_BothWalksAreBackInThePool()
+        {
+            // Arrange
+            var log = new EventLog();
+            using var mounted = _renderer.Mount(log.Provide(V.Component(OwnerThenAComponentOfTheContainer)));
+            mounted.DrainForTest();
+            DeletionCommitPool.Clear();
+
+            // Act
+            log.Setter<bool>("Shown").Invoke(false);
+            mounted.DrainForTest();
+
+            // Assert
+            Assert.That(DeletionCommitPool.Walks().Count, Is.EqualTo(2));
+        }
+
+        [TestCase("_anchor")]
         [TestCase("_oldFibers")]
         [TestCase("NextGroup")]
         public void Given_AContainerDeletingAtTwoOwnersTurns_When_BothHaveEnded_Then_NoPooledWalkKeepsWhatItNamed(string field)
@@ -356,6 +606,22 @@ namespace Velvet.Tests
 
             // Assert — a walk with no such field reads as a count the expected one is not
             Assert.That(DeletionCommitPool.WalksHolding(field), Is.EqualTo(0));
+        }
+
+        [Test]
+        public void Given_AContainerDeletingAtTwoOwnersTurns_When_BothHaveEnded_Then_NoPooledWalkKeepsAnOrphanItTookDown()
+        {
+            // Arrange
+            var log = new EventLog();
+            using var mounted = _renderer.Mount(log.Provide(V.Component(OwnerThenAComponentOfTheContainer)));
+            mounted.DrainForTest();
+
+            // Act
+            log.Setter<bool>("Shown").Invoke(false);
+            mounted.DrainForTest();
+
+            // Assert — a walk with no such field reads as a count the expected one is not
+            Assert.That(DeletionCommitPool.EntriesInWalks("OwnOldFibers"), Is.EqualTo(0));
         }
     }
 }

@@ -151,6 +151,18 @@ namespace Velvet
         public List<ComponentFiber?> RentFiberOwnerList() => _fiberOwnerListPool.Rent();
         public void ReturnFiberOwnerList(List<ComponentFiber?> list) => _fiberOwnerListPool.Return(list);
 
+        private readonly ClearablePool<Dictionary<TurnKey, TurnAnchor>> _anchorTablePool = new(t => t.Clear());
+        public Dictionary<TurnKey, TurnAnchor> RentAnchorTable() => _anchorTablePool.Rent();
+        public void ReturnAnchorTable(Dictionary<TurnKey, TurnAnchor> table) => _anchorTablePool.Return(table);
+
+        private readonly ClearablePool<Dictionary<TurnKey, long>> _turnParentTablePool = new(t => t.Clear());
+        public Dictionary<TurnKey, long> RentTurnParentTable() => _turnParentTablePool.Rent();
+        public void ReturnTurnParentTable(Dictionary<TurnKey, long> table) => _turnParentTablePool.Return(table);
+
+        private readonly ClearablePool<Dictionary<TurnAnchor, DeletionCommit>> _groupTablePool = new(t => t.Clear());
+        public Dictionary<TurnAnchor, DeletionCommit> RentGroupTable() => _groupTablePool.Rent();
+        public void ReturnGroupTable(Dictionary<TurnAnchor, DeletionCommit> table) => _groupTablePool.Return(table);
+
         private readonly ClearablePool<List<long>> _turnListPool = new(l => l.Clear());
         public List<long> RentTurnList() => _turnListPool.Rent();
         public void ReturnTurnList(List<long> list) => _turnListPool.Return(list);

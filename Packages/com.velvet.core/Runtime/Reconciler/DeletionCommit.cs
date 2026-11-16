@@ -3,25 +3,6 @@ using UnityEngine.UIElements;
 
 namespace Velvet
 {
-    // Whose turn a deletion runs at: a fiber's own, a construct of its tree that React gives a fiber of its own (a
-    // Provider, a Suspense, a nested or keyed Fragment, a Memo), named by the position its nodes were walked at, or the
-    // container's, which no fiber of the walk owns.
-    internal readonly struct DeletionTurn
-    {
-        internal readonly ComponentFiber? Fiber;
-        internal readonly long Position;
-
-        internal DeletionTurn(ComponentFiber? fiber, long position)
-        {
-            Fiber = fiber;
-            Position = position;
-        }
-
-        internal bool IsContainers => Fiber == null && Position == 0;
-
-        internal bool Is(in DeletionTurn other) => ReferenceEquals(Fiber, other.Fiber) && Position == other.Position;
-    }
-
     // React's commitDeletionEffectsOnFiber over what one container's reconcile deletes, or over what leaves outside
     // one: the pre-order walk of PreOrderTeardown, which records a component's cleanups
     // (FiberEffects.CleanUpDeleted) and an element's ref detach where it reaches them, and RunPlan runs them in that
@@ -51,9 +32,8 @@ namespace Velvet
         private bool _startsInsideARow;
         // The removed rows registered for Teardown before their removals are recorded, in the order registered.
         private readonly List<(VisualElement Parent, VisualElement Element, VisualElement Poolable, VisualElement? DiscardedRoot)> _cleanups = new();
-        // Whose turn the deletion runs at, and where the container's walk began for one the container owns.
-        private DeletionTurn _turn;
-        private ChildListWrites.OpMark _start;
+        // Where the deletion's teardown runs among the pass's recorded writes: the turn of the fiber or construct that owns it.
+        private TurnAnchor? _anchor;
         private bool _deferred;
         private bool _queued;
         private bool _executed;
@@ -63,10 +43,10 @@ namespace Velvet
         // or where an abort skipped them. Occupants are the container's old leaves, the first at slotStart.
         //
         // A deletion that a pass records its writes for runs at its owner's turn (Queue): the nearest fiber or construct of
-        // the walk that kept what it deleted, or the container's own where there is none. A container whose deletions have
-        // several owners holds one DeletionCommit for each, chained through NextGroup.
+        // the walk that kept what it deleted, or the container's own where there is none. A container whose deletions that
+        // wait for the apply have several owners holds one DeletionCommit for each, chained through NextGroup.
         internal static DeletionCommit Begin(ReconcilerContext ctx, FiberElementCleaner cleaner, VisualElement? container,
-            int slotStart, OldSlotOccupants? occupants, DeletionTurn turn = default, ChildListWrites.OpMark start = default)
+            int slotStart, OldSlotOccupants? occupants, TurnAnchor? anchor = null)
         {
             var commit = s_pool.Count > 0 ? s_pool.Pop() : new DeletionCommit();
             commit.Ctx = ctx;
@@ -74,19 +54,19 @@ namespace Velvet
             commit._container = container;
             commit._slotStart = slotStart;
             commit._occupants = occupants;
-            commit._turn = turn;
-            commit._start = start;
+            commit._anchor = anchor;
             commit._deletion = DeletionPlan.Rent();
             return commit;
         }
 
         // The deletion of the same container that runs at another owner's turn, if the container has one.
         internal DeletionCommit? NextGroup;
+        // The orphans of the container that this deletion takes down where it is one of several (GeneralPathReconciler.TakeDownTheDeletion).
+        internal readonly List<ComponentFiber> OwnOldFibers = new();
         // The fibers Run was given, which hold the orphans this deletion takes down.
         internal List<ComponentFiber>? OldFibers => _oldFibers;
         private List<ComponentFiber>? _oldFibers;
         internal DeletionPlan Plan => _deletion;
-        internal DeletionTurn Turn => _turn;
 
         internal void AddRemovedRow(int index, VisualElement row) => _removedRows.Add((index, row));
 
@@ -104,37 +84,24 @@ namespace Velvet
             else Execute();
         }
 
-        // Whether the deletions of one container, chained through NextGroup from this one, run where the pass applies its
-        // recorded writes (Teardown) rather than where they are decided, which they do together: one that ran in the walk
-        // would run ahead of those that wait. They keep the immediate path where a fiber's unmount reconciles its own rows
-        // (a wrapper-mounted fiber with a tree), where a Portal under a root has the container itself for its target,
-        // whose range follows the container's own rows (HostCommitQueue.FollowOwnRows), and where a Portal's target is
-        // inside a root of any of them, which takes its rows with it.
+        // Whether the deletion runs where the pass applies its recorded writes (Teardown) rather than where it is decided.
+        // It keeps the immediate path where a fiber's unmount reconciles its own rows (a wrapper-mounted fiber with a
+        // tree), where a Portal under a root has the container itself for its target, whose range follows the
+        // container's own rows (HostCommitQueue.FollowOwnRows), and where a Portal's target is inside a root, which
+        // takes its rows with it.
         internal bool CanDefer()
         {
-            for (var group = this; group != null; group = group.NextGroup)
+            foreach (var placeholder in _portalsUnderRoots)
             {
-                foreach (var placeholder in group._portalsUnderRoots)
-                {
-                    if (!Ctx.PortalState.TryGetValue(placeholder, out var portal)) continue;
-                    var target = portal.Target;
-                    if (target != null && (ReferenceEquals(target, _container) || IsUnderARootOfAny(target))) return false;
-                }
-                foreach (var fiber in group._fibers)
-                {
-                    if (!fiber.IsInlineMounted && fiber.MountPoint != null && fiber.PreviousTree != null) return false;
-                }
+                if (!Ctx.PortalState.TryGetValue(placeholder, out var portal)) continue;
+                var target = portal.Target;
+                if (target != null && (ReferenceEquals(target, _container) || IsUnderARoot(target))) return false;
+            }
+            foreach (var fiber in _fibers)
+            {
+                if (!fiber.IsInlineMounted && fiber.MountPoint != null && fiber.PreviousTree != null) return false;
             }
             return true;
-        }
-
-        private bool IsUnderARootOfAny(VisualElement element)
-        {
-            for (var group = this; group != null; group = group.NextGroup)
-            {
-                if (group.IsUnderARoot(element)) return true;
-            }
-            return false;
         }
 
         // What CleanupPortal does to the model for each mounted Portal under a root, done where the deletion decides so a
@@ -191,7 +158,7 @@ namespace Velvet
             if (!_deferred || _queued) return;
             _queued = true;
             Ctx.ComponentRegistry.HideFibers(_fibers);
-            if (!ChildListWrites.RecordTeardown(this, _turn, _start)) Teardown();
+            if (!ChildListWrites.RecordTeardown(this, _anchor)) Teardown();
             foreach (var (target, row) in _portalRows) Ctx.HostCommit.RemoveRow(target, row);
         }
 
@@ -272,6 +239,14 @@ namespace Velvet
         // as being deleted (ComponentFiber.BeginDeletion).
         internal DeletionPlan BuildPlan(List<ComponentFiber> oldFibers, HashSet<ComponentFiber> newFibers, int oldLength)
         {
+            Collect(oldFibers, newFibers);
+            return Order(oldLength);
+        }
+
+        // What the walk reaches, which CanDefer reads and the walk itself does not change: the orphans, the roots of the
+        // removed rows and the fibers held under them.
+        internal void Collect(List<ComponentFiber> oldFibers, HashSet<ComponentFiber> newFibers)
+        {
             _oldFibers = oldFibers;
             foreach (var fiber in oldFibers)
             {
@@ -281,6 +256,11 @@ namespace Velvet
             }
             foreach (var (_, row) in _removedRows) AddRowAsRoot(row);
             CollectHeldFibers();
+        }
+
+        // The walk over what Collect reached, in React's order.
+        internal DeletionPlan Order(int oldLength)
+        {
             ComponentFiber.BeginDeletion(_fibers);
             foreach (var fiber in _fibers) PlaceDeleted(fiber, oldLength);
             _orphanRows.Sort(static (a, b) => a.Index.CompareTo(b.Index));
@@ -492,9 +472,9 @@ namespace Velvet
             _container = null;
             // MUTANT_SURVIVES(equivalent): Begin assigns the occupants before any read.
             _occupants = null;
-            _turn = default;
-            // MUTANT_SURVIVES(equivalent, line removed): Begin assigns the mark before any read; the reset only drops the pass it names.
-            _start = default;
+            // MUTANT_SURVIVES(equivalent, line removed): Begin assigns the anchor before any read; the reset only drops the one it names.
+            _anchor = null;
+            OwnOldFibers.Clear();
             NextGroup = null;
             _oldFibers = null;
             _removedRows.Clear();

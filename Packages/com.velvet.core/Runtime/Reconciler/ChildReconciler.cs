@@ -255,6 +255,7 @@ namespace Velvet
             var oldOwners = _ctx.BufferPool.RentFiberOwnerList();
             var oldKeys = _ctx.BufferPool.RentLeafKeyList();
             var oldTurns = _ctx.BufferPool.RentTurnList();
+            var oldTurnParents = _ctx.BufferPool.RentTurnParentTable();
             var pairing = new GeneralPathReconciler.InlinePairing
             {
                 OldFibers = oldFibers,
@@ -263,6 +264,7 @@ namespace Velvet
                 OldOwners = oldOwners,
                 OldKeys = oldKeys,
                 OldTurns = oldTurns,
+                OldTurnParents = oldTurnParents,
             };
             VNode?[] oldNodes;
             // The boundary reproductions this container's own walk takes, retirable only once the removal
@@ -274,7 +276,7 @@ namespace Velvet
             {
                 // Old side is always expanded structurally into the flat leaf array used for matching.
                 // (No context push, no render — it reproduces the previously committed leaf order.)
-                oldNodes = _general.ExpandInlineForReconcile(oldChildren, isNewSide: false, parent, slotStart, oldFibers, newFibers, oldProviders, owners: oldOwners, keys: oldKeys, turns: oldTurns);
+                oldNodes = _general.ExpandInlineForReconcile(oldChildren, isNewSide: false, parent, slotStart, oldFibers, newFibers, oldProviders, owners: oldOwners, keys: oldKeys, turns: oldTurns, turnParents: oldTurnParents);
 
                 // oldFibers is non-empty wherever the old side reached a descendant fiber, so a leaf of
                 // this container may have been emitted by one. That pairing is what the fast path cannot
@@ -325,6 +327,7 @@ namespace Velvet
                 _ctx.BufferPool.ReturnFiberOwnerList(oldOwners);
                 _ctx.BufferPool.ReturnLeafKeyList(oldKeys);
                 _ctx.BufferPool.ReturnTurnList(oldTurns);
+                _ctx.BufferPool.ReturnTurnParentTable(oldTurnParents);
             }
         }
 

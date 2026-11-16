@@ -36,6 +36,28 @@ namespace Velvet.TestUtilities
             return holding;
         }
 
+        /// <summary>Empties the pool, so a case counts the walks a deletion returns and not what earlier ones left.</summary>
+        public static void Clear()
+        {
+            var pool = typeof(DeletionCommit).GetField("s_pool", BindingFlags.NonPublic | BindingFlags.Static)!.GetValue(null);
+            pool.GetType().GetMethod("Clear")!.Invoke(pool, null);
+        }
+
+        /// <summary>
+        /// How many entries the lists held in a field of the walks the pool holds keep, or -1 where a walk has no such field.
+        /// </summary>
+        public static int EntriesInWalks(string field)
+        {
+            var entries = 0;
+            foreach (var walk in Walks())
+            {
+                var value = FieldPathValue(walk, field);
+                if (value == Missing) return -1;
+                if (value is ICollection collection) entries += collection.Count;
+            }
+            return entries;
+        }
+
         private static readonly object Missing = new();
 
         private static object FieldPathValue(object target, string path)

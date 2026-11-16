@@ -190,8 +190,8 @@ namespace Velvet
         // old side reached and its new side did not, whose disposal comes after them (DisposeOrphans), and the rows
         // it removes.
         internal DeletionCommit BeginDeletion(VisualElement? container, int slotStart, OldSlotOccupants occupants,
-            in DeletionTurn turn, in ChildListWrites.OpMark start)
-            => DeletionCommit.Begin(_ctx, _cleaner, container, slotStart, occupants, turn, start);
+            TurnAnchor? anchor)
+            => DeletionCommit.Begin(_ctx, _cleaner, container, slotStart, occupants, anchor);
         internal void DisposeOrphans(List<ComponentFiber> oldFibers, HashSet<ComponentFiber> newFibers)
         {
             if (oldFibers.Count == 0) return;
