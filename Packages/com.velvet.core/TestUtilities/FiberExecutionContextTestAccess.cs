@@ -9,7 +9,7 @@ namespace Velvet.TestUtilities
     /// </summary>
     internal static class FiberExecutionContextTestAccess
     {
-        // Bypasses: the door: production reaches a commit step only inside the entry a flush, a mount or a drain opens.
+        // Bypasses: the door: production reaches a render or commit step only inside FiberExecutionContext.Enter.
         internal static void RunAsEntryForTest(Action body)
             => FiberExecutionContext.Enter<Action>(null, body, static run => run());
     }

@@ -904,10 +904,9 @@ which the text cannot tell from a computed value compared with an expected tuple
 ### Checking that Velvet's own code reaches a body, not an entry
 
 Each entry into Velvet's render and commit is a door and a body, as `FiberExecutionContext` describes: a
-door reached while a root renders or commits is held until the outermost entry has ended, and Velvet's
-render and commit code calls the body. A door called from inside them defers work the entry on the
-stack owes, and no assertion on a render or commit step sees it, since the held work runs in an entry
-of its own.
+door reached while a root renders or commits does not run its work where it is called, and Velvet's
+render and commit code calls the body. A door called from inside them moves work the entry on the stack
+owes, and no assertion on a render or commit step sees it, since that work still runs inside an entry.
 
 ```bash
 python3 scripts/test_quality/entry_sites_check.py

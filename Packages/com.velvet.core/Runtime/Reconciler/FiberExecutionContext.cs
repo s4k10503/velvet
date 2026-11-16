@@ -7,8 +7,9 @@ namespace Velvet
     // React's executionContext (RenderContext | CommitContext): one flag for every root, set while an entry renders,
     // commits or flushes passive effects. A door is the method something outside Velvet's render and commit calls —
     // the panel scheduler, a UI Toolkit callback, the main-thread pump, a public or test entry. Reached while the flag
-    // is clear, a door runs its body as the outermost entry; reached while it is set, it is held, and what is held runs
-    // once the outermost entry has ended, in the order it was asked for. Velvet's render and commit code calls the
+    // is clear, a door runs its body as the outermost entry. Reached while it is set, it is held, and what is held runs
+    // once the outermost entry has ended, in the order it was asked for; a flush of a scheduler whose own drain is on the
+    // stack is left to that drain instead (FiberBatchScheduler.HoldFlush). Velvet's render and commit code calls the
     // body, never the door, which is what makes a call sub-work of the entry on the stack;
     // scripts/test_quality/entry_sites_check.py holds the methods that may call a door.
     internal static class FiberExecutionContext
@@ -56,12 +57,12 @@ namespace Velvet
 
         internal static bool IsSet => s_set;
 
-        internal static void Enter<TState>(FiberBatchScheduler? owner, TState state, Action<TState> body)
+        internal static void Enter<TState>(FiberBatchScheduler? owner, TState state, Action<TState> entry)
         {
             Begin();
             try
             {
-                body(state);
+                entry(state);
             }
             finally
             {
@@ -69,12 +70,12 @@ namespace Velvet
             }
         }
 
-        internal static TResult Enter<TState, TResult>(FiberBatchScheduler? owner, TState state, Func<TState, TResult> body)
+        internal static TResult Enter<TState, TResult>(FiberBatchScheduler? owner, TState state, Func<TState, TResult> entry)
         {
             Begin();
             try
             {
-                return body(state);
+                return entry(state);
             }
             finally
             {
@@ -198,8 +199,9 @@ namespace Velvet
             }
         }
 
-        // Counts a run toward the owner's bound. Past it, the owner's looping work is dropped for this release and the
-        // nested-update error logged once; a mount and an unmount are not counted, since nothing asks for either again.
+        // Counts a run toward the owner's bound. Past it, each of the owner's looping items is skipped as it is reached
+        // for the rest of this release, and the nested-update error logged once; a mount and an unmount are not counted,
+        // since nothing asks for either again.
         private static bool Counted(FiberBatchScheduler? owner)
         {
             var key = (object?)owner ?? s_noOwner;
@@ -208,11 +210,6 @@ namespace Velvet
             s_runs[key] = ++runs;
             if (runs <= MaxLoopingRunsPerOwner) return true;
             s_capped.Add(key);
-            for (var i = s_held.Count - 1; i >= 0; i--)
-            {
-                if (Loops(s_held[i].Kind) && ReferenceEquals((object?)s_held[i].Owner ?? s_noOwner, key)) s_held.RemoveAt(i);
-            }
-            if (owner != null) s_owingSyncLane.Remove(owner);
             UnityEngine.Debug.LogException(new InvalidOperationException(
                 "Maximum update depth exceeded. A root kept asking for work while another rendered or committed, "
                 + $"{MaxLoopingRunsPerOwner} times in a row. Velvet limits it, as React limits nested updates, to "
@@ -227,6 +224,8 @@ namespace Velvet
                 if (s_owingSyncLane[i].OwesSyncLane) return true;
             }
             s_owingSyncLane.Clear();
+            // MUTANT_SURVIVES(equivalent, literal): the list is empty here, so the release this would let through takes
+            // nothing held and no owing scheduler, and ends before its first item.
             return false;
         }
 
@@ -236,7 +235,7 @@ namespace Velvet
             {
                 var scheduler = s_owingSyncLane[0];
                 s_owingSyncLane.RemoveAt(0);
-                if (scheduler.OwesSyncLane && !s_capped.Contains(scheduler)) return scheduler;
+                if (scheduler.OwesSyncLane) return scheduler;
             }
             return null;
         }
@@ -247,9 +246,9 @@ namespace Velvet
             {
                 run(state);
             }
-            catch (Exception exception)
+            catch (Exception thrown)
             {
-                UnityEngine.Debug.LogException(exception);
+                UnityEngine.Debug.LogException(thrown);
             }
         }
     }

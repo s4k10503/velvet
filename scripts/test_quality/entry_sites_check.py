@@ -2,11 +2,11 @@
 """Fail when Velvet's own render and commit code calls an entry's door rather than its body.
 
 FiberExecutionContext.cs owns the model: a door is the method something outside Velvet's render and
-commit calls, and a door reached while a root renders or commits is held until the outermost entry has
-ended. Velvet's render and commit code calls the body (the ...Work method) instead, which is what makes
-the call sub-work of the entry on the stack. A door called from inside the render or commit defers that
-work to the release, and the assertions on the render and commit steps cannot see it, since the held
-item runs inside an entry of its own.
+commit calls, and a door reached while a root renders or commits does not run its work where it is
+called. Velvet's render and commit code calls the body (the ...Work method) instead, which is what makes
+the call sub-work of the entry on the stack. A door called from inside the render or commit moves that
+work, and the assertions on the render and commit steps cannot see it, since it still runs inside an
+entry.
 
 Each reference to a door is read for the member it sits in, and only the members ALLOWED names may hold
 one: the callbacks UI Toolkit, the panel scheduler and the main-thread pump run, the public and preview

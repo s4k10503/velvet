@@ -359,8 +359,10 @@ namespace Velvet
             FiberExecutionContext.Enter(this, this, static scheduler => scheduler.DrainImmediateWork());
         }
 
-        // A flush asked for while this scheduler's own drain is on the stack is left to that drain, whose loop renders
-        // until the tier is quiet; one asked for anywhere else in an entry waits for the outermost entry to end, and then
+        // A flush asked for while this scheduler's immediate drain runs, or while a pass of either tier renders, is left to
+        // that drain: what a pass, or the passive flush ahead of one, queues renders before the drain returns, except an
+        // update the passive flush after a sync-lane pass queues off the sync lane, which DrainImmediatePasses leaves for
+        // the tier's next drain. A flush asked for anywhere else in an entry waits for the outermost entry to end, and then
         // runs the passive effects earlier commits left pending before it drains.
         internal void HoldFlush()
         {
