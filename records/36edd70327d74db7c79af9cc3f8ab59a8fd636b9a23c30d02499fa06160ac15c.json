@@ -1,0 +1,31 @@
+{
+ "detail": "EditMode: 1 failed: Given_APortalRowGivenTheDefaultFaceByItsClass_When_AnAuthorsFontRuleComesToMatchItsTarget_Then_TheRowKeepsThatFace",
+ "file": "eeedb2471329b16e6642f72a16271679f0e88d896d9155bf0183a8acd58d0e26",
+ "killers": [
+  {
+   "case": "Velvet.Tests.DefaultFamilyScopePanelTests.Given_APortalRowGivenTheDefaultFaceByItsClass_When_AnAuthorsFontRuleComesToMatchItsTarget_Then_TheRowKeepsThatFace",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/DefaultFamilyScopePanelTests.cs": "d82d0c9ba183556265e727ef466b98e0f3eecb0c0a64e96408296c4f0367cdc5",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26"
+   }
+  }
+ ],
+ "measured_by": "43802113819",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 21,
+  "line": 166,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Styling/VelvetFonts.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "8e7e1b10266f79fab5f5202a407f54c3c10d6b23f97889a416e135d0c09a9dce",
+ "verdict": "killed"
+}

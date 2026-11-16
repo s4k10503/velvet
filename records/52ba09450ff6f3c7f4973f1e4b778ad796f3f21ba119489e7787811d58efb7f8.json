@@ -1,0 +1,46 @@
+{
+ "detail": "EditMode: 3 failed among the 46 case(s) that ran the site: Given_RenderPhaseDepOscillation_When_SettledToCommittedDep_Then_FactoryDoesNotRunAgain, Given_RenderPhaseDepOscillation_When_SettledToCommittedDep_Then_RefKeepsCommittedHandle, Given_SameDeps_When_ReRendered_Then_FactoryDoesNotRunAgain",
+ "file": "97cb941862fd6d9941dc5ecb1bb954c16f0ccd40e285c0925c4229bdfb6b9ef6",
+ "killers": [
+  {
+   "case": "Velvet.Tests.UseImperativeHandleTests.Given_RenderPhaseDepOscillation_When_SettledToCommittedDep_Then_FactoryDoesNotRunAgain",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseImperativeHandleTests.cs": "4f8c95ad6070aaef6b5c6b467887ee828b0c73f68af90c8fbf509ad29461ce81",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UseImperativeHandleTests.Given_RenderPhaseDepOscillation_When_SettledToCommittedDep_Then_RefKeepsCommittedHandle",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseImperativeHandleTests.cs": "4f8c95ad6070aaef6b5c6b467887ee828b0c73f68af90c8fbf509ad29461ce81",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UseImperativeHandleTests.Given_SameDeps_When_ReRendered_Then_FactoryDoesNotRunAgain",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseImperativeHandleTests.cs": "4f8c95ad6070aaef6b5c6b467887ee828b0c73f68af90c8fbf509ad29461ce81",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  }
+ ],
+ "measured_by": "43802113819",
+ "mutant": {
+  "after": ";",
+  "before": "slot.LastDeps = slot.NextDeps;",
+  "column": 12,
+  "line": 186,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberHookCommit.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "8e7e1b10266f79fab5f5202a407f54c3c10d6b23f97889a416e135d0c09a9dce",
+ "verdict": "killed"
+}

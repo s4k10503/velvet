@@ -1,0 +1,24 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "26b80bf6e3cd44f44bcc02c94d979d18756b10d762883d480d930b8c43b9aa3e",
+ "killers": [],
+ "measured_by": "43802113819",
+ "mutant": {
+  "after": "==",
+  "before": "!=",
+  "column": 36,
+  "line": 96,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Styling/VelvetFontFamily.cs",
+  "shadowed": [
+   "equality",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "8e7e1b10266f79fab5f5202a407f54c3c10d6b23f97889a416e135d0c09a9dce",
+ "verdict": "survived"
+}

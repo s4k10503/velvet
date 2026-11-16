@@ -1,0 +1,23 @@
+{
+ "detail": "EditMode: 1 failed among the 7 case(s) that ran the site: Given_KeyedChildren_When_LiveContainerIsShorterThanBaseline_Then_ReconcileRecoversInsteadOfOverIndexing",
+ "file": "1dc45f2d35b30c6408edbbd5b170d408ba91b50c263a4f6267a56b23e1da89ee",
+ "killers": [],
+ "measured_by": "43802113819",
+ "mutant": {
+  "after": "-",
+  "before": "+",
+  "column": 52,
+  "line": 854,
+  "operator": "arithmetic",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ChildReconciler.cs",
+  "shadowed": [
+   "line removed"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "8e7e1b10266f79fab5f5202a407f54c3c10d6b23f97889a416e135d0c09a9dce",
+ "verdict": "killed"
+}

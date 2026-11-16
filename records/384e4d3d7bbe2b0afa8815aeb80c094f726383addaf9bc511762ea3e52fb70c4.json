@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "97cb941862fd6d9941dc5ecb1bb954c16f0ccd40e285c0925c4229bdfb6b9ef6",
+ "killers": [],
+ "measured_by": "43802113819",
+ "mutant": {
+  "after": ";",
+  "before": "slot.NextFactory = null;",
+  "column": 12,
+  "line": 188,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberHookCommit.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "8e7e1b10266f79fab5f5202a407f54c3c10d6b23f97889a416e135d0c09a9dce",
+ "verdict": "survived"
+}

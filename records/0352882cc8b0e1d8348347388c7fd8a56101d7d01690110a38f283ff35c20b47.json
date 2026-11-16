@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "df809d721933c0c1eff4e2482d72d905310971caea283220e6414547e0f5959b",
+ "killers": [],
+ "measured_by": "43802113819",
+ "mutant": {
+  "after": "<=",
+  "before": "<",
+  "column": 35,
+  "line": 77,
+  "operator": "boundary",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/OldSlotOccupants.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "8e7e1b10266f79fab5f5202a407f54c3c10d6b23f97889a416e135d0c09a9dce",
+ "verdict": "survived"
+}

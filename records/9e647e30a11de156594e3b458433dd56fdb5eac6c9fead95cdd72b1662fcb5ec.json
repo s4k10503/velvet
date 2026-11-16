@@ -1,0 +1,51 @@
+{
+ "detail": "EditMode: 3 failed: Given_AClickStartingAnActionThatAwaitsACompletedVelvetTask_When_TheHandlerWritesAfterTheStart_Then_TheActionsWriteLandsAfterIt, Given_AClickStartingAnActionThatAwaitsACompletedVelvetTaskOfT_When_TheHandlerWritesAfterTheStart_Then_TheActionsWriteLandsAfterIt, Given_AnActionOutsideAHandlerThatAwaitsACompletedVelvetTask_When_ItIsStarted_Then_ItsWriteWaitsForTheMainThreadsNextTick",
+ "file": "1e272a0ff6c7cf2c5ef03a3ea10d3db37bd3fc94cafc7e1aaa6661be12449285",
+ "killers": [
+  {
+   "case": "Velvet.Tests.TransitionCallbackTests.Given_AClickStartingAnActionThatAwaitsACompletedVelvetTaskOfT_When_TheHandlerWritesAfterTheStart_Then_TheActionsWriteLandsAfterIt",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/TransitionCallbackTests.cs": "f6d020c1f120643a74042e3916064e199b5982869319863216543fe4d429cf3f",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.TransitionCallbackTests.Given_AClickStartingAnActionThatAwaitsACompletedVelvetTask_When_TheHandlerWritesAfterTheStart_Then_TheActionsWriteLandsAfterIt",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/TransitionCallbackTests.cs": "f6d020c1f120643a74042e3916064e199b5982869319863216543fe4d429cf3f",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.TransitionCallbackTests.Given_AnActionOutsideAHandlerThatAwaitsACompletedVelvetTask_When_ItIsStarted_Then_ItsWriteWaitsForTheMainThreadsNextTick",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/TransitionCallbackTests.cs": "f6d020c1f120643a74042e3916064e199b5982869319863216543fe4d429cf3f",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  }
+ ],
+ "measured_by": "43802113819",
+ "mutant": {
+  "after": "",
+  "before": " && !AwaitContinuationGate.Defers",
+  "column": 48,
+  "line": 246,
+  "operator": "clause removed",
+  "path": "Packages/com.velvet.core/Runtime/Async/VelvetTask.cs",
+  "shadowed": [
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "8e7e1b10266f79fab5f5202a407f54c3c10d6b23f97889a416e135d0c09a9dce",
+ "verdict": "killed"
+}

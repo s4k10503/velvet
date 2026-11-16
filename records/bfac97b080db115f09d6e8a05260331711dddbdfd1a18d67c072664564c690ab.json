@@ -1,0 +1,29 @@
+{
+ "detail": "EditMode: 1 failed: Given_AForeignMoveThatKeepsTheEndsAndAWriteAfterIt_When_APassBegins_Then_TheModelHoldsTheLiveOrder",
+ "file": "799cb027301186d80ff8dc806579a36bd59bcdb93e3f3856ca1b80bbf16a8a69",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ContainerRowsTests.Given_AForeignMoveThatKeepsTheEndsAndAWriteAfterIt_When_APassBegins_Then_TheModelHoldsTheLiveOrder",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ContainerRowsTests.cs": "6d2d09c55d11cb99876f50cb31420f9bba4d94301d4812a86bd383a3ca258f7b",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/RowModelAccess.cs": "4f8be07dec1744b651672472e13b8587751035e1fc87a735e21af768dc339d10"
+   }
+  }
+ ],
+ "measured_by": "43802113819",
+ "mutant": {
+  "after": ";",
+  "before": "s_nested.Clear();",
+  "column": 12,
+  "line": 137,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ChildListWrites.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "8e7e1b10266f79fab5f5202a407f54c3c10d6b23f97889a416e135d0c09a9dce",
+ "verdict": "killed"
+}

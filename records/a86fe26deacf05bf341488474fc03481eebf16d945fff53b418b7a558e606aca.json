@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "c14f21d539b4281a0d0b79d5fbce8021a01e58875368d8b0f96a4dd09067eefb",
+ "killers": [],
+ "measured_by": "43802113819",
+ "mutant": {
+  "after": ">",
+  "before": ">=",
+  "column": 44,
+  "line": 28,
+  "operator": "boundary",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberCommitWork.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "8e7e1b10266f79fab5f5202a407f54c3c10d6b23f97889a416e135d0c09a9dce",
+ "verdict": "survived"
+}

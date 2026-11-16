@@ -1,0 +1,36 @@
+{
+ "detail": "EditMode: 2 failed among the 186 case(s) that ran the site: Given_RandomWrites_When_RowsAreCounted_Then_RenderedCountMatchesTheScan(12), Given_RandomWrites_When_RowsAreCounted_Then_RenderedCountMatchesTheScan(700)",
+ "file": "84293bccb11cc4913f90bb8a53d6418272685fb34ee884a444d25a9aa158f1db",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ContainerRowsTests.Given_RandomWrites_When_RowsAreCounted_Then_RenderedCountMatchesTheScan(12)",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ContainerRowsTests.cs": "6d2d09c55d11cb99876f50cb31420f9bba4d94301d4812a86bd383a3ca258f7b",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/RowModelAccess.cs": "4f8be07dec1744b651672472e13b8587751035e1fc87a735e21af768dc339d10"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ContainerRowsTests.Given_RandomWrites_When_RowsAreCounted_Then_RenderedCountMatchesTheScan(700)",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ContainerRowsTests.cs": "6d2d09c55d11cb99876f50cb31420f9bba4d94301d4812a86bd383a3ca258f7b",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/RowModelAccess.cs": "4f8be07dec1744b651672472e13b8587751035e1fc87a735e21af768dc339d10"
+   }
+  }
+ ],
+ "measured_by": "43802113819",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 20,
+  "line": 328,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ContainerRows.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "8e7e1b10266f79fab5f5202a407f54c3c10d6b23f97889a416e135d0c09a9dce",
+ "verdict": "killed"
+}

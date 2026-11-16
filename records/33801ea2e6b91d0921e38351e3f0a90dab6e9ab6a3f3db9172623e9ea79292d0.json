@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed: Given_ACompletedTaskOutsideATransitionScope_When_ItsAwaiterIsHandedAContinuation_Then_TheContinuationRunsAtOnce",
+ "file": "1e272a0ff6c7cf2c5ef03a3ea10d3db37bd3fc94cafc7e1aaa6661be12449285",
+ "killers": [
+  {
+   "case": "Velvet.Tests.VelvetTaskAwaiterOutsideTransitionEditorTests.Given_ACompletedTaskOutsideATransitionScope_When_ItsAwaiterIsHandedAContinuation_Then_TheContinuationRunsAtOnce",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Async/Tests/Editor/VelvetTaskAwaiterOutsideTransitionEditorTests.cs": "4169509b5539836a7bbcd49d81abeff16a35720b34760421893f84b96d35a956"
+   }
+  }
+ ],
+ "measured_by": "43802113819",
+ "mutant": {
+  "after": "",
+  "before": " && AwaitContinuationGate.Defers",
+  "column": 29,
+  "line": 261,
+  "operator": "clause removed",
+  "path": "Packages/com.velvet.core/Runtime/Async/VelvetTask.cs",
+  "shadowed": [
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "8e7e1b10266f79fab5f5202a407f54c3c10d6b23f97889a416e135d0c09a9dce",
+ "verdict": "killed"
+}

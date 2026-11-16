@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "ab6e7de968feca52375148e5f68391a840fcf6b8673b1b553a6a3011c9793e84",
+ "killers": [],
+ "measured_by": "43802113819",
+ "mutant": {
+  "after": ";",
+  "before": "ChildListWrites.RemoveFromHierarchy(binding.OutlineClips[i]);",
+  "column": 20,
+  "line": 266,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/OutlineHosting.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "8e7e1b10266f79fab5f5202a407f54c3c10d6b23f97889a416e135d0c09a9dce",
+ "verdict": "survived"
+}

@@ -1,0 +1,32 @@
+{
+ "detail": "EditMode: 1 failed: Given_ATimeSlicedTransitionOfRowsWithEffects_When_ItsFirstSliceParks_Then_NoEffectRunsUntilItsLastSliceCommits",
+ "file": "ac7745fc19d34d4a76fc5e493419106e3bc74df4c37f708354ab42577756069a",
+ "killers": [
+  {
+   "case": "Velvet.Tests.TransitionCommitOrderEventLogTests+UIToolkitOnlyTransitions.Given_ATimeSlicedTransitionOfRowsWithEffects_When_ItsFirstSliceParks_Then_NoEffectRunsUntilItsLastSliceCommits",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/TransitionCommitOrderEventLogTests.cs": "e2fb1800b129cc7d256039ce06802665dfffef80d5cf69ca74bee33358aa545d",
+    "Packages/com.velvet.core/TestUtilities/EventLog.cs": "e191b8d91d56ab6eb1633a8f37e5282dd11f4cbfd649b59ab27deab3a1e4b490",
+    "Packages/com.velvet.core/TestUtilities/EventLogRenderer.cs": "59fbaf33c955e917c5359940c3d0a0f090fefdc0d2a41b370a75eb6ce7304abe",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  }
+ ],
+ "measured_by": "43802113819",
+ "mutant": {
+  "after": ";",
+  "before": "RunInsertionEffects(fiber, mountDoubleInvoke: isMount);",
+  "column": 12,
+  "line": 344,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberEffects.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "8e7e1b10266f79fab5f5202a407f54c3c10d6b23f97889a416e135d0c09a9dce",
+ "verdict": "killed"
+}
