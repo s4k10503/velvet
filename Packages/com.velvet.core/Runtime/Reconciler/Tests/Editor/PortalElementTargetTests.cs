@@ -1,7 +1,9 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using NUnit.Framework;
 using UnityEngine.UIElements;
+using Velvet.TestUtilities;
 
 namespace Velvet.Tests
 {
@@ -166,6 +168,31 @@ namespace Velvet.Tests
             Assert.That(
                 (bridgedWhileMounted, _reconciler.Context.EventManager.IsBridgeAnchor(container)),
                 Is.EqualTo((true, false)));
+        }
+
+        [Test]
+        public void Given_a_portal_of_three_rows_in_a_container_on_a_panel_When_it_unmounts_Then_the_rows_leave_the_panel_first_to_last()
+        {
+            // Arrange
+            using var host = new HeadlessEditorPanelHost();
+            var container = new VisualElement();
+            host.Root.Add(container);
+            var tree = new VNode[]
+            {
+                V.Portal(container, children: new VNode?[] { V.Div(name: "a"), V.Div(name: "b"), V.Div(name: "c") }),
+            };
+            _reconciler.Reconcile(_root, Array.Empty<VNode>(), tree);
+            var left = new List<string>();
+            foreach (var row in container.Children())
+            {
+                row.RegisterCallback<DetachFromPanelEvent>(_ => left.Add(row.name));
+            }
+
+            // Act
+            _reconciler.Reconcile(_root, tree, Array.Empty<VNode>());
+
+            // Assert
+            Assert.That(string.Join("|", left), Is.EqualTo("a|b|c"));
         }
     }
 }

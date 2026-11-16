@@ -659,7 +659,6 @@ namespace Velvet
             // MUTANT_SURVIVES(equivalent, arithmetic): the expression sizes only the list's initial capacity, which bounds nothing PhysicalRange appends, and with both ends at zero or more the sum is a valid capacity too.
             var range = new List<VisualElement>(Math.Max(slotEnd - physicalSlotStart, 0));
             ChildListWrites.PhysicalRange(target, physicalSlotStart, slotEnd, range);
-            range.Reverse();
             foreach (var child in range)
             {
                 // An invisible child inside the range belongs to whichever paint owns it, not to the portal.
