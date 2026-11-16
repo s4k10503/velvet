@@ -1,4 +1,5 @@
 using System;
+using System.Reflection;
 using System.Text.RegularExpressions;
 using NUnit.Framework;
 using UnityEngine;
@@ -178,9 +179,57 @@ namespace Velvet.Tests
             return V.Component(RefusingFallbackBoundary);
         }
 
+        [Component(Compiler = false, IsErrorBoundary = true, DisplayName = "Row")]
+        private static VNode RefusingRow(int tick)
+        {
+            EventLog.UseInsertionAndLayoutEffects("R", Array.Empty<object>());
+            Hooks.UseFallback(_ => V.Custom<ConstructionRefusingElement>());
+            return V.Component(ThrowsOnTick, tick);
+        }
+
+        // A tick keys the list's one row anew, so the list's update mounts a new row while this boundary's own render
+        // walks the list.
+        [Component(Compiler = false, IsErrorBoundary = true, DisplayName = "Outer")]
+        private static VNode OuterOfARefusingRowList()
+        {
+            var (tick, _) = EventLog.UseState("Tick", 0);
+            Hooks.UseFallback(_ => V.Component(Probe, new Named("OF")));
+            return V.VirtualList(new[] { "r" + tick }, item => item, 50f, item => V.Component(RefusingRow, tick, key: item),
+                overscan: 0, name: "rows");
+        }
+
         [TestFixture]
         internal sealed class UIToolkitOnlyFallbacks
         {
+            // GREEN_ON_BASE(characterization): the base unwinds a list row's error to the boundary whose render mounted
+            // the row, which takes its old rows down before its fallback mounts and reports once, as React commits it.
+            [Test]
+            public void Given_ARowBoundaryWhoseFallbackCannotBeCreated_When_ItMountsWhileTheBoundaryAboveRendersTheList_Then_TheBoundaryAboveReplacesItsRowsAndReportsTheCreationError()
+            {
+                // Arrange — a headless mount measures no viewport, so the list renders its row once it is given one.
+                var log = new EventLog();
+                var root = new VisualElement();
+                using var mounted = V.Mount(root, log.Provide(V.Component(OuterOfARefusingRowList)), log.ReportingErrors());
+                var controller = mounted.Root.Reconciler.Context.VirtualListControllers[root.Q<ScrollView>("rows")];
+                typeof(FiberVirtualListController)
+                    .GetField("_viewportHeight", BindingFlags.NonPublic | BindingFlags.Instance)
+                    ?.SetValue(controller, 100f);
+                controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 100f);
+                mounted.DrainForTest();
+                log.Clear();
+                LogAssert.Expect(LogType.Error, new Regex("reconciling the fallback UI threw"));
+                LogAssert.Expect(LogType.Error, new Regex(@"\[ErrorBoundary\] An exception occurred"));
+                LogAssert.Expect(LogType.Exception, new Regex("thrown by the constructor"));
+
+                // Act
+                log.Setter<int>("Tick").Invoke(1);
+                mounted.DrainForTest();
+
+                // Assert
+                Assert.That(log.ToString(), Is.EqualTo(
+                    "ins-x:R lay-x:R lay-x:X ref-x:X ins:OF ref:OF lay:OF caught:Outer:thrown by the constructor"));
+            }
+
             [Test]
             public void Given_ABoundaryWhoseFallbackElementCannotBeCreated_When_ItsChildsOwnRenderThrows_Then_TheBoundaryAboveShowsItsFallback()
             {
