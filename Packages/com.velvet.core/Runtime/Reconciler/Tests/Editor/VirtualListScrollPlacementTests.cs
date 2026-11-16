@@ -16,7 +16,8 @@ namespace Velvet.Tests
     /// holds — leaves the list's host waiting on the read, outside a transition, rather than leaving the scroll, alone
     /// in the range or ahead of a Component row, and the rows that scroll built stay in the list. A range of one root
     /// that a scroll asks for while another root's pass writes its elements renders once that root's render and commit
-    /// have ended, before control returns, and once however often it was asked for.
+    /// have ended, before control returns, and asked for more often than the nested-update limit throws nothing. A list
+    /// its host renders again places its new rows inside that render, where the host's layout effect reads them.
     /// </summary>
     [TestFixture]
     internal sealed class VirtualListScrollPlacementTests
@@ -354,7 +355,7 @@ namespace Velvet.Tests
         [Test]
         public void Given_AnotherRootsListScrolledMoreTimesThanTheNestedUpdateLimitFromAWalk_When_TheOwnersMountReturns_Then_NothingIsThrown()
         {
-            // Arrange — sixty scrolls, each to an item the one before it did not reach, then item 50.
+            // Arrange — sixty scrolls, each to a further item, then item 50.
             using var host = new HeadlessEditorPanelHost();
             using var other = MountAnotherRootsList(host);
             s_scrollTargets = Enumerable.Range(1, 60).Append(50).ToArray();
