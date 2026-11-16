@@ -189,8 +189,8 @@ namespace Velvet.Tests
             Assert.That(s_calls, Is.EqualTo(2), "useSuspenseQuery is always enabled");
         }
 
-        // GREEN_ON_BASE(characterization): the base resumed each reader inside the effect that wrote the data, where
-        // nothing counted the resumes. Each is a request of its own now, made once the passive flush running it has ended.
+        // GREEN_ON_BASE(characterization): the base resumed every reader inside the effect that wrote the data.
+        // Nothing counted the resumes there. Each is a request of its own now, made once that passive flush has ended.
         [Test]
         public void Given_SixtySuspendedReadersOfOneRoot_When_AUseEffectWritesTheirData_Then_EveryReaderLeavesItsFallback()
         {
