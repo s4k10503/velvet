@@ -106,6 +106,8 @@ namespace Velvet.Tests
             return target;
         }
 
+        // GREEN_ON_BASE(refactor): the base runs the deletion in the walk and returns the plan it rented there; this pins
+        // that a deletion run in the apply returns it too.
         [Test]
         public void Given_ADeletionOfAComponentRunInTheApply_When_TheSecondHasEnded_Then_TheSecondReturnedTheOnePlanItRented()
         {
@@ -126,6 +128,8 @@ namespace Velvet.Tests
             Assert.That(pooledAfterFirst > 0 ? PooledPlans().Count - pooledAfterFirst : -1, Is.EqualTo(0));
         }
 
+        // GREEN_ON_BASE(refactor): the base runs the deletion in the walk and returns the walk it rented there; this pins
+        // that a deletion run in the apply returns it too.
         [Test]
         public void Given_ADeletionOfAComponentRunInTheApply_When_TheSecondHasEnded_Then_TheSecondReturnedTheOneWalkItRented()
         {

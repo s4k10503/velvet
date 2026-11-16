@@ -180,6 +180,8 @@ namespace Velvet.Tests
                 V.Component(Held, key: "h"));
         }
 
+        // GREEN_ON_BASE(refactor): the base removes the band with the row in the walk; this pins that a removal run in the
+        // apply removes it too.
         [Test]
         public void Given_ARingedRowBesideAComponent_When_TheRowIsDeleted_Then_NoBandIsLeftBesideTheComponent()
         {
