@@ -371,6 +371,46 @@ namespace Velvet.Tests
             Assert.That(s_ownEffectRuns, Is.Zero);
         }
 
+        private static Button s_clicksItself;
+        private static string s_countAndEcho;
+
+        // A click asks for its own render. The UseEffect of the first clicks the button again, and that of the second asks
+        // for an echo render, off the sync lane.
+        [Component]
+        private static VNode ClicksItselfFromItsEffect()
+        {
+            var (count, setCount) = Hooks.UseState(0);
+            var (echo, setEcho) = Hooks.UseState(0);
+            s_countAndEcho = count + ":" + echo;
+            Hooks.UseEffect(() =>
+            {
+                if (count == 1) s_clicksItself.SimulateClick();
+                if (count == 2) setEcho.Invoke(1);
+                return (Action)null;
+            }, new object[] { count });
+            return V.Button(name: "clicks-itself", onClick: () => setCount.Invoke(count + 1), refCallback: element =>
+            {
+                s_clicksItself = (Button)element;
+                return () => { };
+            });
+        }
+
+        // GREEN_ON_BASE(characterization): the base rendered the second click by draining again inside the passive flush.
+        // The update after it took the Normal lane and waited there, as it does here. The click is left to the drain now,
+        // which is between its passes then; held instead, its flush would render the echo before control returned.
+        [Test]
+        public void Given_AClickAUseEffectOfItsRootsSyncLaneDrainFires_When_TheDrainEnds_Then_TheNormalLaneUpdateAfterItWaits()
+        {
+            // Arrange
+            Mount(V.Component(ClicksItselfFromItsEffect)).FlushEffectsForTest();
+
+            // Act
+            s_clicksItself.SimulateClick();
+
+            // Assert — 2:1 where the echo rendered, 1:0 where the second click never did
+            Assert.That(s_countAndEcho, Is.EqualTo("2:0"));
+        }
+
         // --- What disposing a root releases ---
 
         // GREEN_ON_BASE(characterization): the base releases the target's theme scope as the root is disposed, which no

@@ -6,6 +6,7 @@ using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.TestTools;
 using UnityEngine.UIElements;
+using Velvet.TestUtilities;
 
 namespace Velvet.Tests
 {
@@ -423,6 +424,70 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(runs, Is.EqualTo(60));
+        }
+
+        // --- The roots owing the sync lane ---
+
+        private static Button s_echoButton;
+        private static int s_echoRenders;
+
+        // On a click asks for its own render, whose UseEffect asks for one more, off the sync lane.
+        [Component]
+        private static VNode EchoesItsClickFromAnEffect()
+        {
+            var (count, setCount) = Hooks.UseState(0);
+            var (_, setEcho) = Hooks.UseState(0);
+            s_echoRenders++;
+            Hooks.UseEffect(() =>
+            {
+                if (count > 0) setEcho.Invoke(count);
+                return (Action)null!;
+            }, new object[] { count });
+            return V.Button(text: "echo", onClick: () => setCount.Invoke(count + 1), refCallback: element =>
+            {
+                s_echoButton = (Button)element;
+                return () => { };
+            });
+        }
+
+        private MountedTree MountTheEcho()
+        {
+            var echo = V.Mount(new VisualElement(), V.Component(EchoesItsClickFromAnEffect));
+            _roots.Add(echo);
+            echo.FlushEffectsForTest();
+            return echo;
+        }
+
+        private static List<FiberBatchScheduler> OwingTheSyncLane()
+            => (List<FiberBatchScheduler>)typeof(FiberExecutionContext)
+                .GetField("s_owingSyncLane", BindingFlags.NonPublic | BindingFlags.Static)!.GetValue(null)!;
+
+        // The held click's drain leaves its root listed as owing the sync lane, with only a Normal-lane update queued.
+        [Test]
+        public void Given_AHeldClickWhoseEffectAsksForAnotherRender_When_ThePassEnds_Then_ThatRenderWaitsForTheRootsNextDrain()
+        {
+            // Arrange
+            MountTheEcho();
+            var before = s_echoRenders;
+
+            // Act
+            WalkAsking(() => s_echoButton.SimulateClick());
+
+            // Assert
+            Assert.That(s_echoRenders - before, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_AClickOutsideEveryEntry_When_ItsFlushEnds_Then_ItsRootIsNoLongerListedAsOwingTheSyncLane()
+        {
+            // Arrange
+            var echo = MountTheEcho();
+
+            // Act
+            s_echoButton.SimulateClick();
+
+            // Assert
+            Assert.That(OwingTheSyncLane(), Has.No.Member(echo.GetSchedulerForTest()));
         }
 
         // --- A render or commit step reached with no entry on the stack ---
