@@ -58,9 +58,9 @@ namespace Velvet
 
         #region Lifecycle
 
-        // Attaches the fiber to mountPoint and runs the initial render + layout effects. The first render of a root a
-        // pass of any context is open for is left to where the commit that follows that pass has ended, as React's
-        // root.render() only schedules inside a render or a commit (ChildListWrites.ReleaseHeld).
+        // Attaches the fiber to mountPoint and runs the initial render + layout effects. The first render of a root
+        // asked for while a root renders or commits waits for that to end, as React's root.render() only schedules
+        // there (ChildListWrites.Release).
         // fiber: Fiber to mount. Must not already be mounted.
         // mountPoint: VisualElement that hosts the rendered tree. Must not be null.
         // sharedContext, onCaughtError, onUncaughtError, motionClock: see SetupMount.
@@ -74,12 +74,13 @@ namespace Velvet
             {
                 Action render = () =>
                 {
-                    // MUTANT_SURVIVES(equivalent, line removed): a root whose render has been made is no longer in the held
-                    // list, so what a later dispose drops from it is nothing.
                     fiber.HeldMount = null;
+                    // MUTANT_SURVIVES(unreachable, equality): Dispose drops a held render from the queue before it can run, so a
+                    // render that runs is of a root that is not disposed.
+                    if (fiber.IsDisposed || fiber.Reconciler == null) return;
                     RenderMounted(fiber);
                 };
-                if (ChildListWrites.HoldMount(render))
+                if (ChildListWrites.HoldMount(render, fiber.Reconciler!.Context))
                 {
                     fiber.HeldMount = render;
                     return;
@@ -88,7 +89,13 @@ namespace Velvet
             RenderMounted(fiber);
         }
 
+        // A top-level entry, which ends in what was held while a root rendered or committed.
         private static void RenderMounted(ComponentFiber fiber)
+        {
+            ChildListWrites.RunEntry(fiber.Reconciler!.Context.BatchScheduler, fiber, static mounted => RenderMountedEntry(mounted));
+        }
+
+        private static void RenderMountedEntry(ComponentFiber fiber)
         {
             var context = fiber.Reconciler!.Context;
             RenderAndReconcile(fiber);

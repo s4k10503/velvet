@@ -514,52 +514,151 @@ namespace Velvet
         // contexts are open at once this answers for the innermost.
         internal static bool PassIsOpen => s_current is { Recording: true } or { Applying: true };
 
-        // What was asked for while a pass was open, which React would have scheduled and not run inside it: the
-        // schedulers whose flush was refused (HoldsFlush) and the mounts of a root (HoldMount). ReleaseHeld makes them
-        // where the commit that follows the pass has ended.
-        private static readonly List<FiberBatchScheduler> s_heldFlushes = new();
-        private static readonly List<Action> s_heldMounts = new();
+        // ---- Held work ----
+        //
+        // React runs no root's flush, passive flush, first render or unmount while any root is rendering or committing
+        // (executionContext & (RenderContext | CommitContext)), and takes what was asked for then where the outermost
+        // entry ends. Velvet is busy while a pass of any context records or applies its writes, while a commit of any
+        // context runs its layout cleanups, effects and ref setups, and while a mounted root's unmount runs. A top-level
+        // entry (a flush of a fiber, a drain, a first render, a resume, a dispose) is what ends in the release.
+        private static int s_commits;
+        private static int s_entries;
+        private static bool s_releasing;
+        private static readonly List<HeldItem> s_held = new();
 
-        // Whether a flush the scheduler was asked for is held back by an open pass, of any context, in which case it is
-        // remembered for ReleaseHeld.
-        internal static bool HoldsFlush(FiberBatchScheduler scheduler)
+        private sealed record HeldItem(Action Run, ReconcilerContext Context, bool IsFlush);
+
+        internal static bool Busy => s_commits > 0 || PassIsOpen;
+
+        internal static void EnterCommit() => s_commits++;
+
+        internal static void LeaveCommit() => s_commits--;
+
+        // Runs body as a top-level entry, which ends in what was held while a root rendered or committed. committing is
+        // the scheduler whose commit the entry runs, whose sync-lane passive effects run ahead of what was held, as React's
+        // commitRoot flushes them before flushSyncWorkOnAllRoots. What is released where the entry ends in an exception
+        // does not replace it. The state is passed rather than captured, so that an entry allocates nothing.
+        internal static void RunEntry<TState>(FiberBatchScheduler? committing, TState state, Action<TState> body)
         {
-            if (!PassIsOpen) return false;
-            if (!s_heldFlushes.Contains(scheduler)) s_heldFlushes.Add(scheduler);
+            var completed = false;
+            s_entries++;
+            try
+            {
+                body(state);
+                completed = true;
+            }
+            finally
+            {
+                s_entries--;
+                Release(committing, completed);
+            }
+        }
+
+        // Whether a flush the context was asked for is held back, in which case it is queued once and made, passive effects
+        // first, where the outermost entry ends.
+        internal static bool HoldsFlush(ReconcilerContext context)
+        {
+            if (!Busy) return false;
+            var queued = false;
+            foreach (var item in s_held)
+            {
+                if (item.IsFlush && ReferenceEquals(item.Context, context))
+                {
+                    queued = true;
+                    break;
+                }
+            }
+            if (!queued)
+            {
+                s_held.Add(new HeldItem(() =>
+                {
+                    context.BatchScheduler.FlushPendingPassiveEffects();
+                    context.BatchScheduler.FlushImmediate();
+                }, context, IsFlush: true));
+            }
             return true;
         }
 
-        // Whether the first render of a root is held back by an open pass, of any context, in which case it is left to
-        // ReleaseHeld.
-        internal static bool HoldMount(Action render)
+        // Whether the first render of a root is held back, in which case it is made where the outermost entry ends.
+        internal static bool HoldMount(Action render, ReconcilerContext context) => Hold(render, context);
+
+        // Whether the unmount of a root is held back, as React's root.unmount() is while a render or a commit runs.
+        internal static bool HoldDispose(Action dispose, ReconcilerContext? context)
+            => context != null && Hold(dispose, context);
+
+        private static bool Hold(Action run, ReconcilerContext context)
         {
-            if (!PassIsOpen) return false;
-            s_heldMounts.Add(render);
+            if (!Busy) return false;
+            s_held.Add(new HeldItem(run, context, IsFlush: false));
             return true;
         }
 
         // Forgets a held render, for a root disposed before it was made.
-        internal static void DropHeldMount(Action render) => s_heldMounts.Remove(render);
+        internal static void DropHeldMount(Action render) => s_held.RemoveAll(item => ReferenceEquals(item.Run, render));
 
-        private const int MaxHeldRounds = 50;
+        private const int MaxHeldRunsPerRoot = 50;
 
-        // Makes what was held while a pass was open once none is: the pending passive effects of each held context,
-        // then its flush, then the held renders, in the order they were asked for. What those ask for in turn is held
-        // by the pass they open and is made by the round after, up to a bound that stops a chain that never settles.
-        internal static void ReleaseHeld()
+        // Ends a pass no entry owns: a reconcile asked for with no fiber, which is its own entry.
+        internal static void ReleaseAfterBarePass(bool completed) => Release(null, completed);
+
+        // Makes what was held, once nothing is busy and no entry is open, in the order it was asked for. It does not
+        // start inside itself: what an item holds goes to the end of the queue, and an item's own entries end without
+        // releasing. An item that throws does not stop the ones after it, and the first exception is rethrown once the
+        // queue is empty, unless the entry that released was itself ending in one, which it is not made to replace. More
+        // items run for one root than the bound allows is React's nested-update limit.
+        private static void Release(FiberBatchScheduler? committing, bool completed)
         {
-            // MUTANT_SURVIVES(unreachable, boundary): no chain of held work in the suite runs to the bound, which only stops one
-            // that never settles.
-            for (var round = 0; round < MaxHeldRounds && !PassIsOpen && (s_heldFlushes.Count > 0 || s_heldMounts.Count > 0); round++)
+            if (s_releasing || s_entries > 0 || s_commits > 0 || PassIsOpen) return;
+            if (s_held.Count == 0) return;
+            s_releasing = true;
+            System.Runtime.ExceptionServices.ExceptionDispatchInfo? first = null;
+            Dictionary<ReconcilerContext, int>? runs = null;
+            try
             {
-                var flushes = s_heldFlushes.ToArray();
-                var mounts = s_heldMounts.ToArray();
-                s_heldFlushes.Clear();
-                s_heldMounts.Clear();
-                foreach (var scheduler in flushes) scheduler.FlushPendingPassiveEffects();
-                foreach (var scheduler in flushes) scheduler.FlushImmediate();
-                foreach (var render in mounts) render();
+                if (s_held.Count > 0 && committing is { SyncLaneOwed: true })
+                {
+                    try
+                    {
+                        committing.FlushPendingPassiveEffects();
+                    }
+                    catch (Exception exception)
+                    {
+                        first ??= System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(exception);
+                    }
+                }
+                while (s_held.Count > 0)
+                {
+                    var item = s_held[0];
+                    s_held.RemoveAt(0);
+                    if (item.Context.IsDisposed) continue;
+                    runs ??= new Dictionary<ReconcilerContext, int>();
+                    runs.TryGetValue(item.Context, out var count);
+                    runs[item.Context] = ++count;
+                    if (count > MaxHeldRunsPerRoot)
+                    {
+                        s_held.RemoveAll(other => ReferenceEquals(other.Context, item.Context));
+                        first ??= System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(new InvalidOperationException(
+                            "Maximum update depth exceeded. A root kept asking for work that waits for another's render "
+                            + $"or commit to end, {MaxHeldRunsPerRoot} times in a row. Velvet limits it, as React limits "
+                            + "nested updates, to prevent infinite loops."));
+                        continue;
+                    }
+                    try
+                    {
+                        item.Run();
+                    }
+                    catch (Exception exception)
+                    {
+                        first ??= System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(exception);
+                    }
+                }
             }
+            finally
+            {
+                s_releasing = false;
+            }
+            if (completed) first?.Throw();
+            else if (first != null) UnityEngine.Debug.LogException(first.SourceException);
         }
 
         // A pass that starts while another is open applies the other's recorded writes first, so it reads a live list

@@ -1,5 +1,8 @@
 using System;
+using System.Text.RegularExpressions;
 using NUnit.Framework;
+using UnityEngine;
+using UnityEngine.TestTools;
 using UnityEngine.UIElements;
 
 namespace Velvet.Tests
@@ -192,6 +195,168 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(parent.childCount, Is.EqualTo(1));
+        }
+
+        private VNode[] TreeAskingForHeldWork(Action<ReconcilerContext> ask)
+            => new VNode[] { V.ScrollView(onCreated: _ => ask(_second.Context)) };
+
+        private void RecordAnApplyThatThrows()
+            => ChildListWrites.RecordPatchPre(new PendingPatch(
+                new FiberNodePatcher(_first.Context), new Label(), null, new ElementNode(), 0));
+
+        [Test]
+        public void Given_AHeldItemThatThrows_When_TheOwnersPassEndsInAnException_Then_TheOwnersExceptionPropagates()
+        {
+            // Arrange — the held item's exception is logged, since the owner's is the one in flight
+            LogAssert.Expect(LogType.Exception, new Regex("held"));
+            var tree = TreeAskingForHeldWork(context =>
+            {
+                ChildListWrites.HoldMount(() => throw new InvalidOperationException("held"), context);
+                RecordAnApplyThatThrows();
+            });
+
+            // Act
+            TestDelegate act = () => _first.Reconcile(new VisualElement(), Array.Empty<VNode>(), tree);
+
+            // Assert
+            Assert.Throws<NullReferenceException>(act);
+        }
+
+        [Test]
+        public void Given_AHeldItemThatThrows_When_ThePassEnds_Then_TheItemAfterItStillRendered()
+        {
+            // Arrange
+            var host = new VisualElement();
+            var tree = TreeAskingForHeldWork(context =>
+            {
+                ChildListWrites.HoldMount(() => throw new InvalidOperationException("held"), context);
+                _mounted = V.Mount(host, V.Div(name: "b"));
+            });
+
+            // Act
+            try
+            {
+                _first.Reconcile(new VisualElement(), Array.Empty<VNode>(), tree);
+            }
+            catch (InvalidOperationException)
+            {
+            }
+            var rendered = host.childCount;
+            _mounted?.Dispose();
+
+            // Assert
+            Assert.That(rendered, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_AHeldItemThatThrows_When_ThePassEnds_Then_ItsExceptionIsRethrown()
+        {
+            // Arrange
+            var tree = TreeAskingForHeldWork(context =>
+                ChildListWrites.HoldMount(() => throw new InvalidOperationException("held"), context));
+
+            // Act
+            TestDelegate act = () => _first.Reconcile(new VisualElement(), Array.Empty<VNode>(), tree);
+
+            // Assert
+            Assert.Throws<InvalidOperationException>(act);
+        }
+
+        [Test]
+        public void Given_HeldWorkThatAsksForMoreWhileItIsMade_When_ThePassEnds_Then_TheMoreRunsAfterWhatWasAheadOfIt()
+        {
+            // Arrange
+            var log = new System.Collections.Generic.List<string>();
+            var tree = TreeAskingForHeldWork(context =>
+            {
+                ChildListWrites.HoldMount(() =>
+                {
+                    log.Add("a");
+                    ChildListWrites.EnterCommit();
+                    ChildListWrites.HoldMount(() => log.Add("c"), context);
+                    ChildListWrites.LeaveCommit();
+                }, context);
+                ChildListWrites.HoldMount(() => log.Add("b"), context);
+            });
+
+            // Act
+            _first.Reconcile(new VisualElement(), Array.Empty<VNode>(), tree);
+
+            // Assert
+            Assert.That(string.Join(",", log), Is.EqualTo("a,b,c"));
+        }
+
+        [Test]
+        public void Given_HeldWorkThatAsksForItselfAgainEveryTime_When_ThePassEnds_Then_TheNestedUpdateLimitIsThrown()
+        {
+            // Arrange
+            var tree = TreeAskingForHeldWork(context =>
+            {
+                Action again = null!;
+                again = () =>
+                {
+                    ChildListWrites.EnterCommit();
+                    ChildListWrites.HoldMount(again, context);
+                    ChildListWrites.LeaveCommit();
+                };
+                ChildListWrites.HoldMount(again, context);
+            });
+
+            // Act
+            TestDelegate act = () => _first.Reconcile(new VisualElement(), Array.Empty<VNode>(), tree);
+
+            // Assert
+            Assert.That(act, Throws.InvalidOperationException.With.Message.Contains("Maximum update depth"));
+        }
+
+        [Test]
+        public void Given_HeldWorkThatAsksForItselfAgainEveryTime_When_ThePassEnds_Then_ItRanAsOftenAsTheLimitAllows()
+        {
+            // Arrange
+            var runs = 0;
+            var tree = TreeAskingForHeldWork(context =>
+            {
+                Action again = null!;
+                again = () =>
+                {
+                    runs++;
+                    ChildListWrites.EnterCommit();
+                    ChildListWrites.HoldMount(again, context);
+                    ChildListWrites.LeaveCommit();
+                };
+                ChildListWrites.HoldMount(again, context);
+            });
+
+            // Act
+            try
+            {
+                _first.Reconcile(new VisualElement(), Array.Empty<VNode>(), tree);
+            }
+            catch (InvalidOperationException)
+            {
+            }
+
+            // Assert
+            Assert.That(runs, Is.EqualTo(50));
+        }
+
+        [Test]
+        public void Given_ARootDisposedByEarlierHeldWorkOfTheSameRelease_When_ItsRenderWasHeld_Then_ItNeverRenders()
+        {
+            // Arrange
+            var host = new VisualElement();
+            s_heldRenders = 0;
+            var tree = TreeAskingForHeldWork(context =>
+            {
+                ChildListWrites.HoldMount(() => _mounted!.Dispose(), context);
+                _mounted = V.Mount(host, V.Component(CountsItsRenders));
+            });
+
+            // Act
+            _first.Reconcile(new VisualElement(), Array.Empty<VNode>(), tree);
+
+            // Assert
+            Assert.That(s_heldRenders, Is.Zero);
         }
 
         // GREEN_ON_BASE(characterization): the base writes at once outside a pass as well; the case pins that the

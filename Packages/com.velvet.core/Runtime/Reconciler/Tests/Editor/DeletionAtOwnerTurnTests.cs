@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using NUnit.Framework;
 using UnityEngine.UIElements;
 using Velvet.TestUtilities;
@@ -724,6 +725,7 @@ namespace Velvet.Tests
             s_otherRenders++;
             s_otherSaw = s_shared;
             s_otherSawRef = s_ref;
+            s_otherSawPassive = s_passive;
             Hooks.UseEffect(() =>
             {
                 s_otherPassive++;
@@ -807,7 +809,7 @@ namespace Velvet.Tests
         // GREEN_ON_BASE(characterization): the base rendered the other root inside the apply, so it has rendered by the
         // time control returns; the case pins that the hold does not leave it a frame behind.
         [Test]
-        public void Given_AnApplyThatFiresAHandlerOfAnotherRoot_When_TheOutermostPassEnds_Then_TheOtherRootHasRenderedBeforeControlReturns()
+        public void Given_AnApplyThatFiresAHandlerOfAnotherRoot_When_TheEntryEnds_Then_TheOtherRootHasRenderedBeforeControlReturns()
         {
             // Arrange
             var (owner, other) = MountTheTwoRoots();
@@ -892,6 +894,301 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(s_otherPassive - s_otherPassiveBefore, Is.EqualTo(1));
+        }
+
+        private static readonly List<MountedTree> s_popups = new();
+        private static int s_popupRenders;
+        private static string s_popupInside;
+        private static string s_seenInLayout;
+        private static Action s_layoutAction;
+        private static Action s_refAction;
+        private static ComponentFiber s_layoutOwnerFiber;
+        private static StateUpdater<bool> s_showLayout;
+        private static string s_passive;
+        private static string s_otherSawPassive;
+        private static VisualElement s_cleanupHost;
+        private static MountedTree s_cleanupRoot;
+        private static int s_hostChildrenInsideCleanup;
+        private static StateUpdater<bool> s_showDisposer;
+        private static ComponentFiber s_disposerOwnerFiber;
+
+        [TearDown]
+        public void DisposeThePopups()
+        {
+            foreach (var popup in s_popups) popup.Dispose();
+            s_popups.Clear();
+            s_layoutAction = null;
+            s_refAction = null;
+        }
+
+        [Component]
+        private static VNode CountsPopupRenders()
+        {
+            s_popupRenders++;
+            return V.Div(name: "popup");
+        }
+
+        // Runs what a case set for the layout phase and for the ref setups of its commit, each render.
+        [Component]
+        private static VNode LayoutChild(bool shown)
+        {
+            Hooks.UseLayoutEffect(() =>
+            {
+                s_layoutAction?.Invoke();
+                return (Action)null;
+            }, new object[] { shown });
+            var captured = shown;
+            return V.Div(refCallback: _ =>
+            {
+                GC.KeepAlive(captured);
+                s_refAction?.Invoke();
+                return () => { };
+            });
+        }
+
+        [Component]
+        private static VNode LayoutOwner()
+        {
+            var (shown, setShown) = Hooks.UseState(true);
+            s_layoutOwnerFiber = FiberAmbientStack.Current;
+            s_showLayout = setShown;
+            var (layoutTick, setLayoutTick) = Hooks.UseState(0);
+            Hooks.UseLayoutEffect(() =>
+            {
+                s_shared = "after the owner";
+                if (!shown && layoutTick == 0) setLayoutTick.Invoke(1);
+                return (Action)null;
+            }, new object[] { shown });
+            Hooks.UseEffect(() =>
+            {
+                s_passive = "passive effect of tick " + layoutTick;
+                return (Action)null;
+            }, new object[] { layoutTick });
+            return V.Fragment(
+                shown ? V.Component(ClicksAnotherRoot, key: "c") : null,
+                V.Component(LayoutChild, shown, key: "q"));
+        }
+
+        private static (MountedTree Owner, MountedTree Other) MountTheLayoutOwnerAndAnotherRoot()
+        {
+            FiberStrictMode.Enabled = false;
+            s_otherClickQueues = true;
+            s_clickOnCleanup = true;
+            s_popupRenders = 0;
+            var owner = V.Mount(new VisualElement(), V.Component(LayoutOwner));
+            var other = V.Mount(new VisualElement(), V.Component(AnotherRoot));
+            s_shared = "before the owner";
+            s_passive = "before the owner";
+            s_otherBefore = s_otherRenders;
+            s_otherPassiveBefore = s_otherPassive;
+            s_popupRenders = 0;
+            return (owner, other);
+        }
+
+        private static void FlushTheLayoutOwner()
+        {
+            s_showLayout.Invoke(false);
+            FiberWorkLoop.FlushState(s_layoutOwnerFiber);
+        }
+
+        [Test]
+        public void Given_AHeldFlushAndAChildsLayoutEffectThatMountsAnotherRoot_When_TheCommitEnds_Then_TheOtherRootSeesTheParentsLayoutEffectWrite()
+        {
+            // Arrange
+            var (owner, other) = MountTheLayoutOwnerAndAnotherRoot();
+            using var ownerTree = owner;
+            using var otherTree = other;
+            s_layoutAction = () => s_popups.Add(V.Mount(new VisualElement(), V.Component(CountsPopupRenders)));
+
+            // Act
+            FlushTheLayoutOwner();
+
+            // Assert
+            Assert.That(s_otherSaw, Is.EqualTo("after the owner"));
+        }
+
+        [Test]
+        public void Given_AMountFromALayoutEffect_When_TheLayoutEffectReturns_Then_TheRootHasNotRendered()
+        {
+            // Arrange
+            var (owner, other) = MountTheLayoutOwnerAndAnotherRoot();
+            using var ownerTree = owner;
+            using var otherTree = other;
+            s_layoutAction = () =>
+            {
+                s_popups.Add(V.Mount(new VisualElement(), V.Component(CountsPopupRenders)));
+                s_popupInside = "popup:" + s_popupRenders;
+            };
+
+            // Act
+            FlushTheLayoutOwner();
+
+            // Assert
+            Assert.That(s_popupInside, Is.EqualTo("popup:0"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base rendered the root where it was mounted, so it has rendered by the time control returns.
+        [Test]
+        public void Given_AMountFromALayoutEffect_When_TheCommitEnds_Then_TheRootHasRenderedBeforeControlReturns()
+        {
+            // Arrange
+            var (owner, other) = MountTheLayoutOwnerAndAnotherRoot();
+            using var ownerTree = owner;
+            using var otherTree = other;
+            s_layoutAction = () => s_popups.Add(V.Mount(new VisualElement(), V.Component(CountsPopupRenders)));
+
+            // Act
+            FlushTheLayoutOwner();
+
+            // Assert
+            Assert.That(s_popupRenders, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_AMountFromACallbackRef_When_TheRefSetsUp_Then_TheRootHasNotRendered()
+        {
+            // Arrange
+            var (owner, other) = MountTheLayoutOwnerAndAnotherRoot();
+            using var ownerTree = owner;
+            using var otherTree = other;
+            s_refAction = () =>
+            {
+                s_popups.Add(V.Mount(new VisualElement(), V.Component(CountsPopupRenders)));
+                s_popupInside = "popup:" + s_popupRenders;
+            };
+
+            // Act
+            FlushTheLayoutOwner();
+
+            // Assert
+            Assert.That(s_popupInside, Is.EqualTo("popup:0"));
+        }
+
+        [Test]
+        public void Given_ADiscreteHandlerFiredByALayoutEffect_When_TheLayoutEffectReturns_Then_TheOtherRootHasNotRendered()
+        {
+            // Arrange
+            var (owner, other) = MountTheLayoutOwnerAndAnotherRoot();
+            using var ownerTree = owner;
+            using var otherTree = other;
+            s_clickOnCleanup = false;
+            s_layoutAction = () =>
+            {
+                s_otherButton.SimulateClick();
+                s_seenInLayout = "inside:" + (s_otherRenders - s_otherBefore);
+            };
+
+            // Act
+            FlushTheLayoutOwner();
+
+            // Assert
+            Assert.That(s_seenInLayout, Is.EqualTo("inside:0"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base rendered the other root inside the layout effect, so it has rendered by the time control returns.
+        [Test]
+        public void Given_ADiscreteHandlerFiredByALayoutEffect_When_TheCommitEnds_Then_TheOtherRootHasRenderedBeforeControlReturns()
+        {
+            // Arrange
+            var (owner, other) = MountTheLayoutOwnerAndAnotherRoot();
+            using var ownerTree = owner;
+            using var otherTree = other;
+            s_clickOnCleanup = false;
+            s_layoutAction = () => s_otherButton.SimulateClick();
+
+            // Act
+            FlushTheLayoutOwner();
+
+            // Assert
+            Assert.That(s_otherRenders - s_otherBefore, Is.EqualTo(1));
+        }
+
+        [Component]
+        private static VNode DisposesARootInItsCleanup()
+        {
+            Hooks.UseLayoutEffect(() => () =>
+            {
+                s_cleanupRoot.Dispose();
+                s_hostChildrenInsideCleanup = s_cleanupHost.childCount;
+            }, Array.Empty<object>());
+            return V.Div();
+        }
+
+        [Component]
+        private static VNode OwnerOfTheDisposer()
+        {
+            var (shown, setShown) = Hooks.UseState(true);
+            s_disposerOwnerFiber = FiberAmbientStack.Current;
+            s_showDisposer = setShown;
+            return V.Fragment(shown ? V.Component(DisposesARootInItsCleanup, key: "d") : null);
+        }
+
+        private static MountedTree MountTheDisposerOwner()
+        {
+            FiberStrictMode.Enabled = false;
+            s_cleanupHost = new VisualElement();
+            s_cleanupRoot = V.Mount(s_cleanupHost, V.Component(CountsPopupRenders));
+            return V.Mount(new VisualElement(), V.Component(OwnerOfTheDisposer));
+        }
+
+        [Test]
+        public void Given_ALayoutCleanupThatDisposesARootItMounted_When_TheCleanupReturns_Then_TheRootIsStillMounted()
+        {
+            // Arrange
+            using var owner = MountTheDisposerOwner();
+            s_showDisposer.Invoke(false);
+
+            // Act
+            FiberWorkLoop.FlushState(s_disposerOwnerFiber);
+
+            // Assert
+            Assert.That(s_hostChildrenInsideCleanup, Is.EqualTo(1));
+        }
+
+        // GREEN_ON_BASE(characterization): the base unmounted the root where the cleanup disposed it.
+        [Test]
+        public void Given_ALayoutCleanupThatDisposesARootItMounted_When_TheEntryEnds_Then_TheRootIsUnmounted()
+        {
+            // Arrange
+            using var owner = MountTheDisposerOwner();
+            s_showDisposer.Invoke(false);
+
+            // Act
+            FiberWorkLoop.FlushState(s_disposerOwnerFiber);
+
+            // Assert
+            Assert.That(s_cleanupHost.childCount, Is.Zero);
+        }
+
+        // GREEN_ON_BASE(characterization): the base rendered the other root inside the unmount.
+        [Test]
+        public void Given_ARootWhoseDeletedComponentsCleanupFiresAHandlerOfAnotherRoot_When_ItIsDisposed_Then_TheOtherRootHasRenderedBeforeDisposeReturns()
+        {
+            // Arrange
+            var (owner, other) = MountTheTwoRoots();
+            using var otherTree = other;
+
+            // Act
+            owner.Dispose();
+
+            // Assert
+            Assert.That(s_otherRenders - s_otherBefore, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_ACommitWhoseSyncLanePassiveEffectIsPending_When_ARootIsHeldBehindIt_Then_TheCommittingRootsEffectRanBeforeTheHeldRootRendered()
+        {
+            // Arrange
+            var (owner, other) = MountTheLayoutOwnerAndAnotherRoot();
+            using var ownerTree = owner;
+            using var otherTree = other;
+            s_showLayout.Invoke(false);
+
+            // Act
+            owner.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert
+            Assert.That(s_otherSawPassive, Is.EqualTo("passive effect of tick 1"));
         }
     }
 }

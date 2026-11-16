@@ -126,11 +126,11 @@ namespace Velvet
             {
                 _ctx.SetReconcilerBridge(this);
                 // Lets the batch scheduler block a synchronous discrete-event flush while any reconcile
-                // pass (including a time-sliced resume that runs outside the batch Drain) is on the stack, and while
-                // a pass of any context records or applies its writes, which run after the pass has left the stack and which
-                // a handler one of them fires must not render inside: React renders no root inside another's commit.
+                // pass (including a time-sliced resume that runs outside the batch Drain) is on the stack, and while a
+                // root of any context renders or commits (ChildListWrites.Busy), which a handler fired inside must not
+                // render inside: React runs no root's flush there, and the flush waits for the outermost entry to end.
                 _ctx.BatchScheduler.SetReconcileActiveProbe(
-                    () => _ctx.SharedReconcileDepth > 0 || ChildListWrites.HoldsFlush(_ctx.BatchScheduler));
+                    () => _ctx.SharedReconcileDepth > 0 || ChildListWrites.HoldsFlush(_ctx));
                 _ctx.BatchScheduler.SetIntakeDropCallback(_ctx.DropAllCaptures);
                 _ctx.BatchScheduler.SetPassiveEffectFlush(() => FiberEffects.FlushPendingPassiveEffects(_ctx));
                 // Brackets each drain to drive (1) the UseStore tearing guard — pinning is active only inside a
@@ -351,19 +351,17 @@ namespace Velvet
         private void FinishTopLevelPass(VisualElement? reconciledInto, bool walked)
         {
             TakeAbort();
-            var failed = true;
+            var completed = false;
             try
             {
                 FinishPass(reconciledInto, walked);
                 ChildListWrites.VerifyTouched();
-                failed = false;
+                completed = true;
             }
             finally
             {
-                // What was held while a pass was open is made where the commit that follows the pass has ended
-                // (FiberEffects.CommitStrandedLayoutWork), which a pass that ends in a throw, or one no fiber drives, has
-                // none of.
-                if (failed || _ctx.FiberStack.Current == null) ChildListWrites.ReleaseHeld();
+                // A pass a fiber drives ends in its entry, outside the render this runs in.
+                if (_ctx.FiberStack.Current == null) ChildListWrites.ReleaseAfterBarePass(completed);
             }
         }
 
