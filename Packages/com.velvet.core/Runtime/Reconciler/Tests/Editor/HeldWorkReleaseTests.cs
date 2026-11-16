@@ -13,8 +13,9 @@ namespace Velvet.Tests
     /// <summary>
     /// Specifies the release of what was held while a root rendered or committed: in the order it was asked for, what an
     /// item holds behind what was waiting, one item's exception logged without stopping the rest or replacing the entry's
-    /// own, a request that keeps asking for itself bounded per release while the rest still runs, and a render or commit
-    /// step reached with no entry on the stack asserted.
+    /// own, held work of a root that earlier held work took down left unmade, a request that keeps asking for itself
+    /// bounded per release while the rest still runs, a root listed as owing the sync lane flushed only while it still
+    /// owes it, and a render or commit step reached with no entry on the stack asserted.
     /// </summary>
     [TestFixture]
     internal sealed class HeldWorkReleaseTests
@@ -261,22 +262,55 @@ namespace Velvet.Tests
             return V.Label(text: "first");
         }
 
+        // The mount is held ahead of the unmount its handle's Dispose holds, so only taking it out of the queue keeps the
+        // root from rendering.
         [Test]
-        public void Given_ARootDisposedByEarlierHeldWorkOfTheSameRelease_When_ItsRenderWasHeld_Then_ItNeverRenders()
+        public void Given_ARootMountedAndDisposedInOneWalk_When_ThePassEnds_Then_ItNeverRenders()
         {
             // Arrange
             s_disposedRootRenders = 0;
-            MountedTree held = null!;
+
+            // Act
+            WalkAsking(() => V.Mount(new VisualElement(), V.Component(CountsItsFirstRender)).Dispose());
+
+            // Assert
+            Assert.That(s_disposedRootRenders, Is.Zero);
+        }
+
+        [Test]
+        public void Given_HeldWorkOfARootThatEarlierHeldWorkDisposed_When_TheReleaseReachesIt_Then_ItDoesNotRun()
+        {
+            // Arrange
+            var disposed = MountALabel();
+            var ran = false;
 
             // Act
             WalkAsking(() =>
             {
-                HoldFor(Holder, () => held.Dispose());
-                held = V.Mount(new VisualElement(), V.Component(CountsItsFirstRender));
+                HoldFor(_walker.Context.BatchScheduler, () => disposed.Dispose());
+                HoldFor(disposed.GetSchedulerForTest(), () => ran = true);
             });
 
             // Assert
-            Assert.That(s_disposedRootRenders, Is.Zero);
+            Assert.That(ran, Is.False);
+        }
+
+        // The fiber shares the holder's context, which its unmount leaves alive, and the unmount takes its reconciler.
+        [Test]
+        public void Given_AHeldMountOfAFiberThatEarlierHeldWorkUnmounted_When_TheReleaseReachesIt_Then_NothingIsLogged()
+        {
+            // Arrange
+            var fiber = FiberRenderer.CreateRoot(CountsItsFirstRender);
+
+            // Act
+            WalkAsking(() =>
+            {
+                HoldFor(_walker.Context.BatchScheduler, () => FiberRenderer.Unmount(fiber));
+                FiberRenderer.Mount(fiber, new VisualElement(), _holder.Context);
+            });
+
+            // Assert
+            LogAssert.NoUnexpectedReceived();
         }
 
         // --- The bound ---
