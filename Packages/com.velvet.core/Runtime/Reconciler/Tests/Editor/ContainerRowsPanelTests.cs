@@ -217,5 +217,59 @@ namespace Velvet.Tests
             // Assert
             Assert.That(seen(), Is.EqualTo(0));
         }
+
+        // GREEN_ON_BASE(characterization): the base compares a write's own container child for child once a write
+        // nested in it has run. Delete `Settle(container, nestedRan);` from ChildListWrites.Exit and the model keeps
+        // the inserted child a slot early.
+        [Test]
+        public void Given_AHandlerThatMovesTheFirstChildOutFromTheInsertedChildsDetach_When_TheChildIsInsertedMidList_Then_TheModelHoldsTheLiveOrder()
+        {
+            // Arrange — the nested write takes the first child out after the model has placed the inserted one, which
+            // leaves the model holding it a slot early with its count, first child and last child agreeing with the
+            // live list.
+            var root = _window.rootVisualElement;
+            var source = new VisualElement();
+            var destination = new VisualElement();
+            ChildListWrites.Add(root, source);
+            ChildListWrites.Add(root, destination);
+            var leaving = new VisualElement();
+            ChildListWrites.Add(destination, leaving);
+            for (var i = 0; i < 4; i++) ChildListWrites.Add(destination, new VisualElement());
+            var child = new VisualElement();
+            ChildListWrites.Add(source, child);
+            child.RegisterCallback<DetachFromPanelEvent>(_ => ChildListWrites.Add(new VisualElement(), leaving));
+
+            // Act
+            ChildListWrites.Insert(destination, 2, child);
+
+            // Assert
+            Assert.That(ContainerRowsTests.CompareOrder(destination, RowModelAccess.Peek(destination)!), Is.Null);
+        }
+
+        // GREEN_ON_BASE(characterization): the base empties a model before it fills it from the sorted list. Delete
+        // `rows.Clear();` from ChildListWrites.HierarchySort and a sort nested in another write leaves the model
+        // holding each child twice until the outer write ends.
+        [Test]
+        public void Given_AHandlerThatSortsAContainerFromAChildsDetach_When_TheChildIsRemoved_Then_AReadInTheHandlerCountsEachSortedChildOnce()
+        {
+            // Arrange
+            var sorted = new VisualElement();
+            ChildListWrites.Add(sorted, new VisualElement { name = "b" });
+            ChildListWrites.Add(sorted, new VisualElement { name = "a" });
+            var child = new VisualElement();
+            var container = Attached(new VisualElement(), child);
+            var counted = -1;
+            child.RegisterCallback<DetachFromPanelEvent>(_ =>
+            {
+                ChildListWrites.HierarchySort(sorted, (x, y) => string.CompareOrdinal(x.name, y.name));
+                counted = ChildListWrites.RenderedCount(sorted);
+            });
+
+            // Act
+            ChildListWrites.Remove(container, child);
+
+            // Assert
+            Assert.That(counted, Is.EqualTo(2));
+        }
     }
 }

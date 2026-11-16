@@ -427,6 +427,26 @@ namespace Velvet.Tests
             Assert.That(CompareOrder(parent, RowModelAccess.Peek(parent)!), Is.Null);
         }
 
+        // GREEN_ON_BASE(characterization): the base takes the stale mark off with the rows it rebuilds. Have
+        // ContainerRows.Clear set `Stale` to true and the model stays marked, so the next read outside a write
+        // rebuilds it again.
+        [Test]
+        public void Given_AModelMarkedStaleByAnAnnouncedChange_When_AReadRebuildsIt_Then_ItIsNoLongerMarkedStale()
+        {
+            // Arrange
+            var parent = new VisualElement();
+            ChildListWrites.Add(parent, new VisualElement());
+            ChildListWrites.Add(parent, new VisualElement());
+            ChildListWrites.NoteHierarchyChange(parent[0]);
+            var marked = RowModelAccess.Peek(parent)!.Stale;
+
+            // Act
+            _ = ChildListWrites.RenderedCount(parent);
+
+            // Assert — read as null where the announcement marked nothing for the read to rebuild.
+            Assert.That(marked ? RowModelAccess.Peek(parent)!.Stale : (bool?)null, Is.False);
+        }
+
         // GREEN_ON_BASE(refactor): reads the model through the surface step 1 added, which this change leaves as it was.
         [Test]
         public void Given_AChildAddedBehindTheModelsBack_When_TheNextWriteArrives_Then_TheModelHoldsEveryChild()

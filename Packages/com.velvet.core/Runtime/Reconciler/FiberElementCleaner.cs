@@ -656,6 +656,7 @@ namespace Velvet
             if (slotEnd > target.childCount) slotEnd = target.childCount;
             // Read before any is cleaned: a cleanup can take a child hosted before its element out of the target
             // (RemoveCleaned), which would move the indices still to be visited.
+            // MUTANT_SURVIVES(equivalent, arithmetic): the expression sizes only the list's initial capacity, which bounds nothing PhysicalRange appends, and with both ends at zero or more the sum is a valid capacity too.
             var range = new List<VisualElement>(Math.Max(slotEnd - physicalSlotStart, 0));
             ChildListWrites.PhysicalRange(target, physicalSlotStart, slotEnd, range);
             range.Reverse();

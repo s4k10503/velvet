@@ -189,6 +189,25 @@ namespace Velvet.Tests
             Assert.That((layers, binding.LayerBlends.Count), Is.EqualTo((1, 0)));
         }
 
+        // GREEN_ON_BASE(characterization): a layer whose run is gone leaves the element, as before. Delete
+        // `ChildListWrites.RemoveFromHierarchy(layers[^1]);` from SyncLayers and the binding forgets the layer while
+        // the element still holds it.
+        [Test]
+        public void Given_ABlendLayerWhoseSystemWasDestroyed_When_TheTickArranges_Then_TheLayerLeavesTheElement()
+        {
+            // Arrange
+            var binding = MountAlphaRootOverAdditiveChild("fx-shrink-leaves");
+            var element = _host.Root.Q<VisualElement>("fx-shrink-leaves");
+            var before = LayerChildren(element);
+            Object.DestroyImmediate(binding.Systems[1].System.gameObject);
+
+            // Act
+            AdvanceTicks(1);
+
+            // Assert — read as -1 where the mount put no layer on the element for the tick to take off.
+            Assert.That(before == 1 ? LayerChildren(element) : -1, Is.Zero);
+        }
+
         // The extents of two paint targets, the element's and its layer's, set by hand so the tick's own arrangement is
         // what reads them.
         private ParticlesBinding MountAndPresetTwoExtents(string name)
