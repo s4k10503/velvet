@@ -2545,11 +2545,9 @@ namespace Velvet
             _pendingRefAttachIndex.Remove(element);
             _pendingRefAttaches[index] = default;
             // Ahead of the setup too, so an element the setup itself takes out of the tree is one
-            // FiberElementCleaner finds an entry for and removes. A setup CAN reach that: it runs
-            // at depth zero now, where a discrete event it dispatches commits synchronously instead
-            // of being held back. Recorded only afterwards, the removal would find no entry and the
-            // write below would then add one for an element no tree holds, past the removal that
-            // would have taken it.
+            // FiberElementCleaner finds an entry for and removes. Recorded only afterwards, the removal
+            // would find no entry and the write below would then add one for an element no tree holds,
+            // past the removal that would have taken it.
             RefCallbacks[element] = (callback, null, owner);
             // A callback that reads its element's box here reads it laid out, as in React's layout phase.
             FiberLayoutReflow.LayOutFor(this, element, owner);
