@@ -514,6 +514,54 @@ namespace Velvet
         // contexts are open at once this answers for the innermost.
         internal static bool PassIsOpen => s_current is { Recording: true } or { Applying: true };
 
+        // What was asked for while a pass was open, which React would have scheduled and not run inside it: the
+        // schedulers whose flush was refused (HoldsFlush) and the mounts of a root (HoldMount). ReleaseHeld makes them
+        // where the commit that follows the pass has ended.
+        private static readonly List<FiberBatchScheduler> s_heldFlushes = new();
+        private static readonly List<Action> s_heldMounts = new();
+
+        // Whether a flush the scheduler was asked for is held back by an open pass, of any context, in which case it is
+        // remembered for ReleaseHeld.
+        internal static bool HoldsFlush(FiberBatchScheduler scheduler)
+        {
+            if (!PassIsOpen) return false;
+            if (!s_heldFlushes.Contains(scheduler)) s_heldFlushes.Add(scheduler);
+            return true;
+        }
+
+        // Whether the first render of a root is held back by an open pass, of any context, in which case it is left to
+        // ReleaseHeld.
+        internal static bool HoldMount(Action render)
+        {
+            if (!PassIsOpen) return false;
+            s_heldMounts.Add(render);
+            return true;
+        }
+
+        // Forgets a held render, for a root disposed before it was made.
+        internal static void DropHeldMount(Action render) => s_heldMounts.Remove(render);
+
+        private const int MaxHeldRounds = 50;
+
+        // Makes what was held while a pass was open once none is: the pending passive effects of each held context,
+        // then its flush, then the held renders, in the order they were asked for. What those ask for in turn is held
+        // by the pass they open and is made by the round after, up to a bound that stops a chain that never settles.
+        internal static void ReleaseHeld()
+        {
+            // MUTANT_SURVIVES(unreachable, boundary): no chain of held work in the suite runs to the bound, which only stops one
+            // that never settles.
+            for (var round = 0; round < MaxHeldRounds && !PassIsOpen && (s_heldFlushes.Count > 0 || s_heldMounts.Count > 0); round++)
+            {
+                var flushes = s_heldFlushes.ToArray();
+                var mounts = s_heldMounts.ToArray();
+                s_heldFlushes.Clear();
+                s_heldMounts.Clear();
+                foreach (var scheduler in flushes) scheduler.FlushPendingPassiveEffects();
+                foreach (var scheduler in flushes) scheduler.FlushImmediate();
+                foreach (var render in mounts) render();
+            }
+        }
+
         // A pass that starts while another is open applies the other's recorded writes first, so it reads a live list
         // where they would otherwise be pending. Where the other is applying them already, they are left to that apply
         // and the new pass records into a list of its own.
