@@ -188,6 +188,94 @@ namespace Velvet.Tests
             Assert.That(_root.Q<VisualElement>("motion").ClassListContains("bg-red-500"), Is.True);
         }
 
+        private static VNode[] LiftTree(bool on, bool withLastRow)
+        {
+            var rows = new List<VNode>
+            {
+                V.Div(name: "m", className: "has-[.on]:absolute has-[.on]:z-10", children: new VNode[]
+                {
+                    V.Div(className: on ? "on" : string.Empty),
+                }),
+                V.Div(name: "x", className: "last:bg-red-500"),
+            };
+            if (withLastRow) rows.Add(V.Div(name: "y", className: "last:bg-red-500"));
+            return new VNode[] { V.Div(name: "parent", className: "relative", children: rows.ToArray()) };
+        }
+
+        // GREEN_ON_BASE(characterization): the base applies the recorded insert of the last row ahead of the structural
+        // pass of the parent, so the pass reads the row; the case pins that the relocated element's return to its slot
+        // does not drop it from what the pass reads.
+        [Test]
+        public void Given_ARelocatedElementWhoseHasPayloadGoesOff_When_ThePassAlsoAppendsTheLastRow_Then_TheLastRowHoldsTheLastPayload()
+        {
+            // Arrange
+            var before = LiftTree(true, false);
+            _reconciler.Reconcile(_root, Array.Empty<VNode>(), before);
+
+            // Act
+            _reconciler.Reconcile(_root, before, LiftTree(false, true));
+
+            // Assert
+            Assert.That(_root.Q<VisualElement>("y").ClassListContains("bg-red-500"), Is.True);
+        }
+
+        private static VNode[] AnchoredTree(bool motion)
+            => new VNode[]
+            {
+                V.Div(name: "parent", className: "relative", children: new VNode[]
+                {
+                    motion
+                        ? V.Motion(name: "a", props: new FiberElementProps { Anchored = new AnchoredSettings(null) })
+                        : V.Anchored(target: null, name: "a"),
+                    V.Div(name: "b"),
+                }),
+            };
+
+        // GREEN_ON_BASE(characterization): the base records the anchored element's facts where it patches it, so it stays
+        // in front of the unpositioned row after it.
+        [TestCase(false)]
+        [TestCase(true)]
+        public void Given_AnAnchoredElementLiftedInFrontOfAnUnpositionedRow_When_ItIsPatchedWithNoStackingClass_Then_ItStaysInFrontOfTheRow(bool motion)
+        {
+            // Arrange
+            var before = AnchoredTree(motion);
+            _reconciler.Reconcile(_root, Array.Empty<VNode>(), before);
+
+            // Act
+            _reconciler.Reconcile(_root, before, AnchoredTree(motion));
+
+            // Assert
+            var parent = _root.Q<VisualElement>("parent");
+            var anchored = _root.Q<VisualElement>("a");
+            var slot = motion ? anchored : anchored.parent;
+            Assert.That(parent.IndexOf(slot), Is.GreaterThan(parent.IndexOf(_root.Q<VisualElement>("b"))));
+        }
+
+        private static VNode[] DivTree(bool active)
+            => new VNode[]
+            {
+                V.Div(name: "box", className: "has-[.on]:bg-red-500", children: new VNode[]
+                {
+                    V.Div(className: active ? "on" : string.Empty),
+                }),
+            };
+
+        // GREEN_ON_BASE(characterization): the base applies the child's recorded class where the pass ends, ahead of the
+        // second half of the Div's own patch, which scans the children for it.
+        [Test]
+        public void Given_ADivWithAHasClassVariant_When_AChildGainsTheClassWithNoInsert_Then_TheDivHoldsThePayload()
+        {
+            // Arrange
+            var before = DivTree(false);
+            _reconciler.Reconcile(_root, Array.Empty<VNode>(), before);
+
+            // Act
+            _reconciler.Reconcile(_root, before, DivTree(true));
+
+            // Assert
+            Assert.That(_root.Q<VisualElement>("box").ClassListContains("bg-red-500"), Is.True);
+        }
+
         private static VNode[] DelayedFieldTree(string name, VNode? later = null)
         {
             var rows = new List<VNode> { V.TextField(name: name, isDelayed: true) };
@@ -195,10 +283,8 @@ namespace Velvet.Tests
             return rows.ToArray();
         }
 
-        // GREEN_ON_BASE(characterization): the base writes every patch at once; the case pins that a delayed field, whose
-        // commit of an uncommitted edit runs the app's handler, still does.
         [Test]
-        public void Given_ADelayedTextFieldThatIsRenamed_When_ALaterRowIsCreatedInThePass_Then_TheFieldIsDelayedAndAlreadyHoldsTheNewName()
+        public void Given_ADelayedTextFieldThatIsRenamed_When_ALaterRowIsCreatedInThePass_Then_TheFieldStillHoldsTheOldName()
         {
             // Arrange
             var before = DelayedFieldTree("before");
@@ -210,7 +296,7 @@ namespace Velvet.Tests
             _reconciler.Reconcile(_root, before, DelayedFieldTree("after", V.ScrollView(onCreated: _ => seen = field.isDelayed + field.name)));
 
             // Assert
-            Assert.That(seen, Is.EqualTo("Trueafter"));
+            Assert.That(seen, Is.EqualTo("Truebefore"));
         }
     }
 }

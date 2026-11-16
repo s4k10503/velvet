@@ -145,6 +145,25 @@ namespace Velvet.Tests
             Assert.That(ZBandProbe.PaintOrder(Rows), Is.EqualTo("a,c,b"));
         }
 
+        // GREEN_ON_BASE(characterization): the base patches a row a scroll places again outside a pass and decides its
+        // stacking there.
+        [Test]
+        public void Given_AVirtualListRowWhoseClassesGainedAZIndexWithNoRender_When_AScrollPlacesItAgain_Then_ItPaintsInFrontOfTheRowAfterIt()
+        {
+            // Arrange
+            s_classedRow = "a";
+            using var mounted = V.Mount(_root, V.Component(ListHost, key: "host"));
+            var controller = mounted.Root.Reconciler.Context.VirtualListControllers[_root.Q<ScrollView>()];
+            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 200f);
+            s_classes = "relative z-10";
+
+            // Act — a range rendered from a scroll, outside any pass, that patches "a" and "b".
+            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 15f);
+
+            // Assert
+            Assert.That(ZBandProbe.PaintOrder(Rows), Is.EqualTo("b,a"));
+        }
+
         [Test]
         public void Given_AVirtualListRowWithANegativeZIndex_When_AScrollBringsItIntoTheRange_Then_ItPaintsBehindTheOtherRows()
         {
