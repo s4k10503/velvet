@@ -421,7 +421,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ASetupThatRemovesTheElementItWasHanded_When_TheDrainRecordsIt_Then_NoRefEntryIsLeftForIt()
+        public void Given_ASetupThatRemovesTheElementItWasHanded_When_TheRenderItAskedForEnds_Then_NoRefEntryIsLeftForIt()
         {
             // Arrange / Act
             using var mounted = V.Mount(Root,
@@ -595,7 +595,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ASetupWhoseElementLeavesWhileItRuns_When_ItReturnedACleanup_Then_ThatCleanupStillRuns()
+        public void Given_ASetupWhoseClickRemovesItsElement_When_ItReturnedACleanup_Then_ThatCleanupRunsAsTheElementLeaves()
         {
             // Arrange / Act
             using var mounted = V.Mount(Root,
@@ -672,12 +672,13 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base's drain takes a replacement queued from inside the entry it replaces
-        // in the same drain; the layout commit this branch adds leaves a bare Reconciler's drain as it was.
+        // in the same drain, as this one does.
         [Test]
         public void Given_ABareReconcileWhoseSetupRebindsTheRefOfItsOwnElement_When_TheDrainContinues_Then_TheReplacementRunsInTheSameDrain()
         {
             // Arrange — no fiber is on the stack, so the drain at the end of the pass attaches the setups, and the
-            // replacement is queued while the drain is inside the entry it replaces.
+            // replacement is queued while the drain is inside the entry it replaces. The setup reconciles through the
+            // pass's body, as work inside an entry does; Reconcile would wait for the entry to end.
             var replacementAttaches = 0;
             Func<VisualElement, Action> replacement = _ =>
             {
@@ -690,7 +691,7 @@ namespace Velvet.Tests
             {
                 V.Div(name: "host", refCallback: _ =>
                 {
-                    Reconciler.Reconcile(Root, first, rebound);
+                    Reconciler.ReconcileCatching(Root, first, rebound, 0, 0, int.MaxValue);
                     return null;
                 }),
             };

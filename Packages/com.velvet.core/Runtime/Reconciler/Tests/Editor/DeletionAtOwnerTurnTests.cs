@@ -670,22 +670,30 @@ namespace Velvet.Tests
         private static VNode DropsAProbeOfTheFlushGate()
         {
             var (shown, _) = EventLog.UseState("Shown", true);
+            EventLog.UseState("Bumped", 0);
             s_flushedOwner = FiberAmbientStack.Current;
             return V.Fragment(shown ? V.Component(ProbesTheFlushGate, key: "p") : null);
         }
 
-        // Records whether a synchronous flush could start where its layout cleanup runs.
+        // Where its layout cleanup runs, asks the root for an update and a synchronous flush, and records how often its
+        // owner rendered inside that flush.
         [Component]
         private static VNode ProbesTheFlushGate()
         {
             var log = EventLog.UseLog();
             var scheduler = FiberAmbientStack.Current!.Reconciler!.Context.BatchScheduler;
-            Hooks.UseLayoutEffect(() => () => log.Add("flush:" + scheduler.CanFlushImmediate), Array.Empty<object>());
+            Hooks.UseLayoutEffect(() => () =>
+            {
+                var before = s_flushedOwner.RenderCount;
+                log.Setter<int>("Bumped").Invoke(1);
+                scheduler.FlushImmediate();
+                log.Add("rendered inside:" + (s_flushedOwner.RenderCount - before));
+            }, Array.Empty<object>());
             return V.Div();
         }
 
         [Test]
-        public void Given_ADeletionRenderedOutsideADrain_When_ItsCleanupRunsWhereThePassAppliesItsWrites_Then_NoSynchronousFlushCanStart()
+        public void Given_ADeletionRenderedOutsideADrain_When_ItsCleanupAsksForAFlushWhereThePassAppliesItsWrites_Then_TheRootDoesNotRenderInsideIt()
         {
             // Arrange
             var log = new EventLog();
@@ -698,7 +706,7 @@ namespace Velvet.Tests
             FiberWorkLoop.FlushState(s_flushedOwner);
 
             // Assert
-            Assert.That(log.ToString(), Is.EqualTo("flush:False"));
+            Assert.That(log.ToString(), Is.EqualTo("rendered inside:0"));
         }
 
         private static Button s_otherButton;
@@ -921,10 +929,13 @@ namespace Velvet.Tests
             s_refAction = null;
         }
 
+        private static string s_popupSaw;
+
         [Component]
         private static VNode CountsPopupRenders()
         {
             s_popupRenders++;
+            s_popupSaw = s_shared;
             return V.Div(name: "popup");
         }
 
@@ -991,20 +1002,22 @@ namespace Velvet.Tests
             FiberWorkLoop.FlushState(s_layoutOwnerFiber);
         }
 
+        // The child's layout effect runs ahead of its parent's, which writes what the root it mounts reads as it renders.
         [Test]
-        public void Given_AHeldFlushAndAChildsLayoutEffectThatMountsAnotherRoot_When_TheCommitEnds_Then_TheOtherRootSeesTheParentsLayoutEffectWrite()
+        public void Given_AChildsLayoutEffectThatMountsAnotherRoot_When_TheCommitEnds_Then_ThatRootSeesTheParentsLayoutEffectWrite()
         {
             // Arrange
             var (owner, other) = MountTheLayoutOwnerAndAnotherRoot();
             using var ownerTree = owner;
             using var otherTree = other;
+            s_popupSaw = null;
             s_layoutAction = () => s_popups.Add(V.Mount(new VisualElement(), V.Component(CountsPopupRenders)));
 
             // Act
             FlushTheLayoutOwner();
 
-            // Assert
-            Assert.That(s_otherSaw, Is.EqualTo("after the owner"));
+            // Assert — null where the root never rendered
+            Assert.That(s_popupSaw, Is.EqualTo("after the owner"));
         }
 
         [Test]

@@ -765,8 +765,10 @@ namespace Velvet.Tests
                 V.Component(NestedFlusherRender, key: "flusher"),
             });
 
+        // The render the effect asks for waits for the passive flush running it to end, so the effect its commit stages
+        // runs in the passive flush after it.
         [Test]
-        public void Given_AnEffectThatRendersAndClicksWhileThePassiveFlushRunsIt_When_TheFlushRuns_Then_TheEffectsThatRenderStagedWaitForItToReturn()
+        public void Given_AnEffectThatRendersAndClicksWhileThePassiveFlushRunsIt_When_ThatFlushAndTheNextRun_Then_TheEffectsThatRenderStagedWaitForItToReturn()
         {
             // Arrange
             s_nestedRoot = _root;
@@ -774,6 +776,7 @@ namespace Velvet.Tests
             s_nestedMounted = _mounted;
 
             // Act
+            _mounted.FlushEffectsForTest();
             _mounted.FlushEffectsForTest();
 
             // Assert
