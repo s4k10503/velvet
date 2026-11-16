@@ -6,3 +6,6 @@
   committing root's own sync-lane passive effects run first; then, in the order they were asked for, each held root's
   passive effects and flush, the first render of each mounted root and each unmount. `V.Mount` returns its handle at
   once. Work that throws does not stop the work after it, and its exception is rethrown once all of it has run.
+- A `refCallback:` cleanup that throws as its element is removed was logged and reached no error boundary. It now goes
+  to the nearest boundary above the component that rendered the element, which shows its fallback in a follow-up
+  commit, as React's does; with none, the tree unmounts, as it does for any error no boundary catches.

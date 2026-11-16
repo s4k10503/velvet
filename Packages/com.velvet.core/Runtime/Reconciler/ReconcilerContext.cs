@@ -2245,8 +2245,8 @@ namespace Velvet
         // (cleanup, then setup) only when its identity changes or the element remounts. The cleanup
         // fires when the element detaches from the DOM, releasing resources such as resetting
         // Ref<T>.Current to null.
-        public Dictionary<VisualElement, (System.Func<VisualElement, System.Action> Callback, System.Action? Cleanup)>
-            RefCallbacks { get; } = new();
+        public Dictionary<VisualElement, (System.Func<VisualElement, System.Action> Callback, System.Action? Cleanup,
+            ComponentFiber? Owner)> RefCallbacks { get; } = new();
 
         // Ref setups queued and not yet run, in the order the walks reached them, keyed for replacement
         // so one element contributes one setup however many times a pass syncs it. Run by DrainRefAttaches at
@@ -2550,7 +2550,7 @@ namespace Velvet
             // of being held back. Recorded only afterwards, the removal would find no entry and the
             // write below would then add one for an element no tree holds, past the removal that
             // would have taken it.
-            RefCallbacks[element] = (callback, null);
+            RefCallbacks[element] = (callback, null, owner);
             // A callback that reads its element's box here reads it laid out, as in React's layout phase.
             FiberLayoutReflow.LayOutFor(this, element, owner);
             System.Action? cleanup = null;
@@ -2564,7 +2564,7 @@ namespace Velvet
             }
             if (RefCallbacks.ContainsKey(element))
             {
-                RefCallbacks[element] = (callback, cleanup);
+                RefCallbacks[element] = (callback, cleanup, owner);
             }
             else if (cleanup != null)
             {
@@ -2620,7 +2620,7 @@ namespace Velvet
             if (replaced == null) return;
             // Ahead of the cleanup: a boundary catching its failure can take the element out, and
             // finding the replaced entry there, FiberElementCleaner would run the cleanup a second time.
-            RefCallbacks[element] = (callback, null);
+            RefCallbacks[element] = (callback, null, owner);
             // Its failure goes where a setup's does, and the setup still runs.
             try
             {

@@ -56,17 +56,23 @@ namespace Velvet
         internal static void PropagateFromOwner(ComponentFiber? owner, Exception exception, bool isRenderError = false)
             => PropagateFrom(owner?.CaughtError == null ? owner : owner.Parent, owner, exception, isRenderError);
 
+        // As PropagateFromOwner, queued for the boundary's follow-up commit wherever it is thrown, as React's
+        // captureCommitPhaseError queues it.
+        internal static void CaptureFromOwner(ComponentFiber owner, Exception exception)
+            => PropagateFrom(owner.CaughtError == null ? owner : owner.Parent, owner, exception, isRenderError: false,
+                captured: true);
+
         // Where an error goes whose walk ends with neither a boundary nor the root V.Mount made taking it, and one Velvet
         // hands no boundary, as Framer Motion's completion callbacks run in a promise no boundary sees.
         internal static void ReportUncaught(Exception exception) => Debug.LogException(exception);
 
-        private static void PropagateFrom(
-            ComponentFiber? first, ComponentFiber? throwingFiber, Exception exception, bool isRenderError)
+        private static void PropagateFrom(ComponentFiber? first, ComponentFiber? throwingFiber, Exception exception,
+            bool isRenderError, bool captured = false)
         {
             var current = first;
             // An error a commit's effect or ref callback throws is queued for its boundary to render in a follow-up
             // commit. A render error is caught where it is thrown, whatever commit is running around it.
-            var inCommit = !isRenderError && first?.Reconciler?.Context.InCommitPhase == true;
+            var inCommit = captured || (!isRenderError && first?.Reconciler?.Context.InCommitPhase == true);
             while (current != null)
             {
                 // Captured before TryCatch runs: a boundary whose own fallback content fails can cascade
