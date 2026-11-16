@@ -497,6 +497,26 @@ namespace Velvet.Tests
             Assert.That(RowModelAccess.Peek(parent)!.ElementAt(0), Is.SameAs(parent[0]));
         }
 
+        // GREEN_ON_BASE(characterization): the base drops the model of an element whose side tables it clears. Drop
+        // `ChildListWrites.Drop(element);` and a removed container keeps the model of the children it held.
+        [Test]
+        public void Given_AMountedContainerWithChildren_When_ItIsUnmounted_Then_ItsRowModelIsGone()
+        {
+            // Arrange
+            using var scope = new Velvet.TestUtilities.ReconcilerScope();
+            var tree = new VNode[] { V.Div(name: "card", children: new VNode[] { V.Label(text: "a"), V.Label(text: "b") }) };
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+            var card = scope.Root.Q<VisualElement>("card");
+            var modeledWhileMounted = RowModelAccess.Peek(card) != null;
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, tree, System.Array.Empty<VNode>());
+
+            // Assert — a container that never had a model has none to drop, so the value read is one that is not
+            // null for it.
+            Assert.That(modeledWhileMounted ? RowModelAccess.Peek(card) : new object(), Is.Null);
+        }
+
         // An element whose child-list calls land on another one, as a ScrollView's do on its content container.
         private sealed class Forwarder : VisualElement
         {
