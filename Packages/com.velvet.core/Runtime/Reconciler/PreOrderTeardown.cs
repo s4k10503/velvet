@@ -24,7 +24,7 @@ namespace Velvet
 
         private readonly List<Step> _plan = new();
 
-        private struct Step
+        internal struct Step
         {
             public ComponentFiber? Fiber;
             public VisualElement? Element;
@@ -37,6 +37,9 @@ namespace Velvet
         // A root of the walk is visited as one, so where it is also the child of another root it is passed over there.
         protected abstract bool IsRoot(VisualElement element);
 
+        // Where the walk records its take-downs: the plan a walk that returns one hands out, or the walk's own.
+        protected virtual List<Step> Steps => _plan;
+
         // Whether the walk records its take-downs and RunPlan runs them afterwards. What the walk reaches and in what
         // order is then read from the tree as it stands before the first cleanup runs, as React's deletion walk takes
         // it from the fiber tree: a cleanup that changes the host children changes neither. A walk that reads a hold a
@@ -46,24 +49,25 @@ namespace Velvet
         // Runs what the walk recorded, in the order it recorded it.
         protected void RunPlan()
         {
-            for (var i = 0; i < _plan.Count; i++)
+            var steps = Steps;
+            for (var i = 0; i < steps.Count; i++)
             {
-                var step = _plan[i];
+                var step = steps[i];
                 if (step.Fiber != null) TakeDown(step.Fiber);
                 else TakeDown(step.Element!);
             }
-            ClearAndTrim(_plan);
+            ClearAndTrim(steps);
         }
 
         protected void Take(ComponentFiber fiber)
         {
-            if (PlansTakeDowns) _plan.Add(new Step { Fiber = fiber });
+            if (PlansTakeDowns) Steps.Add(new Step { Fiber = fiber });
             else TakeDown(fiber);
         }
 
         private void Take(VisualElement element)
         {
-            if (PlansTakeDowns) _plan.Add(new Step { Element = element });
+            if (PlansTakeDowns) Steps.Add(new Step { Element = element });
             else TakeDown(element);
         }
 
@@ -258,7 +262,7 @@ namespace Velvet
         // once a walk has filled it past this many entries, and keeps it for the next walk otherwise.
         private const int CapacityKept = 4096;
 
-        protected static void ClearAndTrim<T>(List<T> list)
+        internal static void ClearAndTrim<T>(List<T> list)
         {
             // MUTANT_SURVIVES(equivalent, boundary): TrimExcess changes the capacity, which no walk reads.
             var trim = list.Count > CapacityKept;
@@ -267,7 +271,7 @@ namespace Velvet
             if (trim) list.TrimExcess();
         }
 
-        protected static void ClearAndTrim<T>(HashSet<T> set)
+        internal static void ClearAndTrim<T>(HashSet<T> set)
         {
             // MUTANT_SURVIVES(equivalent, boundary): TrimExcess changes the capacity, which no walk reads.
             var trim = set.Count > CapacityKept;
@@ -276,7 +280,7 @@ namespace Velvet
             if (trim) set.TrimExcess();
         }
 
-        protected static void ClearAndTrim<TKey, TValue>(Dictionary<TKey, TValue> table)
+        internal static void ClearAndTrim<TKey, TValue>(Dictionary<TKey, TValue> table)
         {
             // MUTANT_SURVIVES(equivalent, boundary): TrimExcess changes the capacity, which no walk reads.
             var trim = table.Count > CapacityKept;

@@ -161,6 +161,7 @@ namespace Velvet
             var owner = _ctx.FiberStack.Current;
             var removalsRan = false;
             DeletionCommit? deletion = null;
+            DeletionPlan? plan = null;
             try
             {
                 if (parent != null) commit.OldOccupants.Resolve(parent, slotStart, oldNodes.Length, int.MaxValue, _patcher);
@@ -216,12 +217,12 @@ namespace Velvet
                     KeepFibersTheStoppedWalkLeft(
                         oldFibers, newFibers, commit.SkippedByAbort, OwnerKeepsItsNewTree(owner) ? owner : null);
                 }
-                deletion = TakeDownTheDeletion(commit, oldFibers, newFibers);
+                deletion = TakeDownTheDeletion(commit, oldFibers, newFibers, out plan);
                 removalsRan = !_ctx.IsAborted;
                 if (removalsRan)
                 {
                     if (commit.BeforeRemovals != null) foreach (var dispose in commit.BeforeRemovals) dispose();
-                    FinalizeGeneralCommit(commit, deletion);
+                    FinalizeGeneralCommit(commit, deletion, plan);
                     ApplyOffscreenChanges(commit);
                 }
                 else
@@ -580,8 +581,10 @@ namespace Velvet
         // over the leaves the deletion names. A walk an abort stopped removes no leaf, and still takes down the
         // orphans KeepFibersTheStoppedWalkLeft let go. Null where nothing is deleted.
         private DeletionCommit? TakeDownTheDeletion(
-            GeneralCommitState commit, List<ComponentFiber> oldFibers, HashSet<ComponentFiber> newFibers)
+            GeneralCommitState commit, List<ComponentFiber> oldFibers, HashSet<ComponentFiber> newFibers,
+            out DeletionPlan? plan)
         {
+            plan = null;
             var oldLength = commit.OldNodes!.Length;
             DeletionCommit? deletion = null;
             if (!_ctx.IsAborted)
@@ -598,7 +601,7 @@ namespace Velvet
             }
             if (deletion == null && !HasOrphan(oldFibers, newFibers)) return null;
             deletion ??= BeginDeletion(commit);
-            deletion.Run(oldFibers, newFibers, oldLength);
+            plan = deletion.Run(oldFibers, newFibers, oldLength);
             return deletion;
         }
 
@@ -621,7 +624,7 @@ namespace Velvet
         // a patience-sort LIS (anchors stay put). Mirrors the removal + LIS reorder tail of
         // ReconcileKeyedSync with linearEnd == 0: all matching happened in CommitLeaf, and the leaves it
         // matched linearly are placed with the rest rather than ahead of them.
-        private void FinalizeGeneralCommit(GeneralCommitState commit, DeletionCommit? deletion)
+        private void FinalizeGeneralCommit(GeneralCommitState commit, DeletionCommit? deletion, DeletionPlan? plan)
         {
             var parent = commit.Parent!;
             var slotStart = commit.SlotStart;
@@ -634,7 +637,7 @@ namespace Velvet
             {
                 var index = removed![i].Index;
                 var old = commit.OldOccupants.Occupant(index);
-                if (old != null) _ctx.HostCommit.Remove(parent, old);
+                if (old != null) _ctx.HostCommit.Remove(parent, old, plan);
             }
             // LIS reorder over the post-removal DOM positions, from slotStart for the reason above.
             var range = new ChildElementPlacement.PlacementRange

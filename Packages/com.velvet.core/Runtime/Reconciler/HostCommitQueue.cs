@@ -36,10 +36,10 @@ namespace Velvet
 
         // Takes element out of parent with everything it holds released (FiberElementCleaner). Nothing is done
         // where element is no longer parent's child.
-        internal void Remove(VisualElement parent, VisualElement element)
+        internal void Remove(VisualElement parent, VisualElement element, DeletionPlan? plan = null)
         {
             var at = ChildListWrites.PhysicalIndexOf(parent, element);
-            if (at >= 0) _cleaner.RemoveElement(parent, at);
+            if (at >= 0) _cleaner.RemoveElement(parent, at, plan);
         }
 
         // The child-list write of a row FiberElementCleaner has taken down. The element's return to its pool waits for
