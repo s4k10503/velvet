@@ -349,39 +349,48 @@ namespace Velvet.Tests
             Assert.That(RowsOf(s_container), Is.EqualTo("count 1"));
         }
 
-        private static StateUpdater<bool> s_setEmptyFilled;
-
-        [Component(Compiler = false)]
-        private static VNode PortalAheadOfAnEmptyPortal()
+        private enum EmptyPortalStep
         {
-            var (outerShown, setOuterShown) = Hooks.UseState(true);
-            var (filled, setFilled) = Hooks.UseState(false);
-            s_setOuterShown = setOuterShown;
-            s_setEmptyFilled = setFilled;
-            return V.Fragment(
-                outerShown
-                    ? V.Portal(s_container, children: new VNode?[] { V.Div(name: "a1"), V.Div(name: "a2") }, key: "outer")
-                    : null,
-                V.Portal(s_container, children: filled ? new VNode?[] { V.Div(name: "e") } : Array.Empty<VNode?>(), key: "empty"),
-                V.Portal(s_container, children: new VNode?[] { V.Div(name: "f") }, key: "last"));
+            Mounted,
+            AheadUnmounted,
+            Filled,
+            Unmounted,
         }
 
-        // GREEN_ON_BASE(characterization): the base moves an empty Portal's recorded start back by the rows a Portal ahead of it took out.
+        private static StateUpdater<EmptyPortalStep> s_setStep;
+
+        [Component(Compiler = false)]
+        private static VNode EmptyPortalBehindAPortal()
+        {
+            var (step, setStep) = Hooks.UseState(EmptyPortalStep.Mounted);
+            s_setStep = setStep;
+            var rows = step == EmptyPortalStep.Filled ? new VNode?[] { V.Div(name: "e") } : Array.Empty<VNode?>();
+            return V.Fragment(
+                step == EmptyPortalStep.Mounted
+                    ? V.Portal(s_container, children: new VNode?[] { V.Div(name: "a") }, key: "ahead")
+                    : null,
+                step == EmptyPortalStep.Unmounted ? null : V.Portal(s_container, children: rows, key: "empty"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base moves an empty Portal's recorded start back by the row a Portal ahead of it took out.
         [Test]
-        public void Given_a_portal_ahead_of_an_empty_portal_and_a_portal_of_one_row_in_one_container_When_it_unmounts_and_the_empty_portal_renders_a_row_Then_that_row_lands_ahead_of_the_last_portals()
+        public void Given_an_empty_portal_that_rendered_a_row_after_the_portal_ahead_of_it_unmounted_When_it_unmounts_Then_its_row_leaves_the_container()
         {
             // Arrange
             s_container = new VisualElement();
-            using var mounted = V.Mount(new VisualElement(), V.Component(PortalAheadOfAnEmptyPortal, key: "root"));
+            using var mounted = V.Mount(new VisualElement(), V.Component(EmptyPortalBehindAPortal, key: "root"));
+            s_setStep.Invoke(EmptyPortalStep.AheadUnmounted);
+            mounted.FlushStateForTest();
+            s_setStep.Invoke(EmptyPortalStep.Filled);
+            mounted.FlushStateForTest();
+            var filled = RowsOf(s_container) == "e";
 
             // Act
-            s_setOuterShown.Invoke(false);
-            mounted.FlushStateForTest();
-            s_setEmptyFilled.Invoke(true);
+            s_setStep.Invoke(EmptyPortalStep.Unmounted);
             mounted.FlushStateForTest();
 
             // Assert
-            Assert.That(RowsOf(s_container), Is.EqualTo("e|f"));
+            Assert.That(filled ? RowsOf(s_container) : "e never arrived", Is.Empty);
         }
     }
 }
