@@ -128,11 +128,11 @@ namespace Velvet.Tests.Performance
             // Cleaned since it was recorded, so the op's body is skipped and the case measures the queue alone.
             _reconciler.Context.CleanedElements[label] = 1;
             ChildListWrites.BeginRecording(_reconciler.Context.Pass);
-            Action reset = () => ChildListWrites.ApplyRecorded();
+            Action reset = () => ChildListWrites.ApplyPendingPatches();
             Action recordAndApply = () =>
             {
                 ChildListWrites.RecordPatchPre(pending);
-                ChildListWrites.ApplyRecorded();
+                ChildListWrites.ApplyPendingPatches();
             };
             recordAndApply();
 
