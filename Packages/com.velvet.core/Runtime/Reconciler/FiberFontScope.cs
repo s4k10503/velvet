@@ -94,6 +94,8 @@ namespace Velvet
         {
             foreach (var element in new List<VisualElement>(Families.Keys))
             {
+                // MUTANT_SURVIVES(equivalent, literal): Families holds only intents that name a family (Apply stores one under
+                // intent.HasFamily), and ApplyResolved reads foreign only for an intent that names none.
                 StyleFontResolver.ApplyResolved(element, Families[element].Intent, null, foreign: false);
             }
 

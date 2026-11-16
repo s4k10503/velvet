@@ -66,6 +66,13 @@ namespace Velvet.Tests
                 + (lost ? string.Empty : " backdrop-brightness-50"));
         }
 
+        [Component]
+        private static VNode DroppingItsBackdropAtOnce()
+        {
+            var lost = Hooks.UseStore(s_dim, x => x);
+            return V.Div(name: "glass", className: "w-[40px] h-[40px]" + (lost ? string.Empty : " backdrop-brightness-50"));
+        }
+
         // The first function's amount the layer paints now, NaN where there is no layer.
         private static float ShownAmount(VisualElement element)
         {
@@ -298,6 +305,25 @@ namespace Velvet.Tests
 
             // Assert — brightness 0.5 to none's 1, linear.
             Assert.That(ShownAmount(glass), Is.EqualTo(0.75f).Within(1e-3f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base takes the layer out of the parent once a dropped backdrop class owes no transition.
+        [Test]
+        public void Given_ABackdropClassWithNoTransition_When_TheClassIsRemoved_Then_TheLayerLeavesTheParent()
+        {
+            // Arrange
+            s_dim = new Flag();
+            _mounted = V.Mount(_window.rootVisualElement, V.Component(DroppingItsBackdropAtOnce, key: "root"));
+            var glass = _window.rootVisualElement.Q<VisualElement>("glass");
+            ForcePanelUpdate(glass.panel);
+            var layer = LayerBefore(glass);
+
+            // Act
+            s_dim.Set(true);
+            _mounted.FlushStateForTest();
+
+            // Assert — a layer never hosted would throw here rather than read as gone.
+            Assert.That(layer.parent, Is.Null);
         }
 
         // The window as it painted, read back through the editor's own capture of a window's pixels, and the scale from

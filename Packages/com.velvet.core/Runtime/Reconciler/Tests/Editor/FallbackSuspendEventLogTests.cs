@@ -158,5 +158,46 @@ namespace Velvet.Tests
             // Assert
             Assert.That(log.ToString(), Is.EqualTo("| ins:IF ref:IF lay:IF caught:Inner:thrown by X"));
         }
+
+        [Component]
+        private static VNode ThrowsOnItsTickOverAThrowingCleanup()
+        {
+            var (tick, _) = EventLog.UseState("Tick", 0);
+            Hooks.UseLayoutEffect(
+                (Func<Action?>)(() => () => throw new InvalidOperationException("cleanup threw")),
+                Array.Empty<object>());
+            return tick > 0 ? throw new InvalidOperationException("thrown by X") : V.Div();
+        }
+
+        [Component(Compiler = false, IsErrorBoundary = true, DisplayName = "Inner")]
+        private static VNode SuspendingFallbackOverAThrowingCleanup(Gate gate)
+        {
+            Hooks.UseFallback(_ => V.Component(SuspendingContent, gate));
+            return V.Component(ThrowsOnItsTickOverAThrowingCleanup);
+        }
+
+        // GREEN_ON_BASE(characterization): the base drops what the swap took when the fallback it swapped in
+        // suspends. Drop `DropTheSwapsErrors(fiber);` in the catch of FiberSuspendSignal in TryCatch and the
+        // cleanup's error stays queued and is reported with the catch.
+        [Test]
+        public void Given_AnErrorBoundaryWhoseFallbackSuspends_When_TheFailedChildsCleanupThrowsAtTheSwap_Then_OnlyTheCatchIsReported()
+        {
+            // Arrange
+            var log = new EventLog();
+            var gate = new Gate();
+            using var mounted = _renderer.Mount(log.Provide(V.Component(SuspendingFallbackOverAThrowingCleanup, gate)), log.ReportingErrors());
+            mounted.DrainForTest();
+            log.Clear();
+
+            // Act
+            log.Setter<int>("Tick").Invoke(1);
+            mounted.DrainForTest();
+            log.Add("|");
+            gate.Source?.TrySetResult(5);
+            mounted.DrainForTest();
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("| ins:IF ref:IF lay:IF caught:Inner:thrown by X"));
+        }
     }
 }

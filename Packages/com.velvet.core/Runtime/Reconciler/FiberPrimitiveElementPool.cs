@@ -79,6 +79,9 @@ namespace Velvet
             // Same detach rule, and the same duplicate-on-reuse failure, as FiberButtonPoolHelper. A Label
             // reaches it through V.Custom<Label>(children: ...), which mounts an exact pooled Label and
             // expands the children into it.
+            // MUTANT_SURVIVES(equivalent, boundary): a label whose model holds no row has no recorded write either, since
+            // a move within it records its two halves in one Reorder call, so ChildListWrites.Clear applies nothing
+            // early and forwards to a Clear of an empty list.
             if (ChildListWrites.ChildCount(label) > 0) ChildListWrites.Clear(label);
 
             FiberElementPoolReset.ResetClassListAndCommon(label, TextElement.ussClassName, Label.ussClassName);
