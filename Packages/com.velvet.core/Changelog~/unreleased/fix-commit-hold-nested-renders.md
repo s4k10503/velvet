@@ -26,6 +26,6 @@
   `onCreated` callback or a layout effect, the list's own root's included) renders once that work has ended, from where
   the scroller is then. A layout effect that reads the rows right after calling `ScrollToItem` reads them as they were.
 - Work that waited for another root's render or commit and throws has its exception logged, rather than thrown out of
-  the call that ended that work; the waiting work after it still runs, and `V.Mount` still returns its handle. A root
-  whose waiting work keeps asking for more is stopped after 50 runs with "Maximum update depth exceeded" logged, and
-  its mounts and unmounts still run.
+  the call that ended that work; the waiting work after it still runs, and `V.Mount` still returns its handle. Waiting
+  work that keeps asking for itself again is dropped once it has run 50 times before control returns, with "Maximum
+  update depth exceeded" logged; the rest of the waiting work, its own root's included, still runs.

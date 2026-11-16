@@ -189,6 +189,22 @@ namespace Velvet.Tests
             Assert.That(s_calls, Is.EqualTo(2), "useSuspenseQuery is always enabled");
         }
 
+        // GREEN_ON_BASE(characterization): the base resumed each reader inside the effect that wrote the data, where
+        // nothing counted the resumes. Each is a request of its own now, made once the passive flush running it has ended.
+        [Test]
+        public void Given_SixtySuspendedReadersOfOneRoot_When_AUseEffectWritesTheirData_Then_EveryReaderLeavesItsFallback()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(SixtyReadersHost, key: "host"), CaughtErrors.Unlogged);
+
+            // Act
+            mounted.FlushEffectsForTest();
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert
+            Assert.That(_root.Query<Label>().ToList().Count(label => label.text == "data:5"), Is.EqualTo(60));
+        }
+
         private string Texts() => string.Join(",", _root.Query<Label>().ToList().Select(label => label.text));
 
         private MountedTree Mount() => V.Mount(_root, V.Component(Host, key: "host"), CaughtErrors.Unlogged);
@@ -215,6 +231,32 @@ namespace Velvet.Tests
                 new QueryOptions<int>(Todos, (QueryFunctionContext context) => Fetch(context.CancellationToken)) { StaleTime = TimeSpan.Zero, Enabled = s_enabled, InitialData = s_initialData },
                 s_client);
             return V.Label(text: "data:" + result.Data);
+        }
+
+        // Writes the readers' data from its mount effect, which runs in the passive flush after they suspended.
+        [Component]
+        private static VNode WritesTheDataFromItsEffect()
+        {
+            Hooks.UseEffect(() =>
+            {
+                s_client.SetQueryData(Todos, 5);
+                return (Action?)null;
+            }, Array.Empty<object>());
+            return V.Div();
+        }
+
+        // Sixty readers of one query, each in a Suspense of its own, beside the component that writes their data.
+        [Component]
+        private static VNode SixtyReadersHost()
+        {
+            var rows = new VNode?[61];
+            for (var i = 0; i < 60; i++)
+            {
+                rows[i] = V.Suspense(V.Label(text: "loading"), new VNode?[] { V.Component(Reader, key: "reader") },
+                    key: "suspense-" + i);
+            }
+            rows[60] = V.Component(WritesTheDataFromItsEffect, key: "writer");
+            return V.Provider(QueryErrorResetBoundaryContext.Ref, s_resetBoundary, new VNode?[] { V.Div(children: rows) });
         }
 
         [Component]

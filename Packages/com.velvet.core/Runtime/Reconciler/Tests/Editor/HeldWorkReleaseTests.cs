@@ -12,8 +12,8 @@ namespace Velvet.Tests
     /// <summary>
     /// Specifies the release of what was held while a root rendered or committed: in the order it was asked for, what an
     /// item holds behind what was waiting, one item's exception logged without stopping the rest or replacing the entry's
-    /// own, a root's looping work bounded per release while its mounts still run, and a render or commit step reached
-    /// with no entry on the stack asserted.
+    /// own, a request that keeps asking for itself bounded per release while the rest still runs, and a render or commit
+    /// step reached with no entry on the stack asserted.
     /// </summary>
     [TestFixture]
     internal sealed class HeldWorkReleaseTests
@@ -280,21 +280,25 @@ namespace Velvet.Tests
 
         // --- The bound ---
 
-        // Held work that asks for itself again while it is made, sixty times in all: past the limit, and finite where the
+        // One request, a flush of the holder's scheduler, held under the key a held flush carries.
+        private void HoldTheRepeatedRequest(Action run)
+            => FiberExecutionContext.Hold(FiberExecutionContext.Request.Flush, Holder, Holder, run);
+
+        // Held work that asks for itself again as that one request while it is made, times runs in all, finite where the
         // limit is not kept. At the fiftieth run, then is called after it has asked again.
-        private Action AskingForItselfSixtyTimes(Action? eachRun = null, Action? then = null)
+        private Action AskingForItself(int times, Action? eachRun = null, Action? then = null)
             => () =>
             {
-                var left = 60;
+                var left = times;
                 Action again = null!;
                 again = Entering(() =>
                 {
                     eachRun?.Invoke();
                     if (--left == 0) return;
-                    HoldFor(Holder, again);
-                    if (left == 10) then?.Invoke();
+                    HoldTheRepeatedRequest(again);
+                    if (left == times - 50) then?.Invoke();
                 });
-                HoldFor(Holder, again);
+                HoldTheRepeatedRequest(again);
             };
 
         [Test]
@@ -304,7 +308,7 @@ namespace Velvet.Tests
             LogAssert.Expect(LogType.Exception, new Regex("Maximum update depth exceeded"));
 
             // Act
-            TestDelegate act = () => WalkAsking(AskingForItselfSixtyTimes());
+            TestDelegate act = () => WalkAsking(AskingForItself(60));
 
             // Assert
             Assert.That(act, Throws.Nothing);
@@ -318,67 +322,107 @@ namespace Velvet.Tests
             var runs = 0;
 
             // Act
-            WalkAsking(AskingForItselfSixtyTimes(() => runs++));
+            WalkAsking(AskingForItself(60, () => runs++));
 
             // Assert
             Assert.That(runs, Is.EqualTo(50));
         }
 
-        // A mount nothing asks for again is made past the bound that stops a root's work from asking for itself forever:
-        // the fiftieth run holds the mount behind the run the bound refuses.
+        // Requests a root makes once each, as sixty suspended readers resuming together do, are not one request asking for
+        // itself again.
         [Test]
-        public void Given_ARootPastTheBound_When_ItsMountIsHeldBehindIt_Then_TheMountIsStillMade()
+        public void Given_SixtyRequestsOfOneRootEachUnderItsOwnKey_When_ThePassEnds_Then_EveryOneRuns()
         {
             // Arrange
-            LogAssert.Expect(LogType.Exception, new Regex("Maximum update depth exceeded"));
-            var host = new VisualElement();
+            var runs = 0;
 
             // Act
-            WalkAsking(AskingForItselfSixtyTimes(then: () =>
-                FiberExecutionContext.Hold(FiberExecutionContext.Request.Mount, null, Holder, () => MountOn(host))));
-
-            // Assert
-            Assert.That(host.childCount, Is.EqualTo(1));
-        }
-
-        // Past the bound, the fiftieth run holds work for the walker's scheduler and a mount, which in turn holds more
-        // looping work for the bounded one: the walker's runs, the bounded root's does not, and the error is logged once.
-        [Test]
-        public void Given_ARootPastTheBound_When_WorkAsksForMoreOfItsLoopingWorkInTheSameRelease_Then_OnlyAnotherRootsRuns()
-        {
-            // Arrange — one expected log: a second capping would log the error again
-            LogAssert.Expect(LogType.Exception, new Regex("Maximum update depth exceeded"));
-            var log = new List<string>();
-            var walker = _walker.Context.BatchScheduler;
-
-            // Act
-            WalkAsking(AskingForItselfSixtyTimes(then: () =>
+            WalkAsking(() =>
             {
-                HoldFor(walker, () => log.Add("another root's"));
-                FiberExecutionContext.Hold(FiberExecutionContext.Request.Mount, null, Holder, Entering(() =>
+                for (var i = 0; i < 60; i++)
                 {
-                    log.Add("mount");
-                    HoldFor(Holder, () => log.Add("bounded root's"));
-                }));
-            }));
+                    FiberExecutionContext.Hold(FiberExecutionContext.Request.Resolve, new object(), Holder, () => runs++);
+                }
+            });
 
             // Assert
-            Assert.That(string.Join(",", log), Is.EqualTo("another root's,mount"));
+            Assert.That(runs, Is.EqualTo(60));
         }
 
         [Test]
-        public void Given_ARootStoppedAtTheBound_When_ALaterReleaseMakesItsWork_Then_ItRuns()
+        public void Given_SixtyRequestsOfOneRootWithNoKey_When_ThePassEnds_Then_EveryOneRuns()
+        {
+            // Arrange
+            var runs = 0;
+
+            // Act
+            WalkAsking(() =>
+            {
+                for (var i = 0; i < 60; i++) HoldFor(Holder, () => runs++);
+            });
+
+            // Assert
+            Assert.That(runs, Is.EqualTo(60));
+        }
+
+        // The fiftieth run holds another request of the same root behind the run the bound refuses.
+        [Test]
+        public void Given_ARequestPastTheBound_When_ItsRootAsksForAnotherInTheSameRelease_Then_ThatOneRuns()
         {
             // Arrange
             LogAssert.Expect(LogType.Exception, new Regex("Maximum update depth exceeded"));
-            WalkAsking(AskingForItselfSixtyTimes());
             var ran = false;
 
             // Act
-            WalkAsking(() => HoldFor(Holder, () => ran = true));
+            WalkAsking(AskingForItself(60, then: () =>
+                FiberExecutionContext.Hold(FiberExecutionContext.Request.Resolve, new object(), Holder, () => ran = true)));
 
             // Assert
             Assert.That(ran, Is.True);
+        }
+
+        // The fiftieth run holds a mount which, as it is made, asks for the refused request once more.
+        [Test]
+        public void Given_ARequestPastTheBound_When_ItIsAskedForAgainInTheSameRelease_Then_TheLimitIsLoggedOnce()
+        {
+            // Arrange — one expected log, so a second is unexpected
+            LogAssert.Expect(LogType.Exception, new Regex("Maximum update depth exceeded"));
+
+            // Act
+            WalkAsking(AskingForItself(60, then: () => FiberExecutionContext.Hold(
+                FiberExecutionContext.Request.Mount, null, Holder, Entering(() => HoldTheRepeatedRequest(() => { })))));
+
+            // Assert
+            LogAssert.NoUnexpectedReceived();
+        }
+
+        [Test]
+        public void Given_ARequestStoppedAtTheBound_When_ALaterReleaseAsksForIt_Then_ItRuns()
+        {
+            // Arrange
+            LogAssert.Expect(LogType.Exception, new Regex("Maximum update depth exceeded"));
+            WalkAsking(AskingForItself(60));
+            var ran = false;
+
+            // Act
+            WalkAsking(() => HoldTheRepeatedRequest(() => ran = true));
+
+            // Assert
+            Assert.That(ran, Is.True);
+        }
+
+        [Test]
+        public void Given_ARequestThatRanThirtyTimesInARelease_When_TheNextReleaseRunsItThirtyTimesMore_Then_EveryRunIsMade()
+        {
+            // Arrange
+            var runs = 0;
+            WalkAsking(AskingForItself(30, () => runs++));
+
+            // Act
+            WalkAsking(AskingForItself(30, () => runs++));
+
+            // Assert
+            Assert.That(runs, Is.EqualTo(60));
         }
 
         // --- A render or commit step reached with no entry on the stack ---

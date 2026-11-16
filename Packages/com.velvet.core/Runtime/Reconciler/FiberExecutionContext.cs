@@ -45,15 +45,14 @@ namespace Velvet
             }
         }
 
-        private const int MaxLoopingRunsPerOwner = 50;
+        private const int MaxRunsPerRequest = 50;
 
         private static bool s_set;
         private static bool s_releasing;
         private static readonly List<Held> s_held = new(8);
         private static readonly List<FiberBatchScheduler> s_owingSyncLane = new(4);
-        private static readonly Dictionary<object, int> s_runs = new();
-        private static readonly HashSet<object> s_capped = new();
-        private static readonly object s_noOwner = new();
+        private static readonly Dictionary<(Request Kind, object Key), int> s_runs = new();
+        private static readonly HashSet<(Request Kind, object Key)> s_capped = new();
 
         internal static bool IsSet => s_set;
 
@@ -149,8 +148,6 @@ namespace Velvet
             if (!s_owingSyncLane.Contains(scheduler)) s_owingSyncLane.Add(scheduler);
         }
 
-        private static bool Loops(Request kind) => kind != Request.Mount && kind != Request.Unmount;
-
         // Non-reentrant, as React's flushSyncWorkAcrossRoots is: an item's own entry ends inside this loop without
         // releasing, and what it holds is appended behind the items already waiting. Each item runs in its own try, and
         // what one throws is logged, so it neither stops the items behind it nor becomes the failure of the entry that
@@ -166,6 +163,7 @@ namespace Velvet
                 while (true)
                 {
                     Request kind;
+                    object? key;
                     FiberBatchScheduler? target;
                     Action? run = null;
                     if (s_held.Count > 0)
@@ -173,6 +171,7 @@ namespace Velvet
                         var item = s_held[0];
                         s_held.RemoveAt(0);
                         kind = item.Kind;
+                        key = item.Key;
                         target = item.Owner;
                         run = item.Run;
                     }
@@ -180,10 +179,12 @@ namespace Velvet
                     {
                         target = TakeOwingSyncLane();
                         if (target == null) break;
+                        // Keyed as FiberBatchScheduler.HoldFlush keys the same flush, so the two count as one request.
                         kind = Request.Flush;
+                        key = target;
                     }
                     if (target is { IsDisposed: true }) continue;
-                    if (Loops(kind) && !Counted(target)) continue;
+                    if (!Counted(kind, key)) continue;
                     // React's performSyncWorkOnRoot starts by flushing the passive effects of the commit before it.
                     if (last is { IsDisposed: false }) RunIsolated(last, static scheduler => scheduler.FlushPendingPassiveEffects());
                     if (run != null) RunIsolated(run, static held => held());
@@ -199,21 +200,22 @@ namespace Velvet
             }
         }
 
-        // Counts a run toward the owner's bound. Past it, each of the owner's looping items is skipped as it is reached
-        // for the rest of this release, and the nested-update error logged once; a mount and an unmount are not counted,
-        // since nothing asks for either again.
-        private static bool Counted(FiberBatchScheduler? owner)
+        // Counts a run of one request, its kind and key, toward the bound. Past it, that request is skipped wherever it is
+        // reached for the rest of this release, and the nested-update error logged once; the rest of what is held, its
+        // owner's included, still runs. A request with no key is not the same request as any other, so it is not counted.
+        private static bool Counted(Request kind, object? key)
         {
-            var key = (object?)owner ?? s_noOwner;
-            if (s_capped.Contains(key)) return false;
-            s_runs.TryGetValue(key, out var runs);
-            s_runs[key] = ++runs;
-            if (runs <= MaxLoopingRunsPerOwner) return true;
-            s_capped.Add(key);
+            if (key == null) return true;
+            var request = (kind, key);
+            if (s_capped.Contains(request)) return false;
+            s_runs.TryGetValue(request, out var runs);
+            s_runs[request] = ++runs;
+            if (runs <= MaxRunsPerRequest) return true;
+            s_capped.Add(request);
             UnityEngine.Debug.LogException(new InvalidOperationException(
-                "Maximum update depth exceeded. A root kept asking for work while another rendered or committed, "
-                + $"{MaxLoopingRunsPerOwner} times in a row. Velvet limits it, as React limits nested updates, to "
-                + "prevent infinite loops."));
+                "Maximum update depth exceeded. Work that waited for a root's render or commit to end ran "
+                + $"{MaxRunsPerRequest} times before control returned, and was asked for again. Velvet drops it there, "
+                + "as React limits nested updates, to prevent infinite loops."));
             return false;
         }
 
