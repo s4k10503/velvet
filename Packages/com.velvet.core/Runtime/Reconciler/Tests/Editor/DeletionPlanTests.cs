@@ -77,7 +77,7 @@ namespace Velvet.Tests
         {
             // Arrange
             var container = new VisualElement();
-            using var mounted = V.Mount(container, V.Component(ElementHoldingComponents));
+            using var mounted = V.Mount(container, new EventLog().Provide(V.Component(ElementHoldingComponents)));
             mounted.DrainForTest();
             var deletion = BeginDeletionOfTheRow(mounted, container, out _);
             var plan = deletion.BuildPlan(new List<ComponentFiber>(), new HashSet<ComponentFiber>(), oldLength: 1);
@@ -95,7 +95,7 @@ namespace Velvet.Tests
         {
             // Arrange
             var container = new VisualElement();
-            using var mounted = V.Mount(container, V.Component(ElementHoldingComponents));
+            using var mounted = V.Mount(container, new EventLog().Provide(V.Component(ElementHoldingComponents)));
             mounted.DrainForTest();
             var deletion = BeginDeletionOfTheRow(mounted, container, out _);
             var plan = deletion.BuildPlan(new List<ComponentFiber>(), new HashSet<ComponentFiber>(), oldLength: 1);
