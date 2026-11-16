@@ -100,6 +100,43 @@ class ReadingTests(unittest.TestCase):
         # Assert
         self.assertEqual(found, [])
 
+    def test_Given_ADoorWhoseBodyCallsTheOtherDoorOfItsName_When_ItIsRead_Then_TheCallIsReported(self):
+        # Arrange — the scheduler's passive flush handing its work to the context's door of the same name
+        source = member("Enter(this, static scheduler => FiberEffects.FlushPendingPassiveEffects(ctx));",
+                        name="FlushPendingPassiveEffects", modifiers="internal void", parameters="").replace(
+            "ProbeType", "FiberBatchScheduler")
+
+        # Act
+        found = entry_sites_check.violations(entry_sites_check.SCHEDULER, source)
+
+        # Assert
+        self.assertEqual(found, [f"{entry_sites_check.SCHEDULER}:7: FiberBatchScheduler.FlushPendingPassiveEffects "
+                                 "references the door FiberEffects.FlushPendingPassiveEffects"])
+
+    def test_Given_AStaticDoorWhoseBodyCallsTheInstanceDoorOfItsName_When_ItIsRead_Then_TheCallIsReported(self):
+        # Arrange — a fiber's resume handing its work to its reconciler's resume
+        source = member("resumed.Reconciler.ContinueReconcile(0);", name="ContinueReconcile",
+                        modifiers="internal static void", parameters="ComponentFiber resumed").replace(
+            "ProbeType", "FiberWorkLoop")
+
+        # Act
+        found = entry_sites_check.violations(entry_sites_check.WORK_LOOP, source)
+
+        # Assert
+        self.assertEqual(found, [f"{entry_sites_check.WORK_LOOP}:7: FiberWorkLoop.ContinueReconcile references the door "
+                                 "Reconciler.ContinueReconcile"])
+
+    def test_Given_AnInstanceDoorThatReentersItselfThroughAReceiver_When_ItIsRead_Then_NothingIsReported(self):
+        # Arrange
+        source = member("Hold(this, static s => s.Reconciler.ContinueReconcile(s.Budget));", name="ContinueReconcile",
+                        modifiers="public void", parameters="double frameBudgetMs").replace("ProbeType", "Reconciler")
+
+        # Act
+        found = entry_sites_check.violations(entry_sites_check.RECONCILER, source)
+
+        # Assert
+        self.assertEqual(found, [])
+
     def test_Given_ADoorNamedInACommentAndAString_When_ItIsRead_Then_NeitherIsAReference(self):
         # Arrange
         source = member('// FiberRenderer.Dispose(fiber) is the door\nLog("FlushImmediate()");\n/* DrainImmediate() */')

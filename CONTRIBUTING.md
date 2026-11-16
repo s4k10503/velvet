@@ -913,10 +913,10 @@ python3 scripts/test_quality/entry_sites_check.py
 ```
 
 It reads the package's C# outside `Tests` directories and reports each reference to a door from a member
-its `ALLOWED` table does not name, and each entry of the table the tree no longer makes. It runs in
-`Test ▸ test-quality`, beside its suite. A door whose name other members share is read only where it is
-qualified as the table of doors gives, or in the file that declares it; the member a reference sits in
-is found by indentation.
+its `ALLOWED` table does not name, except a door's reference to itself from the same type and member
+name, and each entry of the table the tree no longer makes. It runs in `Test ▸ test-quality`, beside its
+suite. A door whose name other members share is read only where it is qualified as the table of doors
+gives, or in the file that declares it; the member a reference sits in is found by indentation.
 
 ### Checking that a removal did not strand its name
 

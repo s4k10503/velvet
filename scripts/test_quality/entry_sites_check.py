@@ -9,16 +9,19 @@ work, and the assertions on the render and commit steps cannot see it, since it 
 entry.
 
 Each reference to a door is read for the member it sits in, and only the members ALLOWED names may hold
-one: the callbacks UI Toolkit, the panel scheduler and the main-thread pump run, the public and preview
-entries, the release, and a door's own re-entry where it holds. Exemption is by member rather than by
-path, since doors and bodies share files and directories.
+one: the callbacks UI Toolkit, the panel scheduler and the main-thread pump run, the release and the held
+work it runs, and the public and preview entries. The one other reference let through is one from the
+door's own Type.Member, overloads included, to that same door, which is how a door re-enters itself where
+it holds. Exemption is by member rather than by path, since doors and bodies share files and directories.
 
 What it reads is the C# under the package's Runtime and Editor directories, outside Tests directories,
 with comments and string literals blanked. A reference is a door's name as an identifier, a method group
 included. A name other members share is read only where it is qualified as DOORS gives, or unqualified
-in the file that declares the door. The member a reference sits in is the nearest declaration above it
-with less indentation, a declaration being a line that opens with a modifier and names a method; that
-leans on the indentation this repository's formatting keeps.
+in the file that declares the door; two doors share FlushPendingPassiveEffects and two ContinueReconcile,
+and each pair is told apart by the qualifier, the type's own name for the static door and any other
+receiver for the instance one. The member a reference sits in is the nearest declaration above it with
+less indentation, a declaration being a line that opens with a modifier and names a method; that leans
+on the indentation this repository's formatting keeps.
 
 Run: python3 scripts/test_quality/entry_sites_check.py
 """
@@ -34,6 +37,9 @@ SOURCE_DIRS = ("Runtime", "Editor")
 RENDERER = "Runtime/Reconciler/FiberRenderer.cs"
 RECONCILER = "Runtime/Reconciler/Reconciler.cs"
 MOUNT = "Runtime/Component/V.Mount.cs"
+SCHEDULER = "Runtime/Reconciler/FiberBatchScheduler.cs"
+EFFECTS = "Runtime/Reconciler/FiberEffects.cs"
+WORK_LOOP = "Runtime/Reconciler/FiberWorkLoop.cs"
 
 # door -> (pattern for a reference anywhere, file whose unqualified references are read, or None).
 # A door whose name nothing else declares is read anywhere it appears.
@@ -42,11 +48,14 @@ DOORS = {
     "FiberBatchScheduler.DrainDelayedTier": (r"\bDrainDelayedTier\b(?!\w)", None),
     "FiberBatchScheduler.DrainDelayed": (r"\bDrainDelayed\b(?!\w)", None),
     "FiberBatchScheduler.FlushImmediate": (r"\bFlushImmediate\b(?!\w)", None),
-    "FlushPendingPassiveEffects": (r"\bFlushPendingPassiveEffects\b(?!\w)", None),
+    "FiberBatchScheduler.FlushPendingPassiveEffects": (
+        r"(?<!\bFiberEffects)\.FlushPendingPassiveEffects\b(?!\w)", SCHEDULER),
+    "FiberEffects.FlushPendingPassiveEffects": (r"\bFiberEffects\.FlushPendingPassiveEffects\b(?!\w)", EFFECTS),
     "FiberBatchScheduler.FlushOwedExternalStoreRenders": (r"\bFlushOwedExternalStoreRenders\b(?!\w)", None),
     "FiberBatchScheduler.FlushDiscreteEvent": (r"\bFlushDiscreteEvent\b(?!\w)", None),
     "FiberWorkLoop.FlushState": (r"\bFlushState\b(?!\w)", None),
-    "ContinueReconcile": (r"\bContinueReconcile\b(?!\w)", None),
+    "FiberWorkLoop.ContinueReconcile": (r"\bFiberWorkLoop\.ContinueReconcile\b(?!\w)", WORK_LOOP),
+    "Reconciler.ContinueReconcile": (r"(?<!\bFiberWorkLoop)\.ContinueReconcile\b(?!\w)", RECONCILER),
     "FiberRenderer.RenderMounted": (r"\bRenderMounted\b(?!\w)", None),
     "FiberRenderer.NotifyAsyncResourceCompleted": (r"\bNotifyAsyncResourceCompleted\b(?!\w)", None),
     "FiberEffects.DrainScheduledPassiveEffects": (r"\bDrainScheduledPassiveEffects\b(?!\w)", None),
@@ -66,8 +75,8 @@ ALLOWED = {
     "FiberBatchScheduler.RunDelayedCallback": {"FiberBatchScheduler.DrainDelayedTier"},
     "FiberBatchScheduler.OweExternalStoreFlush": {"FiberBatchScheduler.FlushOwedExternalStoreRenders"},
     "FiberWorkLoop.ScheduleStandaloneFlush": {"FiberWorkLoop.FlushState"},
-    "FiberWorkLoop.ScheduleNextSlice": {"ContinueReconcile"},
-    "FiberCommitWork.ScheduleParkedPassResume": {"ContinueReconcile"},
+    "FiberWorkLoop.ScheduleNextSlice": {"FiberWorkLoop.ContinueReconcile"},
+    "FiberCommitWork.ScheduleParkedPassResume": {"FiberWorkLoop.ContinueReconcile"},
     "FiberEffects.PassiveEffectDrainCallback": {"FiberEffects.DrainScheduledPassiveEffects"},
     "FiberEffects.ScheduleStandaloneEffectRun": {"FiberEffects.RunScheduledEffects"},
     "FiberVirtualListController.OnGeometryChanged": {"FiberVirtualListController.UpdateVisibleRange"},
@@ -75,8 +84,10 @@ ALLOWED = {
     "FiberDiscreteEventScope.Run": {"FiberBatchScheduler.FlushDiscreteEvent"},
     "Hooks.UseCore": {"FiberRenderer.NotifyAsyncResourceCompleted"},
     # Held work runs through the door it was asked for at, with nothing set (FiberExecutionContext).
-    "FiberExecutionContext.Release": {"FlushPendingPassiveEffects", "FiberBatchScheduler.FlushImmediate"},
-    "FiberBatchScheduler.FiberBatchScheduler": {"FiberBatchScheduler.FlushDiscreteEvent", "FlushPendingPassiveEffects"},
+    "FiberExecutionContext.Release": {
+        "FiberBatchScheduler.FlushPendingPassiveEffects", "FiberBatchScheduler.FlushImmediate"},
+    "FiberBatchScheduler.FiberBatchScheduler": {
+        "FiberBatchScheduler.FlushDiscreteEvent", "FiberBatchScheduler.FlushPendingPassiveEffects"},
     "FiberRenderer.HoldFirstRender": {"FiberRenderer.RenderMounted"},
     "FiberVirtualListController.RenderHeldRange": {"FiberVirtualListController.UpdateVisibleRange"},
     # Public and preview entries, which something outside Velvet calls.
@@ -86,7 +97,8 @@ ALLOWED = {
     "FiberEffects.FlushPendingPassiveEffects": {"FiberEffects.RunScheduledEffects"},
     "VelvetPreviewHost.Mount": {"V.Mount"},
     "VelvetPreviewHost.Settle": {
-        "FlushPendingPassiveEffects", "FiberBatchScheduler.FlushImmediate", "FiberBatchScheduler.DrainDelayed"},
+        "FiberBatchScheduler.FlushPendingPassiveEffects", "FiberBatchScheduler.FlushImmediate",
+        "FiberBatchScheduler.DrainDelayed"},
 }
 
 MODIFIERS = ("public", "private", "internal", "protected", "static", "override", "virtual", "sealed", "async",
@@ -202,9 +214,7 @@ def references(relative, source):
 
 def holds_itself(caller, door):
     """Whether caller is the door, which re-enters itself where it holds."""
-    if caller is None or bare(caller) != bare(door):
-        return False
-    return "." not in door or caller == door
+    return caller is not None and caller == door
 
 
 def violations(relative, source, used=None):
