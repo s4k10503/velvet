@@ -49,6 +49,8 @@ namespace Velvet
             Serial = serial;
             OldClasses = null;
             NewClasses = null;
+            // MUTANT_SURVIVES(equivalent, literal): CommitTail returns in its LayoutId branch, ahead of the one read of the
+            // clip verdict.
             ClipActive = false;
             LayoutId = layoutId;
             Timing = timing;
