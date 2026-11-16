@@ -38,6 +38,7 @@ namespace Velvet.TestUtilities
         /// <summary>Rolls the journal back, closes it, and returns one line per entry that differs from the snapshot.</summary>
         internal List<string> Drop()
         {
+            var redo = FiberPassJournalProbe.CaptureRedo(_journal);
             _journal.Rollback();
             _journal.Close();
             var differences = new List<string>();
@@ -46,6 +47,7 @@ namespace Velvet.TestUtilities
                 var after = read();
                 if (!Same(before, after)) differences.Add($"{label}: {Describe(before)} -> {Describe(after)}");
             }
+            foreach (var write in redo) write();
             return differences;
         }
 
@@ -85,6 +87,48 @@ namespace Velvet.TestUtilities
                 VisualElement element => $"{element.GetType().Name} '{element.name}'",
                 _ => reading.ToString(),
             };
+    }
+
+    /// <summary>Reads the entries a <see cref="FiberPassJournal"/> holds, which are private.</summary>
+    internal static class FiberPassJournalProbe
+    {
+        private static IDictionary Table(FiberPassJournal journal, string name)
+            => (IDictionary)(typeof(FiberPassJournal).GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)
+                ?.GetValue(journal) ?? throw new MissingFieldException(typeof(FiberPassJournal).FullName, name));
+
+        /// <summary>One write per journaled entry that puts back what the entry holds now.</summary>
+        internal static List<Action> CaptureRedo(FiberPassJournal journal)
+        {
+            var redo = new List<Action>();
+            foreach (DictionaryEntry entry in Table(journal, "_slots"))
+            {
+                var fiber = (ComponentFiber)entry.Key;
+                var (start, count) = (fiber.MountSlotStart, fiber.MountSlotCount);
+                redo.Add(() =>
+                {
+                    fiber.MountSlotStart = start;
+                    fiber.MountSlotCount = count;
+                });
+            }
+            foreach (DictionaryEntry entry in Table(journal, "_shiftedRows"))
+            {
+                var tenancy = (InlineTenancy)entry.Key;
+                var shifted = tenancy.ShiftedRows;
+                redo.Add(() => tenancy.ShiftedRows = shifted);
+            }
+            foreach (DictionaryEntry entry in Table(journal, "_trees"))
+            {
+                var fiber = (ComponentFiber)entry.Key;
+                var (previous, pendingOld, owning) = (fiber.PreviousTree, fiber.PendingOldTree, fiber.OwningPortalPlaceholder);
+                redo.Add(() =>
+                {
+                    fiber.PreviousTree = previous;
+                    fiber.PendingOldTree = pendingOld;
+                    fiber.OwningPortalPlaceholder = owning;
+                });
+            }
+            return redo;
+        }
     }
 
     /// <summary>Reaches the indexes of a <see cref="ComponentRegistry"/>, which are private.</summary>
