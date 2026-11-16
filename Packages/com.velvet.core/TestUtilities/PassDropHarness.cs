@@ -9,11 +9,14 @@ namespace Velvet.TestUtilities
     /// <summary>
     /// Takes the fiber-side state of a context before an act, lets the act run its passes under a journal the
     /// harness owns, then puts back what the journal recorded and reports every entry that is not what it was.
-    /// An empty report is the claim a pass dropped at its end would leave the fiber side as it found it.
+    /// An empty report says the journal restored what the pass wrote on the fibers and tenancies registered before
+    /// the act. Fibers and tenancies the act created are outside the snapshot, and what a real drop runs
+    /// (<c>Abandon</c>) is not what this calls (<c>Rollback</c>).
     /// <para>
     /// The act's passes commit as they always do: the harness holds the journal open, so the render that would
     /// complete the pass does not, and rolls it back once the act returns. What it can compare is therefore what
-    /// the journal restores without undoing a commit.
+    /// the journal restores without undoing a commit. Once it has compared, it writes back what the pass had left on
+    /// each entry the rollback touched, so a test can still unmount the tree.
     /// </para>
     /// </summary>
     internal sealed class PassDropHarness
@@ -36,8 +39,10 @@ namespace Velvet.TestUtilities
             => new(mounted.Root.Reconciler.Context, mounted.Root);
 
         /// <summary>Rolls the journal back, closes it, and returns one line per entry that differs from the snapshot.</summary>
-        internal List<string> Drop()
+        internal List<string> Drop(JournalFamilies expect)
         {
+            if (_entries.Count == 0) throw new InvalidOperationException("The snapshot holds no fiber.");
+            FiberPassJournalProbe.RequireRecorded(_journal, expect);
             var redo = FiberPassJournalProbe.CaptureRedo(_journal);
             _journal.Rollback();
             _journal.Close();
@@ -57,6 +62,7 @@ namespace Velvet.TestUtilities
             var fibers = new List<ComponentFiber>();
             fibers.AddRange(ComponentRegistryProbe.InlineFibers(registry));
             fibers.AddRange(ComponentRegistryProbe.WrapperFibers(registry));
+            if (fibers.Count == 0) throw new InvalidOperationException("The registry's indexes held no fiber to snapshot.");
             foreach (var fiber in fibers)
             {
                 var label = $"{fiber.Body?.Method.Name ?? "fiber"}#{ordinal++}";
@@ -90,9 +96,34 @@ namespace Velvet.TestUtilities
             };
     }
 
+    /// <summary>The families of entries a case expects the act to have written into the journal.</summary>
+    [Flags]
+    internal enum JournalFamilies
+    {
+        Slots = 1,
+        Trees = 2,
+        Boundary = 4,
+    }
+
     /// <summary>Reads the entries a <see cref="FiberPassJournal"/> holds, which are private.</summary>
     internal static class FiberPassJournalProbe
     {
+        /// <summary>Throws where the journal holds no entry in a family the case names, so an act that changed nothing reads red.</summary>
+        internal static void RequireRecorded(FiberPassJournal journal, JournalFamilies expect)
+        {
+            RequireFamily(journal, expect, JournalFamilies.Slots, "_slots");
+            RequireFamily(journal, expect, JournalFamilies.Trees, "_trees");
+            RequireFamily(journal, expect, JournalFamilies.Boundary, "_boundaries");
+        }
+
+        private static void RequireFamily(FiberPassJournal journal, JournalFamilies expect, JournalFamilies family, string table)
+        {
+            if ((expect & family) != 0 && Table(journal, table).Count == 0)
+            {
+                throw new InvalidOperationException($"The act wrote nothing into the journal's {family} entries.");
+            }
+        }
+
         private static IDictionary Table(FiberPassJournal journal, string name)
             => (IDictionary)(typeof(FiberPassJournal).GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)
                 ?.GetValue(journal) ?? throw new MissingFieldException(typeof(FiberPassJournal).FullName, name));

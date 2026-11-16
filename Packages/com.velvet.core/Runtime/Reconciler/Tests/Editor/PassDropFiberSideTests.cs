@@ -8,11 +8,15 @@ using Velvet.TestUtilities;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Specifies that the journal a pass keeps, rolled back after the pass ran, restores what the pass changed on the
-    /// fiber side. Each case mounts its tree, takes the snapshot, runs one shape of update under
-    /// <see cref="PassDropHarness"/> and reads what differs from the snapshot once the journal is rolled back. Each
-    /// case covers the slot, tree and boundary families together, and checks that the journal restores what the pass
-    /// changed; it does not show that a drop at <c>FinishPass</c> is sound.
+    /// Specifies that the journal a pass keeps, rolled back after the pass ran, restores what the pass wrote on the
+    /// fibers and tenancies registered before it. Each case mounts its tree, takes the snapshot, runs one shape of
+    /// update under <see cref="PassDropHarness"/> and reads what differs from the snapshot once the journal is
+    /// rolled back; it names the families the act must have written, and fails where it wrote none. What is
+    /// compared is the slot start and count, the previous and pending old trees, the Portal stamp and the
+    /// boundary state of each fiber, and the shifted-row total of each tenancy. No case moves the presence
+    /// members, the Portal stamp, the discarded-mount flag, the parked-pass flag, the layout-effects mark or the
+    /// transition-suspend flag off the value it had, so a restore of those is not shown here. The cases check that
+    /// the journal restores what the pass changed; they do not show that a drop at <c>FinishPass</c> is sound.
     /// </summary>
     [TestFixture]
     internal sealed class PassDropFiberSideTests
@@ -78,7 +82,7 @@ namespace Velvet.Tests
             });
 
         [Test]
-        public void Given_AComponentThatGrowsAheadOfAnother_When_ItsOwnUpdatePassIsDropped_Then_NoSlotDiffersFromBefore()
+        public void Given_AComponentThatGrowsAheadOfAnother_When_ItsOwnUpdatePassIsRolledBack_Then_NothingTheJournalRecordedDiffersFromBefore()
         {
             // Arrange
             using var mounted = V.Mount(_root, V.Component(GrowingHostRender, key: "host"));
@@ -87,7 +91,7 @@ namespace Velvet.Tests
             // Act
             s_setRows.Invoke(3);
             mounted.FlushStateForTest();
-            var differences = harness.Drop();
+            var differences = harness.Drop(JournalFamilies.Slots | JournalFamilies.Trees);
 
             // Assert
             Assert.That(differences, Is.Empty);
@@ -114,7 +118,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_TwoKeyedComponentsOnOneContainer_When_ThePassThatSwapsThemIsDropped_Then_NoSlotDiffersFromBefore()
+        public void Given_TwoKeyedComponentsOnOneContainer_When_ThePassThatSwapsThemIsRolledBack_Then_NothingTheJournalRecordedDiffersFromBefore()
         {
             // Arrange
             using var mounted = V.Mount(_root, V.Component(ReorderHostRender, key: "host"));
@@ -123,7 +127,7 @@ namespace Velvet.Tests
             // Act
             s_setOrder.Invoke(1);
             mounted.FlushStateForTest();
-            var differences = harness.Drop();
+            var differences = harness.Drop(JournalFamilies.Slots | JournalFamilies.Trees);
 
             // Assert
             Assert.That(differences, Is.Empty);
@@ -152,7 +156,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AComponentAheadOfAnotherReplacedByOneOfMoreRows_When_ThatPassIsDropped_Then_NoSlotDiffersFromBefore()
+        public void Given_AComponentAheadOfAnotherReplacedByOneOfMoreRows_When_ThatPassIsRolledBack_Then_NothingTheJournalRecordedDiffersFromBefore()
         {
             // Arrange
             using var mounted = V.Mount(_root, V.Component(ReplacingHostRender, key: "host"));
@@ -161,7 +165,7 @@ namespace Velvet.Tests
             // Act
             s_setWhich.Invoke(1);
             mounted.FlushStateForTest();
-            var differences = harness.Drop();
+            var differences = harness.Drop(JournalFamilies.Slots | JournalFamilies.Trees);
 
             // Assert
             Assert.That(differences, Is.Empty);
@@ -190,7 +194,7 @@ namespace Velvet.Tests
             });
 
         [Test]
-        public void Given_APrimaryWhoseReaderStartsWaiting_When_ThePassThatHidesItIsDropped_Then_NoFiberStateDiffersFromBefore()
+        public void Given_APrimaryWhoseReaderStartsWaiting_When_ThePassThatHidesItIsRolledBack_Then_NothingTheJournalRecordedDiffersFromBefore()
         {
             // Arrange
             using var mounted = V.Mount(_root, V.Component(HidingHostRender, key: "host"));
@@ -200,7 +204,7 @@ namespace Velvet.Tests
             s_setKey.Invoke(1);
             mounted.FlushStateForTest();
             mounted.FlushStateForTest();
-            var differences = harness.Drop();
+            var differences = harness.Drop(JournalFamilies.Trees);
 
             // Assert
             Assert.That(differences, Is.Empty);
@@ -222,7 +226,7 @@ namespace Velvet.Tests
                 children: new VNode[] { V.Component(RevealedChildRender, key: "child") });
 
         [Test]
-        public void Given_AFallbackShownForAWaitingChild_When_ThePassThatRevealsTheChildIsDropped_Then_NoFiberStateDiffersFromBefore()
+        public void Given_AFallbackShownForAWaitingChild_When_ThePassThatRevealsTheChildIsRolledBack_Then_NothingTheJournalRecordedDiffersFromBefore()
         {
             // Arrange
             using var mounted = V.Mount(_root, V.Component(RevealingHostRender, key: "host"));
@@ -231,7 +235,7 @@ namespace Velvet.Tests
             // Act
             s_revealSource.TrySetResult("ready");
             mounted.FlushStateForTest();
-            var differences = harness.Drop();
+            var differences = harness.Drop(JournalFamilies.Trees);
 
             // Assert
             Assert.That(differences, Is.Empty);
@@ -258,7 +262,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AComponentAheadOfAnother_When_ThePassThatMountsAPortalInItIsDropped_Then_NoFiberStateDiffersFromBefore()
+        public void Given_AComponentAheadOfAnother_When_ThePassThatMountsAPortalInItIsRolledBack_Then_NothingTheJournalRecordedDiffersFromBefore()
         {
             // Arrange
             using var mounted = V.Mount(_root, V.Component(PortalHostRender, key: "host"));
@@ -267,7 +271,7 @@ namespace Velvet.Tests
             // Act
             s_setWhich.Invoke(1);
             mounted.FlushStateForTest();
-            var differences = harness.Drop();
+            var differences = harness.Drop(JournalFamilies.Trees);
 
             // Assert
             Assert.That(differences, Is.Empty);
@@ -294,7 +298,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ABoundaryOverAChild_When_ThePassInWhichTheChildThrowsIsDropped_Then_NoFiberStateDiffersFromBefore()
+        public void Given_ABoundaryOverAChild_When_ThePassInWhichTheChildThrowsIsRolledBack_Then_NothingTheJournalRecordedDiffersFromBefore()
         {
             // Arrange
             using var mounted = V.Mount(_root, V.Component(BoundaryRender, key: "boundary"), CaughtErrors.Unlogged);
@@ -304,7 +308,7 @@ namespace Velvet.Tests
             // Act
             s_setTick.Invoke(1);
             mounted.FlushStateForTest();
-            var differences = harness.Drop();
+            var differences = harness.Drop(JournalFamilies.Trees | JournalFamilies.Boundary);
 
             // Assert
             Assert.That(differences, Is.Empty);
@@ -330,7 +334,7 @@ namespace Velvet.Tests
             });
 
         [Test]
-        public void Given_AComponentWhoseGrowthParksOnTheTransitionLane_When_ThePassesThatPlaceItsRowsAreDropped_Then_NoFiberStateDiffersFromBefore()
+        public void Given_AComponentWhoseGrowthParksOnTheTransitionLane_When_ThePassesThatPlaceItsRowsAreRolledBack_Then_NothingTheJournalRecordedDiffersFromBefore()
         {
             // Arrange
             using var mounted = V.Mount(_root, V.Component(ParkingHostRender, key: "host"));
@@ -341,7 +345,7 @@ namespace Velvet.Tests
             s_parkedFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
             s_parkedFiber.FlushStateWithTinyBudgetForTest();
             s_parkedFiber.DrainTimeSlicedReconcileForTest();
-            var differences = harness.Drop();
+            var differences = harness.Drop(JournalFamilies.Slots | JournalFamilies.Trees);
 
             // Assert
             Assert.That(differences, Is.Empty);
@@ -384,7 +388,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ThreeKeyedChildrenUnderAPresence_When_ThePassThatStartsTheMiddleOnesExitIsDropped_Then_NoFiberStateDiffersFromBefore()
+        public void Given_ThreeKeyedChildrenUnderAPresence_When_ThePassThatStartsTheMiddleOnesExitIsRolledBack_Then_NothingTheJournalRecordedDiffersFromBefore()
         {
             // Arrange
             using var store = new SetStore();
@@ -395,7 +399,7 @@ namespace Velvet.Tests
             // Act
             store.Set("ac");
             mounted.GetSchedulerForTest().DrainImmediateForTest();
-            var differences = harness.Drop();
+            var differences = harness.Drop(JournalFamilies.Trees);
 
             // Assert
             Assert.That(differences, Is.Empty);
