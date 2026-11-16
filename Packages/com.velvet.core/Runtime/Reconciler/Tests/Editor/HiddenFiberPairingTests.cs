@@ -1,97 +1,79 @@
 // annotations only: incremental nullable hygiene. See the leading comment in Velvet core Hooks.cs for details.
 #nullable enable annotations
-using System;
-using System.Collections.Generic;
+using System.Collections;
+using System.Reflection;
 using NUnit.Framework;
 using UnityEngine.UIElements;
-using Velvet.TestUtilities;
 
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Specifies that a component a pass removes is not paired again by a later walk of the same pass: where a
-    /// different component arrives at the key it held, the arrival mounts fresh rather than taking the
-    /// departed one's place in the registry.
+    /// Specifies that a fiber the registry disposes leaves its lookup indexes, so no later walk finds it by its
+    /// key or by its wrapper element: one case per call that disposes and unregisters, each arranged so that the
+    /// call's own removal from the index is the only thing taking the fiber out.
     /// </summary>
     [TestFixture]
     internal sealed class HiddenFiberPairingTests
     {
-        private VisualElement _root = null!;
-        private static SwapStore s_swap;
-        private static List<string> s_log = new();
+        private static IDictionary Table(ComponentRegistry registry, string name)
+            => (IDictionary)typeof(ComponentRegistry).GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)!
+                .GetValue(registry);
 
-        [SetUp]
-        public void SetUp()
+        private static void RegisterWrapper(ComponentRegistry registry, ComponentFiber fiber, VisualElement wrapper, object identity)
         {
-            _root = new VisualElement();
-            s_log = new List<string>();
+            Table(registry, "_wrapperIndex")[wrapper] = fiber;
+            (VisualElement, object) info = (wrapper, identity);
+            Table(registry, "_wrapperFiberInfo")[fiber] = info;
         }
 
-        [TearDown]
-        public void TearDown()
-        {
-            s_swap?.Dispose();
-            s_swap = null;
-            _root = null!;
-        }
-
-        private readonly record struct SwapState(bool First);
-
-        private sealed class SwapStore : Store<SwapState>
-        {
-            public SwapStore() : base(new SwapState(true)) { }
-            public void ShowSecond() => SetState(_ => new SwapState(false));
-            protected override void ResetCore() => SetState(_ => new SwapState(true));
-        }
-
-        // GREEN_ON_BASE(characterization): the base already unregisters a component as it disposes it, so a later walk of the pass cannot pair it; this pins that outcome for the step that splits the unregister.
+        // GREEN_ON_BASE(characterization): the base already removes a disposed inline fiber from its key index; no case read that table after a disposal.
         [Test]
-        public void Given_AComponentReplacedAtItsKey_When_TheArrivalRendersInTheSamePass_Then_ItMountsAfterTheDepartedOneCleansUp()
+        public void Given_AnInlineMountedFiber_When_TheRegistryDisposesIt_Then_ItIsNoLongerInTheKeyIndex()
         {
             // Arrange
-            s_swap = new SwapStore();
-            using var mounted = V.Mount(_root, V.Component(HostRender, key: "host"));
-            mounted.GetSchedulerForTest().DrainImmediateForTest();
-            s_log.Clear();
+            var registry = new ComponentRegistry(new ReconcilerContext());
+            var fiber = new ComponentFiber();
+            (ComponentFiber, VisualElement, VisualElement, object, object) key =
+                (null, null, new VisualElement(), new object(), new object());
+            Table(registry, "_inlineFiberToKey")[fiber] = key;
 
             // Act
-            s_swap.ShowSecond();
-            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            registry.DisposeAndRemove(fiber);
 
             // Assert
-            Assert.That(string.Join(",", s_log), Is.EqualTo("first:cleanup,second:mount"));
+            Assert.That(Table(registry, "_inlineFiberToKey").Contains(fiber), Is.False);
         }
 
-        [Component]
-        private static VNode HostRender()
+        // GREEN_ON_BASE(characterization): the base already removes a wrapper-mounted fiber from the wrapper index when Remove disposes it; no case read that table after it.
+        [Test]
+        public void Given_AWrapperMountedFiber_When_TheRegistryRemovesItByWrapper_Then_TheWrapperNoLongerIndexesIt()
         {
-            var first = Hooks.UseStore(s_swap, state => state.First);
-            return V.Div(name: "host", children: new VNode[]
-            {
-                first ? V.Component(FirstRender, key: "slot") : V.Component(SecondRender, key: "slot"),
-            });
+            // Arrange
+            var registry = new ComponentRegistry(new ReconcilerContext());
+            var wrapper = new VisualElement();
+            RegisterWrapper(registry, new ComponentFiber(), wrapper, new object());
+
+            // Act
+            registry.Remove(wrapper);
+
+            // Assert
+            Assert.That(Table(registry, "_wrapperIndex").Contains(wrapper), Is.False);
         }
 
-        [Component]
-        private static VNode FirstRender()
+        // GREEN_ON_BASE(characterization): the base already removes a wrapper-mounted fiber from the wrapper index when a different identity evicts it; no case read that table after it.
+        [Test]
+        public void Given_AWrapperMountedFiber_When_ADifferentIdentityEvictsIt_Then_TheWrapperNoLongerIndexesIt()
         {
-            Hooks.UseEffect(() =>
-            {
-                s_log.Add("first:mount");
-                return () => s_log.Add("first:cleanup");
-            }, Array.Empty<object>());
-            return V.Label(text: "first");
-        }
+            // Arrange
+            var registry = new ComponentRegistry(new ReconcilerContext());
+            var wrapper = new VisualElement();
+            RegisterWrapper(registry, new ComponentFiber(), wrapper, new object());
 
-        [Component]
-        private static VNode SecondRender()
-        {
-            Hooks.UseEffect(() =>
-            {
-                s_log.Add("second:mount");
-                return () => s_log.Add("second:cleanup");
-            }, Array.Empty<object>());
-            return V.Label(text: "second");
+            // Act
+            registry.RemoveIfDifferentIdentity(wrapper, new object());
+
+            // Assert
+            Assert.That(Table(registry, "_wrapperIndex").Contains(wrapper), Is.False);
         }
     }
 }

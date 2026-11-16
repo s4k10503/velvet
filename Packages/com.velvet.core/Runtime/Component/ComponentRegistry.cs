@@ -416,8 +416,7 @@ namespace Velvet
             _ctx.FiberMemoCache.Forget(fiber);
         }
 
-        // Hiding before the fiber's own cascade waits for Unmount to stop reconciling its rows during the walk;
-        // step 10 owns the reorder.
+        // Hiding before the fiber's own cascade waits for Unmount to stop reconciling its rows during the walk.
         private void Hide(ComponentFiber fiber)
         {
             if (_inlineFiberToKey.TryGetValue(fiber, out var key))
