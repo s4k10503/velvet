@@ -568,16 +568,16 @@ namespace Velvet
                     break;
                 }
             }
-            if (!queued)
-            {
-                s_held.Add(new HeldItem(() =>
-                {
-                    context.BatchScheduler.FlushPendingPassiveEffects();
-                    context.BatchScheduler.FlushImmediate();
-                }, context, IsFlush: true));
-            }
+            if (!queued) s_held.Add(FlushOf(context));
             return true;
         }
+
+        // Kept out of HoldsFlush, whose every call would otherwise build this closure (RenderCommitAllocationTests).
+        private static HeldItem FlushOf(ReconcilerContext context) => new(() =>
+        {
+            context.BatchScheduler.FlushPendingPassiveEffects();
+            context.BatchScheduler.FlushImmediate();
+        }, context, IsFlush: true);
 
         // Whether the first render of a root is held back, in which case it is made where the outermost entry ends.
         internal static bool HoldMount(Action render, ReconcilerContext context) => Hold(render, context);
