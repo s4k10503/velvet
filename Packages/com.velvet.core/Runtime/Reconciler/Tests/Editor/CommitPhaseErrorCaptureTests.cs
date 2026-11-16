@@ -131,7 +131,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ARenderThatRemovesAnElementWhoseRefCleanupThrowsAheadOfASiblingItUpdates_When_ItCommits_Then_TheSiblingsLayoutEffectRunsBeforeTheFallbacks()
+        public void Given_ABoundaryWhoseRenderRemovesItsOwnElementWithAThrowingRefCleanup_When_ARenderOfItsParentUpdatesASiblingAfterIt_Then_TheSiblingsLayoutEffectRunsBeforeTheFallbacks()
         {
             // Arrange
             using var mounted = V.Mount(_root, V.Component(RemovingHost, key: "host"), CaughtErrors.Unlogged);
@@ -233,7 +233,7 @@ namespace Velvet.Tests
         private static readonly Func<VisualElement, Action> s_throwingCleanupRef =
             static _ => () => throw new InvalidOperationException("cleanup boom");
 
-        // Its render at 1 walks the boundary, removes the element below it and then updates the sibling after it.
+        // Its render at 1 walks the boundary, which removes an element of its own, and then updates the sibling after it.
         [Component]
         private static VNode RemovingHost()
         {
@@ -250,12 +250,10 @@ namespace Velvet.Tests
         private static VNode RemovingBoundary(int n)
         {
             Hooks.UseFallback(_ => V.Component(FallbackRender, key: "fallback"));
-            return V.Component(ElementRemovingRender, n, key: "remover");
+            return V.Div(children: n == 0
+                ? new VNode[] { V.Label(text: "removed", refCallback: s_throwingCleanupRef) }
+                : Array.Empty<VNode>());
         }
-
-        [Component]
-        private static VNode ElementRemovingRender(int n)
-            => V.Div(children: n == 0 ? new VNode[] { V.Label(text: "removed", refCallback: s_throwingCleanupRef) } : Array.Empty<VNode>());
 
         [Component]
         private static VNode LoggingTickRender(int n)
