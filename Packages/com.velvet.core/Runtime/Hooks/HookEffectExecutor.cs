@@ -26,6 +26,8 @@ namespace Velvet
         // every fiber FIRST, then a tree-wide setup phase — without re-running the cleanups that
         // RunPendingEffects bundles in. Callers that want the single-fiber cleanup→setup
         // pair should call RunPendingEffects instead.
+        // MUTANT_SURVIVES(equivalent, literal): the default of mountDoubleInvoke is read only by a caller that leaves it
+        // out, and the one that does is in an #else branch the editor does not compile, where the block it gates is out too.
         internal static void RunFactoriesAndClear(
             ComponentFiber fiber, List<HookEffectSlot>? pending, bool mountDoubleInvoke = false,
             bool withImperativeHandles = false)
