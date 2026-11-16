@@ -327,6 +327,7 @@ namespace Velvet
         private static void CommitLayoutBatch(
             ReconcilerContext ctx, ComponentFiber? scope, List<(ComponentFiber Fiber, bool IsMount)> roots)
         {
+            UnityEngine.Debug.Assert(FiberExecutionContext.IsSet, "A layout commit ran with no entry on the stack.");
             ctx.EffectCommitDepth++;
             // A catch during this commit's own setups showed a fallback this commit has not laid out, so its
             // report waits for the follow-up commit that does.
@@ -794,6 +795,7 @@ namespace Velvet
         // the same way TakeBatch does for the layout commit.
         private static void DrainPassiveEffects(ReconcilerContext context)
         {
+            UnityEngine.Debug.Assert(FiberExecutionContext.IsSet, "A passive flush ran with no entry on the stack.");
             context.PassiveEffectDrainScheduled = false;
             // Snapshot and clear the staged set before running: an effect setup can synchronously
             // stage further passive effects (setState in a UseEffect), which must enqueue a NEW drain
@@ -1030,6 +1032,7 @@ namespace Velvet
         // flush helper. Does nothing if already unmounted (Cleanup runs from CleanupAllEffects).
         private static void RunEffects(ComponentFiber fiber)
         {
+            UnityEngine.Debug.Assert(FiberExecutionContext.IsSet, "A passive flush ran with no entry on the stack.");
             fiber.EffectFlushScheduled = false;
             if (!fiber.IsMounted) return;
 #if UNITY_EDITOR

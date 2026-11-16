@@ -497,6 +497,7 @@ namespace Velvet
         // Returns whether this render's output became the fiber's PreviousTree.
         internal static bool RenderAndReconcile(ComponentFiber fiber, double frameBudgetMs = 0, bool deferReconcile = false)
         {
+            UnityEngine.Debug.Assert(FiberExecutionContext.IsSet, "A render ran with no entry on the stack.");
             if (fiber.IsRendering)
             {
                 throw new InvalidOperationException(

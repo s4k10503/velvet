@@ -262,6 +262,7 @@ namespace Velvet
             ProfilerMarker.AutoScope profilerScope = default;
             if (isTopLevel)
             {
+                UnityEngine.Debug.Assert(FiberExecutionContext.IsSet, "A reconcile pass ran with no entry on the stack.");
                 profilerScope = s_reconcileMarker.Auto();
                 ChildListWrites.BeginPass();
                 _ctx.RelationalTreeWatch.Watch(parent?.panel);
@@ -559,7 +560,11 @@ namespace Velvet
             // the probe a discrete event dispatched synchronously inside a slice would re-enter the
             // reconciler on the stack.
             var isTopLevel = _ctx.SharedReconcileDepth == 0;
-            if (isTopLevel) ChildListWrites.BeginRecording(_ctx.Pass);
+            if (isTopLevel)
+            {
+                UnityEngine.Debug.Assert(FiberExecutionContext.IsSet, "A resumed pass ran with no entry on the stack.");
+                ChildListWrites.BeginRecording(_ctx.Pass);
+            }
 
             // A resume continues the pass an earlier slice suspended, so a setup it queues carries that
             // pass — see Reconcile's own bracket for why the stamp is put back rather than cleared.
@@ -693,6 +698,7 @@ namespace Velvet
         // whether this range opened the bracket, which EndRangeForController closes.
         bool IReconcilerBridge.BeginRangeForController()
         {
+            UnityEngine.Debug.Assert(FiberExecutionContext.IsSet, "A VirtualList range ran with no entry on the stack.");
             if (_ctx.SharedReconcileDepth > 0) return false;
             _ctx.SharedReconcileDepth++;
             _ctx.RangeBracketDepth = _ctx.SharedReconcileDepth;

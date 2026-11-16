@@ -901,6 +901,24 @@ the check; a rewrite regenerates the record in the same change. It runs in `Test
 does not read C#, and it does not read a display written in the call second against a computed value,
 which the text cannot tell from a computed value compared with an expected tuple.
 
+### Checking that Velvet's own code reaches a body, not an entry
+
+Each entry into Velvet's render and commit is a door and a body, as `FiberExecutionContext` describes: a
+door reached while a root renders or commits is held until the outermost entry has ended, and Velvet's
+render and commit code calls the body. A door called from inside them defers work the entry on the
+stack owes, and no assertion on a render or commit step sees it, since the held work runs in an entry
+of its own.
+
+```bash
+python3 scripts/test_quality/entry_sites_check.py
+```
+
+It reads the package's C# outside `Tests` directories and reports each reference to a door from a member
+its `ALLOWED` table does not name, and each entry of the table the tree no longer makes. It runs in
+`Test ▸ test-quality`, beside its suite. A door whose name other members share is read only where it is
+qualified as the table of doors gives, or in the file that declares it; the member a reference sits in
+is found by indentation.
+
 ### Checking that a removal did not strand its name
 
 A comment naming a method is true until somebody deletes the method, and nothing was reading for
