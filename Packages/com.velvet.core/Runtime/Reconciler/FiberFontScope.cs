@@ -168,7 +168,7 @@ namespace Velvet
         {
             if (intent.HasFamily)
             {
-                // MUTANT_SURVIVES(equivalent, literal): this branch runs only for an intent that names a family, and ApplyResolved reads foreign only for an intent that names none.
+                // MUTANT_SURVIVES(equivalent, literal): this branch runs only for an intent that names a family, and ApplyResolved tests foreign only in a conjunction with !intent.HasFamily, which such an intent makes false.
                 StyleFontResolver.ApplyResolved(element, intent, null, foreign: false);
                 Inheritors.Remove(element);
                 var changed = !Families.TryGetValue(element, out var previous) || previous.Family != intent.Family;
