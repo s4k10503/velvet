@@ -17,9 +17,10 @@ namespace Velvet.Tests
     /// in the range or ahead of a Component row, and the rows that scroll built stay in the list. A range a scroll asks
     /// for while a root renders or commits, its own root's included, renders once that has ended, before control
     /// returns, and asked for more often than the nested-update limit throws nothing; a ScrollToItem made there still
-    /// reaches its item once the content is laid out. What a range's rows mount, and the updates their layout effects
-    /// make, render before the scroll that rendered them returns. A list its host renders again places its new rows
-    /// inside that render, where the host's layout effect reads them.
+    /// reaches its item once the content is laid out. What a range's rows mount, the updates their layout effects make
+    /// and the fallback a row's boundary shows for an error one throws render before the scroll that rendered them
+    /// returns. A list its host renders again places its new rows inside that render, where the host's layout effect
+    /// reads them.
     /// </summary>
     [TestFixture]
     internal sealed class VirtualListScrollPlacementTests
@@ -458,6 +459,33 @@ namespace Velvet.Tests
 
             // Assert — null where the row did not render
             Assert.That(_root.Q<Label>("item-50")?.text, Is.EqualTo("item-50:1"));
+        }
+
+        [Component]
+        private static VNode ThrowsFromItsLayoutEffect(string item)
+        {
+            Hooks.UseLayoutEffect((Func<Action>)(() => throw new InvalidOperationException("row " + item)),
+                Array.Empty<object>());
+            return V.Label(name: item, text: item);
+        }
+
+        // React's captureCommitPhaseError gives the boundary's root the sync lane, which the commit's end renders.
+        [Test]
+        public void Given_ARowWhoseLayoutEffectThrowsIntoItsOwnBoundary_When_AScrollRendersTheRow_Then_TheFallbackIsShownWhenTheScrollReturns()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.VirtualList(HundredItems, item => item, itemHeight: 50f,
+                renderer: item => V.ErrorBoundary(_ => V.Label(name: "fallback-" + item, text: "fallback"),
+                    new VNode[] { V.Component<string>(ThrowsFromItsLayoutEffect, item, key: "row") }, key: item),
+                overscan: 0), CaughtErrors.Unlogged);
+            var scrollView = _root.Q<ScrollView>();
+            SetViewport(mounted, scrollView, 200f);
+
+            // Act
+            ControllerOf(mounted, scrollView).UpdateVisibleRange(2500f, 200f);
+
+            // Assert
+            Assert.That(_root.Q<Label>("fallback-item-50"), Is.Not.Null);
         }
 
         private static readonly System.Collections.Generic.List<MountedTree> s_thumbs = new();
