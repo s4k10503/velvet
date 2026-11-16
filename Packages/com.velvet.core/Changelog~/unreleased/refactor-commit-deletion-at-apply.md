@@ -9,3 +9,6 @@
   component mounting its own wrapper element, or a Portal whose target is the container itself or lies inside what the
   removal removes. The Portals a deferred removal holds move the ranges behind them up where the removal is decided,
   and release their rows, bridge and world-space host where the recorded writes apply.
+  The cleanups of what a component stops rendering run at that component's turn among the writes, ahead of those of
+  the components and elements after it, as React runs a fiber's deletions ahead of its children's, and what the
+  container itself stops rendering runs ahead of what the components in it do.

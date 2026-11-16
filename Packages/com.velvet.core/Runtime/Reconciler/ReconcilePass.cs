@@ -13,7 +13,7 @@ namespace Velvet
     // suspend that nothing in the pass catches abandons it.
     internal sealed class ReconcilePass
     {
-        internal enum OpKind : byte { Insert, RemoveAt, RemoveChild, PatchPre, PatchPost, Teardown }
+        internal enum OpKind : byte { Insert, RemoveAt, RemoveChild, PatchPre, PatchPost, Teardown, FiberBegin, FiberEnd }
 
         internal struct Op
         {
@@ -22,6 +22,8 @@ namespace Velvet
             internal VisualElement Child;
             // The deletion a Teardown runs.
             internal DeletionCommit? Deletion;
+            // The fiber a FiberBegin or a FiberEnd brackets: the ops between the two are the writes its output made.
+            internal ComponentFiber? Fiber;
             // The index into Patches of a PatchPre or a PatchPost.
             internal int Index;
             internal OpKind Kind;
@@ -39,6 +41,10 @@ namespace Velvet
 
         // The renders of the pass on the stack, which a suspend nothing catches takes back.
         internal FiberPassJournal Journal { get; } = new();
+
+        // How many times the recorded ops have applied, which a position taken in them (ChildListWrites.OpMark) reads to
+        // tell the ops it counted have gone.
+        internal int Applied;
 
         internal bool Recording;
         internal bool Applying;

@@ -769,6 +769,7 @@ namespace Velvet
             finally
             {
                 pass.Applying = false;
+                pass.Applied++;
                 pass.Ops.Clear();
                 pass.Patches.Clear();
                 pass.PendingParent.Clear();
@@ -788,13 +789,61 @@ namespace Velvet
             first?.Throw();
         }
 
-        // Queues a deletion's teardown among the recorded writes, to run where the ones before it have applied. False
-        // where no pass is recording or its recorded writes are applying, which leaves the caller to run it.
-        internal static bool RecordTeardown(DeletionCommit deletion)
+        // Where the ops recorded so far end, for a deletion whose owner is the container's own: its turn is the start
+        // of the container's walk, which no op marks.
+        internal readonly struct OpMark
+        {
+            private readonly ReconcilePass? _pass;
+            private readonly int _applied;
+            private readonly int _count;
+
+            internal OpMark(ReconcilePass pass)
+            {
+                _pass = pass;
+                _applied = pass.Applied;
+                _count = pass.Ops.Count;
+            }
+
+            // The position the mark names in pass's ops, or -1 where the ops it counted have applied since.
+            internal int PositionIn(ReconcilePass pass)
+                => ReferenceEquals(_pass, pass) && _applied == pass.Applied ? _count : -1;
+        }
+
+        internal static OpMark MarkOps() => s_current is { Recording: true, Applying: false } pass ? new OpMark(pass) : default;
+
+        // Brackets the ops a fiber's rendered output records. They apply as nothing: they name where the fiber's turn is.
+        internal static void RecordFiberBegin(ComponentFiber fiber) => RecordFiberBracket(ReconcilePass.OpKind.FiberBegin, fiber);
+
+        internal static void RecordFiberEnd(ComponentFiber fiber) => RecordFiberBracket(ReconcilePass.OpKind.FiberEnd, fiber);
+
+        private static void RecordFiberBracket(ReconcilePass.OpKind kind, ComponentFiber fiber)
+        {
+            if (s_current is not { Recording: true, Applying: false } pass) return;
+            pass.Ops.Add(new ReconcilePass.Op { Fiber = fiber, Kind = kind });
+        }
+
+        // Queues a deletion's teardown among the recorded writes, to run at its owner's turn: right after the owner's
+        // FiberBegin, or at start where the owner is the container's own. Where that position has applied already, or the
+        // owner recorded none, it runs behind the writes recorded so far. False where no pass is recording or its
+        // recorded writes are applying, which leaves the caller to run it.
+        internal static bool RecordTeardown(DeletionCommit deletion, ComponentFiber? owner, in OpMark start)
         {
             if (s_current is not { Recording: true, Applying: false } pass) return false;
-            pass.Ops.Add(new ReconcilePass.Op { Deletion = deletion, Kind = ReconcilePass.OpKind.Teardown });
+            var at = owner == null ? start.PositionIn(pass) : IndexAfterBegin(pass, owner);
+            var op = new ReconcilePass.Op { Deletion = deletion, Kind = ReconcilePass.OpKind.Teardown };
+            if (at >= 0 && at <= pass.Ops.Count) pass.Ops.Insert(at, op);
+            else pass.Ops.Add(op);
             return true;
+        }
+
+        private static int IndexAfterBegin(ReconcilePass pass, ComponentFiber owner)
+        {
+            for (var i = pass.Ops.Count - 1; i >= 0; i--)
+            {
+                var op = pass.Ops[i];
+                if (op.Kind == ReconcilePass.OpKind.FiberBegin && ReferenceEquals(op.Fiber, owner)) return i + 1;
+            }
+            return -1;
         }
 
         private static void ApplyOp(ReconcilePass pass, ReconcilePass.Op op)
@@ -804,6 +853,7 @@ namespace Velvet
                 op.Deletion!.Teardown();
                 return;
             }
+            if (op.Kind >= ReconcilePass.OpKind.FiberBegin) return;
             if (op.Kind >= ReconcilePass.OpKind.PatchPre)
             {
                 var patch = pass.Patches[op.Index];

@@ -78,6 +78,9 @@ namespace Velvet
             public List<(ComponentFiber Fiber, int FirstRow, int Rows)> Placements = null!;
             // The fibers of the component nodes this walk met after an abort and did not render.
             public HashSet<ComponentFiber>? SkippedByAbort;
+            // Where the pass's recorded writes stood when the container's walk began, which the deletion the container
+            // owns runs at.
+            public ChildListWrites.OpMark Start;
             // The fibers a Suspense of this walk hid (true) or revealed (false), applied once FinalizeGeneralCommit
             // has placed what the walk emitted: React disconnects and reconnects them in its commit, and a walk
             // that rolls back or stops leaves on screen what was there.
@@ -157,11 +160,11 @@ namespace Velvet
                 Committed = new List<CommittedLeaf>(),
                 Placements = pool.RentPlacementList(),
                 OldOccupants = pool.RentOldSlotOccupants(),
+                Start = ChildListWrites.MarkOps(),
             };
             var owner = _ctx.FiberStack.Current;
             var removalsRan = false;
             DeletionCommit? deletion = null;
-            DeletionPlan? plan = null;
             try
             {
                 if (parent != null) commit.OldOccupants.Resolve(parent, slotStart, oldNodes.Length, int.MaxValue, _patcher);
@@ -217,12 +220,12 @@ namespace Velvet
                     KeepFibersTheStoppedWalkLeft(
                         oldFibers, newFibers, commit.SkippedByAbort, OwnerKeepsItsNewTree(owner) ? owner : null);
                 }
-                deletion = TakeDownTheDeletion(commit, oldFibers, newFibers, out plan);
+                deletion = TakeDownTheDeletion(commit, oldFibers, newFibers);
                 removalsRan = !_ctx.IsAborted;
                 if (removalsRan)
                 {
                     if (commit.BeforeRemovals != null) foreach (var dispose in commit.BeforeRemovals) dispose();
-                    FinalizeGeneralCommit(commit, deletion, plan);
+                    FinalizeGeneralCommit(commit, deletion);
                     ApplyOffscreenChanges(commit);
                 }
                 else
@@ -233,12 +236,20 @@ namespace Velvet
                     RestoreWhatTheSuspensesWrote(commit);
                 }
                 // A deferred deletion disposes its fibers where it tears down.
-                if (deletion is not { DefersTeardown: true }) _ctx.HostCommit.DisposeOrphans(oldFibers, newFibers);
+                for (var group = deletion; group != null; group = group.NextGroup)
+                {
+                    if (!group.DefersTeardown) _ctx.HostCommit.DisposeOrphans(group.OldFibers!, newFibers);
+                }
                 return removalsRan;
             }
             finally
             {
-                deletion?.Complete();
+                for (var group = deletion; group != null;)
+                {
+                    var next = group.NextGroup;
+                    group.Complete();
+                    group = next;
+                }
                 // Whether the walk threw or an abort skipped the removals, a completion that waits on them has nothing
                 // to follow.
                 if (!removalsRan)
@@ -579,15 +590,15 @@ namespace Velvet
 
         // What the walk deletes — the old leaves it removes and the fibers its old side reached and its new side did
         // not — taken down in React's order ahead of the removals (DeletionCommit), which FinalizeGeneralCommit runs
-        // over the leaves the deletion names. A walk an abort stopped removes no leaf, and still takes down the
-        // orphans KeepFibersTheStoppedWalkLeft let go. Null where nothing is deleted.
+        // over the leaves each deletion names. React deletes a fiber's children at the fiber's own turn, so what the
+        // walk deletes is split by the fiber that kept the parent of each deleted leaf or fiber, the walk's own
+        // where none did, and each group runs at its owner's turn. A walk an abort stopped removes no leaf, and still
+        // takes down the orphans KeepFibersTheStoppedWalkLeft let go. Null where nothing is deleted.
         private DeletionCommit? TakeDownTheDeletion(
-            GeneralCommitState commit, List<ComponentFiber> oldFibers, HashSet<ComponentFiber> newFibers,
-            out DeletionPlan? plan)
+            GeneralCommitState commit, List<ComponentFiber> oldFibers, HashSet<ComponentFiber> newFibers)
         {
-            plan = null;
             var oldLength = commit.OldNodes!.Length;
-            DeletionCommit? deletion = null;
+            DeletionCommit? head = null;
             if (!_ctx.IsAborted)
             {
                 MarkPatchedOldLeaves(commit);
@@ -597,27 +608,51 @@ namespace Velvet
                     // A leaf whose slot was empty when the walk read the old instances has none to remove.
                     var row = commit.OldOccupants.Occupant(i);
                     if (row == null || commit.UsedOldIndices.Contains(i)) continue;
-                    (deletion ??= BeginDeletion(commit)).AddRemovedRow(i, row);
+                    DeletionGroupOf(commit, ref head, SurvivingOwner(commit.OldOwners[i], newFibers)).AddRemovedRow(i, row);
                 }
             }
-            if (deletion == null && !HasOrphan(oldFibers, newFibers)) return null;
-            deletion ??= BeginDeletion(commit);
-            plan = deletion.Run(oldFibers, newFibers, oldLength);
-            return deletion;
-        }
-
-        private DeletionCommit BeginDeletion(GeneralCommitState commit)
-            => _ctx.HostCommit.BeginDeletion(commit.Parent, commit.SlotStart, commit.OldOccupants);
-
-        private static bool HasOrphan(List<ComponentFiber> oldFibers, HashSet<ComponentFiber> newFibers)
-        {
             foreach (var fiber in oldFibers)
             {
-                if (!newFibers.Contains(fiber)) return true;
+                if (!newFibers.Contains(fiber)) DeletionGroupOf(commit, ref head, SurvivingOwner(fiber.Parent, newFibers));
             }
-            // MUTANT_SURVIVES(equivalent, literal): a deletion begun over nothing deleted takes nothing down.
-            // Its Run finds no orphan and no removed row, and FinalizeGeneralCommit reads no removed row from it.
-            return false;
+            // A single group takes the orphans from the list the walk made; several each take theirs.
+            for (var group = head; group != null; group = group.NextGroup)
+            {
+                if (ReferenceEquals(group, head) && group.NextGroup == null)
+                {
+                    group.Run(oldFibers, newFibers, oldLength);
+                    continue;
+                }
+                var mine = new List<ComponentFiber>();
+                foreach (var fiber in oldFibers)
+                {
+                    if (!newFibers.Contains(fiber) && ReferenceEquals(SurvivingOwner(fiber.Parent, newFibers), group.Owner)) mine.Add(fiber);
+                }
+                group.Run(mine, newFibers, oldLength);
+            }
+            return head;
+        }
+
+        // The nearest fiber at or above fiber that the walk kept, which is whose turn a deletion under it runs at; null
+        // where the walk kept none, and the deletion is the container's own.
+        private static ComponentFiber? SurvivingOwner(ComponentFiber? fiber, HashSet<ComponentFiber> newFibers)
+        {
+            while (fiber != null && !newFibers.Contains(fiber)) fiber = fiber.Parent;
+            return fiber;
+        }
+
+        private DeletionCommit DeletionGroupOf(GeneralCommitState commit, ref DeletionCommit? head, ComponentFiber? owner)
+        {
+            DeletionCommit? last = null;
+            for (var group = head; group != null; group = group.NextGroup)
+            {
+                if (ReferenceEquals(group.Owner, owner)) return group;
+                last = group;
+            }
+            var created = _ctx.HostCommit.BeginDeletion(commit.Parent, commit.SlotStart, commit.OldOccupants, owner, commit.Start);
+            if (last == null) head = created;
+            else last.NextGroup = created;
+            return created;
         }
 
         // Removes old leaves not reused by the walk, then re-places the committed elements into
@@ -625,30 +660,32 @@ namespace Velvet
         // a patience-sort LIS (anchors stay put). Mirrors the removal + LIS reorder tail of
         // ReconcileKeyedSync with linearEnd == 0: all matching happened in CommitLeaf, and the leaves it
         // matched linearly are placed with the rest rather than ahead of them.
-        private void FinalizeGeneralCommit(GeneralCommitState commit, DeletionCommit? deletion, DeletionPlan? plan)
+        private void FinalizeGeneralCommit(GeneralCommitState commit, DeletionCommit? deletions)
         {
             var parent = commit.Parent!;
             var slotStart = commit.SlotStart;
             var oldNodes = commit.OldNodes!;
             var newElements = commit.NewElements;
 
-            // Removal, from the last old leaf down, of the leaves the deletion took down.
-            var removed = deletion?.RemovedRows;
-            var deferred = deletion is { DefersTeardown: true };
-            for (var i = (removed?.Count ?? 0) - 1; i >= 0; i--)
+            // Removal, from the last old leaf down, of the leaves each deletion took down.
+            for (var deletion = deletions; deletion != null; deletion = deletion.NextGroup)
             {
-                var index = removed![i].Index;
-                var old = commit.OldOccupants.Occupant(index);
-                if (old == null) continue;
-                if (deferred) deletion!.AddCleanup(parent, old);
-                else _ctx.HostCommit.Remove(parent, old, plan);
-            }
-            if (deferred)
-            {
-                // The teardown is queued ahead of the removals, which it cleans up before they apply, as a cleanup
-                // runs ahead of its removal where the deletion is immediate.
-                deletion!.Queue();
-                foreach (var (_, element, _, _) in deletion.Cleanups) _ctx.HostCommit.RemoveRow(parent, element);
+                var removed = deletion.RemovedRows;
+                var deferred = deletion.DefersTeardown;
+                for (var i = removed.Count - 1; i >= 0; i--)
+                {
+                    var old = commit.OldOccupants.Occupant(removed[i].Index);
+                    if (old == null) continue;
+                    if (deferred) deletion.AddCleanup(parent, old);
+                    else _ctx.HostCommit.Remove(parent, old, deletion.Plan);
+                }
+                if (deferred)
+                {
+                    // The teardown is queued ahead of the removals, which it cleans up before they apply, as a cleanup
+                    // runs ahead of its removal where the deletion is immediate.
+                    deletion.Queue();
+                    foreach (var (_, element, _, _) in deletion.Cleanups) _ctx.HostCommit.RemoveRow(parent, element);
+                }
             }
             // LIS reorder over the post-removal DOM positions, from slotStart for the reason above.
             var range = new ChildElementPlacement.PlacementRange
@@ -1174,7 +1211,8 @@ namespace Velvet
                 var fiber = _ctx.ComponentRegistry.TryGetFiberForInlineKey(_ctx.FiberStack.Current, slotKey, identity, portalScope, walk.Parent);
                 if (fiber != null)
                 {
-                    ExpandFiberPreviousTree(walk, fiber, component, position, nodeIndex);
+                    // MUTANT_SURVIVES(equivalent, literal): the old-side walk carries no Commit, so the bracket is not recorded either way.
+                    ExpandFiberPreviousTree(walk, fiber, component, position, nodeIndex, brackets: false);
                     // Post-order add: a directly-nested component must precede its
                     // parent in oldFibers so the orphan sweep's forward walk tears the
                     // subtree down bottom-up — a descendant's effect cleanups complete
@@ -1198,7 +1236,7 @@ namespace Velvet
             walk.ReusedOwner = RendersNothingHere(walk, reusedAsIs) && !FiberPendingWork.Below(fiber) ? fiber : null;
             try
             {
-                ExpandFiberPreviousTree(walk, fiber, component, position, nodeIndex);
+                ExpandFiberPreviousTree(walk, fiber, component, position, nodeIndex, brackets: !reusedAsIs);
             }
             finally
             {
@@ -1233,7 +1271,7 @@ namespace Velvet
                 boundary.CatchesInTheWalk = true;
                 try
                 {
-                    ExpandFiberPreviousTree(walk, boundary, component, position, nodeIndex);
+                    ExpandFiberPreviousTree(walk, boundary, component, position, nodeIndex, brackets: true);
                 }
                 catch (BoundaryCaughtSignal signal) when (ReferenceEquals(signal.Boundary, boundary))
                 {
@@ -1265,7 +1303,7 @@ namespace Velvet
                 boundary.FallbackContentFailed = false;
                 try
                 {
-                    ExpandFiberTree(walk, boundary, caught.FallbackTree, component, position, nodeIndex);
+                    ExpandBracketedFiberTree(walk, boundary, caught.FallbackTree, component, position, nodeIndex);
                 }
                 finally
                 {
@@ -1374,8 +1412,40 @@ namespace Velvet
             ComponentFiber fiber,
             ComponentNode component,
             WalkPosition position,
+            int nodeIndex,
+            bool brackets)
+        {
+            if (brackets) ExpandBracketedFiberTree(walk, fiber, fiber.PreviousTree, component, position, nodeIndex);
+            else ExpandFiberTree(walk, fiber, fiber.PreviousTree, component, position, nodeIndex);
+        }
+
+        // The ops a rendered fiber's output records, between the FiberBegin and the FiberEnd of the fiber, which the
+        // deletion the fiber owns runs behind (DeletionCommit.Queue). A fiber reused as it was recorded no output, and
+        // the old side records no op.
+        private void ExpandBracketedFiberTree(
+            InlineWalk walk,
+            ComponentFiber fiber,
+            VNode?[]? tree,
+            ComponentNode component,
+            WalkPosition position,
             int nodeIndex)
-            => ExpandFiberTree(walk, fiber, fiber.PreviousTree, component, position, nodeIndex);
+        {
+            if (walk.Commit == null)
+            {
+                ExpandFiberTree(walk, fiber, tree, component, position, nodeIndex);
+                return;
+            }
+            ChildListWrites.RecordFiberBegin(fiber);
+            try
+            {
+                ExpandFiberTree(walk, fiber, tree, component, position, nodeIndex);
+            }
+            finally
+            {
+                // MUTANT_SURVIVES(equivalent, line removed): no apply or lookup reads a FiberEnd yet; the layout sweep is its reader.
+                ChildListWrites.RecordFiberEnd(fiber);
+            }
+        }
 
         private void ExpandFiberTree(
             InlineWalk walk,
