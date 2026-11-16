@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Reflection;
 using UnityEngine.UIElements;
 
@@ -25,6 +26,11 @@ namespace Velvet.Tests
         private static readonly MethodInfo TryGetPhysicalMethod =
             typeof(ContainerRows).GetMethod("TryGetPhysical", Private)!;
 
+        private static readonly FieldInfo FirstBlockField = typeof(ContainerRows).GetField("_first", Private)!;
+        private static readonly FieldInfo BlockListField = typeof(ContainerRows).GetField("_blocks", Private)!;
+        private static readonly FieldInfo ElementTableField = typeof(ContainerRows).GetField("_owner", Private)!;
+        private static readonly PropertyInfo BlockCountProperty = typeof(ContainerRows).GetProperty("BlockCount", Private)!;
+
         private static Func<ContainerRows, TArg, TResult> Reader<TArg, TResult>(string name)
             => (Func<ContainerRows, TArg, TResult>)Delegate.CreateDelegate(
                 typeof(Func<ContainerRows, TArg, TResult>), typeof(ContainerRows).GetMethod(name, Private)!);
@@ -39,6 +45,24 @@ namespace Velvet.Tests
             => PhysicalIndexOfDelegate(rows, element);
 
         internal static int SlotOf(ContainerRows rows, VisualElement element) => SlotOfDelegate(rows, element);
+
+        internal static int BlockCount(ContainerRows rows) => (int)BlockCountProperty.GetValue(rows)!;
+
+        // The array of the first block, as the model holds it: its slots past the row count are what a removed row
+        // must not leave a reference in.
+        internal static VisualElement?[] FirstBlockElements(ContainerRows rows) => ElementsOf(FirstBlockField.GetValue(rows)!);
+
+        internal static VisualElement?[] LastBlockElements(ContainerRows rows)
+        {
+            var blocks = (IList?)BlockListField.GetValue(rows);
+            return ElementsOf(blocks == null ? FirstBlockField.GetValue(rows)! : blocks[blocks.Count - 1]!);
+        }
+
+        // Whether the model keeps the element-to-block table that only a container of several blocks needs.
+        internal static bool HasElementTable(ContainerRows rows) => ElementTableField.GetValue(rows) != null;
+
+        private static VisualElement?[] ElementsOf(object block)
+            => (VisualElement?[])block.GetType().GetField("Elements", Private)!.GetValue(block)!;
 
         internal static bool TryGetPhysical(ContainerRows rows, int logical, out int physical)
         {

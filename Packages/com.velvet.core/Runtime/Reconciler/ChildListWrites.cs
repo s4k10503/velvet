@@ -70,6 +70,7 @@ namespace Velvet
             {
                 return false;
             }
+            // MUTANT_SURVIVES(equivalent, boundary): at readAt 0 the comparison is the first-child one made above, so skipping it changes no answer.
             return readAt < 0 || readAt >= count || ReferenceEquals(rows.ElementAt(readAt), container.hierarchy[readAt]);
         }
 
@@ -253,6 +254,7 @@ namespace Velvet
         {
             var content = ContentOf(container);
             if (CountOf(content) == 0) return;
+            // MUTANT_SURVIVES(equivalent, arithmetic): readAt reaches only the probe in Agrees, and past the last child that probe repeats the last-child comparison made before it.
             Synced(content, Math.Min(start, CountOf(content) - 1)).PhysicalRange(start, end, into);
         }
 
@@ -309,6 +311,7 @@ namespace Velvet
             }
             FlushIfPending(container, child);
             var left = child.hierarchy.parent;
+            // MUTANT_SURVIVES(equivalent, arithmetic): readAt reaches only the probe in Agrees, and past the last child that probe repeats the last-child comparison made before it.
             var rows = Enter(container, Math.Min(index, container.hierarchy.childCount - 1));
             try
             {
@@ -402,6 +405,7 @@ namespace Velvet
             var parent = child.hierarchy.parent;
             if (parent == null)
             {
+                // MUTANT_SURVIVES(equivalent, line removed): this branch runs only where child.hierarchy.parent is null, and RemoveFromHierarchy does nothing without one.
                 child.RemoveFromHierarchy();
                 return;
             }
