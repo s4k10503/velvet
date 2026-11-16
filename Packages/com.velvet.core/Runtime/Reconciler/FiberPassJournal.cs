@@ -166,8 +166,9 @@ namespace Velvet
             _shiftedRows.TryAdd(tenancy, tenancy.ShiftedRows);
         }
 
-        // Puts back what the pass wrote on the fiber side.
-        internal void Rollback()
+        // Puts back what the pass wrote on the fiber side. Private until the drop that reads it lands; the pass-drop
+        // harness reaches it by reflection.
+        private void Rollback()
         {
             var slots = new List<KeyValuePair<ComponentFiber, (int Start, int Count)>>(_slots);
             var shifted = new List<KeyValuePair<InlineTenancy, int>>(_shiftedRows);

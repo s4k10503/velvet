@@ -38,13 +38,17 @@ namespace Velvet.TestUtilities
         internal static PassDropHarness Open(MountedTree mounted)
             => new(mounted.Root.Reconciler.Context, mounted.Root);
 
+        private static readonly MethodInfo s_rollback = typeof(FiberPassJournal).GetMethod("Rollback",
+            BindingFlags.Instance | BindingFlags.NonPublic)
+            ?? throw new MissingMethodException(nameof(FiberPassJournal), "Rollback");
+
         /// <summary>Rolls the journal back, closes it, and returns one line per entry that differs from the snapshot.</summary>
         internal List<string> Drop(JournalFamilies expect)
         {
             if (_entries.Count == 0) throw new InvalidOperationException("The snapshot holds no fiber.");
             FiberPassJournalProbe.RequireRecorded(_journal, expect);
             var redo = FiberPassJournalProbe.CaptureRedo(_journal);
-            _journal.Rollback();
+            s_rollback.Invoke(_journal, null);
             _journal.Close();
             var differences = new List<string>();
             foreach (var (label, read, before) in _entries)
