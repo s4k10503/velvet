@@ -149,6 +149,7 @@ namespace Velvet.Tests
         [TestCase("_removedRows")]
         [TestCase("_orphanRows")]
         [TestCase("_portalsUnderRoots")]
+        [TestCase("_portalRows")]
         [TestCase("_orphans")]
         [TestCase("_collected")]
         [TestCase("_fibers")]

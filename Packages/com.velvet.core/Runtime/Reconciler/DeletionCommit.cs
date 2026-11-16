@@ -23,6 +23,9 @@ namespace Velvet
         // What the walk decides, which the removals after it read (FiberElementCleaner.CleanupElement).
         private DeletionPlan _deletion = null!;
         private readonly HashSet<VisualElement> _portalsUnderRoots = new();
+        // The rows of the Portals DetachPortals detached, each with the target it is a row of, in the order their
+        // cleanup removes them.
+        private readonly List<(VisualElement Target, VisualElement Row)> _portalRows = new();
         private readonly HashSet<ComponentFiber> _orphans = new();
         private readonly HashSet<ComponentFiber> _collected = new();
         private readonly List<ComponentFiber> _fibers = new();
@@ -61,22 +64,60 @@ namespace Velvet
         {
             var plan = BuildPlan(oldFibers, newFibers, oldLength);
             _deferred = ChildListWrites.IsRecording && CanDefer();
-            if (!_deferred) Execute();
+            if (_deferred) DetachPortals();
+            else Execute();
             return plan;
         }
 
         // Whether the deletion runs where the pass applies its recorded writes (Teardown) rather than where it is decided.
         // It keeps the immediate path where a fiber's unmount reconciles its own rows (a wrapper-mounted fiber with a
-        // tree), and where a Portal sits under a root, whose range CleanupPortal removes and whose fibers it disposes by
-        // looking them up in the registry, which a hidden fiber has left.
+        // tree), where a Portal under a root has the container itself for its target, whose range follows the
+        // container's own rows (HostCommitQueue.FollowOwnRows), and where a Portal's target is inside a root, which
+        // takes its rows with it.
         private bool CanDefer()
         {
-            if (_portalsUnderRoots.Count > 0) return false;
+            foreach (var placeholder in _portalsUnderRoots)
+            {
+                if (!Ctx.PortalState.TryGetValue(placeholder, out var portal)) continue;
+                var target = portal.Target;
+                if (target != null && (ReferenceEquals(target, _container) || IsUnderARoot(target))) return false;
+            }
             foreach (var fiber in _fibers)
             {
                 if (!fiber.IsInlineMounted && fiber.MountPoint != null && fiber.PreviousTree != null) return false;
             }
             return true;
+        }
+
+        // What CleanupPortal does to the model for each mounted Portal under a root, done where the deletion decides so a later row
+        // of the walk reads the slots the removal leaves: the entry leaves PortalState, the ranges and tenants behind its
+        // range move up, and its rows, which the plan holds for the cleanup of its placeholder, are recorded as removed
+        // where Queue records the others. The rows are read before any range moves.
+        private void DetachPortals()
+        {
+            foreach (var placeholder in _portalsUnderRoots)
+            {
+                if (!Ctx.PortalState.TryGetValue(placeholder, out var portal)) continue;
+                var target = portal.Target;
+                if (target == null) continue;
+                var rendered = RenderedChildrenOf(target);
+                var rows = new List<VisualElement>(portal.SlotLength);
+                for (var slot = portal.SlotStart + portal.SlotLength - 1; slot >= portal.SlotStart; slot--)
+                {
+                    if (slot < rendered.Count) rows.Add(rendered[slot]);
+                }
+                _deletion.Portals[placeholder] = new DeletionPlan.DetachedPortal(target, rows);
+            }
+            foreach (var (placeholder, detached) in _deletion.Portals)
+            {
+                // The range as recorded, not as its rows place it (PortalRangeTable): the rows of the ranges removed before
+                // this one are still in the model, and the shifts for them have moved the ranges behind.
+                var portal = Ctx.PortalState.Stored[placeholder];
+                Ctx.PortalState.Remove(placeholder);
+                if (portal.SlotLength > 0 && Ctx.SharedReconcileDepth > 0) Ctx.PortalTargetsToRestyle.Add(detached.Target);
+                Ctx.HostCommit.ShiftBehindPortalRange(detached.Target, placeholder, portal, -portal.SlotLength);
+                foreach (var row in detached.Rows) _portalRows.Add((detached.Target, row));
+            }
         }
 
         // Whether the deletion's cleanups and disposals wait for Teardown, so the walk records the removals of its rows
@@ -95,13 +136,14 @@ namespace Velvet
             => _cleanups;
 
         // Hides the fibers the deletion disposes and queues Teardown behind the writes recorded so far, which the removals
-        // of the rows registered by AddCleanup follow.
+        // of the rows registered by AddCleanup follow, and those of the Portals' rows (DetachPortals) follow at once.
         internal void Queue()
         {
             if (!_deferred || _queued) return;
             _queued = true;
             Ctx.ComponentRegistry.HideFibers(_fibers);
             if (!ChildListWrites.RecordTeardown(this)) Teardown();
+            foreach (var (target, row) in _portalRows) Ctx.HostCommit.RemoveRow(target, row);
         }
 
         // Where the deletion's walk is over. One that was never queued is now, so its fibers do not wait for a teardown
@@ -407,6 +449,7 @@ namespace Velvet
             // The reset only lets the pooled instance drop the plan it pointed at.
             _deletion = null!;
             ClearAndTrim(_portalsUnderRoots);
+            ClearAndTrim(_portalRows);
             ClearAndTrim(_orphans);
             ClearAndTrim(_collected);
             _fibers.Clear();

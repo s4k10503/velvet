@@ -671,6 +671,11 @@ namespace Velvet
         private void CleanupPortal(VisualElement element, DeletionPlan? plan)
         {
             _ctx.PendingHostPlaceholders.Remove(element);
+            if (plan?.TakePortal(element) is { } detached)
+            {
+                ReleaseDetachedPortal(element, detached, plan);
+                return;
+            }
             if (!_ctx.PortalState.TryGetValue(element, out var portalInfo))
             {
                 return;
@@ -694,10 +699,7 @@ namespace Velvet
             // never run (ComponentRegistry.DisposeInlineFibersOwnedByPortal owns why the selection is by
             // the placeholder rather than by the range being torn out).
             _ctx.ComponentRegistry.DisposeInlineFibersOwnedByPortal(element);
-            _ctx.PrunePresencePortalState(element);
-            _ctx.PruneSuspenseContainerState(element);
-            // The retarget release reaches the placeholder through here alone.
-            _ctx.FiberMemoCache.Forget(element);
+            ForgetPortalPlaceholder(element);
 
             // Both ends of the range are LOGICAL, so BOTH are converted. Adding the logical length to the
             // already-converted start mixes the two bases, and tears out one element too many the moment an
@@ -735,6 +737,29 @@ namespace Velvet
             PortalSlotTracker.ShiftRangesBehind(_ctx.PortalState.Stored, target, element, portalInfo, -portalInfo.SlotLength);
             FiberCommitWork.ShiftTenantsAfterPortalRange(
                 _ctx.ComponentRegistry, target, element, portalInfo, -portalInfo.SlotLength);
+        }
+
+        // The state keyed by the placeholder. The retarget release reaches it through CleanupPortal alone.
+        private void ForgetPortalPlaceholder(VisualElement placeholder)
+        {
+            _ctx.PrunePresencePortalState(placeholder);
+            _ctx.PruneSuspenseContainerState(placeholder);
+            _ctx.FiberMemoCache.Forget(placeholder);
+        }
+
+        // The rest of CleanupPortal for a Portal its deletion detached from the model where it decided
+        // (DeletionCommit.DetachPortals), which already moved the ranges behind it, disposes the fibers it owned with
+        // the deletion's own, and records its rows' removal beside the others.
+        private void ReleaseDetachedPortal(VisualElement placeholder, DeletionPlan.DetachedPortal detached, DeletionPlan plan)
+        {
+            ReleaseBridgeIfLastPortalOn(detached.Target);
+            ForgetPortalPlaceholder(placeholder);
+            foreach (var child in detached.Rows)
+            {
+                var poolable = plan.PoolableOf(child) ?? PoolableOccupantOf(child);
+                CleanupElement(child, child.panel, discardedRoot: null, plan);
+                ReturnOccupantToPool(child, poolable);
+            }
         }
 
         // Empties a Portal's slot range on the element it is mounted into and leaves it in exactly the

@@ -5,5 +5,7 @@
   pass's recorded writes. A component rendered after it in the same pass renders ahead of those cleanups, which an
   effect or state the cleanups write is what can tell. A cleanup that throws reaches its error boundary in a follow-up
   commit, without stopping the render under way. A container that holds no component still removes its rows, and
-  detaches their refs, in the walk, as does a removal that holds a Portal or a component mounting its own wrapper
-  element.
+  detaches their refs, in the walk, as does a removal that holds a component mounting its own wrapper element, or a
+  Portal whose target is the container itself or lies inside what the removal removes. A removal that holds none of
+  those releases its Portals once the render has finished walking, and moves the ranges behind them up where it is
+  decided.
