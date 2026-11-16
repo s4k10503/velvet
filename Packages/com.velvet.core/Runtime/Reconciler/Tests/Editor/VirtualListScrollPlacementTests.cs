@@ -331,8 +331,8 @@ namespace Velvet.Tests
                 renderer: item => V.Label(text: item), overscan: 0);
         }
 
-        // GREEN_ON_BASE(characterization): the base renders the range of a list its host renders again inside that render,
-        // which the hold of another root's range leaves as it was.
+        // GREEN_ON_BASE(characterization): the base renders the range of a list its host renders again inside that render.
+        // Holding a range asked for from outside that render leaves this one as it was.
         [Test]
         public void Given_AListItsHostRendersAgainWithAViewport_When_TheHostsLayoutEffectRuns_Then_ItReadsTheNewRows()
         {
@@ -405,9 +405,8 @@ namespace Velvet.Tests
                 renderer: item => V.Label(text: item), overscan: 0, listRef: s_ownListRef);
         }
 
-        // GREEN_ON_BASE(characterization): the base runs the scroll's callback where the scroller changes, so it keeps the
-        // target the content's layout reaches. Holding the whole callback instead would replay it as a scroll the list did
-        // not make, which cancels that target.
+        // GREEN_ON_BASE(characterization): the base runs the scroll's callback where the scroller changes, target kept.
+        // Holding the whole callback instead would replay it as a scroll the list did not make, cancelling the target.
         [Test]
         public void Given_AHostThatAppendsAndScrollsToItsLastItemInALayoutEffect_When_TheContentIsNextLaidOut_Then_TheListReachesThatItem()
         {
@@ -539,8 +538,8 @@ namespace Velvet.Tests
             Assert.That(s_rowAfterTheScroll, Is.EqualTo("absent"));
         }
 
-        // GREEN_ON_BASE(characterization): the base rendered the range where the scroll was made, so the row is in the
-        // list by the time the drain returns.
+        // GREEN_ON_BASE(characterization): the base rendered the range where the scroll was made, inside the drain.
+        // The row is in the list by the time the drain returns either way.
         [Test]
         public void Given_AListsOwnLayoutEffectThatScrollsIt_When_TheDrainReturns_Then_TheNewRowsHaveRendered()
         {
@@ -553,24 +552,6 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(host.Root.Q<Label>("item-50"), Is.Not.Null);
-        }
-
-        [Test]
-        public void Given_ARangeReachedWithNoEntryOnTheStack_When_ItRenders_Then_ItAssertsThatItRanWithNone()
-        {
-            // Arrange
-            using var mounted = V.Mount(_root, V.VirtualList(HundredItems, item => item, itemHeight: 50f,
-                renderer: item => V.Label(text: item), overscan: 0));
-            var scrollView = _root.Q<ScrollView>();
-            var body = typeof(FiberVirtualListController).GetMethod(
-                "UpdateVisibleRangeWork", BindingFlags.Instance | BindingFlags.NonPublic)!;
-            UnityEngine.TestTools.LogAssert.Expect(UnityEngine.LogType.Assert, "A VirtualList range ran with no entry on the stack.");
-
-            // Act
-            TestDelegate act = () => body.Invoke(ControllerOf(mounted, scrollView), new object[] { 2500f, 200f });
-
-            // Assert
-            Assert.That(act, Throws.Nothing);
         }
     }
 

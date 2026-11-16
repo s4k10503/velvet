@@ -814,8 +814,8 @@ namespace Velvet.Tests
             Assert.That(s_seenInside, Is.EqualTo("inside:0"));
         }
 
-        // GREEN_ON_BASE(characterization): the base rendered the other root inside the apply, so it has rendered by the
-        // time control returns; the case pins that the hold does not leave it a frame behind.
+        // GREEN_ON_BASE(characterization): the base rendered the other root inside the apply, before control returned.
+        // The case pins that the hold does not leave it a frame behind.
         [Test]
         public void Given_AnApplyThatFiresAHandlerOfAnotherRoot_When_TheEntryEnds_Then_TheOtherRootHasRenderedBeforeControlReturns()
         {
