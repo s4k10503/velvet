@@ -68,8 +68,8 @@ namespace Velvet
         /// For <paramref name="logical"/> equal to (or past) <see cref="Count"/> this returns the position
         /// after the last rendered child and the nodes hosted after it (a ring band, a face border) rather than the
         /// end of the child list, so an append lands before a trailing invisible run instead of after it — the
-        /// placement the filter bounds spacer depends on. An element in the back z band is the exception: an append steps over it, so slot 0 of a
-        /// parent holding nothing else resolves after it.
+        /// placement the filter bounds spacer depends on. An element in the back z band is the exception: an append
+        /// steps over it, so slot 0 of a parent holding nothing else resolves after it.
         /// Insert semantics follow from the same rule: inserting at a logical slot puts the new child
         /// immediately before the child currently holding that slot, and so after every invisible child between
         /// that child and the rendered one before it. One hosted after its rendered child (a ring band) stays
@@ -83,10 +83,10 @@ namespace Velvet
         // opposite contracts: an element in the back z band, a SceneView's camera feed, a Particles element's layers and
         // an inset ring band must stay ahead of every rendered child, while the front band and a filter bounds spacer
         // must stay last. So an append steps over a leading one of the first four — slot 0 of a parent holding nothing
-        // else resolves AFTER it — and over a node hosted after its row (IsHostedAfterItsRow), and stops before every
-        // other. Deciding this positionally instead ("anything
-        // invisible seen before the first rendered child is leading") sent an append past a bounds spacer on a parent
-        // whose rendered children had all been removed.
+        // else resolves AFTER it — and stops before any other invisible child that is not hosted after its row
+        // (IsHostedAfterItsRow). Deciding this positionally instead ("anything invisible seen before the first rendered
+        // child is leading") sent an append past a bounds spacer on a parent whose rendered children had all been
+        // removed.
         internal static bool StaysFirst(VisualElement child)
             => FiberZLayerCoordinator.IsBackBandMember(child)
                 || child.ClassListContains(SceneViewDriver.FeedMarkerClass)
