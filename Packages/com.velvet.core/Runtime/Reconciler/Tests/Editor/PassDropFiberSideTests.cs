@@ -8,10 +8,11 @@ using Velvet.TestUtilities;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Specifies that a pass dropped after it ran leaves the fiber side as the pass found it: the journal a pass
-    /// keeps, rolled back, puts every fiber and tenancy the pass wrote back, whichever reconcile shape wrote it. Each
-    /// case mounts its tree, takes the snapshot, runs one shape of update under <see cref="PassDropHarness"/> and
-    /// reads what differs from the snapshot once the journal is rolled back.
+    /// Specifies that the journal a pass keeps, rolled back after the pass ran, restores what the pass changed on the
+    /// fiber side. Each case mounts its tree, takes the snapshot, runs one shape of update under
+    /// <see cref="PassDropHarness"/> and reads what differs from the snapshot once the journal is rolled back. Each
+    /// case covers the slot, tree and boundary families together, and checks that the journal restores what the pass
+    /// changed; it does not show that a drop at <c>FinishPass</c> is sound.
     /// </summary>
     [TestFixture]
     internal sealed class PassDropFiberSideTests
