@@ -1177,7 +1177,7 @@ namespace Velvet
 
         // Errors a commit's effects and refs threw below this boundary, queued by CommitErrors.Capture and taken by
         // the boundary's next render (FiberErrorBoundary.OutputOf), in the order they were captured.
-        internal List<(Exception Error, ErrorInfo Info, long Sequence, bool InDeletion)>? PendingCaptures { get; set; }
+        internal List<(Exception Error, ErrorInfo Info, long Sequence)>? PendingCaptures { get; set; }
 
         // What made the boundary's swap to its fallback fail, where reconciling the fallback threw rather than a
         // render inside it: the error the boundary above is handed (FiberErrorBoundary.TryCatch).

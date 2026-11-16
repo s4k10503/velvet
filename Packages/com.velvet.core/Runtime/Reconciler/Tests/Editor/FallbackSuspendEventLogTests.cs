@@ -176,12 +176,12 @@ namespace Velvet.Tests
             return V.Component(ThrowsOnItsTickOverAThrowingCleanup);
         }
 
-        // React reports both: the catch is what the retry's commit calls the boundary's callback with, in the layout
-        // phase, and the cleanup of the deleted child throws in that commit's mutation phase, which
-        // captureCommitPhaseError queues as an update on the boundary, reported by the commit after. Here the swap's
-        // deletion tears down where the walk that caught applies, and its error is a capture on the boundary (the
-        // thrower is being deleted), which the boundary takes after the catch it had not reported yet, as the last
-        // error its state holds.
+        // React commits the fallback once the read resolves, reporting the catch in that commit's layout phase, and the
+        // failed child's cleanup throws in the same commit's mutation phase. captureCommitPhaseError queues a capture
+        // update on the boundary, whose render has DidCapture set and so unmounts the fallback and mounts it again
+        // (finishClassComponent's forceUnmountCurrentAndReconcile), and reports that error after the remount.
+        // The cleanup throws before the fallback commits here, so the boundary leaves the capture for the commit that
+        // shows the fallback (FiberErrorBoundary.TakeCaptures).
         [Test]
         public void Given_AnErrorBoundaryWhoseFallbackSuspends_When_TheFailedChildsCleanupThrowsAtTheSwap_Then_TheCatchIsReportedAheadOfTheCleanupsError()
         {
@@ -201,7 +201,7 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(log.ToString(), Is.EqualTo(
-                "| ins:IF ref:IF lay:IF caught:Inner:thrown by X caught:Inner:cleanup threw"));
+                "| ins:IF ref:IF lay:IF caught:Inner:thrown by X ins-x:IF lay-x:IF ref-x:IF ins:IF ref:IF lay:IF caught:Inner:cleanup threw"));
         }
     }
 }
