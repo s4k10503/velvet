@@ -662,5 +662,56 @@ namespace Velvet.Tests
             // Assert — a walk with no such field reads as a count the expected one is not
             Assert.That(DeletionCommitPool.EntriesInWalks("OwnOldFibers"), Is.EqualTo(0));
         }
+
+        private static ComponentFiber s_flushed;
+
+        // Rerenders on its own state, and keeps its fiber for a cleanup beside it to flush.
+        [Component]
+        private static VNode Flushed()
+        {
+            var (_, _) = EventLog.UseState("Y", 0);
+            EventLog.UseRender("Y");
+            s_flushed = FiberAmbientStack.Current;
+            return V.Div();
+        }
+
+        // Writes the state of a sibling of its deletion and flushes it, where its layout cleanup runs.
+        [Component]
+        private static VNode FlushesItsSibling()
+        {
+            var log = EventLog.UseLog();
+            Hooks.UseLayoutEffect(() => () =>
+            {
+                log.Setter<int>("Y").Invoke(1);
+                FiberWorkLoop.FlushState(s_flushed);
+            }, Array.Empty<object>());
+            return V.Div();
+        }
+
+        [Component]
+        private static VNode TwoDeletedOneFlushingTheOther()
+        {
+            var (shown, _) = EventLog.UseState("Shown", true);
+            return V.Fragment(
+                shown ? V.Component(Flushed, key: "y") : null,
+                shown ? V.Component(FlushesItsSibling, key: "f") : null);
+        }
+
+        [Test]
+        public void Given_ACleanupFlushingASiblingOfItsDeletion_When_TheDeletionRuns_Then_TheSiblingDoesNotRender()
+        {
+            // Arrange
+            var log = new EventLog();
+            using var mounted = _renderer.Mount(log.Provide(V.Component(TwoDeletedOneFlushingTheOther)));
+            mounted.DrainForTest();
+            log.Clear();
+
+            // Act
+            log.Setter<bool>("Shown").Invoke(false);
+            mounted.DrainForTest();
+
+            // Assert
+            Assert.That(log.ToString(), Does.Not.Contain("render:Y"));
+        }
     }
 }

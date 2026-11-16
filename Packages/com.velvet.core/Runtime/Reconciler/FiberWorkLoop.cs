@@ -355,6 +355,8 @@ namespace Velvet
         // to inherit.
         internal static void FlushState(ComponentFiber fiber, double timeSlicedBudgetMs)
         {
+            // A fiber of a deletion renders no more once its deletion has begun, as React renders no deleted fiber.
+            if (fiber.IsBeingDeleted) return;
             OpenOwedSettleWindow(out var enclosing);
             try
             {
