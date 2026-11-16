@@ -290,14 +290,14 @@ namespace Velvet
         internal static void Add(VisualElement parent, VisualElement child)
         {
             var container = ContentOf(parent);
-            InsertCore(container, container.hierarchy.childCount, child, viaHierarchy: false, parent);
+            InsertCore(container, CountOf(container), child, viaHierarchy: false, parent);
         }
 
         internal static void HierarchyInsert(VisualElement parent, int index, VisualElement child)
             => InsertCore(parent, index, child, viaHierarchy: true, parent);
 
         internal static void HierarchyAdd(VisualElement parent, VisualElement child)
-            => InsertCore(parent, parent.hierarchy.childCount, child, viaHierarchy: true, parent);
+            => InsertCore(parent, CountOf(parent), child, viaHierarchy: true, parent);
 
         // UI Toolkit refuses an index past the child count as it stood before it detaches the child, then detaches it
         // and puts it at the index, clamped to the list it has left. The model takes the same two steps.
@@ -343,6 +343,7 @@ namespace Velvet
             var container = ContentOf(parent);
             if (HoldingPass(container, child) is { } holding)
             {
+                RequireChildOf(container, child);
                 RecordRemoveChild(holding, child);
                 return;
             }
@@ -361,8 +362,14 @@ namespace Velvet
 
         internal static void HierarchyRemove(VisualElement parent, VisualElement child)
         {
+            if (s_current is { Applying: true } applying)
+            {
+                RecordRemoveChild(applying, child);
+                return;
+            }
             if (HoldingPass(parent, child) is { } holding)
             {
+                RequireChildOf(parent, child);
                 RecordRemoveChild(holding, child);
                 return;
             }
@@ -440,9 +447,9 @@ namespace Velvet
         internal static void Clear(VisualElement parent)
         {
             var container = ContentOf(parent);
-            if (HoldingPass(container, null) is { } holding)
+            if ((s_current is { Applying: true } applying ? applying : HoldingPass(container, null)) is { } recording)
             {
-                RecordClear(holding, container, parent);
+                RecordClear(recording, container, parent);
                 return;
             }
             if (container.hierarchy.childCount == 0)
@@ -473,8 +480,8 @@ namespace Velvet
         // every recorded op first (ApplyPendingPatches). The readers the walk has moved to the model (ParentOf, ChildCount, ElementAtPhysical and
         // the reads above) answer from it meanwhile, and a container with a recorded write is skipped by the checks that
         // compare the model with the live list. Insert, Remove, RemoveAt, RemoveFromHierarchy, HierarchyRemove and Clear
-        // made into such a container, or of a child one holds, are recorded behind them too; HierarchySort applies them
-        // first, since it sorts the live list.
+        // made into such a container, or of a child one holds, are recorded behind them too, and so is one made while
+        // they apply; HierarchySort applies them first, since it sorts the live list, and sorts it at once while they apply.
         //
         // The list, and the parents it leaves pending, belong to the ReconcilePass that recorded them, and s_current is
         // the one that is recording or applying, innermost first. Outside every pass nothing is recorded: ParentOf
@@ -653,6 +660,12 @@ namespace Velvet
             Touch(container);
         }
 
+        // UI Toolkit refuses a removal of a child that is not the container's, which a recorded one would not.
+        private static void RequireChildOf(VisualElement container, VisualElement child)
+        {
+            if (!ReferenceEquals(ParentOf(child), container)) throw new ArgumentException("This VisualElement is not my child", nameof(child));
+        }
+
         // A clear is the removal of every row the model holds, last first.
         private static void RecordClear(ReconcilePass pass, VisualElement container, VisualElement caller)
         {
@@ -721,7 +734,7 @@ namespace Velvet
 
         // The pass whose recorded ops hold the container, the child or the live parent of the child; null where none
         // does or the pass is applying them. A writer that finds one records its write behind those ops, which the live
-        // list has not taken yet.
+        // list has not taken yet; FlushIfPending applies them instead.
         private static ReconcilePass? HoldingPass(VisualElement? container, VisualElement? child)
         {
             var pass = s_current;

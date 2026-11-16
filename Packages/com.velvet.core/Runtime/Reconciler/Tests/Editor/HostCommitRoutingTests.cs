@@ -120,7 +120,7 @@ namespace Velvet.Tests
         // The methods that read only a child list, or write one, and so answer from the row model and record a write
         // behind the ones recorded already. Realign (the engine's layout list) and HierarchySort (the order of the live
         // list) act on the live list, and the post-children class passes read what the recorded patch halves wrote: each
-        // applies the recorded ops first, and none is listed.
+        // applies the recorded ops first, and none is listed, nor is Exchange, which ends in HierarchySort.
         private static readonly (Type Type, string Method)[] ModelSites =
         {
             (typeof(ChildListWrites), "InsertCore"),
@@ -129,12 +129,11 @@ namespace Velvet.Tests
             (typeof(ChildListWrites), nameof(ChildListWrites.RemoveAt)),
             (typeof(ChildListWrites), nameof(ChildListWrites.RemoveFromHierarchy)),
             (typeof(ChildListWrites), nameof(ChildListWrites.Clear)),
-            (typeof(FiberZLayerCoordinator), "Exchange"),
             (typeof(FiberClipPathApplier), "WrapClipPathInPlace"),
             (typeof(WrapperInfrastructure), nameof(WrapperInfrastructure.RemoveWrapperRestoreInner)),
         };
 
-        private static readonly HashSet<string> Appliers = new() { "FlushIfPending", "SyncLive", "ApplyPendingPatches", "Apply" };
+        private static readonly HashSet<string> Appliers = new() { "FlushIfPending", "SyncLive", "ApplyPendingPatches", "Apply", "HierarchySort" };
 
         [Test]
         public void Given_TheSitesThatAnswerFromTheRowModel_When_TheirCallsAreRead_Then_NoneAppliesTheRecordedWrites()

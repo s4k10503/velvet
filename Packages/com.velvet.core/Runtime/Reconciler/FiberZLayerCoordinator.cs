@@ -812,11 +812,11 @@ namespace Velvet
         // Moves a to b's index and b to a's, leaving every other child where it is.
         private static void Exchange(VisualElement parent, VisualElement a, VisualElement b)
         {
-            var count = ChildListWrites.HierarchyCount(parent);
-            var rank = new Dictionary<VisualElement, int>(count);
-            for (var i = 0; i < count; i++)
+            ChildListWrites.SyncLive(parent);
+            var rank = new Dictionary<VisualElement, int>(parent.hierarchy.childCount);
+            for (var i = 0; i < parent.hierarchy.childCount; i++)
             {
-                rank[ChildListWrites.HierarchyChild(parent, i)] = i;
+                rank[parent.hierarchy[i]] = i;
             }
             (rank[a], rank[b]) = (rank[b], rank[a]);
             ChildListWrites.HierarchySort(parent, (x, y) => rank[x].CompareTo(rank[y]));

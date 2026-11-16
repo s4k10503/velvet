@@ -321,5 +321,88 @@ namespace Velvet.Tests
             // Assert
             Assert.That(LiveNamesOf(_left), Is.Empty);
         }
+
+        // ---- Add and HierarchyAdd ----
+
+        [Test]
+        public void Given_AnAddOutsideTheQueue_When_ALaterRowIsCreatedInThePass_Then_TheLiveListStillHoldsTheOldRows()
+        {
+            // Arrange
+            Action<VisualElement> write = left => ChildListWrites.Add(left, new VisualElement { name = "extra" });
+
+            // Act
+            Walk(write);
+
+            // Assert
+            Assert.That(_liveSeen, Is.EqualTo("a,b,c"));
+        }
+
+        [Test]
+        public void Given_AnAddOutsideTheQueue_When_TheReconcileReturns_Then_TheLiveListHoldsTheAddedRowLast()
+        {
+            // Arrange
+            Action<VisualElement> write = left => ChildListWrites.Add(left, new VisualElement { name = "extra" });
+
+            // Act
+            Walk(write);
+
+            // Assert
+            Assert.That(LiveNamesOf(_left), Is.EqualTo("a,b,extra"));
+        }
+
+        [Test]
+        public void Given_AHierarchyAddOutsideTheQueue_When_TheReconcileReturns_Then_TheLiveListHoldsTheAddedRowLast()
+        {
+            // Arrange
+            Action<VisualElement> write = left => ChildListWrites.HierarchyAdd(left, new VisualElement { name = "extra" });
+
+            // Act
+            Walk(write);
+
+            // Assert
+            Assert.That(LiveNamesOf(_left), Is.EqualTo("a,b,extra"));
+        }
+
+        // ---- A write recorded and then cleared ----
+
+        // GREEN_ON_BASE(characterization): the base makes both writes after applying the recorded removal.
+        [Test]
+        public void Given_AnInsertAndThenAClearOutsideTheQueue_When_TheReconcileReturns_Then_TheLiveListHoldsNoRow()
+        {
+            // Arrange
+            Action<VisualElement> write = left =>
+            {
+                ChildListWrites.Insert(left, 0, new VisualElement { name = "extra" });
+                ChildListWrites.Clear(left);
+            };
+
+            // Act
+            Walk(write);
+
+            // Assert
+            Assert.That(LiveNamesOf(_left), Is.Empty);
+        }
+
+        // ---- A removal of a child the container does not hold ----
+
+        // GREEN_ON_BASE(characterization): the base applies the recorded ops and then makes the removal itself, which refuses
+        // a child that is not the container's.
+        [Test]
+        public void Given_AContainerWithARecordedRemoval_When_AnotherElementIsRemovedFromIt_Then_ItThrows()
+        {
+            // Arrange
+            var parent = new VisualElement();
+            var first = new VisualElement();
+            parent.Add(first);
+            parent.Add(new VisualElement());
+            ChildListWrites.BeginRecording(_reconciler.Context.Pass);
+            _reconciler.Context.HostCommit.Remove(parent, first);
+
+            // Act
+            TestDelegate removal = () => ChildListWrites.Remove(parent, new VisualElement());
+
+            // Assert
+            Assert.That(removal, Throws.TypeOf<ArgumentException>());
+        }
     }
 }
