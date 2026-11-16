@@ -3210,5 +3210,98 @@ namespace Velvet.Tests
 
 
         #endregion
+
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        private static VNode SuspendingFallbackEnterBoundaryRender()
+        {
+            Hooks.UseFallback(_ => V.Component(InsidePendingReaderRender, key: "pending"));
+            return V.Component(AbortedEnterInnerRender, key: "inner");
+        }
+
+        [Component(Compiler = false)]
+        private static VNode SuspendingFallbackEnterHostRender()
+            => V.Div(children: new VNode[] { V.Component(SuspendingFallbackEnterBoundaryRender, key: "boundary") });
+
+        // GREEN_ON_BASE(characterization): the base drops the enter a failed render queued when the fallback its
+        // boundary swapped in suspends. Drop `ctx.DropCompletions(failedCompletions);` in the catch of
+        // FiberSuspendSignal in TryCatch and the enter completes once the read resolves.
+        [Test]
+        public void Given_AnEnterInAComponentsOwnUpdate_When_TheBoundaryAboveItsFallbackSuspendsAndTheReadResolves_Then_TheEntersCompletionNeverRuns()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(SuspendingFallbackEnterHostRender, key: "host"), CaughtErrors.Unlogged);
+            s_setAbortedEnterTick.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Act
+            s_insidePending.TrySetResult(7);
+            mounted.FlushStateForTest();
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            mounted.FlushEffectsForTest();
+
+            // Assert — the fallback is read with the count, since a catch that never happened leaves its text out
+            Assert.That(Texts() + ",enters " + s_enterCompletions, Is.EqualTo("value 7,enters 0"));
+        }
+
+        private static Action<int> s_setCarriedChildTick;
+
+        [Component(Compiler = false)]
+        private static VNode CarriedChildRender()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setCarriedChildTick = setTick;
+            if (tick > 0) throw new InvalidOperationException("Carried child throw");
+            return V.Label(text: "child");
+        }
+
+        [Component(Compiler = false)]
+        private static VNode ThrowsOnceTheReadResolvesRender()
+        {
+            Hooks.Use<int>(_ => s_insidePending.Task, "inside-pending");
+            throw new InvalidOperationException("Fallback throw after the read");
+        }
+
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        private static VNode CarryingBoundaryRender()
+        {
+            Hooks.UseFallback(_ => V.Component(ThrowsOnceTheReadResolvesRender, key: "fallback"));
+            return V.Component(CarriedChildRender, key: "child");
+        }
+
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        private static VNode TopBoundaryRender()
+        {
+            Hooks.UseFallback(_ => V.Label(text: "top-fallback"));
+            return V.Component(CarryingBoundaryRender, key: "carrying");
+        }
+
+        // GREEN_ON_BASE(characterization): the base does not report the carried catch of a boundary that the render
+        // it ran in disposed. Drop `&& !fiber.IsDisposed` from the call of ReportCarriedCatch in RenderAndReconcile and
+        // the report reads the unmounted fiber's reconciler.
+        [Test]
+        public void Given_ABoundaryHoldingACarriedCatch_When_ItsFallbackThrowsOnceTheReadResolvesAndABoundaryAboveReplacesIt_Then_NothingEscapes()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(TopBoundaryRender, key: "top"), CaughtErrors.Unlogged);
+            s_setCarriedChildTick.Invoke(1);
+            mounted.FlushStateForTest();
+            var escaped = "nothing";
+
+            // Act
+            try
+            {
+                s_insidePending.TrySetResult(7);
+                mounted.FlushStateForTest();
+                mounted.GetSchedulerForTest().DrainImmediateForTest();
+                mounted.FlushEffectsForTest();
+            }
+            catch (Exception thrown)
+            {
+                escaped = thrown.GetType().Name;
+            }
+
+            // Assert
+            Assert.That(Texts() + "|" + escaped, Is.EqualTo("top-fallback|nothing"));
+        }
     }
 }

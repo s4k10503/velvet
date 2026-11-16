@@ -258,9 +258,11 @@ namespace Velvet.Tests
         {
             // Arrange
             using var host = new HeadlessEditorPanelHost();
-            s_flatListCount = 3;
+            s_flatListCount = 1;
             using var mounted = V.Mount(host.Root, V.Component(FlatListRender, key: "list"));
             var fiber = s_flatListFiber;
+            // One mounted row, so the flush patches it and the resume has no further row to patch and reaches the
+            // phase that creates the rest.
             s_flatListCount = 400;
             fiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
             fiber.FlushStateWithTinyBudgetForTest();
