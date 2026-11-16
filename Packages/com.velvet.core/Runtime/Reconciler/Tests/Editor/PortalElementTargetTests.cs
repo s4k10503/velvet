@@ -196,7 +196,8 @@ namespace Velvet.Tests
         }
 
         private static VisualElement s_container;
-        private static bool s_innerFirst;
+        // Where the outer Portal holds the nested one: 0 last among its rows, 1 first, 2 inside its last row.
+        private static int s_innerAt;
         private static StateUpdater<bool> s_setOuterShown;
         private static StateUpdater<int> s_setCount;
 
@@ -216,19 +217,22 @@ namespace Velvet.Tests
             var (outerShown, setOuterShown) = Hooks.UseState(true);
             s_setOuterShown = setOuterShown;
             var inner = V.Portal(s_container, children: new VNode?[] { V.Div(name: "b") }, key: "inner");
-            var rows = s_innerFirst
-                ? new VNode?[] { inner, V.Div(name: "a1"), V.Div(name: "a2") }
-                : new VNode?[] { V.Div(name: "a1"), V.Div(name: "a2"), inner };
+            var rows = s_innerAt switch
+            {
+                1 => new VNode?[] { inner, V.Div(name: "a1"), V.Div(name: "a2") },
+                2 => new VNode?[] { V.Div(name: "a1"), V.Div(name: "a2"), V.Div(name: "holder", children: new VNode?[] { inner }) },
+                _ => new VNode?[] { V.Div(name: "a1"), V.Div(name: "a2"), inner },
+            };
             return V.Fragment(
                 outerShown ? V.Portal(s_container, children: rows, key: "outer") : null,
                 V.Portal(s_container, children: new VNode?[] { V.Component(Counter, key: "counter") }, key: "beside"));
         }
 
-        // Mounts the outer Portal with its nested one first or last among its rows, then unmounts it.
-        private static MountedTree MountThenUnmountTheOuter(bool innerFirst)
+        // Mounts the outer Portal with its nested one where innerAt puts it, then unmounts it.
+        private static MountedTree MountThenUnmountTheOuter(int innerAt)
         {
             s_container = new VisualElement();
-            s_innerFirst = innerFirst;
+            s_innerAt = innerAt;
             var mounted = V.Mount(new VisualElement(), V.Component(NestedPortalBesideACounter, key: "root"));
             s_setOuterShown.Invoke(false);
             mounted.FlushStateForTest();
@@ -238,13 +242,61 @@ namespace Velvet.Tests
         private static string RowsOf(VisualElement container)
             => string.Join("|", container.Children().Select(row => row is Label label ? label.text : row.name));
 
+        // GREEN_ON_BASE(characterization): the base takes the row holding the nested Portal out before the rows ahead of it.
+        // The Component beside them then keeps addressing its own row.
+        [Test]
+        public void Given_a_portal_whose_last_row_holds_a_portal_into_the_same_container_When_it_unmounts_and_a_component_beside_it_renders_again_Then_the_component_patches_its_own_row()
+        {
+            // Arrange
+            using var mounted = MountThenUnmountTheOuter(innerAt: 2);
+
+            // Act
+            s_setCount.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(RowsOf(s_container), Is.EqualTo("count 1"));
+        }
+
+        // A Portal whose Component mounts inline on the container, ahead of a Portal of one row into it.
+        [Component(Compiler = false)]
+        private static VNode CounterAheadOfAPortal()
+        {
+            var (outerShown, setOuterShown) = Hooks.UseState(true);
+            s_setOuterShown = setOuterShown;
+            return V.Fragment(
+                V.Portal(s_container, children: new VNode?[] { V.Component(Counter, key: "counter") }, key: "ahead"),
+                outerShown ? V.Portal(s_container, children: new VNode?[] { V.Div(name: "a1") }, key: "outer") : null);
+        }
+
+        // GREEN_ON_BASE(characterization): the base shifts only what lies behind the rows that left.
+        // The container's own child puts both ranges past slot 0, so a shift measured from slot 0 would move the
+        // Component ahead of the departing row as well.
+        [Test]
+        public void Given_a_portal_behind_a_portal_holding_a_component_in_a_container_with_a_child_of_its_own_When_it_unmounts_and_the_component_renders_again_Then_the_component_patches_its_own_row()
+        {
+            // Arrange
+            s_container = new VisualElement();
+            s_container.Add(new VisualElement { name = "own" });
+            using var mounted = V.Mount(new VisualElement(), V.Component(CounterAheadOfAPortal, key: "root"));
+            s_setOuterShown.Invoke(false);
+            mounted.FlushStateForTest();
+
+            // Act
+            s_setCount.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(RowsOf(s_container), Is.EqualTo("own|count 1"));
+        }
+
         // GREEN_ON_BASE(characterization): the base takes the nested Portal out before the outer's rows ahead of it.
         // The Component beside them then keeps addressing its own row.
         [Test]
         public void Given_a_portal_whose_last_row_is_a_portal_into_the_same_container_When_it_unmounts_and_a_component_beside_it_renders_again_Then_the_component_patches_its_own_row()
         {
             // Arrange
-            using var mounted = MountThenUnmountTheOuter(innerFirst: false);
+            using var mounted = MountThenUnmountTheOuter(innerAt: 0);
 
             // Act
             s_setCount.Invoke(1);
@@ -258,7 +310,7 @@ namespace Velvet.Tests
         public void Given_a_portal_whose_first_row_is_a_portal_into_the_same_container_When_it_unmounts_and_a_component_beside_it_renders_again_Then_the_component_patches_its_own_row()
         {
             // Arrange
-            using var mounted = MountThenUnmountTheOuter(innerFirst: true);
+            using var mounted = MountThenUnmountTheOuter(innerAt: 1);
 
             // Act
             s_setCount.Invoke(1);

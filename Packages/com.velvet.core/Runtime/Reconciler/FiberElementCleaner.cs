@@ -671,6 +671,7 @@ namespace Velvet
                 {
                     continue;
                 }
+                // MUTANT_SURVIVES(equivalent, boundary): at taken 0 the shift's delta is 0, on which ShiftRangesBehind and ShiftTenantsAfterPortalRange return, and taken is already 0.
                 if (taken > 0 && HoldsAPortalPlaceholder(child))
                 {
                     ShiftStartsBehind(target, element, from, taken);
@@ -690,6 +691,7 @@ namespace Velvet
                 _ctx.PortalTargetsToRestyle.Add(target);
             }
 
+            // MUTANT_SURVIVES(equivalent, boundary): at taken 0 the shift's delta is 0, on which ShiftRangesBehind and ShiftTenantsAfterPortalRange return.
             if (taken > 0) ShiftStartsBehind(target, element, from, taken);
         }
 
@@ -700,6 +702,7 @@ namespace Velvet
             {
                 if (ReferenceEquals(placeholder, element) || element.Contains(placeholder)) return true;
             }
+            // MUTANT_SURVIVES(equivalent, literal): true only splits CleanupPortal's shift into one per row, and its rows leave from one slot, so the starts behind them move by the same total.
             return false;
         }
 
