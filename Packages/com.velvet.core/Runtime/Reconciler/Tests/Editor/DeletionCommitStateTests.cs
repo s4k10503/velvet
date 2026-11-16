@@ -182,8 +182,9 @@ namespace Velvet.Tests
             s_setShown.Invoke(false);
             mounted.DrainForTest();
 
-            // Assert
-            Assert.That(System.Linq.Enumerable.Sum(PooledWalks(), walk => walk.PortalRows.Count), Is.EqualTo(0));
+            // Assert — a walk with no such field reads as a count the expected one is not
+            var rows = typeof(DeletionCommit).GetField("_portalRows", BindingFlags.NonPublic | BindingFlags.Instance);
+            Assert.That(rows == null ? -1 : EntriesLeftInPooledWalks("_portalRows"), Is.EqualTo(0));
         }
 
         [Test]
