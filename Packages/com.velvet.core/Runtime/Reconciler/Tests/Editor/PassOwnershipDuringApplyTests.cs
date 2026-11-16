@@ -6,7 +6,8 @@ namespace Velvet.Tests
 {
     /// <summary>
     /// Specifies that a pass that begins and ends while another's recorded writes apply puts its own writes on the live
-    /// list where it ends, and leaves the writes still recorded to the pass applying them.
+    /// list where it ends, and that the writes still recorded stay with the pass applying them: they are not applied
+    /// early, and the pending count of a container they touch survives the other pass's end.
     /// </summary>
     internal sealed class PassOwnershipDuringApplyTests : PanelTestBase
     {
@@ -22,7 +23,7 @@ namespace Velvet.Tests
 
         public override void TearDown()
         {
-            ChildListWrites.EndRecording();
+            ChildListWrites.EndRecording(_applying.Context.Pass);
             _applying?.Dispose();
             _nested?.Dispose();
             base.TearDown();
@@ -42,17 +43,77 @@ namespace Velvet.Tests
             {
                 ChildListWrites.BeginRecording(_nested.Context.Pass);
                 _nested.Context.HostCommit.Insert(target, 0, new VisualElement());
-                ChildListWrites.EndRecording();
+                ChildListWrites.EndRecording(_nested.Context.Pass);
                 liveInsideTheApply = target.childCount;
             });
             ChildListWrites.BeginRecording(_applying.Context.Pass);
             _applying.Context.HostCommit.Remove(host, first);
 
             // Act
-            ChildListWrites.EndRecording();
+            ChildListWrites.EndRecording(_applying.Context.Pass);
 
             // Assert
             Assert.That(liveInsideTheApply, Is.EqualTo(1));
+        }
+
+        private (VisualElement host, VisualElement first, VisualElement shared, VisualElement removed) ArrangeARecordedRemoval()
+        {
+            var host = new VisualElement();
+            _window.rootVisualElement.Add(host);
+            var first = new VisualElement();
+            host.Add(first);
+            var shared = new VisualElement();
+            shared.Add(new VisualElement());
+            var removed = new VisualElement();
+            shared.Add(removed);
+            return (host, first, shared, removed);
+        }
+
+        [Test]
+        public void Given_APassBeginningInsideAnApply_When_ItBegins_Then_TheWritesStillRecordedAreNotAppliedEarly()
+        {
+            // Arrange
+            var (host, first, shared, removed) = ArrangeARecordedRemoval();
+            var liveWhenItBegan = -1;
+            first.RegisterCallback<DetachFromPanelEvent>(_ =>
+            {
+                ChildListWrites.BeginRecording(_nested.Context.Pass);
+                liveWhenItBegan = shared.childCount;
+                ChildListWrites.EndRecording(_nested.Context.Pass);
+            });
+            ChildListWrites.BeginRecording(_applying.Context.Pass);
+            _applying.Context.HostCommit.Remove(host, first);
+            _applying.Context.HostCommit.RemoveRow(shared, removed);
+
+            // Act
+            ChildListWrites.EndRecording(_applying.Context.Pass);
+
+            // Assert
+            Assert.That(liveWhenItBegan, Is.EqualTo(2));
+        }
+
+        [Test]
+        public void Given_APassEndingInsideAnApplyOverAContainerTheApplyStillHasPending_When_ItEnds_Then_TheContainerReadsFromItsModel()
+        {
+            // Arrange
+            var (host, first, shared, removed) = ArrangeARecordedRemoval();
+            var readInsideTheApply = -1;
+            first.RegisterCallback<DetachFromPanelEvent>(_ =>
+            {
+                ChildListWrites.BeginRecording(_nested.Context.Pass);
+                _nested.Context.HostCommit.Insert(shared, 0, new VisualElement());
+                ChildListWrites.EndRecording(_nested.Context.Pass);
+                readInsideTheApply = ChildListWrites.HierarchyCount(shared);
+            });
+            ChildListWrites.BeginRecording(_applying.Context.Pass);
+            _applying.Context.HostCommit.Remove(host, first);
+            _applying.Context.HostCommit.RemoveRow(shared, removed);
+
+            // Act
+            ChildListWrites.EndRecording(_applying.Context.Pass);
+
+            // Assert
+            Assert.That(readInsideTheApply, Is.EqualTo(2));
         }
     }
 }

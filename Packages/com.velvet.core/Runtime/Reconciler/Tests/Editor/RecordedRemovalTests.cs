@@ -28,7 +28,7 @@ namespace Velvet.Tests
         [TearDown]
         public void TearDown()
         {
-            ChildListWrites.EndRecording();
+            ChildListWrites.EndRecording(_reconciler.Context.Pass);
             _reconciler.Dispose();
             VNodePoolTestAccess.ClearLabelPoolForTest();
         }
@@ -183,7 +183,7 @@ namespace Velvet.Tests
             var parent = new VisualElement();
             var label = new Label("x");
             parent.Add(label);
-            ChildListWrites.BeginRecording(owner.Context.Pass);
+            ChildListWrites.BeginRecording(_reconciler.Context.Pass);
             owner.Context.HostCommit.Remove(parent, label);
 
             // Act

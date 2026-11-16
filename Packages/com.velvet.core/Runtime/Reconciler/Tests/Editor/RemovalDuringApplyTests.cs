@@ -21,7 +21,7 @@ namespace Velvet.Tests
 
         public override void TearDown()
         {
-            ChildListWrites.EndRecording();
+            ChildListWrites.EndRecording(_reconciler.Context.Pass);
             _reconciler?.Dispose();
             base.TearDown();
         }
@@ -43,7 +43,7 @@ namespace Velvet.Tests
             _reconciler.Context.HostCommit.Remove(host, first);
 
             // Act
-            ChildListWrites.EndRecording();
+            ChildListWrites.EndRecording(_reconciler.Context.Pass);
 
             // Assert
             Assert.That(seen, Is.EqualTo("kept text"));

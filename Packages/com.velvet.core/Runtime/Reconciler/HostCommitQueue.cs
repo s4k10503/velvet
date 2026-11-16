@@ -152,7 +152,7 @@ namespace Velvet
 
         // Ends the pass's recording where FinishPass starts: what the pass recorded goes to the live lists, whether its
         // walk returned or threw.
-        internal void EndRecordedPass() => ChildListWrites.EndRecording();
+        internal void EndRecordedPass() => ChildListWrites.EndRecording(_ctx.Pass);
 
         // A Suspense's hide of one of its outermost host elements.
         internal void Hide(VisualElement element)

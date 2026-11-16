@@ -23,8 +23,8 @@ namespace Velvet.Tests
         [TearDown]
         public void TearDown()
         {
-            ChildListWrites.EndRecording();
-            ChildListWrites.EndRecording();
+            ChildListWrites.EndRecording(_second.Context.Pass);
+            ChildListWrites.EndRecording(_first.Context.Pass);
             _first.Dispose();
             _second.Dispose();
         }
@@ -54,7 +54,7 @@ namespace Velvet.Tests
             ChildListWrites.BeginRecording(_second.Context.Pass);
 
             // Act
-            ChildListWrites.EndRecording();
+            ChildListWrites.EndRecording(_second.Context.Pass);
 
             // Assert
             Assert.That(ChildListWrites.IsRecording, Is.True);
@@ -71,7 +71,7 @@ namespace Velvet.Tests
             _second.Context.HostCommit.Insert(parent, 0, child);
 
             // Act
-            ChildListWrites.EndRecording();
+            ChildListWrites.EndRecording(_second.Context.Pass);
 
             // Assert
             Assert.That(parent.childCount, Is.EqualTo(1));

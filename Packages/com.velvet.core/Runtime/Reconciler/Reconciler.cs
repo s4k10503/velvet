@@ -252,8 +252,8 @@ namespace Velvet
             {
                 profilerScope = s_reconcileMarker.Auto();
                 ChildListWrites.BeginPass();
-                ChildListWrites.BeginRecording(_ctx.Pass);
                 _ctx.RelationalTreeWatch.Watch(parent?.panel);
+                ChildListWrites.BeginRecording(_ctx.Pass);
             }
 
             // Put back rather than cleared, and held across FinishTopLevelPass below: that boundary runs

@@ -27,7 +27,7 @@ namespace Velvet.Tests
         [TearDown]
         public void TearDown()
         {
-            ChildListWrites.EndRecording();
+            ChildListWrites.EndRecording(_reconciler.Context.Pass);
             _reconciler.Dispose();
         }
 

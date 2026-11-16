@@ -456,10 +456,12 @@ namespace Velvet
         // compare the model with the live list. Any other write into such a container applies the recorded ones first,
         // except one made while they apply, which is recorded behind them.
         //
-        // The list, and what it leaves pending, belong to the ReconcilePass that recorded them, and s_current is the one
-        // that is recording or applying, innermost first. Outside every pass nothing is pending: a reader answers from
-        // the live tree, a write is made at once, and SyncLive and ApplyPendingPatches have nothing to apply. The
-        // model of a container (s_rows) belongs to the container, whichever pass writes it.
+        // The list, and the parents it leaves pending, belong to the ReconcilePass that recorded them, and s_current is
+        // the one that is recording or applying, innermost first. Outside every pass nothing is recorded: ParentOf
+        // answers from the live tree, a write is made at once, and SyncLive and ApplyPendingPatches have nothing to
+        // apply. The model of a container (s_rows) belongs to the container, whichever pass writes it, and the readers
+        // of the model answer from the container's own Pending count, which each pass raises by what it marks and
+        // takes off by the same amount where it applies.
         private static ReconcilePass? s_current;
 
         // Raised around the writes HostCommitQueue makes, which are the ones recorded.
@@ -482,7 +484,7 @@ namespace Velvet
         internal static QueueWriteScope QueueWrite() => new(s_current);
 
         // Whether a pass is recording or its recorded writes are applying, whatever it has recorded. Where passes of two
-        // contexts are open at once this answers for the innermost, as the readers below do.
+        // contexts are open at once this answers for the innermost.
         internal static bool PassIsOpen => s_current is { Recording: true } or { Applying: true };
 
         // A pass that starts while another is open applies the other's recorded writes first, so it reads a live list
@@ -492,9 +494,10 @@ namespace Velvet
         {
             var open = s_current;
             if (open != null) Apply(open);
+            // MUTANT_SURVIVES(equivalent, line removed): EndRecording clears the set as every pass ends, so it is empty when the next one begins.
             pass.Created.Clear();
             pass.Recording = true;
-            if (!ReferenceEquals(open, pass))
+            if (pass.Depth++ == 0)
             {
                 pass.Enclosing = open;
                 s_current = pass;
@@ -547,8 +550,14 @@ namespace Velvet
 
         private static void Mark(ReconcilePass pass, VisualElement container)
         {
-            if (s_rows.TryGetValue(container, out var rows)) rows.Pending++;
-            pass.PendingContainers.Add(container);
+            var marked = 0;
+            if (s_rows.TryGetValue(container, out var rows))
+            {
+                rows.Pending++;
+                marked = 1;
+            }
+            pass.PendingContainers.TryGetValue(container, out var already);
+            pass.PendingContainers[container] = already + marked;
         }
 
         private static void RecordInsert(ReconcilePass pass, VisualElement container, int index, VisualElement child,
@@ -679,9 +688,9 @@ namespace Velvet
         {
             var pass = s_current;
             if (pass == null || pass.Ops.Count == 0 || pass.Applying) return;
-            if ((container != null && pass.PendingContainers.Contains(container))
+            if ((container != null && pass.PendingContainers.ContainsKey(container))
                 || (child != null && (pass.PendingParent.ContainsKey(child)
-                    || (child.hierarchy.parent is { } live && pass.PendingContainers.Contains(live)))))
+                    || (child.hierarchy.parent is { } live && pass.PendingContainers.ContainsKey(live)))))
             {
                 Apply(pass);
             }
@@ -721,11 +730,11 @@ namespace Velvet
                 pass.Ops.Clear();
                 pass.Patches.Clear();
                 pass.PendingParent.Clear();
-                foreach (var container in pass.PendingContainers)
+                foreach (var (container, marked) in pass.PendingContainers)
                 {
-                    if (s_rows.TryGetValue(container, out var rows)) rows.Pending = 0;
+                    if (s_rows.TryGetValue(container, out var rows)) rows.Pending = Math.Max(0, rows.Pending - marked);
                 }
-                foreach (var container in pass.PendingContainers)
+                foreach (var container in pass.PendingContainers.Keys)
                 {
                     Touch(container);
                     PruneIfEmpty(container);
@@ -762,12 +771,12 @@ namespace Velvet
             }
         }
 
-        // Ends the innermost pass's recording, applies what it recorded and hands the lists back to the pass that was
-        // recording when it began, if there was one. Nothing is done outside every pass.
-        internal static void EndRecording()
+        // Ends the pass's recording, applies what it recorded and makes the pass that was current when it began current
+        // again. Nothing is done where the pass is not the current one, as for FinishPass of a range rendered outside
+        // any pass, or while the pass is applying, which is an end asked for from inside the apply.
+        internal static void EndRecording(ReconcilePass pass)
         {
-            var pass = s_current;
-            if (pass == null) return;
+            if (!ReferenceEquals(s_current, pass) || pass.Applying) return;
             pass.Recording = false;
             try
             {
@@ -776,8 +785,16 @@ namespace Velvet
             finally
             {
                 pass.Created.Clear();
-                s_current = pass.Enclosing;
-                pass.Enclosing = null;
+                if (--pass.Depth == 0)
+                {
+                    s_current = pass.Enclosing;
+                    // MUTANT_SURVIVES(equivalent, line removed): BeginRecording assigns Enclosing before anything reads it.
+                    pass.Enclosing = null;
+                }
+                else
+                {
+                    pass.Recording = true;
+                }
             }
         }
 
