@@ -167,8 +167,11 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AChildWhoseEffectCleanupThrows_When_TheBoundaryCatches_Then_TheHandlerRunsOnce()
+        public void Given_AChildWhoseEffectCleanupThrows_When_TheBoundaryCatches_Then_TheHandlerRunsOncePerThrownCleanup()
         {
+            // React captures each error a commit throws and reports each once. The update's setup returns a cleanup that
+            // throws as well, and the fallback's commit runs it as it deletes the child, which captures that error for
+            // the boundary in turn, so it reports a second time from the commit after.
             // Arrange
             using var mounted = Mount(() => V.Component(ThrowInCleanupRender, key: "child"));
 
@@ -177,7 +180,7 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
 
             // Assert
-            Assert.That(Outcome(), Is.EqualTo(Reported));
+            Assert.That(Outcome(), Is.EqualTo("boom, boom | fallback"));
         }
 
         [Test]
@@ -420,6 +423,8 @@ namespace Velvet.Tests
         [Test]
         public void Given_SiblingBoundariesCatchingInReverseTreeOrderInOnePassiveDrain_When_TheirFallbacksCommit_Then_TheReportsFollowTreeOrderAndEachFallbacksLayoutEffects()
         {
+            // The second "two" is the cleanup the update's setup returned, which the fallback's commit runs as it deletes
+            // the child, and which React captures and reports in turn.
             // Arrange — the second boundary's child throws from its effect's cleanup, which the drain runs
             // before the first child's throwing setup.
             _mounted = V.Mount(
@@ -435,7 +440,7 @@ namespace Velvet.Tests
             _mounted.FlushEffectsForTest();
 
             // Assert
-            Assert.That(string.Join(", ", s_order), Is.EqualTo("one, fallback, two"));
+            Assert.That(string.Join(", ", s_order), Is.EqualTo("one, fallback, two, two"));
         }
 
         [Test]
@@ -810,6 +815,8 @@ namespace Velvet.Tests
         [Test]
         public void Given_SiblingBoundariesWhoseFallbacksBothHaveLayoutEffectsCatchingInReverseTreeOrder_When_TheirFallbacksCommit_Then_EachReportFollowsItsOwnFallbacksLayoutEffect()
         {
+            // The last "two" is the cleanup the update's setup returned, which the fallback's commit runs as it deletes
+            // the child, and which React captures and reports in turn.
             // Arrange — the second boundary catches first, so its fallback is pushed ahead of the first's.
             _mounted = V.Mount(
                 _root,
@@ -824,7 +831,7 @@ namespace Velvet.Tests
             _mounted.FlushEffectsForTest();
 
             // Assert
-            Assert.That(string.Join(", ", s_order), Is.EqualTo("fallback one, one, fallback two, two"));
+            Assert.That(string.Join(", ", s_order), Is.EqualTo("fallback one, one, fallback two, two, two"));
         }
 
         // GREEN_ON_BASE(refactor): only how this case spells its MountOptions changed.
