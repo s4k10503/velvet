@@ -2152,6 +2152,11 @@ namespace Velvet
         internal long NextCaptureSequence;
         internal bool FlushingCaptures;
 
+        internal void DropAllCaptures()
+        {
+            for (var i = BoundariesOwedCaptures.Count - 1; i >= 0; i--) DropCapturesOf(BoundariesOwedCaptures[i]);
+        }
+
         internal void DropCapturesOf(ComponentFiber boundary)
         {
             boundary.PendingCaptures = null;

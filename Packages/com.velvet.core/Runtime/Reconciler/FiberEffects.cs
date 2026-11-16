@@ -175,9 +175,10 @@ namespace Velvet
             {
                 var stranded = HasStrandedWork(ctx);
                 if (!stranded && !CanFlushCaptures(ctx)) break;
-                // Bounded at React's nested-update limit, so a chain that never settles — a fallback whose layout
-                // effect throws back into its own boundary on every commit — ends in this exception, as React's does,
-                // rather than a hang.
+                // Bounded at React's nested-update limit, so a chain of stranded layout work that never settles ends in
+                // this exception, as React's does, rather than a hang. A fallback whose layout effect throws back into
+                // its own boundary is not such a chain: the immediate drain that renders the captured error stops it at
+                // the same limit.
                 if (commits++ == MaxFollowUpCommits)
                 {
                     DropStrandedWork(ctx);
@@ -264,7 +265,7 @@ namespace Velvet
             }
             for (var i = held.Count - 1; i >= 0; i--) stack.Push(held[i]);
             ctx.PendingCaughtErrorReports.RemoveAll(report => IsDue(ctx, report, null));
-            for (var i = ctx.BoundariesOwedCaptures.Count - 1; i >= 0; i--) ctx.DropCapturesOf(ctx.BoundariesOwedCaptures[i]);
+            ctx.DropAllCaptures();
         }
 
         // A parked pass holds back what it pushed, as DrainRefAttaches holds back the ref setups it queued: its

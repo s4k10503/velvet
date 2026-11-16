@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.TestTools;
@@ -32,6 +33,8 @@ namespace Velvet.Tests
         {
             _root = new VisualElement();
             s_log.Clear();
+            s_setHost = default;
+            s_button = null;
         }
 
         [Test]
@@ -82,6 +85,131 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That($"{string.Join(", ", s_log)} | {_root.childCount}", Is.EqualTo("a layout, b layout | 0"));
+        }
+
+        [Test]
+        public void Given_ALayoutEffectThatDispatchesAClickAfterASiblingsLayoutEffectThrew_When_Mounted_Then_TheBoundaryRendersItsFallbackOnlyAfterTheCommit()
+        {
+            // Act
+            using var mounted = V.Mount(_root, V.Component(ClickingBoundary, key: "boundary"), CaughtErrors.Unlogged);
+
+            // Assert
+            Assert.That(
+                string.Join(", ", s_log),
+                Is.EqualTo("a layout, b layout, b clicked, fallback factory, fallback layout"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base shows the fallback by a swap inside the throwing effect, which ends
+        // in the same children this case reads.
+        [Test]
+        public void Given_ABoundaryWhoseParentRendersAgainInTheDrainThatShowsItsFallback_When_ALayoutEffectBelowItThrows_Then_OnlyTheFallbackIsLeft()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(WalkingHost, key: "host"), CaughtErrors.Unlogged);
+
+            // Act
+            s_setHost.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(string.Join(",", _root.Q("host").Children().Select(child => child.name)), Is.EqualTo("fallback"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base shows the fallback by a swap inside the passive flush, which ends
+        // in the same children this case reads.
+        [Test]
+        public void Given_AClickThatRendersAChildWhosePassiveEffectThrows_When_TheClicksDrainReturns_Then_TheFallbackIsShown()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(ClickHost, key: "host"), CaughtErrors.Unlogged);
+
+            // Act
+            _root.Q<Button>("go").SimulateClick();
+
+            // Assert
+            Assert.That(_root.Q<Label>("fallback") != null, Is.True);
+        }
+
+        private static StateUpdater<int> s_setHost;
+        private static Button s_button;
+
+        [Component(IsErrorBoundary = true)]
+        private static VNode ClickingBoundary()
+        {
+            Hooks.UseFallback(_ =>
+            {
+                s_log.Add("fallback factory");
+                return V.Component(FallbackRender, key: "fallback");
+            });
+            return V.Fragment(children: new VNode[]
+            {
+                V.Component(ThrowingLayoutRender, "a", key: "a"),
+                V.Component(ClickingLayoutRender, key: "b"),
+            });
+        }
+
+        [Component]
+        private static VNode ClickingLayoutRender()
+        {
+            Hooks.UseLayoutEffect((Func<Action>)(() =>
+            {
+                s_log.Add("b layout");
+                s_button.SimulateClick();
+                s_log.Add("b clicked");
+                return null;
+            }), Array.Empty<object>());
+            return V.Button(name: "trigger", onClick: () => { }, refCallback: element =>
+            {
+                s_button = (Button)element;
+                return null;
+            });
+        }
+
+        [Component]
+        private static VNode WalkingHost()
+        {
+            var (n, setN) = Hooks.UseState(0);
+            s_setHost = setN;
+            Hooks.UseLayoutEffect((Func<Action>)(() =>
+            {
+                if (n == 1) setN.Invoke(2);
+                return null;
+            }), new object[] { n });
+            return V.Div(name: "host", children: new VNode[] { V.Component(WalkingBoundary, n, key: "boundary") });
+        }
+
+        [Component(IsErrorBoundary = true)]
+        private static VNode WalkingBoundary(int n)
+        {
+            Hooks.UseFallback(_ => V.Label(name: "fallback", text: "fallback"));
+            return V.Component(ThrowingFromTickRender, n, key: "child");
+        }
+
+        [Component]
+        private static VNode ThrowingFromTickRender(int n)
+        {
+            Hooks.UseLayoutEffect(
+                (Func<Action>)(() => n == 1 ? throw new InvalidOperationException("boom") : (Action)null),
+                new object[] { n });
+            return V.Label(name: "child", text: "child");
+        }
+
+        [Component]
+        private static VNode ClickHost()
+        {
+            var (show, setShow) = Hooks.UseState(false);
+            return V.Div(children: new VNode[]
+            {
+                V.Button(name: "go", onClick: () => setShow.Invoke(true)),
+                V.Component(ShowBoundary, show, key: "boundary"),
+            });
+        }
+
+        [Component(IsErrorBoundary = true)]
+        private static VNode ShowBoundary(bool show)
+        {
+            Hooks.UseFallback(_ => V.Label(name: "fallback", text: "fallback"));
+            return show ? V.Component(ThrowingPassiveRender, "a", key: "a") : V.Label(text: "idle");
         }
 
         [Component(IsErrorBoundary = true)]

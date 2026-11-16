@@ -453,11 +453,13 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ChildEffectCleanupThrows_When_DepsChange_Then_CleanupRunsExactlyOnce()
+        public void Given_ChildEffectCleanupThrows_When_DepsChange_Then_EachSetupsCleanupRunsOnce()
         {
-            // A cleanup throw routes to the boundary, whose fallback synchronously unmounts the child. The
-            // cleanup must run only once (it is detached before invocation), not a second time from the nested
-            // unmount's own cleanup pass over the same slot.
+            // A cleanup throw is captured for the boundary while the commit goes on, as React's captureCommitPhaseError
+            // does, so the new setup still runs and returns a cleanup of its own. The boundary's fallback then unmounts
+            // the child in the follow-up commit, which runs that second cleanup: two runs, one for each setup, where a
+            // swap inside the throwing cleanup left the second setup unrun. Each is detached before invocation, so
+            // neither runs again from the unmount's own cleanup pass over the same slot.
             // Arrange
             using var mounted = V.Mount(_root, V.Component(EffectCleanupBoundaryRender, key: "cleanup-boundary"), CaughtErrors.Unlogged);
             Assume.That(s_effectCleanupRunCount, Is.EqualTo(0), "Precondition: setup ran, no cleanup yet");
@@ -467,7 +469,7 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
 
             // Assert
-            Assert.That(s_effectCleanupRunCount, Is.EqualTo(1));
+            Assert.That(s_effectCleanupRunCount, Is.EqualTo(2));
         }
 
         [Test]

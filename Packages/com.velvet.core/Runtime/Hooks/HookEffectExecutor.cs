@@ -78,8 +78,9 @@ namespace Velvet
                 {
                     ComponentBoundarySearch.PropagateException(fiber, ex);
                     // Where the error is caught rather than captured, an error boundary's fallback can synchronously
-                    // unmount fiber (the same re-entrancy RunCleanups guards against below). Stop running the remaining factories on it rather than
-                    // standing up new resources whose cleanup pass already ran and will never run again.
+                    // unmount fiber (the same re-entrancy RunCleanups guards against below). Stop running the
+                    // remaining factories on it rather than standing up new resources whose cleanup pass already ran
+                    // and will never run again.
                     if (fiber.IsDisposed) return;
                 }
             }

@@ -360,18 +360,22 @@ namespace Velvet
             throw new BoundaryCaughtSignal(fiber, new[] { fallback }, throwingFiber, exception, info!);
         }
 
-        internal static void RecordCatch(ReconcilerContext ctx, ComponentFiber fiber, Exception exception, ErrorInfo info)
+        private static void QueueCatch(ReconcilerContext ctx, ComponentFiber fiber, Exception exception, ErrorInfo info)
         {
             fiber.CaughtError = (exception, info);
             fiber.CatchReportedFromCarry = false;
             ctx.PendingCaughtErrorReports.Add((fiber, exception, info, ctx.NextCaughtErrorSequence++));
+        }
+
+        internal static void RecordCatch(ReconcilerContext ctx, ComponentFiber fiber, Exception exception, ErrorInfo info)
+        {
+            QueueCatch(ctx, fiber, exception, info);
             var taken = ctx.ErrorsDuringFallbackSwap;
             var tookAny = false;
             for (var i = 0; i < taken.Count; i++)
             {
                 if (!ReferenceEquals(taken[i].Boundary, fiber)) continue;
-                fiber.CaughtError = (taken[i].Error, taken[i].Info);
-                ctx.PendingCaughtErrorReports.Add((fiber, taken[i].Error, taken[i].Info, ctx.NextCaughtErrorSequence++));
+                QueueCatch(ctx, fiber, taken[i].Error, taken[i].Info);
                 tookAny = true;
             }
             if (!tookAny) return;
@@ -399,25 +403,38 @@ namespace Velvet
 
         // The errors a commit captured below the boundary (CommitErrors.Capture), caught here as a catch is, each
         // reported in capture order; the newest is the one its fallback is handed, as React's getDerivedStateFromError
-        // takes each and keeps the last. The rows the boundary showed go first, so the fallback mounts afresh as it
-        // does where TryCatch swaps it in, and a cleanup of those rows that throws is taken as one of the swap is.
+        // takes each and keeps the last. A render that a commit's own user code starts leaves them for the render
+        // the commit's end asks for. The rows the boundary showed go first, so the fallback mounts afresh as it does
+        // where TryCatch swaps it in, and a cleanup of those rows that throws is taken as one of the swap is, and
+        // reported after the captures. Inside a parent's walk the unmount would take rows that walk already holds, so
+        // the fallback is reconciled against them instead.
         private static void TakeCaptures(ComponentFiber fiber)
         {
             var captures = fiber.PendingCaptures;
             if (captures == null || captures.Count == 0) return;
             var ctx = fiber.Reconciler!.Context;
+            if (ctx.InCommitPhase)
+            {
+                FiberWorkLoop.ScheduleRerender(fiber, FiberUpdatePriority.Urgent);
+                return;
+            }
             var taken = captures.ToArray();
             ctx.DropCapturesOf(fiber);
-            fiber.IsShowingFallback = true;
-            try
+            if (ctx.SharedReconcileDepth == 0)
             {
-                UnmountShownRows(fiber);
+                fiber.IsShowingFallback = true;
+                try
+                {
+                    UnmountShownRows(fiber);
+                }
+                finally
+                {
+                    fiber.IsShowingFallback = false;
+                }
             }
-            finally
-            {
-                fiber.IsShowingFallback = false;
-            }
-            foreach (var capture in taken) RecordCatch(ctx, fiber, capture.Error, capture.Info);
+            for (var i = 0; i < taken.Length - 1; i++) QueueCatch(ctx, fiber, taken[i].Error, taken[i].Info);
+            var last = taken[taken.Length - 1];
+            RecordCatch(ctx, fiber, last.Error, last.Info);
         }
 
         // The catch OutputOf's fallback was rendered for, where the fallback it suspended in at the catch has now been

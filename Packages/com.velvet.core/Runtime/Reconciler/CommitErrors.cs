@@ -27,6 +27,9 @@ namespace Velvet
             (boundary.PendingCaptures ??= new()).Add((error, info, ctx.NextCaptureSequence++));
             if (!ctx.BoundariesOwedCaptures.Contains(boundary)) ctx.BoundariesOwedCaptures.Add(boundary);
             FiberWorkLoop.ScheduleRerender(boundary, FiberUpdatePriority.Urgent);
+            // React flushes the sync work a passive effect's error queues as that flush ends, so the drain
+            // that is flushing the effects renders the boundary rather than leaving it to the next frame.
+            ctx.BatchScheduler.OweSyncLane();
             return true;
         }
 

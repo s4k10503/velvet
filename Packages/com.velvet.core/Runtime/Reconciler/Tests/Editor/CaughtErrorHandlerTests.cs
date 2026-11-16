@@ -636,6 +636,33 @@ namespace Velvet.Tests
                 Is.EqualTo("True | nothing thrown | 0 reported"));
         }
 
+        [Test]
+        public void Given_AFallbackWhoseLayoutEffectThrowsIntoItsOwnBoundaryOnEveryMount_When_TheUpdateLimitStopsTheChain_Then_NoCaptureIsLeftOwed()
+        {
+            // Arrange
+            _mounted = V.Mount(_root, V.Component(RefallingHostRender, key: "host"), CountingReports);
+
+            // Act
+            try
+            {
+                _mounted.FlushEffectsForTest();
+            }
+            catch (InvalidOperationException)
+            {
+            }
+
+            // Assert — a context with no such field reads -1, so a tree without it disagrees with the assertion
+            // instead of raising out of the helper.
+            Assert.That(OwedCaptureBoundaries(), Is.EqualTo(0));
+        }
+
+        private int OwedCaptureBoundaries()
+        {
+            var field = typeof(ReconcilerContext)
+                .GetField("BoundariesOwedCaptures", BindingFlags.NonPublic | BindingFlags.Instance);
+            return field == null ? -1 : ((ICollection)field.GetValue(_mounted.Root.Reconciler.Context)).Count;
+        }
+
         // GREEN_ON_BASE(characterization): the base keeps the row's layout effect across the bound's drop the same way.
         // The chain starts from an effect the boundary's child stages by its own commit after the pass parks, since
         // one the mount left pending now runs, and reaches the bound, before the transition renders at all.
