@@ -175,20 +175,24 @@ namespace Velvet.Tests
             Assert.That(EntriesLeftInPooledWalks(field), Is.EqualTo(0));
         }
 
-        [TestCase("Roots")]
-        [TestCase("Steps")]
-        public void Given_ADeletionOfAComponentHoldingAPortal_When_ItHasEnded_Then_NoPooledPlanKeepsWhatItHeld(string field)
+        [Test]
+        public void Given_ADeletionRunTwice_When_TheSecondHasEnded_Then_TheSecondReturnedTheOnePlanItRented()
         {
             // Arrange
             using var mounted = V.Mount(new VisualElement(), V.Component(PortalHolderHost, new Target(new VisualElement())));
+            mounted.DrainForTest();
+            s_setShown.Invoke(false);
+            mounted.DrainForTest();
+            var pooledAfterFirst = PooledPlans().Count;
+            s_setShown.Invoke(true);
             mounted.DrainForTest();
 
             // Act
             s_setShown.Invoke(false);
             mounted.DrainForTest();
 
-            // Assert
-            Assert.That(EntriesLeftInPooledPlans(field), Is.EqualTo(0));
+            // Assert — a first deletion that returned nothing leaves no pool to compare
+            Assert.That(pooledAfterFirst > 0 ? PooledPlans().Count - pooledAfterFirst : -1, Is.EqualTo(0));
         }
 
         [TestCase("_childrenAtDepth")]

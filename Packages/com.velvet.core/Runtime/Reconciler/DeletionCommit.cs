@@ -57,7 +57,8 @@ namespace Velvet
             return plan;
         }
 
-        // The walk alone: what it reaches is recorded and nothing is taken down.
+        // The walk alone: what it reaches is recorded and nothing is taken down, though the fibers it reaches are marked
+        // as being deleted (ComponentFiber.BeginDeletion).
         internal DeletionPlan BuildPlan(List<ComponentFiber> oldFibers, HashSet<ComponentFiber> newFibers, int oldLength)
         {
             foreach (var fiber in oldFibers)
