@@ -450,8 +450,8 @@ namespace Velvet
         // create updates the model and is recorded; the live list takes it no later than where FinishPass starts
         // (ApplyRecorded), in the order recorded. A node's patch halves are recorded in the same list (PatchPre and
         // PatchPost, the children's ops between them); they name no container, so a reader of the element's parent does
-        // not apply them, and a pass step that reads the live state of a subtree applies them first
-        // (ApplyPendingPatches). The readers the walk has moved to the model (ParentOf, ChildCount, ElementAtPhysical and
+        // not apply them, and the post-children passes of an element patched at once apply
+        // every recorded op first (ApplyPendingPatches). The readers the walk has moved to the model (ParentOf, ChildCount, ElementAtPhysical and
         // the reads above) answer from it meanwhile, and a container with a recorded write is skipped by the checks that
         // compare the model with the live list. Any other write into such a container applies the recorded ones first,
         // except one made while they apply, which is recorded behind them.
@@ -620,8 +620,8 @@ namespace Velvet
             s_ops.Add(new Op { Index = s_patches.Count - 1, Kind = kind });
         }
 
-        // For a pass step that reads a subtree's live state while its descendants' patch halves are still recorded: those
-        // halves apply first, in the order recorded.
+        // For the post-children passes of an element patched at once, which read its descendants' live state while their
+        // patch halves are still recorded: every recorded op applies first, in the order recorded.
         internal static void ApplyPendingPatches()
         {
             if (s_patches.Count > 0)

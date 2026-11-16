@@ -384,9 +384,16 @@ namespace Velvet
             _ctx.IsAborted = false;
             try
             {
+                // A recorded op that throws has not stopped the rest from applying; the drains below still run, and the
+                // exception surfaces once they have.
+                System.Runtime.ExceptionServices.ExceptionDispatchInfo? applyFailure = null;
                 try
                 {
                     _ctx.HostCommit.EndRecordedPass();
+                }
+                catch (Exception exception)
+                {
+                    applyFailure = System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(exception);
                 }
                 finally
                 {
@@ -411,6 +418,7 @@ namespace Velvet
                     FiberZLayerCoordinator.DrainTeardowns(_ctx);
                     FiberZLayerCoordinator.ResortLayers(_ctx);
                 }
+                applyFailure?.Throw();
             }
             finally
             {
@@ -1125,7 +1133,6 @@ namespace Velvet
             _ctx.PortalState.Clear();
             _ctx.PendingPortalMounts.Clear();
             _ctx.PendingSettles.Clear();
-            _ctx.Released = true;
             // MUTANT_SURVIVES(equivalent): as at the pass boundary, an entry outliving its queue is never read.
             _ctx.PendingHostPlaceholders.Clear();
             // ZLayerHosts/ZLayerMembers/StackingFacts are pure side-tables (dropped by ClearAllSideTables); these

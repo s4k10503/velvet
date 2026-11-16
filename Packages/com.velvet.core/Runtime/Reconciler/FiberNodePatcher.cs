@@ -638,7 +638,7 @@ namespace Velvet
 
         private bool CleanedSince(VisualElement element, int serial)
         {
-            if (_ctx.Released)
+            if (_ctx.IsDisposed)
             {
                 return true;
             }
@@ -3340,9 +3340,9 @@ namespace Velvet
         // into. A has- element matches on its DESCENDANTS, so its match can change only if a mutation landed
         // inside its subtree; that means the has- element is regionRoot itself or one of its ANCESTORS (a has-
         // element strictly BELOW regionRoot whose descendant changed was reconciled in this same flush, so its
-        // own post-children pass already covered it, after its descendants' recorded halves had applied). So rather than re-scan EVERY registered has- element each
-        // flush, walk up from regionRoot — and from each active Portal target, whose children live outside
-        // regionRoot's subtree — and re-derive only the registered has- elements found on those chains. This is
+        // own post-children pass already covered it, after its descendants' recorded halves had applied). So rather
+        // than re-scan EVERY registered has- element each flush, walk up from regionRoot — and from each active Portal
+        // target, whose children live outside regionRoot's subtree — and re-derive only the registered has- elements found on those chains. This is
         // O(depth) instead of O(registered has- elements x subtree scan), the win the sweep needs under many
         // has- elements x frequent flushes. A null regionRoot (region unknown) falls back to re-deriving all so
         // a stale payload is never missed. Idempotent (each evaluation reads the current subtree); no has- map
