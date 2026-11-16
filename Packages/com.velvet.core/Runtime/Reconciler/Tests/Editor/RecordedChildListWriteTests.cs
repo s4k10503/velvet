@@ -25,13 +25,35 @@ namespace Velvet.Tests
         }
 
         [TearDown]
-        public void TearDown() => _reconciler.Dispose();
+        public void TearDown()
+        {
+            ChildListWrites.EndRecording();
+            _reconciler.Dispose();
+        }
 
         private static VNode[] Rows(params string[] keys)
             => keys.Select(key => (VNode)V.Div(key: key, name: key)).ToArray();
 
         private static string NamesOf(VisualElement container)
             => string.Join(",", container.Children().Select(child => child.name));
+
+        [Test]
+        public void Given_ARowWhoseInsertIsRecorded_When_ItIsReclassifiedBeforeTheInsertLands_Then_TheModelHoldsItsNewKind()
+        {
+            // Arrange
+            var parent = new VisualElement();
+            parent.Add(new VisualElement());
+            var child = new VisualElement();
+            ChildListWrites.BeginRecording();
+            _reconciler.Context.HostCommit.Insert(parent, 1, child);
+            child.AddToClassList(SilhouetteBoundsSpacer.MarkerClass);
+
+            // Act
+            ChildListWrites.Reclassify(child);
+
+            // Assert
+            Assert.That(RowModelAccess.Peek(parent)!.KindAt(1), Is.EqualTo(RowKind.Invisible));
+        }
 
         // GREEN_ON_BASE(characterization): the base places the row as it is declared; the case below the next one pins
         // where the row is while the reconcile is going on.

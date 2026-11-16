@@ -264,7 +264,7 @@ namespace Velvet
         // stays where it is: FiberZLayerCoordinator's Hold and Release, and RingOverlay's mode switch.
         internal static void Reclassify(VisualElement element)
         {
-            var parent = element.hierarchy.parent;
+            var parent = ParentOf(element);
             if (parent != null && s_rows.TryGetValue(parent, out var rows) && rows.Contains(element))
             {
                 rows.Reclassify(element, Classify(element));
