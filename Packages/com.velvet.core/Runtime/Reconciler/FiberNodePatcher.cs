@@ -120,6 +120,13 @@ namespace Velvet
         // The half of the oldNode → newNode diff that runs before the node's children are reconciled.
         internal void PatchSelfPre(ref SelfPatch patch)
         {
+            ChildListWrites.PatchPhase++;
+            try { PatchSelfPreHalf(ref patch); }
+            finally { ChildListWrites.PatchPhase--; }
+        }
+
+        private void PatchSelfPreHalf(ref SelfPatch patch)
+        {
             var element = patch.Element;
             switch (patch.OldNode)
             {
@@ -191,6 +198,13 @@ namespace Velvet
         // element's slot once the patch is done, which a wrapper added or removed and a z-layer relocation in either
         // direction change; the diff names the old leaf by it from then on.
         internal VisualElement PatchSelfPost(ref SelfPatch patch)
+        {
+            ChildListWrites.PatchPhase++;
+            try { return PatchSelfPostHalf(ref patch); }
+            finally { ChildListWrites.PatchPhase--; }
+        }
+
+        private VisualElement PatchSelfPostHalf(ref SelfPatch patch)
         {
             switch (patch.Kind)
             {
