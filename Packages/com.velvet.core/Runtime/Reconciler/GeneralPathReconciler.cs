@@ -86,6 +86,9 @@ namespace Velvet
             public Dictionary<TurnKey, TurnAnchor> Anchors = null!;
             // The container's own turn, where what none of the walk's fibers kept runs; null where no pass records.
             public TurnAnchor? ContainerAnchor;
+            // Whether the walk records the begins of its turns: only its own TakeDownTheDeletion reads them, and a container
+            // with nothing on its old side deletes nothing.
+            public bool RecordsTurns;
             // The construct each construct of the old side sat in, as the position it was walked at, zero for the fiber's own
             // root, so a deletion whose construct the new side dropped can climb to one it kept.
             public Dictionary<TurnKey, long> OldTurnParents = null!;
@@ -179,6 +182,7 @@ namespace Velvet
             DeletionCommit? deletion = null;
             try
             {
+                commit.RecordsTurns = oldNodes.Length > 0 || oldFibers.Count > 0;
                 commit.ContainerAnchor = RecordTurn(commit, owner, 0);
                 if (parent != null) commit.OldOccupants.Resolve(parent, slotStart, oldNodes.Length, int.MaxValue, _patcher);
                 _ctx.OpenOldInstances.Add(commit.OldOccupants);
@@ -757,6 +761,7 @@ namespace Velvet
         // Records where the turn of fiber, or of the construct of its tree at turn, begins among the pass's recorded writes.
         private static TurnAnchor? RecordTurn(GeneralCommitState commit, ComponentFiber? fiber, long turn)
         {
+            if (!commit.RecordsTurns) return null;
             var anchor = ChildListWrites.RecordTurnBegin();
             if (anchor != null) commit.Anchors[new TurnKey(fiber, turn)] = anchor;
             return anchor;
@@ -919,8 +924,11 @@ namespace Velvet
                 NewFibers = null!;
                 OwnersOut = null;
                 KeysOut = null;
+                // MUTANT_SURVIVES(equivalent, line removed): ExpandInlineForReconcile assigns it on every rent, and the walk ReconcileGeneral rents reads it only behind OwnersOut, which is reset.
                 TurnsOut = null;
+                // MUTANT_SURVIVES(equivalent, line removed): ExpandInlineForReconcile assigns it on every rent, and only an old-side walk reads it.
                 ParentsOut = null;
+                // MUTANT_SURVIVES(equivalent, line removed): EnterTurn's finally puts the enclosing turn back on every exit, so a returned walk is at zero.
                 CurrentTurn = 0;
                 Providers = null;
                 OldProvidersForPairing = null;
@@ -1219,6 +1227,8 @@ namespace Velvet
                         // enter / exit / stagger played on each keyed child's anchor element. Old/new sides
                         // are reproduced from the per-boundary presence state, mirroring ExpandSuspenseInline.
                         walk.ReuseSuspended++;
+                        var presenceEnclosing = EnterTurn(
+                            walk, FiberKeying.Presence(position, presence.Key, nodeIndex).SlotPath, isConstruct: true);
                         try
                         {
                             ExpandAnimatePresenceInline(walk, presence, position, nodeIndex);
@@ -1226,6 +1236,7 @@ namespace Velvet
                         finally
                         {
                             walk.ReuseSuspended--;
+                            walk.CurrentTurn = presenceEnclosing;
                         }
                         break;
                     case BaseElementNode:

@@ -472,7 +472,6 @@ namespace Velvet
             _container = null;
             // MUTANT_SURVIVES(equivalent): Begin assigns the occupants before any read.
             _occupants = null;
-            // MUTANT_SURVIVES(equivalent, line removed): Begin assigns the anchor before any read; the reset only drops the one it names.
             _anchor = null;
             OwnOldFibers.Clear();
             NextGroup = null;

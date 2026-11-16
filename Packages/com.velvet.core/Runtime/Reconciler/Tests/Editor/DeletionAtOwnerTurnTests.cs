@@ -8,8 +8,10 @@ namespace Velvet.Tests
     /// <summary>
     /// Pins where in the commit a deletion's take-downs run: at the turn of the fiber that kept the parent of what was
     /// deleted, as react-reconciler 19.1's <c>commitMutationEffectsOnFiber</c> runs a fiber's deletions ahead of its
-    /// children, and not where the container that holds both is done reconciling. The order the cases expect is that
-    /// function's for the same trees, read from its source rather than run.
+    /// children, and not where the container that holds both is done reconciling. The order each case expects is that
+    /// function's for the same trees, read from its source rather than run, except in the two that read the label's text
+    /// (<c>@b2</c>): they read it after the flush of a patch applied at once wrote it, where React runs the deletion
+    /// ahead of the label's update and reads <c>b</c>.
     /// </summary>
     [TestFixtureSource(typeof(EventLogRenderer), nameof(EventLogRenderer.All))]
     internal sealed class DeletionAtOwnerTurnTests
@@ -571,6 +573,71 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(log.ToString(), Is.EqualTo("ins-x:X lay-x:X ins-x:F lay-x:F"));
+        }
+
+        [Component]
+        private static VNode XThenAPresence()
+        {
+            var (shown, _) = EventLog.UseState("Shown", true);
+            return V.Fragment(
+                V.Component(DropsX, shown, key: "l"),
+                V.AnimatePresence(children: shown ? new VNode[] { V.Component(Probed, new Named("P"), key: "p") } : null));
+        }
+
+        // GREEN_ON_BASE(characterization): the base's one plan takes the container in tree order, as an AnimatePresence
+        // deletes what it drops at its own turn, after the component before it.
+        [Test]
+        public void Given_AnAnimatePresenceDroppingAComponentWithNoExit_When_AComponentBeforeItDeletesToo_Then_TheComponentsDeletionRunsFirst()
+        {
+            // Arrange
+            var log = new EventLog();
+            using var mounted = _renderer.Mount(log.Provide(V.Component(XThenAPresence)));
+            mounted.DrainForTest();
+            log.Clear();
+
+            // Act
+            log.Setter<bool>("Shown").Invoke(false);
+            mounted.DrainForTest();
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("ins-x:X lay-x:X ins-x:P lay-x:P"));
+        }
+
+        [Test]
+        public void Given_APassThatDeletedAtTwoOwnersTurns_When_ItHasEnded_Then_ItHoldsNoAnchor()
+        {
+            // Arrange
+            var log = new EventLog();
+            using var mounted = V.Mount(new VisualElement(), log.Provide(V.Component(OwnerThenAComponentOfTheContainer)));
+            mounted.DrainForTest();
+
+            // Act
+            log.Setter<bool>("Shown").Invoke(false);
+            mounted.DrainForTest();
+
+            // Assert — a pass with no such list reads as a count the expected one is not
+            Assert.That(ReconcilePassProbe.AnchorsInUse(mounted), Is.EqualTo(0));
+        }
+
+        [Test]
+        public void Given_AnAnchorThatHeldTeardownsInAnEarlierPass_When_ALaterPassRentsItAgain_Then_ItsDeletionsRunTheirCleanupsOnce()
+        {
+            // Arrange
+            var log = new EventLog();
+            using var mounted = _renderer.Mount(log.Provide(V.Component(OwnerThenAComponentOfTheContainer)));
+            mounted.DrainForTest();
+            log.Setter<bool>("Shown").Invoke(false);
+            mounted.DrainForTest();
+            log.Setter<bool>("Shown").Invoke(true);
+            mounted.DrainForTest();
+            log.Clear();
+
+            // Act
+            log.Setter<bool>("Shown").Invoke(false);
+            mounted.DrainForTest();
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("ins-x:F lay-x:F ins-x:E lay-x:E"));
         }
 
         [Test]
