@@ -1,0 +1,34 @@
+{
+ "detail": "EditMode: 1 failed among the 430 case(s) that ran the site: Given_RandomWrites_When_PhysicalRangesAreRead_Then_PhysicalRangeIsTheScansSlice(700)",
+ "file": "414b27ae90b68edb8021ff42af514966fdd68f1a004257d1807b3940832c47e2",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ContainerRowsTests.Given_RandomWrites_When_PhysicalRangesAreRead_Then_PhysicalRangeIsTheScansSlice(700)",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ContainerRowsTests.cs": "3809568a0996f1b43bf27dfe2d040ab615d8e48387738f98c5c95bbdf4b52e62",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/RowModelAccess.cs": "c9281ca1bc8930756e7b643acf56772495143054fc02c02792727059325b4674",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  }
+ ],
+ "measured_by": "43856218771",
+ "mutant": {
+  "after": "<=",
+  "before": "<",
+  "column": 25,
+  "line": 236,
+  "operator": "boundary",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ContainerRows.cs",
+  "shadowed": [
+   "boundary",
+   "clause removed",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "77df84e62b7b22db9de849f53076452d06518cca50904ac9f617346a1acb092e",
+ "verdict": "killed"
+}

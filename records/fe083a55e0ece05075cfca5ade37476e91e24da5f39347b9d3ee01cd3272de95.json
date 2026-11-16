@@ -1,0 +1,32 @@
+{
+ "detail": "EditMode: 1 failed among the 4 case(s) that ran the site: Given_ABoldLabelInAFamilyContainer_When_TheContainersFamilyChanges_Then_TheLabelFollows",
+ "file": "84ef70713c3bf9df40be129ae3e25c48a474bda90f01f773e3d2062e805b293c",
+ "killers": [
+  {
+   "case": "Velvet.Tests.InheritedFontFamilyPanelTests.Given_ABoldLabelInAFamilyContainer_When_TheContainersFamilyChanges_Then_TheLabelFollows",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/InheritedFontFamilyPanelTests.cs": "c93acb782eb66d83a2d89eca64d00e419a0dfa7740d4ddadd022725395003ddf",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397"
+   }
+  }
+ ],
+ "measured_by": "43856218771",
+ "mutant": {
+  "after": "==",
+  "before": "!=",
+  "column": 97,
+  "line": 173,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberFontScope.cs",
+  "shadowed": [
+   "clause removed",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "77df84e62b7b22db9de849f53076452d06518cca50904ac9f617346a1acb092e",
+ "verdict": "killed"
+}

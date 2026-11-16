@@ -1,11 +1,11 @@
 {
- "detail": "EditMode: 1 failed among the 10 case(s) that ran the site: Given_AnOverlaidElement_When_ItMovesPastItsOverlay_Then_TheOverlayIsPutDirectlyAfterIt",
+ "detail": "EditMode: 1 failed among the 11 case(s) that ran the site: Given_AnOverlaidElement_When_ItMovesPastItsOverlay_Then_TheOverlayIsPutDirectlyAfterIt",
  "file": "e55553290e6212c4f5b3c589d9e0dbf7132246d0fc24f5b69c550b15f9cd8a9f",
  "killers": [
   {
    "case": "Velvet.Tests.FaceBorderOverlayTests.Given_AnOverlaidElement_When_ItMovesPastItsOverlay_Then_TheOverlayIsPutDirectlyAfterIt",
    "files": {
-    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/FaceBorderOverlayTests.cs": "30119026e13b6847f21a6eb8e0463a7e585c1901903d749299c231019fa08767",
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/FaceBorderOverlayTests.cs": "0dccb6abe312dc51160404bc28a53956fa88176104b7d7e1ce30bd46005449c8",
     "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
     "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
     "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
@@ -13,7 +13,7 @@
    }
   }
  ],
- "measured_by": "43708851232",
+ "measured_by": "43856218771",
  "mutant": {
   "after": ";",
   "before": "ChildListWrites.RemoveFromHierarchy(binding.Overlay);",
@@ -27,6 +27,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "5e7f3ea05d51d3347b1efe117704129307892f27510ec66bf3601001ec0ff3e0",
+ "tests": "77df84e62b7b22db9de849f53076452d06518cca50904ac9f617346a1acb092e",
  "verdict": "killed"
 }

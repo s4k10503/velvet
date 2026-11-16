@@ -1,0 +1,28 @@
+{
+ "detail": "EditMode: 1 failed: Given_ASpinePushedForAChildFiber_When_ItUnwinds_Then_TheProviderListIsBackInThePool",
+ "file": "9e1ca253e319291a915794e805594b00b79e9139832246d08d300b8b3e6b9dee",
+ "killers": [
+  {
+   "case": "Velvet.Tests.PassBufferPoolReturnTests.Given_ASpinePushedForAChildFiber_When_ItUnwinds_Then_TheProviderListIsBackInThePool",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PassBufferPoolReturnTests.cs": "0028a5075090932ea19c1a8c5e8afd17b159faa8695998e8e06af07a32c5ec57"
+   }
+  }
+ ],
+ "measured_by": "43856218771",
+ "mutant": {
+  "after": ";",
+  "before": "_bufferPool.ReturnProviderNodeList(_pushed);",
+  "column": 16,
+  "line": 266,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberContextSpine.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "77df84e62b7b22db9de849f53076452d06518cca50904ac9f617346a1acb092e",
+ "verdict": "killed"
+}

@@ -1,0 +1,31 @@
+{
+ "detail": "EditMode: 1 failed among the 3 case(s) that ran the site: Given_AKeyedList_When_TheMiddleRowUpdatesItsState_Then_TheBlocksAt2000RowsEqualThoseAt250",
+ "file": "414b27ae90b68edb8021ff42af514966fdd68f1a004257d1807b3940832c47e2",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ContextSpineRowUpdateAllocationTests.Given_AKeyedList_When_TheMiddleRowUpdatesItsState_Then_TheBlocksAt2000RowsEqualThoseAt250",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ContextSpineRowUpdateAllocationTests.cs": "69bbe88f08ae15bea623a440dade33c31d2e8bf1350437935f583c7458a80739",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/GCAllocationProbe.cs": "492823c099cf4f4de89da0da69c98d45cfc042070d93e2d0c0b95773310ebc2c",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  }
+ ],
+ "measured_by": "43856218771",
+ "mutant": {
+  "after": ";",
+  "before": "skip -= BlockAt(b).Rendered;",
+  "column": 16,
+  "line": 199,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ContainerRows.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "77df84e62b7b22db9de849f53076452d06518cca50904ac9f617346a1acb092e",
+ "verdict": "killed"
+}

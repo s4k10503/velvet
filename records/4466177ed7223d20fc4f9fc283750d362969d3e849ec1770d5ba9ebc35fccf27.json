@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "ca2108741e19000fdc5a8da729089ff0618d826ff9dcd1f58e7389a06c435479",
+ "killers": [],
+ "measured_by": "43856218771",
+ "mutant": {
+  "after": "true",
+  "before": "false",
+  "column": 37,
+  "line": 33,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Hooks/HookEffectExecutor.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "77df84e62b7b22db9de849f53076452d06518cca50904ac9f617346a1acb092e",
+ "verdict": "survived"
+}

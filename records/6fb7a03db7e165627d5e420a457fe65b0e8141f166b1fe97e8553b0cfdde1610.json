@@ -1,8 +1,15 @@
 {
- "detail": "EditMode survived; PlayMode: -",
+ "detail": "EditMode: 1 failed among the 185 case(s) that ran the site: Given_NoUnreportedCatch_When_TheCaughtErrorIsCleared_Then_TheCatchIsStillNotUnreported",
  "file": "4ec456943e98b6adb6ea02d6450d3bad57d54c3f99a507b7ad7b66819c6f4aa1",
- "killers": [],
- "measured_by": "43753857139",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ComponentFiberTests.Given_NoUnreportedCatch_When_TheCaughtErrorIsCleared_Then_TheCatchIsStillNotUnreported",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/ComponentFiberTests.cs": "c1889db3a28b06c7f011c496ad02eef6166d3bb7f6b42b60600c5fe461a156d9"
+   }
+  }
+ ],
+ "measured_by": "43856218771",
  "mutant": {
   "after": "true",
   "before": "false",
@@ -15,9 +22,9 @@
   ]
  },
  "mutator": 10,
- "platform": "PlayMode",
+ "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "8e7e1b10266f79fab5f5202a407f54c3c10d6b23f97889a416e135d0c09a9dce",
- "verdict": "survived"
+ "tests": "77df84e62b7b22db9de849f53076452d06518cca50904ac9f617346a1acb092e",
+ "verdict": "killed"
 }

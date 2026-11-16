@@ -1,8 +1,16 @@
 {
- "detail": "EditMode survived; PlayMode: -",
+ "detail": "EditMode: 1 failed: Given_AClassNamingNoTimingKeyword_When_ItsCurveIsAskedFor_Then_ItHasNone",
  "file": "72403ef53dee1106d70fd5cb2cd4870d1616d15ccce4cb12543f0299fb905a10",
- "killers": [],
- "measured_by": "43753857139",
+ "killers": [
+  {
+   "case": "Velvet.Tests.StyleEaseCurveTests.Given_AClassNamingNoTimingKeyword_When_ItsCurveIsAskedFor_Then_ItHasNone",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/StyleEaseCurveTests.cs": "3d220af2f1ae6353f908ef1059364647dc3b92e5af1fc4c0bad50d8ee5386dc7",
+    "Packages/com.velvet.core/TestUtilities/GCAllocationProbe.cs": "492823c099cf4f4de89da0da69c98d45cfc042070d93e2d0c0b95773310ebc2c"
+   }
+  }
+ ],
+ "measured_by": "43856218771",
  "mutant": {
   "after": "true",
   "before": "false",
@@ -13,9 +21,9 @@
   "shadowed": []
  },
  "mutator": 10,
- "platform": "PlayMode",
+ "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "8e7e1b10266f79fab5f5202a407f54c3c10d6b23f97889a416e135d0c09a9dce",
- "verdict": "survived"
+ "tests": "77df84e62b7b22db9de849f53076452d06518cca50904ac9f617346a1acb092e",
+ "verdict": "killed"
 }

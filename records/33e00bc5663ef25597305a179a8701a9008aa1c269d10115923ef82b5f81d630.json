@@ -1,8 +1,31 @@
 {
- "detail": "EditMode survived; PlayMode: -",
+ "detail": "EditMode: 2 failed: Given_AParkedTransitionPassOnAPanel_When_ThePanelSchedulerTicks_Then_TheResumeCommitsMoreOfTheList, Given_ResumeSlicesThatLeftWorkPending_When_ThePanelSchedulerTicks_Then_TheNextSliceCommitsMoreOfTheList",
  "file": "c14f21d539b4281a0d0b79d5fbce8021a01e58875368d8b0f96a4dd09067eefb",
- "killers": [],
- "measured_by": "43753857139",
+ "killers": [
+  {
+   "case": "Velvet.Tests.TimeSlicedFiberTests.Given_AParkedTransitionPassOnAPanel_When_ThePanelSchedulerTicks_Then_TheResumeCommitsMoreOfTheList",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/TimeSlicedFiberTests.cs": "fb46c5ca47264f647f98a31f642f9da7eff2d8f31834f4764fb910dbdd09c918",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26"
+   }
+  },
+  {
+   "case": "Velvet.Tests.TimeSlicedFiberTests.Given_ResumeSlicesThatLeftWorkPending_When_ThePanelSchedulerTicks_Then_TheNextSliceCommitsMoreOfTheList",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/TimeSlicedFiberTests.cs": "fb46c5ca47264f647f98a31f642f9da7eff2d8f31834f4764fb910dbdd09c918",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26"
+   }
+  }
+ ],
+ "measured_by": "43856218771",
  "mutant": {
   "after": ";",
   "before": "ScheduleParkedPassResume(fiber);",
@@ -13,9 +36,9 @@
   "shadowed": []
  },
  "mutator": 10,
- "platform": "PlayMode",
+ "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "8e7e1b10266f79fab5f5202a407f54c3c10d6b23f97889a416e135d0c09a9dce",
- "verdict": "survived"
+ "tests": "77df84e62b7b22db9de849f53076452d06518cca50904ac9f617346a1acb092e",
+ "verdict": "killed"
 }

@@ -1,8 +1,15 @@
 {
- "detail": "EditMode survived; PlayMode: -",
+ "detail": "EditMode: 1 failed among the 1570 case(s) that ran the site: Given_AContextPushedAndPopped_When_AnotherContextIsPushed_Then_ItTakesTheStackTheFirstLeft",
  "file": "1bb2bb807b5da0e222b3ded601f686c20c294df3d59aa0daddd1349ce468a750",
- "killers": [],
- "measured_by": "43753857139",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ComponentContextStackTests.Given_AContextPushedAndPopped_When_AnotherContextIsPushed_Then_ItTakesTheStackTheFirstLeft",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/ComponentContextStackTests.cs": "f1c57ed8b24cf3d2151702c2e3e2271f50fec7d9e7cdf7952c0bebdb50d6025c"
+   }
+  }
+ ],
+ "measured_by": "43856218771",
  "mutant": {
   "after": ";",
   "before": "_emptied.Push(stack);",
@@ -13,9 +20,9 @@
   "shadowed": []
  },
  "mutator": 10,
- "platform": "PlayMode",
+ "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "8e7e1b10266f79fab5f5202a407f54c3c10d6b23f97889a416e135d0c09a9dce",
- "verdict": "survived"
+ "tests": "77df84e62b7b22db9de849f53076452d06518cca50904ac9f617346a1acb092e",
+ "verdict": "killed"
 }

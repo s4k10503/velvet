@@ -1,8 +1,15 @@
 {
- "detail": "EditMode survived; PlayMode: -",
+ "detail": "EditMode: 1 failed: Given_AWalkThatLeftWorkOnTheStack_When_TheBuffersAreCleared_Then_NoWorkRemains; 1 other editor(s) were up",
  "file": "d0d4187e7f29188b92f0cea5405633fdd9b1d285c0a093c8bf07912916381433",
- "killers": [],
- "measured_by": "43753857139",
+ "killers": [
+  {
+   "case": "Velvet.Tests.PostOrderBuffersTests.Given_AWalkThatLeftWorkOnTheStack_When_TheBuffersAreCleared_Then_NoWorkRemains",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PostOrderBuffersTests.cs": "4697f58d54b3a1aca36e1baa159429734397f3963ee88bd36a492034e147cf19"
+   }
+  }
+ ],
+ "measured_by": "43856218771",
  "mutant": {
   "after": ";",
   "before": "Work.Clear();",
@@ -13,9 +20,9 @@
   "shadowed": []
  },
  "mutator": 10,
- "platform": "PlayMode",
+ "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "8e7e1b10266f79fab5f5202a407f54c3c10d6b23f97889a416e135d0c09a9dce",
- "verdict": "survived"
+ "tests": "77df84e62b7b22db9de849f53076452d06518cca50904ac9f617346a1acb092e",
+ "verdict": "killed"
 }

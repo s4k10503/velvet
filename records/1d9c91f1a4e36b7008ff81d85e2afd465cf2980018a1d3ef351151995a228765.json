@@ -1,8 +1,20 @@
 {
- "detail": "EditMode survived; PlayMode: -",
+ "detail": "EditMode: 1 failed among the 12 case(s) that ran the site: Given_ASlotWithAStagedPredicate_When_ItCommits_Then_NoPredicateIsStaged",
  "file": "08fad0a8dc2d7df5d0df2d3d2e326e0b3af6c351e1b2b2d87c8c00add43b17c0",
- "killers": [],
- "measured_by": "43753857139",
+ "killers": [
+  {
+   "case": "Velvet.Tests.BlockerTests.Given_ASlotWithAStagedPredicate_When_ItCommits_Then_NoPredicateIsStaged",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/BlockerTests.cs": "84013411fa93e6233b9d6ce1572c4263f4d635c735afd4902ebaf6e4ca7fa9e1",
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouteTestMounts.cs": "f8401ad8b6f8ad1cafcdf5c1960ff0f082f4d876c6ee34e32e4d3d8cc7566653",
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouteTestStubs.cs": "e6362642a4a6570b2b683eaa7ec1727a3cd53cd6de1d54a6164cd2248d03b3c2",
+    "Packages/com.velvet.core/TestUtilities/CancellationTokenStateProbe.cs": "1344802a4cabd68e13bb57149f007230f5fcb7785eb33f0af4f1445f53b92657",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  }
+ ],
+ "measured_by": "43856218771",
  "mutant": {
   "after": ";",
   "before": "NextPredicate = null;",
@@ -13,9 +25,9 @@
   "shadowed": []
  },
  "mutator": 10,
- "platform": "PlayMode",
+ "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "8e7e1b10266f79fab5f5202a407f54c3c10d6b23f97889a416e135d0c09a9dce",
- "verdict": "survived"
+ "tests": "77df84e62b7b22db9de849f53076452d06518cca50904ac9f617346a1acb092e",
+ "verdict": "killed"
 }

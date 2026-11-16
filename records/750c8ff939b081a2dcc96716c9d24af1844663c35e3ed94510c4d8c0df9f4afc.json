@@ -1,0 +1,28 @@
+{
+ "detail": "EditMode: 1 failed among the 16 case(s) that ran the site: Given_AnInsetRingOnAnElementWithNoParent_When_ItIsSyncedToASiblingBand_Then_AFirstChildGoesBeforeTheOverlayLeftInside",
+ "file": "acd7c5b6ae04ba88f7c9208a506790f2a58c015a7af805975dfe20e7aa99cc25",
+ "killers": [
+  {
+   "case": "Velvet.Tests.RingModeRowKindTests.Given_AnInsetRingOnAnElementWithNoParent_When_ItIsSyncedToASiblingBand_Then_AFirstChildGoesBeforeTheOverlayLeftInside",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/RingModeRowKindTests.cs": "7fa8a5fa284cb9e9badd73392bdd8fade5665cac831ae7774ffd70f21db03a79"
+   }
+  }
+ ],
+ "measured_by": "43856218771",
+ "mutant": {
+  "after": ";",
+  "before": "ChildListWrites.Reclassify(overlay);",
+  "column": 12,
+  "line": 289,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/RingOverlay.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "77df84e62b7b22db9de849f53076452d06518cca50904ac9f617346a1acb092e",
+ "verdict": "killed"
+}

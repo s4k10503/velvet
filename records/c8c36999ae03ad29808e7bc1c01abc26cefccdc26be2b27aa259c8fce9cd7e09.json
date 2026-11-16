@@ -1,0 +1,31 @@
+{
+ "detail": "EditMode: 1 failed among the 133 case(s) that ran the site: Given_TwoContinuationsHeldBackByATransition_When_TheFirstThrows_Then_TheSecondStillRuns",
+ "file": "68b09599fee9fff15ca557e094b69be181675ba529647071c43cabe01b1f3505",
+ "killers": [
+  {
+   "case": "Velvet.Tests.TransitionCallbackTests.Given_TwoContinuationsHeldBackByATransition_When_TheFirstThrows_Then_TheSecondStillRuns",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/TransitionCallbackTests.cs": "f6d020c1f120643a74042e3916064e199b5982869319863216543fe4d429cf3f",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  }
+ ],
+ "measured_by": "43856218771",
+ "mutant": {
+  "after": ";",
+  "before": "AwaitContinuationGate.OpenScopes = OpenTransitionScopes.Count;",
+  "column": 12,
+  "line": 946,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberWorkLoop.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "77df84e62b7b22db9de849f53076452d06518cca50904ac9f617346a1acb092e",
+ "verdict": "killed"
+}

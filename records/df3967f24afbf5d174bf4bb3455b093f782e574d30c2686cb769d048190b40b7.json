@@ -1,8 +1,18 @@
 {
- "detail": "EditMode survived; PlayMode: -",
+ "detail": "EditMode: 1 failed: Given_ABoundaryHoldingACarriedCatch_When_ItsFallbackThrowsOnceTheReadResolvesAndABoundaryAboveReplacesIt_Then_NothingEscapes",
  "file": "20a5e8db58dc7f847e73b770f96a75c5c7684e49a88384cf85ba95a9985ecb4d",
- "killers": [],
- "measured_by": "43753857139",
+ "killers": [
+  {
+   "case": "Velvet.Tests.BoundaryCatchScopeTests.Given_ABoundaryHoldingACarriedCatch_When_ItsFallbackThrowsOnceTheReadResolvesAndABoundaryAboveReplacesIt_Then_NothingEscapes",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/BoundaryCatchScopeTests.cs": "0c57faccc1e3b07381880f10178fcd8181496fa99f22e18d8d28abf5a3e26176",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  }
+ ],
+ "measured_by": "43856218771",
  "mutant": {
   "after": "",
   "before": " && !fiber.IsDisposed",
@@ -16,9 +26,9 @@
   ]
  },
  "mutator": 10,
- "platform": "PlayMode",
+ "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "8e7e1b10266f79fab5f5202a407f54c3c10d6b23f97889a416e135d0c09a9dce",
- "verdict": "survived"
+ "tests": "77df84e62b7b22db9de849f53076452d06518cca50904ac9f617346a1acb092e",
+ "verdict": "killed"
 }

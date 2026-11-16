@@ -1,8 +1,17 @@
 {
- "detail": "EditMode survived; PlayMode: -",
+ "detail": "EditMode: 1 failed among the 1 case(s) that ran the site: Given_AClipWrapperWithNoParent_When_ItsInnerIsRestored_Then_TheInnerLeavesTheWrapper",
  "file": "c016806323d04ebf6981bb0034757f7f9cf12eb8b731e8c7016662c92e340ae8",
- "killers": [],
- "measured_by": "43753857139",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ClipPathWrapTests.Given_AClipWrapperWithNoParent_When_ItsInnerIsRestored_Then_TheInnerLeavesTheWrapper",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ClipPathWrapTests.cs": "b1b543cdcb38ff9e33949c162b926278bfb78dd8e8968824081eeed8740f1c93",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/ZBandProbe.cs": "89b5305bd9e43f72156f5a3d8c6f121f5ebcbee121486fdbb8e4b04b315feaaa"
+   }
+  }
+ ],
+ "measured_by": "43856218771",
  "mutant": {
   "after": ";",
   "before": "ChildListWrites.RemoveFromHierarchy(element);",
@@ -13,9 +22,9 @@
   "shadowed": []
  },
  "mutator": 10,
- "platform": "PlayMode",
+ "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "8e7e1b10266f79fab5f5202a407f54c3c10d6b23f97889a416e135d0c09a9dce",
- "verdict": "survived"
+ "tests": "77df84e62b7b22db9de849f53076452d06518cca50904ac9f617346a1acb092e",
+ "verdict": "killed"
 }

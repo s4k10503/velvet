@@ -1,0 +1,36 @@
+{
+ "detail": "EditMode: 1 failed among the 2 case(s) that ran the site: Given_APresenceInABoundaryWhoseOnExitCompleteFails_When_ItsChildHoldsAMotionInsideAPortal_Then_NoBoundaryTakesTheError",
+ "file": "b7559776d6f88d03170bde7c75a9de73759a261d5e23369ee3f7067b13443cbf",
+ "killers": [
+  {
+   "case": "Velvet.Tests.BoundaryCatchScopeTests.Given_APresenceInABoundaryWhoseOnExitCompleteFails_When_ItsChildHoldsAMotionInsideAPortal_Then_NoBoundaryTakesTheError",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/BoundaryCatchScopeTests.cs": "0c57faccc1e3b07381880f10178fcd8181496fa99f22e18d8d28abf5a3e26176",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  }
+ ],
+ "measured_by": "43856218771",
+ "mutant": {
+  "after": "==",
+  "before": "!=",
+  "column": 23,
+  "line": 2539,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/GeneralPathReconciler.cs",
+  "shadowed": [
+   "clause removed",
+   "guard removed",
+   "literal",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "77df84e62b7b22db9de849f53076452d06518cca50904ac9f617346a1acb092e",
+ "verdict": "killed"
+}

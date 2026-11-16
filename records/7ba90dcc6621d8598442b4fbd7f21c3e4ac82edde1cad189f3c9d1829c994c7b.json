@@ -1,0 +1,31 @@
+{
+ "detail": "EditMode: 1 failed: Given_ACacheHoldingAMutation_When_TheClientIsCleared_Then_TheRemovalIsAnnounced",
+ "file": "68b09599fee9fff15ca557e094b69be181675ba529647071c43cabe01b1f3505",
+ "killers": [
+  {
+   "case": "Velvet.Tests.MutationCacheTests.Given_ACacheHoldingAMutation_When_TheClientIsCleared_Then_TheRemovalIsAnnounced",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/MutationCacheTests.cs": "f25f5b8dbc8e29b5fce40b1ee3f994dc01fe16134b13ca93f602ef55c0e282a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166",
+    "Packages/com.velvet.core/TestUtilities/VelvetTaskFrameDriverTestExtensions.cs": "0e6fdaecfb53c37e3943edddc49923eddecd4a9cb293d2bd2a77fc06e81a3e75"
+   }
+  }
+ ],
+ "measured_by": "43856218771",
+ "mutant": {
+  "after": ";",
+  "before": "AwaitContinuationGate.OpenScopes = OpenTransitionScopes.Count;",
+  "column": 16,
+  "line": 954,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberWorkLoop.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "77df84e62b7b22db9de849f53076452d06518cca50904ac9f617346a1acb092e",
+ "verdict": "killed"
+}

@@ -1,8 +1,15 @@
 {
- "detail": "EditMode survived; PlayMode: -",
+ "detail": "EditMode: 1 failed: Given_ALayoutCommitDeferredByADrain_When_TheDrainFlushesIt_Then_TheRootsListIsBackInThePool",
  "file": "ac7745fc19d34d4a76fc5e493419106e3bc74df4c37f708354ab42577756069a",
- "killers": [],
- "measured_by": "43753857139",
+ "killers": [
+  {
+   "case": "Velvet.Tests.PassBufferPoolReturnTests.Given_ALayoutCommitDeferredByADrain_When_TheDrainFlushesIt_Then_TheRootsListIsBackInThePool",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PassBufferPoolReturnTests.cs": "0028a5075090932ea19c1a8c5e8afd17b159faa8695998e8e06af07a32c5ec57"
+   }
+  }
+ ],
+ "measured_by": "43856218771",
  "mutant": {
   "after": ";",
   "before": "ctx.BufferPool.ReturnCommitEntryList(roots);",
@@ -13,9 +20,9 @@
   "shadowed": []
  },
  "mutator": 10,
- "platform": "PlayMode",
+ "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "8e7e1b10266f79fab5f5202a407f54c3c10d6b23f97889a416e135d0c09a9dce",
- "verdict": "survived"
+ "tests": "77df84e62b7b22db9de849f53076452d06518cca50904ac9f617346a1acb092e",
+ "verdict": "killed"
 }

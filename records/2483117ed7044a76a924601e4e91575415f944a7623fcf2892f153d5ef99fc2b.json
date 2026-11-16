@@ -1,0 +1,62 @@
+{
+ "detail": "EditMode survived; PlayMode: 4 failed: RowSetState_Under1000MemoizedRows, RowSetState_Under2000MemoizedRows, RowSetState_Under250MemoizedRows",
+ "file": "414b27ae90b68edb8021ff42af514966fdd68f1a004257d1807b3940832c47e2",
+ "killers": [
+  {
+   "case": "Velvet.Tests.Performance.RenderPathScalingBenchmarks.RowSetState_Under1000MemoizedRows",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/PlayMode/RenderPathScalingBenchmarks.cs": "15c56d82fd2ed0219d695545f0eeff9267054a98518a84dbb96488433696c577",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/PlayMode/WindowCost.cs": "0bcd4bd4f16b3438dc5047433af4f37b555043f7886530b801458cecf04d2110",
+    "Packages/com.velvet.core/TestUtilities/BenchmarkRun.cs": "ee192d75250f35d5d9b786ca706a2213a210de0ad89350dc722a91cc15fd5063",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  },
+  {
+   "case": "Velvet.Tests.Performance.RenderPathScalingBenchmarks.RowSetState_Under2000MemoizedRows",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/PlayMode/RenderPathScalingBenchmarks.cs": "15c56d82fd2ed0219d695545f0eeff9267054a98518a84dbb96488433696c577",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/PlayMode/WindowCost.cs": "0bcd4bd4f16b3438dc5047433af4f37b555043f7886530b801458cecf04d2110",
+    "Packages/com.velvet.core/TestUtilities/BenchmarkRun.cs": "ee192d75250f35d5d9b786ca706a2213a210de0ad89350dc722a91cc15fd5063",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  },
+  {
+   "case": "Velvet.Tests.Performance.RenderPathScalingBenchmarks.RowSetState_Under250MemoizedRows",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/PlayMode/RenderPathScalingBenchmarks.cs": "15c56d82fd2ed0219d695545f0eeff9267054a98518a84dbb96488433696c577",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/PlayMode/WindowCost.cs": "0bcd4bd4f16b3438dc5047433af4f37b555043f7886530b801458cecf04d2110",
+    "Packages/com.velvet.core/TestUtilities/BenchmarkRun.cs": "ee192d75250f35d5d9b786ca706a2213a210de0ad89350dc722a91cc15fd5063",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  },
+  {
+   "case": "Velvet.Tests.Performance.RenderPathScalingBenchmarks.RowSetState_Under500MemoizedRows",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/PlayMode/RenderPathScalingBenchmarks.cs": "15c56d82fd2ed0219d695545f0eeff9267054a98518a84dbb96488433696c577",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/PlayMode/WindowCost.cs": "0bcd4bd4f16b3438dc5047433af4f37b555043f7886530b801458cecf04d2110",
+    "Packages/com.velvet.core/TestUtilities/BenchmarkRun.cs": "ee192d75250f35d5d9b786ca706a2213a210de0ad89350dc722a91cc15fd5063",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  }
+ ],
+ "measured_by": "43856218771",
+ "mutant": {
+  "after": ";",
+  "before": "b++;",
+  "column": 16,
+  "line": 200,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ContainerRows.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "77df84e62b7b22db9de849f53076452d06518cca50904ac9f617346a1acb092e",
+ "verdict": "killed"
+}
