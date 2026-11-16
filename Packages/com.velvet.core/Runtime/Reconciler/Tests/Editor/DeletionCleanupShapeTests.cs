@@ -7,10 +7,11 @@ using Velvet.TestUtilities;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Pins, as one log string per case, the order of a deleted component's <c>UseEffect</c> cleanup against the pool
-    /// and the commit around it, in each of the four shapes a deferred cleanup has to survive: a cleanup that writes to
-    /// the element its setup captured, while a later mount rents from the shared pool. The cleanup runs in the deletion
-    /// walk, so each case reads the captured element unreset and sees it before anything the commit mounts.
+    /// Pins, as one log string per case, the order in which a deleted component's <c>UseEffect</c> cleanup runs against
+    /// the commit around it, in four arrangements taken from the shapes a deferred cleanup has to survive. The cleanup
+    /// reads the text of the button its setup captured, and runs in the deletion walk. The cases do not drive the
+    /// parts of those shapes that need a held destroy: a rent of the removed element itself, a parked pass, and an
+    /// anchor whose owner unmounts.
     /// </summary>
     [TestFixture]
     internal sealed class DeletionCleanupShapeTests

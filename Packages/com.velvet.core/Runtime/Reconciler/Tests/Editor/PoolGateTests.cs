@@ -116,6 +116,32 @@ namespace Velvet.Tests
             Assert.That(VNodePoolTestAccess.LabelPoolCountForTest, Is.Zero);
         }
 
+        [Test]
+        public void Given_TwoLabelsHeldByTheGate_When_TheGateFalls_Then_TheLastHeldIsTheNextOneRented()
+        {
+            // Arrange
+            using var reconciler = new ReconcilerHandle();
+            var oldTree = new[] { Branch("left", V.Text("first"), V.Text("second")) };
+            reconciler.Value.Reconcile(reconciler.Root, Array.Empty<VNode>(), oldTree);
+            var second = (Label)reconciler.Root.Q<VisualElement>("left")[1];
+            Raise();
+            reconciler.Value.Reconcile(reconciler.Root, oldTree, new[] { Branch("left") });
+
+            // Act
+            Lower();
+            var rented = VNodePool.RentLabel("next");
+
+            // Assert
+            Assert.That(ReferenceEquals(rented, second), Is.True);
+        }
+
+        [Test]
+        public void Given_NoRaise_When_TheGateIsLowered_Then_ItThrows()
+        {
+            // Arrange / Act / Assert
+            Assert.Throws<InvalidOperationException>(FiberElementCleaner.LowerPoolGate);
+        }
+
         private sealed class ReconcilerHandle : IDisposable
         {
             private bool _disposed;

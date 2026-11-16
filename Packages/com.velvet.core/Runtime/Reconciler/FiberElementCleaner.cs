@@ -189,7 +189,9 @@ namespace Velvet
 
         // Process-wide, as the pool is. While it is raised ReturnToPool keeps an element out of the pool and unreset:
         // keeping it out of Rent alone would leave the reset to run on an element a pending cleanup may still write to.
-        // The held elements go back, in the order they were held, as the last raise falls.
+        // The held elements go back, in the order they were held, as the last raise falls. An element no pool takes
+        // is not held, so it is left to the collector as without the gate. Each raise must be paired with a lower,
+        // including when its context is disposed.
         private static int s_poolGateDepth;
         private static readonly List<(FiberElementCleaner Cleaner, VisualElement Element)> s_heldReturns = new();
 
@@ -229,7 +231,7 @@ namespace Velvet
         // unrelated mount.
         private void ReturnToPool(VisualElement element)
         {
-            if (s_poolGateDepth > 0)
+            if (s_poolGateDepth > 0 && PoolKindOf(element) != PoolKind.None)
             {
                 s_heldReturns.Add((this, element));
                 return;
