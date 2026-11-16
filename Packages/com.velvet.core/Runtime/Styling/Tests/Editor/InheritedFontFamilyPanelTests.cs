@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Reflection;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.TextCore.Text;
@@ -243,5 +244,132 @@ namespace Velvet.Tests
             // Assert
             Assert.That(TargetAsset(), Is.SameAs(_sansBold));
         }
+
+        #region The scope's own bookkeeping
+
+        private static readonly FontIntent s_boldIntent =
+            new(null, false, VelvetFontWeight.Bold, true, false, false);
+
+        private const BindingFlags Private = BindingFlags.Instance | BindingFlags.NonPublic;
+
+        private static object ReadField(FiberFontScope scope, string name)
+            => typeof(FiberFontScope).GetField(name, Private).GetValue(scope);
+
+        private static void CallPrivate(FiberFontScope scope, string name)
+            => typeof(FiberFontScope).GetMethod(name, Private).Invoke(scope, null);
+
+        // A scope that has been told the element its follow is scheduled on, as the first drain of a pass tells it.
+        private static FiberFontScope ScopeAnchoredAt(VisualElement anchor)
+        {
+            var scope = new FiberFontScope();
+            scope.Drain(anchor);
+            return scope;
+        }
+
+        // GREEN_ON_BASE(characterization): the base drops the entries of scopes that are gone when a scope joins the
+        // registry. Drop `s_scopes.RemoveAll(static entry => !entry.TryGetTarget(out _));` and the entry stays.
+        [Test]
+        public void Given_ARegistryEntryWhoseScopeIsGone_When_AScopeIsCreated_Then_TheEntryIsDropped()
+        {
+            // Arrange
+            var registry = (List<System.WeakReference<FiberFontScope>>)typeof(FiberFontScope)
+                .GetField("s_scopes", BindingFlags.Static | BindingFlags.NonPublic).GetValue(null);
+            var gone = new System.WeakReference<FiberFontScope>(null);
+            registry.Add(gone);
+
+            // Act
+            _ = new FiberFontScope();
+
+            // Assert
+            Assert.That(registry, Has.No.Member(gone));
+        }
+
+        // GREEN_ON_BASE(characterization): the base holds an inheritor with no named family back for a few reads after
+        // the registry changes. Flip the first `!=` of `entry.Named != null || InheritedFamily(element) != null` and
+        // it resolves at once instead.
+        [Test]
+        public void Given_AnInheritorWithNoNamedFamily_When_TheRegistryChanges_Then_ItWaitsBeforeItResolvesAgain()
+        {
+            // Arrange
+            var scope = new FiberFontScope();
+            var element = new VisualElement();
+            scope.Inheritors[element] = new FiberFontScope.Inheritor(s_boldIntent, null, null, 0);
+
+            // Act
+            CallPrivate(scope, "Refresh");
+
+            // Assert
+            Assert.That(scope.Inheritors[element].Wait, Is.GreaterThan(0));
+        }
+
+        // GREEN_ON_BASE(characterization): the base starts reading the parent's font again once a registry change
+        // leaves an inheritor with no named family waiting. Set `_wantsFollow = true;` in that branch of Refresh to
+        // false and no read is scheduled.
+        [Test]
+        public void Given_AnInheritorWithNoNamedFamilyOnAnAnchoredScope_When_TheRegistryChanges_Then_TheFontReadIsScheduled()
+        {
+            // Arrange
+            var scope = ScopeAnchoredAt(new VisualElement());
+            scope.Inheritors[new VisualElement()] = new FiberFontScope.Inheritor(s_boldIntent, null, null, 0);
+
+            // Act
+            CallPrivate(scope, "Refresh");
+
+            // Assert
+            Assert.That(ReadField(scope, "_follow"), Is.Not.Null);
+        }
+
+        // GREEN_ON_BASE(characterization): the base owes no further read once the scheduled one is made. Set
+        // `_wantsFollow = false;` in Follow to true and the next drain starts a read it did not need.
+        [Test]
+        public void Given_AScopeOwingAFontRead_When_TheReadIsScheduled_Then_NoneIsOwedAnyMore()
+        {
+            // Arrange
+            var scope = ScopeAnchoredAt(new VisualElement());
+            typeof(FiberFontScope).GetField("_wantsFollow", Private).SetValue(scope, true);
+
+            // Act
+            CallPrivate(scope, "Follow");
+
+            // Assert
+            Assert.That(ReadField(scope, "_wantsFollow"), Is.False);
+        }
+
+        // GREEN_ON_BASE(characterization): the base lets go of the scheduled read once no inheritor lacks a named
+        // family, so the next one that does can start another. Remove `_follow = null;` and the paused read stays
+        // and blocks it; start `unnamed` as true in Tick and the read is never let go.
+        [Test]
+        public void Given_AScheduledFontRead_When_NoInheritorLacksANamedFamilyAnyMore_Then_TheReadIsLetGo()
+        {
+            // Arrange
+            var scope = ScopeAnchoredAt(new VisualElement());
+            typeof(FiberFontScope).GetField("_wantsFollow", Private).SetValue(scope, true);
+            CallPrivate(scope, "Follow");
+
+            // Act
+            CallPrivate(scope, "Tick");
+
+            // Assert
+            Assert.That(ReadField(scope, "_follow"), Is.Null);
+        }
+
+        // GREEN_ON_BASE(characterization): the base counts an inheritor's wait down by one a read. Flip the `-` of
+        // `entry.Wait - 1` and it counts up.
+        [Test]
+        public void Given_AnInheritorWithReadsToWait_When_TheFontIsReadOnce_Then_ItWaitsOneReadLess()
+        {
+            // Arrange
+            var scope = new FiberFontScope();
+            var element = new VisualElement();
+            scope.Inheritors[element] = new FiberFontScope.Inheritor(s_boldIntent, null, null, 2);
+
+            // Act
+            CallPrivate(scope, "Tick");
+
+            // Assert
+            Assert.That(scope.Inheritors[element].Wait, Is.EqualTo(1));
+        }
+
+        #endregion
     }
 }

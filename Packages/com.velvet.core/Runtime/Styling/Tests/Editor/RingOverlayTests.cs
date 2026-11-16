@@ -317,6 +317,28 @@ namespace Velvet.Tests
             Assert.That(top.parent.IndexOf(top), Is.GreaterThan(top.parent.IndexOf(AncestorUnder(top.parent, wrap))));
         }
 
+        // GREEN_ON_BASE(characterization): the base takes a clip proxy out of the host once the clip it stood over is gone.
+        [Test]
+        public void Given_AnOutlineInsideAClippingParent_When_ThatParentStopsClipping_Then_ItsProxyLeavesTheHost()
+        {
+            // Arrange
+            MountClippedOutline();
+            var clip = _window.rootVisualElement.Q<VisualElement>("clip");
+            var card = _window.rootVisualElement.Q<VisualElement>("a");
+            ForcePanelUpdate(clip.panel);
+            ForcePanelUpdate(clip.panel);
+            var binding = RingOverlay.TryGet(card);
+            var proxy = binding.OutlineOverlay.parent;
+
+            // Act
+            clip.style.overflow = Overflow.Visible;
+            ForcePanelUpdate(clip.panel);
+            OutlineHosting.Place(card, binding, force: true);
+
+            // Assert — read as a string where the arrangement did not hold, which no parent equals.
+            Assert.That(proxy.name == OutlineHosting.ProxyName && !OutlineHosting.Clips(clip) ? proxy.parent : (object)"arrangement", Is.Null);
+        }
+
         private void MountClippedOutline()
             => _mounted = V.Mount(_window.rootVisualElement,
                 V.Div(name: "wrap", className: "w-[300px] h-[200px]", children: new VNode[]

@@ -210,7 +210,11 @@ namespace Velvet
             else if (foreign && !intent.HasFamily)
             {
                 asset = null;
+                // MUTANT_SURVIVES(equivalent, literal): asset is null in this branch, and residualBold is read only
+                // where asset is not null.
                 residualBold = false;
+                // MUTANT_SURVIVES(equivalent, literal): asset is null in this branch, and residualItalic is read only
+                // where asset is not null.
                 residualItalic = false;
             }
             else

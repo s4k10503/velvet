@@ -27,7 +27,10 @@ namespace Velvet
         // RunPendingEffects bundles in. Callers that want the single-fiber cleanup→setup
         // pair should call RunPendingEffects instead.
         internal static void RunFactoriesAndClear(
-            ComponentFiber fiber, List<HookEffectSlot>? pending, bool mountDoubleInvoke = false,
+            ComponentFiber fiber, List<HookEffectSlot>? pending,
+            // MUTANT_SURVIVES(equivalent, literal): only a caller in an #else branch the editor does not compile leaves
+            // this out, and the strict-mode block it gates is compiled out there too.
+            bool mountDoubleInvoke = false,
             bool withImperativeHandles = false)
         {
             if (pending == null || pending.Count == 0)

@@ -19,6 +19,8 @@ namespace Velvet.Tests
     /// gate and is silent when the gate is off.</item>
     /// <item>When the gate is enabled, effect commit on mount runs an extra cleanup -> setup cycle (setup, cleanup,
     /// setup) so non-symmetric cleanup is surfaced; when disabled setup runs once with no cleanup.</item>
+    /// <item>The extra cycle also completes for a passive effect on a component that holds an imperative handle and no
+    /// layout effect.</item>
     /// <item>Unmount runs the single live cleanup, so setups and cleanups balance over a fiber's lifetime.</item>
     /// <item>An update commit whose deps changed runs cleanup -> setup exactly once: the double-invoke is a
     /// mount-only diagnostic and never tears down a live resource mid-frame.</item>
@@ -155,6 +157,21 @@ namespace Velvet.Tests
             Assert.That(s_effectSetupCount, Is.EqualTo(2), "The mount commit doubles the effect setup");
         }
 
+        // GREEN_ON_BASE(characterization): the base already completes the double cycle for an effect beside a handle.
+        [Test]
+        public void Given_GateOn_When_AnEffectWithNoLayoutEffectMountsBesideAHandle_Then_SetupRunsTwice()
+        {
+            // Arrange
+            FiberStrictMode.Enabled = true;
+
+            // Act
+            using var mounted = V.Mount(_root, V.Component(EffectWithHandleRender, key: "effect-handle"));
+            mounted.FlushEffectsForTest();
+
+            // Assert
+            Assert.That(s_effectWithHandleSetupCount, Is.EqualTo(2));
+        }
+
         [Test]
         public void Given_GateOn_When_EffectMounts_Then_CleanupRunsOnce()
         {
@@ -285,6 +302,7 @@ namespace Velvet.Tests
             s_impureDataValueState = 0;
             s_effectSetupCount = 0;
             s_effectCleanupCount = 0;
+            s_effectWithHandleSetupCount = 0;
             s_throwRenderCount = 0;
             s_depsEffectKey = null;
             s_closureRenderOrdinal = 0;
@@ -351,6 +369,21 @@ namespace Velvet.Tests
                 return () => s_effectCleanupCount++;
             }, Array.Empty<object>());
             return V.Label(text: "effect");
+        }
+
+        private static int s_effectWithHandleSetupCount;
+        private static readonly Ref<object> s_effectHandle = new();
+
+        [Component]
+        private static VNode EffectWithHandleRender()
+        {
+            Hooks.UseImperativeHandle(s_effectHandle, () => new object());
+            Hooks.UseEffect(() =>
+            {
+                s_effectWithHandleSetupCount++;
+                return (Action)null;
+            }, Array.Empty<object>());
+            return V.Label(text: "effect-handle");
         }
 
         #endregion

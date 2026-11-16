@@ -93,6 +93,24 @@ namespace Velvet.Tests
             Assert.That(RowModelAccess.Peek(container)!.ElementAt(0), Is.SameAs(container[0]));
         }
 
+        // GREEN_ON_BASE(characterization): the base watches the panel a pass reconciles onto. Drop
+        // `_ctx.RelationalTreeWatch.Watch(parent?.panel);` and no pass registers the watch.
+        [Test]
+        public void Given_APassOnAPanel_When_ItBegins_Then_TheContextWatchesThatPanel()
+        {
+            // Arrange
+            var panel = _window.rootVisualElement.panel;
+
+            // Act
+            using var mounted = V.Mount(_window.rootVisualElement, V.Div(name: "card"));
+
+            // Assert
+            var watched = (System.Collections.IDictionary)typeof(RelationalTreeWatch)
+                .GetField("_watched", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+                .GetValue(mounted.Root.Reconciler.Context.RelationalTreeWatch);
+            Assert.That(watched.Contains(panel), Is.True);
+        }
+
         // The row count the model of container holds at the moment child leaves the panel, which is inside the call of
         // the write that detaches it; -2 where the model is gone and -1 where child never left.
         private static Func<int> RowsSeenOnDetach(VisualElement container, VisualElement child)
