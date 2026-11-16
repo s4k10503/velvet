@@ -59,18 +59,13 @@ namespace Velvet.Tests
         private static StateUpdater<bool> s_showClicker;
         private static ComponentFiber s_ownerFiber;
 
-        // On a click asks for its own render. b's effect then writes; c records what was written before it rendered.
+        // On a click asks for its own render. c records what was written before it rendered.
         [Component]
-        private static VNode ReadsAndWrites(string name)
+        private static VNode RendersOnAClick(string name)
         {
             var (count, setCount) = Hooks.UseState(0);
             if (name == "b") s_bRenders++;
             if (name == "c") s_seen = s_shared;
-            Hooks.UseEffect(() =>
-            {
-                if (name == "b" && count > 0) s_shared = "b's effect of count " + count;
-                return (Action)null;
-            }, new object[] { count });
             return V.Button(text: name, onClick: () => setCount.Invoke(count + 1), refCallback: element =>
             {
                 if (name == "b") s_bButton = (Button)element;
@@ -79,13 +74,25 @@ namespace Velvet.Tests
             });
         }
 
-        // Clicks c's button, after b's where both, where its layout cleanup runs.
+        // Writes from the effect its mount commits.
         [Component]
-        private static VNode ClicksInItsCleanup(bool both)
+        private static VNode WritesFromItsMountEffect()
+        {
+            Hooks.UseEffect(() =>
+            {
+                s_shared = "a mounted root's effect";
+                return (Action)null;
+            }, Array.Empty<object>());
+            return V.Div();
+        }
+
+        // Where its layout cleanup runs, mounts a root that writes if mountsAWriter, then clicks c's button.
+        [Component]
+        private static VNode ClicksInItsCleanup(bool mountsAWriter)
         {
             Hooks.UseLayoutEffect(() => () =>
             {
-                if (both) s_bButton.SimulateClick();
+                if (mountsAWriter) Mount(V.Component(WritesFromItsMountEffect));
                 s_cButton.SimulateClick();
             }, Array.Empty<object>());
             return V.Div();
@@ -93,7 +100,7 @@ namespace Velvet.Tests
 
         // Writes from the effect of the render that drops the clicker.
         [Component]
-        private static VNode OwnerOfTheClicker(bool both)
+        private static VNode OwnerOfTheClicker(bool mountsAWriter)
         {
             var (shown, setShown) = Hooks.UseState(true);
             s_showClicker = setShown;
@@ -103,14 +110,13 @@ namespace Velvet.Tests
                 if (!shown) s_shared = "the owner's effect";
                 return (Action)null;
             }, new object[] { shown });
-            return V.Fragment(shown ? V.Component(ClicksInItsCleanup, both, key: "c") : null);
+            return V.Fragment(shown ? V.Component(ClicksInItsCleanup, mountsAWriter, key: "c") : null);
         }
 
-        private static void MountTheOwnerAnd(bool both)
+        private static void MountTheOwnerAnd(bool mountsAWriter)
         {
-            Mount(V.Component(ReadsAndWrites, "b")).FlushEffectsForTest();
-            Mount(V.Component(ReadsAndWrites, "c")).FlushEffectsForTest();
-            Mount(V.Component(OwnerOfTheClicker, both)).FlushEffectsForTest();
+            Mount(V.Component(RendersOnAClick, "c")).FlushEffectsForTest();
+            Mount(V.Component(OwnerOfTheClicker, mountsAWriter)).FlushEffectsForTest();
             s_shared = "before";
             s_seen = null;
         }
@@ -120,7 +126,7 @@ namespace Velvet.Tests
         public void Given_ANormalLaneCommitWithAPendingEffect_When_ARootIsHeldBehindIt_Then_TheEffectRanBeforeTheHeldRootRendered()
         {
             // Arrange
-            MountTheOwnerAnd(both: false);
+            MountTheOwnerAnd(mountsAWriter: false);
             s_showClicker.Invoke(false);
 
             // Act
@@ -130,18 +136,19 @@ namespace Velvet.Tests
             Assert.That(s_seen, Is.EqualTo("the owner's effect"));
         }
 
+        // The first is a mount rather than a click, whose sync-lane drain would run its effects itself.
         [Test]
         public void Given_TwoHeldRoots_When_TheFirstLeavesAPendingEffect_Then_ItRanBeforeTheSecondRendered()
         {
             // Arrange
-            MountTheOwnerAnd(both: true);
+            MountTheOwnerAnd(mountsAWriter: true);
             s_showClicker.Invoke(false);
 
             // Act
             FiberWorkLoop.FlushState(s_ownerFiber);
 
-            // Assert
-            Assert.That(s_seen, Is.EqualTo("b's effect of count 1"));
+            // Assert — "the owner's effect" where the release ran only the owner's, "before" where it ran neither
+            Assert.That(s_seen, Is.EqualTo("a mounted root's effect"));
         }
 
         // --- Where a root asked for in a render, a passive flush or a handler renders ---
@@ -251,7 +258,7 @@ namespace Velvet.Tests
         public void Given_ABareReconcileWhoseRefSetupClicksAnotherRoot_When_ItReturns_Then_TheOtherRootHasRendered()
         {
             // Arrange
-            Mount(V.Component(ReadsAndWrites, "b")).FlushEffectsForTest();
+            Mount(V.Component(RendersOnAClick, "b")).FlushEffectsForTest();
             var before = s_bRenders;
             using var scope = new ReconcilerScope();
             var tree = new VNode[]
