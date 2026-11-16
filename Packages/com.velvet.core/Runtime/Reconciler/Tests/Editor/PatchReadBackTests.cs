@@ -118,5 +118,49 @@ namespace Velvet.Tests
             }
             Assert.That(string.Join(",", order), Is.EqualTo("x,a"));
         }
+
+        private static VNode[] ClassTree(string className, VNode? later = null)
+        {
+            var rows = new List<VNode>
+            {
+                V.Div(name: "box", className: className, children: className.Contains("rounded")
+                    ? new VNode[] { V.Div(name: "inserted") }
+                    : Array.Empty<VNode>()),
+            };
+            if (later != null) rows.Add(later);
+            return rows.ToArray();
+        }
+
+        [Test]
+        public void Given_AnElementWhoseClassChangesAndWhoseChildIsInserted_When_ALaterRowIsCreatedInThePass_Then_ItStillHoldsTheOldClass()
+        {
+            // Arrange
+            var before = ClassTree("p-1");
+            _reconciler.Reconcile(_root, Array.Empty<VNode>(), before);
+            var box = _root.Q<VisualElement>("box");
+            var seen = true;
+
+            // Act
+            _reconciler.Reconcile(_root, before, ClassTree("p-1 rounded", V.ScrollView(onCreated: _ => seen = box.ClassListContains("rounded"))));
+
+            // Assert
+            Assert.That(seen, Is.False);
+        }
+
+        // GREEN_ON_BASE(characterization): the base writes the class as the patch runs; what the case pins is that the
+        // class is on the element once the reconcile returns, where the write waits for the end of the pass.
+        [Test]
+        public void Given_AnElementWhoseClassChangesAndWhoseChildIsInserted_When_TheReconcileReturns_Then_ItHoldsTheNewClass()
+        {
+            // Arrange
+            var before = ClassTree("p-1");
+            _reconciler.Reconcile(_root, Array.Empty<VNode>(), before);
+
+            // Act
+            _reconciler.Reconcile(_root, before, ClassTree("p-1 rounded"));
+
+            // Assert
+            Assert.That(_root.Q<VisualElement>("box").ClassListContains("rounded"), Is.True);
+        }
     }
 }

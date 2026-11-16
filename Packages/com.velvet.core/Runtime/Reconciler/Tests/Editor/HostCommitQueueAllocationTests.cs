@@ -124,7 +124,7 @@ namespace Velvet.Tests.Performance
             var label = new Label("a");
             parent.Add(label);
             var patcher = new FiberNodePatcher(_reconciler.Context);
-            var pending = new PendingPatch(patcher, label, new TextNode { Text = "a" }, new TextNode { Text = "b" });
+            var pending = new PendingPatch(patcher, label, new TextNode { Text = "a" }, new TextNode { Text = "b" }, 0);
             ChildListWrites.BeginRecording();
             Action reset = () => ChildListWrites.ApplyRecorded();
             Action recordAndApply = () =>

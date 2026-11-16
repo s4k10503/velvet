@@ -390,7 +390,7 @@ namespace Velvet
             var facts = Record(ctx, real, classElement, declared, resolved, anchored);
             if (ChildListWrites.IsRecording)
             {
-                ctx.PendingSettles.Add(real);
+                ctx.PendingSettles.Add(new ReconcilerContext.QueuedSettle(real, null, null, false, 0));
                 return;
             }
             Settle(ctx, real, facts);
@@ -398,13 +398,21 @@ namespace Velvet
 
         // Decides the stacking of what a pass patched, once its recorded writes have applied: the patch returned the
         // occupant its slot held before, which this swaps for the placeholder or the element itself where the facts say
-        // so. The facts are the ones held now, since OnResolved, Restack and Reorder track newer ones during the pass.
+        // so. The facts are the ones held now, since OnResolved, Restack and Reorder track newer ones during the pass. An
+        // element patched through staged halves has no facts of its own yet: they are recorded here, from the class
+        // arrays the applied halves have left.
         internal static void SettlePatched(ReconcilerContext ctx)
         {
             var pending = ctx.PendingSettles;
             for (var i = 0; i < pending.Count; i++)
             {
-                var real = pending[i];
+                var entry = pending[i];
+                if (entry.Patcher != null)
+                {
+                    entry.Patcher.CommitStacking(entry);
+                    continue;
+                }
+                var real = entry.Real;
                 Settle(ctx, real, ctx.StackingFacts.TryGetValue(real, out var facts) ? facts : null);
             }
             pending.Clear();

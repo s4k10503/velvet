@@ -448,19 +448,19 @@ namespace Velvet
         //
         // Inside a pass, an insert or a move the walk makes through HostCommitQueue into a container the pass did not
         // create updates the model and is recorded; the live list takes it where FinishPass starts (ApplyRecorded), in
-        // the order recorded. A label's text patch is recorded in the same list (PatchPre); it names no container, so
-        // a reader of the label's parent does not apply it. The readers the walk has moved to the model (ParentOf,
+        // the order recorded. A node's patch halves are recorded in the same list (PatchPre and PatchPost, the
+        // children's ops between them); they name no container, so a reader of the element's parent does not apply them. The readers the walk has moved to the model (ParentOf,
         // ChildCount, ElementAtPhysical and the reads above) answer from it meanwhile, and a container with a recorded
         // write is skipped by the checks that compare the model with the live list. Any other write into such a
         // container applies the recorded ones first, except one made while they apply, which is recorded behind them.
-        private enum OpKind : byte { Insert, RemoveAt, RemoveChild, PatchPre }
+        private enum OpKind : byte { Insert, RemoveAt, RemoveChild, PatchPre, PatchPost }
 
         private struct Op
         {
             internal VisualElement Container;
             internal VisualElement Caller;
             internal VisualElement Child;
-            // The index into s_patches of a PatchPre.
+            // The index into s_patches of a PatchPre or a PatchPost.
             internal int Index;
             internal OpKind Kind;
             internal bool ViaHierarchy;
@@ -607,10 +607,15 @@ namespace Velvet
             => s_recording && !s_applying && ParentOf(element) != null;
 
         // Records the first half of a patch behind every op recorded so far, to commit where the recorded ops apply.
-        internal static void RecordPatchPre(in PendingPatch patch)
+        internal static void RecordPatchPre(in PendingPatch patch) => RecordPatch(OpKind.PatchPre, patch);
+
+        // Records the second half, behind the ops of the children the walk reconciled between the two.
+        internal static void RecordPatchPost(in PendingPatch patch) => RecordPatch(OpKind.PatchPost, patch);
+
+        private static void RecordPatch(OpKind kind, in PendingPatch patch)
         {
             s_patches.Add(patch);
-            s_ops.Add(new Op { Index = s_patches.Count - 1, Kind = OpKind.PatchPre });
+            s_ops.Add(new Op { Index = s_patches.Count - 1, Kind = kind });
         }
 
         // For a reader of container's live child list: the recorded writes of the container apply first.
@@ -638,10 +643,11 @@ namespace Velvet
                 for (var i = 0; i < s_ops.Count; i++)
                 {
                     var op = s_ops[i];
-                    if (op.Kind == OpKind.PatchPre)
+                    if (op.Kind >= OpKind.PatchPre)
                     {
                         var patch = s_patches[op.Index];
-                        patch.Patcher.CommitPre(ref patch);
+                        if (op.Kind == OpKind.PatchPre) patch.Patcher.CommitPre(patch);
+                        else patch.Patcher.CommitPost(patch);
                         continue;
                     }
                     s_open++;

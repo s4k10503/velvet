@@ -415,6 +415,7 @@ namespace Velvet
                 // the same way.
                 _ctx.PendingPortalMounts.Clear();
                 _ctx.PendingSettles.Clear();
+                _ctx.CleanedElements.Clear();
                 // MUTANT_SURVIVES(equivalent): the set is read only for a placeholder the drain has just dequeued,
                 // and each placeholder is queued once, where FiberNodeFactory creates it, so an entry outliving
                 // the queue cleared above is never read again; what keeping it costs is holding the element.
@@ -1118,6 +1119,7 @@ namespace Velvet
             _ctx.PortalState.Clear();
             _ctx.PendingPortalMounts.Clear();
             _ctx.PendingSettles.Clear();
+            _ctx.CleanedElements.Clear();
             // MUTANT_SURVIVES(equivalent): as at the pass boundary, an entry outliving its queue is never read.
             _ctx.PendingHostPlaceholders.Clear();
             // ZLayerHosts/ZLayerMembers/StackingFacts are pure side-tables (dropped by ClearAllSideTables); these
