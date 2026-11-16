@@ -91,5 +91,24 @@ namespace Velvet.Tests
             // Assert
             Assert.That(RowModelAccess.Peek(container)!.ElementAt(0), Is.SameAs(container[0]));
         }
+
+        // GREEN_ON_BASE(characterization): the base watches the panel a pass reconciles onto, so a change made to
+        // its hierarchy outside every pass is announced to the models. Drop `_ctx.RelationalTreeWatch.Watch(parent?.panel);`
+        // and no pass registers the watch.
+        [Test]
+        public void Given_APassOnAPanel_When_ItBegins_Then_TheContextWatchesThatPanel()
+        {
+            // Arrange
+            var panel = _window.rootVisualElement.panel;
+
+            // Act
+            using var mounted = V.Mount(_window.rootVisualElement, V.Div(name: "card"));
+
+            // Assert
+            var watched = (System.Collections.IDictionary)typeof(RelationalTreeWatch)
+                .GetField("_watched", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+                .GetValue(mounted.Root.Reconciler.Context.RelationalTreeWatch);
+            Assert.That(watched.Contains(panel), Is.True);
+        }
     }
 }

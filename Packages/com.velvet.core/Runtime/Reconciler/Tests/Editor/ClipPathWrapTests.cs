@@ -814,5 +814,43 @@ namespace Velvet.Tests
 
             Assert.That((hostedWhileMounted, RingOverlayIn(scope.Root) != null), Is.EqualTo((true, false)));
         }
+
+        // GREEN_ON_BASE(characterization): the base detaches the wrapped inner before it reaches the pool. Drop
+        // `ChildListWrites.RemoveFromHierarchy(poolable);` and the inner is still the dead wrapper's child.
+        [Test]
+        public void Given_AClippedButton_When_Unmounted_Then_TheInnerButtonLeavesTheDeadWrapper()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { V.Button(className: Triangle, name: "card") };
+            Mount(scope, tree);
+            var inner = scope.Root.Q<Button>("card");
+            var wrapped = IsClipWrapped(inner);
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, tree, Array.Empty<VNode>());
+
+            // Assert — a button the clip never wrapped has no wrapper to leave, so the value read is one that is
+            // not null for it.
+            Assert.That(wrapped ? inner.parent : scope.Root, Is.Null);
+        }
+
+        // GREEN_ON_BASE(characterization): the base detaches the inner of a wrapper that has no parent. Drop
+        // `ChildListWrites.RemoveFromHierarchy(element);` in the branch for a wrapper without a parent and the inner
+        // stays inside it.
+        [Test]
+        public void Given_AWrapperWithNoParent_When_ItsInnerIsRestored_Then_TheInnerLeavesTheWrapper()
+        {
+            // Arrange
+            var wrapper = new VisualElement();
+            var inner = new VisualElement();
+            wrapper.Add(inner);
+
+            // Act
+            WrapperInfrastructure.RemoveWrapperRestoreInner(inner, wrapper);
+
+            // Assert
+            Assert.That(inner.parent, Is.Null);
+        }
     }
 }
