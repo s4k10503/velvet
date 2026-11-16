@@ -813,8 +813,8 @@ namespace Velvet.Tests
         [Test]
         public void Given_SiblingBoundariesWhoseFallbacksBothHaveLayoutEffectsCatchingInReverseTreeOrder_When_TheirFallbacksCommit_Then_EachReportFollowsItsOwnFallbacksLayoutEffect()
         {
-            // The last "fallback two, two" is the cleanup the update's setup returned, which the fallback's commit runs as it
-            // deletes the child. React's captureCommitPhaseError queues a capture update on the boundary, whose render has
+            // The last "two" is the cleanup the update's setup returned, which the fallback's commit runs as it
+            // deletes the child; the "fallback two" before it is the remounted fallback's layout effect. React's captureCommitPhaseError queues a capture update on the boundary, whose render has
             // DidCapture set and so unmounts the fallback it shows and mounts it again (finishClassComponent's
             // forceUnmountCurrentAndReconcile), and the report follows that commit.
             // Arrange — the second boundary catches first, so its fallback is pushed ahead of the first's.

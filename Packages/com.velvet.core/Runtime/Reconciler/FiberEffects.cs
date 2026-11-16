@@ -215,7 +215,7 @@ namespace Velvet
             // boundary no longer queued.
             foreach (var boundary in ctx.BoundariesOwedCaptures)
             {
-                if (!boundary.IsDirty) FiberWorkLoop.ScheduleRerender(boundary, FiberUpdatePriority.Urgent);
+                if (!boundary.IsDirty && !boundary.CatchUnreported) FiberWorkLoop.ScheduleRerender(boundary, FiberUpdatePriority.Urgent);
             }
             ctx.FlushingCaptures = true;
             try
