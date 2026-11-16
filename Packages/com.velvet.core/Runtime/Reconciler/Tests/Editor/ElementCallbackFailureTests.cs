@@ -536,6 +536,8 @@ namespace Velvet.Tests
             });
         }
 
+        // GREEN_ON_BASE(characterization): the base rendered the click inside the setup, so the element left while the
+        // setup ran and the drain fired the cleanup itself, which reached the same boundary.
         [Test]
         public void Given_ARefCleanupThatThrowsAsARenderRemovesItsElement_When_ABoundaryIsRegisteredAboveIt_Then_ItCatchesInsteadOfTheConsole()
         {
@@ -548,6 +550,8 @@ namespace Velvet.Tests
             Assert.That(caught, Is.EqualTo(true));
         }
 
+        // GREEN_ON_BASE(characterization): as for the case above, the base's drain fired the cleanup, and the later setup's
+        // write reached the DOM before the mount returned.
         [Test]
         public void Given_ARemovedElementsRefCleanupThrewIntoABoundary_When_ALaterSetupCommitsAStateWrite_Then_ItStillReachesTheDom()
         {

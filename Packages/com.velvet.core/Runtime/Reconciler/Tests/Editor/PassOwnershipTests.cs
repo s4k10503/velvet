@@ -432,6 +432,8 @@ namespace Velvet.Tests
             Assert.That(act, Throws.Nothing);
         }
 
+        // GREEN_ON_BASE(characterization): the base rendered each root where it was asked for, so the second has rendered
+        // by the time its pass returns.
         [Test]
         public void Given_TwoPassesThatEachHoldAMount_When_TheSecondEnds_Then_ItsRootHasRendered()
         {
