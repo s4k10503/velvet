@@ -1,3 +1,4 @@
+using System;
 using System.Text.RegularExpressions;
 using NUnit.Framework;
 using UnityEngine;
@@ -90,6 +91,131 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(RowModelAccess.Peek(container)!.ElementAt(0), Is.SameAs(container[0]));
+        }
+
+        // GREEN_ON_BASE(characterization): the base watches the panel a pass reconciles onto. Drop
+        // `_ctx.RelationalTreeWatch.Watch(parent?.panel);` and no pass registers the watch.
+        [Test]
+        public void Given_APassOnAPanel_When_ItBegins_Then_TheContextWatchesThatPanel()
+        {
+            // Arrange
+            var panel = _window.rootVisualElement.panel;
+
+            // Act
+            using var mounted = V.Mount(_window.rootVisualElement, V.Div(name: "card"));
+
+            // Assert
+            var watched = (System.Collections.IDictionary)typeof(RelationalTreeWatch)
+                .GetField("_watched", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+                .GetValue(mounted.Root.Reconciler.Context.RelationalTreeWatch);
+            Assert.That(watched.Contains(panel), Is.True);
+        }
+
+        // The row count the model of container holds at the moment child leaves the panel, which is inside the call of
+        // the write that detaches it; -2 where the model is gone and -1 where child never left.
+        private static Func<int> RowsSeenOnDetach(VisualElement container, VisualElement child)
+        {
+            var seen = -1;
+            child.RegisterCallback<DetachFromPanelEvent>(_ => seen = RowModelAccess.Peek(container)?.TotalCount ?? -2);
+            return () => seen;
+        }
+
+        private VisualElement Attached(VisualElement first, VisualElement second)
+        {
+            var container = new VisualElement();
+            ChildListWrites.Add(_window.rootVisualElement, container);
+            ChildListWrites.Add(container, first);
+            ChildListWrites.Add(container, second);
+            return container;
+        }
+
+        // GREEN_ON_BASE(characterization): a hierarchy change announced inside a write marks an element that write does not touch for comparison.
+        [Test]
+        public void Given_AnElementOutsideTheWriteWhoseListChangedBehindItsModel_When_ItsChangeIsAnnouncedFromTheWritesDetach_Then_ItsModelIsRebuilt()
+        {
+            // Arrange
+            var root = _window.rootVisualElement;
+            var source = new VisualElement();
+            var destination = new VisualElement();
+            var bystander = new VisualElement();
+            ChildListWrites.Add(root, source);
+            ChildListWrites.Add(root, destination);
+            ChildListWrites.Add(bystander, new VisualElement());
+            ChildListWrites.Add(bystander, new VisualElement());
+            bystander.Add(new VisualElement());
+            var child = new VisualElement();
+            ChildListWrites.Add(source, child);
+            child.RegisterCallback<DetachFromPanelEvent>(_ => ChildListWrites.NoteHierarchyChange(bystander));
+
+            // Act
+            ChildListWrites.Add(destination, child);
+
+            // Assert
+            Assert.That(RowModelAccess.Peek(bystander)!.TotalCount, Is.EqualTo(3));
+        }
+
+        // GREEN_ON_BASE(characterization): the model drops a removed child before the call that detaches it.
+        [Test]
+        public void Given_AChildOfTwo_When_ItIsRemoved_Then_TheModelHoldsOneWhileItLeaves()
+        {
+            // Arrange
+            var child = new VisualElement();
+            var container = Attached(new VisualElement(), child);
+            var seen = RowsSeenOnDetach(container, child);
+
+            // Act
+            ChildListWrites.Remove(container, child);
+
+            // Assert
+            Assert.That(seen(), Is.EqualTo(1));
+        }
+
+        // GREEN_ON_BASE(characterization): the model drops the first child by index before the call that detaches it.
+        [Test]
+        public void Given_AFirstChildOfTwo_When_ItIsRemovedByIndex_Then_TheModelHoldsOneWhileItLeaves()
+        {
+            // Arrange
+            var child = new VisualElement();
+            var container = Attached(child, new VisualElement());
+            var seen = RowsSeenOnDetach(container, child);
+
+            // Act
+            ChildListWrites.RemoveAt(container, 0);
+
+            // Assert
+            Assert.That(seen(), Is.EqualTo(1));
+        }
+
+        // GREEN_ON_BASE(characterization): the model drops a child removed from its own parent before the call that detaches it.
+        [Test]
+        public void Given_AChildOfTwo_When_ItIsRemovedFromItsHierarchy_Then_TheModelHoldsOneWhileItLeaves()
+        {
+            // Arrange
+            var child = new VisualElement();
+            var container = Attached(new VisualElement(), child);
+            var seen = RowsSeenOnDetach(container, child);
+
+            // Act
+            ChildListWrites.RemoveFromHierarchy(child);
+
+            // Assert
+            Assert.That(seen(), Is.EqualTo(1));
+        }
+
+        // GREEN_ON_BASE(characterization): the model is emptied before the call that detaches the children.
+        [Test]
+        public void Given_AContainerOfTwo_When_ItIsCleared_Then_TheModelHoldsNothingWhileTheChildrenLeave()
+        {
+            // Arrange
+            var child = new VisualElement();
+            var container = Attached(child, new VisualElement());
+            var seen = RowsSeenOnDetach(container, child);
+
+            // Act
+            ChildListWrites.Clear(container);
+
+            // Assert
+            Assert.That(seen(), Is.EqualTo(0));
         }
     }
 }

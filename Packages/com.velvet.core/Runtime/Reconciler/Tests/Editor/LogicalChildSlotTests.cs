@@ -267,5 +267,19 @@ namespace Velvet.Tests
                     box.Q<VisualElement>("b").ClassListContains("underline")),
                 Is.EqualTo((false, true)));
         }
+
+        // GREEN_ON_BASE(characterization): no container holds no slot, and an append there has nowhere to go.
+        [Test]
+        public void Given_NoContainer_When_ASlotIsLookedUp_Then_NoChildHoldsIt()
+        {
+            // Arrange
+            VisualElement container = null!;
+
+            // Act
+            var found = LogicalChildSlots.TryGetPhysical(container, 0, out _);
+
+            // Assert
+            Assert.That(found, Is.False);
+        }
     }
 }

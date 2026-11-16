@@ -115,6 +115,7 @@ namespace Velvet
                     }
                     else
                     {
+                        // MUTANT_SURVIVES(equivalent, line removed): PhysicalIndexOf misses only an element outside the content list the insertion below indexes, and InsertCore takes the child out of wherever it stands.
                         ChildListWrites.RemoveFromHierarchy(element);
                     }
                 }
