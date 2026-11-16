@@ -104,9 +104,12 @@ namespace Velvet.Tests
                 .ToList();
 
             // Act
-            var direct = calls.Where(call => call == "ChildListWrites.RemoveAt" || call == "ChildListWrites.RemoveRow")
+            var direct = calls
+                .Where(call => call == nameof(ChildListWrites) + "." + nameof(ChildListWrites.RemoveAt)
+                    || call == nameof(ChildListWrites) + "." + nameof(ChildListWrites.RemoveRow))
                 .Select(call => "writes the list itself: " + call);
-            var missing = calls.Contains("HostCommitQueue.RemoveRow") ? Enumerable.Empty<string>() : new[] { "missing: HostCommitQueue.RemoveRow" };
+            var missing = calls.Contains(nameof(HostCommitQueue) + "." + nameof(HostCommitQueue.RemoveRow))
+                ? Enumerable.Empty<string>() : new[] { "missing: HostCommitQueue.RemoveRow" };
 
             // Assert — a cleaner that moved or was renamed would scan as clean, so what the queue's call is missing
             // is reported in the same text.
@@ -121,7 +124,7 @@ namespace Velvet.Tests
         {
             nameof(ChildReconciler) + "." + nameof(ChildReconciler.DrainPendingPortalMounts),
             nameof(FiberZLayerCoordinator) + "." + nameof(FiberZLayerCoordinator.SettlePatched),
-            nameof(FiberElementCleaner) + ".ReleasePendingPoolReturns",
+            nameof(FiberElementCleaner) + "." + nameof(FiberElementCleaner.ReleasePendingPoolReturns),
             nameof(FiberElementCleaner) + "." + nameof(FiberElementCleaner.ReleaseRetiredZLayerReals),
             nameof(FiberZLayerCoordinator) + "." + nameof(FiberZLayerCoordinator.DrainTeardowns),
             nameof(FiberZLayerCoordinator) + "." + nameof(FiberZLayerCoordinator.ResortLayers),

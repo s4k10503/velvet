@@ -414,10 +414,16 @@ namespace Velvet
                     // After the drain, which places the relocated elements this pass deferred, and in a finally of
                     // its own so a drain that throws still leaves neither a retired child standing nor a parent
                     // pending into the next pass, and a coordinator call that throws still reaches the resets below.
-                    ElementCleaner.ReleasePendingPoolReturns();
-                    ElementCleaner.ReleaseRetiredZLayerReals();
-                    FiberZLayerCoordinator.DrainTeardowns(_ctx);
-                    FiberZLayerCoordinator.ResortLayers(_ctx);
+                    try
+                    {
+                        ElementCleaner.ReleasePendingPoolReturns();
+                    }
+                    finally
+                    {
+                        ElementCleaner.ReleaseRetiredZLayerReals();
+                        FiberZLayerCoordinator.DrainTeardowns(_ctx);
+                        FiberZLayerCoordinator.ResortLayers(_ctx);
+                    }
                 }
                 applyFailure?.Throw();
             }

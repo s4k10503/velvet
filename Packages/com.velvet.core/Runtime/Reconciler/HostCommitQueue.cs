@@ -44,13 +44,12 @@ namespace Velvet
             if (at >= 0) _cleaner.RemoveElement(parent, at);
         }
 
-        // The child-list write of a row FiberElementCleaner has taken down, which is the one write of a removal that
-        // waits for the end of the pass. record is false for a row of a Portal range in a world-space host, which
-        // CleanupWorldSpaceHost destroys before the pass ends.
-        internal void RemoveRow(VisualElement parent, VisualElement element, bool record)
+        // The child-list write of a row FiberElementCleaner has taken down. The element's return to its pool waits for
+        // the end of the pass as well (FiberElementCleaner.ReleasePendingPoolReturns).
+        internal void RemoveRow(VisualElement parent, VisualElement element)
         {
             ChildListWrites.ViaQueue++;
-            try { ChildListWrites.RemoveRow(parent, element, record); }
+            try { ChildListWrites.RemoveRow(parent, element); }
             finally { ChildListWrites.ViaQueue--; }
         }
 

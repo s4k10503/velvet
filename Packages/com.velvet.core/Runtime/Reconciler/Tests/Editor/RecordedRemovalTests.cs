@@ -174,5 +174,23 @@ namespace Velvet.Tests
             // Assert
             Assert.That(ReferenceEquals(rented, removed), Is.True);
         }
+
+        [Test]
+        public void Given_ARemovedRowWaitingForThePassToEnd_When_ItsReconcilerIsDisposed_Then_NoReturnIsLeftQueued()
+        {
+            // Arrange
+            var owner = new Reconciler();
+            var parent = new VisualElement();
+            var label = new Label("x");
+            parent.Add(label);
+            ChildListWrites.BeginRecording();
+            owner.Context.HostCommit.Remove(parent, label);
+
+            // Act
+            owner.Dispose();
+
+            // Assert
+            Assert.That(owner.Context.PendingPoolReturns.Count, Is.Zero);
+        }
     }
 }

@@ -480,9 +480,9 @@ namespace Velvet
         // Raised by HostCommitQueue around the writes it makes, which are the ones recorded.
         internal static int ViaQueue;
 
-        // Whether a removal made now can still be waiting for the live list: the ones a pass has recorded land where its
-        // FinishPass starts, and one made while they apply is recorded behind them.
-        internal static bool HoldsUnappliedWrites => s_recording || s_applying;
+        // Whether a pass is recording or its recorded writes are applying, whatever it has recorded. The flag belongs to
+        // the process and not to one context, so another context's pass raises it too.
+        internal static bool PassIsOpen => s_recording || s_applying;
 
         // A pass starting where another is still recording applies the other's writes first.
         internal static void BeginRecording()
@@ -565,12 +565,12 @@ namespace Velvet
         }
 
         // Takes a row out of its container, by reference where it is recorded, for the reason
-        // FiberElementCleaner.RemoveCleaned gives. record is false for a row that has to leave the live list at once.
-        internal static void RemoveRow(VisualElement parent, VisualElement element, bool record)
+        // FiberElementCleaner.RemoveCleaned gives.
+        internal static void RemoveRow(VisualElement parent, VisualElement element)
         {
             var at = PhysicalIndexOf(parent, element);
             if (at < 0) return;
-            if (record && ShouldRecord(ContentOf(parent), element)) RecordRemoveChild(element);
+            if (ShouldRecord(ContentOf(parent), element)) RecordRemoveChild(element);
             else RemoveAt(parent, at);
         }
 
