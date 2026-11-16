@@ -22,12 +22,50 @@ namespace Velvet
         private readonly List<List<VisualElement>> _childrenAtDepth = new();
         private int _depth;
 
+        private readonly List<Step> _plan = new();
+
+        private struct Step
+        {
+            public ComponentFiber? Fiber;
+            public VisualElement? Element;
+        }
+
         protected abstract void TakeDown(ComponentFiber fiber);
 
         protected abstract void TakeDown(VisualElement element);
 
         // A root of the walk is visited as one, so where it is also the child of another root it is passed over there.
         protected abstract bool IsRoot(VisualElement element);
+
+        // Whether the walk records its take-downs and RunPlan runs them afterwards. What the walk reaches and in what
+        // order is then read from the tree as it stands before the first cleanup runs, as React's deletion walk takes
+        // it from the fiber tree: a cleanup that changes the host children changes neither. A walk that reads a hold a
+        // cleanup can take (SuspenseOffscreenCommit.WalksOn) runs each take-down as it reaches it.
+        protected virtual bool PlansTakeDowns => false;
+
+        // Runs what the walk recorded, in the order it recorded it.
+        protected void RunPlan()
+        {
+            for (var i = 0; i < _plan.Count; i++)
+            {
+                var step = _plan[i];
+                if (step.Fiber != null) TakeDown(step.Fiber);
+                else TakeDown(step.Element!);
+            }
+            ClearAndTrim(_plan);
+        }
+
+        protected void Take(ComponentFiber fiber)
+        {
+            if (PlansTakeDowns) _plan.Add(new Step { Fiber = fiber });
+            else TakeDown(fiber);
+        }
+
+        private void Take(VisualElement element)
+        {
+            if (PlansTakeDowns) _plan.Add(new Step { Element = element });
+            else TakeDown(element);
+        }
 
         // Whether the walk goes on past what starts at the element it is visiting, into the element and below it.
         protected virtual bool WalksOn() => true;
@@ -138,7 +176,7 @@ namespace Velvet
             if (!_visited.Add(element)) return;
             TakeDownStartingAt(element);
             if (!WalksOn()) return;
-            TakeDown(element);
+            Take(element);
             if (_depth == _childrenAtDepth.Count) _childrenAtDepth.Add(new List<VisualElement>());
             var children = _childrenAtDepth[_depth++];
             try
@@ -199,7 +237,7 @@ namespace Velvet
         private void TakeDownFrom(Dictionary<VisualElement, (int Head, int Tail)> chains, VisualElement at)
         {
             if (!chains.TryGetValue(at, out var chain)) return;
-            for (var i = chain.Head; i >= 0; i = _placed[i].Next) TakeDown(_placed[i].Fiber);
+            for (var i = chain.Head; i >= 0; i = _placed[i].Next) Take(_placed[i].Fiber);
         }
 
         protected virtual void Clear()
@@ -211,6 +249,7 @@ namespace Velvet
             ClearAndTrim(_endingIn);
             ClearAndTrim(_endingInPortal);
             ClearAndTrim(_placed);
+            ClearAndTrim(_plan);
             _rendered.Clear();
             ClearAndTrim(_visited);
         }
