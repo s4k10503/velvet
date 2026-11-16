@@ -5,9 +5,9 @@ namespace Velvet
 {
     // What one half of a node's patch needs to write the element once the pass applies its recorded ops: the patcher
     // that commits it, the nodes the diff ran between, and the cleanup count when it was recorded, which an op reads to
-    // tell the element was cleaned since. The tail of an element patched at once carries the class arrays and the clip
-    // verdict its passes read instead of the nodes. Kept in ChildListWrites' list beside the op it belongs to, so
-    // recording one allocates nothing.
+    // tell the element was cleaned since. A tail carries what CommitTail reads instead of the nodes: the class arrays and
+    // the clip verdict of the post-children passes, or the layout id and timing of the layoutId driver's call. Kept in
+    // ChildListWrites' list beside the op it belongs to, so recording one allocates nothing.
     internal readonly struct PendingPatch
     {
         internal PendingPatch(FiberNodePatcher patcher, VisualElement element, VNode? oldNode, VNode? newNode, int serial)
