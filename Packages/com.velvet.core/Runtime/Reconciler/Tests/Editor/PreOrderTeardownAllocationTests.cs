@@ -18,14 +18,22 @@ namespace Velvet.Tests
         private sealed class PlacingWalk : PreOrderTeardown
         {
             private readonly ReconcilerContext _context;
+            private readonly bool _plans;
 
-            internal PlacingWalk(ReconcilerContext context) => _context = context;
+            internal PlacingWalk(ReconcilerContext context, bool plans)
+            {
+                _context = context;
+                _plans = plans;
+            }
+
+            protected override bool PlansTakeDowns => _plans;
 
             internal void PlaceAndTakeDown(List<VisualElement> rows, List<ComponentFiber> fibers)
             {
                 Ctx = _context;
                 for (var i = 0; i < rows.Count; i++) PlaceAt(rows[i], fibers[i]);
                 for (var i = 0; i < rows.Count; i++) TakeDownStartingAt(rows[i]);
+                RunPlan();
                 Clear();
             }
 
@@ -40,11 +48,12 @@ namespace Velvet.Tests
             protected override bool IsRoot(VisualElement element) => false;
         }
 
-        [Test]
-        public void Given_AWarmWalk_When_ItPlacesAndTakesDownAThousandFibersEachAtARowOfItsOwn_Then_NothingIsAllocated()
+        [TestCase(false)]
+        [TestCase(true)]
+        public void Given_AWarmWalk_When_ItPlacesAndTakesDownAThousandFibersEachAtARowOfItsOwn_Then_NothingIsAllocated(bool plans)
         {
             // Arrange
-            var walk = new PlacingWalk(new ReconcilerContext());
+            var walk = new PlacingWalk(new ReconcilerContext(), plans);
             var rows = new List<VisualElement>(Rows);
             var fibers = new List<ComponentFiber>(Rows);
             for (var i = 0; i < Rows; i++)
