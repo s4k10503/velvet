@@ -77,6 +77,7 @@ namespace Velvet
             }
             for (; next < _orphanRows.Count; next++) TakeDownStartingAt(_orphanRows[next].Start);
             TakeDownTheRest();
+            RunPlan();
             foreach (var (root, mounted) in _roots) Ctx.RemovalsTakenDown[root] = mounted;
         }
 
@@ -106,6 +107,7 @@ namespace Velvet
                 foreach (var fiber in commit._fibers) commit.Place(fiber);
                 commit.VisitRow(element);
                 commit.TakeDownTheRest();
+                commit.RunPlan();
                 return mounted;
             }
             finally
@@ -225,8 +227,10 @@ namespace Velvet
         private void TakeDownAncestorsFirst(ComponentFiber fiber)
         {
             if (fiber.Parent != null && _collected.Contains(fiber.Parent)) TakeDownAncestorsFirst(fiber.Parent);
-            TakeDown(fiber);
+            Take(fiber);
         }
+
+        protected override bool PlansTakeDowns => true;
 
         protected override void TakeDown(ComponentFiber fiber) => FiberEffects.CleanUpDeleted(fiber);
 
