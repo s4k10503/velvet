@@ -27,6 +27,8 @@ namespace Velvet.Tests
         [TearDown]
         public void TearDown()
         {
+            _mounted?.Dispose();
+            _mounted = null;
             ChildListWrites.EndRecording(_second.Context.Pass);
             ChildListWrites.EndRecording(_first.Context.Pass);
             _first.Dispose();
@@ -203,21 +205,27 @@ namespace Velvet.Tests
             Assert.That(parent.childCount, Is.EqualTo(1));
         }
 
-        private VNode[] TreeAskingForHeldWork(Action<ReconcilerContext> ask)
-            => new VNode[] { V.ScrollView(onCreated: _ => ask(_second.Context)) };
+        private VNode[] TreeAskingForHeldWork(Action<FiberBatchScheduler> ask)
+            => new VNode[] { V.ScrollView(onCreated: _ => ask(_second.Context.BatchScheduler)) };
 
         private void RecordAnApplyThatThrows()
             => ChildListWrites.RecordPatchPre(new PendingPatch(
                 new FiberNodePatcher(_first.Context), new Label(), null, new ElementNode(), 0));
 
+        private static void Hold(FiberBatchScheduler owner, Action run)
+            => FiberExecutionContext.Hold(FiberExecutionContext.Request.Flush, null, owner, run);
+
+        // Held work that, as it is made, holds more: the release runs it with nothing set, so it opens its own entry.
+        private static Action InAnEntry(Action ask) => () => FiberExecutionContext.Enter<object?>(null, null, _ => ask());
+
         [Test]
         public void Given_AHeldItemThatThrows_When_TheOwnersPassEndsInAnException_Then_TheOwnersExceptionPropagates()
         {
-            // Arrange — the held item's exception is logged, since the owner's is the one in flight
+            // Arrange — the held item's exception is logged
             LogAssert.Expect(LogType.Exception, new Regex("held"));
-            var tree = TreeAskingForHeldWork(context =>
+            var tree = TreeAskingForHeldWork(owner =>
             {
-                ChildListWrites.HoldMount(() => throw new InvalidOperationException("held"), context);
+                Hold(owner, () => throw new InvalidOperationException("held"));
                 RecordAnApplyThatThrows();
             });
 
@@ -232,21 +240,16 @@ namespace Velvet.Tests
         public void Given_AHeldItemThatThrows_When_ThePassEnds_Then_TheItemAfterItStillRendered()
         {
             // Arrange
+            LogAssert.Expect(LogType.Exception, new Regex("held"));
             var host = new VisualElement();
-            var tree = TreeAskingForHeldWork(context =>
+            var tree = TreeAskingForHeldWork(owner =>
             {
-                ChildListWrites.HoldMount(() => throw new InvalidOperationException("held"), context);
+                Hold(owner, () => throw new InvalidOperationException("held"));
                 _mounted = V.Mount(host, V.Div(name: "b"));
             });
 
             // Act
-            try
-            {
-                _first.Reconcile(new VisualElement(), Array.Empty<VNode>(), tree);
-            }
-            catch (InvalidOperationException)
-            {
-            }
+            _first.Reconcile(new VisualElement(), Array.Empty<VNode>(), tree);
             var rendered = host.childCount;
             _mounted?.Dispose();
 
@@ -254,18 +257,19 @@ namespace Velvet.Tests
             Assert.That(rendered, Is.EqualTo(1));
         }
 
+        // React reports an error a root's work throws where that work ran, not to whatever ended the entry before it.
         [Test]
-        public void Given_AHeldItemThatThrows_When_ThePassEnds_Then_ItsExceptionIsRethrown()
+        public void Given_AHeldItemThatThrows_When_ThePassEnds_Then_ItsExceptionIsLoggedRatherThanThrown()
         {
             // Arrange
-            var tree = TreeAskingForHeldWork(context =>
-                ChildListWrites.HoldMount(() => throw new InvalidOperationException("held"), context));
+            LogAssert.Expect(LogType.Exception, new Regex("held"));
+            var tree = TreeAskingForHeldWork(owner => Hold(owner, () => throw new InvalidOperationException("held")));
 
             // Act
             TestDelegate act = () => _first.Reconcile(new VisualElement(), Array.Empty<VNode>(), tree);
 
             // Assert
-            Assert.Throws<InvalidOperationException>(act);
+            Assert.That(act, Throws.Nothing);
         }
 
         [Test]
@@ -273,16 +277,14 @@ namespace Velvet.Tests
         {
             // Arrange
             var log = new System.Collections.Generic.List<string>();
-            var tree = TreeAskingForHeldWork(context =>
+            var tree = TreeAskingForHeldWork(owner =>
             {
-                ChildListWrites.HoldMount(() =>
+                Hold(owner, InAnEntry(() =>
                 {
                     log.Add("a");
-                    ChildListWrites.EnterCommit();
-                    ChildListWrites.HoldMount(() => log.Add("c"), context);
-                    ChildListWrites.LeaveCommit();
-                }, context);
-                ChildListWrites.HoldMount(() => log.Add("b"), context);
+                    Hold(owner, () => log.Add("c"));
+                }));
+                Hold(owner, () => log.Add("b"));
             });
 
             // Act
@@ -295,52 +297,78 @@ namespace Velvet.Tests
         // Held work that asks for itself again while it is made, sixty times in all: past the limit, and finite where the
         // limit is not kept.
         private VNode[] TreeAskingForItselfAgainSixtyTimes(Action? eachRun = null)
-            => TreeAskingForHeldWork(context =>
+            => TreeAskingForHeldWork(owner =>
             {
                 var left = 60;
                 Action again = null!;
-                again = () =>
+                again = InAnEntry(() =>
                 {
                     eachRun?.Invoke();
                     if (--left == 0) return;
-                    ChildListWrites.EnterCommit();
-                    ChildListWrites.HoldMount(again, context);
-                    ChildListWrites.LeaveCommit();
-                };
-                ChildListWrites.HoldMount(again, context);
+                    Hold(owner, again);
+                });
+                Hold(owner, again);
             });
 
         [Test]
-        public void Given_HeldWorkThatAsksForItselfAgainSixtyTimes_When_ThePassEnds_Then_TheNestedUpdateLimitIsThrown()
+        public void Given_HeldWorkThatAsksForItselfAgainSixtyTimes_When_ThePassEnds_Then_TheNestedUpdateLimitIsLogged()
         {
             // Arrange
+            LogAssert.Expect(LogType.Exception, new Regex("Maximum update depth exceeded"));
             var tree = TreeAskingForItselfAgainSixtyTimes();
 
             // Act
             TestDelegate act = () => _first.Reconcile(new VisualElement(), Array.Empty<VNode>(), tree);
 
             // Assert
-            Assert.That(act, Throws.InvalidOperationException.With.Message.Contains("Maximum update depth"));
+            Assert.That(act, Throws.Nothing);
         }
 
         [Test]
         public void Given_HeldWorkThatAsksForItselfAgainSixtyTimes_When_ThePassEnds_Then_ItRanAsOftenAsTheLimitAllows()
         {
             // Arrange
+            LogAssert.Expect(LogType.Exception, new Regex("Maximum update depth exceeded"));
             var runs = 0;
             var tree = TreeAskingForItselfAgainSixtyTimes(() => runs++);
 
             // Act
-            try
-            {
-                _first.Reconcile(new VisualElement(), Array.Empty<VNode>(), tree);
-            }
-            catch (InvalidOperationException)
-            {
-            }
+            _first.Reconcile(new VisualElement(), Array.Empty<VNode>(), tree);
 
             // Assert
             Assert.That(runs, Is.EqualTo(50));
+        }
+
+        // A mount nothing asks for again is made past the bound that stops a root's work from asking for itself forever:
+        // the fiftieth run holds the mount behind the run the bound refuses.
+        [Test]
+        public void Given_ARootPastTheBound_When_ItsMountIsHeldBehindIt_Then_TheMountIsStillMade()
+        {
+            // Arrange
+            LogAssert.Expect(LogType.Exception, new Regex("Maximum update depth exceeded"));
+            var host = new VisualElement();
+            var tree = TreeAskingForHeldWork(owner =>
+            {
+                var left = 60;
+                Action again = null!;
+                again = InAnEntry(() =>
+                {
+                    if (--left == 0) return;
+                    Hold(owner, again);
+                    if (left != 10) return;
+                    FiberExecutionContext.Hold(FiberExecutionContext.Request.Mount, null, owner,
+                        () => _mounted = V.Mount(host, V.Div(name: "b")));
+                });
+                Hold(owner, again);
+            });
+
+            // Act
+            _first.Reconcile(new VisualElement(), Array.Empty<VNode>(), tree);
+            var rendered = host.childCount;
+            _mounted?.Dispose();
+
+            // Assert
+            Assert.That(rendered, Is.EqualTo(1));
         }
 
         [Test]
@@ -349,9 +377,9 @@ namespace Velvet.Tests
             // Arrange
             var host = new VisualElement();
             s_heldRenders = 0;
-            var tree = TreeAskingForHeldWork(context =>
+            var tree = TreeAskingForHeldWork(owner =>
             {
-                ChildListWrites.HoldMount(() => _mounted!.Dispose(), context);
+                Hold(owner, () => _mounted!.Dispose());
                 _mounted = V.Mount(host, V.Component(CountsItsRenders));
             });
 
@@ -379,13 +407,13 @@ namespace Velvet.Tests
         {
             // Arrange
             using var other = V.Mount(new VisualElement(), V.Component(CountsItsStateRenders));
-            var otherContext = other.Root.Reconciler!.Context;
+            var otherScheduler = other.Root.Reconciler!.Context.BatchScheduler;
             var before = s_countedRenders;
-            var tree = TreeAskingForHeldWork(context =>
+            var tree = TreeAskingForHeldWork(owner =>
             {
-                ChildListWrites.HoldsFlush(context);
+                owner.FlushImmediate();
                 s_setCounted.Invoke(1);
-                ChildListWrites.HoldsFlush(otherContext);
+                otherScheduler.FlushImmediate();
             });
 
             // Act
@@ -400,13 +428,13 @@ namespace Velvet.Tests
         {
             // Arrange
             using var other = V.Mount(new VisualElement(), V.Component(CountsItsStateRenders));
-            var otherContext = other.Root.Reconciler!.Context;
+            var otherScheduler = other.Root.Reconciler!.Context.BatchScheduler;
             var before = s_countedRenders;
             var tree = TreeAskingForHeldWork(_ =>
             {
-                ChildListWrites.HoldMount(() => { }, otherContext);
+                FiberExecutionContext.Hold(FiberExecutionContext.Request.Mount, otherScheduler, otherScheduler, () => { });
                 s_setCounted.Invoke(1);
-                ChildListWrites.HoldsFlush(otherContext);
+                otherScheduler.FlushImmediate();
             });
 
             // Act
@@ -420,9 +448,9 @@ namespace Velvet.Tests
         public void Given_AFlushAskedForMoreTimesThanTheNestedUpdateLimitInsideAWalk_When_ThePassEnds_Then_NothingIsThrown()
         {
             // Arrange
-            var tree = TreeAskingForHeldWork(context =>
+            var tree = TreeAskingForHeldWork(owner =>
             {
-                for (var i = 0; i < 60; i++) ChildListWrites.HoldsFlush(context);
+                for (var i = 0; i < 60; i++) owner.FlushImmediate();
             });
 
             // Act
@@ -457,14 +485,14 @@ namespace Velvet.Tests
         {
             // Arrange
             var log = new System.Collections.Generic.List<string>();
-            var tree = TreeAskingForHeldWork(context =>
+            var tree = TreeAskingForHeldWork(owner =>
             {
-                ChildListWrites.HoldMount(() =>
+                Hold(owner, () =>
                 {
-                    ChildListWrites.RunEntry<object?>(null, null, _ => log.Add("entry"));
+                    FiberExecutionContext.Enter<object?>(null, null, _ => log.Add("entry"));
                     log.Add("after the entry");
-                }, context);
-                ChildListWrites.HoldMount(() => log.Add("behind"), context);
+                });
+                Hold(owner, () => log.Add("behind"));
             });
 
             // Act
@@ -474,12 +502,12 @@ namespace Velvet.Tests
             Assert.That(string.Join(",", log), Is.EqualTo("entry,after the entry,behind"));
         }
 
-        private static ReconcilerContext s_holdIn = null!;
+        private static FiberBatchScheduler s_holdIn = null!;
 
         // Holds work that throws, from inside its own first walk.
         [Component]
         private static VNode HoldsWorkThatThrows()
-            => V.ScrollView(onCreated: _ => ChildListWrites.HoldMount(() => throw new InvalidOperationException("held"), s_holdIn));
+            => V.ScrollView(onCreated: _ => Hold(s_holdIn, () => throw new InvalidOperationException("held")));
 
         // Holds work that throws, and then writes its state from every layout effect it runs, past the nested-update limit.
         [Component]
@@ -491,21 +519,22 @@ namespace Velvet.Tests
                 setN.Invoke(n + 1);
                 return (Action)null!;
             }, new object[] { n });
-            return V.ScrollView(onCreated: _ => ChildListWrites.HoldMount(() => throw new InvalidOperationException("held"), s_holdIn));
+            return V.ScrollView(onCreated: _ => Hold(s_holdIn, () => throw new InvalidOperationException("held")));
         }
 
         [Test]
-        public void Given_HeldWorkThatThrows_When_TheMountThatHeldItEnds_Then_ItsExceptionIsRethrown()
+        public void Given_HeldWorkThatThrows_When_TheMountThatHeldItEnds_Then_VMountReturnsItsHandle()
         {
             // Arrange
             FiberStrictMode.Enabled = false;
-            s_holdIn = _second.Context;
+            s_holdIn = _second.Context.BatchScheduler;
+            LogAssert.Expect(LogType.Exception, new Regex("held"));
 
             // Act
-            TestDelegate act = () => _mounted = V.Mount(new VisualElement(), V.Component(HoldsWorkThatThrows));
+            _mounted = V.Mount(new VisualElement(), V.Component(HoldsWorkThatThrows));
 
             // Assert
-            Assert.That(act, Throws.InvalidOperationException.With.Message.EqualTo("held"));
+            Assert.That(_mounted, Is.Not.Null);
         }
 
         [Test]
@@ -513,7 +542,7 @@ namespace Velvet.Tests
         {
             // Arrange — the held work's exception is logged, since the mount's is the one in flight
             FiberStrictMode.Enabled = false;
-            s_holdIn = _second.Context;
+            s_holdIn = _second.Context.BatchScheduler;
             LogAssert.Expect(LogType.Exception, new Regex("held"));
 
             // Act

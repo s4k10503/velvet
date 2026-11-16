@@ -259,7 +259,18 @@ namespace Velvet
                 return true;
             }
             if (isRenderError && fiber.CatchesInTheWalk) return CatchInTheWalk(fiber, throwingFiber, exception);
-            var ctx = fiber.Reconciler.Context;
+            if (FiberExecutionContext.IsSet) return SwapInTheFallback(fiber, throwingFiber, exception, isRenderError);
+            // A failure delivered with no entry on the stack (a UseFrame callback's, say) opens one, since the swap
+            // renders and commits.
+            return FiberExecutionContext.Enter(fiber.Reconciler.Context.BatchScheduler,
+                (Fiber: fiber, Thrower: throwingFiber, Error: exception, IsRenderError: isRenderError),
+                static failure => SwapInTheFallback(failure.Fiber, failure.Thrower, failure.Error, failure.IsRenderError));
+        }
+
+        private static bool SwapInTheFallback(
+            ComponentFiber fiber, ComponentFiber? throwingFiber, Exception exception, bool isRenderError)
+        {
+            var ctx = fiber.Reconciler!.Context;
             // Taken before the fallback is shown, which detaches what the failed output created, so that the
             // completions the fallback's own render queues stay out of it as well.
             var failedCompletions = ctx.CompletionsBelow(fiber);
@@ -302,7 +313,7 @@ namespace Velvet
                 // outlives the catch, and a pass starting while it is still set discards its whole reconcile —
                 // CommitPhaseCatchAbortLeakTests holds that. A VirtualList range's bracket adds a depth that is no pass
                 // here (ReconcilerContext.RangeBracketDepth).
-                if (ctx.SharedReconcileDepth > ctx.RangeBracketDepth) fiber.Reconciler.SetAborted();
+                if (ctx.SharedReconcileDepth > ctx.RangeBracketDepth) fiber.Reconciler!.SetAborted();
                 if (reportOwed) return true;
                 RecordCatch(ctx, fiber, exception, info!);
                 FiberEffects.CommitStrandedLayoutWork(ctx);

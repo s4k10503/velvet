@@ -1203,9 +1203,6 @@ namespace Velvet
         // IsErrorBoundary, which is public and which Hooks.UseErrorBoundary looks for.
         internal bool IsMountRoot { get; set; }
 
-        // The first render FiberRenderer.Mount held for this root, which MountedTree.Dispose takes back out of the held work.
-        internal Action? HeldMount { get; set; }
-
         internal bool CatchesErrors => IsErrorBoundary || IsMountRoot;
 
         // Set on every fiber of a deletion before the first of their cleanups runs, so an error one of them throws

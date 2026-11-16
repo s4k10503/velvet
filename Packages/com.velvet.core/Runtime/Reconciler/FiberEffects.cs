@@ -328,8 +328,6 @@ namespace Velvet
             ReconcilerContext ctx, ComponentFiber? scope, List<(ComponentFiber Fiber, bool IsMount)> roots)
         {
             ctx.EffectCommitDepth++;
-            // Every root's flush, first render and unmount waits for a commit to end, whichever root's it is.
-            ChildListWrites.EnterCommit();
             // A catch during this commit's own setups showed a fallback this commit has not laid out, so its
             // report waits for the follow-up commit that does.
             var reportCutoff = ctx.NextCaughtErrorSequence;
@@ -350,7 +348,6 @@ namespace Velvet
             }
             finally
             {
-                ChildListWrites.LeaveCommit();
                 ctx.EffectCommitDepth--;
                 StageReleasedPassiveEffects(ctx);
                 if (ordered != null) ctx.BufferPool.ReturnCommitEntryList(ordered);
@@ -715,7 +712,18 @@ namespace Velvet
         // Kept out of ScheduleRunEffects, whose every call would otherwise build this closure
         // (RenderCommitAllocationTests).
         private static void ScheduleStandaloneEffectRun(VisualElement mountPoint, ComponentFiber fiber)
-            => mountPoint.schedule.Execute(() => PanelSchedulerCallback.Run(fiber.MountPoint, fiber, RunEffects));
+            => mountPoint.schedule.Execute(() => PanelSchedulerCallback.Run(fiber.MountPoint, fiber, RunScheduledEffects));
+
+        private static void RunScheduledEffects(ComponentFiber fiber)
+        {
+            if (FiberExecutionContext.IsSet)
+            {
+                FiberExecutionContext.Hold(FiberExecutionContext.Request.PassiveFlush, fiber, null, fiber,
+                    static held => RunScheduledEffects(held));
+                return;
+            }
+            FiberExecutionContext.Enter<ComponentFiber>(null, fiber, static run => RunEffects(run));
+        }
 
         private static void ArmPassiveDrain(ReconcilerContext context)
         {
@@ -740,7 +748,18 @@ namespace Velvet
         // arming writes the same element: a context's anchor is set once.
         private static Action PassiveEffectDrainCallback(ReconcilerContext context)
             => () => PanelSchedulerCallback.Run(
-                context.PassiveEffectDrainAnchor, context, static ctx => DrainPassiveEffects(ctx));
+                context.PassiveEffectDrainAnchor, context, static ctx => DrainScheduledPassiveEffects(ctx));
+
+        private static void DrainScheduledPassiveEffects(ReconcilerContext context)
+        {
+            if (FiberExecutionContext.IsSet)
+            {
+                FiberExecutionContext.Hold(FiberExecutionContext.Request.PassiveFlush, context, context.BatchScheduler, context,
+                    static held => DrainScheduledPassiveEffects(held));
+                return;
+            }
+            FiberExecutionContext.Enter(context.BatchScheduler, context, static ctx => DrainPassiveEffects(ctx));
+        }
 
         // An exit with nothing to animate, whose child the pass that just ended removed, settles in the
         // passive-effect flush, after the effects that flush runs, as Framer Motion settles it after that commit.
@@ -1039,13 +1058,22 @@ namespace Velvet
             if (context == null)
             {
                 // No shared context (defensive): fall back to the single-fiber flush.
-                if (rootFiber != null) RunEffects(rootFiber);
+                if (rootFiber != null) RunScheduledEffects(rootFiber);
                 return;
             }
-            FlushPendingPassiveEffectsWork(context);
+            FlushPendingPassiveEffects(context);
         }
 
-        internal static void FlushPendingPassiveEffects(ReconcilerContext context) => FlushPendingPassiveEffectsWork(context);
+        internal static void FlushPendingPassiveEffects(ReconcilerContext context)
+        {
+            if (FiberExecutionContext.IsSet)
+            {
+                FiberExecutionContext.Hold(FiberExecutionContext.Request.PassiveFlush, context.BatchScheduler,
+                    context.BatchScheduler, context, static held => FlushPendingPassiveEffects(held));
+                return;
+            }
+            FiberExecutionContext.Enter(context.BatchScheduler, context, static ctx => FlushPendingPassiveEffectsWork(ctx));
+        }
 
         internal static void FlushPendingPassiveEffectsWork(ReconcilerContext context)
         {

@@ -48,8 +48,8 @@ namespace Velvet
 
         private static bool s_set;
         private static bool s_releasing;
-        private static readonly List<Held> s_held = new();
-        private static readonly List<FiberBatchScheduler> s_owingSyncLane = new();
+        private static readonly List<Held> s_held = new(8);
+        private static readonly List<FiberBatchScheduler> s_owingSyncLane = new(4);
         private static readonly Dictionary<object, int> s_runs = new();
         private static readonly HashSet<object> s_capped = new();
         private static readonly object s_noOwner = new();
@@ -95,13 +95,33 @@ namespace Velvet
             Release(owner);
         }
 
-        // run reaches the door again, which the release enters with the flag clear. It is built by the caller only
-        // where it holds, so that a door allocates nothing while it enters.
+        // run reaches the door again, which the release enters with the flag clear.
         internal static void Hold(Request kind, object? key, FiberBatchScheduler? owner, Action run)
         {
             UnityEngine.Debug.Assert(s_set, "Work was held with no entry on the stack to release it.");
             if (key != null && IsHeld(kind, key)) return;
             s_held.Add(new Held(kind, key, owner, run));
+        }
+
+        // As Hold, for a door whose request carries state: the closure is built only where it is held.
+        internal static void Hold<TState>(Request kind, object? key, FiberBatchScheduler? owner, TState state, Action<TState> run)
+        {
+            if (key != null && IsHeld(kind, key)) return;
+            Hold(kind, key, owner, new Deferred<TState>(state, run).Run);
+        }
+
+        private sealed class Deferred<TState>
+        {
+            private readonly TState _state;
+            private readonly Action<TState> _run;
+
+            internal Deferred(TState state, Action<TState> run)
+            {
+                _state = state;
+                _run = run;
+            }
+
+            internal void Run() => _run(_state);
         }
 
         internal static bool IsHeld(Request kind, object key)

@@ -19,10 +19,10 @@ namespace Velvet
         /// error is reported to <see cref="MountOptions.OnUncaughtError"/>. The handle stays valid, and
         /// disposing it is still how the root is released.
         /// <para>
-        /// Called while a root renders or commits (from an <c>onCreated</c> callback or a layout effect, say), it
-        /// returns the handle at once and renders the tree where the outermost render or commit has ended, as React's
-        /// <c>root.render()</c> only schedules there. Disposing the handle then waits in the same way, as
-        /// <c>root.unmount()</c> does.
+        /// Called while a root renders, commits or runs its passive effects (from an <c>onCreated</c> callback, a
+        /// layout effect or a <c>UseEffect</c>, say), it returns the handle at once and renders the tree once that work
+        /// has ended, before control returns to whatever started it, as React's <c>root.render()</c> only schedules
+        /// there. Disposing a handle there waits in the same way, as <c>root.unmount()</c> does.
         /// </para>
         /// </remarks>
         /// <param name="target">The VisualElement to mount onto.</param>
@@ -52,17 +52,33 @@ namespace Velvet
             var rootFiber = FiberRenderer.CreateRoot(root.Render);
             rootFiber.IsMountRoot = true;
             rootFiber.FallbackFactory = s_renderNothing;
-            try
+            FiberRenderer.SetupMount(rootFiber, target, onCaughtError: options.OnCaughtError,
+                onUncaughtError: options.OnUncaughtError, motionClock: options.MotionClock);
+            if (FiberExecutionContext.IsSet)
             {
-                FiberRenderer.Mount(rootFiber, target, onCaughtError: options.OnCaughtError,
-                    onUncaughtError: options.OnUncaughtError, motionClock: options.MotionClock);
+                FiberRenderer.HoldFirstRender(rootFiber);
+                return Wire(target, tree, rootFiber, root);
             }
-            catch
-            {
-                // No handle reaches the caller to dispose, so the clock the mount took is released here.
-                rootFiber.Reconciler?.Context.StyleAnimationScheduler.ReleaseClock();
-                throw;
-            }
+            // The handle is made inside the entry, so what is held while the root renders runs once it exists.
+            return FiberExecutionContext.Enter(rootFiber.Reconciler!.Context.BatchScheduler,
+                (Target: target, Tree: tree, Fiber: rootFiber, Root: root), static mount =>
+                {
+                    try
+                    {
+                        FiberRenderer.RenderMountedWork(mount.Fiber);
+                    }
+                    catch
+                    {
+                        // No handle reaches the caller to dispose, so the clock the mount took is released here.
+                        mount.Fiber.Reconciler?.Context.StyleAnimationScheduler.ReleaseClock();
+                        throw;
+                    }
+                    return Wire(mount.Target, mount.Tree, mount.Fiber, mount.Root);
+                });
+        }
+
+        private static MountedTree Wire(VisualElement target, VNode tree, ComponentFiber rootFiber, RootTree root)
+        {
             var ctx = rootFiber.Reconciler!.Context;
             ctx.MainPanelRoot = target;
             if (!ctx.CrossPanelRouterAttached)
@@ -149,7 +165,9 @@ namespace Velvet
             // A root that unmounted its tree for an uncaught error renders the new one, as React's root.render does.
             Root.CaughtError = null;
             FiberWorkLoop.ScheduleRerender(Root, FiberUpdatePriority.Urgent);
-            Root.Reconciler!.Context.BatchScheduler.FlushImmediate();
+            var scheduler = Root.Reconciler!.Context.BatchScheduler;
+            if (FiberExecutionContext.IsSet) scheduler.HoldFlush();
+            else FiberExecutionContext.Enter(scheduler, scheduler, static flushed => flushed.FlushImmediateWork());
         }
 
         /// <summary>
@@ -167,30 +185,23 @@ namespace Velvet
             // continuations must not resurrect the tree. FiberRenderer.Dispose sets IsDisposed
             // before unmounting so IsDisposed-gated closures (UseMutation continuations,
             // optimistic update commits) short-circuit instead of mutating a torn-down fiber.
+            FiberExecutionContext.Drop(FiberExecutionContext.Request.Mount, Root);
             var context = Root.Reconciler?.Context;
-            if (Root.HeldMount != null) ChildListWrites.DropHeldMount(Root.HeldMount);
-            // While a render or a commit runs the unmount waits for it to end, as React's root.unmount() does.
-            if (ChildListWrites.HoldDispose(() => Unmount(context), context)) return;
+            if (FiberExecutionContext.IsSet)
+            {
+                FiberExecutionContext.Hold(FiberExecutionContext.Request.Unmount, Root, context?.BatchScheduler,
+                    (Tree: this, Context: context), static held => held.Tree.Unmount(held.Context));
+                return;
+            }
             Unmount(context);
         }
 
-        // A top-level entry whose unmount pass counts as a commit, and which ends in what was held while it ran.
         private void Unmount(ReconcilerContext? context)
-        {
-            ChildListWrites.RunEntry(context?.BatchScheduler, (Tree: this, Context: context), static state =>
+            => FiberExecutionContext.Enter(context?.BatchScheduler, (Tree: this, Context: context), static state =>
             {
-                ChildListWrites.EnterCommit();
-                try
-                {
-                    FiberRenderer.DisposeWork(state.Tree.Root);
-                    StyleThemeTokens.Release(state.Context);
-                    if (state.Context != null) FiberErrorBoundary.ReportErrorsDuringDisposal(state.Context);
-                }
-                finally
-                {
-                    ChildListWrites.LeaveCommit();
-                }
+                FiberRenderer.DisposeWork(state.Tree.Root);
+                StyleThemeTokens.Release(state.Context);
+                if (state.Context != null) FiberErrorBoundary.ReportErrorsDuringDisposal(state.Context);
             });
-        }
     }
 }

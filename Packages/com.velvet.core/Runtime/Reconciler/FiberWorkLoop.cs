@@ -355,8 +355,14 @@ namespace Velvet
         // to inherit.
         internal static void FlushState(ComponentFiber fiber, double timeSlicedBudgetMs)
         {
-            // A top-level entry, which ends in what was held while a root rendered or committed.
-            ChildListWrites.RunEntry(fiber.Reconciler?.Context.BatchScheduler, (Fiber: fiber, Budget: timeSlicedBudgetMs),
+            var scheduler = fiber.Reconciler?.Context.BatchScheduler;
+            if (FiberExecutionContext.IsSet)
+            {
+                FiberExecutionContext.Hold(FiberExecutionContext.Request.FiberFlush, fiber, scheduler,
+                    (Fiber: fiber, Budget: timeSlicedBudgetMs), static state => FlushState(state.Fiber, state.Budget));
+                return;
+            }
+            FiberExecutionContext.Enter(scheduler, (Fiber: fiber, Budget: timeSlicedBudgetMs),
                 static state => FlushStateWork(state.Fiber, state.Budget));
         }
 
@@ -639,10 +645,16 @@ namespace Velvet
         // Resumes the suspended state of time-sliced reconciliation in the next frame.
         // Invoked automatically via schedule.Execute. Exposed to tests (the UIToolkit scheduler does not
         // advance in EditMode) so a parked slice can be driven to completion manually.
-        // A top-level entry, which ends in what was held while a root rendered or committed.
         internal static void ContinueReconcile(ComponentFiber fiber)
         {
-            ChildListWrites.RunEntry(fiber.Reconciler?.Context.BatchScheduler, fiber, static resumed => ContinueReconcileWork(resumed));
+            var scheduler = fiber.Reconciler?.Context.BatchScheduler;
+            if (FiberExecutionContext.IsSet)
+            {
+                FiberExecutionContext.Hold(FiberExecutionContext.Request.Resume, fiber, scheduler, fiber,
+                    static resumed => ContinueReconcile(resumed));
+                return;
+            }
+            FiberExecutionContext.Enter(scheduler, fiber, static resumed => ContinueReconcileWork(resumed));
         }
 
         private static void ContinueReconcileWork(ComponentFiber fiber)
