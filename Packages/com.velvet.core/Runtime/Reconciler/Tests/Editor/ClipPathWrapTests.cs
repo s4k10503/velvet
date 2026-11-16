@@ -839,7 +839,7 @@ namespace Velvet.Tests
         // `ChildListWrites.RemoveFromHierarchy(element);` in the branch for a wrapper without a parent and the inner
         // stays inside it.
         [Test]
-        public void Given_AWrapperWithNoParent_When_ItsInnerIsRestored_Then_TheInnerLeavesTheWrapper()
+        public void Given_AClipWrapperWithNoParent_When_ItsInnerIsRestored_Then_TheInnerLeavesTheWrapper()
         {
             // Arrange
             var wrapper = new VisualElement();
