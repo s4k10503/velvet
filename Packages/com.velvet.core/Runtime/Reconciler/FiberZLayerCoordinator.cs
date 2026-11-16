@@ -29,7 +29,7 @@ namespace Velvet
     // positive z, sorted by z. Equal keys keep tree order.
     //
     // Safety invariant: a slot occupant (an ordinary child or a placeholder) changes when an element is created, when
-    // a settle relocates an element or returns it (from a patch, or from OnResolved / Restack / Reorder, which do not
+    // a settle relocates an element or returns it (from a patch, at the end of its pass, or from OnResolved / Restack / Reorder, which do not
     // wait for a parent a diff is parked over), when a queued mount resolves (ResolveQueuedMount), or when Arrange
     // converts a slot for a parent no diff is parked over. A settle's swap is reported through
     // ReconcilerContext.NoteSlotOccupantChanged, so a diff holding the parent's old instances names the new occupant.
@@ -390,20 +390,22 @@ namespace Velvet
             var facts = Record(ctx, real, classElement, declared, resolved, anchored);
             if (ChildListWrites.IsRecording)
             {
-                ctx.PendingSettles.Add((real, facts));
+                ctx.PendingSettles.Add(real);
                 return;
             }
             Settle(ctx, real, facts);
         }
 
         // Decides the stacking of what a pass patched, once its recorded writes have applied: the patch returned the
-        // occupant its slot held before, which this swaps for the placeholder or the element itself where the facts say so.
+        // occupant its slot held before, which this swaps for the placeholder or the element itself where the facts say
+        // so. The facts are the ones held now, since OnResolved, Restack and Reorder track newer ones during the pass.
         internal static void SettlePatched(ReconcilerContext ctx)
         {
             var pending = ctx.PendingSettles;
             for (var i = 0; i < pending.Count; i++)
             {
-                Settle(ctx, pending[i].Real, pending[i].Facts);
+                var real = pending[i];
+                Settle(ctx, real, ctx.StackingFacts.TryGetValue(real, out var facts) ? facts : null);
             }
             pending.Clear();
         }

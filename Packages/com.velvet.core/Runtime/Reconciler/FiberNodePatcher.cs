@@ -120,13 +120,6 @@ namespace Velvet
         // The half of the oldNode → newNode diff that runs before the node's children are reconciled.
         internal void PatchSelfPre(ref SelfPatch patch)
         {
-            ChildListWrites.PatchPhase++;
-            try { PatchSelfPreHalf(ref patch); }
-            finally { ChildListWrites.PatchPhase--; }
-        }
-
-        private void PatchSelfPreHalf(ref SelfPatch patch)
-        {
             var element = patch.Element;
             switch (patch.OldNode)
             {
@@ -195,16 +188,10 @@ namespace Velvet
         }
 
         // The half of the diff that runs once the walk has reconciled the node's children. Returns what occupies the
-        // element's slot once the patch is done, which a wrapper added or removed and a z-layer relocation in either
-        // direction change; the diff names the old leaf by it from then on.
+        // element's slot once the patch is done, which a wrapper added or removed changes; the diff names the old leaf
+        // by it from then on. A z-layer relocation does not change it: it is settled where the pass applies its recorded
+        // writes (FiberZLayerCoordinator.SettlePatched), and the slot keeps the occupant it held before the patch until then.
         internal VisualElement PatchSelfPost(ref SelfPatch patch)
-        {
-            ChildListWrites.PatchPhase++;
-            try { return PatchSelfPostHalf(ref patch); }
-            finally { ChildListWrites.PatchPhase--; }
-        }
-
-        private VisualElement PatchSelfPostHalf(ref SelfPatch patch)
         {
             switch (patch.Kind)
             {
@@ -395,10 +382,11 @@ namespace Velvet
 
         // Patches the element a slot stands for — the slot's element itself, or the real element its placeholder
         // stands for — and hands the result to FiberZLayerCoordinator, which relocates it or returns it to its slot
-        // when its own z or flex order says so. Contract-preserving, exactly like an ElementNode's own patch: the net
-        // effect on the slot's parent's logical children is zero — a placeholder inserted at the element's physical
-        // index with the element turned invisible, or the two exchanged by a sort — so what PatchSelfPost returns for
-        // it is what holds the slot.
+        // when its own z or flex order says so, once the pass applies its recorded writes. Contract-preserving, exactly
+        // like an ElementNode's own patch: the net effect on the slot's parent's logical children is zero — a placeholder
+        // inserted at the element's physical index with the element turned invisible, or the two exchanged by a sort —
+        // so PatchSelfPost returns what held the slot before the patch, and the diff keeps naming that until the settle
+        // reports its swap.
         private void PatchZLayerElementPre(ref SelfPatch patch, ElementNode oldNode, ElementNode newNode)
         {
             var element = patch.Element;
@@ -601,6 +589,14 @@ namespace Velvet
         // The writes a recorded PatchPre makes where the pass applies its ops.
         internal void CommitPre(ref PendingPatch patch)
         {
+            // The label was cleaned or pooled since the patch was recorded, which writes at once: its raw text is gone, or
+            // is another row's.
+            if (!_ctx.TextNodeElements.ContainsKey(patch.Element)
+                || !_ctx.TextRawText.TryGetValue(patch.Element, out var raw)
+                || raw != ((TextNode)patch.NewNode!).Text)
+            {
+                return;
+            }
             // OnTextSet shows the new text AND the cascade-resolved effect, so an isolated leaf re-render (its text
             // changed via an inner component's state while the effect-bearing ancestor did not re-render) still shows
             // the inherited transform; a whole-component render also re-applies via the ancestor's post-children

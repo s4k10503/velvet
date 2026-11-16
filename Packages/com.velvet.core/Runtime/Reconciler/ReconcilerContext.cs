@@ -1591,8 +1591,8 @@ namespace Velvet
         public Dictionary<VisualElement, StackingFacts> StackingFacts { get; } = new();
 
         // The elements a pass patched whose stacking FiberZLayerCoordinator.SettlePatched decides once the pass's
-        // recorded writes have applied, each with the facts its patch recorded.
-        internal List<(VisualElement Real, StackingFacts? Facts)> PendingSettles { get; } = new();
+        // recorded writes have applied, from the facts held for each then.
+        internal List<VisualElement> PendingSettles { get; } = new();
 
         // The elements given stacking facts or pinned since FiberZLayerCoordinator.ResortLayers last recorded the
         // parent each stands in (StackingParents). A pure side-table, enrolled in _pureElementSideTables.

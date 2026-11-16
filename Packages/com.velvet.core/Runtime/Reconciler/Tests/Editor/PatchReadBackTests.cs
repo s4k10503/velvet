@@ -85,5 +85,38 @@ namespace Velvet.Tests
             }
             Assert.That(string.Join(",", order), Is.EqualTo("c,placeholder,b,a"));
         }
+
+        private static VNode[] FirstRows(params string[] keys)
+        {
+            var rows = new List<VNode>();
+            foreach (var key in keys)
+            {
+                rows.Add(V.Div(key: key, name: key, className: key == "a" ? "first:absolute first:z-10" : null));
+            }
+            return new VNode[] { V.Div(name: "parent", className: "relative", children: rows.ToArray()) };
+        }
+
+        // GREEN_ON_BASE(characterization): the base settles the row where it is patched and the parent's structural
+        // pass then returns it to its slot, so the row ends in order; the case pins that a settle queued by the patch
+        // does not replay the facts the structural pass has since replaced.
+        [Test]
+        public void Given_APatchedRowWhoseStructuralVariantTheSamePassTurnsOff_When_ThePassEnds_Then_TheRowHoldsItsDeclaredSlot()
+        {
+            // Arrange
+            var before = FirstRows("a");
+            _reconciler.Reconcile(_root, Array.Empty<VNode>(), before);
+            var parent = _root.Q<VisualElement>("parent");
+
+            // Act
+            _reconciler.Reconcile(_root, before, FirstRows("x", "a"));
+
+            // Assert
+            var order = new List<string>();
+            foreach (var child in parent.Children())
+            {
+                order.Add(_reconciler.Context.ZLayerPlaceholders.ContainsKey(child) ? "placeholder" : child.name);
+            }
+            Assert.That(string.Join(",", order), Is.EqualTo("x,a"));
+        }
     }
 }

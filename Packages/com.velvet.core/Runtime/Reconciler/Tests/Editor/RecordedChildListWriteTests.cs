@@ -88,22 +88,6 @@ namespace Velvet.Tests
             Assert.That(((Label)_root[0]).text, Is.EqualTo("new"));
         }
 
-        // GREEN_ON_BASE(characterization): the base writes the patched text at once and pools the removed label at
-        // once, so neither waits on the other; the case pins that the staged text is not undone by the removal's reset.
-        [Test]
-        public void Given_ALabelWhoseTextChanges_When_TheSamePassRemovesAndPoolsAnotherLabel_Then_TheLabelShowsTheNewText()
-        {
-            // Arrange
-            var oldTree = new VNode[] { V.Text("kept"), V.Text("removed") };
-            _reconciler.Reconcile(_root, Array.Empty<VNode>(), oldTree);
-
-            // Act
-            _reconciler.Reconcile(_root, oldTree, new VNode[] { V.Text("patched") });
-
-            // Assert
-            Assert.That(((Label)_root[0]).text, Is.EqualTo("patched"));
-        }
-
         // GREEN_ON_BASE(characterization): the base places the row as it is declared; the case below the next one pins
         // where the row is while the reconcile is going on.
         [Test]

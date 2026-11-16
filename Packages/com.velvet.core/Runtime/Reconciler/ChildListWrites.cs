@@ -444,7 +444,8 @@ namespace Velvet
         //
         // Inside a pass, an insert or a move the walk makes through HostCommitQueue into a container the pass did not
         // create updates the model and is recorded; the live list takes it where FinishPass starts (ApplyRecorded), in
-        // the order recorded. The readers the walk has moved to the model (ParentOf, ChildCount, ElementAtPhysical and
+        // the order recorded. A label's text patch is recorded in the same list (PatchPre); it names no container, so a
+        // reader of the label's parent does not apply it. The readers the walk has moved to the model (ParentOf, ChildCount, ElementAtPhysical and
         // the reads above) answer from it meanwhile, and a container with a recorded write is skipped by the checks that
         // compare the model with the live list. Any other write into such a container applies the recorded ones first,
         // except one made while they apply, which is recorded behind them.
@@ -593,18 +594,13 @@ namespace Velvet
             s_ops.Add(new Op { Container = container, Child = child, Kind = OpKind.RemoveChild });
         }
 
-        // Above zero while a node's patch halves run (FiberNodePatcher.PatchSelfPre and PatchSelfPost). The walk's other
-        // phases write at once: a removal, a detach handler or a pool reset reaches its writes between the halves, and
-        // one staged behind them would land after the removal it belongs to.
-        internal static int PatchPhase;
-
         // Whether a pass is recording writes it has not applied yet.
         internal static bool IsRecording => s_recording && !s_applying;
 
-        // Whether a patch of element waits for the pass to end: one a patch half makes where a pass records, to an
-        // element that has a live or a recorded parent. An element with neither is written at once.
+        // Whether a patch of element waits for the pass to end: one made where a pass records, to an element that has a
+        // live or a recorded parent. An element with neither is written at once.
         internal static bool StagesPatch(VisualElement element)
-            => PatchPhase > 0 && s_recording && !s_applying && ParentOf(element) != null;
+            => s_recording && !s_applying && ParentOf(element) != null;
 
         // Records the first half of a patch behind every op recorded so far, to commit where the recorded ops apply.
         internal static void RecordPatchPre(in PendingPatch patch)
