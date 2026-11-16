@@ -448,19 +448,21 @@ namespace Velvet
         // the reads above) answer from it meanwhile, and a container with a recorded write is skipped by the checks that
         // compare the model with the live list. Any other write into such a container applies the recorded ones first,
         // except one made while they apply, which is recorded behind them.
-        private enum OpKind : byte { Insert, RemoveAt, RemoveChild }
+        private enum OpKind : byte { Insert, RemoveAt, RemoveChild, PatchPre }
 
         private struct Op
         {
             internal VisualElement Container;
             internal VisualElement Caller;
             internal VisualElement Child;
+            // The index into s_patches of a PatchPre.
             internal int Index;
             internal OpKind Kind;
             internal bool ViaHierarchy;
         }
 
         private static readonly List<Op> s_ops = new();
+        private static readonly List<PendingPatch> s_patches = new();
         // Where the model holds each child a recorded write touched; null where the write took it out.
         private static readonly Dictionary<VisualElement, VisualElement?> s_pendingParent = new();
         private static readonly HashSet<VisualElement> s_pendingContainers = new();
@@ -591,6 +593,18 @@ namespace Velvet
             s_ops.Add(new Op { Container = container, Child = child, Kind = OpKind.RemoveChild });
         }
 
+        // Whether a patch of element waits for the pass to end: one made where a pass records, to an element that has a
+        // live or a recorded parent. An element with neither is written at once.
+        internal static bool StagesPatch(VisualElement element)
+            => s_recording && !s_applying && ParentOf(element) != null;
+
+        // Records the first half of a patch behind every op recorded so far, to commit where the recorded ops apply.
+        internal static void RecordPatchPre(in PendingPatch patch)
+        {
+            s_patches.Add(patch);
+            s_ops.Add(new Op { Index = s_patches.Count - 1, Kind = OpKind.PatchPre });
+        }
+
         // For a reader of container's live child list: the recorded writes of the container apply first.
         internal static void SyncLive(VisualElement container) => FlushIfPending(ContentOf(container), null);
 
@@ -616,6 +630,12 @@ namespace Velvet
                 for (var i = 0; i < s_ops.Count; i++)
                 {
                     var op = s_ops[i];
+                    if (op.Kind == OpKind.PatchPre)
+                    {
+                        var patch = s_patches[op.Index];
+                        patch.Patcher.CommitPre(ref patch);
+                        continue;
+                    }
                     s_open++;
                     s_flight.Add(op.Container);
                     try
@@ -636,6 +656,7 @@ namespace Velvet
             {
                 s_applying = false;
                 s_ops.Clear();
+                s_patches.Clear();
                 s_pendingParent.Clear();
                 foreach (var container in s_pendingContainers)
                 {

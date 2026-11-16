@@ -55,6 +55,39 @@ namespace Velvet.Tests
             Assert.That(RowModelAccess.Peek(parent)!.KindAt(1), Is.EqualTo(RowKind.Invisible));
         }
 
+        [Test]
+        public void Given_ALabelWhoseTextChanges_When_ALaterRowIsCreatedInThePass_Then_ItStillHoldsTheOldText()
+        {
+            // Arrange
+            var oldTree = new VNode[] { V.Text("old") };
+            _reconciler.Reconcile(_root, Array.Empty<VNode>(), oldTree);
+            var label = (Label)_root[0];
+            var seen = "unset";
+            var newTree = new VNode[] { V.Text("new"), V.ScrollView(onCreated: _ => seen = label.text) };
+
+            // Act
+            _reconciler.Reconcile(_root, oldTree, newTree);
+
+            // Assert
+            Assert.That(seen, Is.EqualTo("old"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base writes the text as the walk reaches it; what the case pins is that
+        // the label shows it once the reconcile returns, where the write waits for the end of the pass.
+        [Test]
+        public void Given_ALabelWhoseTextChanges_When_TheReconcileReturns_Then_TheLabelShowsTheNewText()
+        {
+            // Arrange
+            var oldTree = new VNode[] { V.Text("old") };
+            _reconciler.Reconcile(_root, Array.Empty<VNode>(), oldTree);
+
+            // Act
+            _reconciler.Reconcile(_root, oldTree, new VNode[] { V.Text("new") });
+
+            // Assert
+            Assert.That(((Label)_root[0]).text, Is.EqualTo("new"));
+        }
+
         // GREEN_ON_BASE(characterization): the base places the row as it is declared; the case below the next one pins
         // where the row is while the reconcile is going on.
         [Test]

@@ -566,17 +566,33 @@ namespace Velvet
             _appliers.ApplyBackdropOnPatch(element, classNames);
         }
 
+        // The raw text is captured where the walk runs, for the text-effect passes of the ancestors the walk reaches
+        // next, and the label is written where the pass applies what it recorded.
         private void PatchText(Label label, TextNode oldNode, TextNode newNode)
         {
-            if (oldNode.Text != newNode.Text)
+            if (oldNode.Text == newNode.Text)
             {
-                // OnTextSet captures the new raw AND applies the cascade-resolved effect, so an isolated leaf
-                // re-render (its text changed via an inner component's state while the effect-bearing ancestor
-                // did not re-render) still shows the inherited transform; a whole-component render also re-applies
-                // via the ancestor's post-children pass (idempotent).
-                StyleTextEffectResolver.OnTextSet(_ctx, label, newNode.Text);
-                ApplyFlexMinSizeManipulator(label, System.Array.Empty<string>());
+                return;
             }
+            StyleTextEffectResolver.NoteTextSet(_ctx, label, newNode.Text);
+            var pending = new PendingPatch(this, label, oldNode, newNode);
+            if (ChildListWrites.StagesPatch(label))
+            {
+                ChildListWrites.RecordPatchPre(pending);
+                return;
+            }
+            CommitPre(ref pending);
+        }
+
+        // The writes a recorded PatchPre makes where the pass applies its ops.
+        internal void CommitPre(ref PendingPatch patch)
+        {
+            // OnTextSet shows the new text AND the cascade-resolved effect, so an isolated leaf re-render (its text
+            // changed via an inner component's state while the effect-bearing ancestor did not re-render) still shows
+            // the inherited transform; a whole-component render also re-applies via the ancestor's post-children
+            // pass (idempotent).
+            StyleTextEffectResolver.ShowTextSet(_ctx, patch.Element);
+            ApplyFlexMinSizeManipulator(patch.Element, System.Array.Empty<string>());
         }
 
         private void RebindEvents(VisualElement element, FiberEventBinding[] newEvents)
