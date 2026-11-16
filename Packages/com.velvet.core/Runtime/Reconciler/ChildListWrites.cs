@@ -444,11 +444,11 @@ namespace Velvet
         //
         // Inside a pass, an insert or a move the walk makes through HostCommitQueue into a container the pass did not
         // create updates the model and is recorded; the live list takes it where FinishPass starts (ApplyRecorded), in
-        // the order recorded. A label's text patch is recorded in the same list (PatchPre); it names no container, so a
-        // reader of the label's parent does not apply it. The readers the walk has moved to the model (ParentOf, ChildCount, ElementAtPhysical and
-        // the reads above) answer from it meanwhile, and a container with a recorded write is skipped by the checks that
-        // compare the model with the live list. Any other write into such a container applies the recorded ones first,
-        // except one made while they apply, which is recorded behind them.
+        // the order recorded. A label's text patch is recorded in the same list (PatchPre); it names no container, so
+        // a reader of the label's parent does not apply it. The readers the walk has moved to the model (ParentOf,
+        // ChildCount, ElementAtPhysical and the reads above) answer from it meanwhile, and a container with a recorded
+        // write is skipped by the checks that compare the model with the live list. Any other write into such a
+        // container applies the recorded ones first, except one made while they apply, which is recorded behind them.
         private enum OpKind : byte { Insert, RemoveAt, RemoveChild, PatchPre }
 
         private struct Op

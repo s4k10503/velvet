@@ -189,8 +189,9 @@ namespace Velvet
 
         // The half of the diff that runs once the walk has reconciled the node's children. Returns what occupies the
         // element's slot once the patch is done, which a wrapper added or removed changes; the diff names the old leaf
-        // by it from then on. A z-layer relocation does not change it: it is settled where the pass applies its recorded
-        // writes (FiberZLayerCoordinator.SettlePatched), and the slot keeps the occupant it held before the patch until then.
+        // by it from then on. While a pass records, a z-layer relocation does not change it: it is settled where the pass
+        // applies its recorded writes (FiberZLayerCoordinator.SettlePatched), and the slot keeps the occupant it held
+        // before the patch until then. Outside a recording pass the settle runs at once and the occupant includes it.
         internal VisualElement PatchSelfPost(ref SelfPatch patch)
         {
             switch (patch.Kind)
@@ -385,8 +386,8 @@ namespace Velvet
         // when its own z or flex order says so, once the pass applies its recorded writes. Contract-preserving, exactly
         // like an ElementNode's own patch: the net effect on the slot's parent's logical children is zero — a placeholder
         // inserted at the element's physical index with the element turned invisible, or the two exchanged by a sort —
-        // so PatchSelfPost returns what held the slot before the patch, and the diff keeps naming that until the settle
-        // reports its swap.
+        // so while a pass records, PatchSelfPost returns what held the slot before the patch and the diff keeps naming that
+        // until the settle reports its swap.
         private void PatchZLayerElementPre(ref SelfPatch patch, ElementNode oldNode, ElementNode newNode)
         {
             var element = patch.Element;
@@ -589,11 +590,8 @@ namespace Velvet
         // The writes a recorded PatchPre makes where the pass applies its ops.
         internal void CommitPre(ref PendingPatch patch)
         {
-            // The label was cleaned or pooled since the patch was recorded, which writes at once: its raw text is gone, or
-            // is another row's.
-            if (!_ctx.TextNodeElements.ContainsKey(patch.Element)
-                || !_ctx.TextRawText.TryGetValue(patch.Element, out var raw)
-                || raw != ((TextNode)patch.NewNode!).Text)
+            // A label cleaned or pooled since the patch was recorded is no text node any more: the cleanup writes at once.
+            if (!_ctx.TextNodeElements.ContainsKey(patch.Element))
             {
                 return;
             }

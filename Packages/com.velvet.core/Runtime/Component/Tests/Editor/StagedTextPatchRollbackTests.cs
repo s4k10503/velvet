@@ -42,14 +42,19 @@ namespace Velvet.Tests
                     fallbackRender: (error, reset) => V.Div(name: "fallback"),
                     children: new VNode[]
                     {
-                        V.Div(children: new VNode[] { V.Text("tick " + tick), V.Component(ThrowerRender, tick, key: "thrower") }),
+                        V.Div(children: new VNode[]
+                        {
+                            V.Div(children: new VNode[] { V.Text("tick " + tick) }),
+                            V.Div(children: new VNode[] { V.Component(ThrowerRender, tick, key: "thrower") }),
+                        }),
                     },
                     key: "boundary"),
             });
         }
 
-        // GREEN_ON_BASE(characterization): the base writes the text where the walk patches the label and the boundary
-        // then cleans it, so no table entry outlives the label; the case pins that the recorded write leaves none either.
+        // GREEN_ON_BASE(characterization): the label sits in a Div of its own, patched before the next Div expands the
+        // component that throws. The base writes the text at the patch and the boundary then cleans the label, so no
+        // table entry outlives it; the case pins that the text write recorded for that label leaves none either.
         [Test]
         public void Given_ALabelPatchedBeforeABoundaryCatchesInTheSamePass_When_ThePassEnds_Then_NoFlexMinManipulatorIsLeftOnAnElementOutsideTheTree()
         {
