@@ -104,6 +104,7 @@ namespace Velvet.Tests
             return target;
         }
 
+        // GREEN_ON_BASE(characterization): the base returns and clears its pooled walks and plans the same way; only the helper that reads the pool moved.
         [Test]
         public void Given_ADeletionOfAComponentRunInTheApply_When_TheSecondHasEnded_Then_TheSecondReturnedTheOnePlanItRented()
         {
@@ -124,6 +125,7 @@ namespace Velvet.Tests
             Assert.That(pooledAfterFirst > 0 ? PooledPlans().Count - pooledAfterFirst : -1, Is.EqualTo(0));
         }
 
+        // GREEN_ON_BASE(characterization): the base returns and clears its pooled walks and plans the same way; only the helper that reads the pool moved.
         [Test]
         public void Given_ADeletionOfAComponentRunInTheApply_When_TheSecondHasEnded_Then_TheSecondReturnedTheOneWalkItRented()
         {
@@ -144,6 +146,7 @@ namespace Velvet.Tests
             Assert.That(pooledAfterFirst > 0 ? PooledWalks().Count - pooledAfterFirst : -1, Is.EqualTo(0));
         }
 
+        // GREEN_ON_BASE(characterization): the base returns and clears its pooled walks and plans the same way; only the helper that reads the pool moved.
         [TestCase("_removedRows")]
         [TestCase("_orphanRows")]
         [TestCase("_portalsUnderRoots")]
@@ -169,6 +172,7 @@ namespace Velvet.Tests
             Assert.That(EntriesLeftInPooledWalks(field), Is.EqualTo(0));
         }
 
+        // GREEN_ON_BASE(characterization): the base returns and clears its pooled walks and plans the same way; only the helper that reads the pool moved.
         [Test]
         public void Given_ADeletionOfAComponentHoldingAPortal_When_ItHasEnded_Then_NoPooledWalkKeepsARowOfIt()
         {
@@ -185,6 +189,7 @@ namespace Velvet.Tests
             Assert.That(rows == null ? -1 : EntriesLeftInPooledWalks("_portalRows"), Is.EqualTo(0));
         }
 
+        // GREEN_ON_BASE(characterization): the base returns and clears its pooled walks and plans the same way; only the helper that reads the pool moved.
         [Test]
         public void Given_ADeletionRunTwice_When_TheSecondHasEnded_Then_TheSecondReturnedTheOnePlanItRented()
         {
@@ -205,6 +210,7 @@ namespace Velvet.Tests
             Assert.That(pooledAfterFirst > 0 ? PooledPlans().Count - pooledAfterFirst : -1, Is.EqualTo(0));
         }
 
+        // GREEN_ON_BASE(characterization): the base returns and clears its pooled walks and plans the same way; only the helper that reads the pool moved.
         [TestCase("_childrenAtDepth")]
         public void Given_ADeletionOfAComponentHoldingAPortal_When_ItHasEnded_Then_NoListAPooledWalkKeepsHoldsAnEntry(string field)
         {
