@@ -414,6 +414,7 @@ namespace Velvet
                     // After the drain, which places the relocated elements this pass deferred, and in a finally of
                     // its own so a drain that throws still leaves neither a retired child standing nor a parent
                     // pending into the next pass, and a coordinator call that throws still reaches the resets below.
+                    ElementCleaner.ReleasePendingPoolReturns();
                     ElementCleaner.ReleaseRetiredZLayerReals();
                     FiberZLayerCoordinator.DrainTeardowns(_ctx);
                     FiberZLayerCoordinator.ResortLayers(_ctx);
@@ -1142,6 +1143,7 @@ namespace Velvet
             _ctx.ZLayerPlaceholders.Clear();
             _ctx.PendingZLayerRemovals.Clear();
             _ctx.PendingZLayerDeadReals.Clear();
+            _ctx.PendingPoolReturns.Clear();
             _ctx.PendingZLayerResorts.Clear();
             _ctx.ParkedDiffParents.Clear();
             // Detached explicitly rather than left to die with a GameObject, unlike the framework-owned

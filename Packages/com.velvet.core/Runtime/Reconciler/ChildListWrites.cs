@@ -446,8 +446,8 @@ namespace Velvet
 
         // ---- Recorded writes ----
         //
-        // Inside a pass, an insert or a move the walk makes through HostCommitQueue into a container the pass did not
-        // create updates the model and is recorded; the live list takes it no later than where FinishPass starts
+        // Inside a pass, an insert, a move or a removal the walk makes through HostCommitQueue into a container the pass
+        // did not create updates the model and is recorded; the live list takes it no later than where FinishPass starts
         // (ApplyRecorded), in the order recorded. A node's patch halves are recorded in the same list (PatchPre and
         // PatchPost, the children's ops between them); they name no container, so a reader of the element's parent does
         // not apply them, and the post-children passes of an element patched at once apply
@@ -479,6 +479,10 @@ namespace Velvet
 
         // Raised by HostCommitQueue around the writes it makes, which are the ones recorded.
         internal static int ViaQueue;
+
+        // Whether a removal made now can still be waiting for the live list: the ones a pass has recorded land where its
+        // FinishPass starts, and one made while they apply is recorded behind them.
+        internal static bool HoldsUnappliedWrites => s_recording || s_applying;
 
         // A pass starting where another is still recording applies the other's writes first.
         internal static void BeginRecording()
@@ -558,6 +562,16 @@ namespace Velvet
                 ViaHierarchy = viaHierarchy,
             });
             Touch(container);
+        }
+
+        // Takes a row out of its container, by reference where it is recorded, for the reason
+        // FiberElementCleaner.RemoveCleaned gives. record is false for a row that has to leave the live list at once.
+        internal static void RemoveRow(VisualElement parent, VisualElement element, bool record)
+        {
+            var at = PhysicalIndexOf(parent, element);
+            if (at < 0) return;
+            if (record && ShouldRecord(ContentOf(parent), element)) RecordRemoveChild(element);
+            else RemoveAt(parent, at);
         }
 
         // The removal half of a move HostCommitQueue.Reorder makes.

@@ -7,9 +7,9 @@ namespace Velvet
     // Ops for the writes a reconcile makes into a container: its child list, the rows each fiber and each Portal is
     // recorded at, a Suspense's hide and reveal, and the fibers it drops. ChildReconciler, GeneralPathReconciler,
     // ChildElementPlacement and NodePatchWalk call no child-list writer of their own (HostCommitRoutingTests), though a
-    // method they call can. The inserts and the moves among them are recorded into a container the pass did not create
-    // and applied where FinishPass starts (ChildListWrites owns which, and the reads that answer meanwhile); every
-    // other op applies where it is called.
+    // method they call can. The inserts, the moves and the removals among them are recorded into a container the pass
+    // did not create and applied where FinishPass starts (ChildListWrites owns which, and the reads that answer
+    // meanwhile); every other op applies where it is called.
     internal sealed class HostCommitQueue
     {
         private readonly ReconcilerContext _ctx;
@@ -42,6 +42,16 @@ namespace Velvet
         {
             var at = ChildListWrites.PhysicalIndexOf(parent, element);
             if (at >= 0) _cleaner.RemoveElement(parent, at);
+        }
+
+        // The child-list write of a row FiberElementCleaner has taken down, which is the one write of a removal that
+        // waits for the end of the pass. record is false for a row of a Portal range in a world-space host, which
+        // CleanupWorldSpaceHost destroys before the pass ends.
+        internal void RemoveRow(VisualElement parent, VisualElement element, bool record)
+        {
+            ChildListWrites.ViaQueue++;
+            try { ChildListWrites.RemoveRow(parent, element, record); }
+            finally { ChildListWrites.ViaQueue--; }
         }
 
         // Re-places the non-LIS elements so the slot range [slotStart, slotStart + count) ends up in

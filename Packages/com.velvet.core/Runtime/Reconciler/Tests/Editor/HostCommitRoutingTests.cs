@@ -79,13 +79,49 @@ namespace Velvet.Tests
                 "write the child list through HostCommitQueue");
         }
 
+        private static bool IsOrIsInside(TypeDefinition type, string fullName)
+        {
+            for (var t = type; t != null; t = t.DeclaringType)
+            {
+                if (t.FullName == fullName) return true;
+            }
+            return false;
+        }
+
+        [Test]
+        public void Given_TheCleanerOfARemovedRow_When_ItsCallsAreRead_Then_ItWritesTheRowsRemovalOnlyThroughTheQueue()
+        {
+            // Arrange
+            using var runtime = ModuleDefinition.ReadModule(typeof(V).Assembly.Location);
+            var calls = runtime.GetTypes()
+                .Where(type => IsOrIsInside(type, typeof(FiberElementCleaner).FullName!))
+                .SelectMany(type => type.Methods)
+                .Where(method => method.HasBody)
+                .SelectMany(method => method.Body.Instructions)
+                .Select(instruction => instruction.Operand as MethodReference)
+                .Where(callee => callee != null)
+                .Select(callee => callee!.DeclaringType.Name + "." + callee.Name)
+                .ToList();
+
+            // Act
+            var direct = calls.Where(call => call == "ChildListWrites.RemoveAt" || call == "ChildListWrites.RemoveRow")
+                .Select(call => "writes the list itself: " + call);
+            var missing = calls.Contains("HostCommitQueue.RemoveRow") ? Enumerable.Empty<string>() : new[] { "missing: HostCommitQueue.RemoveRow" };
+
+            // Assert — a cleaner that moved or was renamed would scan as clean, so what the queue's call is missing
+            // is reported in the same text.
+            Assert.That(string.Join("\n", direct.Distinct().Concat(missing)), Is.Empty);
+        }
+
         // The calls FinishPass makes that write a child list or reconcile into one other than through the queue: the
-        // portal drain, the z-layer settle of what the pass patched, the retired z-layer reals, the z-layer teardown
-        // and arrangement, and the two placement drains.
+        // portal drain, the z-layer settle of what the pass patched, the pooled returns of the rows it removed (which
+        // detach the inner of a wrapper), the retired z-layer reals, the z-layer teardown and arrangement, and the two
+        // placement drains.
         private static readonly string[] FinishPassPhase =
         {
             nameof(ChildReconciler) + "." + nameof(ChildReconciler.DrainPendingPortalMounts),
             nameof(FiberZLayerCoordinator) + "." + nameof(FiberZLayerCoordinator.SettlePatched),
+            nameof(FiberElementCleaner) + ".ReleasePendingPoolReturns",
             nameof(FiberElementCleaner) + "." + nameof(FiberElementCleaner.ReleaseRetiredZLayerReals),
             nameof(FiberZLayerCoordinator) + "." + nameof(FiberZLayerCoordinator.DrainTeardowns),
             nameof(FiberZLayerCoordinator) + "." + nameof(FiberZLayerCoordinator.ResortLayers),

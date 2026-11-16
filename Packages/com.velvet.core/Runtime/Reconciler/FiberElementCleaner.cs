@@ -25,7 +25,7 @@ namespace Velvet
 
             var poolable = PoolableOccupantOf(element);
             CleanupElement(element, element.panel, IsDiscardedAfterCleanup(element, poolable) ? element : null);
-            RemoveCleaned(parent, element);
+            RemoveCleaned(parent, element, record: true);
             ReturnOccupantToPool(element, poolable);
         }
 
@@ -57,14 +57,8 @@ namespace Velvet
 
         // Removes element by reference rather than at the index it was found at: its cleanup can take a child
         // hosted before it out of the same parent (BackdropFilterLayer.Detach), which moves it down a slot.
-        private static void RemoveCleaned(VisualElement parent, VisualElement element)
-        {
-            var at = ChildListWrites.PhysicalIndexOf(parent, element);
-            if (at >= 0)
-            {
-                ChildListWrites.RemoveAt(parent, at);
-            }
-        }
+        private void RemoveCleaned(VisualElement parent, VisualElement element, bool record)
+            => _ctx.HostCommit.RemoveRow(parent, element, record);
 
         // Resolves the poolable occupant of a slot: a clip-path-* leaf sits inside a
         // structural wrapper, and the wrapper — not the widget — is the slot's element. Must run
@@ -72,16 +66,39 @@ namespace Velvet
         private VisualElement PoolableOccupantOf(VisualElement element)
             => _ctx.WrapperToInnerMap.TryGetValue(element, out var inner) ? inner : element;
 
-        // Reclaims the slot's poolable occupant after cleanup. A wrapped inner is detached from its
-        // wrapper first so a pooled widget never carries the dead wrapper as its parent — mirroring
-        // the rollback-orphan path, which already unwraps before reclaiming.
+        // Reclaims the slot's poolable occupant after cleanup. A pass that holds writes it has not applied keeps the
+        // element until FinishPass has applied them (ReleasePendingPoolReturns), so it is reset after its removal, as it
+        // is where nothing is recorded.
         private void ReturnOccupantToPool(VisualElement removed, VisualElement poolable)
+        {
+            if (ChildListWrites.HoldsUnappliedWrites)
+            {
+                _ctx.PendingPoolReturns.Enqueue((removed, poolable));
+                return;
+            }
+            ReturnOccupantNow(removed, poolable);
+        }
+
+        // A wrapped inner is detached from its wrapper first so a pooled widget never carries the dead wrapper as its
+        // parent — mirroring the rollback-orphan path, which already unwraps before reclaiming.
+        private void ReturnOccupantNow(VisualElement removed, VisualElement poolable)
         {
             if (!ReferenceEquals(poolable, removed))
             {
                 ChildListWrites.RemoveFromHierarchy(poolable);
             }
             ReturnToPool(poolable);
+        }
+
+        // Runs where FinishPass has applied the pass's recorded removals.
+        internal void ReleasePendingPoolReturns()
+        {
+            var pending = _ctx.PendingPoolReturns;
+            while (pending.Count > 0)
+            {
+                var (removed, poolable) = pending.Dequeue();
+                ReturnOccupantNow(removed, poolable);
+            }
         }
 
         // Returns a created-but-never-placed orphan element to the pool. Used by the speculative
@@ -678,7 +695,7 @@ namespace Velvet
                 }
                 var poolable = PoolableOccupantOf(child);
                 CleanupElement(child);
-                RemoveCleaned(target, child);
+                RemoveCleaned(target, child, record: !_ctx.WorldSpaceBindings.ContainsKey(element));
                 ReturnOccupantToPool(child, poolable);
             }
 
@@ -794,7 +811,7 @@ namespace Velvet
             {
                 FiberZLayerCoordinator.ForgetRetired(real);
                 ChildListWrites.RemoveFromHierarchy(real);
-                ReturnOccupantToPool(real, poolable);
+                ReturnOccupantNow(real, poolable);
             }
         }
 
