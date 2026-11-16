@@ -76,7 +76,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AWarmPlanPool_When_ADeletionRentsFillsAndReleasesAPlanOfAThousandRows_Then_NothingIsAllocated()
+        public void Given_AWarmPlanPool_When_APlanIsRentedFilledAndReleasedForAThousandRows_Then_NothingIsAllocated()
         {
             // Arrange
             var rows = new List<VisualElement>(Rows);

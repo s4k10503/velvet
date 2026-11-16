@@ -48,7 +48,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_APlanBuiltOverANestedDeletion_When_ItHasNotBeenExecuted_Then_NothingHasBeenTakenDown()
+        public void Given_APlanBuiltOverAnElementHoldingComponents_When_ItHasNotBeenExecuted_Then_NothingHasBeenTakenDown()
         {
             // Arrange
             var log = new EventLog();
@@ -73,7 +73,43 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_APlanBuiltOverANestedDeletion_When_ItIsExecuted_Then_EachComponentAndRefIsTakenDownInPreOrder()
+        public void Given_APlanBuiltAndNeverExecuted_When_TheDeletionEnds_Then_ThePlanHoldsNoStep()
+        {
+            // Arrange
+            var container = new VisualElement();
+            using var mounted = V.Mount(container, V.Component(ElementHoldingComponents));
+            mounted.DrainForTest();
+            var deletion = BeginDeletionOfTheRow(mounted, container, out _);
+            var plan = deletion.BuildPlan(new List<ComponentFiber>(), new HashSet<ComponentFiber>(), oldLength: 1);
+            var stepsBuilt = plan.Steps.Count;
+
+            // Act
+            deletion.End();
+
+            // Assert — a plan that recorded nothing leaves nothing to release
+            Assert.That(stepsBuilt > 0 ? plan.Steps.Count : -1, Is.EqualTo(0));
+        }
+
+        [Test]
+        public void Given_APlanBuiltAndNeverRemoved_When_TheDeletionEnds_Then_ThePlanHoldsNoRoot()
+        {
+            // Arrange
+            var container = new VisualElement();
+            using var mounted = V.Mount(container, V.Component(ElementHoldingComponents));
+            mounted.DrainForTest();
+            var deletion = BeginDeletionOfTheRow(mounted, container, out _);
+            var plan = deletion.BuildPlan(new List<ComponentFiber>(), new HashSet<ComponentFiber>(), oldLength: 1);
+            var rootsBuilt = plan.Roots.Count;
+
+            // Act
+            deletion.End();
+
+            // Assert — a plan that recorded nothing leaves nothing to release
+            Assert.That(rootsBuilt > 0 ? plan.Roots.Count : -1, Is.EqualTo(0));
+        }
+
+        [Test]
+        public void Given_APlanBuiltOverAnElementHoldingComponents_When_ItIsExecuted_Then_EachComponentAndRefIsTakenDownInPreOrder()
         {
             // Arrange
             var log = new EventLog();
