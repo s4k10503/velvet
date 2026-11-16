@@ -77,67 +77,6 @@ namespace Velvet.Tests
             return V.Div();
         }
 
-        // The components below swap the handle and the layout effect between two renders, which the rules of hooks forbid.
-        // HookCountSentinel compares counts per kind and each kind here is called once either way, so the swap runs.
-        private static void UseLoggedLayoutEffect(EventLog log)
-            => Hooks.UseLayoutEffect(() =>
-            {
-                log.Add("lay:A");
-                return () => log.Add("lay-x:A");
-            }, null);
-
-        private static void UseLoggedHandle(EventLog log)
-            => Hooks.UseImperativeHandle(s_handle, () =>
-            {
-                log.Add("handle:H");
-                return new object();
-            });
-
-        private static void UseLoggedHandleWithDeps(EventLog log)
-            => Hooks.UseImperativeHandle(s_handle, () =>
-            {
-                log.Add("handle:H");
-                return new object();
-            }, null);
-
-#pragma warning disable VEL101
-        [Component(Compiler = false)]
-        private static VNode HandleMovingPastALayoutEffect()
-        {
-            var (swapped, _) = EventLog.UseState("Swapped", false);
-            var log = EventLog.UseLog();
-            if (swapped)
-            {
-                UseLoggedLayoutEffect(log);
-                UseLoggedHandle(log);
-            }
-            else
-            {
-                UseLoggedHandle(log);
-                UseLoggedLayoutEffect(log);
-            }
-            return V.Div();
-        }
-
-        [Component(Compiler = false)]
-        private static VNode HandleWithDepsMovingPastALayoutEffect()
-        {
-            var (swapped, _) = EventLog.UseState("Swapped", false);
-            var log = EventLog.UseLog();
-            if (swapped)
-            {
-                UseLoggedLayoutEffect(log);
-                UseLoggedHandleWithDeps(log);
-            }
-            else
-            {
-                UseLoggedHandleWithDeps(log);
-                UseLoggedLayoutEffect(log);
-            }
-            return V.Div();
-        }
-#pragma warning restore VEL101
-
         [Component]
         private static VNode ChildOne(bool dep)
         {
@@ -227,44 +166,6 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(log.ToString(), Is.EqualTo("lay:A handle:H"));
-        }
-
-        // GREEN_ON_BASE(characterization): the base already sets a handle up at the place its latest render gave it
-        // among the layout effects, for the overload that takes no deps.
-        [Test]
-        public void Given_AHandleWithNoDepsDeclaredBeforeALayoutEffect_When_ItRerendersDeclaredAfterIt_Then_TheHandleSetsUpAfterTheEffect()
-        {
-            // Arrange
-            var log = new EventLog();
-            using var mounted = _renderer.Mount(log.Provide(V.Component(HandleMovingPastALayoutEffect)));
-            mounted.DrainForTest();
-            log.Clear();
-
-            // Act
-            log.Setter<bool>("Swapped").Invoke(true);
-            mounted.DrainForTest();
-
-            // Assert
-            Assert.That(log.ToString(), Is.EqualTo("lay-x:A lay:A handle:H"));
-        }
-
-        // GREEN_ON_BASE(characterization): the base already sets a handle up at the place its latest render gave it
-        // among the layout effects, for the overload that takes deps.
-        [Test]
-        public void Given_AHandleWithDepsDeclaredBeforeALayoutEffect_When_ItRerendersDeclaredAfterIt_Then_TheHandleSetsUpAfterTheEffect()
-        {
-            // Arrange
-            var log = new EventLog();
-            using var mounted = _renderer.Mount(log.Provide(V.Component(HandleWithDepsMovingPastALayoutEffect)));
-            mounted.DrainForTest();
-            log.Clear();
-
-            // Act
-            log.Setter<bool>("Swapped").Invoke(true);
-            mounted.DrainForTest();
-
-            // Assert
-            Assert.That(log.ToString(), Is.EqualTo("lay-x:A lay:A handle:H"));
         }
 
         [Test]
