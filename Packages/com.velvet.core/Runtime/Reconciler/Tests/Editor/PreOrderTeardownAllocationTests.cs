@@ -8,7 +8,8 @@ namespace Velvet.Tests
 {
     /// <summary>
     /// Pins that a warm <see cref="PreOrderTeardown"/> places and takes down a thousand fibers, each at a row of its
-    /// own, without allocating: the shape of a keyed list of a thousand component rows a render clears or replaces.
+    /// own, without allocating: the shape of a keyed list of a thousand component rows a render clears or replaces,
+    /// and that a warm <see cref="DeletionPlan"/> rented for such a deletion allocates nothing either.
     /// </summary>
     [TestFixture]
     internal sealed class PreOrderTeardownAllocationTests
@@ -69,6 +70,34 @@ namespace Velvet.Tests
             // Act
             var canaryBlocks = GCAllocationProbe.MedianBlocksDuring(canary);
             var blocks = GCAllocationProbe.MedianBlocksDuring(placeAndTakeDown);
+
+            // Assert — a probe that counts nothing for the canary cannot vouch for a zero
+            Assert.That(canaryBlocks > 0 ? blocks : -1, Is.EqualTo(0));
+        }
+
+        [Test]
+        public void Given_AWarmPlanPool_When_ADeletionRentsFillsAndReleasesAPlanOfAThousandRows_Then_NothingIsAllocated()
+        {
+            // Arrange
+            var rows = new List<VisualElement>(Rows);
+            for (var i = 0; i < Rows; i++) rows.Add(new VisualElement());
+            Action rentFillAndRelease = () =>
+            {
+                var plan = DeletionPlan.Rent();
+                for (var i = 0; i < rows.Count; i++)
+                {
+                    plan.Roots[rows[i]] = new DeletionPlan.PlannedRoot(null, rows[i]);
+                    plan.Steps.Add(new PreOrderTeardown.Step { Element = rows[i] });
+                }
+                plan.Release();
+            };
+            Action canary = () => GC.KeepAlive(new object());
+            rentFillAndRelease();
+            canary();
+
+            // Act
+            var canaryBlocks = GCAllocationProbe.MedianBlocksDuring(canary);
+            var blocks = GCAllocationProbe.MedianBlocksDuring(rentFillAndRelease);
 
             // Assert — a probe that counts nothing for the canary cannot vouch for a zero
             Assert.That(canaryBlocks > 0 ? blocks : -1, Is.EqualTo(0));
