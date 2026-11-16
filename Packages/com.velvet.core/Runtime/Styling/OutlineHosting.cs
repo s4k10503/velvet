@@ -331,8 +331,8 @@ namespace Velvet
             var target = current >= 0 && current < index ? index - 1 : index;
             if (current != target)
             {
-                // MUTANT_SURVIVES(equivalent, line removed): Insert takes a child already in a parent out of it first
-                // (ChildListWrites.InsertCore), so the removal ahead of it writes nothing the Insert does not.
+                // MUTANT_SURVIVES(equivalent, line removed): UI Toolkit's Hierarchy.Insert detaches a child already in a parent first,
+                // which ChildListWrites.InsertCore mirrors in the old parent's rows, so the removal ahead of it writes nothing the Insert does not.
                 ChildListWrites.RemoveFromHierarchy(top);
                 ChildListWrites.Insert(host, Math.Min(target, host.childCount), top);
             }
