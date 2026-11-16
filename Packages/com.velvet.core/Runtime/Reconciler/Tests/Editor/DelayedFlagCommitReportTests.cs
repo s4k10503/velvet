@@ -92,7 +92,7 @@ namespace Velvet.Tests
             };
             _reconciler.Reconcile(_root, Array.Empty<VNode>(), oldTree);
             ((INotifyValueChanged<string>)(TextElement)((TextField)_root.ElementAt(1)).textEdition).SetValueWithoutNotify("typed");
-            var newTree = new VNode[] { V.Label(text: "b"), V.TextField(onValueChanged: _ => { }, isDelayed: false) };
+            var newTree = new VNode[] { V.Label(text: "b"), V.TextField(onValueChanged: _ => read.Add(label.text), isDelayed: false) };
 
             // Act
             _reconciler.Reconcile(_root, oldTree, newTree);

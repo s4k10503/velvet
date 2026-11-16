@@ -329,6 +329,28 @@ namespace Velvet.Tests
             Assert.That(s_heldRenders, Is.Zero);
         }
 
+        private MountedTree? _inner;
+
+        [Test]
+        public void Given_ARefCleanupThatDisposesAnotherRootInTheWalk_When_ThePassEnds_Then_TheOtherRootIsDisposed()
+        {
+            // Arrange
+            VNode Row() => V.Div(name: "row", refCallback: element =>
+            {
+                _inner = V.Mount(element, V.Label(text: "inner"));
+                return () => _inner.Dispose();
+            });
+            var before = new VNode[] { V.Div(name: "list", children: new VNode[] { Row() }) };
+            _first.Reconcile(new VisualElement(), Array.Empty<VNode>(), before);
+            var shown = _inner;
+
+            // Act
+            _first.Reconcile(new VisualElement(), before, new VNode[] { V.Div(name: "list") });
+
+            // Assert
+            Assert.That(shown!.Root.IsDisposed, Is.True);
+        }
+
         // GREEN_ON_BASE(characterization): the base writes at once outside a pass as well; the case pins that the
         // pass-owned state leaves that answer where it was.
         [Test]

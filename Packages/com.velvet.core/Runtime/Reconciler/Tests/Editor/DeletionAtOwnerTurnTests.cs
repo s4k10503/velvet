@@ -274,7 +274,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_APatchAppliedAtOnceInTheWalkBeforeTwoDeletions_When_BothAreDeleted_Then_TheContainersDeletionRunsFirst()
+        public void Given_ARelocatedRowBetweenALabelAndADeletion_When_BothAreDeleted_Then_TheDeletionReadsTheLabelBeforeItsUpdate()
         {
             // Arrange
             var log = new EventLog();
@@ -453,7 +453,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AComponentRenderingNothingDeletedAheadOfAnOwnerWithARelocatedRow_When_BothAreDeleted_Then_TheComponentsDeletionRunsFirst()
+        public void Given_AComponentRenderingNothingDeletedAheadOfAnOwnerWithARelocatedRow_When_BothAreDeleted_Then_TheOwnersDeletionReadsTheLabelBeforeItsUpdate()
         {
             // Arrange
             var log = new EventLog();

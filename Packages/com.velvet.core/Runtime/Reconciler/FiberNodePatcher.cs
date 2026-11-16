@@ -567,10 +567,16 @@ namespace Velvet
         // The writes a recorded PatchTail makes where the pass applies its ops.
         internal void CommitTail(in PendingPatch patch)
         {
-            if (!CleanedSince(patch))
+            if (CleanedSince(patch))
             {
-                RunPostChildrenClassPasses(patch.Element, patch.OldClasses!, patch.NewClasses!, patch.ClipActive);
+                return;
             }
+            if (patch.LayoutId != null)
+            {
+                MotionLayoutIdDriver.OnPatched(patch.Element, patch.LayoutId, patch.Timing, _ctx);
+                return;
+            }
+            RunPostChildrenClassPasses(patch.Element, patch.OldClasses!, patch.NewClasses!, patch.ClipActive);
         }
 
         private void RunPostChildrenClassPasses(VisualElement element, string[] oldClassNames,
@@ -950,7 +956,17 @@ namespace Velvet
             ReconcileLayoutIdCorrection(element, newNode, appliedNew);
             if (newNode.LayoutId != null)
             {
-                MotionLayoutIdDriver.OnPatched(element, newNode.LayoutId, LayoutIdTiming.From(newNode.LayoutTransition), _ctx);
+                // Behind the post-children passes where those are recorded, since the class list it observes has their
+                // payload on it only once they have run.
+                var timing = LayoutIdTiming.From(newNode.LayoutTransition);
+                if (ChildListWrites.IsRecording)
+                {
+                    ChildListWrites.RecordPatchTail(new PendingPatch(this, element, newNode.LayoutId, timing, _ctx.CleanupSerial));
+                }
+                else
+                {
+                    MotionLayoutIdDriver.OnPatched(element, newNode.LayoutId, timing, _ctx);
+                }
             }
             else
             {

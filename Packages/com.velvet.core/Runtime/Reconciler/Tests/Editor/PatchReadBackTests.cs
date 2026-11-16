@@ -276,6 +276,31 @@ namespace Velvet.Tests
             Assert.That(_root.Q<VisualElement>("box").ClassListContains("bg-red-500"), Is.True);
         }
 
+        private static VNode[] LayoutIdTree(bool active)
+            => new VNode[]
+            {
+                V.Motion(name: "card", layoutId: "card", className: "has-[.on]:scale-110", children: new VNode[]
+                {
+                    V.Div(className: active ? "on" : string.Empty),
+                }),
+            };
+
+        // GREEN_ON_BASE(characterization): the base ran the post-children passes in the walk ahead of the layoutId
+        // driver, so the class list it observes holds the payload their has- variant gave the Motion.
+        [Test]
+        public void Given_ALayoutIdMotionWithAHasClassVariant_When_AChildGainsTheClass_Then_TheDriverObservedThePayloadsScale()
+        {
+            // Arrange
+            var before = LayoutIdTree(false);
+            _reconciler.Reconcile(_root, Array.Empty<VNode>(), before);
+
+            // Act
+            _reconciler.Reconcile(_root, before, LayoutIdTree(true));
+
+            // Assert
+            Assert.That(BundledClassTransform.DeclaredScale(_root.Q<VisualElement>("card")), Is.Not.Null);
+        }
+
         private static VNode[] DelayedFieldTree(string name, VNode? later = null)
         {
             var rows = new List<VNode> { V.TextField(name: name, isDelayed: true) };

@@ -476,12 +476,12 @@ namespace Velvet
         // did not create updates the model and is recorded; the live list takes it no later than where FinishPass starts
         // (EndRecording), in the order recorded. A node's patch halves are recorded in the same list (PatchPre and
         // PatchPost, the children's ops between them), and so is the post-children tail of an element patched at once
-        // (PatchTail); they name no container, so a reader of the element's parent does not apply them. The readers the
-        // walk has moved to the model (ParentOf, ChildCount, ElementAtPhysical and the reads above) answer from it
-        // meanwhile, and a container with a recorded write is skipped by the checks that compare the model with the live
-        // list. Insert, Remove, RemoveAt, RemoveFromHierarchy, HierarchyRemove and Clear made into such a container, or of
-        // a child one holds, are recorded behind them too, and so is one made while they apply. HierarchySort sorts the live
-        // list, so it is called where no pass records a write for the container, which an assertion checks.
+        // (PatchTail). The readers the walk has moved to the model (ParentOf, ChildCount, ElementAtPhysical and the reads
+        // above) answer from it meanwhile, and a container with a recorded write is skipped by the checks that compare the
+        // model with the live list. Insert, Remove, RemoveAt, RemoveFromHierarchy, HierarchyRemove and Clear made into such
+        // a container, or of a child one holds, are recorded behind them too, and so is one made while they apply.
+        // HierarchySort sorts the live list, and asserts that no pass is recording a write for the container, which it
+        // does not read while the pass applies.
         //
         // The list, and the parents it leaves pending, belong to the ReconcilePass that recorded them, and s_current is
         // the one that is recording or applying, innermost first. Outside every pass nothing is recorded: ParentOf

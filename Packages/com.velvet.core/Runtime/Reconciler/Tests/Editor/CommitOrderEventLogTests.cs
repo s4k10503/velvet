@@ -63,7 +63,7 @@ namespace Velvet.Tests
             return V.Div(refCallback: EventLog.UseRefCallback<VisualElement>(props.Name));
         }
 
-        // Rerenders on its own state, and hands a child the state as a dependency.
+        // Re-renders on its own state, which its effects take as a dependency.
         [Component]
         private static VNode SetsItself(Named props)
         {

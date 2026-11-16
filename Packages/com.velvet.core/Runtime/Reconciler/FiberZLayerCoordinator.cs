@@ -382,8 +382,8 @@ namespace Velvet
 
         // Patch-time entry: real (the slot's element, read through its placeholder) was patched to declared /
         // resolved. Explicit facts relocate it and their loss returns it to its slot, where the pass's recorded writes
-        // have applied; a relocation its siblings decide waits for the end of the pass (Arrange). Outside a recording
-        // pass the settle runs at once.
+        // have applied; a relocation its siblings decide waits for the end of the pass (Arrange). While the pass records
+        // or applies the settle waits for that apply, and outside a pass it runs at once.
         internal static void OnPatched(ReconcilerContext ctx, VisualElement real, VisualElement classElement,
             string[] declared, string[] resolved, bool anchored)
         {

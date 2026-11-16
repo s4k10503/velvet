@@ -19,8 +19,10 @@ namespace Velvet
             Serial = serial;
             OldClasses = null;
             NewClasses = null;
-            // MUTANT_SURVIVES(equivalent, literal): only a tail reads the clip verdict, and a tail is built by the other constructor.
+            // MUTANT_SURVIVES(equivalent, literal): only a tail reads the clip verdict, and a tail is built by the other constructors.
             ClipActive = false;
+            LayoutId = null;
+            Timing = default;
         }
 
         internal PendingPatch(FiberNodePatcher patcher, VisualElement element, string[] oldClasses, string[] newClasses,
@@ -34,6 +36,22 @@ namespace Velvet
             OldClasses = oldClasses;
             NewClasses = newClasses;
             ClipActive = clipActive;
+            LayoutId = null;
+            Timing = default;
+        }
+
+        internal PendingPatch(FiberNodePatcher patcher, VisualElement element, string layoutId, LayoutIdTiming timing, int serial)
+        {
+            Patcher = patcher;
+            Element = element;
+            OldNode = null;
+            NewNode = null;
+            Serial = serial;
+            OldClasses = null;
+            NewClasses = null;
+            ClipActive = false;
+            LayoutId = layoutId;
+            Timing = timing;
         }
 
         internal FiberNodePatcher Patcher { get; }
@@ -44,5 +62,7 @@ namespace Velvet
         internal string[]? OldClasses { get; }
         internal string[]? NewClasses { get; }
         internal bool ClipActive { get; }
+        internal string? LayoutId { get; }
+        internal LayoutIdTiming Timing { get; }
     }
 }
