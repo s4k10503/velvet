@@ -596,10 +596,10 @@ namespace Velvet.Tests
         // GREEN_ON_BASE(characterization): a pooled Label keeps nothing of the gap row it left, which a
         // hold outliving the layer map it lives in would break.
         [Test]
-        public void Given_ALabelPooledOutOfAGapRow_When_ARowWithoutAGapRentsItWithItsOwnMargin_Then_TheOldGapIsNotHeld()
+        public void Given_ALabelPooledOutOfAGapRow_When_ARowWithoutAGapRentsItInALaterPassWithItsOwnMargin_Then_TheOldGapIsNotHeld()
         {
-            // Arrange — the gap row's second Label goes back to the pool and comes out as a plain row's
-            // Label carrying an arbitrary margin of its own, in the same pass.
+            // Arrange — the gap row's second Label goes back to the pool when its pass ends, and comes out in a later
+            // pass as a plain row's Label carrying an arbitrary margin of its own.
             using var scope = new ReconcilerScope();
             var before = new VNode[]
             {
@@ -608,6 +608,12 @@ namespace Velvet.Tests
             };
             scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), before);
             var leaving = scope.Root[0][1];
+            var middle = new VNode[]
+            {
+                V.Div(className: Gap4Row, children: new VNode[] { V.Label(text: "a") }),
+                V.Div(className: "flex flex-row", children: new VNode[] { V.Label(text: "c") }),
+            };
+            scope.Reconciler.Reconcile(scope.Root, before, middle);
             var after = new VNode[]
             {
                 V.Div(className: Gap4Row, children: new VNode[] { V.Label(text: "a") }),
@@ -616,7 +622,7 @@ namespace Velvet.Tests
             };
 
             // Act
-            scope.Reconciler.Reconcile(scope.Root, before, after);
+            scope.Reconciler.Reconcile(scope.Root, middle, after);
 
             // Assert — that the pool handed THAT element over rides along, since a freshly built Label never
             // carried the gap row's hold.
