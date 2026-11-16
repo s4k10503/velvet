@@ -448,7 +448,7 @@ namespace Velvet
         //
         // Inside a pass, an insert, a move or a removal the walk makes through HostCommitQueue into a container the pass
         // did not create updates the model and is recorded; the live list takes it no later than where FinishPass starts
-        // (ApplyRecorded), in the order recorded. A node's patch halves are recorded in the same list (PatchPre and
+        // (EndRecording), in the order recorded. A node's patch halves are recorded in the same list (PatchPre and
         // PatchPost, the children's ops between them); they name no container, so a reader of the element's parent does
         // not apply them, and the post-children passes of an element patched at once apply
         // every recorded op first (ApplyPendingPatches). The readers the walk has moved to the model (ParentOf, ChildCount, ElementAtPhysical and
@@ -696,12 +696,6 @@ namespace Velvet
             {
                 Apply(pass);
             }
-        }
-
-        // Applies the innermost pass's recorded writes.
-        internal static void ApplyRecorded()
-        {
-            if (s_current is { } pass) Apply(pass);
         }
 
         // Puts the recorded writes on the live lists in the order they were made and ends recording. An op that throws
