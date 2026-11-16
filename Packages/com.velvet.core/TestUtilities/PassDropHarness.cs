@@ -64,6 +64,7 @@ namespace Velvet.TestUtilities
                 Add($"{label} previous tree", () => fiber.PreviousTree);
                 Add($"{label} pending old tree", () => fiber.PendingOldTree);
                 Add($"{label} owning portal", () => fiber.OwningPortalPlaceholder);
+                Add($"{label} boundary state", () => FiberBoundaryState.Of(fiber));
             }
             foreach (var (container, tenancy) in ComponentRegistryProbe.Tenancies(registry))
             {
@@ -73,10 +74,10 @@ namespace Velvet.TestUtilities
 
         private void Add(string label, Func<object?> read) => _entries.Add((label, read, read()));
 
-        // A string is compared by value and every other reading by reference: the trees and the Portal stamp are
-        // arrays and elements, whose identity is what a restore has to give back.
+        // A string and a boundary state are compared by value and every other reading by reference: the trees and
+        // the Portal stamp are arrays and elements, whose identity is what a restore has to give back.
         private static bool Same(object? before, object? after)
-            => before is string ? Equals(before, after) : ReferenceEquals(before, after);
+            => before is string or FiberBoundaryState ? Equals(before, after) : ReferenceEquals(before, after);
 
         private static string Describe(object? reading)
             => reading switch
@@ -115,6 +116,12 @@ namespace Velvet.TestUtilities
                 var tenancy = (InlineTenancy)entry.Key;
                 var shifted = tenancy.ShiftedRows;
                 redo.Add(() => tenancy.ShiftedRows = shifted);
+            }
+            foreach (DictionaryEntry entry in Table(journal, "_boundaries"))
+            {
+                var fiber = (ComponentFiber)entry.Key;
+                var state = FiberBoundaryState.Of(fiber);
+                redo.Add(() => state.WriteTo(fiber));
             }
             foreach (DictionaryEntry entry in Table(journal, "_trees"))
             {

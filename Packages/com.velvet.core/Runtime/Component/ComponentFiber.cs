@@ -201,7 +201,17 @@ namespace Velvet
         // Set on a fiber a suspended mount abandoned
         // (ComponentRegistry.DiscardSuspendedMountUnder); it waits for its reader's resolve to ask for the retry,
         // where FiberRenderer.NotifyAsyncResourceCompleted disposes it.
-        internal bool MountDiscarded { get; set; }
+        internal bool MountDiscarded
+        {
+            get => _mountDiscarded;
+            set
+            {
+                Reconciler?.Context.Pass.Journal.RecordBoundary(this);
+                _mountDiscarded = value;
+            }
+        }
+
+        private bool _mountDiscarded;
 
         /// <summary>
         /// Set where an abandoned pass discarded this fiber's render, until a render of it is kept: the next walk
@@ -224,15 +234,45 @@ namespace Velvet
         // Set on each ancestor of a fiber that takes work of its own (FiberPendingWork.MarkAncestors), and cleared
         // only by FiberPendingWork when it finds nothing pending below, as React clears childLanes. A set bit
         // may be stale; a clear one is not: every ancestor of a fiber with pending work carries it.
-        internal bool PendingWorkBelow { get; set; }
+        internal bool PendingWorkBelow
+        {
+            get => _pendingWorkBelow;
+            set
+            {
+                Reconciler?.Context.Pass.Journal.RecordBoundary(this);
+                _pendingWorkBelow = value;
+            }
+        }
+
+        private bool _pendingWorkBelow;
 
         // Whether the pass SuspendedOn names was a transition's, which the retry then renders on the Transition lane.
-        internal bool SuspendedInTransition { get; set; }
+        internal bool SuspendedInTransition
+        {
+            get => _suspendedInTransition;
+            set
+            {
+                Reconciler?.Context.Pass.Journal.RecordBoundary(this);
+                _suspendedInTransition = value;
+            }
+        }
+
+        private bool _suspendedInTransition;
 
         // Set while a time-sliced pass that suspended with no Suspense above it still has slices to place. Its
         // scheduled resume does not run: the slices would commit a pass that has not, and the retry's render
         // places them first (FiberCommitWork.DrainPendingWork), which clears this.
-        internal bool ParkedPassSuspended { get; set; }
+        internal bool ParkedPassSuspended
+        {
+            get => _parkedPassSuspended;
+            set
+            {
+                Reconciler?.Context.Pass.Journal.RecordBoundary(this);
+                _parkedPassSuspended = value;
+            }
+        }
+
+        private bool _parkedPassSuspended;
 
         /// <summary>
         /// True while this fiber is a primary (hidden) child of a wrapper-less Suspense that is currently
@@ -246,29 +286,79 @@ namespace Velvet
         /// several Suspense nodes: that Suspense's own visible fallback subtree, and a sibling Suspense's
         /// children, sit under the same boundary and must still flush.
         /// </summary>
-        internal bool IsOffscreen { get; set; }
+        internal bool IsOffscreen
+        {
+            get => _isOffscreen;
+            set
+            {
+                Reconciler?.Context.Pass.Journal.RecordBoundary(this);
+                _isOffscreen = value;
+            }
+        }
+
+        private bool _isOffscreen;
 
         // The hidden primary element whose Suspense made this fiber offscreen because the fiber is mounted inside
         // it, rather than because that Suspense's own walk mounted it; null otherwise. GeneralPathReconciler's
         // SetPrimaryHidden reveals the fiber only with that element, so an enclosing Suspense revealing leaves a
         // nested one's fibers hidden.
-        internal UnityEngine.UIElements.VisualElement? HiddenUnder { get; set; }
+        internal UnityEngine.UIElements.VisualElement? HiddenUnder
+        {
+            get => _hiddenUnder;
+            set
+            {
+                Reconciler?.Context.Pass.Journal.RecordBoundary(this);
+                _hiddenUnder = value;
+            }
+        }
+
+        private UnityEngine.UIElements.VisualElement? _hiddenUnder;
 
         // The fiber rendering the Suspense that keeps this fiber offscreen; null while it is shown, and under a
         // Suspense no component renders. FiberRenderer.NotifyAsyncResourceCompleted takes it as the Suspense this
         // fiber is inside, which the nearest boundary fiber above it need not be: that one can render a Suspense
         // this fiber sits beside.
-        internal ComponentFiber? OffscreenUnder { get; set; }
+        internal ComponentFiber? OffscreenUnder
+        {
+            get => _offscreenUnder;
+            set
+            {
+                Reconciler?.Context.Pass.Journal.RecordBoundary(this);
+                _offscreenUnder = value;
+            }
+        }
+
+        private ComponentFiber? _offscreenUnder;
 
         // The fiber rendering the Suspense whose fallback this fiber was in when a walk last reached it, or null, as
         // GeneralPathReconciler.ExpandComponentInline writes it. A walk reaches only fibers below the one it renders
         // for, so the topmost fiber of a fallback is written only where a walk expands that Suspense, and keeps the
         // mark. ComponentBoundarySearch.FindSuspenseBoundaryAbove reads the chain of them.
-        internal ComponentFiber? SuspenseFallbackOf { get; set; }
+        internal ComponentFiber? SuspenseFallbackOf
+        {
+            get => _suspenseFallbackOf;
+            set
+            {
+                Reconciler?.Context.Pass.Journal.RecordBoundary(this);
+                _suspenseFallbackOf = value;
+            }
+        }
+
+        private ComponentFiber? _suspenseFallbackOf;
 
         // Set while a Suspense keeps this fiber offscreen with its layout effects cleaned up — see
         // FiberEffects.HideLayoutEffects.
-        internal bool LayoutEffectsHidden { get; set; }
+        internal bool LayoutEffectsHidden
+        {
+            get => _layoutEffectsHidden;
+            set
+            {
+                Reconciler?.Context.Pass.Journal.RecordBoundary(this);
+                _layoutEffectsHidden = value;
+            }
+        }
+
+        private bool _layoutEffectsHidden;
 
         internal List<ContextDependency> Dependencies { get; private set; } = new();
 
@@ -866,9 +956,29 @@ namespace Velvet
         // The presence and key of the AnimatePresence child this fiber was last expanded inside. A presence this
         // fiber, or a fiber below it, first mounts in a render of its own has no emission of that child around
         // it, and reads the child from here (GeneralPathReconciler.ReadEnclosingPresence).
-        internal ReconcilerContext.PresenceBoundaryState? EnclosingPresence { get; set; }
+        internal ReconcilerContext.PresenceBoundaryState? EnclosingPresence
+        {
+            get => _enclosingPresence;
+            set
+            {
+                Reconciler?.Context.Pass.Journal.RecordBoundary(this);
+                _enclosingPresence = value;
+            }
+        }
 
-        internal string? EnclosingPresenceKey { get; set; }
+        private ReconcilerContext.PresenceBoundaryState? _enclosingPresence;
+
+        internal string? EnclosingPresenceKey
+        {
+            get => _enclosingPresenceKey;
+            set
+            {
+                Reconciler?.Context.Pass.Journal.RecordBoundary(this);
+                _enclosingPresenceKey = value;
+            }
+        }
+
+        private string? _enclosingPresenceKey;
 
         // Whether a Motion this fiber mounts outside every presence emission withholds its mount enter: what
         // MotionContext.EntersBlocked said where the fiber was created, else its parent's answer.
@@ -895,7 +1005,17 @@ namespace Velvet
         // The output a reconcile of this fiber's own rows is writing ahead of PreviousTree, which takes it only once that
         // reconcile has returned, for a FiberContextSpine rebuilt meanwhile to read in its place — the drains that end a
         // pass run inside its reconcile. FiberCommitWork.ReconcileRows owns when it is set and cleared.
-        internal VNode?[]? ReconcilingTree { get; set; }
+        internal VNode?[]? ReconcilingTree
+        {
+            get => _reconcilingTree;
+            set
+            {
+                Reconciler?.Context.Pass.Journal.RecordBoundary(this);
+                _reconcilingTree = value;
+            }
+        }
+
+        private VNode?[]? _reconcilingTree;
 
         /// <summary>
         /// The <see cref="ComponentNode"/> occurrence this fiber currently answers for: written on every
@@ -931,7 +1051,17 @@ namespace Velvet
         /// fallback belongs to: the abort is shared by every Reconciler on one context, so a descendant
         /// boundary catching raises it for an ancestor whose committed tree is still the one in the DOM.
         /// </summary>
-        internal bool FallbackReplacedPreviousTree { get; set; }
+        internal bool FallbackReplacedPreviousTree
+        {
+            get => _fallbackReplacedPreviousTree;
+            set
+            {
+                Reconciler?.Context.Pass.Journal.RecordBoundary(this);
+                _fallbackReplacedPreviousTree = value;
+            }
+        }
+
+        private bool _fallbackReplacedPreviousTree;
 
         /// <summary>Reference to the previous tree retained during a pending time-sliced reconcile.</summary>
         internal VNode?[]? PendingOldTree
@@ -995,7 +1125,17 @@ namespace Velvet
         /// attempting to show the (already failing) fallback again, so propagation continues to the next
         /// ancestor boundary instead of recursing without bound.
         /// </summary>
-        internal bool IsShowingFallback { get; set; }
+        internal bool IsShowingFallback
+        {
+            get => _isShowingFallback;
+            set
+            {
+                Reconciler?.Context.Pass.Journal.RecordBoundary(this);
+                _isShowingFallback = value;
+            }
+        }
+
+        private bool _isShowingFallback;
 
         // Set while a frame that expands or reconciles this boundary's output is on the stack to catch a render
         // error below it: GeneralPathReconciler.ExpandBoundaryInline and Reconciler.ReconcileCatching set it, and
