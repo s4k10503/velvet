@@ -229,7 +229,6 @@ namespace Velvet.Tests
 
         private static StateUpdater<int> s_setRemovingHost;
 
-        // One instance, so the render that keeps the element leaves its installed ref alone.
         private static readonly Func<VisualElement, Action> s_throwingCleanupRef =
             static _ => () => throw new InvalidOperationException("cleanup boom");
 
