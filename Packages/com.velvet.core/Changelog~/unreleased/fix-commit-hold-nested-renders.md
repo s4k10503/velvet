@@ -22,9 +22,10 @@
 
 ### Changed
 
-- A `V.VirtualList` range asked for while a root renders, commits or runs its `UseEffect`s (a `ScrollToItem` from an
-  `onCreated` callback or a layout effect, the list's own root's included) renders once that work has ended, from where
-  the scroller is then. A layout effect that reads the rows right after calling `ScrollToItem` reads them as they were.
+- A `V.VirtualList` range a scroll or a resize asks for while a root renders, commits or runs its `UseEffect`s (a
+  `ScrollToItem` from an `onCreated` callback or a layout effect, the list's own root's included) renders once that work
+  has ended, from where the scroller is then. A layout effect that reads the rows right after calling `ScrollToItem`
+  reads them as they were. The range a render of the list's host asks for still renders inside that render.
 - Work that waited for another root's render or commit and throws has its exception logged, rather than thrown out of
   the call that ended that work; the waiting work after it still runs, and `V.Mount` still returns its handle. Waiting
   work that keeps asking for itself again is dropped once it has run 50 times before control returns, with "Maximum

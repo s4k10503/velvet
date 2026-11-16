@@ -553,6 +553,43 @@ namespace Velvet.Tests
             // Assert
             Assert.That(host.Root.Q<Label>("item-50"), Is.Not.Null);
         }
+
+        private static readonly System.Collections.Generic.List<string> s_rangeLog = new();
+
+        // Logs each item the list renders, and logs once item-10's row, as it is created, has scrolled the list to item 50.
+        private static MountedTree MountAListWhoseRowScrollsIt(HeadlessEditorPanelHost host)
+        {
+            s_ownListRef = new Ref<VirtualListHandle>();
+            var mounted = V.Mount(host.Root, V.VirtualList(HundredItems, item => item, itemHeight: 50f, renderer: item =>
+            {
+                s_rangeLog.Add(item);
+                return V.TextField(name: item, onCreated: item != "item-10" ? null : _ =>
+                {
+                    s_ownListRef.Current.ScrollToItem(50, VirtualListAlign.Start);
+                    s_rangeLog.Add("scrolled");
+                });
+            }, overscan: 0, listRef: s_ownListRef));
+            var scrollView = host.Root.Q<ScrollView>();
+            SetViewport(mounted, scrollView, 200f);
+            scrollView.verticalScroller.highValue = 4800f;
+            s_rangeLog.Clear();
+            return mounted;
+        }
+
+        [Test]
+        public void Given_ARowWhoseOnCreatedScrollsItsOwnList_When_TheRangeRenders_Then_TheSecondRangeRendersAfterTheFirstEnds()
+        {
+            // Arrange — on a panel, so that the scroller's change reaches the list
+            using var host = new HeadlessEditorPanelHost();
+            using var mounted = MountAListWhoseRowScrollsIt(host);
+
+            // Act
+            ControllerOf(mounted, host.Root.Q<ScrollView>()).UpdateVisibleRange(500f, 200f);
+
+            // Assert
+            Assert.That(string.Join(",", s_rangeLog),
+                Is.EqualTo("item-10,scrolled,item-11,item-12,item-13,item-50,item-51,item-52,item-53"));
+        }
     }
 
     /// <summary>

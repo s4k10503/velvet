@@ -11,7 +11,8 @@ namespace Velvet.Tests
     /// that work has ended and before control returns to what started it, after the passive effects of the root that
     /// ran last, as React's root.render() schedules there and its sync work starts by flushing pending passive effects.
     /// A discrete handler fired outside every render is not inside one, a root's own handler fired in its drain is left
-    /// to that drain, and a pass that throws still makes what it held.
+    /// to that drain, a pass that throws still makes what it held, and a root that owes sync work renders where another
+    /// root's entry ends.
     /// </summary>
     [TestFixture]
     internal sealed class ExecutionContextEntryTests
@@ -275,6 +276,44 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(s_bRenders - before, Is.EqualTo(1));
+        }
+
+        // --- Sync work a root owes where another root's entry ends ---
+
+        private sealed class SettableStore : Store<int>
+        {
+            public SettableStore() : base(0) { }
+
+            public void Set(int value) => SetState(_ => value);
+
+            protected override void ResetCore() => SetState(_ => 0);
+        }
+
+        private static SettableStore s_store;
+        private static int s_storeValueRendered;
+
+        [Component]
+        private static VNode ReadsTheStore()
+        {
+            s_storeValueRendered = Hooks.UseStore(s_store, value => value);
+            return V.Div();
+        }
+
+        [Test]
+        public void Given_AStoreReaderWhoseStoreChangedOutsideEveryEntry_When_AnotherRootsClickEnds_Then_TheReaderHasRenderedTheChange()
+        {
+            // Arrange
+            s_store = new SettableStore();
+            Mount(V.Component(ReadsTheStore)).FlushEffectsForTest();
+            var other = new VisualElement();
+            s_mounts.Add(V.Mount(other, V.Button(name: "idle", onClick: () => { })));
+            s_store.Set(1);
+
+            // Act
+            other.Q<Button>("idle").SimulateClick();
+
+            // Assert
+            Assert.That(s_storeValueRendered, Is.EqualTo(1));
         }
 
         // --- A drain that throws, and a root's own handler fired in its drain ---
