@@ -705,6 +705,8 @@ namespace Velvet.Tests
         private static int s_otherBefore;
         private static string s_seenInside;
         private static string s_shared;
+        private static string s_ref;
+        private static string s_otherSawRef;
         private static string s_otherSaw;
         private static int s_otherPassive;
         private static int s_otherPassiveBefore;
@@ -720,6 +722,7 @@ namespace Velvet.Tests
             s_setOther = setCount;
             s_otherRenders++;
             s_otherSaw = s_shared;
+            s_otherSawRef = s_ref;
             Hooks.UseEffect(() =>
             {
                 s_otherPassive++;
@@ -758,16 +761,23 @@ namespace Velvet.Tests
                 s_shared = "after the owner";
                 return (Action)null;
             }, new object[] { shown });
-            return V.Fragment(shown ? V.Component(ClicksAnotherRoot, key: "c") : null);
+            return V.Fragment(
+                shown ? V.Component(ClicksAnotherRoot, key: "c") : null,
+                V.Div(refCallback: _ =>
+                {
+                    s_ref = "attached by the owner";
+                    return () => { };
+                }));
         }
 
         private static (MountedTree Owner, MountedTree Other) MountTheTwoRoots()
         {
             FiberStrictMode.Enabled = false;
-            s_shared = "before the owner";
             s_otherClickQueues = true;
             var owner = V.Mount(new VisualElement(), V.Component(OwnerOfTheClicker));
             var other = V.Mount(new VisualElement(), V.Component(AnotherRoot));
+            s_shared = "before the owner";
+            s_ref = "before the owner";
             s_otherBefore = s_otherRenders;
             s_otherPassiveBefore = s_otherPassive;
             return (owner, other);
@@ -842,6 +852,22 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(s_otherRenders, Is.EqualTo(before));
+        }
+
+        [Test]
+        public void Given_AnApplyThatFiresAHandlerOfAnotherRoot_When_TheOtherRootRendersAfterIt_Then_ItSeesTheRefTheOwnerAttached()
+        {
+            // Arrange
+            var (owner, other) = MountTheTwoRoots();
+            using var ownerTree = owner;
+            using var otherTree = other;
+            s_showClicker.Invoke(false);
+
+            // Act
+            FiberWorkLoop.FlushState(s_clickerOwner);
+
+            // Assert
+            Assert.That(s_otherSawRef, Is.EqualTo("attached by the owner"));
         }
 
         // GREEN_ON_BASE(characterization): the base ran the pending effects where the event flushed them.

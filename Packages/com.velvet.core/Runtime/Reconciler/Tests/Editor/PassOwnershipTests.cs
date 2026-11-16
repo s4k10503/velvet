@@ -48,6 +48,14 @@ namespace Velvet.Tests
         }
 
         private MountedTree? _mounted;
+        private static int s_heldRenders;
+
+        [Component]
+        private static VNode CountsItsRenders()
+        {
+            s_heldRenders++;
+            return V.Div(name: "b");
+        }
 
         private VNode[] TreeMountingARootInsideTheWalk(VisualElement host, Action<VisualElement>? andThen = null)
             => new VNode[]
@@ -73,6 +81,28 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(seen, Is.Zero);
+        }
+
+        // GREEN_ON_BASE(characterization): the base rendered the root where it was asked for, once.
+        [Test]
+        public void Given_AHeldMountThatWasMade_When_AnotherPassEnds_Then_TheRootIsNotRenderedAgain()
+        {
+            // Arrange
+            var host = new VisualElement();
+            s_heldRenders = 0;
+            _first.Reconcile(new VisualElement(), Array.Empty<VNode>(), new VNode[]
+            {
+                V.ScrollView(onCreated: _ => _mounted = V.Mount(host, V.Component(CountsItsRenders))),
+            });
+            var rendered = s_heldRenders;
+
+            // Act
+            _first.Reconcile(new VisualElement(), Array.Empty<VNode>(), new VNode[] { V.Div() });
+            var again = s_heldRenders;
+            _mounted?.Dispose();
+
+            // Assert
+            Assert.That(again, Is.EqualTo(rendered));
         }
 
         // GREEN_ON_BASE(characterization): the base rendered the root and unmounted it, which leaves the host as empty.
