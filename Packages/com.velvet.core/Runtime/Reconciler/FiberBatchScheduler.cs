@@ -134,6 +134,10 @@ namespace Velvet
         // fibers each one serves. Exposed for tests that assert coalescing; not used by production.
         internal int ScheduledCallbackCount { get; private set; }
 
+        internal bool IsDisposed { get; private set; }
+
+        internal bool OwesSyncLane => _syncLaneQueued && _immediateOrder.Count > 0;
+
         // Count of fibers awaiting the next-frame (Normal / Urgent) batch drain.
         internal int ImmediatePendingCount => _immediateOrder.Count;
 
@@ -752,6 +756,7 @@ namespace Velvet
             _anchor = null;
             _onDrainBegin = null;
             _onDrainEnd = null;
+            IsDisposed = true;
         }
     }
 }
