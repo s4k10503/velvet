@@ -330,7 +330,7 @@ namespace Velvet
         private void DrainImmediate()
         {
             // A drain asked for while a root renders or commits waits for it, whoever asked: the probe queues the flush.
-            if (_reconcileActiveProbe?.Invoke() ?? false) return;
+            if (_reconcileActiveProbe?.Invoke() == true) return;
             ChildListWrites.RunEntry(this, this, static scheduler => scheduler.DrainImmediateEntry());
         }
 

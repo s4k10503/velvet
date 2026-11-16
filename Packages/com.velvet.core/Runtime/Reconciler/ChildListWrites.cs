@@ -590,8 +590,7 @@ namespace Velvet
             {
                 if (ReferenceEquals(item.Run, render)) return true;
             }
-            s_held.Add(new HeldItem(render, context, IsFlush: false));
-            return true;
+            return Hold(render, context);
         }
 
         // Whether the unmount of a root is held back, as React's root.unmount() is while a render or a commit runs.
@@ -627,17 +626,7 @@ namespace Velvet
             Dictionary<ReconcilerContext, int>? runs = null;
             try
             {
-                if (s_held.Count > 0 && committing is { SyncLaneOwed: true })
-                {
-                    try
-                    {
-                        committing.FlushPendingPassiveEffects();
-                    }
-                    catch (Exception exception)
-                    {
-                        first ??= System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(exception);
-                    }
-                }
+                if (committing is { SyncLaneOwed: true }) RunIsolated(committing.FlushPendingPassiveEffects, ref first);
                 while (s_held.Count > 0)
                 {
                     var item = s_held[0];
@@ -648,21 +637,13 @@ namespace Velvet
                     runs[item.Context] = ++count;
                     if (count > MaxHeldRunsPerRoot)
                     {
-                        s_held.RemoveAll(other => ReferenceEquals(other.Context, item.Context));
                         first ??= System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(new InvalidOperationException(
                             "Maximum update depth exceeded. A root kept asking for work that waits for another's render "
                             + $"or commit to end, {MaxHeldRunsPerRoot} times in a row. Velvet limits it, as React limits "
                             + "nested updates, to prevent infinite loops."));
                         continue;
                     }
-                    try
-                    {
-                        item.Run();
-                    }
-                    catch (Exception exception)
-                    {
-                        first ??= System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(exception);
-                    }
+                    RunIsolated(item.Run, ref first);
                 }
             }
             finally
@@ -671,6 +652,18 @@ namespace Velvet
             }
             if (completed) first?.Throw();
             else if (first != null) UnityEngine.Debug.LogException(first.SourceException);
+        }
+
+        private static void RunIsolated(Action run, ref System.Runtime.ExceptionServices.ExceptionDispatchInfo? first)
+        {
+            try
+            {
+                run();
+            }
+            catch (Exception exception)
+            {
+                first ??= System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(exception);
+            }
         }
 
         // No pass begins while another records, since what asks for a root while one is open waits for it
