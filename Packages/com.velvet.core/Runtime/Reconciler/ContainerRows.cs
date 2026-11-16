@@ -187,7 +187,7 @@ namespace Velvet
         // Appends the rendered children at slots [slotStart, end) to into, fewer where the container holds fewer.
         internal void Rows(int slotStart, int end, List<VisualElement?> into)
         {
-            // MUTANT_SURVIVES(equivalent, line removed): the copy below stops where the rows run out, and a slotStart at or past _rendered leaves the skip loop with no block, so the clamp changes no row appended.
+            // MUTANT_SURVIVES(unreachable, line removed): every caller passes a slotStart of 0 or more, so end - slotStart cannot overflow; the copy below then stops where the rows run out, and a slotStart at or past _rendered leaves the skip loop with no block.
             end = Math.Min(end, _rendered);
             // MUTANT_SURVIVES(equivalent, boundary): at slotStart == end want is 0 and the copy loops append nothing.
             if (slotStart >= end) return;
