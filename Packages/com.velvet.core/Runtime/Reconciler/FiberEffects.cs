@@ -170,20 +170,6 @@ namespace Velvet
         internal static void CommitStrandedLayoutWork(ReconcilerContext ctx)
         {
             if (IsCommitOnTheStack(ctx)) return;
-            try
-            {
-                CommitStranded(ctx);
-            }
-            finally
-            {
-                // The end of a commit entry, the layout effects and the ref setups it ran behind it: where React
-                // flushes the sync work, the passive effects and the roots a render asked for while it was committing.
-                ChildListWrites.ReleaseHeld();
-            }
-        }
-
-        private static void CommitStranded(ReconcilerContext ctx)
-        {
             var commits = 0;
             while (true)
             {
@@ -342,6 +328,8 @@ namespace Velvet
             ReconcilerContext ctx, ComponentFiber? scope, List<(ComponentFiber Fiber, bool IsMount)> roots)
         {
             ctx.EffectCommitDepth++;
+            // Every root's flush, first render and unmount waits for a commit to end, whichever root's it is.
+            ChildListWrites.EnterCommit();
             // A catch during this commit's own setups showed a fallback this commit has not laid out, so its
             // report waits for the follow-up commit that does.
             var reportCutoff = ctx.NextCaughtErrorSequence;
@@ -362,6 +350,7 @@ namespace Velvet
             }
             finally
             {
+                ChildListWrites.LeaveCommit();
                 ctx.EffectCommitDepth--;
                 StageReleasedPassiveEffects(ctx);
                 if (ordered != null) ctx.BufferPool.ReturnCommitEntryList(ordered);

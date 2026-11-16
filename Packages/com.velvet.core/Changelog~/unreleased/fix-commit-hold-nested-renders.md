@@ -1,7 +1,8 @@
 ### Fixed
 
-- A root `V.Mount` created from a callback of another root's render, an `onCreated` for example, rendered inside that
-  root's pass, and a discrete event's handler fired by that root's apply rendered its own root inside the apply. The
-  mount returns its handle at once now, and the roots render once the commit that follows the pass has ended, the
-  commit's layout effects and ref setups included: the passive effects of each root whose flush was held, then its
-  flush, then the first render of a mounted root.
+- A root mounted, disposed or flushed from inside another root's render or commit (a `V.Mount` from an `onCreated`
+  callback, a layout effect or a ref callback, a `Dispose` from a layout cleanup, a discrete event's handler fired by
+  an apply or by a layout effect) ran inside it. It now waits for the outermost render or commit to end. The
+  committing root's own sync-lane passive effects run first; then, in the order they were asked for, each held root's
+  passive effects and flush, the first render of each mounted root and each unmount. `V.Mount` returns its handle at
+  once. Work that throws does not stop the work after it, and its exception is rethrown once all of it has run.

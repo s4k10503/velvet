@@ -88,8 +88,8 @@ namespace Velvet
         // because the danger is the reconcile-on-stack, not the tier.
         private bool _draining;
 
-        // Reports whether a reconcile pass is currently on the stack (SharedReconcileDepth > 0) or a pass of any context
-        // records or applies its writes, registered by the owning Reconciler. _draining alone does not cover a time-sliced resume (ContinueReconcile): a
+        // Reports whether a reconcile pass is currently on the stack (SharedReconcileDepth > 0) or a root of any context
+        // renders or commits (ChildListWrites.Busy), registered by the owning Reconciler. _draining alone does not cover a time-sliced resume (ContinueReconcile): a
         // resume is scheduled via schedule.Execute, not through Drain, so _draining is false while it runs even
         // though a reconcile is on the stack. FlushImmediate also blocks on this probe so a discrete event
         // dispatched synchronously inside a slice cannot re-enter the reconciler. The hazard is the
@@ -326,7 +326,15 @@ namespace Velvet
             }
         }
 
+        // A top-level entry: what was held while a root rendered or committed is made where the outermost one ends.
         private void DrainImmediate()
+        {
+            // A drain asked for while a root renders or commits waits for it, whoever asked: the probe queues the flush.
+            if (_reconcileActiveProbe?.Invoke() ?? false) return;
+            ChildListWrites.RunEntry(this, this, static scheduler => scheduler.DrainImmediateEntry());
+        }
+
+        private void DrainImmediateEntry()
         {
             var completed = false;
             var wasInImmediateDrain = _inImmediateDrain;
@@ -484,6 +492,12 @@ namespace Velvet
         }
 
         private void DrainDelayedTier(DelayedAdmission? admission)
+        {
+            ChildListWrites.RunEntry(this, (Scheduler: this, Admission: admission),
+                static state => state.Scheduler.DrainDelayedTierEntry(state.Admission));
+        }
+
+        private void DrainDelayedTierEntry(DelayedAdmission? admission)
         {
             // The immediate queue is committed first rather than trusting the panel to run its callback ahead of
             // this one. A Transition lane that pass re-enrols takes a later admission (see ScheduleDelayed), so
@@ -659,13 +673,16 @@ namespace Velvet
         }
 
         // Whether a drain of the immediate tier can start from here: no drain of either tier, no reconcile pass on the
-        // stack and no pass of any context recording or applying. FlushImmediate checks _draining and the other two, and
+        // stack and no root of any context rendering or committing. FlushImmediate checks _draining and the other two, and
         // not whether a drain of the immediate tier is running, which renders what is queued itself.
         internal bool CanFlushImmediate => !_draining && !_inImmediateDrain && !(_reconcileActiveProbe?.Invoke() ?? false);
 
         // Marks the immediate tier's work as sync-lane work, which a drain that renders it follows with the passive
         // flush and another round of passes (DrainImmediatePasses).
         internal void OweSyncLane() => _syncLaneQueued = true;
+
+        // Whether a commit this scheduler ran left sync-lane work, whose passive effects React flushes as the commit ends.
+        internal bool SyncLaneOwed => _syncLaneQueued;
 
         // Called by the owning Reconciler: what to forget along with the intake DropImmediateIntake drops.
         internal void SetIntakeDropCallback(Action onDropped) => _onIntakeDropped = onDropped;
@@ -685,10 +702,9 @@ namespace Velvet
         // is the reconcile already on the stack, not which tier is draining. A time-sliced resume
         // (Reconciler.ContinueReconcile) runs via schedule.Execute rather than through
         // Drain, so _draining is false during it; the reconcile-active probe
-        // (SetReconcileActiveProbe) catches that case via SharedReconcileDepth > 0, and a pass of any context that
-        // records or applies its writes. The update is not lost — it stays queued, and commits where the commit that
-        // follows the pass has ended (ChildListWrites.ReleaseHeld) or on the next-frame callback that
-        // ScheduleImmediate already registered.
+        // (SetReconcileActiveProbe) catches that case via SharedReconcileDepth > 0, and a root of any context that
+        // renders or commits. The update is not lost — it stays queued, and commits where the outermost entry ends
+        // (ChildListWrites.Release) or on the next-frame callback that ScheduleImmediate already registered.
         internal void FlushImmediate()
         {
             if (_draining || (_reconcileActiveProbe?.Invoke() ?? false)) return;

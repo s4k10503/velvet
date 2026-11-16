@@ -19,9 +19,10 @@ namespace Velvet
         /// error is reported to <see cref="MountOptions.OnUncaughtError"/>. The handle stays valid, and
         /// disposing it is still how the root is released.
         /// <para>
-        /// Called while a pass of any root records or applies its writes (from an <c>onCreated</c> callback, say), it
-        /// returns the handle at once and renders the tree where the commit that follows the pass has ended, as React's
-        /// <c>root.render()</c> only schedules inside a render or a commit.
+        /// Called while a root renders or commits (from an <c>onCreated</c> callback or a layout effect, say), it
+        /// returns the handle at once and renders the tree where the outermost render or commit has ended, as React's
+        /// <c>root.render()</c> only schedules there. Disposing the handle then waits in the same way, as
+        /// <c>root.unmount()</c> does.
         /// </para>
         /// </remarks>
         /// <param name="target">The VisualElement to mount onto.</param>
@@ -172,9 +173,28 @@ namespace Velvet
                 ChildListWrites.DropHeldMount(Root.HeldMount);
                 Root.HeldMount = null;
             }
-            FiberRenderer.Dispose(Root);
-            StyleThemeTokens.Release(context);
-            if (context != null) FiberErrorBoundary.ReportErrorsDuringDisposal(context);
+            // While a render or a commit runs the unmount waits for it to end, as React's root.unmount() does.
+            if (ChildListWrites.HoldDispose(() => Unmount(context), context)) return;
+            Unmount(context);
+        }
+
+        // A top-level entry whose unmount pass counts as a commit, and which ends in what was held while it ran.
+        private void Unmount(ReconcilerContext? context)
+        {
+            ChildListWrites.RunEntry(context?.BatchScheduler, (Tree: this, Context: context), static state =>
+            {
+                ChildListWrites.EnterCommit();
+                try
+                {
+                    FiberRenderer.Dispose(state.Tree.Root);
+                    StyleThemeTokens.Release(state.Context);
+                    if (state.Context != null) FiberErrorBoundary.ReportErrorsDuringDisposal(state.Context);
+                }
+                finally
+                {
+                    ChildListWrites.LeaveCommit();
+                }
+            });
         }
     }
 }

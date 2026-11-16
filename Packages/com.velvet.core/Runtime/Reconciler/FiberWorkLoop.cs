@@ -355,6 +355,13 @@ namespace Velvet
         // to inherit.
         internal static void FlushState(ComponentFiber fiber, double timeSlicedBudgetMs)
         {
+            // A top-level entry, which ends in what was held while a root rendered or committed.
+            ChildListWrites.RunEntry(fiber.Reconciler?.Context.BatchScheduler, (Fiber: fiber, Budget: timeSlicedBudgetMs),
+                static state => FlushStateEntry(state.Fiber, state.Budget));
+        }
+
+        private static void FlushStateEntry(ComponentFiber fiber, double timeSlicedBudgetMs)
+        {
             OpenOwedSettleWindow(out var enclosing);
             try
             {
@@ -630,7 +637,13 @@ namespace Velvet
         // Resumes the suspended state of time-sliced reconciliation in the next frame.
         // Invoked automatically via schedule.Execute. Exposed to tests (the UIToolkit scheduler does not
         // advance in EditMode) so a parked slice can be driven to completion manually.
+        // A top-level entry, which ends in what was held while a root rendered or committed.
         internal static void ContinueReconcile(ComponentFiber fiber)
+        {
+            ChildListWrites.RunEntry(fiber.Reconciler?.Context.BatchScheduler, fiber, static resumed => ContinueReconcileEntry(resumed));
+        }
+
+        private static void ContinueReconcileEntry(ComponentFiber fiber)
         {
             // A resumed slice renders, so pending passive effects run before it as they do before a drain
             // (FiberBatchScheduler.Drain), and ahead of the guards below, which read what those effects leave.
