@@ -334,6 +334,8 @@ namespace Velvet.Tests
 
         private MountedTree? _inner;
 
+        // GREEN_ON_BASE(characterization): the base holds the unmount a ref cleanup asks for in the walk.
+        // It runs where the pass ends, as on the branch.
         [Test]
         public void Given_ARefCleanupThatDisposesAnotherRootInTheWalk_When_ThePassEnds_Then_TheOtherRootIsDisposed()
         {
@@ -343,12 +345,13 @@ namespace Velvet.Tests
                 _inner = V.Mount(element, V.Label(text: "inner"));
                 return () => _inner.Dispose();
             });
+            var parent = new VisualElement();
             var before = new VNode[] { V.Div(name: "list", children: new VNode[] { Row() }) };
-            _first.Reconcile(new VisualElement(), Array.Empty<VNode>(), before);
+            _first.Reconcile(parent, Array.Empty<VNode>(), before);
             var shown = _inner;
 
             // Act
-            _first.Reconcile(new VisualElement(), before, new VNode[] { V.Div(name: "list") });
+            _first.Reconcile(parent, before, new VNode[] { V.Div(name: "list") });
 
             // Assert
             Assert.That(shown!.Root.IsDisposed, Is.True);
