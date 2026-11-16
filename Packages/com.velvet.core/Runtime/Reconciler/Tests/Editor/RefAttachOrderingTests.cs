@@ -99,7 +99,7 @@ namespace Velvet.Tests
         private static int s_selfRemovedCleanups;
 
         // The setup dispatches a discrete event whose handler stops rendering the very element the setup
-        // was handed, so FiberElementCleaner runs for that element while its setup is still on the stack.
+        // was handed, in a render that runs once the commit running the setup has ended.
         private static Action SelfRemovingSetup(VisualElement element)
         {
             s_selfRemoved = element;
@@ -189,7 +189,7 @@ namespace Velvet.Tests
             s_selfRemovedCleanups = 0;
             s_seenByLayoutEffect = null;
             s_layoutEffectRuns = 0;
-            s_targetAttaches = 0;
+            s_targetLog.Clear();
             s_reboundAttaches = 0;
             s_transientAttaches = 0;
             s_refA.Set(null);
@@ -206,7 +206,7 @@ namespace Velvet.Tests
             FiberPortalRegistry.Unregister(ModalRootId);
         }
 
-        private static int s_targetAttaches;
+        private static readonly List<string> s_targetLog = new();
 
         private static int s_reboundAttaches;
 
@@ -214,7 +214,7 @@ namespace Velvet.Tests
         // patch reaches it, which is a different question than the cases below ask.
         private static readonly Func<VisualElement, Action> s_clickTheDropTrigger = ClickTheDropTrigger;
 
-        private static readonly Func<VisualElement, Action> s_countTargetAttach = CountTargetAttach;
+        private static readonly Func<VisualElement, Action> s_logTargetAttach = LogTargetAttach;
 
         private static readonly Func<VisualElement, Action> s_clickTheRebindTrigger = ClickTheRebindTrigger;
 
@@ -226,10 +226,10 @@ namespace Velvet.Tests
             return null;
         }
 
-        private static Action CountTargetAttach(VisualElement element)
+        private static Action LogTargetAttach(VisualElement element)
         {
-            s_targetAttaches++;
-            return null;
+            s_targetLog.Add("attach");
+            return () => s_targetLog.Add("detach");
         }
 
         private static Action ClickTheRebindTrigger(VisualElement element)
@@ -244,8 +244,7 @@ namespace Velvet.Tests
             return null;
         }
 
-        // The dropper's setup is queued ahead of the target's, so the write its click commits reaches the
-        // target while the drain is still an entry short of it.
+        // The dropper's setup is queued ahead of the target's, and the write its click makes drops the target's ref.
         [Component]
         private static VNode RefDroppingHost()
         {
@@ -254,7 +253,7 @@ namespace Velvet.Tests
             {
                 V.Button(name: "drop-trigger", onClick: () => setDropped.Invoke(true)),
                 V.Div(name: "dropper", refCallback: s_clickTheDropTrigger),
-                V.Div(name: "target", refCallback: dropped ? null : s_countTargetAttach),
+                V.Div(name: "target", refCallback: dropped ? null : s_logTargetAttach),
                 V.Label(name: "drop-probe", text: dropped ? "dropped" : "held"),
             });
         }
@@ -648,15 +647,17 @@ namespace Velvet.Tests
             Assert.That(FiberPortalRegistry.Get(ModalRootId), Is.SameAs(Root!.ElementAt(0)));
         }
 
+        // React renders a write a ref callback makes once the commit running it has ended (the flushSyncWorkOnAllRoots
+        // flushSpawnedWork ends it with), so the setup queued behind it runs, and the render that write asks for
+        // detaches it.
         [Test]
-        public void Given_ASetupsWriteDropsTheRefOfAnElementQueuedBehindIt_When_TheDrainReachesThatEntry_Then_ItsSetupDoesNotRun()
+        public void Given_ASetupsWriteDropsTheRefOfAnElementQueuedBehindIt_When_TheCommitEnds_Then_ItsSetupRanAndTheReRenderDetachedIt()
         {
             // Arrange / Act
             using var mounted = V.Mount(Root, V.Component(RefDroppingHost, key: "host"));
 
-            // Assert — the committed state is read beside the count, because a pass whose write never landed
-            // still declares the ref and would disagree here for a reason this case is not about.
-            Assert.That((Root!.Q<Label>("drop-probe")?.text, s_targetAttaches), Is.EqualTo(("dropped", 0)));
+            // Assert
+            Assert.That(string.Join(",", s_targetLog), Is.EqualTo("attach,detach"));
         }
 
         [Test]

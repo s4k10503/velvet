@@ -33,7 +33,9 @@ The rendered range is the items the viewport overlaps at the current scroll offs
 `overscan` on each side and clamped to the collection. An item ending at the viewport's near edge, or
 starting at its far edge, is outside the visible range. It is recomputed when the scroll offset changes,
 when the `ScrollView`'s geometry changes, and when the component holding the list renders it again —
-which renders the range from the new `items` and `renderer`.
+which renders the range from the new `items` and `renderer`. A range asked for while another root's render writes
+its elements — a `ScrollToItem` from that root's `onCreated` callback, say — renders once that render and its commit
+have ended, from where the scroller is then.
 
 ## Scrolling to an item
 

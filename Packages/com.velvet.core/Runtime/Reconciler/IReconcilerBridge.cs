@@ -29,6 +29,9 @@ namespace Velvet
         // updates, and React flushes pending passive effects before it renders one.
         void FlushPendingPassiveEffectsForController();
 
+        // ChildListWrites.HoldsRange, for the bridge's context.
+        bool HoldsRangeForController(System.Action render);
+
         // A range rendered outside a reconcile pass has no enclosing entry to end with
         // FiberEffects.CommitStrandedLayoutWork, so the controller calls this where a range render returns.
         void CommitStrandedLayoutWorkForController();

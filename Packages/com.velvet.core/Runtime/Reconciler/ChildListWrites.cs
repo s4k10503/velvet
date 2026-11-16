@@ -567,19 +567,32 @@ namespace Velvet
                     break;
                 }
             }
-            if (!queued)
-            {
-                s_held.Add(new HeldItem(() =>
-                {
-                    context.BatchScheduler.FlushPendingPassiveEffects();
-                    context.BatchScheduler.FlushImmediate();
-                }, context, IsFlush: true));
-            }
+            if (!queued) s_held.Add(FlushOf(context));
             return true;
         }
 
+        // Kept out of HoldsFlush, whose every call would otherwise build this closure (RenderCommitAllocationTests).
+        private static HeldItem FlushOf(ReconcilerContext context) => new(() =>
+        {
+            context.BatchScheduler.FlushPendingPassiveEffects();
+            context.BatchScheduler.FlushImmediate();
+        }, context, IsFlush: true);
+
         // Whether the first render of a root is held back, in which case it is made where the outermost entry ends.
         internal static bool HoldMount(Action render, ReconcilerContext context) => Hold(render, context);
+
+        // Whether a VirtualList range of the context is held back because a pass of another context records or applies
+        // its writes, in which case render is queued once and made where the outermost entry ends.
+        internal static bool HoldsRange(ReconcilerContext context, Action render)
+        {
+            if (!PassIsOpen || ReferenceEquals(s_current, context.Pass)) return false;
+            foreach (var item in s_held)
+            {
+                if (ReferenceEquals(item.Run, render)) return true;
+            }
+            s_held.Add(new HeldItem(render, context, IsFlush: false));
+            return true;
+        }
 
         // Whether the unmount of a root is held back, as React's root.unmount() is while a render or a commit runs.
         internal static bool HoldDispose(Action dispose, ReconcilerContext? context)

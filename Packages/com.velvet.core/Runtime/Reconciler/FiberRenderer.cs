@@ -72,14 +72,7 @@ namespace Velvet
             SetupMount(fiber, mountPoint, sharedContext, onCaughtError, motionClock, onUncaughtError);
             if (fiber.IsMountRoot)
             {
-                Action render = () =>
-                {
-                    fiber.HeldMount = null;
-                    // MUTANT_SURVIVES(unreachable, equality): Dispose drops a held render from the queue before it can run, so a
-                    // render that runs is of a root that is not disposed.
-                    if (fiber.IsDisposed || fiber.Reconciler == null) return;
-                    RenderMounted(fiber);
-                };
+                var render = HeldRenderOf(fiber);
                 if (ChildListWrites.HoldMount(render, fiber.Reconciler!.Context))
                 {
                     fiber.HeldMount = render;
@@ -88,6 +81,15 @@ namespace Velvet
             }
             RenderMounted(fiber);
         }
+
+        private static Action HeldRenderOf(ComponentFiber fiber) => () =>
+        {
+            fiber.HeldMount = null;
+            // MUTANT_SURVIVES(unreachable, equality): Dispose drops a held render from the queue before it can run, so a
+            // render that runs is of a root that is not disposed.
+            if (fiber.IsDisposed || fiber.Reconciler == null) return;
+            RenderMounted(fiber);
+        };
 
         // A top-level entry, which ends in what was held while a root rendered or committed.
         private static void RenderMounted(ComponentFiber fiber)

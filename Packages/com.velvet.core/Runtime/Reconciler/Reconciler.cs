@@ -639,6 +639,8 @@ namespace Velvet
 
         void IReconcilerBridge.FlushPendingPassiveEffectsForController() => _ctx.BatchScheduler.FlushPendingPassiveEffects();
 
+        bool IReconcilerBridge.HoldsRangeForController(Action render) => ChildListWrites.HoldsRange(_ctx, render);
+
         void IReconcilerBridge.HoldRowLayoutEffects()
             => _ctx.HeldRowLayoutEffects.Push(new List<(ComponentFiber fiber, bool mountDoubleInvoke)>());
 
