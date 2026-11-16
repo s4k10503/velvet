@@ -492,6 +492,9 @@ namespace Velvet
                     return;
             }
             fiber.QueuedReset = QueuedErrorBoundaryReset.None;
+            // What was captured while the fallback had not committed is the error of the swap's own deletion, a commit that
+            // React never made, so the reset shows the children rather than a fallback for it.
+            if (fiber.CatchUnreported) fiber.Reconciler?.Context.DropCapturesOf(fiber);
             fiber.CaughtError = null;
             // The children mount afresh, as React's do after a reset: what a Suspense among them kept offscreen,
             // and the fallback recorded for it against this fiber, are not carried into the reset render.

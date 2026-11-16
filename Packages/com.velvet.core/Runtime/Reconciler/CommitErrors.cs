@@ -50,6 +50,8 @@ namespace Velvet
             var oldest = long.MaxValue;
             foreach (var boundary in ctx.BoundariesOwedCaptures)
             {
+                // A fallback that has not committed holds its captures until its catch is reported (TakeCaptures).
+                if (boundary.CatchUnreported) continue;
                 var captures = boundary.PendingCaptures;
                 if (captures is { Count: > 0 } && captures[0].Sequence < oldest) oldest = captures[0].Sequence;
             }
