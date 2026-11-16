@@ -613,9 +613,8 @@ namespace Velvet
 
         // Removes only this Portal's slot range from the target's children
         // (slotStart .. slotStart + slotLength), preserving children placed by other
-        // Portals sharing the same target. The recorded starts behind the rows that leave move with them
-        // (ShiftStartsBehind) so subsequent patches stay correctly addressed. Entry removal happens before
-        // target mutation to prevent double processing via CleanupDescendants recursion.
+        // Portals sharing the same target. Entry removal happens before target mutation to prevent double
+        // processing via CleanupDescendants recursion.
         private void CleanupPortal(VisualElement element)
         {
             _ctx.PendingHostPlaceholders.Remove(element);
@@ -658,12 +657,6 @@ namespace Velvet
             // MUTANT_SURVIVES(equivalent, arithmetic): the expression sizes only the list's initial capacity, which bounds nothing PhysicalRange appends, and with both ends at zero or more the sum is a valid capacity too.
             var range = new List<VisualElement>(Math.Max(slotEnd - physicalSlotStart, 0));
             ChildListWrites.PhysicalRange(target, physicalSlotStart, slotEnd, range);
-            // The rows taken out that the recorded starts on target have not moved for yet, which began at slot
-            // `from`. A row holding a Portal is cleaned only once they have: that Portal's cleanup reads its own
-            // range from where its rows are now and moves the recorded starts behind it, so the two have to be
-            // measured against the same list.
-            var from = 0;
-            var taken = 0;
             foreach (var child in range)
             {
                 // An invisible child inside the range belongs to whichever paint owns it, not to the portal.
@@ -671,18 +664,19 @@ namespace Velvet
                 {
                     continue;
                 }
-                // MUTANT_SURVIVES(equivalent, boundary): at taken 0 the shift's delta is 0, on which ShiftRangesBehind and ShiftTenantsAfterPortalRange return, and taken is already 0.
-                if (taken > 0 && HoldsAPortalPlaceholder(child))
-                {
-                    ShiftStartsBehind(target, element, from, taken);
-                    taken = 0;
-                }
                 var poolable = PoolableOccupantOf(child);
                 CleanupElement(child);
-                if (taken == 0) from = LogicalChildSlots.ToLogical(target, ChildListWrites.PhysicalIndexOf(target, child));
+                var left = new PortalSlotInfo(
+                    target, LogicalChildSlots.ToLogical(target, ChildListWrites.PhysicalIndexOf(target, child)), 1);
                 RemoveCleaned(target, child);
+                // The starts behind each row move as it leaves, not once for the whole range: a Portal that is one of
+                // the rows, or sits in one, reads its own range from its rows when CleanupElement reaches it and moves
+                // the starts behind that range, so by then those starts have to count every row already taken out.
+                // Shifting only ahead of a row holding a Portal misses a relocated row, whose Portal sits in its real
+                // element.
+                PortalSlotTracker.ShiftRangesBehind(_ctx.PortalState.Stored, target, element, left, -1);
+                FiberCommitWork.ShiftTenantsAfterPortalRange(_ctx.ComponentRegistry, target, element, left, -1);
                 ReturnOccupantToPool(child, poolable);
-                taken++;
             }
 
             // Outside a pass nothing would drain the set.
@@ -690,29 +684,6 @@ namespace Velvet
             {
                 _ctx.PortalTargetsToRestyle.Add(target);
             }
-
-            // MUTANT_SURVIVES(equivalent, boundary): at taken 0 the shift's delta is 0, on which ShiftRangesBehind and ShiftTenantsAfterPortalRange return.
-            if (taken > 0) ShiftStartsBehind(target, element, from, taken);
-        }
-
-        // Whether element is, or holds, the placeholder of a Portal still recorded.
-        private bool HoldsAPortalPlaceholder(VisualElement element)
-        {
-            foreach (var placeholder in _ctx.PortalState.Keys)
-            {
-                if (ReferenceEquals(placeholder, element) || element.Contains(placeholder)) return true;
-            }
-            // MUTANT_SURVIVES(equivalent, literal): true only splits CleanupPortal's shift into one per row, and its rows leave from one slot, so the starts behind them move by the same total.
-            return false;
-        }
-
-        // Moves the recorded starts of the other Portals' ranges and inline tenants on target that lie behind count
-        // rows which left from slot from, so their next patch addresses the rows where they now are.
-        private void ShiftStartsBehind(VisualElement target, VisualElement placeholder, int from, int count)
-        {
-            var left = new PortalSlotInfo(target, from, count);
-            PortalSlotTracker.ShiftRangesBehind(_ctx.PortalState.Stored, target, placeholder, left, -count);
-            FiberCommitWork.ShiftTenantsAfterPortalRange(_ctx.ComponentRegistry, target, placeholder, left, -count);
         }
 
         // Empties a Portal's slot range on the element it is mounted into and leaves it in exactly the
