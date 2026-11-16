@@ -430,7 +430,7 @@ namespace Velvet
             facts = facts with { Z = resolvedZ };
             Track(ctx, real, facts);
             Settle(ctx, real, facts);
-            if (ctx.SharedReconcileDepth == 0)
+            if (ArrangesAtOnce(ctx))
             {
                 DrainTeardowns(ctx);
                 ResortLayers(ctx);
@@ -448,7 +448,7 @@ namespace Velvet
             facts = facts with { Order = order };
             Track(ctx, real, facts);
             Settle(ctx, real, facts);
-            if (ctx.SharedReconcileDepth == 0)
+            if (ArrangesAtOnce(ctx))
             {
                 DrainTeardowns(ctx);
                 ResortLayers(ctx);
@@ -462,7 +462,7 @@ namespace Velvet
         {
             var facts = Record(ctx, real, classElement, declared, resolved, anchored);
             Settle(ctx, real, facts);
-            if (ctx.SharedReconcileDepth == 0)
+            if (ArrangesAtOnce(ctx))
             {
                 DrainTeardowns(ctx);
                 ResortLayers(ctx);
@@ -479,7 +479,7 @@ namespace Velvet
                 return;
             }
             MarkPending(ctx, parent);
-            if (ctx.SharedReconcileDepth == 0)
+            if (ArrangesAtOnce(ctx))
             {
                 DrainTeardowns(ctx);
                 ResortLayers(ctx);
@@ -490,12 +490,18 @@ namespace Velvet
         internal static void OnContainerToggled(ReconcilerContext ctx, VisualElement control)
         {
             MarkPending(ctx, control);
-            if (ctx.SharedReconcileDepth == 0)
+            if (ArrangesAtOnce(ctx))
             {
                 DrainTeardowns(ctx);
                 ResortLayers(ctx);
             }
         }
+
+        // Outside any pass nothing drains after a toggle, so the parent is arranged at once. A toggle a recorded patch op
+        // makes as the pass applies its writes is inside one: the arrangement sorts the live list and rebuilds its model,
+        // which would drop the ops still recorded behind, so FinishPass arranges it after the apply.
+        private static bool ArrangesAtOnce(ReconcilerContext ctx)
+            => ctx.SharedReconcileDepth == 0 && !ChildListWrites.IsApplying;
 
         private static void Settle(ReconcilerContext ctx, VisualElement real, StackingFacts? facts)
         {

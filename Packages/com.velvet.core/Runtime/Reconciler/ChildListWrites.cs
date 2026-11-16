@@ -603,6 +603,9 @@ namespace Velvet
         // Whether a pass is recording writes it has not applied yet.
         internal static bool IsRecording => s_recording && !s_applying;
 
+        // Whether the recorded writes are being applied.
+        internal static bool IsApplying => s_applying;
+
         // Whether a patch of element waits for the pass to end: one made where a pass records, to an element that has a
         // live or a recorded parent. An element with neither is written at once.
         internal static bool StagesPatch(VisualElement element)

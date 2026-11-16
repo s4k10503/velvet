@@ -188,9 +188,9 @@ namespace Velvet.Tests
             Assert.That(_root.Q<VisualElement>("motion").ClassListContains("bg-red-500"), Is.True);
         }
 
-        private static VNode[] DelayedFieldTree(string className, VNode? later = null)
+        private static VNode[] DelayedFieldTree(string name, VNode? later = null)
         {
-            var rows = new List<VNode> { V.TextField(name: "field", className: className, isDelayed: true) };
+            var rows = new List<VNode> { V.TextField(name: name, isDelayed: true) };
             if (later != null) rows.Add(later);
             return rows.ToArray();
         }
@@ -198,19 +198,19 @@ namespace Velvet.Tests
         // GREEN_ON_BASE(characterization): the base writes every patch at once; the case pins that a delayed field, whose
         // commit of an uncommitted edit runs the app's handler, still does.
         [Test]
-        public void Given_ADelayedTextFieldWhoseClassChanges_When_ALaterRowIsCreatedInThePass_Then_TheFieldAlreadyHoldsTheNewClass()
+        public void Given_ADelayedTextFieldThatIsRenamed_When_ALaterRowIsCreatedInThePass_Then_TheFieldIsDelayedAndAlreadyHoldsTheNewName()
         {
             // Arrange
-            var before = DelayedFieldTree("p-1");
+            var before = DelayedFieldTree("before");
             _reconciler.Reconcile(_root, Array.Empty<VNode>(), before);
-            var field = _root.Q<VisualElement>("field");
-            var seen = false;
+            var field = (TextField)_root[0];
+            var seen = "unset";
 
             // Act
-            _reconciler.Reconcile(_root, before, DelayedFieldTree("p-1 rounded", V.ScrollView(onCreated: _ => seen = field.ClassListContains("rounded"))));
+            _reconciler.Reconcile(_root, before, DelayedFieldTree("after", V.ScrollView(onCreated: _ => seen = field.isDelayed + field.name)));
 
             // Assert
-            Assert.That(seen, Is.True);
+            Assert.That(seen, Is.EqualTo("Trueafter"));
         }
     }
 }
