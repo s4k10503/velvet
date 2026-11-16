@@ -176,11 +176,14 @@ namespace Velvet.Tests
             return V.Component(ThrowsOnItsTickOverAThrowingCleanup);
         }
 
-        // GREEN_ON_BASE(characterization): the base drops what the swap took when the fallback it swapped in
-        // suspends. Drop `DropTheSwapsErrors(fiber);` in the catch of FiberSuspendSignal in TryCatch and the
-        // cleanup's error stays queued and is reported with the catch.
+        // React reports both: the catch is what the retry's commit calls the boundary's callback with, in the layout
+        // phase, and the cleanup of the deleted child throws in that commit's mutation phase, which
+        // captureCommitPhaseError queues as an update on the boundary, reported by the commit after. Here the swap's
+        // deletion tears down where the walk that caught applies, and its error is a capture on the boundary (the
+        // thrower is being deleted), which the boundary takes after the catch it had not reported yet, as the last
+        // error its state holds.
         [Test]
-        public void Given_AnErrorBoundaryWhoseFallbackSuspends_When_TheFailedChildsCleanupThrowsAtTheSwap_Then_OnlyTheCatchIsReported()
+        public void Given_AnErrorBoundaryWhoseFallbackSuspends_When_TheFailedChildsCleanupThrowsAtTheSwap_Then_TheCatchIsReportedAheadOfTheCleanupsError()
         {
             // Arrange
             var log = new EventLog();
@@ -197,7 +200,8 @@ namespace Velvet.Tests
             mounted.DrainForTest();
 
             // Assert
-            Assert.That(log.ToString(), Is.EqualTo("| ins:IF ref:IF lay:IF caught:Inner:thrown by X"));
+            Assert.That(log.ToString(), Is.EqualTo(
+                "| ins:IF ref:IF lay:IF caught:Inner:thrown by X caught:Inner:cleanup threw"));
         }
     }
 }

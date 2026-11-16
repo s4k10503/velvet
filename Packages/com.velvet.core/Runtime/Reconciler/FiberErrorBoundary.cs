@@ -416,7 +416,15 @@ namespace Velvet
             if (ctx.InCommitPhase) return;
             var taken = captures.ToArray();
             ctx.DropCapturesOf(fiber);
-            if (ctx.SharedReconcileDepth == 0)
+            // The error of a fiber a deletion was taking down is no error of the rows now shown: a boundary already showing
+            // its fallback renders it again where it is, as React's does with the error its state takes, and does not
+            // mount it afresh. One a catch it has not reported yet is reported ahead of it.
+            var showsFallbackAlready = fiber.CaughtError != null && Array.TrueForAll(taken, static capture => capture.InDeletion);
+            if (fiber.CatchUnreported && fiber.CaughtError is var (unreportedError, unreportedInfo))
+            {
+                (fiber.CarriedEarlierCaptures ??= new()).Add((unreportedError, unreportedInfo));
+            }
+            if (ctx.SharedReconcileDepth == 0 && !showsFallbackAlready)
             {
                 fiber.IsShowingFallback = true;
                 try

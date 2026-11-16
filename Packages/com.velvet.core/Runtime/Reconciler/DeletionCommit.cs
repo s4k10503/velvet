@@ -81,7 +81,7 @@ namespace Velvet
 
         // Whether the deletion's cleanups and disposals wait for Teardown, so the walk records the removals of its rows
         // (AddCleanup) instead of making them.
-        internal bool Deferred => _deferred;
+        internal bool DefersTeardown => _deferred;
 
         // Registers a removed row of the container for Teardown to clean up, where it is still the container's child.
         internal void AddCleanup(VisualElement parent, VisualElement element)
