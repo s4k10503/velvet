@@ -1,0 +1,29 @@
+{
+ "detail": "EditMode: 1 failed: Given_SiblingBeforePresence_When_ExitChurnAndSiblingRerender_Then_AnchorVeNeverDestructivelyRebuilt",
+ "file": "00ccddd143934ea9dbc31d0f1e4e968b2e738002a33df9e3e3068a701404d4e9",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ReconcilerInlineSlotDesyncTests.Given_SiblingBeforePresence_When_ExitChurnAndSiblingRerender_Then_AnchorVeNeverDestructivelyRebuilt",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/ReconcilerInlineSlotDesyncTests.cs": "5210e0341c461d0e181aac6fe88e464fd82319a7a67df009fad43e6fb732ec4a",
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/SimulatedPanelTestBase.cs": "a06149cf212c91277fd1442580aee292a959fef6bf985e77628aabdbb0acacc8"
+   }
+  }
+ ],
+ "measured_by": "43753857139",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 24,
+  "line": 80,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/LogicalChildSlots.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "8e7e1b10266f79fab5f5202a407f54c3c10d6b23f97889a416e135d0c09a9dce",
+ "verdict": "killed"
+}

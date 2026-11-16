@@ -1,0 +1,34 @@
+{
+ "detail": "EditMode: 2 failed among the 459 case(s) that ran the site: Given_ARowAnotherTreePutAheadOfThePortalsRange_When_ThePortalPatches_Then_ThePatchLandsOnThePortalsChild, Given_ARowOtherCodePutAheadOfThePortalsRange_When_ThePortalPatches_Then_ThePatchLandsOnThePortalsChild",
+ "file": "f94ece03d9874d536ce89be2ff81068b6a70eabe459180876f2bd4848d47d464",
+ "killers": [
+  {
+   "case": "Velvet.Tests.PortalRangeAnchorTests.Given_ARowAnotherTreePutAheadOfThePortalsRange_When_ThePortalPatches_Then_ThePatchLandsOnThePortalsChild",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PortalRangeAnchorTests.cs": "8bde18e02011ca17a1cc3852b15d26db96043caba2c8df27a37d06edb286d0f7"
+   }
+  },
+  {
+   "case": "Velvet.Tests.PortalRangeAnchorTests.Given_ARowOtherCodePutAheadOfThePortalsRange_When_ThePortalPatches_Then_ThePatchLandsOnThePortalsChild",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PortalRangeAnchorTests.cs": "8bde18e02011ca17a1cc3852b15d26db96043caba2c8df27a37d06edb286d0f7"
+   }
+  }
+ ],
+ "measured_by": "43753857139",
+ "mutant": {
+  "after": ";",
+  "before": "first = ChildListWrites.RowAt(info.Target, info.SlotStart);",
+  "column": 16,
+  "line": 83,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ReconcilerContext.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "8e7e1b10266f79fab5f5202a407f54c3c10d6b23f97889a416e135d0c09a9dce",
+ "verdict": "killed"
+}

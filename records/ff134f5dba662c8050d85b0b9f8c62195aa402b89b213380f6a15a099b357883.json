@@ -1,0 +1,35 @@
+{
+ "detail": "EditMode: 1 failed among the 46 case(s) that ran the site: Given_AMemoizedForwardRefChild_When_TheParentPassesADifferentRefWithEqualProps_Then_TheNewRefIsPopulated",
+ "file": "97cb941862fd6d9941dc5ecb1bb954c16f0ccd40e285c0925c4229bdfb6b9ef6",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ComponentMemoPropsBailTests.Given_AMemoizedForwardRefChild_When_TheParentPassesADifferentRefWithEqualProps_Then_TheNewRefIsPopulated",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/ComponentMemoPropsBailTests.cs": "62e4e233b9fbdf30c61c31a9f852bd461eca250033b3222122eb23c826f8df38",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  }
+ ],
+ "measured_by": "43753857139",
+ "mutant": {
+  "after": "<=",
+  "before": "<",
+  "column": 23,
+  "line": 164,
+  "operator": "boundary",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberHookCommit.cs",
+  "shadowed": [
+   "boundary",
+   "clause removed",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "8e7e1b10266f79fab5f5202a407f54c3c10d6b23f97889a416e135d0c09a9dce",
+ "verdict": "killed"
+}

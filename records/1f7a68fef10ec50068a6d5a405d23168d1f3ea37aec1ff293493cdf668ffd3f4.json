@@ -1,0 +1,87 @@
+{
+ "detail": "EditMode: 7 failed among the 408 case(s) that ran the site: Given_ADefaultFamily_When_APortalRendersALabelIntoAContainerBesideTheMountRoot_Then_TheLabelResolvesTheDefaultFamily, Given_ADefaultFamily_When_APortalRendersAZIndexedRowBesideTheMountRoot_Then_ItsLabelResolvesTheDefaultFamily, Given_APortalRowNamingAFamily_When_ARenderTakesTheFamilyClassOff_Then_TheRowCarriesTheDefaultFamilyBeforeThePanelUpdates",
+ "file": "f94ece03d9874d536ce89be2ff81068b6a70eabe459180876f2bd4848d47d464",
+ "killers": [
+  {
+   "case": "Velvet.Tests.DefaultFamilyScopePanelTests.Given_ADefaultFamily_When_APortalRendersALabelIntoAContainerBesideTheMountRoot_Then_TheLabelResolvesTheDefaultFamily",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/DefaultFamilyScopePanelTests.cs": "d82d0c9ba183556265e727ef466b98e0f3eecb0c0a64e96408296c4f0367cdc5",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26"
+   }
+  },
+  {
+   "case": "Velvet.Tests.DefaultFamilyScopePanelTests.Given_ADefaultFamily_When_APortalRendersAZIndexedRowBesideTheMountRoot_Then_ItsLabelResolvesTheDefaultFamily",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/DefaultFamilyScopePanelTests.cs": "d82d0c9ba183556265e727ef466b98e0f3eecb0c0a64e96408296c4f0367cdc5",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26"
+   }
+  },
+  {
+   "case": "Velvet.Tests.DefaultFamilyScopePanelTests.Given_APortalRowNamingAFamily_When_ARenderTakesTheFamilyClassOff_Then_TheRowCarriesTheDefaultFamilyBeforeThePanelUpdates",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/DefaultFamilyScopePanelTests.cs": "d82d0c9ba183556265e727ef466b98e0f3eecb0c0a64e96408296c4f0367cdc5",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26"
+   }
+  },
+  {
+   "case": "Velvet.Tests.DefaultFamilyScopePanelTests.Given_APortalRowNamingAFamily_When_ARenderTakesTheFamilyClassOff_Then_TheRowResolvesTheDefaultFamily",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/DefaultFamilyScopePanelTests.cs": "d82d0c9ba183556265e727ef466b98e0f3eecb0c0a64e96408296c4f0367cdc5",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26"
+   }
+  },
+  {
+   "case": "Velvet.Tests.DefaultFamilyScopePanelTests.Given_APortalRowWithRichTextOffDrawnInACopyOfTheDefaultFamily_When_TheDefaultFamilyChanges_Then_ItIsDrawnInACopyOfTheNewOne",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/DefaultFamilyScopePanelTests.cs": "d82d0c9ba183556265e727ef466b98e0f3eecb0c0a64e96408296c4f0367cdc5",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26"
+   }
+  },
+  {
+   "case": "Velvet.Tests.DefaultFamilyScopePanelTests.Given_APortalRowWithRichTextOffUnderAnAuthorsFontRule_When_TheRuleStopsMatching_Then_ItIsDrawnInACopyOfTheDefaultFamily",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/DefaultFamilyScopePanelTests.cs": "d82d0c9ba183556265e727ef466b98e0f3eecb0c0a64e96408296c4f0367cdc5",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26"
+   }
+  },
+  {
+   "case": "Velvet.Tests.DefaultFamilyScopePanelTests.Given_TwoPortalsRenderingARowEach_When_RendersTakeOneOut_Then_TheOtherRowAloneIsHeldForTheDefaultFamily",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/DefaultFamilyScopePanelTests.cs": "d82d0c9ba183556265e727ef466b98e0f3eecb0c0a64e96408296c4f0367cdc5",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26"
+   }
+  }
+ ],
+ "measured_by": "43753857139",
+ "mutant": {
+  "after": "-",
+  "before": "+",
+  "column": 75,
+  "line": 1748,
+  "operator": "arithmetic",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ReconcilerContext.cs",
+  "shadowed": [
+   "line removed"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "8e7e1b10266f79fab5f5202a407f54c3c10d6b23f97889a416e135d0c09a9dce",
+ "verdict": "killed"
+}

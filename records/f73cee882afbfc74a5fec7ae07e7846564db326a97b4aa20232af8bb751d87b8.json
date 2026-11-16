@@ -1,0 +1,49 @@
+{
+ "detail": "EditMode: 3 failed among the 43 case(s) that ran the site: Given_APortalAheadOfTwiceTheSiblings_When_Mounted_Then_WhatThePortalAddsToReadingTheirElementAtMostDoubles, Given_APortalIntoTheElementOfTwiceTheSiblingsAfterIt_When_Mounted_Then_WhatThePortalAddsToReadingThatElementAtMostDoubles, Given_TwiceTheRowsInOneElement_When_TheirComponentsAreHidden_Then_TheElementIsReadNoMoreThanTwiceAsOften",
+ "file": "84293bccb11cc4913f90bb8a53d6418272685fb34ee884a444d25a9aa158f1db",
+ "killers": [
+  {
+   "case": "Velvet.Tests.CommitWorkCostTests.Given_APortalAheadOfTwiceTheSiblings_When_Mounted_Then_WhatThePortalAddsToReadingTheirElementAtMostDoubles",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/CommitWorkCostTests.cs": "90eabee5f3650e7dc7101a4470131b79fa1dabc03eb974fe2dd13eef6566b607",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/GCAllocationProbe.cs": "492823c099cf4f4de89da0da69c98d45cfc042070d93e2d0c0b95773310ebc2c",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  },
+  {
+   "case": "Velvet.Tests.CommitWorkCostTests.Given_APortalIntoTheElementOfTwiceTheSiblingsAfterIt_When_Mounted_Then_WhatThePortalAddsToReadingThatElementAtMostDoubles",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/CommitWorkCostTests.cs": "90eabee5f3650e7dc7101a4470131b79fa1dabc03eb974fe2dd13eef6566b607",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/GCAllocationProbe.cs": "492823c099cf4f4de89da0da69c98d45cfc042070d93e2d0c0b95773310ebc2c",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  },
+  {
+   "case": "Velvet.Tests.CommitWorkCostTests.Given_TwiceTheRowsInOneElement_When_TheirComponentsAreHidden_Then_TheElementIsReadNoMoreThanTwiceAsOften",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/CommitWorkCostTests.cs": "90eabee5f3650e7dc7101a4470131b79fa1dabc03eb974fe2dd13eef6566b607",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/GCAllocationProbe.cs": "492823c099cf4f4de89da0da69c98d45cfc042070d93e2d0c0b95773310ebc2c",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  }
+ ],
+ "measured_by": "43753857139",
+ "mutant": {
+  "after": "<=",
+  "before": "<",
+  "column": 32,
+  "line": 353,
+  "operator": "boundary",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ContainerRows.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "8e7e1b10266f79fab5f5202a407f54c3c10d6b23f97889a416e135d0c09a9dce",
+ "verdict": "killed"
+}
