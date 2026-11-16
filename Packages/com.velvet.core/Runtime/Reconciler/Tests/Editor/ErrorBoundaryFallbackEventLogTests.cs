@@ -220,9 +220,8 @@ namespace Velvet.Tests
             return V.Component(ThrowsAtOnce);
         }
 
-        // GREEN_ON_BASE(characterization): the base has a boundary that is showing its fallback decline the error a boundary
-        // inside that fallback passes on, so the outer reports nothing for it. Pass `isRenderError: false` from
-        // PassOnTheCaughtError and the outer takes it as an error of the swap and reports it.
+        // GREEN_ON_BASE(characterization): the base has the outer, which is showing its fallback when the inner
+        // boundary's fallback throws, report no catch.
         [Test]
         public void Given_ABoundaryWhoseFallbackHoldsABoundaryWithABrokenFallback_When_ItMountsAfterItsOwnChildThrew_Then_TheOuterReportsNothing()
         {
