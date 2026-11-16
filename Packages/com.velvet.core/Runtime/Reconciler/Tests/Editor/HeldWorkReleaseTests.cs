@@ -253,12 +253,12 @@ namespace Velvet.Tests
             Assert.That(s_counterRenders - before, Is.EqualTo(1));
         }
 
-        private static int s_disposedRootRenders;
+        private static int s_firstRenders;
 
         [Component]
         private static VNode CountsItsFirstRender()
         {
-            s_disposedRootRenders++;
+            s_firstRenders++;
             return V.Label(text: "first");
         }
 
@@ -268,13 +268,13 @@ namespace Velvet.Tests
         public void Given_ARootMountedAndDisposedInOneWalk_When_ThePassEnds_Then_ItNeverRenders()
         {
             // Arrange
-            s_disposedRootRenders = 0;
+            s_firstRenders = 0;
 
             // Act
             WalkAsking(() => V.Mount(new VisualElement(), V.Component(CountsItsFirstRender)).Dispose());
 
             // Assert
-            Assert.That(s_disposedRootRenders, Is.Zero);
+            Assert.That(s_firstRenders, Is.Zero);
         }
 
         [Test]
@@ -311,6 +311,71 @@ namespace Velvet.Tests
 
             // Assert
             LogAssert.NoUnexpectedReceived();
+        }
+
+        // --- Doors reached inside a walk ---
+
+        [Test]
+        public void Given_AFiberTheRendererMountsInsideAWalk_When_ThePassEnds_Then_ItHasRendered()
+        {
+            // Arrange
+            s_firstRenders = 0;
+            var fiber = FiberRenderer.CreateRoot(CountsItsFirstRender);
+
+            // Act
+            WalkAsking(() => FiberRenderer.Mount(fiber, new VisualElement(), _holder.Context));
+
+            // Assert
+            Assert.That(s_firstRenders, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_ARootsDrainAskedForInsideAWalk_When_ThePassEnds_Then_ItsQueuedUpdateHasRendered()
+        {
+            // Arrange
+            var counted = V.Mount(new VisualElement(), V.Component(CountsItsUpdates));
+            _roots.Add(counted);
+            var scheduler = counted.GetSchedulerForTest();
+            var before = s_counterRenders;
+
+            // Act
+            WalkAsking(() =>
+            {
+                s_setCounter.Invoke(1);
+                scheduler.DrainImmediateForTest();
+            });
+
+            // Assert
+            Assert.That(s_counterRenders - before, Is.EqualTo(1));
+        }
+
+        private static int s_effectRuns;
+
+        [Component]
+        private static VNode CountsItsEffectRuns()
+        {
+            Hooks.UseEffect(() =>
+            {
+                s_effectRuns++;
+                return (Action)null!;
+            }, Array.Empty<object>());
+            return V.Label(text: "effects");
+        }
+
+        // Only the root's own passive flush runs its effect: the walker's, which the release runs ahead of it, does not.
+        [Test]
+        public void Given_ARootsPassiveFlushAskedForInsideAWalk_When_ThePassEnds_Then_ItsPendingEffectHasRun()
+        {
+            // Arrange
+            var root = V.Mount(new VisualElement(), V.Component(CountsItsEffectRuns));
+            _roots.Add(root);
+            s_effectRuns = 0;
+
+            // Act
+            WalkAsking(() => root.GetSchedulerForTest().FlushPendingPassiveEffects());
+
+            // Assert
+            Assert.That(s_effectRuns, Is.EqualTo(1));
         }
 
         // --- The bound ---
@@ -429,6 +494,22 @@ namespace Velvet.Tests
 
             // Assert
             LogAssert.NoUnexpectedReceived();
+        }
+
+        // As above, the refused request asked for once more by a mount the fiftieth run holds.
+        [Test]
+        public void Given_ARequestPastTheBound_When_ItIsAskedForAgainInTheSameRelease_Then_ItDoesNotRunAgain()
+        {
+            // Arrange
+            LogAssert.Expect(LogType.Exception, new Regex("Maximum update depth exceeded"));
+            var ranAgain = false;
+
+            // Act
+            WalkAsking(AskingForItself(60, then: () => FiberExecutionContext.Hold(
+                FiberExecutionContext.Request.Mount, null, Holder, Entering(() => HoldTheRepeatedRequest(() => ranAgain = true)))));
+
+            // Assert
+            Assert.That(ranAgain, Is.False);
         }
 
         [Test]
