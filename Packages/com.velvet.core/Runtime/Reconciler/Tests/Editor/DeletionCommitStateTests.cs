@@ -88,9 +88,7 @@ namespace Velvet.Tests
             => (Stack<DeletionPlan>)typeof(DeletionPlan)
                 .GetField("s_pool", BindingFlags.NonPublic | BindingFlags.Static)!.GetValue(null);
 
-        private static Stack<DeletionCommit> PooledWalks()
-            => (Stack<DeletionCommit>)typeof(DeletionCommit)
-                .GetField("s_pool", BindingFlags.NonPublic | BindingFlags.Static)!.GetValue(null);
+        private static IReadOnlyList<object> PooledWalks() => DeletionCommitPool.Walks();
 
         private static object FieldPathValue(object target, string path)
         {

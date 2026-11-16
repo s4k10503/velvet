@@ -22,8 +22,12 @@ namespace Velvet
             internal VisualElement Child;
             // The deletion a Teardown runs.
             internal DeletionCommit? Deletion;
-            // The fiber a FiberBegin or a FiberEnd brackets: the ops between the two are the writes its output made.
+            // The fiber a FiberBegin or a FiberEnd names, or the one whose tree holds the construct a FiberBegin with a
+            // Turn names.
             internal ComponentFiber? Fiber;
+            // Zero for a fiber's own turn; for a construct inside a fiber's tree, the position the walk gave the
+            // nodes it holds (FiberKeying.WalkPosition.SlotPath).
+            internal long Turn;
             // The index into Patches of a PatchPre or a PatchPost.
             internal int Index;
             internal OpKind Kind;

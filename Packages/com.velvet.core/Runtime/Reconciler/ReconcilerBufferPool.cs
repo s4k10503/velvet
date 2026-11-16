@@ -151,6 +151,10 @@ namespace Velvet
         public List<ComponentFiber?> RentFiberOwnerList() => _fiberOwnerListPool.Rent();
         public void ReturnFiberOwnerList(List<ComponentFiber?> list) => _fiberOwnerListPool.Return(list);
 
+        private readonly ClearablePool<List<long>> _turnListPool = new(l => l.Clear());
+        public List<long> RentTurnList() => _turnListPool.Rent();
+        public void ReturnTurnList(List<long> list) => _turnListPool.Return(list);
+
         private readonly ClearablePool<List<ChildKey>> _leafKeyListPool = new(l => l.Clear());
 
         public List<ChildKey> RentLeafKeyList() => _leafKeyListPool.Rent();

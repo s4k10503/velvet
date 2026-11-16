@@ -807,41 +807,63 @@ namespace Velvet
             // The position the mark names in pass's ops, or -1 where the ops it counted have applied since.
             internal int PositionIn(ReconcilePass pass)
                 => ReferenceEquals(_pass, pass) && _applied == pass.Applied ? _count : -1;
+
+            // Whether the ops the mark counted in pass have applied since: what follows it in the ops was recorded later.
+            internal bool Flushed(ReconcilePass pass) => ReferenceEquals(_pass, pass) && _applied != pass.Applied;
+
+            // Where a search for what the walk recorded begins: at the mark, or at the start of the ops where it is gone.
+            // MUTANT_SURVIVES(equivalent, boundary): a mark at the start of the ops and none both search from the first op.
+            internal int SearchFrom(ReconcilePass pass) => PositionIn(pass) < 0 ? 0 : PositionIn(pass);
         }
 
         internal static OpMark MarkOps() => s_current is { Recording: true, Applying: false } pass ? new OpMark(pass) : default;
 
-        // Brackets the ops a fiber's rendered output records. They apply as nothing: they name where the fiber's turn is.
-        internal static void RecordFiberBegin(ComponentFiber fiber) => RecordFiberBracket(ReconcilePass.OpKind.FiberBegin, fiber);
+        // Where a fiber's rendered output begins and ends among the recorded ops, and where a construct of its tree that
+        // React gives a fiber of its own begins (RecordTurn). They apply as nothing: they name where a turn is.
+        internal static void RecordFiberBegin(ComponentFiber fiber) => RecordFiberBracket(ReconcilePass.OpKind.FiberBegin, fiber, 0);
 
-        internal static void RecordFiberEnd(ComponentFiber fiber) => RecordFiberBracket(ReconcilePass.OpKind.FiberEnd, fiber);
+        internal static void RecordFiberEnd(ComponentFiber fiber) => RecordFiberBracket(ReconcilePass.OpKind.FiberEnd, fiber, 0);
 
-        private static void RecordFiberBracket(ReconcilePass.OpKind kind, ComponentFiber fiber)
+        internal static void RecordTurn(ComponentFiber? fiber, long turn)
+            => RecordFiberBracket(ReconcilePass.OpKind.FiberBegin, fiber, turn);
+
+        private static void RecordFiberBracket(ReconcilePass.OpKind kind, ComponentFiber? fiber, long turn)
         {
             if (s_current is not { Recording: true, Applying: false } pass) return;
-            pass.Ops.Add(new ReconcilePass.Op { Fiber = fiber, Kind = kind });
+            pass.Ops.Add(new ReconcilePass.Op { Fiber = fiber, Turn = turn, Kind = kind });
         }
 
-        // Queues a deletion's teardown among the recorded writes, to run at its owner's turn: right after the owner's
-        // FiberBegin, or at start where the owner is the container's own. Where that position has applied already, or the
-        // owner recorded none, it runs behind the writes recorded so far. False where no pass is recording or its
-        // recorded writes are applying, which leaves the caller to run it.
-        internal static bool RecordTeardown(DeletionCommit deletion, ComponentFiber? owner, in OpMark start)
+        // Whether the recorded ops hold the begin of the turn: not where an apply has taken it since it was recorded.
+        internal static bool HasTurn(in OpMark start, ComponentFiber? fiber, long turn)
         {
             if (s_current is not { Recording: true, Applying: false } pass) return false;
-            var at = owner == null ? start.PositionIn(pass) : IndexAfterBegin(pass, owner);
+            return IndexAfterBegin(pass, fiber, turn, start.SearchFrom(pass)) >= 0;
+        }
+
+        // Queues a deletion's teardown among the recorded writes, to run at its turn: right after the begin of the fiber or
+        // construct that owns it, or at start where the container does. Where an apply has taken what the walk recorded
+        // since start, everything left was recorded after it and the teardown goes ahead of all of it; where the owner
+        // recorded no begin, it goes behind the writes recorded so far. False where no pass is recording or its recorded
+        // writes are applying, which leaves the caller to run it.
+        internal static bool RecordTeardown(DeletionCommit deletion, in DeletionTurn turn, in OpMark start)
+        {
+            if (s_current is not { Recording: true, Applying: false } pass) return false;
+            var at = turn.IsContainers ? start.PositionIn(pass) : IndexAfterBegin(pass, turn.Fiber, turn.Position, start.SearchFrom(pass));
             var op = new ReconcilePass.Op { Deletion = deletion, Kind = ReconcilePass.OpKind.Teardown };
+            if (at < 0 && start.Flushed(pass)) at = 0;
             if (at >= 0 && at <= pass.Ops.Count) pass.Ops.Insert(at, op);
             else pass.Ops.Add(op);
             return true;
         }
 
-        private static int IndexAfterBegin(ReconcilePass pass, ComponentFiber owner)
+        // The first begin of the turn from where the walk began, not the last: a container nested in the walk begins its own
+        // positions from the root again, which a fiber that owns both records under the same turn.
+        private static int IndexAfterBegin(ReconcilePass pass, ComponentFiber? fiber, long turn, int from)
         {
-            for (var i = pass.Ops.Count - 1; i >= 0; i--)
+            for (var i = from; i < pass.Ops.Count; i++)
             {
                 var op = pass.Ops[i];
-                if (op.Kind == ReconcilePass.OpKind.FiberBegin && ReferenceEquals(op.Fiber, owner)) return i + 1;
+                if (op.Kind == ReconcilePass.OpKind.FiberBegin && op.Turn == turn && ReferenceEquals(op.Fiber, fiber)) return i + 1;
             }
             return -1;
         }

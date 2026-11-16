@@ -9,6 +9,8 @@
   component mounting its own wrapper element, or a Portal whose target is the container itself or lies inside what the
   removal removes. The Portals a deferred removal holds move the ranges behind them up where the removal is decided,
   and release their rows, bridge and world-space host where the recorded writes apply.
-  The cleanups of what a component stops rendering run at that component's turn among the writes, ahead of those of
-  the components and elements after it, as React runs a fiber's deletions ahead of its children's, and what the
-  container itself stops rendering runs ahead of what the components in it do.
+  They run in React's order: what a component, a Provider, a Suspense or a nested or keyed Fragment stops rendering
+  runs at its turn, after the deletions of whatever comes before it and ahead of those inside what it still renders,
+  and what the component rendering a container stops rendering runs ahead of the rest of that container. A patch applied at once
+  inside the walk applies the writes recorded before it, and what it leaves then runs ahead of what the walk records
+  after it.
