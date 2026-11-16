@@ -92,9 +92,8 @@ namespace Velvet.Tests
             Assert.That(RowModelAccess.Peek(container)!.ElementAt(0), Is.SameAs(container[0]));
         }
 
-        // GREEN_ON_BASE(characterization): the base watches the panel a pass reconciles onto, so a change made to
-        // its hierarchy outside every pass is announced to the models. Drop `_ctx.RelationalTreeWatch.Watch(parent?.panel);`
-        // and no pass registers the watch.
+        // GREEN_ON_BASE(characterization): the base watches the panel a pass reconciles onto. Drop
+        // `_ctx.RelationalTreeWatch.Watch(parent?.panel);` and no pass registers the watch.
         [Test]
         public void Given_APassOnAPanel_When_ItBegins_Then_TheContextWatchesThatPanel()
         {

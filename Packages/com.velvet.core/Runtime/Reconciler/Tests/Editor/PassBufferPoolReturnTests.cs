@@ -8,8 +8,8 @@ namespace Velvet.Tests
     /// <summary>
     /// Specifies that the lists a layout commit and a context spine rent from <see cref="ReconcilerBufferPool"/>
     /// go back to it when the call that rented them ends, so a commit does not leave them behind for the collector.
-    /// Each case puts a marked list on top of the pool the call rents from first, runs that call and reads whether
-    /// the pool holds the marked list afterwards.
+    /// Each case puts a marked list on top of a pool the call rents from, runs that call and reads whether the pool
+    /// holds the marked list afterwards.
     /// </summary>
     [TestFixture]
     internal sealed class PassBufferPoolReturnTests
