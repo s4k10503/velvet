@@ -202,5 +202,39 @@ namespace Velvet.Tests
                 Assert.That(log.ToString(), Is.EqualTo("ins-x:X lay-x:X ref-x:X ins:OF ref:OF lay:OF caught:Outer:thrown by the constructor"));
             }
         }
+
+        [Component]
+        private static VNode ThrowsAtOnce() => throw new InvalidOperationException("thrown by the child");
+
+        [Component(Compiler = false, IsErrorBoundary = true, DisplayName = "Inner")]
+        private static VNode InnerWithABrokenFallback()
+        {
+            Hooks.UseFallback(_ => V.Component(BrokenContent));
+            return V.Component(ThrowsAtOnce);
+        }
+
+        [Component(Compiler = false, IsErrorBoundary = true, DisplayName = "Outer")]
+        private static VNode OuterShowingTheBrokenInner()
+        {
+            Hooks.UseFallback(_ => V.Component(InnerWithABrokenFallback));
+            return V.Component(ThrowsAtOnce);
+        }
+
+        // GREEN_ON_BASE(characterization): the base has a boundary that is showing its fallback decline the error a boundary
+        // inside that fallback passes on, so the outer reports nothing for it. Pass `isRenderError: false` from
+        // PassOnTheCaughtError and the outer takes it as an error of the swap and reports it.
+        [Test]
+        public void Given_ABoundaryWhoseFallbackHoldsABoundaryWithABrokenFallback_When_ItMountsAfterItsOwnChildThrew_Then_TheOuterReportsNothing()
+        {
+            // Arrange
+            var log = new EventLog();
+
+            // Act
+            using var mounted = _renderer.Mount(log.Provide(V.Component(OuterShowingTheBrokenInner)), log.ReportingErrors());
+            mounted.DrainForTest();
+
+            // Assert
+            Assert.That(log.ToString().Contains("caught:Outer:"), Is.False);
+        }
     }
 }

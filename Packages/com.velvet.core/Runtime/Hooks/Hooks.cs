@@ -2007,7 +2007,6 @@ namespace Velvet
             entry.NextFactory = factory;
             entry.NextDeps = null;
             entry.NextNeedsRecompute = true;
-            entry.LayoutEffectsBefore = fiber.Indices.LayoutEffectHookIndex;
         }
 
         /// <summary>
@@ -2054,7 +2053,6 @@ namespace Velvet
             entry.NextFactory = factory;
             entry.NextDeps = deps;
             entry.NextNeedsRecompute = deps == null || !ObjectIs.AreEqualDeps(entry.LastDeps, deps);
-            entry.LayoutEffectsBefore = fiber.Indices.LayoutEffectHookIndex;
         }
 
         #endregion
