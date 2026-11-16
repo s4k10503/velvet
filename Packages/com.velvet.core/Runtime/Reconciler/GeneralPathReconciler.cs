@@ -233,7 +233,7 @@ namespace Velvet
                     RestoreWhatTheSuspensesWrote(commit);
                 }
                 // A deferred deletion disposes its fibers where it tears down.
-                if (deletion is not { Deferred: true }) _ctx.HostCommit.DisposeOrphans(oldFibers, newFibers);
+                if (deletion is not { DefersTeardown: true }) _ctx.HostCommit.DisposeOrphans(oldFibers, newFibers);
                 return removalsRan;
             }
             finally
@@ -634,7 +634,7 @@ namespace Velvet
 
             // Removal, from the last old leaf down, of the leaves the deletion took down.
             var removed = deletion?.RemovedRows;
-            var deferred = deletion is { Deferred: true };
+            var deferred = deletion is { DefersTeardown: true };
             for (var i = (removed?.Count ?? 0) - 1; i >= 0; i--)
             {
                 var index = removed![i].Index;

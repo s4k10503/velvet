@@ -414,6 +414,9 @@ namespace Velvet
             if (captures == null || captures.Count == 0) return;
             var ctx = fiber.Reconciler!.Context;
             if (ctx.InCommitPhase) return;
+            // A fallback that has not committed leaves its catch unreported, and an error captured meanwhile waits for the
+            // commit that shows it: React raises the capture in that commit, so the render after it takes it.
+            if (fiber.CatchUnreported) return;
             var taken = captures.ToArray();
             ctx.DropCapturesOf(fiber);
             if (ctx.SharedReconcileDepth == 0)
