@@ -182,7 +182,7 @@ namespace Velvet
                 ChildListWrites.EnterCommit();
                 try
                 {
-                    FiberRenderer.Dispose(state.Tree.Root);
+                    FiberRenderer.DisposeWork(state.Tree.Root);
                     StyleThemeTokens.Release(state.Context);
                     if (state.Context != null) FiberErrorBoundary.ReportErrorsDuringDisposal(state.Context);
                 }

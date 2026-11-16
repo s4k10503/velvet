@@ -132,7 +132,7 @@ namespace Velvet
                 _ctx.BatchScheduler.SetReconcileActiveProbe(
                     () => _ctx.SharedReconcileDepth > 0 || ChildListWrites.HoldsFlush(_ctx));
                 _ctx.BatchScheduler.SetIntakeDropCallback(_ctx.DropAllCaptures);
-                _ctx.BatchScheduler.SetPassiveEffectFlush(() => FiberEffects.FlushPendingPassiveEffects(_ctx));
+                _ctx.BatchScheduler.SetPassiveEffectFlush(() => FiberEffects.FlushPendingPassiveEffectsWork(_ctx));
                 // Brackets each drain to drive (1) the UseStore tearing guard — pinning is active only inside a
                 // drain, and each drain pass is a wave of its own — and (2) the layout-effect commit phase:
                 // fibers defer their effect commit during the drain so all renders precede any layout effect,
@@ -522,7 +522,9 @@ namespace Velvet
         /// <c>Stopwatch</c>, this acts as a "new budget" rather than "remaining budget."
         /// Zero or below disables budgeting (the remaining work runs synchronously to completion).
         /// </param>
-        public void ContinueReconcile(double frameBudgetMs = 0)
+        public void ContinueReconcile(double frameBudgetMs = 0) => ContinueReconcileWork(frameBudgetMs);
+
+        internal void ContinueReconcileWork(double frameBudgetMs)
         {
             if (_ctx.IsDisposed || !HasPendingWork) { return; }
             using var _ = s_continueReconcileMarker.Auto();
@@ -637,7 +639,7 @@ namespace Velvet
 
         private VisualElement SlotOccupantOf(VisualElement row) => FiberZLayerCoordinator.PlaceholderOf(_ctx, row) ?? row;
 
-        void IReconcilerBridge.FlushPendingPassiveEffectsForController() => _ctx.BatchScheduler.FlushPendingPassiveEffects();
+        void IReconcilerBridge.FlushPendingPassiveEffectsForController() => _ctx.BatchScheduler.FlushPendingPassiveEffectsWork();
 
         bool IReconcilerBridge.HoldsRangeForController(Action render) => ChildListWrites.HoldsRange(_ctx, render);
 

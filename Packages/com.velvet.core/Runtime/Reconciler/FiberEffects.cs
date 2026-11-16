@@ -222,7 +222,7 @@ namespace Velvet
             ctx.FlushingCaptures = true;
             try
             {
-                ctx.BatchScheduler.FlushImmediate();
+                ctx.BatchScheduler.FlushImmediateWork();
             }
             finally
             {
@@ -1042,10 +1042,12 @@ namespace Velvet
                 if (rootFiber != null) RunEffects(rootFiber);
                 return;
             }
-            FlushPendingPassiveEffects(context);
+            FlushPendingPassiveEffectsWork(context);
         }
 
-        internal static void FlushPendingPassiveEffects(ReconcilerContext context)
+        internal static void FlushPendingPassiveEffects(ReconcilerContext context) => FlushPendingPassiveEffectsWork(context);
+
+        internal static void FlushPendingPassiveEffectsWork(ReconcilerContext context)
         {
             // React refuses to flush passive effects inside a commit ("Cannot flush passive effects while already
             // rendering"), a passive flush being one. Reached from a layout commit or from an effect this context's

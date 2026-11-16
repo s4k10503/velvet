@@ -82,6 +82,12 @@ namespace Velvet
             RenderMounted(fiber);
         }
 
+        internal static void MountWork(ComponentFiber fiber, VisualElement? mountPoint, ReconcilerContext sharedContext)
+        {
+            SetupMount(fiber, mountPoint, sharedContext);
+            RenderMountedWork(fiber);
+        }
+
         private static Action HeldRenderOf(ComponentFiber fiber) => () =>
         {
             if (fiber.IsDisposed || fiber.Reconciler == null) return;
@@ -91,10 +97,10 @@ namespace Velvet
         // A top-level entry, which ends in what was held while a root rendered or committed.
         private static void RenderMounted(ComponentFiber fiber)
         {
-            ChildListWrites.RunEntry(fiber.Reconciler!.Context.BatchScheduler, fiber, static mounted => RenderMountedEntry(mounted));
+            ChildListWrites.RunEntry(fiber.Reconciler!.Context.BatchScheduler, fiber, static mounted => RenderMountedWork(mounted));
         }
 
-        private static void RenderMountedEntry(ComponentFiber fiber)
+        private static void RenderMountedWork(ComponentFiber fiber)
         {
             var context = fiber.Reconciler!.Context;
             RenderAndReconcile(fiber);
@@ -108,7 +114,7 @@ namespace Velvet
             // range render has no write to flush, its layout work being held for the range
             // (IReconcilerBridge.HoldRowLayoutEffects), and what the queue holds there — the updates the
             // range's own passive flush scheduled among them — is the scheduler's to drain, not this row's.
-            if (context.HeldRowLayoutEffects.Count == 0) fiber.Reconciler?.Context.BatchScheduler.FlushImmediate();
+            if (context.HeldRowLayoutEffects.Count == 0) fiber.Reconciler?.Context.BatchScheduler.FlushImmediateWork();
         }
 
         // Inline-mount variant for wrapper-less fibers. The fiber's render output is held on the
@@ -295,7 +301,9 @@ namespace Velvet
         // Unmounts the fiber and runs child VisualElement removal and effect cleanup.
         // Returns immediately if the fiber is not mounted.
         // fiber: Fiber to unmount.
-        public static void Unmount(ComponentFiber fiber)
+        public static void Unmount(ComponentFiber fiber) => UnmountWork(fiber);
+
+        private static void UnmountWork(ComponentFiber fiber)
         {
             if (!fiber.IsMounted)
             {
@@ -392,7 +400,9 @@ namespace Velvet
         // Completely disposes the fiber. Cannot be re-mounted (state slots are not restored).
         // Idempotent: subsequent calls are no-ops.
         // fiber: Fiber to dispose.
-        public static void Dispose(ComponentFiber fiber)
+        public static void Dispose(ComponentFiber fiber) => DisposeWork(fiber);
+
+        internal static void DisposeWork(ComponentFiber fiber)
         {
             if (fiber.IsDisposed)
             {
@@ -407,7 +417,7 @@ namespace Velvet
             // Closures captured by Hooks.UseXxx are gated through this flag.
             fiber.IsDisposed = true;
 
-            Unmount(fiber);
+            UnmountWork(fiber);
 #if UNITY_EDITOR
             DevTools.VelvetDevToolsRegistry.Unregister(fiber);
 #endif
@@ -946,7 +956,9 @@ namespace Velvet
         // through the Lane queue).
         // The notification is silently ignored if the fiber is disposed or not mounted.
         // fiber: Fiber that owns the FiberAsyncResource slot which just resolved.
-        public static void NotifyAsyncResourceCompleted(ComponentFiber fiber)
+        public static void NotifyAsyncResourceCompleted(ComponentFiber fiber) => NotifyAsyncResourceCompletedWork(fiber);
+
+        private static void NotifyAsyncResourceCompletedWork(ComponentFiber fiber)
         {
             if (fiber.IsDisposed || !fiber.IsMounted) return;
             // Re-entrancy guard: if async resolves synchronously during render, defer to schedule.

@@ -237,7 +237,9 @@ namespace Velvet
             MeasureViewport();
         }
 
-        internal void UpdateVisibleRange(float scrollY, float viewportHeight)
+        internal void UpdateVisibleRange(float scrollY, float viewportHeight) => UpdateVisibleRangeWork(scrollY, viewportHeight);
+
+        private void UpdateVisibleRangeWork(float scrollY, float viewportHeight)
         {
             if (_isDisposed || _node.Items.Count == 0)
             {
@@ -826,7 +828,7 @@ namespace Velvet
 
             if (_viewportHeight > 0)
             {
-                UpdateVisibleRange(AxisScroller.value, _viewportHeight);
+                UpdateVisibleRangeWork(AxisScroller.value, _viewportHeight);
             }
         }
     }

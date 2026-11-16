@@ -357,10 +357,12 @@ namespace Velvet
         {
             // A top-level entry, which ends in what was held while a root rendered or committed.
             ChildListWrites.RunEntry(fiber.Reconciler?.Context.BatchScheduler, (Fiber: fiber, Budget: timeSlicedBudgetMs),
-                static state => FlushStateEntry(state.Fiber, state.Budget));
+                static state => FlushStateWork(state.Fiber, state.Budget));
         }
 
-        private static void FlushStateEntry(ComponentFiber fiber, double timeSlicedBudgetMs)
+        internal static void FlushStateWork(ComponentFiber fiber) => FlushStateWork(fiber, FiberLane.TimeSlicedBudgetMs);
+
+        internal static void FlushStateWork(ComponentFiber fiber, double timeSlicedBudgetMs)
         {
             OpenOwedSettleWindow(out var enclosing);
             try
@@ -403,7 +405,7 @@ namespace Velvet
             {
                 if (FiberLane.SchedulesOnImmediateTier(FiberLane.GetHighestPendingPriority(owed[i])))
                 {
-                    FlushState(owed[i]);
+                    FlushStateWork(owed[i]);
                 }
             }
         }
@@ -598,7 +600,7 @@ namespace Velvet
         {
             if (fiber.PendingReconcileDrainsTransitionWork)
             {
-                fiber.Reconciler?.Context.BatchScheduler.FlushImmediate();
+                fiber.Reconciler?.Context.BatchScheduler.FlushImmediateWork();
             }
         }
 
@@ -640,16 +642,16 @@ namespace Velvet
         // A top-level entry, which ends in what was held while a root rendered or committed.
         internal static void ContinueReconcile(ComponentFiber fiber)
         {
-            ChildListWrites.RunEntry(fiber.Reconciler?.Context.BatchScheduler, fiber, static resumed => ContinueReconcileEntry(resumed));
+            ChildListWrites.RunEntry(fiber.Reconciler?.Context.BatchScheduler, fiber, static resumed => ContinueReconcileWork(resumed));
         }
 
-        private static void ContinueReconcileEntry(ComponentFiber fiber)
+        private static void ContinueReconcileWork(ComponentFiber fiber)
         {
             // A resumed slice renders, so pending passive effects run before it as they do before a drain
             // (FiberBatchScheduler.Drain), and ahead of the guards below, which read what those effects leave.
             fiber.Reconciler?.Context.BatchScheduler.FlushPendingPassiveEffectsAheadOfAResume();
             // Ahead of the guards below, since the flush can unmount the fiber or finish its pass.
-            fiber.Reconciler?.Context.BatchScheduler.FlushOwedExternalStoreRenders();
+            fiber.Reconciler?.Context.BatchScheduler.FlushOwedExternalStoreRendersWork();
             if (!fiber.IsMounted) return;
             if (fiber.Reconciler == null) return;
             var mountPoint = fiber.MountPoint;
@@ -707,12 +709,12 @@ namespace Velvet
                         // FiberCommitWork.ReconcileOwnRows's own measurement — see
                         // LogicalMountPointChildCount.
                         var slice = new FiberCommitWork.RowCountWindow(fiber);
-                        fiber.Reconciler.ContinueReconcile(fiber.PendingReconcileBudgetMs);
+                        fiber.Reconciler.ContinueReconcileWork(fiber.PendingReconcileBudgetMs);
                         resumeContext.HostCommit.ShiftRows(fiber, slice.UnshiftedChange);
                     }
                     else
                     {
-                        fiber.Reconciler.ContinueReconcile(fiber.PendingReconcileBudgetMs);
+                        fiber.Reconciler.ContinueReconcileWork(fiber.PendingReconcileBudgetMs);
                     }
                 }
                 finally
@@ -754,7 +756,7 @@ namespace Velvet
                     // pattern), and the resume runs outside any batch drain — flush now so the write
                     // commits before the frame yields. Safe here: the pass completed (no pending
                     // work) and the reconcile-active bracket was exited by ContinueReconcile above.
-                    fiber.Reconciler?.Context.BatchScheduler.FlushImmediate();
+                    fiber.Reconciler?.Context.BatchScheduler.FlushImmediateWork();
                 }
                 FiberEffects.CommitStrandedLayoutWork(resumeContext);
             }

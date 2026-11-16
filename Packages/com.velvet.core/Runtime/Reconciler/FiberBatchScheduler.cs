@@ -215,6 +215,11 @@ namespace Velvet
             if (_externalStoreRenderQueued && _immediateOrder.Count > 0) FlushImmediate();
         }
 
+        internal void FlushOwedExternalStoreRendersWork()
+        {
+            if (_externalStoreRenderQueued && _immediateOrder.Count > 0) FlushImmediateWork();
+        }
+
         private void ArmImmediateDrain()
         {
             if (_immediateScheduled || _anchor == null) return;
@@ -335,10 +340,10 @@ namespace Velvet
         {
             // A drain asked for while a root renders or commits waits for it, whoever asked: the probe queues the flush.
             if (_reconcileActiveProbe?.Invoke() == true) return;
-            ChildListWrites.RunEntry(this, this, static scheduler => scheduler.DrainImmediateEntry());
+            ChildListWrites.RunEntry(this, this, static scheduler => scheduler.DrainImmediateWork());
         }
 
-        private void DrainImmediateEntry()
+        private void DrainImmediateWork()
         {
             var completed = false;
             var wasInImmediateDrain = _inImmediateDrain;
@@ -398,7 +403,7 @@ namespace Velvet
                 // pending lane of its sync set, the default lane an effect's update takes included. So the passes
                 // below render the whole tier and count toward the same cap. A flush that forced no re-render leaves
                 // what it scheduled for the tier's next drain, as a default-lane update waits for React's next task.
-                FlushPendingPassiveEffects();
+                FlushPendingPassiveEffectsWork();
                 if (!_syncLaneQueued) return;
                 DrainImmediatePassesUpTo(ref totalPasses, ref renderedSyncLane);
             }
@@ -411,7 +416,7 @@ namespace Velvet
         {
             if (_inImmediateDrain || _draining || (_reconcileActiveProbe?.Invoke() ?? false)) return;
             if (!_syncLaneQueued || _immediateOrder.Count == 0) return;
-            DrainImmediate();
+            DrainImmediateWork();
         }
 
         private void DrainImmediatePassesUpTo(ref int totalPasses, ref bool renderedSyncLane)
@@ -498,10 +503,10 @@ namespace Velvet
         private void DrainDelayedTier(DelayedAdmission? admission)
         {
             ChildListWrites.RunEntry(this, (Scheduler: this, Admission: admission),
-                static state => state.Scheduler.DrainDelayedTierEntry(state.Admission));
+                static state => state.Scheduler.DrainDelayedTierWork(state.Admission));
         }
 
-        private void DrainDelayedTierEntry(DelayedAdmission? admission)
+        private void DrainDelayedTierWork(DelayedAdmission? admission)
         {
             // The immediate queue is committed first rather than trusting the panel to run its callback ahead of
             // this one. A Transition lane that pass re-enrols takes a later admission (see ScheduleDelayed), so
@@ -543,7 +548,7 @@ namespace Velvet
             // desync for the next immediate callback to converge.
             if (_immediateWorkArrivedMidDrain && _immediateOrder.Count > 0)
             {
-                DrainImmediate();
+                DrainImmediateWork();
             }
         }
 
@@ -556,9 +561,9 @@ namespace Velvet
         {
             for (var rounds = 0; ; rounds++)
             {
-                DrainImmediate();
+                DrainImmediateWork();
                 if (rounds == NestedUpdateLimit) return;
-                FlushPendingPassiveEffects();
+                FlushPendingPassiveEffectsWork();
                 if (_immediateOrder.Count == 0) return;
             }
         }
@@ -569,7 +574,7 @@ namespace Velvet
             // React flushes pending passive effects before it starts a render, so an earlier commit's effects and
             // presence completions run before this pass renders. Ahead of the copy below, so on the immediate tier
             // an update one of them schedules joins this pass.
-            FlushPendingPassiveEffects();
+            FlushPendingPassiveEffectsWork();
             if (order.Count == 0) return;
             // Activate UseStore snapshot pinning for the span of this drain. Bracketed only on the outer drain
             // (a re-entrant call is blocked by _draining before reaching here) so a nested entry cannot reset
@@ -605,7 +610,7 @@ namespace Velvet
                     }
                     // Not mirrored on the delayed tier: skipping a delayed entry that holds Normal or Urgent work
                     // would hold that work back rather than keep it from running early.
-                    FiberWorkLoop.FlushState(fiber);
+                    FiberWorkLoop.FlushStateWork(fiber);
                 }
                 _drainBuffer.Clear();
             }
@@ -715,17 +720,29 @@ namespace Velvet
             DrainImmediate();
         }
 
+        internal void FlushImmediateWork()
+        {
+            if (_draining || (_reconcileActiveProbe?.Invoke() ?? false)) return;
+            DrainImmediateWork();
+        }
+
         // React's task flushes pending passive effects and then renders the highest-priority lanes pending, so an
         // update one of those effects schedules renders ahead of the transition the task was resuming.
         internal void FlushPendingPassiveEffectsAheadOfAResume()
         {
             var intake = _immediateIntake;
-            FlushPendingPassiveEffects();
-            if (_immediateIntake != intake) FlushImmediate();
+            FlushPendingPassiveEffectsWork();
+            if (_immediateIntake != intake) FlushImmediateWork();
         }
 
         // Gated like FlushImmediate so it never re-enters a live drain / reconcile.
         internal void FlushPendingPassiveEffects()
+        {
+            if (_draining || (_reconcileActiveProbe?.Invoke() ?? false)) return;
+            _flushPassiveEffects?.Invoke();
+        }
+
+        internal void FlushPendingPassiveEffectsWork()
         {
             if (_draining || (_reconcileActiveProbe?.Invoke() ?? false)) return;
             _flushPassiveEffects?.Invoke();
