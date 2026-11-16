@@ -13,6 +13,7 @@ namespace Velvet.Tests
     {
         private Reconciler _applying = null!;
         private Reconciler _nested = null!;
+        private VisualElement _shared = null!;
 
         public override void SetUp()
         {
@@ -24,6 +25,9 @@ namespace Velvet.Tests
         public override void TearDown()
         {
             ChildListWrites.EndRecording(_applying.Context.Pass);
+            // The other pass's insert moved the live index the recorded removal names, so the model of the shared
+            // container is left unlike its list; it goes before a later pass verifies the containers written.
+            if (_shared != null) ChildListWrites.Drop(_shared);
             _applying?.Dispose();
             _nested?.Dispose();
             base.TearDown();
@@ -66,6 +70,7 @@ namespace Velvet.Tests
             shared.Add(new VisualElement());
             var removed = new VisualElement();
             shared.Add(removed);
+            _shared = shared;
             return (host, first, shared, removed);
         }
 
