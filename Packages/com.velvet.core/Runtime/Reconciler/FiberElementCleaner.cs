@@ -187,6 +187,39 @@ namespace Velvet
             return PoolKind.None;
         }
 
+        // Process-wide, as the pool is. While it is raised ReturnToPool keeps an element out of the pool and unreset:
+        // keeping it out of Rent alone would leave the reset to run on an element a pending cleanup may still write to.
+        // The held elements go back, in the order they were held, as the last raise falls.
+        private static int s_poolGateDepth;
+        private static readonly List<(FiberElementCleaner Cleaner, VisualElement Element)> s_heldReturns = new();
+
+        internal static void RaisePoolGate() => s_poolGateDepth++;
+
+        internal static void LowerPoolGate()
+        {
+            if (s_poolGateDepth == 0) throw new InvalidOperationException("The pool gate is not raised.");
+            if (--s_poolGateDepth > 0) return;
+            var held = s_heldReturns.ToArray();
+            s_heldReturns.Clear();
+            ExceptionDispatchInfo? first = null;
+            foreach (var (cleaner, element) in held)
+            {
+                try
+                {
+                    cleaner.ReturnToPool(element);
+                }
+                catch (Exception exception)
+                {
+                    first ??= ExceptionDispatchInfo.Capture(exception);
+                }
+            }
+            first?.Throw();
+        }
+
+        // A disposed context pools nothing more, as it drops its PendingPoolReturns.
+        internal static void DropHeldPoolReturns(ReconcilerContext ctx)
+            => s_heldReturns.RemoveAll(held => ReferenceEquals(held.Cleaner._ctx, ctx));
+
         // Returns the element to the VNodePool when the type supports pooling.
         // Called after the element has been detached from the DOM hierarchy and Velvet-managed
         // resources have been released. Dispatches on the EXACT runtime type, mirroring the
@@ -196,6 +229,11 @@ namespace Velvet
         // unrelated mount.
         private void ReturnToPool(VisualElement element)
         {
+            if (s_poolGateDepth > 0)
+            {
+                s_heldReturns.Add((this, element));
+                return;
+            }
             FiberPropApplier.ForgetRecordedDefaults(element);
             switch (PoolKindOf(element))
             {

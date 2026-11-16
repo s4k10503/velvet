@@ -1150,6 +1150,7 @@ namespace Velvet
             _ctx.PendingZLayerRemovals.Clear();
             _ctx.PendingZLayerDeadReals.Clear();
             _ctx.PendingPoolReturns.Clear();
+            FiberElementCleaner.DropHeldPoolReturns(_ctx);
             _ctx.PendingZLayerResorts.Clear();
             _ctx.ParkedDiffParents.Clear();
             // Detached explicitly rather than left to die with a GameObject, unlike the framework-owned
