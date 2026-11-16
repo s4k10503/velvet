@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Mono.Cecil;
@@ -114,6 +115,48 @@ namespace Velvet.Tests
             // Assert — a cleaner that moved or was renamed would scan as clean, so what the queue's call is missing
             // is reported in the same text.
             Assert.That(string.Join("\n", direct.Distinct().Concat(missing)), Is.Empty);
+        }
+
+        // The methods that read only a child list, or write one, and so answer from the row model and record a write
+        // behind the ones recorded already. Realign (the engine's layout list) and HierarchySort (the order of the live
+        // list) act on the live list, and the post-children class passes read what the recorded patch halves wrote: each
+        // applies the recorded ops first, and none is listed.
+        private static readonly (Type Type, string Method)[] ModelSites =
+        {
+            (typeof(ChildListWrites), "InsertCore"),
+            (typeof(ChildListWrites), nameof(ChildListWrites.Remove)),
+            (typeof(ChildListWrites), nameof(ChildListWrites.HierarchyRemove)),
+            (typeof(ChildListWrites), nameof(ChildListWrites.RemoveAt)),
+            (typeof(ChildListWrites), nameof(ChildListWrites.RemoveFromHierarchy)),
+            (typeof(ChildListWrites), nameof(ChildListWrites.Clear)),
+            (typeof(FiberZLayerCoordinator), "Exchange"),
+            (typeof(FiberClipPathApplier), "WrapClipPathInPlace"),
+            (typeof(WrapperInfrastructure), nameof(WrapperInfrastructure.RemoveWrapperRestoreInner)),
+        };
+
+        private static readonly HashSet<string> Appliers = new() { "FlushIfPending", "SyncLive", "ApplyPendingPatches", "Apply" };
+
+        [Test]
+        public void Given_TheSitesThatAnswerFromTheRowModel_When_TheirCallsAreRead_Then_NoneAppliesTheRecordedWrites()
+        {
+            // Arrange
+            using var runtime = ModuleDefinition.ReadModule(typeof(V).Assembly.Location);
+            var sites = ModelSites.Select(site => (Site: site, Method: runtime.GetType(site.Type.FullName)
+                .Methods.SingleOrDefault(method => method.Name == site.Method && method.HasBody))).ToList();
+
+            // Act
+            var missing = sites.Where(site => site.Method == null).Select(site => "missing: " + site.Site.Type.Name + "." + site.Site.Method);
+            var offenders = sites.Where(site => site.Method != null)
+                .SelectMany(site => site.Method!.Body.Instructions
+                    .Select(instruction => instruction.Operand as MethodReference)
+                    .Where(callee => callee != null && callee.DeclaringType.FullName == typeof(ChildListWrites).FullName
+                        && Appliers.Contains(callee.Name))
+                    .Select(callee => $"{site.Site.Type.Name}.{site.Site.Method} calls {callee!.Name}"))
+                .Distinct()
+                .OrderBy(line => line);
+
+            // Assert — a site that moved or was renamed would scan as clean, so its absence is reported in the same text.
+            Assert.That(string.Join("\n", missing.Concat(offenders)), Is.Empty);
         }
 
         // The calls FinishPass makes that write a child list or reconcile into one other than through the queue: the
