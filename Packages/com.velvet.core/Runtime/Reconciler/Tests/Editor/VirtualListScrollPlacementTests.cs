@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using System.Reflection;
 using NUnit.Framework;
 using UnityEngine.UIElements;
 using Velvet.TestUtilities;
@@ -13,7 +14,9 @@ namespace Velvet.Tests
     /// row renders a Portal of its own. A Portal a range that failed had built mounts nothing when the range renders
     /// again. A child of such a Portal that suspends with no Suspense above the list — a Portal row's own, or one a row
     /// holds — leaves the list's host waiting on the read, outside a transition, rather than leaving the scroll, alone
-    /// in the range or ahead of a Component row, and the rows that scroll built stay in the list.
+    /// in the range or ahead of a Component row, and the rows that scroll built stay in the list. A range of one root
+    /// that a scroll asks for while another root's pass writes its elements renders once that root's render and commit
+    /// have ended, before control returns, and once however often it was asked for.
     /// </summary>
     [TestFixture]
     internal sealed class VirtualListScrollPlacementTests
@@ -35,6 +38,8 @@ namespace Velvet.Tests
             FiberStrictMode.Enabled = false;
             (s_target, s_refusals, s_resource, s_listHost, s_suspendingRows, s_portalHeld) =
                 (new VisualElement(), 0, new VelvetTaskCompletionSource<string>(), null, new[] { "a" }, false);
+            (s_otherList, s_written, s_rowRead, s_renderedInside, s_rowRenders, s_scrollTargets) =
+                (null, null, null, null, 0, new[] { 50 });
         }
 
         [Component]
@@ -226,6 +231,105 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(string.Join(",", s_target.Children().Select(child => child.name)), Is.EqualTo("b,d"));
+        }
+
+        private static Ref<VirtualListHandle> s_otherList;
+        private static string s_written;
+        private static string s_rowRead;
+        private static string s_renderedInside;
+        private static int s_rowRenders;
+        private static int[] s_scrollTargets;
+
+        // A list of another root, 100 items 50 tall, mounted on a panel so that a scroller's change reaches it, with the
+        // 200-tall viewport its GeometryChangedEvent would record. Item 50's row records what it read where it rendered.
+        private static MountedTree MountAnotherRootsList(HeadlessEditorPanelHost host)
+        {
+            s_otherList = new Ref<VirtualListHandle>();
+            var items = Enumerable.Range(0, 100).Select(i => "item-" + i).ToArray();
+            var mounted = V.Mount(host.Root, V.VirtualList(items, item => item, itemHeight: 50f, renderer: item =>
+            {
+                if (item == "item-50")
+                {
+                    s_rowRenders++;
+                    s_rowRead = s_written;
+                }
+                return V.Label(text: item);
+            }, overscan: 0, listRef: s_otherList));
+            typeof(FiberVirtualListController)
+                .GetField("_viewportHeight", BindingFlags.Instance | BindingFlags.NonPublic)!
+                .SetValue(mounted.Root.Reconciler.Context.VirtualListControllers[host.Root.Q<ScrollView>()], 200f);
+            s_written = "before the owner's commit";
+            return mounted;
+        }
+
+        // Scrolls the other root's list to each target, the last one item 50, from inside its own walk, and writes in its
+        // layout effect.
+        [Component]
+        private static VNode ScrollsAnotherRootsList()
+        {
+            Hooks.UseLayoutEffect((Func<Action>)(() =>
+            {
+                s_written = "written by the owner's commit";
+                return null;
+            }), Array.Empty<object>());
+            return V.ScrollView(onCreated: _ =>
+            {
+                foreach (var target in s_scrollTargets) s_otherList.Current.ScrollToItem(target, VirtualListAlign.Start);
+                s_renderedInside = "renders:" + s_rowRenders;
+            });
+        }
+
+        [Test]
+        public void Given_AnotherRootsListScrolledFromAWalk_When_TheScrollReturns_Then_ItsRowHasNotRendered()
+        {
+            // Arrange
+            using var host = new HeadlessEditorPanelHost();
+            using var other = MountAnotherRootsList(host);
+
+            // Act
+            using var owner = V.Mount(new VisualElement(), V.Component(ScrollsAnotherRootsList));
+
+            // Assert
+            Assert.That(s_renderedInside, Is.EqualTo("renders:0"));
+        }
+
+        [Test]
+        public void Given_AnotherRootsListScrolledFromAWalk_When_TheOwnersMountReturns_Then_ItsRowHasRenderedReadingTheOwnersCommit()
+        {
+            // Arrange
+            using var host = new HeadlessEditorPanelHost();
+            using var other = MountAnotherRootsList(host);
+
+            // Act
+            using var owner = V.Mount(new VisualElement(), V.Component(ScrollsAnotherRootsList));
+
+            // Assert — null where the row never rendered.
+            Assert.That(s_rowRead, Is.EqualTo("written by the owner's commit"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base renders each scroll's range where the scroll is made, so nothing
+        // waits to be counted against the nested-update limit.
+        [Test]
+        public void Given_AnotherRootsListScrolledMoreTimesThanTheNestedUpdateLimitFromAWalk_When_TheOwnersMountReturns_Then_NothingIsThrown()
+        {
+            // Arrange — sixty scrolls, each to an item the one before it did not reach, then item 50.
+            using var host = new HeadlessEditorPanelHost();
+            using var other = MountAnotherRootsList(host);
+            s_scrollTargets = Enumerable.Range(1, 60).Append(50).ToArray();
+            Exception thrown = null;
+
+            // Act
+            try
+            {
+                using var owner = V.Mount(new VisualElement(), V.Component(ScrollsAnotherRootsList));
+            }
+            catch (Exception exception)
+            {
+                thrown = exception;
+            }
+
+            // Assert
+            Assert.That(thrown, Is.Null);
         }
     }
 

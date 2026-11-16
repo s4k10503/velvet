@@ -12,3 +12,6 @@
 - A `refCallback:` cleanup that throws as its element is removed was logged and reached no error boundary. It now goes
   to the nearest boundary above the component that rendered the element, which shows its fallback in a follow-up
   commit, as React's does; with none, the tree unmounts, as it does for any error no boundary catches.
+- A `V.VirtualList` range asked for while another root's render wrote its elements (a `ScrollToItem` from that root's
+  `onCreated` callback, say) rendered inside that render. It now renders once that render and its commit have ended,
+  before control returns.

@@ -49,6 +49,7 @@ namespace Velvet
         private float? _pendingScrollTarget;
         private ValueAnimation<float>? _smoothScroll;
         private bool _writingScroll;
+        private Action? _renderHeldRange;
         private int _scrollRequestVersion;
         private float _axisValue;
         private (float low, float high) _axisRange;
@@ -266,6 +267,7 @@ namespace Velvet
 
         private void RenderRange(int newFirst, int newLast)
         {
+            if (_reconciler.HoldsRangeForController(_renderHeldRange ??= RenderHeldRange)) return;
             // Inside a pass or a drain the scheduler's gate makes this a no-op.
             _reconciler.FlushPendingPassiveEffectsForController();
             // A row's refs and layout effects read the row, which is in the list only once RebuildVisibleContainer
@@ -288,6 +290,10 @@ namespace Velvet
                 }
             }
         }
+
+        // Worked out again from where the scroller is when it is made, since HoldsRange queues one render for however
+        // many were asked for while it waited.
+        private void RenderHeldRange() => UpdateVisibleRange(AxisScroller.value, _viewportHeight);
 
         private void PlaceRange(int newFirst, int newLast)
         {
