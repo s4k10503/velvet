@@ -23,17 +23,15 @@ namespace Velvet
 
         internal void Insert(VisualElement parent, int physical, VisualElement child)
         {
-            ChildListWrites.ViaQueue++;
-            try { ChildListWrites.Insert(parent, physical, child); }
-            finally { ChildListWrites.ViaQueue--; }
+            using var queued = ChildListWrites.QueueWrite();
+            ChildListWrites.Insert(parent, physical, child);
         }
 
         // Where LogicalChildSlots.ToPhysical puts a child at the slot.
         internal void InsertAtSlot(VisualElement parent, int slot, VisualElement child)
         {
-            ChildListWrites.ViaQueue++;
-            try { ChildListWrites.InsertAtSlot(parent, slot, child); }
-            finally { ChildListWrites.ViaQueue--; }
+            using var queued = ChildListWrites.QueueWrite();
+            ChildListWrites.InsertAtSlot(parent, slot, child);
         }
 
         // Takes element out of parent with everything it holds released (FiberElementCleaner). Nothing is done
@@ -48,9 +46,8 @@ namespace Velvet
         // the end of the pass as well (FiberElementCleaner.ReleasePendingPoolReturns).
         internal void RemoveRow(VisualElement parent, VisualElement element)
         {
-            ChildListWrites.ViaQueue++;
-            try { ChildListWrites.RemoveRow(parent, element); }
-            finally { ChildListWrites.ViaQueue--; }
+            using var queued = ChildListWrites.QueueWrite();
+            ChildListWrites.RemoveRow(parent, element);
         }
 
         // Re-places the non-LIS elements so the slot range [slotStart, slotStart + count) ends up in
@@ -73,9 +70,8 @@ namespace Velvet
             HashSet<int> lisIndices,
             int slotStart)
         {
-            ChildListWrites.ViaQueue++;
-            try { ReorderRecorded(parent, newElements, lisIndices, slotStart); }
-            finally { ChildListWrites.ViaQueue--; }
+            using var queued = ChildListWrites.QueueWrite();
+            ReorderRecorded(parent, newElements, lisIndices, slotStart);
         }
 
         private void ReorderRecorded(

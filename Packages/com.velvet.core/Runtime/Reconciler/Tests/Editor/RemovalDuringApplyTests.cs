@@ -39,7 +39,7 @@ namespace Velvet.Tests
             var seen = "unset";
             label.RegisterCallback<DetachFromPanelEvent>(_ => seen = label.text);
             first.RegisterCallback<DetachFromPanelEvent>(_ => _reconciler.Context.HostCommit.Remove(host, label));
-            ChildListWrites.BeginRecording();
+            ChildListWrites.BeginRecording(_reconciler.Context.Pass);
             _reconciler.Context.HostCommit.Remove(host, first);
 
             // Act

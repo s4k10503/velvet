@@ -127,7 +127,7 @@ namespace Velvet.Tests.Performance
             var pending = new PendingPatch(patcher, label, new TextNode { Text = "a" }, new TextNode { Text = "b" }, 0);
             // Cleaned since it was recorded, so the op's body is skipped and the case measures the queue alone.
             _reconciler.Context.CleanedElements[label] = 1;
-            ChildListWrites.BeginRecording();
+            ChildListWrites.BeginRecording(_reconciler.Context.Pass);
             Action reset = () => ChildListWrites.ApplyRecorded();
             Action recordAndApply = () =>
             {

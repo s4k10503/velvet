@@ -480,7 +480,7 @@ namespace Velvet
             // nested expansion render (SharedReconcileDepth > 0) already has the cursor populated by the
             // ongoing walk, and a root fiber (Parent == null) pushes its own Providers during its reconcile.
             var contextSpine = RebuildsContextSpine(fiber) ? FiberContextSpine.Push(fiber) : default;
-            var ownedJournal = OpenPassJournal(fiber);
+            var ownedPass = OpenPass(fiber);
             try
             {
                 using var _ = s_renderMarker.Auto();
@@ -502,7 +502,7 @@ namespace Velvet
                 HookCountSentinel.ValidateAndCommit(fiber);
 
                 SettleHooks(fiber, committedPendingInsertionCount, committedPendingEffectCount, deferReconcile,
-                    ownedJournal != null);
+                    ownedPass != null);
 
                 newTree = FiberErrorBoundary.OutputOf(fiber, FiberBeginWork.NormalizeToArray(rendered));
                 oldTree = fiber.PreviousTree ?? Array.Empty<VNode>();
@@ -575,7 +575,7 @@ namespace Velvet
                     // Whichever part of the pass the signal came out of, the walk, the drain of the Portals it mounted
                     // or the force-drain of parked work, the pass is abandoned.
                     if (reconciling) RetainWalkedTree(fiber, ex, newTree!, oldTree!);
-                    ownedJournal?.Abandon();
+                    ownedPass?.Drop();
                     if (fiber.Parent != null)
                     {
                         // Delegate to the parent reconcile's SuspenseNode handling. The finally's PopFiber runs.
@@ -609,7 +609,7 @@ namespace Velvet
                 fiber.RenderPhaseSetStateCounter = 0;
                 FiberAmbientStack.Pop();
                 // Last, so a commit that throws leaves the stacks above popped.
-                ownedJournal?.Close();
+                ownedPass?.Complete();
             }
 
 #if UNITY_EDITOR
@@ -648,11 +648,11 @@ namespace Velvet
             fiber.RenderCount++;
         }
 
-        // The journal of the pass, when this render is the outermost on its context and so owns it.
-        private static FiberPassJournal? OpenPassJournal(ComponentFiber fiber)
+        // The pass of the context, when this render is the outermost on it and so completes or drops it.
+        private static ReconcilePass? OpenPass(ComponentFiber fiber)
         {
-            var journal = fiber.Reconciler?.Context.PassJournal;
-            return journal != null && journal.TryOpen(fiber) ? journal : null;
+            var pass = fiber.Reconciler?.Context.Pass;
+            return pass != null && pass.TryOwn(fiber) ? pass : null;
         }
 
         // Commits the hook state a settled render staged, except where the render may be one nothing shows. Under a
@@ -679,10 +679,10 @@ namespace Velvet
                 FiberBeginWork.CommitSettledValues(fiber);
                 context.RecordSuspenseRender(render);
             }
-            else if ((deferReconcile || ownsJournal) && context.PassJournal.IsOpen)
+            else if ((deferReconcile || ownsJournal) && context.Pass.Journal.IsOpen)
             {
                 FiberBeginWork.CommitSettledValues(fiber);
-                context.PassJournal.RecordHooks(render);
+                context.Pass.Journal.RecordHooks(render);
             }
             else
             {

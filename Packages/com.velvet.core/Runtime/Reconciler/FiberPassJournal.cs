@@ -40,7 +40,8 @@ namespace Velvet
     // each was handed and the hook state each staged. A pass that ends any other way keeps them, and Close commits
     // the hook state. React discards the work in progress of an abandoned render the same way.
     //
-    // The outermost RenderAndReconcile of a context opens the journal and is the only caller that closes it.
+    // The context's ReconcilePass owns the journal: the render that opens it completes the pass, which closes it, or
+    // drops the pass, which abandons it.
     internal sealed class FiberPassJournal
     {
         private readonly List<SuspenseRender> _hooks = new();

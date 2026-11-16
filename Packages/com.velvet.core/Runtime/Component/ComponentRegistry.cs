@@ -237,7 +237,7 @@ namespace Velvet
                     }
                     // After the render returned, so one that threw is not in the journal: the catch above puts its
                     // inputs back itself.
-                    _ctx.PassJournal.RecordSubsumed(existingFiber, in committed);
+                    _ctx.Pass.Journal.RecordSubsumed(existingFiber, in committed);
                 }
             }
             else if (propsChanged || refChanged)

@@ -183,7 +183,7 @@ namespace Velvet.Tests
             var parent = new VisualElement();
             var label = new Label("x");
             parent.Add(label);
-            ChildListWrites.BeginRecording();
+            ChildListWrites.BeginRecording(owner.Context.Pass);
             owner.Context.HostCommit.Remove(parent, label);
 
             // Act

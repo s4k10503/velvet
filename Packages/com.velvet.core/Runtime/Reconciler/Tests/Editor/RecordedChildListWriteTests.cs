@@ -44,7 +44,7 @@ namespace Velvet.Tests
             var parent = new VisualElement();
             parent.Add(new VisualElement());
             var child = new VisualElement();
-            ChildListWrites.BeginRecording();
+            ChildListWrites.BeginRecording(_reconciler.Context.Pass);
             _reconciler.Context.HostCommit.Insert(parent, 1, child);
             child.AddToClassList(SilhouetteBoundsSpacer.MarkerClass);
 
