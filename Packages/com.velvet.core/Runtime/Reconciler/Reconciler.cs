@@ -126,8 +126,10 @@ namespace Velvet
             {
                 _ctx.SetReconcilerBridge(this);
                 // Lets the batch scheduler block a synchronous discrete-event flush while any reconcile
-                // pass (including a time-sliced resume that runs outside the batch Drain) is on the stack.
-                _ctx.BatchScheduler.SetReconcileActiveProbe(() => _ctx.SharedReconcileDepth > 0);
+                // pass (including a time-sliced resume that runs outside the batch Drain) is on the stack, and while
+                // a pass applies its recorded writes, which run after the pass has left the stack and which a handler
+                // one of them fires must not render inside.
+                _ctx.BatchScheduler.SetReconcileActiveProbe(() => _ctx.SharedReconcileDepth > 0 || ChildListWrites.IsApplying);
                 _ctx.BatchScheduler.SetIntakeDropCallback(_ctx.DropAllCaptures);
                 _ctx.BatchScheduler.SetPassiveEffectFlush(() => FiberEffects.FlushPendingPassiveEffects(_ctx));
                 // Brackets each drain to drive (1) the UseStore tearing guard — pinning is active only inside a

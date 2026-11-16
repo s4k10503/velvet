@@ -188,6 +188,31 @@ namespace Velvet.Tests
             Assert.That(_root.Q<VisualElement>("motion").ClassListContains("bg-red-500"), Is.True);
         }
 
+        private static VNode[] DivTree(bool active)
+            => new VNode[]
+            {
+                V.Div(name: "box", className: "has-[.on]:bg-red-500", children: new VNode[]
+                {
+                    V.Div(className: active ? "on" : string.Empty),
+                }),
+            };
+
+        // GREEN_ON_BASE(characterization): the base applies the child's recorded class where the pass ends, ahead of the
+        // second half of the Div's own patch, which scans the children for it.
+        [Test]
+        public void Given_ADivWithAHasClassVariant_When_AChildGainsTheClassWithNoInsert_Then_TheDivHoldsThePayload()
+        {
+            // Arrange
+            var before = DivTree(false);
+            _reconciler.Reconcile(_root, Array.Empty<VNode>(), before);
+
+            // Act
+            _reconciler.Reconcile(_root, before, DivTree(true));
+
+            // Assert
+            Assert.That(_root.Q<VisualElement>("box").ClassListContains("bg-red-500"), Is.True);
+        }
+
         private static VNode[] DelayedFieldTree(string name, VNode? later = null)
         {
             var rows = new List<VNode> { V.TextField(name: name, isDelayed: true) };

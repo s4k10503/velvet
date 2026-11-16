@@ -9,9 +9,8 @@ namespace Velvet.Tests
     /// Pins where in the commit a deletion's take-downs run: at the turn of the fiber that kept the parent of what was
     /// deleted, as react-reconciler 19.1's <c>commitMutationEffectsOnFiber</c> runs a fiber's deletions ahead of its
     /// children, and not where the container that holds both is done reconciling. The order each case expects is that
-    /// function's for the same trees, read from its source rather than run, except in the two that read the label's text
-    /// (<c>@b2</c>): they read it after the flush of a patch applied at once wrote it, where React runs the deletion
-    /// ahead of the label's update and reads <c>b</c>.
+    /// function's for the same trees, read from its source rather than run. The cases that read the label's text read
+    /// <c>b</c>, where the deletion runs ahead of the update of the label before it in the tree.
     /// </summary>
     [TestFixtureSource(typeof(EventLogRenderer), nameof(EventLogRenderer.All))]
     internal sealed class DeletionAtOwnerTurnTests
@@ -212,8 +211,7 @@ namespace Velvet.Tests
             return V.Div();
         }
 
-        // Its second row is a delayed field, which the walk patches at once, applying the writes recorded before it, the
-        // label's among them.
+        // Its second row is a delayed field, which the walk patches at once.
         [Component]
         private static VNode DropsBesideADelayedField(bool shown)
             => V.Fragment(
@@ -234,6 +232,46 @@ namespace Velvet.Tests
                 shown ? V.Component(Probed, new Named("F"), key: "f") : null);
         }
 
+        // Its second row is a row nothing patches at once.
+        [Component]
+        private static VNode DropsBesideALabel(bool shown)
+            => V.Fragment(
+                V.Label(text: shown ? "b" : "b2", refCallback: element =>
+                {
+                    s_label = (Label)element;
+                    return () => { };
+                }),
+                V.Label(text: shown ? "1" : "2"),
+                shown ? V.Component(ProbedAtTheLabel, new Named("E"), key: "e") : null);
+
+        [Component]
+        private static VNode LabelBeforeTheDeletions()
+        {
+            var (shown, _) = EventLog.UseState("Shown", true);
+            return V.Fragment(
+                V.Component(DropsBesideALabel, shown, key: "b"),
+                shown ? V.Component(Probed, new Named("F"), key: "f") : null);
+        }
+
+        // GREEN_ON_BASE(characterization): with no patch applied at once the base applies the label's update behind E's
+        // teardown, which is attached to the turn of the component that owns both, ahead of the label.
+        [Test]
+        public void Given_NoPatchAppliedAtOnceInTheWalkBeforeTwoDeletions_When_BothAreDeleted_Then_TheDeletionReadsTheLabelBeforeItsUpdate()
+        {
+            // Arrange
+            var log = new EventLog();
+            using var mounted = _renderer.Mount(log.Provide(V.Component(LabelBeforeTheDeletions)));
+            mounted.DrainForTest();
+            log.Clear();
+
+            // Act
+            log.Setter<bool>("Shown").Invoke(false);
+            mounted.DrainForTest();
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("ins-x:F lay-x:F ins-x:E lay-x:E@b"));
+        }
+
         [Test]
         public void Given_APatchAppliedAtOnceInTheWalkBeforeTwoDeletions_When_BothAreDeleted_Then_TheContainersDeletionRunsFirst()
         {
@@ -247,8 +285,8 @@ namespace Velvet.Tests
             log.Setter<bool>("Shown").Invoke(false);
             mounted.DrainForTest();
 
-            // Assert — the label's text is what the flush that applied its write ahead of the walk's end leaves for E's cleanup
-            Assert.That(log.ToString(), Is.EqualTo("ins-x:F lay-x:F ins-x:E lay-x:E@b2"));
+            // Assert — E's cleanup runs at its owner's turn, ahead of the label's update, as it does without the delayed field
+            Assert.That(log.ToString(), Is.EqualTo("ins-x:F lay-x:F ins-x:E lay-x:E@b"));
         }
 
         [Component]
@@ -413,9 +451,8 @@ namespace Velvet.Tests
                 V.Component(DropsBesideADelayedField, shown, key: "b"));
         }
 
-        // GREEN_ON_BASE(characterization): the base's one plan takes a component that renders nothing down in tree order.
         [Test]
-        public void Given_AComponentRenderingNothingDeletedAheadOfAnOwnerWhoseDelayedFieldFlushesTheWalk_When_BothAreDeleted_Then_TheComponentsDeletionRunsFirst()
+        public void Given_AComponentRenderingNothingDeletedAheadOfAnOwnerWithADelayedField_When_BothAreDeleted_Then_TheComponentsDeletionRunsFirst()
         {
             // Arrange
             var log = new EventLog();
@@ -427,8 +464,8 @@ namespace Velvet.Tests
             log.Setter<bool>("Shown").Invoke(false);
             mounted.DrainForTest();
 
-            // Assert — the label's text is what the flush that applied its write ahead of the walk's end leaves for E's cleanup
-            Assert.That(log.ToString(), Is.EqualTo("ins-x:A lay-x:A ins-x:E lay-x:E@b2"));
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("ins-x:A lay-x:A ins-x:E lay-x:E@b"));
         }
 
         [Component]
@@ -661,6 +698,43 @@ namespace Velvet.Tests
 
             // Assert — a walk with no such field reads as a count the expected one is not
             Assert.That(DeletionCommitPool.EntriesInWalks("OwnOldFibers"), Is.EqualTo(0));
+        }
+
+        private static ComponentFiber s_flushedOwner;
+
+        [Component]
+        private static VNode DropsAProbeOfTheFlushGate()
+        {
+            var (shown, _) = EventLog.UseState("Shown", true);
+            s_flushedOwner = FiberAmbientStack.Current;
+            return V.Fragment(shown ? V.Component(ProbesTheFlushGate, key: "p") : null);
+        }
+
+        // Records whether a synchronous flush could start where its layout cleanup runs.
+        [Component]
+        private static VNode ProbesTheFlushGate()
+        {
+            var log = EventLog.UseLog();
+            var scheduler = FiberAmbientStack.Current!.Reconciler!.Context.BatchScheduler;
+            Hooks.UseLayoutEffect(() => () => log.Add("flush:" + scheduler.CanFlushImmediate), Array.Empty<object>());
+            return V.Div();
+        }
+
+        [Test]
+        public void Given_ADeletionRenderedOutsideADrain_When_ItsCleanupRunsWhereThePassAppliesItsWrites_Then_NoSynchronousFlushCanStart()
+        {
+            // Arrange
+            var log = new EventLog();
+            using var mounted = _renderer.Mount(log.Provide(V.Component(DropsAProbeOfTheFlushGate)));
+            mounted.DrainForTest();
+            log.Clear();
+            log.Setter<bool>("Shown").Invoke(false);
+
+            // Act
+            FiberWorkLoop.FlushState(s_flushedOwner);
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("flush:False"));
         }
     }
 }

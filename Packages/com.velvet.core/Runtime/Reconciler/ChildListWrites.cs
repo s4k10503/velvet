@@ -304,7 +304,7 @@ namespace Velvet
         private static void InsertCore(VisualElement container, int index, VisualElement child, bool viaHierarchy,
             VisualElement caller)
         {
-            if ((RecordingPass(container, child) ?? HoldingPass(container, child)) is { } pass)
+            if ((EnclosingHoldingPass(container, child) ?? RecordingPass(container, child) ?? HoldingPass(container, child)) is { } pass)
             {
                 RecordInsert(pass, container, index, child, viaHierarchy, caller);
                 return;
@@ -475,20 +475,19 @@ namespace Velvet
         // Inside a pass, an insert, a move or a removal the walk makes through HostCommitQueue into a container the pass
         // did not create updates the model and is recorded; the live list takes it no later than where FinishPass starts
         // (EndRecording), in the order recorded. A node's patch halves are recorded in the same list (PatchPre and
-        // PatchPost, the children's ops between them); they name no container, so a reader of the element's parent does
-        // not apply them, and the post-children passes of an element patched at once apply
-        // every recorded op first (ApplyPendingPatches). The readers the walk has moved to the model (ParentOf, ChildCount, ElementAtPhysical and
-        // the reads above) answer from it meanwhile, and a container with a recorded write is skipped by the checks that
-        // compare the model with the live list. Insert, Remove, RemoveAt, RemoveFromHierarchy, HierarchyRemove and Clear
-        // made into such a container, or of a child one holds, are recorded behind them too, and so is one made while
-        // they apply; HierarchySort applies them first, since it sorts the live list, and sorts it at once while they apply.
+        // PatchPost, the children's ops between them), and so is the post-children tail of an element patched at once
+        // (PatchTail); they name no container, so a reader of the element's parent does not apply them. The readers the walk has moved to the model (ParentOf, ChildCount,
+        // ElementAtPhysical and the reads above) answer from it meanwhile, and a container with a recorded write is
+        // skipped by the checks that compare the model with the live list. Insert, Remove, RemoveAt, RemoveFromHierarchy,
+        // HierarchyRemove and Clear made into such a container, or of a child one holds, are recorded behind them too,
+        // and so is one made while they apply. HierarchySort sorts the live list, so a call into a container whose writes
+        // are recorded and not applying is asserted against.
         //
         // The list, and the parents it leaves pending, belong to the ReconcilePass that recorded them, and s_current is
         // the one that is recording or applying, innermost first. Outside every pass nothing is recorded: ParentOf
-        // answers from the live tree, a write is made at once, and SyncLive and ApplyPendingPatches have nothing to
-        // apply. The model of a container (s_rows) belongs to the container, whichever pass writes it, and the readers
-        // of the model answer from the container's own Pending count, which each pass raises by what it marks and
-        // takes off by the same amount where it applies.
+        // answers from the live tree and a write is made at once. The model of a container (s_rows) belongs to the
+        // container, whichever pass writes it, and the readers of the model answer from the container's own Pending
+        // count, which each pass raises by what it marks and takes off by the same amount where it applies.
         private static ReconcilePass? s_current;
 
         // Raised around the writes HostCommitQueue makes, which are the ones recorded.
@@ -514,13 +513,13 @@ namespace Velvet
         // contexts are open at once this answers for the innermost.
         internal static bool PassIsOpen => s_current is { Recording: true } or { Applying: true };
 
-        // A pass that starts while another is open applies the other's recorded writes first, so it reads a live list
-        // where they would otherwise be pending. Where the other is applying them already, they are left to that apply
-        // and the new pass records into a list of its own.
+        // A pass that starts while another is open leaves the other's recorded writes where they are. It reads the
+        // model through the passes it encloses (ParentOf, HoldingPass), and a write it makes into a container one of them
+        // holds is recorded in that pass's list, behind the ops there, so that list is the one that writes the container's
+        // live list.
         internal static void BeginRecording(ReconcilePass pass)
         {
             var open = s_current;
-            if (open != null) Apply(open);
             // MUTANT_SURVIVES(equivalent, line removed): EndRecording clears the set as every pass ends, so it is empty when the next one begins.
             pass.Created.Clear();
             pass.Recording = true;
@@ -563,9 +562,11 @@ namespace Velvet
 
         internal static VisualElement? ParentOf(VisualElement element)
         {
-            var pass = s_current;
-            if (pass == null) return element.hierarchy.parent;
-            return pass.PendingParent.TryGetValue(element, out var parent) ? parent : element.hierarchy.parent;
+            for (var pass = s_current; pass != null; pass = pass.Enclosing)
+            {
+                if (pass.PendingParent.TryGetValue(element, out var parent)) return parent;
+            }
+            return element.hierarchy.parent;
         }
 
         // The child at the physical index of the container's model, which is the live list where nothing is recorded.
@@ -704,6 +705,10 @@ namespace Velvet
         // Records the second half, behind the ops of the children the walk reconciled between the two.
         internal static void RecordPatchPost(in PendingPatch patch) => RecordPatch(ReconcilePass.OpKind.PatchPost, patch);
 
+        // Records the post-children passes of an element patched at once, behind the ops of everything the walk recorded
+        // inside it, so the descendants' halves have written what those passes read by the time they run.
+        internal static void RecordPatchTail(in PendingPatch patch) => RecordPatch(ReconcilePass.OpKind.PatchTail, patch);
+
         private static void RecordPatch(ReconcilePass.OpKind kind, in PendingPatch patch)
         {
             var pass = s_current!;
@@ -711,38 +716,39 @@ namespace Velvet
             pass.Ops.Add(new ReconcilePass.Op { Index = pass.Patches.Count - 1, Kind = kind });
         }
 
-        // For the post-children passes of an element patched at once, which read its descendants' live state while their
-        // patch halves are still recorded: every recorded op applies first, in the order recorded.
-        internal static void ApplyPendingPatches()
-        {
-            var pass = s_current;
-            if (pass != null && pass.Patches.Count > 0)
-            {
-                Apply(pass);
-            }
-        }
-
-        // For a reader that writes what the live child list holds into the engine (FiberZLayerCoordinator.Realign) or
-        // that reads what the recorded patch halves wrote: the recorded writes of the container apply first.
-        internal static void SyncLive(VisualElement container) => FlushIfPending(ContentOf(container), null);
-
-
-        private static void FlushIfPending(VisualElement? container, VisualElement? child)
-        {
-            if (HoldingPass(container, child) is { } pass) Apply(pass);
-        }
-
         // The pass whose recorded ops hold the container, the child or the live parent of the child; null where none
         // does or the pass is applying them. A writer that finds one records its write behind those ops, which the live
-        // list has not taken yet; FlushIfPending applies them instead.
+        // list has not taken yet. The current pass is asked first and then the passes it encloses, an enclosing pass that
+        // is applying passed over.
         private static ReconcilePass? HoldingPass(VisualElement? container, VisualElement? child)
         {
             var pass = s_current;
-            if (pass == null || pass.Ops.Count == 0 || pass.Applying) return null;
-            return (container != null && pass.PendingContainers.ContainsKey(container))
-                || (child != null && (pass.PendingParent.ContainsKey(child)
-                    || (child.hierarchy.parent is { } live && pass.PendingContainers.ContainsKey(live)))) ? pass : null;
+            if (pass == null || pass.Applying) return null;
+            for (; pass != null; pass = pass.Enclosing)
+            {
+                if (pass.Applying || pass.Ops.Count == 0) continue;
+                if (Holds(pass, container, child)) return pass;
+            }
+            return null;
         }
+
+        // HoldingPass over the passes the current one encloses only: a write into what one of them holds goes to its
+        // list even where the current pass is recording, since the live list the two would write is that one's to write.
+        private static ReconcilePass? EnclosingHoldingPass(VisualElement? container, VisualElement? child)
+        {
+            if (s_current is not { Applying: false }) return null;
+            for (var pass = s_current.Enclosing; pass != null; pass = pass.Enclosing)
+            {
+                if (pass.Applying || pass.Ops.Count == 0) continue;
+                if (Holds(pass, container, child)) return pass;
+            }
+            return null;
+        }
+
+        private static bool Holds(ReconcilePass pass, VisualElement? container, VisualElement? child)
+            => (container != null && pass.PendingContainers.ContainsKey(container))
+                || (child != null && (pass.PendingParent.ContainsKey(child)
+                    || (child.hierarchy.parent is { } live && pass.PendingContainers.ContainsKey(live))));
 
         // Puts the recorded writes on the live lists in the order they were made and ends recording. An op that throws
         // does not stop the ones behind it: the walk has moved on from each of them, so the live tree has to take every
@@ -754,7 +760,6 @@ namespace Velvet
             System.Runtime.ExceptionServices.ExceptionDispatchInfo? first = null;
             try
             {
-                RunLate(pass, ref first);
                 for (var i = 0; i < pass.Ops.Count; i++)
                 {
                     try
@@ -808,52 +813,19 @@ namespace Velvet
         }
 
         // Queues a deletion's teardown to run at its turn: where the anchor's op applies, after the teardowns attached to it
-        // before. One whose anchor has applied already runs ahead of the ops left, since all of them were recorded after it,
-        // and one with no anchor runs behind the writes recorded so far. False where no pass is recording or its
+        // before, and one with no anchor runs behind the writes recorded so far. False where no pass is recording or its
         // recorded writes are applying, which leaves the caller to run it.
         internal static bool RecordTeardown(DeletionCommit deletion, TurnAnchor? anchor)
         {
             if (s_current is not { Recording: true, Applying: false } pass) return false;
             if (anchor == null) pass.Ops.Add(new ReconcilePass.Op { Deletion = deletion, Kind = ReconcilePass.OpKind.Teardown });
-            else if (anchor.Applied) pass.Late.Add(new ReconcilePass.LateTeardown(anchor.Serial, pass.LateOrder++, deletion));
             else anchor.Teardowns.Add(deletion);
             return true;
-        }
-
-        // The late teardowns, in the order their turns were recorded.
-        private static void RunLate(ReconcilePass pass, ref System.Runtime.ExceptionServices.ExceptionDispatchInfo? first)
-        {
-            var late = pass.Late;
-            for (var i = 1; i < late.Count; i++)
-            {
-                var item = late[i];
-                var at = i;
-                while (at > 0 && (late[at - 1].Serial > item.Serial
-                    || (late[at - 1].Serial == item.Serial && late[at - 1].Order > item.Order)))
-                {
-                    late[at] = late[at - 1];
-                    at--;
-                }
-                late[at] = item;
-            }
-            for (var i = 0; i < late.Count; i++)
-            {
-                try
-                {
-                    late[i].Deletion.Teardown();
-                }
-                catch (Exception exception)
-                {
-                    first ??= System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(exception);
-                }
-            }
-            late.Clear();
         }
 
         // Runs what was attached to the anchor, each of them whether the one before it threw.
         private static void ApplyAnchor(TurnAnchor anchor)
         {
-            anchor.Applied = true;
             System.Runtime.ExceptionServices.ExceptionDispatchInfo? first = null;
             for (var i = 0; i < anchor.Teardowns.Count; i++)
             {
@@ -886,7 +858,8 @@ namespace Velvet
             {
                 var patch = pass.Patches[op.Index];
                 if (op.Kind == ReconcilePass.OpKind.PatchPre) patch.Patcher.CommitPre(patch);
-                else patch.Patcher.CommitPost(patch);
+                else if (op.Kind == ReconcilePass.OpKind.PatchPost) patch.Patcher.CommitPost(patch);
+                else patch.Patcher.CommitTail(patch);
                 return;
             }
             s_open++;
@@ -943,7 +916,8 @@ namespace Velvet
         // model never has to reproduce it.
         internal static void HierarchySort(VisualElement parent, Comparison<VisualElement> comparison)
         {
-            FlushIfPending(parent, null);
+            UnityEngine.Debug.Assert(HoldingPass(parent, null) == null,
+                "HierarchySort sorts the live list of a container that still has recorded writes.");
             var rows = Enter(parent, -1);
             try
             {

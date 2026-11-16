@@ -88,8 +88,8 @@ namespace Velvet
         // because the danger is the reconcile-on-stack, not the tier.
         private bool _draining;
 
-        // Reports whether a reconcile pass is currently on the stack (SharedReconcileDepth > 0), registered by
-        // the owning Reconciler. _draining alone does not cover a time-sliced resume (ContinueReconcile): a
+        // Reports whether a reconcile pass is currently on the stack (SharedReconcileDepth > 0) or applying its recorded
+        // writes, registered by the owning Reconciler. _draining alone does not cover a time-sliced resume (ContinueReconcile): a
         // resume is scheduled via schedule.Execute, not through Drain, so _draining is false while it runs even
         // though a reconcile is on the stack. FlushImmediate also blocks on this probe so a discrete event
         // dispatched synchronously inside a slice cannot re-enter the reconciler. The hazard is the
@@ -157,8 +157,8 @@ namespace Velvet
         // whole context too, so it needs the same tree stability the tier drains do.
         internal VisualElement? Anchor => _anchor;
 
-        // Registers a probe reporting whether a reconcile pass is currently on the stack. Called once by the
-        // owning Reconciler so FlushImmediate can block a synchronous discrete-event flush during
+        // Registers a probe reporting whether a reconcile pass is currently on the stack or applying its recorded writes.
+        // Called once by the owning Reconciler so FlushImmediate can block a synchronous discrete-event flush during
         // a time-sliced resume, which runs outside the batch Drain (so _draining is false)
         // yet still has a reconcile on the stack.
         internal void SetReconcileActiveProbe(Func<bool> probe) => _reconcileActiveProbe = probe;

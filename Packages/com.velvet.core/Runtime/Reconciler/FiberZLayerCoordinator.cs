@@ -387,14 +387,14 @@ namespace Velvet
         internal static void OnPatched(ReconcilerContext ctx, VisualElement real, VisualElement classElement,
             string[] declared, string[] resolved, bool anchored)
         {
-            var facts = Record(ctx, real, classElement, declared, resolved, anchored);
-            if (ChildListWrites.IsRecording)
-            {
-                ctx.PendingSettles.Add(new ReconcilerContext.QueuedSettle(real, null, null, false, 0));
-                return;
-            }
-            Settle(ctx, real, facts);
+            Settle(ctx, real, Record(ctx, real, classElement, declared, resolved, anchored));
         }
+
+        // OnPatched for the settle of a patch whose passes have applied, which is made where it is asked for whatever
+        // pass an enclosing context has open.
+        internal static void OnSettled(ReconcilerContext ctx, VisualElement real, VisualElement classElement,
+            string[] declared, string[] resolved, bool anchored)
+            => SettleNow(ctx, real, Record(ctx, real, classElement, declared, resolved, anchored));
 
         // Decides the stacking of what a pass patched, once its recorded writes have applied: the patch returned the
         // occupant its slot held before, which this swaps for the placeholder or the element itself where the facts say
@@ -413,7 +413,7 @@ namespace Velvet
                     continue;
                 }
                 var real = entry.Real;
-                Settle(ctx, real, ctx.StackingFacts.TryGetValue(real, out var facts) ? facts : null);
+                SettleNow(ctx, real, ctx.StackingFacts.TryGetValue(real, out var facts) ? facts : null);
             }
             pending.Clear();
         }
@@ -504,6 +504,21 @@ namespace Velvet
             => ctx.SharedReconcileDepth == 0 && !ChildListWrites.IsApplying;
 
         private static void Settle(ReconcilerContext ctx, VisualElement real, StackingFacts? facts)
+        {
+            // A relocation exchanges and sorts the live list, which a recorded write behind it would find changed, so a
+            // settle asked for while the pass records is made where the pass has applied what it recorded
+            // (SettlePatched), from the facts held then.
+            if (ChildListWrites.IsRecording)
+            {
+                // MUTANT_SURVIVES(equivalent, literal): an entry with no patcher is settled from the facts held for its
+                // real element, so the anchored flag it carries is never read.
+                ctx.PendingSettles.Add(new ReconcilerContext.QueuedSettle(real, null, null, false, 0));
+                return;
+            }
+            SettleNow(ctx, real, facts);
+        }
+
+        private static void SettleNow(ReconcilerContext ctx, VisualElement real, StackingFacts? facts)
         {
             if (facts == null && !s_held.TryGetValue(real, out _))
             {
@@ -797,7 +812,6 @@ namespace Velvet
             {
                 return;
             }
-            ChildListWrites.SyncLive(parent);
             var children = s_layout;
             children.Clear();
             for (var i = 0; i < parent.hierarchy.childCount; i++)
@@ -812,7 +826,6 @@ namespace Velvet
         // Moves a to b's index and b to a's, leaving every other child where it is.
         private static void Exchange(VisualElement parent, VisualElement a, VisualElement b)
         {
-            ChildListWrites.SyncLive(parent);
             var rank = new Dictionary<VisualElement, int>(parent.hierarchy.childCount);
             for (var i = 0; i < parent.hierarchy.childCount; i++)
             {

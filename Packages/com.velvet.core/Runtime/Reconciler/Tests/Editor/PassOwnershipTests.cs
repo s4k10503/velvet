@@ -5,7 +5,8 @@ namespace Velvet.Tests
 {
     /// <summary>
     /// Specifies that the recorded child-list writes belong to the pass that made them: a pass that starts while
-    /// another's are unapplied applies them first, and the one that was recording takes over again where the other ends.
+    /// another's are unapplied leaves them where they are, and the one that was recording takes over again where the
+    /// other ends.
     /// </summary>
     [TestFixture]
     internal sealed class PassOwnershipTests
@@ -30,7 +31,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_APassWithARecordedInsert_When_AnotherPassBegins_Then_TheInsertIsOnTheLiveList()
+        public void Given_APassWithARecordedInsert_When_AnotherPassBegins_Then_TheInsertIsNotOnTheLiveListYet()
         {
             // Arrange
             var parent = new VisualElement();
@@ -43,7 +44,66 @@ namespace Velvet.Tests
             ChildListWrites.BeginRecording(_second.Context.Pass);
 
             // Assert
+            Assert.That(parent.childCount, Is.EqualTo(1));
+        }
+
+        // GREEN_ON_BASE(characterization): the base applied the first pass's insert where the second began, so the live
+        // list holds the child after the first ends as well.
+        [Test]
+        public void Given_APassWithARecordedInsert_When_AnotherPassBeginsAndTheFirstEnds_Then_TheInsertIsOnTheLiveList()
+        {
+            // Arrange
+            var parent = new VisualElement();
+            parent.Add(new VisualElement());
+            var child = new VisualElement();
+            ChildListWrites.BeginRecording(_first.Context.Pass);
+            _first.Context.HostCommit.Insert(parent, 1, child);
+            ChildListWrites.BeginRecording(_second.Context.Pass);
+            ChildListWrites.EndRecording(_second.Context.Pass);
+
+            // Act
+            ChildListWrites.EndRecording(_first.Context.Pass);
+
+            // Assert
             Assert.That(parent.childCount, Is.EqualTo(2));
+        }
+
+        // GREEN_ON_BASE(characterization): the base applied the insert where the second pass began, so the live parent is
+        // the container; here it is the model's, which the enclosing pass holds.
+        [Test]
+        public void Given_APassWithARecordedInsert_When_AnotherPassReadsTheParentOfTheChild_Then_ItIsTheContainer()
+        {
+            // Arrange
+            var parent = new VisualElement();
+            var child = new VisualElement();
+            ChildListWrites.BeginRecording(_first.Context.Pass);
+            _first.Context.HostCommit.Insert(parent, 0, child);
+            ChildListWrites.BeginRecording(_second.Context.Pass);
+
+            // Act
+            var seen = ChildListWrites.ParentOf(child);
+
+            // Assert
+            Assert.That(seen, Is.SameAs(parent));
+        }
+
+        [Test]
+        public void Given_APassHoldingAContainer_When_AnotherPassInsertsIntoIt_Then_TheInsertWaitsForTheHoldersApply()
+        {
+            // Arrange
+            var parent = new VisualElement();
+            var child = new VisualElement();
+            var other = new VisualElement();
+            ChildListWrites.BeginRecording(_first.Context.Pass);
+            _first.Context.HostCommit.Insert(parent, 0, child);
+            ChildListWrites.BeginRecording(_second.Context.Pass);
+            _second.Context.HostCommit.Insert(parent, 1, other);
+
+            // Act
+            ChildListWrites.EndRecording(_second.Context.Pass);
+
+            // Assert
+            Assert.That(parent.childCount, Is.Zero);
         }
 
         [Test]
