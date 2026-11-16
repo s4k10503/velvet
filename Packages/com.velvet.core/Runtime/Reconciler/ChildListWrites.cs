@@ -788,8 +788,22 @@ namespace Velvet
             first?.Throw();
         }
 
+        // Queues a deletion's teardown among the recorded writes, to run where the ones before it have applied. False
+        // where no pass is recording, which leaves the caller to run it.
+        internal static bool RecordTeardown(DeletionCommit deletion)
+        {
+            if (s_current is not { Recording: true, Applying: false } pass) return false;
+            pass.Ops.Add(new ReconcilePass.Op { Deletion = deletion, Kind = ReconcilePass.OpKind.Teardown });
+            return true;
+        }
+
         private static void ApplyOp(ReconcilePass pass, ReconcilePass.Op op)
         {
+            if (op.Kind == ReconcilePass.OpKind.Teardown)
+            {
+                op.Deletion!.Teardown();
+                return;
+            }
             if (op.Kind >= ReconcilePass.OpKind.PatchPre)
             {
                 var patch = pass.Patches[op.Index];

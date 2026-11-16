@@ -232,12 +232,13 @@ namespace Velvet
                     // puts their offscreen state back to.
                     RestoreWhatTheSuspensesWrote(commit);
                 }
-                _ctx.HostCommit.DisposeOrphans(oldFibers, newFibers);
+                // A deferred deletion disposes its fibers where it tears down.
+                if (deletion is not { Deferred: true }) _ctx.HostCommit.DisposeOrphans(oldFibers, newFibers);
                 return removalsRan;
             }
             finally
             {
-                deletion?.End();
+                deletion?.Complete();
                 // Whether the walk threw or an abort skipped the removals, a completion that waits on them has nothing
                 // to follow.
                 if (!removalsRan)
@@ -633,11 +634,21 @@ namespace Velvet
 
             // Removal, from the last old leaf down, of the leaves the deletion took down.
             var removed = deletion?.RemovedRows;
+            var deferred = deletion is { Deferred: true };
             for (var i = (removed?.Count ?? 0) - 1; i >= 0; i--)
             {
                 var index = removed![i].Index;
                 var old = commit.OldOccupants.Occupant(index);
-                if (old != null) _ctx.HostCommit.Remove(parent, old, plan);
+                if (old == null) continue;
+                if (deferred) deletion!.AddCleanup(parent, old);
+                else _ctx.HostCommit.Remove(parent, old, plan);
+            }
+            if (deferred)
+            {
+                // The teardown is queued ahead of the removals, which it cleans up before they apply, as a cleanup
+                // runs ahead of its removal where the deletion is immediate.
+                deletion!.Queue();
+                foreach (var (_, element, _, _) in deletion.Cleanups) _ctx.HostCommit.RemoveRow(parent, element);
             }
             // LIS reorder over the post-removal DOM positions, from slotStart for the reason above.
             var range = new ChildElementPlacement.PlacementRange
