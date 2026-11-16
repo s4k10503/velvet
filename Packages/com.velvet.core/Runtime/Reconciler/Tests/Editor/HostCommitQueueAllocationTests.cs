@@ -22,7 +22,11 @@ namespace Velvet.Tests.Performance
         public void SetUp() => _reconciler = new Reconciler();
 
         [TearDown]
-        public void TearDown() => _reconciler.Dispose();
+        public void TearDown()
+        {
+            ChildListWrites.EndRecording();
+            _reconciler.Dispose();
+        }
 
         private static VisualElement ParentOf(int children)
         {
@@ -107,6 +111,31 @@ namespace Velvet.Tests.Performance
 
             // Act
             var blocks = GCAllocationProbe.MedianBlocksDuring(putInOrder, reorder);
+
+            // Assert
+            Assert.That(blocks, Is.Zero);
+        }
+
+        [Test]
+        public void Given_AWarmQueue_When_ALabelsTextPatchIsRecordedAndApplied_Then_NothingIsAllocated()
+        {
+            // Arrange
+            var parent = ParentOf(0);
+            var label = new Label("a");
+            parent.Add(label);
+            var patcher = new FiberNodePatcher(_reconciler.Context);
+            var pending = new PendingPatch(patcher, label, new TextNode { Text = "a" }, new TextNode { Text = "b" });
+            ChildListWrites.BeginRecording();
+            Action reset = () => ChildListWrites.ApplyRecorded();
+            Action recordAndApply = () =>
+            {
+                ChildListWrites.RecordPatchPre(pending);
+                ChildListWrites.ApplyRecorded();
+            };
+            recordAndApply();
+
+            // Act
+            var blocks = GCAllocationProbe.MedianBlocksDuring(reset, recordAndApply);
 
             // Assert
             Assert.That(blocks, Is.Zero);
