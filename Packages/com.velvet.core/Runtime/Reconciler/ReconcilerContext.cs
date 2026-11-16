@@ -1617,8 +1617,8 @@ namespace Velvet
             }
 
             internal VisualElement Real { get; }
-            // The element whose classes Declared names where it is not Real: the Motion or element inside a wrapper, or
-            // the real element behind a placeholder.
+            // The element whose classes Declared names where it is not Real: the Motion or element inside the wrapper
+            // Real is.
             internal VisualElement? ClassElement { get; }
             internal FiberNodePatcher? Patcher { get; }
             internal string[]? Declared { get; }

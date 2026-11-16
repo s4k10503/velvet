@@ -88,12 +88,12 @@ namespace Velvet
         // because the danger is the reconcile-on-stack, not the tier.
         private bool _draining;
 
-        // Reports whether a reconcile pass is currently on the stack (SharedReconcileDepth > 0) or applying its recorded
-        // writes, registered by the owning Reconciler. _draining alone does not cover a time-sliced resume (ContinueReconcile): a
-        // resume is scheduled via schedule.Execute, not through Drain, so _draining is false while it runs even
-        // though a reconcile is on the stack. FlushImmediate also blocks on this probe so a discrete event
-        // dispatched synchronously inside a slice cannot re-enter the reconciler. The hazard is the
-        // reconcile-on-stack, not which path put it there.
+        // Reports whether a reconcile pass is currently on the stack (SharedReconcileDepth > 0) or this context's pass
+        // is applying its recorded writes, registered by the owning Reconciler. _draining alone does not cover a
+        // time-sliced resume (ContinueReconcile): a resume is scheduled via schedule.Execute, not through Drain, so
+        // _draining is false while it runs even though a reconcile is on the stack. FlushImmediate also blocks on this
+        // probe so a discrete event dispatched synchronously inside a slice cannot re-enter the reconciler, nor one an
+        // apply fires render inside the apply.
         private Func<bool>? _reconcileActiveProbe;
 
         // UseStore tearing-guard hooks (ReconcilerContext.BeginStoreSnapshotWave / EndStoreSnapshotWave). Each
@@ -658,8 +658,8 @@ namespace Velvet
             return depth;
         }
 
-        // Whether a drain of the immediate tier can start from here: no drain of either tier and no reconcile pass is
-        // on the stack. FlushImmediate checks the first and the last of these; a drain of the immediate tier that
+        // Whether a drain of the immediate tier can start from here: no drain of either tier, no reconcile pass on the
+        // stack and no apply of this context's recorded writes. FlushImmediate checks the first and the last of these; a drain of the immediate tier that
         // is running renders what is queued itself.
         internal bool CanFlushImmediate => !_draining && !_inImmediateDrain && !(_reconcileActiveProbe?.Invoke() ?? false);
 

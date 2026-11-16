@@ -25,7 +25,7 @@ namespace Velvet
             // The turn a FiberBegin or a FiberEnd marks, and where the teardowns of the deletions that run at it are
             // attached.
             internal TurnAnchor? Anchor;
-            // The index into Patches of a PatchPre or a PatchPost.
+            // The index into Patches of a PatchPre, a PatchPost or a PatchTail.
             internal int Index;
             internal OpKind Kind;
             internal bool ViaHierarchy;

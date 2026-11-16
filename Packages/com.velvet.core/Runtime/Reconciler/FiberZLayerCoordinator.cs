@@ -505,10 +505,11 @@ namespace Velvet
 
         private static void Settle(ReconcilerContext ctx, VisualElement real, StackingFacts? facts)
         {
-            // A relocation exchanges and sorts the live list, which a recorded write behind it would find changed, so a
-            // settle asked for while the pass records is made where the pass has applied what it recorded
-            // (SettlePatched), from the facts held then.
-            if (ChildListWrites.IsRecording)
+            // Returning an element to its slot exchanges it with its placeholder by a sort of the live list, which writes
+            // recorded behind it, or ops still to apply, would find changed. A settle asked for while this context's pass
+            // records or applies is made where the pass has applied what it recorded (SettlePatched), from the facts held
+            // then, and from the queue of the context that asked for it.
+            if (ctx.Pass.Recording || ctx.Pass.Applying)
             {
                 // MUTANT_SURVIVES(equivalent, literal): an entry with no patcher is settled from the facts held for its
                 // real element, so the anchored flag it carries is never read.

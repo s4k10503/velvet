@@ -474,14 +474,15 @@ namespace Velvet
         //
         // Inside a pass, an insert, a move or a removal the walk makes through HostCommitQueue into a container the pass
         // did not create updates the model and is recorded; the live list takes it no later than where FinishPass starts
-        // (EndRecording), in the order recorded. A node's patch halves are recorded in the same list (PatchPre and
-        // PatchPost, the children's ops between them), and so is the post-children tail of an element patched at once
-        // (PatchTail); they name no container, so a reader of the element's parent does not apply them. The readers the walk has moved to the model (ParentOf, ChildCount,
-        // ElementAtPhysical and the reads above) answer from it meanwhile, and a container with a recorded write is
+        // (EndRecording), in the order recorded, or where the pass that holds the container ends when a pass of another
+        // context made it. A node's patch halves are recorded in the same list (PatchPre and PatchPost, the children's ops
+        // between them), and so is the post-children tail of an element patched at once (PatchTail); they name no
+        // container, so a reader of the element's parent does not apply them. The readers the walk has moved to the model
+        // (ParentOf, ChildCount, ElementAtPhysical and the reads above) answer from it meanwhile, and a container with a recorded write is
         // skipped by the checks that compare the model with the live list. Insert, Remove, RemoveAt, RemoveFromHierarchy,
         // HierarchyRemove and Clear made into such a container, or of a child one holds, are recorded behind them too,
-        // and so is one made while they apply. HierarchySort sorts the live list, so a call into a container whose writes
-        // are recorded and not applying is asserted against.
+        // and so is one made while they apply. HierarchySort sorts the live list, so it applies the writes an enclosing pass
+        // of another context holds for the container first.
         //
         // The list, and the parents it leaves pending, belong to the ReconcilePass that recorded them, and s_current is
         // the one that is recording or applying, innermost first. Outside every pass nothing is recorded: ParentOf
@@ -514,11 +515,15 @@ namespace Velvet
         internal static bool PassIsOpen => s_current is { Recording: true } or { Applying: true };
 
         // A pass that starts while another is open leaves the other's recorded writes where they are. It reads the
-        // model through the passes it encloses (ParentOf, HoldingPass), and a write it makes into a container one of them
-        // holds is recorded in that pass's list, behind the ops there, so that list is the one that writes the container's
-        // live list.
+        // model through the passes that enclose it (ParentOf, HoldingPass), and an insert, a removal or a move it makes
+        // into a container one of them holds is recorded in that pass's list, behind the ops there, so that list is the
+        // one that writes the container's live list.
+        //
+        // The pass that is applying begins nothing: what a reconcile started from inside the apply writes is recorded
+        // behind the ops being applied, and its end, which EndRecording leaves to the apply, has nothing to give back.
         internal static void BeginRecording(ReconcilePass pass)
         {
+            if (pass.Applying) return;
             var open = s_current;
             // MUTANT_SURVIVES(equivalent, line removed): EndRecording clears the set as every pass ends, so it is empty when the next one begins.
             pass.Created.Clear();
@@ -627,7 +632,10 @@ namespace Velvet
         {
             var at = PhysicalIndexOf(parent, element);
             if (at < 0) return;
-            if (RecordingPass(ContentOf(parent), element) is { } pass) RecordRemoveAt(pass, ContentOf(parent), parent, at);
+            if ((EnclosingHoldingPass(ContentOf(parent), element) ?? RecordingPass(ContentOf(parent), element)) is { } pass)
+            {
+                RecordRemoveAt(pass, ContentOf(parent), parent, at);
+            }
             else RemoveAt(parent, at);
         }
 
@@ -635,6 +643,11 @@ namespace Velvet
         internal static void RemoveAtForMove(VisualElement parent, int index)
         {
             var container = ContentOf(parent);
+            if (EnclosingHoldingPass(container, null) is { } holder)
+            {
+                RecordRemoveAt(holder, container, parent, index);
+                return;
+            }
             var pass = s_current;
             if (pass != null && (pass.Applying || (pass.Recording && pass.ViaQueue > 0 && !pass.Created.Contains(container))))
             {
@@ -718,8 +731,8 @@ namespace Velvet
 
         // The pass whose recorded ops hold the container, the child or the live parent of the child; null where none
         // does or the pass is applying them. A writer that finds one records its write behind those ops, which the live
-        // list has not taken yet. The current pass is asked first and then the passes it encloses, an enclosing pass that
-        // is applying passed over.
+        // list has not taken yet. The current pass is asked first and then the passes that enclose it, outward; one of
+        // those that is applying is passed over.
         private static ReconcilePass? HoldingPass(VisualElement? container, VisualElement? child)
         {
             var pass = s_current;
@@ -732,7 +745,7 @@ namespace Velvet
             return null;
         }
 
-        // HoldingPass over the passes the current one encloses only: a write into what one of them holds goes to its
+        // HoldingPass over the passes that enclose the current one only: a write into what one of them holds goes to its
         // list even where the current pass is recording, since the live list the two would write is that one's to write.
         private static ReconcilePass? EnclosingHoldingPass(VisualElement? container, VisualElement? child)
         {
@@ -916,6 +929,9 @@ namespace Velvet
         // model never has to reproduce it.
         internal static void HierarchySort(VisualElement parent, Comparison<VisualElement> comparison)
         {
+            // A container a pass of another context still holds is sorted once that pass's ops are on the live list, since
+            // the sort rebuilds the model from it.
+            if (EnclosingHoldingPass(parent, null) is { } holding) Apply(holding);
             UnityEngine.Debug.Assert(HoldingPass(parent, null) == null,
                 "HierarchySort sorts the live list of a container that still has recorded writes.");
             var rows = Enter(parent, -1);

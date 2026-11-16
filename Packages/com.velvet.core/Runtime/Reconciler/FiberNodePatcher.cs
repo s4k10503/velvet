@@ -423,9 +423,6 @@ namespace Velvet
             // parent surgery the walk's return value reports, and that the pass records writes for.
             patch.Staged = ReferenceEquals(patch.Self, element) && ReferenceEquals(patch.Slot, element)
                 && !_ctx.ClipPathBindings.ContainsKey(element) && !StyleClipPathClass.WantsClipWrapper(newNode.ClassNames)
-                // A delayed text field commits its uncommitted edit through the notifying setter when the flag comes off,
-                // which runs the app's handler: that is written where the walk is.
-                && element is not TextField { isDelayed: true }
                 && ChildListWrites.StagesPatch(element);
             PatchBaseElement(ref patch, oldNode, newNode, oldNode.ClassNames, newNode.ClassNames);
         }

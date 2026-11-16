@@ -106,6 +106,74 @@ namespace Velvet.Tests
             Assert.That(parent.childCount, Is.Zero);
         }
 
+        private static (VisualElement Parent, VisualElement Y) FourRows()
+        {
+            var parent = new VisualElement();
+            var y = new VisualElement();
+            parent.Add(new VisualElement());
+            parent.Add(new VisualElement());
+            parent.Add(y);
+            parent.Add(new VisualElement());
+            return (parent, y);
+        }
+
+        // GREEN_ON_BASE(characterization): the base applied the first pass's insert where the second began, so the
+        // second's index named the live row as well.
+        [Test]
+        public void Given_APassHoldingAnInsertIntoAContainer_When_AnotherPassRemovesARowFromIt_Then_TheRowRemovedIsTheOneNamed()
+        {
+            // Arrange
+            var (parent, y) = FourRows();
+            ChildListWrites.BeginRecording(_first.Context.Pass);
+            _first.Context.HostCommit.Insert(parent, 1, new VisualElement());
+            ChildListWrites.BeginRecording(_second.Context.Pass);
+            _second.Context.HostCommit.RemoveRow(parent, y);
+
+            // Act
+            ChildListWrites.EndRecording(_second.Context.Pass);
+            ChildListWrites.EndRecording(_first.Context.Pass);
+
+            // Assert
+            Assert.That(y.hierarchy.parent, Is.Null);
+        }
+
+        // GREEN_ON_BASE(characterization): as for the removal of a named row.
+        [Test]
+        public void Given_APassHoldingAnInsertIntoAContainer_When_AnotherPassTakesARowOutToMoveIt_Then_TheRowTakenOutIsTheOneAtTheIndex()
+        {
+            // Arrange
+            var (parent, y) = FourRows();
+            ChildListWrites.BeginRecording(_first.Context.Pass);
+            _first.Context.HostCommit.Insert(parent, 1, new VisualElement());
+            ChildListWrites.BeginRecording(_second.Context.Pass);
+            ChildListWrites.RemoveAtForMove(parent, 3);
+
+            // Act
+            ChildListWrites.EndRecording(_second.Context.Pass);
+            ChildListWrites.EndRecording(_first.Context.Pass);
+
+            // Assert
+            Assert.That(y.hierarchy.parent, Is.Null);
+        }
+
+        [Test]
+        public void Given_APassThatBeginsAgainWhileItApplies_When_BothEnds_Then_NoPassIsRecording()
+        {
+            // Arrange
+            var pass = _first.Context.Pass;
+            ChildListWrites.BeginRecording(pass);
+            pass.Applying = true;
+            ChildListWrites.BeginRecording(pass);
+            ChildListWrites.EndRecording(pass);
+            pass.Applying = false;
+
+            // Act
+            ChildListWrites.EndRecording(pass);
+
+            // Assert
+            Assert.That(ChildListWrites.IsRecording, Is.False);
+        }
+
         [Test]
         public void Given_AnotherPassBeganOverARecordingOne_When_ItEnds_Then_TheOuterPassIsRecordingAgain()
         {
