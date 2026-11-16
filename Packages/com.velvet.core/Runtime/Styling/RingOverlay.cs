@@ -471,6 +471,8 @@ namespace Velvet
             var overlay = binding.Overlay;
             if (overlay.parent != element || element.hierarchy.IndexOf(overlay) != 0)
             {
+                // MUTANT_SURVIVES(equivalent, line removed): HierarchyInsert takes a child already in a parent out of it
+                // first (ChildListWrites.InsertCore), so the removal ahead of it writes nothing the Insert does not.
                 ChildListWrites.RemoveFromHierarchy(overlay);
                 ChildListWrites.HierarchyInsert(element, 0, overlay);
             }
