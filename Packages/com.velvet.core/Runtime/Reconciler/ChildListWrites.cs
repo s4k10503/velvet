@@ -789,7 +789,7 @@ namespace Velvet
         }
 
         // Queues a deletion's teardown among the recorded writes, to run where the ones before it have applied. False
-        // where no pass is recording, which leaves the caller to run it.
+        // where no pass is recording or its recorded writes are applying, which leaves the caller to run it.
         internal static bool RecordTeardown(DeletionCommit deletion)
         {
             if (s_current is not { Recording: true, Applying: false } pass) return false;

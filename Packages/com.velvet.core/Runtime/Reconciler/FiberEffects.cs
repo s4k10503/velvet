@@ -239,6 +239,7 @@ namespace Velvet
                 || ctx.DeferDrainLayoutEffects
                 || ctx.HeldRowLayoutEffects.Count > 0
                 || ctx.EffectCommitDepth > 0
+                || ctx.TeardownDepth > 0
                 || ctx.IsDrainingRefAttaches
                 || ctx.FlushingCaptures;
 

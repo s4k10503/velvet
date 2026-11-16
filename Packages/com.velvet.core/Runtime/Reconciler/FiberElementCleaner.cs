@@ -39,7 +39,7 @@ namespace Velvet
             return (poolable, IsDiscardedAfterCleanup(element, poolable) ? element : null);
         }
 
-        // The cleanup half of RemoveElement for a row whose removal was recorded ahead of it.
+        // The cleanup half of RemoveElement, for a row registered for Teardown before its removal is recorded.
         internal void CleanupRemovedRow(VisualElement element, VisualElement poolable, VisualElement? discardedRoot, DeletionPlan plan)
         {
             CleanupElement(element, element.panel, discardedRoot, plan);

@@ -7,10 +7,11 @@ namespace Velvet.Tests
 {
     /// <summary>
     /// Pins where a container's deletion of components runs its take-downs: where the pass applies the writes it
-    /// recorded (<see cref="DeletionCommit.Teardown"/>), after every render of the pass and ahead of the layout commit,
-    /// as react-reconciler 19.1 runs a deleted fiber's destroys in the mutation phase of the commit rather than while
-    /// it renders. The errors those destroys throw are captured for the boundary above the deletion, which renders its
-    /// fallback in a follow-up commit (<c>captureCommitPhaseError</c>) and does not stop the render that is under way.
+    /// recorded (<see cref="DeletionCommit.Teardown"/>), which is after the renders of the walk ahead of the layout
+    /// commit unless a flush of the pass's writes reaches it sooner, as react-reconciler 19.1 runs a deleted fiber's
+    /// destroys in the mutation phase of the commit rather than while it renders. A cleanup's error is captured for the
+    /// boundary above the deletion, which renders its fallback in a follow-up commit (<c>captureCommitPhaseError</c>)
+    /// and does not stop the render under way. The rows of a container that holds no component are removed in the walk.
     /// </summary>
     [TestFixtureSource(typeof(EventLogRenderer), nameof(EventLogRenderer.All))]
     internal sealed class DeletionTeardownAtApplyTests
@@ -84,6 +85,53 @@ namespace Velvet.Tests
                 V.Component(Guard, shown, key: "g"),
                 V.Div(key: "b", children: new VNode[] { V.Component(Watcher, shown, key: "w") }),
             });
+        }
+
+        [Component]
+        private static VNode ThrowsInItsCleanupAs(Named props)
+        {
+            var log = EventLog.UseLog();
+            Hooks.UseLayoutEffect(() => () =>
+            {
+                log.Add("lay-x:" + props.Name);
+                throw new InvalidOperationException(props.Name);
+            }, Array.Empty<object>());
+            return V.Div();
+        }
+
+        [Component(IsErrorBoundary = true, DisplayName = "Guard")]
+        private static VNode GuardOfTwo(bool shown)
+        {
+            Hooks.UseFallback(_ => V.Component(Fallback));
+            return V.Div(children: new VNode[]
+            {
+                shown ? V.Component(ThrowsInItsCleanupAs, new Named("T1"), key: "t1") : null,
+                shown ? V.Component(ThrowsInItsCleanupAs, new Named("T2"), key: "t2") : null,
+            });
+        }
+
+        [Component]
+        private static VNode GuardOfTwoHost()
+        {
+            var (shown, _) = EventLog.UseState("Shown", true);
+            return V.Component(GuardOfTwo, shown, key: "g");
+        }
+
+        [Test]
+        public void Given_TwoDeletedComponentsWhoseLayoutCleanupsThrow_When_TheParentStopsRenderingThem_Then_BothRunAndBothAreReported()
+        {
+            // Arrange
+            var log = new EventLog();
+            using var mounted = _renderer.Mount(log.Provide(V.Component(GuardOfTwoHost)), log.ReportingErrors());
+            mounted.DrainForTest();
+            log.Clear();
+
+            // Act
+            log.Setter<bool>("Shown").Invoke(false);
+            mounted.DrainForTest();
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("lay-x:T1 lay-x:T2 render:Fb caught:Guard:T1 caught:Guard:T2"));
         }
 
         [Component]

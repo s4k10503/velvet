@@ -6,5 +6,5 @@
   then shows its fallback and calls `OnCaughtError` from the commit that follows. Where two boundaries are nested
   and both capture an error in one commit, only the outer one renders its fallback and reports, since the inner
   one is replaced before it renders. A cleanup that throws while a Suspense hides its content, or during a removal
-  that still runs while the render walks (one holding a Portal, or a component that mounts its own wrapper element),
-  is still caught at once, inside that pass.
+  that runs while the render walks rather than where the pass's writes apply, is still caught at once, inside that
+  pass.

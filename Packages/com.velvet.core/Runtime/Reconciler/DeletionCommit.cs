@@ -27,7 +27,7 @@ namespace Velvet
         private readonly HashSet<ComponentFiber> _collected = new();
         private readonly List<ComponentFiber> _fibers = new();
         private bool _startsInsideARow;
-        // The removed rows whose removal was recorded ahead of their cleanup, in the order they were recorded.
+        // The removed rows registered for Teardown before their removals are recorded, in the order registered.
         private readonly List<(VisualElement Parent, VisualElement Element, VisualElement Poolable, VisualElement? DiscardedRoot)> _cleanups = new();
         private bool _deferred;
         private bool _queued;
@@ -66,11 +66,9 @@ namespace Velvet
         }
 
         // Whether the deletion runs where the pass applies its recorded writes (Teardown) rather than where it is decided.
-        // A deletion whose fibers include a wrapper-mounted one with rows keeps the immediate path: that fiber's unmount
-        // reconciles its rows away, a reconcile that cannot run inside the apply, and deciding it ahead would take down
-        // the rows in an order the deletion's own does not (the next step hoists the teardown and settles it). So does
-        // one with a Portal under a root: CleanupPortal removes the Portal's range, and disposes the fibers it owns by
-        // the registry lookups that hiding takes them out of.
+        // It keeps the immediate path where a fiber's unmount reconciles its own rows (a wrapper-mounted fiber with a
+        // tree), and where a Portal sits under a root, whose range CleanupPortal removes and whose fibers it disposes by
+        // looking them up in the registry, which a hidden fiber has left.
         private bool CanDefer()
         {
             if (_portalsUnderRoots.Count > 0) return false;
@@ -120,14 +118,15 @@ namespace Velvet
         // What the recorded writes up to this one made room for: the plan's take-downs, the cleanup of each registered
         // row, then the fibers' disposal. Each runs where the one before it threw, and the first exception is rethrown
         // after them. An error a cleanup throws is captured for its boundary (CommitErrors.Capture), as one thrown in
-        // the layout commit is, which EffectCommitDepth selects.
+        // the layout commit is, which TeardownDepth selects.
         internal void Teardown()
         {
+            // MUTANT_SURVIVES(equivalent, guard removed): Apply runs each op once, and Queue records the op only the first time it is asked.
             if (_executed) return;
             _executed = true;
             var ctx = Ctx;
             System.Runtime.ExceptionServices.ExceptionDispatchInfo? first = null;
-            ctx.EffectCommitDepth++;
+            ctx.TeardownDepth++;
             try
             {
                 try
@@ -155,7 +154,7 @@ namespace Velvet
             }
             finally
             {
-                ctx.EffectCommitDepth--;
+                ctx.TeardownDepth--;
                 if (_walkOver) End();
             }
             first?.Throw();
@@ -165,6 +164,7 @@ namespace Velvet
         {
             foreach (var fiber in fibers)
             {
+                // MUTANT_SURVIVES(equivalent, guard removed): FiberRenderer.Dispose returns at a disposed fiber, and what DisposeFiber and Hide do after it remove by the fiber as a key.
                 if (fiber.IsDisposed) continue;
                 try
                 {
@@ -362,7 +362,27 @@ namespace Velvet
 
         protected override bool PlansTakeDowns => true;
 
-        protected override void TakeDown(ComponentFiber fiber) => FiberEffects.CleanUpDeleted(fiber);
+        // The insertion and layout cleanups of a deletion Teardown runs count as a commit, as a layout commit's do, and the
+        // passive ones run outside it.
+        protected override void TakeDown(ComponentFiber fiber)
+        {
+            if (!_executed)
+            {
+                FiberEffects.CleanUpDeleted(fiber);
+                return;
+            }
+            Ctx.EffectCommitDepth++;
+            try
+            {
+                FiberEffects.CleanupAllInsertionEffects(fiber);
+                FiberEffects.CleanupAllLayoutEffects(fiber);
+            }
+            finally
+            {
+                Ctx.EffectCommitDepth--;
+            }
+            FiberEffects.CleanupAllEffects(fiber);
+        }
 
         protected override void TakeDown(VisualElement element) => _cleaner.DetachRef(element);
 
@@ -391,6 +411,7 @@ namespace Velvet
             ClearAndTrim(_collected);
             _fibers.Clear();
             _cleanups.Clear();
+            // MUTANT_SURVIVES(equivalent): Run assigns the flag before anything reads it.
             _deferred = false;
             _queued = false;
             _executed = false;
