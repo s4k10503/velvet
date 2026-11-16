@@ -384,8 +384,14 @@ namespace Velvet
             _ctx.IsAborted = false;
             try
             {
-                _ctx.HostCommit.EndRecordedPass();
-                FiberZLayerCoordinator.SettlePatched(_ctx);
+                try
+                {
+                    _ctx.HostCommit.EndRecordedPass();
+                }
+                finally
+                {
+                    FiberZLayerCoordinator.SettlePatched(_ctx);
+                }
                 try
                 {
                     var suspended = ChildPass.DrainPendingPortalMounts();
@@ -1119,7 +1125,7 @@ namespace Velvet
             _ctx.PortalState.Clear();
             _ctx.PendingPortalMounts.Clear();
             _ctx.PendingSettles.Clear();
-            _ctx.CleanedElements.Clear();
+            _ctx.Released = true;
             // MUTANT_SURVIVES(equivalent): as at the pass boundary, an entry outliving its queue is never read.
             _ctx.PendingHostPlaceholders.Clear();
             // ZLayerHosts/ZLayerMembers/StackingFacts are pure side-tables (dropped by ClearAllSideTables); these

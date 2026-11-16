@@ -423,6 +423,9 @@ namespace Velvet
             // parent surgery the walk's return value reports, and that the pass records writes for.
             patch.Staged = ReferenceEquals(patch.Self, element) && ReferenceEquals(patch.Slot, element)
                 && !_ctx.ClipPathBindings.ContainsKey(element) && !StyleClipPathClass.WantsClipWrapper(newNode.ClassNames)
+                // A delayed text field commits its uncommitted edit through the notifying setter when the flag comes off,
+                // which runs the app's handler: that is written where the walk is.
+                && element is not TextField { isDelayed: true }
                 && ChildListWrites.StagesPatch(element);
             PatchBaseElement(ref patch, oldNode, newNode, oldNode.ClassNames, newNode.ClassNames);
         }
@@ -538,7 +541,10 @@ namespace Velvet
         private void ApplyPostChildrenClassPasses(VisualElement element, string[] oldClassNames,
             string[] newClassNames, bool clipActive)
         {
-            // The gap and child-variant manipulators configured below read the live child list.
+            // The has-variant scans and the gap and child-variant manipulators configured below read the live state of the
+            // element's descendants, whose patch halves may still be recorded: an element patched at once (a Motion, a
+            // relocated or wrapped element) reaches here while they wait.
+            ChildListWrites.ApplyPendingPatches();
             ChildListWrites.SyncLive(element);
             (oldClassNames, newClassNames) = (AsWritten(element, oldClassNames), AsWritten(element, newClassNames));
             // Before gap / divide / grid: on a SHARED style property ([&>*]:ml-[2px] alongside gap-x-4) those
@@ -628,8 +634,16 @@ namespace Velvet
 
         // Whether the element was cleaned (and so maybe pooled and rented again) since the op was recorded: the cleanup
         // writes at once, so a staged write behind it would land on whatever the element is now.
-        private bool CleanedSince(in PendingPatch patch)
-            => _ctx.CleanedElements.TryGetValue(patch.Element, out var cleaned) && cleaned > patch.Serial;
+        private bool CleanedSince(in PendingPatch patch) => CleanedSince(patch.Element, patch.Serial);
+
+        private bool CleanedSince(VisualElement element, int serial)
+        {
+            if (_ctx.Released)
+            {
+                return true;
+            }
+            return _ctx.CleanedElements.TryGetValue(element, out var cleaned) && cleaned > serial;
+        }
 
         // The writes a recorded PatchPre makes where the pass applies its ops.
         internal void CommitPre(in PendingPatch patch)
@@ -665,7 +679,7 @@ namespace Velvet
         // is composed from the tables the applied halves left, which the walk could not read while they were pending.
         internal void CommitStacking(in ReconcilerContext.QueuedSettle entry)
         {
-            if (_ctx.CleanedElements.TryGetValue(entry.Real, out var cleaned) && cleaned > entry.Serial)
+            if (CleanedSince(entry.Real, entry.Serial))
             {
                 return;
             }
@@ -3326,7 +3340,7 @@ namespace Velvet
         // into. A has- element matches on its DESCENDANTS, so its match can change only if a mutation landed
         // inside its subtree; that means the has- element is regionRoot itself or one of its ANCESTORS (a has-
         // element strictly BELOW regionRoot whose descendant changed was reconciled in this same flush, so its
-        // own post-children pass already covered it). So rather than re-scan EVERY registered has- element each
+        // own post-children pass already covered it, after its descendants' recorded halves had applied). So rather than re-scan EVERY registered has- element each
         // flush, walk up from regionRoot — and from each active Portal target, whose children live outside
         // regionRoot's subtree — and re-derive only the registered has- elements found on those chains. This is
         // O(depth) instead of O(registered has- elements x subtree scan), the win the sweep needs under many

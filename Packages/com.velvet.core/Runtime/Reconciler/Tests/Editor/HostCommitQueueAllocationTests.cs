@@ -117,7 +117,7 @@ namespace Velvet.Tests.Performance
         }
 
         [Test]
-        public void Given_AWarmQueue_When_ALabelsTextPatchIsRecordedAndApplied_Then_NothingIsAllocated()
+        public void Given_AWarmQueue_When_APatchOpOfACleanedLabelIsRecordedAndApplied_Then_NothingIsAllocated()
         {
             // Arrange
             var parent = ParentOf(0);
@@ -125,6 +125,8 @@ namespace Velvet.Tests.Performance
             parent.Add(label);
             var patcher = new FiberNodePatcher(_reconciler.Context);
             var pending = new PendingPatch(patcher, label, new TextNode { Text = "a" }, new TextNode { Text = "b" }, 0);
+            // Cleaned since it was recorded, so the op's body is skipped and the case measures the queue alone.
+            _reconciler.Context.CleanedElements[label] = 1;
             ChildListWrites.BeginRecording();
             Action reset = () => ChildListWrites.ApplyRecorded();
             Action recordAndApply = () =>

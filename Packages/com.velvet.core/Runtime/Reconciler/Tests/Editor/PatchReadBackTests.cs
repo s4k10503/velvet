@@ -162,5 +162,30 @@ namespace Velvet.Tests
             // Assert
             Assert.That(_root.Q<VisualElement>("box").ClassListContains("rounded"), Is.True);
         }
+
+        private static VNode[] MotionTree(bool active)
+            => new VNode[]
+            {
+                V.Motion(name: "motion", className: "has-[.on]:bg-red-500", children: new VNode[]
+                {
+                    V.Div(className: active ? "on" : string.Empty),
+                }),
+            };
+
+        // GREEN_ON_BASE(characterization): the base writes the child's class while it patches, so the Motion's has scan,
+        // which runs after its children, sees it.
+        [Test]
+        public void Given_AMotionWithAHasClassVariant_When_AChildGainsTheClassWithNoInsert_Then_TheMotionHoldsThePayload()
+        {
+            // Arrange
+            var before = MotionTree(false);
+            _reconciler.Reconcile(_root, Array.Empty<VNode>(), before);
+
+            // Act
+            _reconciler.Reconcile(_root, before, MotionTree(true));
+
+            // Assert
+            Assert.That(_root.Q<VisualElement>("motion").ClassListContains("bg-red-500"), Is.True);
+        }
     }
 }

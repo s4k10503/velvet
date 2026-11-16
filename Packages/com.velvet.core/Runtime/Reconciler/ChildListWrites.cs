@@ -447,12 +447,14 @@ namespace Velvet
         // ---- Recorded writes ----
         //
         // Inside a pass, an insert or a move the walk makes through HostCommitQueue into a container the pass did not
-        // create updates the model and is recorded; the live list takes it where FinishPass starts (ApplyRecorded), in
-        // the order recorded. A node's patch halves are recorded in the same list (PatchPre and PatchPost, the
-        // children's ops between them); they name no container, so a reader of the element's parent does not apply them. The readers the walk has moved to the model (ParentOf,
-        // ChildCount, ElementAtPhysical and the reads above) answer from it meanwhile, and a container with a recorded
-        // write is skipped by the checks that compare the model with the live list. Any other write into such a
-        // container applies the recorded ones first, except one made while they apply, which is recorded behind them.
+        // create updates the model and is recorded; the live list takes it no later than where FinishPass starts
+        // (ApplyRecorded), in the order recorded. A node's patch halves are recorded in the same list (PatchPre and
+        // PatchPost, the children's ops between them); they name no container, so a reader of the element's parent does
+        // not apply them, and a pass step that reads the live state of a subtree applies them first
+        // (ApplyPendingPatches). The readers the walk has moved to the model (ParentOf, ChildCount, ElementAtPhysical and
+        // the reads above) answer from it meanwhile, and a container with a recorded write is skipped by the checks that
+        // compare the model with the live list. Any other write into such a container applies the recorded ones first,
+        // except one made while they apply, which is recorded behind them.
         private enum OpKind : byte { Insert, RemoveAt, RemoveChild, PatchPre, PatchPost }
 
         private struct Op
@@ -618,6 +620,16 @@ namespace Velvet
             s_ops.Add(new Op { Index = s_patches.Count - 1, Kind = kind });
         }
 
+        // For a pass step that reads a subtree's live state while its descendants' patch halves are still recorded: those
+        // halves apply first, in the order recorded.
+        internal static void ApplyPendingPatches()
+        {
+            if (s_patches.Count > 0)
+            {
+                ApplyRecorded();
+            }
+        }
+
         // For a reader of container's live child list: the recorded writes of the container apply first.
         internal static void SyncLive(VisualElement container) => FlushIfPending(ContentOf(container), null);
 
@@ -633,36 +645,25 @@ namespace Velvet
             }
         }
 
-        // Puts the recorded writes on the live lists in the order they were made and ends recording.
+        // Puts the recorded writes on the live lists in the order they were made and ends recording. An op that throws
+        // does not stop the ones behind it: the walk has moved on from each of them, so the live tree has to take every
+        // one, and the first exception is rethrown once they have.
         internal static void ApplyRecorded()
         {
             if (s_applying) return;
             s_applying = true;
+            System.Runtime.ExceptionServices.ExceptionDispatchInfo? first = null;
             try
             {
                 for (var i = 0; i < s_ops.Count; i++)
                 {
-                    var op = s_ops[i];
-                    if (op.Kind >= OpKind.PatchPre)
-                    {
-                        var patch = s_patches[op.Index];
-                        if (op.Kind == OpKind.PatchPre) patch.Patcher.CommitPre(patch);
-                        else patch.Patcher.CommitPost(patch);
-                        continue;
-                    }
-                    s_open++;
-                    s_flight.Add(op.Container);
                     try
                     {
-                        if (op.Kind == OpKind.RemoveChild) op.Child.RemoveFromHierarchy();
-                        else if (op.Kind == OpKind.RemoveAt) op.Caller.RemoveAt(op.Index);
-                        else if (op.ViaHierarchy) op.Container.hierarchy.Insert(op.Index, op.Child);
-                        else op.Caller.Insert(op.Index, op.Child);
+                        ApplyOp(s_ops[i]);
                     }
-                    finally
+                    catch (Exception exception)
                     {
-                        s_flight.RemoveAt(s_flight.Count - 1);
-                        s_open--;
+                        first ??= System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(exception);
                     }
                 }
             }
@@ -684,6 +685,32 @@ namespace Velvet
                 s_pendingContainers.Clear();
                 foreach (var nested in s_nested) Settle(nested, full: true);
                 s_nested.Clear();
+            }
+            first?.Throw();
+        }
+
+        private static void ApplyOp(Op op)
+        {
+            if (op.Kind >= OpKind.PatchPre)
+            {
+                var patch = s_patches[op.Index];
+                if (op.Kind == OpKind.PatchPre) patch.Patcher.CommitPre(patch);
+                else patch.Patcher.CommitPost(patch);
+                return;
+            }
+            s_open++;
+            s_flight.Add(op.Container);
+            try
+            {
+                if (op.Kind == OpKind.RemoveChild) op.Child.RemoveFromHierarchy();
+                else if (op.Kind == OpKind.RemoveAt) op.Caller.RemoveAt(op.Index);
+                else if (op.ViaHierarchy) op.Container.hierarchy.Insert(op.Index, op.Child);
+                else op.Caller.Insert(op.Index, op.Child);
+            }
+            finally
+            {
+                s_flight.RemoveAt(s_flight.Count - 1);
+                s_open--;
             }
         }
 

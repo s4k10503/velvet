@@ -1603,6 +1603,9 @@ namespace Velvet
         internal Dictionary<VisualElement, int> CleanedElements { get; } = new();
         internal int CleanupSerial;
 
+        // Set where the owner drops its hosts: the ops and settles recorded for this context no longer write.
+        internal bool Released;
+
         internal readonly struct QueuedSettle
         {
             internal QueuedSettle(VisualElement real, FiberNodePatcher? patcher, string[]? declared, bool anchored, int serial)
