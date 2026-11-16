@@ -8,5 +8,4 @@
   component among them, removes its rows, and detaches their refs, in the walk, as does a removal that holds a
   component mounting its own wrapper element, or a Portal whose target is the container itself or lies inside what the
   removal removes. The Portals a deferred removal holds move the ranges behind them up where the removal is decided,
-  and release their rows, bridge and world-space host where the recorded writes apply, which an element patched at
-  once (a Motion, a relocated or a wrapped element) brings forward to that patch.
+  and release their rows, bridge and world-space host where the recorded writes apply.

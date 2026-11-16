@@ -304,7 +304,7 @@ namespace Velvet.Tests
             Assert.That(CallbackRegistryProbe.BubbleUpCallbackCount(row) < before, Is.True);
         }
 
-        // GREEN_ON_BASE(refactor): the base takes the Portal down in the walk as well, since its target goes with the row.
+        // GREEN_ON_BASE(refactor): the base takes down in the walk every removal that holds a Portal, wherever its target is.
         [Test]
         public void Given_ADeletedRowHoldingAPortalIntoAnElementInsideIt_When_TheParentStopsRenderingIt_Then_ThePortalsCleanupsRunBeforeARowAfterItRenders()
         {
