@@ -1227,8 +1227,6 @@ namespace Velvet
                         // enter / exit / stagger played on each keyed child's anchor element. Old/new sides
                         // are reproduced from the per-boundary presence state, mirroring ExpandSuspenseInline.
                         walk.ReuseSuspended++;
-                        var presenceEnclosing = EnterTurn(
-                            walk, FiberKeying.Presence(position, presence.Key, nodeIndex).SlotPath, isConstruct: true);
                         try
                         {
                             ExpandAnimatePresenceInline(walk, presence, position, nodeIndex);
@@ -1236,7 +1234,6 @@ namespace Velvet
                         finally
                         {
                             walk.ReuseSuspended--;
-                            walk.CurrentTurn = presenceEnclosing;
                         }
                         break;
                     case BaseElementNode:

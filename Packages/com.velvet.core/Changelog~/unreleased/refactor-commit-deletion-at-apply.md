@@ -9,8 +9,8 @@
   component mounting its own wrapper element, or a Portal whose target is the container itself or lies inside what the
   removal removes. The Portals a deferred removal holds move the ranges behind them up where the removal is decided,
   and release their rows, bridge and world-space host where the recorded writes apply.
-  Where those cleanups wait for the apply, each runs at the turn of the nearest component, Provider, Suspense,
-  AnimatePresence or Fragment above it that the pass kept: behind the cleanups of what comes before it in the tree and
+  Where those cleanups wait for the apply, each runs at the turn of the nearest component, Provider, Suspense
+  or Fragment above it that the pass kept: behind the cleanups of what comes before it in the tree and
   ahead of those inside what it still renders. A removal that does not wait is taken down in tree order. A patch
   applied at once inside the walk applies the writes recorded before it, the deletions at the turns among them
   included, and the deletions it leaves run ahead of what the walk records after it.

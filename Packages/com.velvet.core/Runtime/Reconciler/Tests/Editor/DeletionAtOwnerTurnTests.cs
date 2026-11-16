@@ -575,34 +575,6 @@ namespace Velvet.Tests
             Assert.That(log.ToString(), Is.EqualTo("ins-x:X lay-x:X ins-x:F lay-x:F"));
         }
 
-        [Component]
-        private static VNode XThenAPresence()
-        {
-            var (shown, _) = EventLog.UseState("Shown", true);
-            return V.Fragment(
-                V.Component(DropsX, shown, key: "l"),
-                V.AnimatePresence(children: shown ? new VNode[] { V.Component(Probed, new Named("P"), key: "p") } : null));
-        }
-
-        // GREEN_ON_BASE(characterization): the base's one plan takes the container in tree order, as an AnimatePresence
-        // deletes what it drops at its own turn, after the component before it.
-        [Test]
-        public void Given_AnAnimatePresenceDroppingAComponentWithNoExit_When_AComponentBeforeItDeletesToo_Then_TheComponentsDeletionRunsFirst()
-        {
-            // Arrange
-            var log = new EventLog();
-            using var mounted = _renderer.Mount(log.Provide(V.Component(XThenAPresence)));
-            mounted.DrainForTest();
-            log.Clear();
-
-            // Act
-            log.Setter<bool>("Shown").Invoke(false);
-            mounted.DrainForTest();
-
-            // Assert
-            Assert.That(log.ToString(), Is.EqualTo("ins-x:X lay-x:X ins-x:P lay-x:P"));
-        }
-
         [Test]
         public void Given_APassThatDeletedAtTwoOwnersTurns_When_ItHasEnded_Then_ItHoldsNoAnchor()
         {
