@@ -168,11 +168,7 @@ namespace Velvet
             // before unmounting so IsDisposed-gated closures (UseMutation continuations,
             // optimistic update commits) short-circuit instead of mutating a torn-down fiber.
             var context = Root.Reconciler?.Context;
-            if (Root.HeldMount != null)
-            {
-                ChildListWrites.DropHeldMount(Root.HeldMount);
-                Root.HeldMount = null;
-            }
+            if (Root.HeldMount != null) ChildListWrites.DropHeldMount(Root.HeldMount);
             // While a render or a commit runs the unmount waits for it to end, as React's root.unmount() does.
             if (ChildListWrites.HoldDispose(() => Unmount(context), context)) return;
             Unmount(context);

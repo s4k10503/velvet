@@ -108,19 +108,25 @@ namespace Velvet.Tests
             Assert.That(again, Is.EqualTo(rendered));
         }
 
-        // GREEN_ON_BASE(characterization): the base rendered the root and unmounted it, which leaves the host as empty.
         [Test]
         public void Given_AMountAskedForInsideAWalk_When_TheRootIsDisposedBeforeThePassEnds_Then_ItNeverRenders()
         {
             // Arrange
-            var host = new VisualElement();
-            var tree = TreeMountingARootInsideTheWalk(host, _ => _mounted!.Dispose());
+            s_heldRenders = 0;
+            var tree = new VNode[]
+            {
+                V.ScrollView(onCreated: _ =>
+                {
+                    _mounted = V.Mount(new VisualElement(), V.Component(CountsItsRenders));
+                    _mounted.Dispose();
+                }),
+            };
 
             // Act
             _first.Reconcile(new VisualElement(), Array.Empty<VNode>(), tree);
 
             // Assert
-            Assert.That(host.childCount, Is.Zero);
+            Assert.That(s_heldRenders, Is.Zero);
         }
 
         // GREEN_ON_BASE(characterization): the base rendered the root where it was asked for, so it holds its row by the
@@ -286,21 +292,29 @@ namespace Velvet.Tests
             Assert.That(string.Join(",", log), Is.EqualTo("a,b,c"));
         }
 
-        [Test]
-        public void Given_HeldWorkThatAsksForItselfAgainEveryTime_When_ThePassEnds_Then_TheNestedUpdateLimitIsThrown()
-        {
-            // Arrange
-            var tree = TreeAskingForHeldWork(context =>
+        // Held work that asks for itself again while it is made, sixty times in all: past the limit, and finite where the
+        // limit is not kept.
+        private VNode[] TreeAskingForItselfAgainSixtyTimes(Action? eachRun = null)
+            => TreeAskingForHeldWork(context =>
             {
+                var left = 60;
                 Action again = null!;
                 again = () =>
                 {
+                    eachRun?.Invoke();
+                    if (--left == 0) return;
                     ChildListWrites.EnterCommit();
                     ChildListWrites.HoldMount(again, context);
                     ChildListWrites.LeaveCommit();
                 };
                 ChildListWrites.HoldMount(again, context);
             });
+
+        [Test]
+        public void Given_HeldWorkThatAsksForItselfAgainSixtyTimes_When_ThePassEnds_Then_TheNestedUpdateLimitIsThrown()
+        {
+            // Arrange
+            var tree = TreeAskingForItselfAgainSixtyTimes();
 
             // Act
             TestDelegate act = () => _first.Reconcile(new VisualElement(), Array.Empty<VNode>(), tree);
@@ -310,22 +324,11 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_HeldWorkThatAsksForItselfAgainEveryTime_When_ThePassEnds_Then_ItRanAsOftenAsTheLimitAllows()
+        public void Given_HeldWorkThatAsksForItselfAgainSixtyTimes_When_ThePassEnds_Then_ItRanAsOftenAsTheLimitAllows()
         {
             // Arrange
             var runs = 0;
-            var tree = TreeAskingForHeldWork(context =>
-            {
-                Action again = null!;
-                again = () =>
-                {
-                    runs++;
-                    ChildListWrites.EnterCommit();
-                    ChildListWrites.HoldMount(again, context);
-                    ChildListWrites.LeaveCommit();
-                };
-                ChildListWrites.HoldMount(again, context);
-            });
+            var tree = TreeAskingForItselfAgainSixtyTimes(() => runs++);
 
             // Act
             try
@@ -357,6 +360,165 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(s_heldRenders, Is.Zero);
+        }
+
+        private static StateUpdater<int> s_setCounted;
+        private static int s_countedRenders;
+
+        [Component]
+        private static VNode CountsItsStateRenders()
+        {
+            var (_, set) = Hooks.UseState(0);
+            s_setCounted = set;
+            s_countedRenders++;
+            return V.Div();
+        }
+
+        [Test]
+        public void Given_FlushesOfTwoContextsAskedForInsideAWalk_When_ThePassEnds_Then_TheSecondHasRendered()
+        {
+            // Arrange
+            using var other = V.Mount(new VisualElement(), V.Component(CountsItsStateRenders));
+            var otherContext = other.Root.Reconciler!.Context;
+            var before = s_countedRenders;
+            var tree = TreeAskingForHeldWork(context =>
+            {
+                ChildListWrites.HoldsFlush(context);
+                s_setCounted.Invoke(1);
+                ChildListWrites.HoldsFlush(otherContext);
+            });
+
+            // Act
+            _first.Reconcile(new VisualElement(), Array.Empty<VNode>(), tree);
+
+            // Assert
+            Assert.That(s_countedRenders - before, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_AContextWithAMountHeldWhoseFlushIsAskedForInsideAWalk_When_ThePassEnds_Then_ItHasRendered()
+        {
+            // Arrange
+            using var other = V.Mount(new VisualElement(), V.Component(CountsItsStateRenders));
+            var otherContext = other.Root.Reconciler!.Context;
+            var before = s_countedRenders;
+            var tree = TreeAskingForHeldWork(_ =>
+            {
+                ChildListWrites.HoldMount(() => { }, otherContext);
+                s_setCounted.Invoke(1);
+                ChildListWrites.HoldsFlush(otherContext);
+            });
+
+            // Act
+            _first.Reconcile(new VisualElement(), Array.Empty<VNode>(), tree);
+
+            // Assert
+            Assert.That(s_countedRenders - before, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_AFlushAskedForMoreTimesThanTheNestedUpdateLimitInsideAWalk_When_ThePassEnds_Then_NothingIsThrown()
+        {
+            // Arrange
+            var tree = TreeAskingForHeldWork(context =>
+            {
+                for (var i = 0; i < 60; i++) ChildListWrites.HoldsFlush(context);
+            });
+
+            // Act
+            TestDelegate act = () => _first.Reconcile(new VisualElement(), Array.Empty<VNode>(), tree);
+
+            // Assert
+            Assert.That(act, Throws.Nothing);
+        }
+
+        [Test]
+        public void Given_TwoPassesThatEachHoldAMount_When_TheSecondEnds_Then_ItsRootHasRendered()
+        {
+            // Arrange
+            var firstHost = new VisualElement();
+            var secondHost = new VisualElement();
+            _first.Reconcile(new VisualElement(), Array.Empty<VNode>(), TreeMountingARootInsideTheWalk(firstHost));
+            using var firstRoot = _mounted;
+
+            // Act
+            _first.Reconcile(new VisualElement(), Array.Empty<VNode>(), TreeMountingARootInsideTheWalk(secondHost));
+            var rendered = secondHost.childCount;
+            _mounted?.Dispose();
+
+            // Assert
+            Assert.That(rendered, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_HeldWorkThatRunsAnEntryOfItsOwn_When_ThatEntryEnds_Then_TheWorkBehindItWaitsForItToReturn()
+        {
+            // Arrange
+            var log = new System.Collections.Generic.List<string>();
+            var tree = TreeAskingForHeldWork(context =>
+            {
+                ChildListWrites.HoldMount(() =>
+                {
+                    ChildListWrites.RunEntry<object?>(null, null, _ => log.Add("entry"));
+                    log.Add("after the entry");
+                }, context);
+                ChildListWrites.HoldMount(() => log.Add("behind"), context);
+            });
+
+            // Act
+            _first.Reconcile(new VisualElement(), Array.Empty<VNode>(), tree);
+
+            // Assert
+            Assert.That(string.Join(",", log), Is.EqualTo("entry,after the entry,behind"));
+        }
+
+        private static ReconcilerContext s_holdIn = null!;
+
+        // Holds work that throws, from inside its own first walk.
+        [Component]
+        private static VNode HoldsWorkThatThrows()
+            => V.ScrollView(onCreated: _ => ChildListWrites.HoldMount(() => throw new InvalidOperationException("held"), s_holdIn));
+
+        // Holds work that throws, and then writes its state from every layout effect it runs, past the nested-update limit.
+        [Component]
+        private static VNode HoldsWorkThatThrowsAndRunsAway()
+        {
+            var (n, setN) = Hooks.UseState(0);
+            Hooks.UseLayoutEffect(() =>
+            {
+                setN.Invoke(n + 1);
+                return (Action)null!;
+            }, new object[] { n });
+            return V.ScrollView(onCreated: _ => ChildListWrites.HoldMount(() => throw new InvalidOperationException("held"), s_holdIn));
+        }
+
+        [Test]
+        public void Given_HeldWorkThatThrows_When_TheMountThatHeldItEnds_Then_ItsExceptionIsRethrown()
+        {
+            // Arrange
+            FiberStrictMode.Enabled = false;
+            s_holdIn = _second.Context;
+
+            // Act
+            TestDelegate act = () => _mounted = V.Mount(new VisualElement(), V.Component(HoldsWorkThatThrows));
+
+            // Assert
+            Assert.That(act, Throws.InvalidOperationException.With.Message.EqualTo("held"));
+        }
+
+        [Test]
+        public void Given_HeldWorkThatThrows_When_TheMountThatHeldItEndsInAnExceptionOfItsOwn_Then_ItsOwnPropagates()
+        {
+            // Arrange — the held work's exception is logged, since the mount's is the one in flight
+            FiberStrictMode.Enabled = false;
+            s_holdIn = _second.Context;
+            LogAssert.Expect(LogType.Exception, new Regex("held"));
+
+            // Act
+            TestDelegate act = () => _mounted = V.Mount(new VisualElement(), V.Component(HoldsWorkThatThrowsAndRunsAway));
+
+            // Assert
+            Assert.That(act, Throws.InvalidOperationException.With.Message.StartsWith("Maximum update depth exceeded"));
         }
 
         // GREEN_ON_BASE(characterization): the base writes at once outside a pass as well; the case pins that the

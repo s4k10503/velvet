@@ -39,7 +39,7 @@ namespace Velvet.Tests
             (s_target, s_refusals, s_resource, s_listHost, s_suspendingRows, s_portalHeld) =
                 (new VisualElement(), 0, new VelvetTaskCompletionSource<string>(), null, new[] { "a" }, false);
             (s_otherList, s_written, s_rowRead, s_renderedInside, s_rowRenders, s_scrollTargets) =
-                (null, null, null, null, 0, new[] { 50 });
+                (null, null, null, null, 0, new[] { 49, 50 });
         }
 
         [Component]
@@ -262,8 +262,8 @@ namespace Velvet.Tests
             return mounted;
         }
 
-        // Scrolls the other root's list to each target, the last one item 50, from inside its own walk, and writes in its
-        // layout effect.
+        // Scrolls the other root's list to each target, items 49 and 50 unless a case sets others, the last one item 50,
+        // from inside its own walk, and writes in its layout effect.
         [Component]
         private static VNode ScrollsAnotherRootsList()
         {
@@ -305,6 +305,48 @@ namespace Velvet.Tests
 
             // Assert — null where the row never rendered.
             Assert.That(s_rowRead, Is.EqualTo("written by the owner's commit"));
+        }
+
+        private static string s_rowsSeenInLayout;
+        private static StateUpdater<int> s_setVersion;
+        private static ScrollView s_ownList;
+
+        // Renders a list whose items change with its version, and reads the list's rows in its layout effect.
+        [Component]
+        private static VNode ListHostReadingItsRows()
+        {
+            var (version, setVersion) = Hooks.UseState(0);
+            s_setVersion = setVersion;
+            Hooks.UseLayoutEffect((Func<Action>)(() =>
+            {
+                s_rowsSeenInLayout = s_ownList == null
+                    ? null
+                    : string.Join(",", s_ownList.contentContainer.ElementAt(1).Children().Cast<Label>().Select(row => row.text));
+                return null;
+            }), new object[] { version });
+            return V.VirtualList(new[] { "a" + version, "b" + version }, item => item, itemHeight: 50f,
+                renderer: item => V.Label(text: item), overscan: 0);
+        }
+
+        // GREEN_ON_BASE(characterization): the base renders the range of a list its host renders again inside that render,
+        // which the hold of another root's range leaves as it was.
+        [Test]
+        public void Given_AListItsHostRendersAgainWithAViewport_When_TheHostsLayoutEffectRuns_Then_ItReadsTheNewRows()
+        {
+            // Arrange
+            s_ownList = null;
+            using var mounted = V.Mount(_root, V.Component(ListHostReadingItsRows, key: "host"));
+            s_ownList = List;
+            typeof(FiberVirtualListController)
+                .GetField("_viewportHeight", BindingFlags.Instance | BindingFlags.NonPublic)!
+                .SetValue(mounted.Root.Reconciler.Context.VirtualListControllers[List], 200f);
+            s_setVersion.Invoke(1);
+
+            // Act
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(s_rowsSeenInLayout, Is.EqualTo("a1,b1"));
         }
 
         // GREEN_ON_BASE(characterization): the base renders each scroll's range where the scroll is made, so nothing

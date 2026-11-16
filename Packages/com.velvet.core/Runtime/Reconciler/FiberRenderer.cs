@@ -84,9 +84,6 @@ namespace Velvet
 
         private static Action HeldRenderOf(ComponentFiber fiber) => () =>
         {
-            fiber.HeldMount = null;
-            // MUTANT_SURVIVES(unreachable, equality): Dispose drops a held render from the queue before it can run, so a
-            // render that runs is of a root that is not disposed.
             if (fiber.IsDisposed || fiber.Reconciler == null) return;
             RenderMounted(fiber);
         };

@@ -1176,6 +1176,51 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AFlushOfARootWhoseLayoutEffectOwesASyncLane_When_ARootIsHeldBehindIt_Then_TheCommittingRootsEffectsRanBeforeTheHeldRootRendered()
+        {
+            // Arrange
+            var (owner, other) = MountTheLayoutOwnerAndAnotherRoot();
+            using var ownerTree = owner;
+            using var otherTree = other;
+
+            // Act
+            FlushTheLayoutOwner();
+
+            // Assert
+            Assert.That(s_otherSawPassive, Is.EqualTo("passive effect of tick 1"));
+        }
+
+        [Component]
+        private static VNode ThrowsFromItsLayoutCleanup()
+        {
+            Hooks.UseLayoutEffect(() => () => throw new InvalidOperationException("cleanup boom"), Array.Empty<object>());
+            return V.Div();
+        }
+
+        [Test]
+        public void Given_ARootWhoseUncaughtErrorHandlerMountsAnotherRoot_When_ItIsDisposedWithACleanupThatThrows_Then_TheOtherRootHasNotRenderedInsideTheHandler()
+        {
+            // Arrange
+            FiberStrictMode.Enabled = false;
+            s_popupRenders = 0;
+            string seen = null;
+            var owner = V.Mount(new VisualElement(), V.Component(ThrowsFromItsLayoutCleanup), new MountOptions
+            {
+                OnUncaughtError = (_, _) =>
+                {
+                    s_popups.Add(V.Mount(new VisualElement(), V.Component(CountsPopupRenders)));
+                    seen = "popup:" + s_popupRenders;
+                },
+            });
+
+            // Act
+            owner.Dispose();
+
+            // Assert
+            Assert.That(seen, Is.EqualTo("popup:0"));
+        }
+
+        [Test]
         public void Given_ACommitWhoseSyncLanePassiveEffectIsPending_When_ARootIsHeldBehindIt_Then_TheCommittingRootsEffectRanBeforeTheHeldRootRendered()
         {
             // Arrange
