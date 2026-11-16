@@ -291,6 +291,7 @@ namespace Velvet.Tests
         public void Given_ALayoutIdMotionWithAHasClassVariant_When_AChildGainsTheClass_Then_TheDriverObservedThePayloadsScale()
         {
             // Arrange
+            VelvetStyleUtilities.AttachTo(_root);
             var before = LayoutIdTree(false);
             _reconciler.Reconcile(_root, Array.Empty<VNode>(), before);
 
@@ -298,7 +299,8 @@ namespace Velvet.Tests
             _reconciler.Reconcile(_root, before, LayoutIdTree(true));
 
             // Assert
-            Assert.That(BundledClassTransform.DeclaredScale(_root.Q<VisualElement>("card")), Is.Not.Null);
+            Assert.That(BundledClassTransform.DeclaredScale(_root.Q<VisualElement>("card"))?.x ?? float.NaN,
+                Is.EqualTo(1.1f).Within(1e-4f));
         }
 
         private static VNode[] DelayedFieldTree(string name, VNode? later = null)
