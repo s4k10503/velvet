@@ -50,6 +50,8 @@ namespace Velvet
         private readonly Dictionary<VisualElement, TargetEnd> _ends = new();
         private readonly Dictionary<VisualElement, int> _rangesOn = new();
         private readonly Dictionary<VisualElement, int> _growth = new();
+        private readonly Dictionary<VisualElement, long> _recordedAt = new();
+        private long _recorded;
 
         public int Count => _map.Count;
 
@@ -85,6 +87,7 @@ namespace Velvet
                 else
                 {
                     CountOn(value.Target, 1);
+                    _recordedAt[placeholder] = _recorded++;
                 }
                 _map[placeholder] = value;
                 if (value.Target != null && _ends.TryGetValue(value.Target, out var ends) && ends.Known)
@@ -101,6 +104,7 @@ namespace Velvet
             if (!_map.TryGetValue(placeholder, out var old)) return false;
             Leave(old, default);
             CountOn(old.Target, -1);
+            _recordedAt.Remove(placeholder);
             return _map.Remove(placeholder);
         }
 
@@ -110,7 +114,11 @@ namespace Velvet
             _ends.Clear();
             _rangesOn.Clear();
             _growth.Clear();
+            _recordedAt.Clear();
         }
+
+        // Orders placeholders by when their range was first recorded.
+        internal int ByRecordedOrder(VisualElement a, VisualElement b) => _recordedAt[a].CompareTo(_recordedAt[b]);
 
         // The rows Portal patches have recorded as their own on target so far, so a Portal patched around another on
         // the same target leaves them out of its own length. The entry goes with the last range on target.
@@ -131,6 +139,21 @@ namespace Velvet
                 _growth.Remove(target);
             }
             else _rangesOn[target] = count;
+        }
+
+        // Whether some range's target is below root, read off root's subtree against the targets counted rather than by
+        // testing every range's target against root, so the answer costs what root's subtree is whatever else is
+        // recorded.
+        internal bool HasTargetBelow(VisualElement root)
+        {
+            if (_rangesOn.Count == 0) return false;
+            var hierarchy = root.hierarchy;
+            for (var i = 0; i < hierarchy.childCount; i++)
+            {
+                var child = hierarchy[i];
+                if (_rangesOn.ContainsKey(child) || HasTargetBelow(child)) return true;
+            }
+            return false;
         }
 
         // The end of the last range on target, or null where none is on it.

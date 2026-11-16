@@ -34,17 +34,7 @@ namespace Velvet
         // through CleanupPortal, which returns the children it holds to the pools after they were cleaned as
         // descendants of this subtree.
         private bool IsDiscardedAfterCleanup(VisualElement element, VisualElement poolable)
-            => PoolKindOf(poolable) == PoolKind.None && !HoldsAPortalTarget(element);
-
-        private bool HoldsAPortalTarget(VisualElement root)
-        {
-            foreach (var range in _ctx.PortalState.Stored.Values)
-            {
-                var target = range.Target;
-                if (target != null && root.Contains(target)) return true;
-            }
-            return false;
-        }
+            => PoolKindOf(poolable) == PoolKind.None && !_ctx.PortalState.Stored.HasTargetBelow(element);
 
         // Removes element by reference rather than at the index it was found at: its cleanup can take a child
         // hosted before it out of the same parent (BackdropFilterLayer.Detach), which moves it down a slot.
