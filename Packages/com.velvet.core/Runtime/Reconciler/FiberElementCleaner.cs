@@ -697,9 +697,7 @@ namespace Velvet
 
         // The synthetic-bubbling bridge is attached once per resolved TARGET while the Portals sharing that
         // target are many, so it may only be released once the last of them has gone; this Portal's own
-        // PortalState entry is already removed by the time this runs. Counted by scanning PortalState
-        // rather than by a per-target counter, whose increment would have to sit outside the attach-once
-        // guard that skips every Portal after the first.
+        // PortalState entry is already removed by the time this runs.
         private void ReleaseBridgeIfLastPortalOn(VisualElement target)
         {
             if (!_ctx.SamePanelPortalBridges.TryGetValue(target, out var bridge))
@@ -707,12 +705,9 @@ namespace Velvet
                 return;
             }
 
-            foreach (var info in _ctx.PortalState.Values)
+            if (_ctx.PortalState.Stored.HasRangeOn(target))
             {
-                if (ReferenceEquals(info.Target, target))
-                {
-                    return;
-                }
+                return;
             }
 
             bridge.Release();

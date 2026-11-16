@@ -19,6 +19,7 @@ namespace Velvet.Tests
         private static FontAsset s_sans;
 
         private FontAsset _sans;
+        private readonly System.Collections.Generic.List<System.IDisposable> _holds = new();
 
         [SetUp]
         public void SetUp()
@@ -31,7 +32,12 @@ namespace Velvet.Tests
         }
 
         [TearDown]
-        public void TearDown() => VelvetFonts.Clear();
+        public void TearDown()
+        {
+            foreach (var hold in _holds) hold.Dispose();
+            _holds.Clear();
+            VelvetFonts.Clear();
+        }
 
         private static object[] HeldList()
         {
@@ -66,12 +72,15 @@ namespace Velvet.Tests
         {
             // Arrange
             var elements = new VisualElement[5];
-            var holds = new System.IDisposable[5];
-            for (var i = 0; i < 5; i++) holds[i] = DefaultFamilyRoots.Hold(elements[i] = new VisualElement());
+            var holds = _holds;
+            // SetUp's registration pruned the list, which leaves the next prune above what five more holds reach.
+            for (var i = 0; i < 5; i++) holds.Add(DefaultFamilyRoots.Hold(elements[i] = new VisualElement()));
             var before = HeldList();
 
             // Act
-            holds[0].Dispose();
+            var first = holds[0];
+            holds.RemoveAt(0);
+            first.Dispose();
             var moved = EntriesMoved(before, HeldList());
 
             // Assert

@@ -66,6 +66,8 @@ namespace Velvet
         private static long s_heldCount;
         private static int s_pruneAt = 32;
         private static readonly Predicate<Root> s_collected =
+            // MUTANT_SURVIVES(equivalent, clause removed): a collected element's entry is skipped by the unscoped loop
+            // whether or not it is pruned; pruning keeps the entries of trees nobody disposed from piling up.
             static root => root.Released || !root.Element.TryGetTarget(out _);
 
         private static readonly string[] s_definition = { "-unity-font-definition" };

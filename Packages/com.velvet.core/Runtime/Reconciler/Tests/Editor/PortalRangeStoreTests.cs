@@ -282,5 +282,34 @@ namespace Velvet.Tests
             // Assert
             Assert.That(order, Is.LessThan(0));
         }
+
+        [Test]
+        public void Given_TwoRangesOnATarget_When_OneIsRemoved_Then_ARangeIsStillOnTheTarget()
+        {
+            // Arrange
+            var (store, target, first, _) = TwoRanges();
+            store.Remove(first);
+
+            // Act
+            var held = store.HasRangeOn(target);
+
+            // Assert
+            Assert.That(held, Is.True);
+        }
+
+        [Test]
+        public void Given_TwoRangesOnATarget_When_BothAreRemoved_Then_NoRangeIsOnTheTarget()
+        {
+            // Arrange
+            var (store, target, first, second) = TwoRanges();
+            store.Remove(first);
+            store.Remove(second);
+
+            // Act
+            var held = store.HasRangeOn(target);
+
+            // Assert
+            Assert.That(held, Is.False);
+        }
     }
 }

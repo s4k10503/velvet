@@ -141,6 +141,9 @@ namespace Velvet
             else _rangesOn[target] = count;
         }
 
+        // Whether a range is still recorded on target, from the count kept per target rather than a read of every range.
+        internal bool HasRangeOn(VisualElement target) => _rangesOn.ContainsKey(target);
+
         // Whether some range's target is below root, read off root's subtree against the targets counted rather than by
         // testing every range's target against root, so the answer costs what root's subtree is whatever else is
         // recorded.
