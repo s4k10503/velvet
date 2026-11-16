@@ -6,9 +6,10 @@ namespace Velvet
     // Shared 2-pass (cleanup -> factory) execution logic for UseLayoutEffect / UseEffect.
     //
     // An exception thrown by an effect setup or cleanup is routed to the owning fiber's nearest Error
-    // Boundary via ComponentBoundarySearch.PropagateException — the same path a render-phase throw takes —
-    // so an effect error triggers the boundary fallback, or, with no boundary above, the unmount of the
-    // tree V.Mount made.
+    // Boundary via ComponentBoundarySearch.PropagateException. While a commit runs the boundary takes it for
+    // its next render (CommitErrors.Capture), so the effects after the throwing one still run; outside one it
+    // renders its fallback at once, as for a render-phase throw. With no boundary above, the root V.Mount
+    // made renders nothing.
     internal static class HookEffectExecutor
     {
         // mountDoubleInvoke must be false on update commits: doubling there would tear down and re-establish
@@ -76,8 +77,8 @@ namespace Velvet
                 catch (Exception ex)
                 {
                     ComponentBoundarySearch.PropagateException(fiber, ex);
-                    // An error boundary's fallback can synchronously unmount fiber (the same re-entrancy
-                    // RunCleanups guards against below). Stop running the remaining factories on it rather than
+                    // Where the error is caught rather than captured, an error boundary's fallback can synchronously
+                    // unmount fiber (the same re-entrancy RunCleanups guards against below). Stop running the remaining factories on it rather than
                     // standing up new resources whose cleanup pass already ran and will never run again.
                     if (fiber.IsDisposed) return;
                 }

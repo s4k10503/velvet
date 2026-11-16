@@ -450,6 +450,8 @@ namespace Velvet
                 // would mutate a throwaway value instead of the backing queue.
                 dropped.Lanes?.Queue.Remove(FiberUpdatePriority.Urgent);
                 dropped.Lanes?.Queue.Remove(FiberUpdatePriority.Normal);
+                // A capture a commit queued for it was waiting on the lane just dropped.
+                dropped.Reconciler?.Context.DropCapturesOf(dropped);
                 // The promoted marker retires with the dropped Normal it rode, or it would keep
                 // skipping the settle sweep for as long as any surviving lane stays queued.
                 dropped.HasPromotedTransition = false;
@@ -672,6 +674,10 @@ namespace Velvet
         // (SetReconcileActiveProbe) catches that case via SharedReconcileDepth > 0. The
         // update is not lost — it stays queued and commits on the next-frame callback that
         // ScheduleImmediate already registered.
+        // Whether FlushImmediate would drain now: no drain of either tier and no reconcile is on the stack, so what is
+        // queued is not left to a pass already running.
+        internal bool CanFlushImmediate => !_draining && !_inImmediateDrain && !(_reconcileActiveProbe?.Invoke() ?? false);
+
         internal void FlushImmediate()
         {
             if (_draining || (_reconcileActiveProbe?.Invoke() ?? false)) return;

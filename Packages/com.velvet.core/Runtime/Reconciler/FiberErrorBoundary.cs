@@ -64,7 +64,7 @@ namespace Velvet
             return TryInvokeFactory(fiber, exception, info);
         }
 
-        private static ErrorInfo InfoFor(ComponentFiber boundary, ComponentFiber? throwingFiber)
+        internal static ErrorInfo InfoFor(ComponentFiber boundary, ComponentFiber? throwingFiber)
             => new(BuildComponentStack(throwingFiber))
             {
                 ErrorBoundary = boundary.IsMountRoot ? string.Empty : Hooks.ComponentName(boundary),
@@ -390,10 +390,34 @@ namespace Velvet
         {
             // After the body, which reads what the boundary held before this render as the library's prevState.
             TakeQueuedReset(fiber);
+            TakeCaptures(fiber);
             if (fiber.CaughtError is not var (error, info)) return bodyOutput;
             var fallback = TryInvokeFactory(fiber, error, info);
             if (fallback == null) ExceptionDispatchInfo.Capture(error).Throw();
             return new[] { fallback! };
+        }
+
+        // The errors a commit captured below the boundary (CommitErrors.Capture), caught here as a catch is, each
+        // reported in capture order; the newest is the one its fallback is handed, as React's getDerivedStateFromError
+        // takes each and keeps the last. The rows the boundary showed go first, so the fallback mounts afresh as it
+        // does where TryCatch swaps it in, and a cleanup of those rows that throws is taken as one of the swap is.
+        private static void TakeCaptures(ComponentFiber fiber)
+        {
+            var captures = fiber.PendingCaptures;
+            if (captures == null || captures.Count == 0) return;
+            var ctx = fiber.Reconciler!.Context;
+            var taken = captures.ToArray();
+            ctx.DropCapturesOf(fiber);
+            fiber.IsShowingFallback = true;
+            try
+            {
+                UnmountShownRows(fiber);
+            }
+            finally
+            {
+                fiber.IsShowingFallback = false;
+            }
+            foreach (var capture in taken) RecordCatch(ctx, fiber, capture.Error, capture.Info);
         }
 
         // The catch OutputOf's fallback was rendered for, where the fallback it suspended in at the catch has now been

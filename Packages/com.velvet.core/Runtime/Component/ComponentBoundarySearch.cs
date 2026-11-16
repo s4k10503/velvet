@@ -64,6 +64,9 @@ namespace Velvet
             ComponentFiber? first, ComponentFiber? throwingFiber, Exception exception, bool isRenderError)
         {
             var current = first;
+            // An error a commit's effect or ref callback throws is queued for its boundary to render in a follow-up
+            // commit. A render error is caught where it is thrown, whatever commit is running around it.
+            var inCommit = !isRenderError && first?.Reconciler?.Context.InCommitPhase == true;
             while (current != null)
             {
                 // Captured before TryCatch runs: a boundary whose own fallback content fails can cascade
@@ -81,7 +84,9 @@ namespace Velvet
                     current = current.IsBeingDeleted ? current.NearestAncestorOutsideTheDeletion : next;
                     continue;
                 }
-                if (current.CatchesErrors && FiberErrorBoundary.TryCatch(current, throwingFiber, exception, isRenderError))
+                if (current.CatchesErrors && (inCommit
+                        ? CommitErrors.Capture(current, throwingFiber, exception)
+                        : FiberErrorBoundary.TryCatch(current, throwingFiber, exception, isRenderError)))
                 {
                     return;
                 }
