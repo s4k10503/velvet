@@ -564,13 +564,16 @@ namespace Velvet
             Touch(container);
         }
 
-        // Takes a row out of its container, by reference where it is recorded, for the reason
-        // FiberElementCleaner.RemoveCleaned gives.
+        // Takes a row out of its container at the index the model holds it at, which is found by reference for the reason
+        // FiberElementCleaner.RemoveCleaned gives. A recorded removal names that index and not the element: the ops apply
+        // in the order recorded, so the live list holds the row there when it comes up, and an apply by element would
+        // search the list for it.
         internal static void RemoveRow(VisualElement parent, VisualElement element)
         {
             var at = PhysicalIndexOf(parent, element);
             if (at < 0) return;
-            if (ShouldRecord(ContentOf(parent), element)) RecordRemoveChild(element);
+            var container = ContentOf(parent);
+            if (ShouldRecord(container, element)) RecordRemoveAt(container, parent, at);
             else RemoveAt(parent, at);
         }
 

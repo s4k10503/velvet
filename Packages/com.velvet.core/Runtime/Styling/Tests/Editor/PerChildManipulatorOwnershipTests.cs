@@ -77,14 +77,14 @@ namespace Velvet.Tests
             applySecond();
         }
 
-        // GREEN_ON_BASE(characterization): the pooled hand-off a reconcile pass already spaces correctly,
-        // which is what makes the deferred re-apply the cases below pose the reachable order rather than
-        // this one.
+        // GREEN_ON_BASE(characterization): the pooled hand-off between two reconcile passes already spaces
+        // correctly, which is what makes the deferred re-apply the cases below pose the reachable order rather
+        // than this one.
         [Test]
-        public void Given_ARowTakingAPooledLabelFromASiblingRow_When_TheMoveIsOneReconcilePass_Then_ItIsSpacedByTheRowItJoined()
+        public void Given_ARowTakingAPooledLabelFromASiblingRow_When_TheTakeIsALaterReconcilePass_Then_ItIsSpacedByTheRowItJoined()
         {
-            // Arrange — the first row gives up its second Label and the second row takes one, in a single
-            // pass, which is where the element pool hands the same instance over.
+            // Arrange — the first row gives up its second Label in one pass and the second row takes one in the next,
+            // which is where the element pool hands the same instance over.
             using var scope = new ReconcilerScope();
             var before = new VNode[]
             {
@@ -93,6 +93,12 @@ namespace Velvet.Tests
             };
             scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), before);
             var leaving = scope.Root[0][1];
+            var middle = new VNode[]
+            {
+                V.Div(className: Gap4Row, children: new VNode[] { V.Text("a") }),
+                V.Div(className: Gap8Row, children: new VNode[] { V.Text("c") }),
+            };
+            scope.Reconciler.Reconcile(scope.Root, before, middle);
             var after = new VNode[]
             {
                 V.Div(className: Gap4Row, children: new VNode[] { V.Text("a") }),
@@ -100,7 +106,7 @@ namespace Velvet.Tests
             };
 
             // Act
-            scope.Reconciler.Reconcile(scope.Root, before, after);
+            scope.Reconciler.Reconcile(scope.Root, middle, after);
 
             // Assert — that the pool handed THAT element over rides along, since a freshly built one would
             // be spaced correctly whatever the two rows' trackers held.
