@@ -41,20 +41,25 @@ namespace Velvet
         // - parked a render, whose cleanups wait for the commit that completes it;
         // - resumed one, whose earlier slices left their turns to passes that have applied;
         // - rendered a component a settle owes a render, after the renders that settle followed, wherever it sits;
-        // - revealed a component still holding insertion effects, which no turn holds where it did not render;
-        // - mounted a component holding insertion effects under a component a commit has taken, whose rows React places
-        //   before those effects run, and the wave's writes place, or place an element holding, where a container's walk
-        //   ends, behind the component's turn (KeepBatchOrderForAPlacement).
+        // - rendered a component row after the host it sits in, whose walk has recorded the turns and ref detaches of
+        //   what follows the row in the tree ahead of the row's own, since a row renders by its own entry rather than in
+        //   its host's walk (Reconciler.RendersBelowAnEarlierRoot);
+        // - mounted a component holding insertion effects under a component a commit has taken, into an element the
+        //   wave did not create: React places that component's rows before those effects run, and the wave places them
+        //   where the container's walk ends, behind the component's turn (KeepBatchOrderForAPlacement).
         internal static void KeepBatchOrder(ReconcilerContext ctx)
         {
             if (ctx.WaveOpen) ctx.WaveKeepsBatchOrder = true;
         }
 
-        // A mount root stands for React's host root, which a commit has always taken.
+        // A mount root stands for React's host root, which a commit has always taken. An element the wave creates takes
+        // its children at once, and React places that element, not the component, after the component's insertion
+        // effects.
         internal static void KeepBatchOrderForAPlacement(ComponentFiber fiber)
         {
             if (fiber.HasCommitted || (fiber.PendingInsertionEffects?.Count ?? 0) == 0) return;
             if (fiber.Parent is { IsMountRoot: false, HasCommitted: false }) return;
+            if (ChildListWrites.IsCreatedByThePass(fiber.MountPoint)) return;
             if (fiber.Reconciler?.Context is { } ctx) KeepBatchOrder(ctx);
         }
 
@@ -163,9 +168,9 @@ namespace Velvet
             {
                 for (var i = 0; i < failures.Count; i++)
                 {
-                    var (start, owner, error, onPanel) = failures[i];
+                    var (start, owner, error, onPanel, sequence) = failures[i];
                     if (onPanel is { panel: null }) continue;
-                    var failure = Capture(start, owner, error);
+                    var failure = Capture(start, owner, error, sequence);
                     first ??= failure;
                 }
             }
@@ -177,11 +182,12 @@ namespace Velvet
         }
 
         // What the route itself threw, which leaves the routes behind it to run.
-        private static ExceptionDispatchInfo? Capture(ComponentFiber? start, ComponentFiber owner, Exception error)
+        private static ExceptionDispatchInfo? Capture(
+            ComponentFiber? start, ComponentFiber owner, Exception error, long sequence)
         {
             try
             {
-                ComponentBoundarySearch.CaptureFrom(start, owner, error);
+                ComponentBoundarySearch.CaptureFrom(start, owner, error, sequence);
                 return null;
             }
             catch (Exception exception)

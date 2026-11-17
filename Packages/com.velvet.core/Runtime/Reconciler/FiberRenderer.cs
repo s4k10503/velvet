@@ -628,7 +628,7 @@ namespace Velvet
 #endif
                 }
                 fiber.RenderCount++;
-                if (!deferReconcile) EndOwnRowsTurn(fiber);
+                if (!deferReconcile) ChildListWrites.RecordTurnEnd(fiber);
             }
             catch (Exception ex)
             {
@@ -721,16 +721,6 @@ namespace Velvet
             FiberCommitWork.ParkOldTreeIfPending(fiber, reconciler, oldTree, deferReconcile: false);
             fiber.ParkedPassSuspended = reconciler.HasPendingWork;
             fiber.RenderCount++;
-        }
-
-        // A render that reconciled the fiber's own rows ends the fiber's turn behind them: at once inside an enclosing walk,
-        // and at depth 0 once the walk leaves it (ChildListWrites.HoldRootTurnEnd).
-        private static void EndOwnRowsTurn(ComponentFiber fiber)
-        {
-            var context = fiber.Reconciler?.Context;
-            if (context == null) return;
-            if (context.SharedReconcileDepth == 0) ChildListWrites.HoldRootTurnEnd(fiber);
-            else ChildListWrites.RecordTurnEnd(fiber);
         }
 
         // The pass of the context, when this render is the outermost on it and so completes or drops it, or completes or

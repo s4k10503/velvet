@@ -57,10 +57,12 @@ namespace Velvet
         internal readonly Dictionary<VisualElement, (ComponentFiber Owner, VisualElement? Portal)> Owners = new();
 
         // What the ops, z-layer mounts and Portal mounts of a wave's pass threw, for the wave to route (FiberWave): where
-        // the search for its boundary starts, the component it belongs to, and the element whose panel decides whether it
-        // is reported, kept only where that element was on a panel as it threw.
-        internal readonly List<(ComponentFiber? Start, ComponentFiber Owner, System.Exception Error, VisualElement? OnPanel)>
-            Failures = new();
+        // the search for its boundary starts, the component it belongs to, the element whose panel decides whether it
+        // is reported, kept only where that element was on a panel as it threw, and its place among the context's
+        // captures, taken as it throws so it is reported ahead of what the pass's turn ends throw after it
+        // (CommitErrors.Capture).
+        internal readonly List<(ComponentFiber? Start, ComponentFiber Owner, System.Exception Error, VisualElement? OnPanel,
+            long Sequence)> Failures = new();
 
         internal void BeginSegment(ComponentFiber? root) => Segments.Add((Ops.Count, root));
 
@@ -68,12 +70,9 @@ namespace Velvet
         // (Reconciler.FinishWavePass); Apply clears it as it ends. Where it is clear the layout commit runs that work.
         internal bool RunsTurnEnds;
 
-        // The roots a wave rendered at depth 0, each waiting to record its FiberEnd until a root that is not below it
-        // begins recording or the pass ends (ChildListWrites.HoldRootTurnEnd).
-        internal readonly List<ComponentFiber> RootsAwaitingTurnEnd = new();
-
         internal void Fail(ComponentFiber? start, ComponentFiber owner, System.Exception error, VisualElement? element)
-            => Failures.Add((start, owner, error, element?.panel != null ? element : null));
+            => Failures.Add((start, owner, error, element?.panel != null ? element : null,
+                owner.Reconciler is { } reconciler ? reconciler.Context.NextCaptureSequence++ : -1));
 
         // The renders of the pass on the stack, which a suspend nothing catches takes back.
         internal FiberPassJournal Journal { get; } = new();

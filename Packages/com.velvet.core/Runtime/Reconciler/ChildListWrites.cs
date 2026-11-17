@@ -522,6 +522,9 @@ namespace Velvet
             s_current = pass;
         }
 
+        internal static bool IsCreatedByThePass(VisualElement? element)
+            => element != null && s_current != null && s_current.Recording && s_current.Created.Contains(element);
+
         // A container the pass creates takes its children at once.
         internal static void MarkCreated(VisualElement element)
         {
@@ -829,38 +832,6 @@ namespace Velvet
             FiberWave.KeepBatchOrderForAPlacement(fiber);
         }
 
-        // A root a wave renders at depth 0 can have a root the wave renders later below it — a component row, which a
-        // VirtualList mounts in an element of its own — and React ends the outer root's turn after the row's. So its turn
-        // end is recorded where the next root that is not below it begins recording (EndRootTurnsOutside), or where the
-        // pass ends.
-        internal static void HoldRootTurnEnd(ComponentFiber root)
-        {
-            if (s_current is { Recording: true, Applying: false } pass) pass.RootsAwaitingTurnEnd.Add(root);
-        }
-
-        // Each root held is at or below the one held before it, since a root that begins recording first ends the turns of
-        // those it is not at or below, so they end innermost first. next null ends every one.
-        internal static void EndRootTurnsOutside(ComponentFiber? next)
-        {
-            if (s_current is not { Recording: true, Applying: false } pass) return;
-            var held = pass.RootsAwaitingTurnEnd;
-            while (held.Count > 0 && !IsAtOrAbove(held[^1], next))
-            {
-                var root = held[^1];
-                held.RemoveAt(held.Count - 1);
-                RecordTurnEnd(root);
-            }
-        }
-
-        private static bool IsAtOrAbove(ComponentFiber root, ComponentFiber? fiber)
-        {
-            for (var at = fiber; at != null; at = at.Parent)
-            {
-                if (ReferenceEquals(at, root)) return true;
-            }
-            return false;
-        }
-
         // Records the detach of the ref the element's queued setup replaces, where the walk has reconciled the element's
         // children, for a pass whose wave runs turn ends to run there (ReconcilerContext.DetachReplacedRefAtItsTurn).
         internal static void RecordRefDetach(VisualElement element, ComponentFiber owner)
@@ -868,7 +839,6 @@ namespace Velvet
             if (s_current is not { Recording: true, Applying: false } pass) return;
             pass.Ops.Add(new ReconcilePass.Op { Child = element, Fiber = owner, Kind = ReconcilePass.OpKind.RefDetach });
         }
-
 
         // Queues a deletion's teardown to run at its turn: where the anchor's op applies, after the teardowns attached to it
         // before, and one with no anchor runs behind the writes recorded so far. False where no pass is recording or its
@@ -949,10 +919,6 @@ namespace Velvet
         // pass as well, which has nothing to apply: a pass records only while it is current.
         internal static void EndRecording(ReconcilePass pass)
         {
-            // MUTANT_SURVIVES(equivalent, line removed): the turns this ends are the last ops of the pass, and the layout
-            // commit that follows its apply runs those roots' work in the same post-order, where a wave that runs turn
-            // ends has left it no other cleanup to run.
-            if (ReferenceEquals(s_current, pass)) EndRootTurnsOutside(null);
             pass.Recording = false;
             try
             {

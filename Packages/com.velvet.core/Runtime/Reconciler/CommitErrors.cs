@@ -10,8 +10,9 @@ namespace Velvet
     internal static class CommitErrors
     {
         // True where boundary takes the error. A boundary that registered no fallback passes it on, as
-        // FiberErrorBoundary.TryCatch does where it renders none.
-        internal static bool Capture(ComponentFiber boundary, ComponentFiber? thrower, Exception error)
+        // FiberErrorBoundary.TryCatch does where it renders none. The captures stay in the order they were thrown: one a
+        // wave filed as its writes applied (ReconcilePass.Fail) is captured once they have, at the place it took then.
+        internal static bool Capture(ComponentFiber boundary, ComponentFiber? thrower, Exception error, long sequence = -1)
         {
             var ctx = boundary.Reconciler?.Context;
             if (ctx == null) return false;
@@ -24,7 +25,11 @@ namespace Velvet
             }
             if (!boundary.IsMounted || boundary.FallbackFactory == null) return false;
             var info = FiberErrorBoundary.InfoFor(boundary, thrower);
-            (boundary.PendingCaptures ??= new()).Add((error, info, ctx.NextCaptureSequence++));
+            var at = sequence < 0 ? ctx.NextCaptureSequence++ : sequence;
+            var captures = boundary.PendingCaptures ??= new();
+            var index = captures.Count;
+            while (index > 0 && captures[index - 1].Sequence > at) index--;
+            captures.Insert(index, (error, info, at));
             if (!ctx.BoundariesOwedCaptures.Contains(boundary)) ctx.BoundariesOwedCaptures.Add(boundary);
             FiberWorkLoop.ScheduleRerender(boundary, FiberUpdatePriority.Urgent);
             // React flushes the sync work a passive effect's error queues as that flush ends, so the drain

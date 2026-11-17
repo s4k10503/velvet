@@ -1592,10 +1592,11 @@ namespace Velvet
         }
 
         // Brackets the expansion of a rendered fiber's output on the new side: the teardown of what the fiber deletes is
-        // queued right after the begin (DeletionCommit.Queue), and its insertion effects and layout cleanups run at the
-        // end, recorded once the expansion has returned (ChildListWrites.RecordTurnEnd). A container with nothing on its
-        // old side records no begin, and a fiber mounting into it still has an end. A fiber reused as it was is not
-        // bracketed, whatever the patches of its leaves record, and a walk with no Commit records neither.
+        // queued right after the begin (DeletionCommit.Queue), and the end, recorded once the expansion has returned, is
+        // where a wave that runs turn ends runs its insertion effects and layout cleanups (ChildListWrites.RecordTurnEnd).
+        // A container with nothing on its old side records no begin, and a fiber mounting into it still has an end. A
+        // fiber reused as it was is not bracketed, whatever the patches of its leaves record, and a walk with no Commit
+        // records neither.
         private void ExpandBracketedFiberTree(
             InlineWalk walk,
             ComponentFiber fiber,

@@ -380,12 +380,27 @@ namespace Velvet
         private bool JoinsTheWavesPass() => _ctx.WaveRecords && _ctx.Pass.Recording;
 
         // A render inside a wave records into the pass the wave holds, beginning it where a Portal mount ended the
-        // last, and starts a run of ops of its own in it, behind the turn ends of the roots it is not below.
+        // last, and starts a run of ops of its own in it.
         private void BeginOrJoinPass()
         {
             if (!JoinsTheWavesPass()) ChildListWrites.BeginRecording(_ctx.Pass);
-            ChildListWrites.EndRootTurnsOutside(Owner);
+            if (RendersBelowAnEarlierRoot()) FiberWave.KeepBatchOrder(_ctx);
             if (_ctx.WaveRecords) _ctx.Pass.BeginSegment(Owner);
+        }
+
+        // Whether a root the wave's pass already recorded sits above this render's: a component row a VirtualList
+        // mounts, which renders by its own entry after the walk of the host above it has ended.
+        private bool RendersBelowAnEarlierRoot()
+        {
+            var segments = _ctx.Pass.Segments;
+            for (var i = 0; i < segments.Count; i++)
+            {
+                for (var above = Owner?.Parent; above != null; above = above.Parent)
+                {
+                    if (ReferenceEquals(above, segments[i].Root)) return true;
+                }
+            }
+            return false;
         }
 
         // Ends the pass a wave's renders recorded into (FiberWave.End). A render that queued a Portal's mount ended the

@@ -16,9 +16,10 @@ namespace Velvet
 
         // Runs insertion effects (Hooks.UseInsertionEffect) synchronously.
         // Insertion effects fire before layout effects of the same commit, so every commit site invokes this
-        // immediately before the layout-effect cleanup pass.
-        private static void RunInsertionEffects(ComponentFiber fiber, bool mountDoubleInvoke = false)
-            => HookEffectExecutor.RunPendingEffects(fiber, fiber.PendingInsertionEffects, mountDoubleInvoke);
+        // immediately before the layout-effect cleanup pass. StrictMode runs them once, as React does (TurnEndOrderTests'
+        // StrictMode case).
+        private static void RunInsertionEffects(ComponentFiber fiber)
+            => HookEffectExecutor.RunPendingEffects(fiber, fiber.PendingInsertionEffects);
 
         internal static void CleanupAllInsertionEffects(ComponentFiber fiber)
             => HookEffectExecutor.CleanupAll(fiber, fiber.InsertionEffects, fiber.PendingInsertionEffects);
@@ -156,7 +157,6 @@ namespace Velvet
             }
             ctx.DeferredInlineLayoutEffectFibers.Push((fiber, IsMount: false, ctx.CurrentPass));
             ScheduleRunEffects(fiber);
-            if (fiber.PendingInsertionEffects is { Count: > 0 }) FiberWave.KeepBatchOrder(ctx);
         }
 
         // Commits the inline fibers on the deferred stack and the pending caught-error reports where no commit
@@ -364,7 +364,7 @@ namespace Velvet
         {
             if (refs.Count == 0)
             {
-                for (var i = 0; i < ordered.Count; i++) RunFiberCleanups(ordered[i].Fiber, ordered[i].IsMount);
+                for (var i = 0; i < ordered.Count; i++) RunFiberCleanups(ordered[i].Fiber);
                 return;
             }
             var steps = FiberRefPlacement.Interleave(ctx, ordered, refs);
@@ -375,14 +375,13 @@ namespace Velvet
                     ctx.DetachReplacedRef(steps[i].Ref.Element);
                     continue;
                 }
-                var (fiber, isMount) = ordered[steps[i].FiberIndex];
-                RunFiberCleanups(fiber, isMount);
+                RunFiberCleanups(ordered[steps[i].FiberIndex].Fiber);
             }
         }
 
-        private static void RunFiberCleanups(ComponentFiber fiber, bool isMount)
+        private static void RunFiberCleanups(ComponentFiber fiber)
         {
-            RunInsertionEffects(fiber, mountDoubleInvoke: isMount);
+            RunInsertionEffects(fiber);
             HookEffectExecutor.RunCleanups(fiber, fiber.PendingLayoutEffects);
         }
 
@@ -395,16 +394,21 @@ namespace Velvet
         // it updates or places: what the cleanup pass runs of the fiber, which then finds it run, at commit depth as
         // there. It passes over a fiber that pass would not take (TakeBatch), one the wave is deleting among them. A
         // render the pass journal holds promotes its effect factories where the journal closes, after the pass has
-        // applied, so its insertion effects are promoted here first.
+        // applied, so the insertion effects it is about to run are promoted here first.
         internal static void RunTurnEnd(ComponentFiber fiber)
         {
             if (!fiber.IsMounted || fiber.IsBeingDeleted || fiber.LayoutEffectsHidden) return;
             var ctx = fiber.Reconciler!.Context;
-            if (ctx.Pass.Journal.Holds(fiber)) HookEffectExecutor.CommitEffectDeps(fiber.InsertionEffects);
+            // MUTANT_SURVIVES(equivalent, boundary): with no insertion effect pending, what the promotion writes is what the
+            // journal's close writes, and nothing between the two reads it.
+            if (fiber.PendingInsertionEffects is { Count: > 0 } && ctx.Pass.Journal.Holds(fiber))
+            {
+                HookEffectExecutor.CommitEffectDeps(fiber.InsertionEffects);
+            }
             ctx.EffectCommitDepth++;
             try
             {
-                RunFiberCleanups(fiber, isMount: !fiber.HasCommitted);
+                RunFiberCleanups(fiber);
             }
             finally
             {
