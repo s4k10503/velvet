@@ -784,6 +784,59 @@ namespace Velvet.Tests
             Assert.That(ThrowingDrainsOf(scheduler), Is.EqualTo(1));
         }
 
+        [Component]
+        private static VNode EffectChild()
+        {
+            Hooks.UseEffect(() => (Action)null!, Array.Empty<object>());
+            return V.Label(text: "child");
+        }
+
+        private static StateUpdater<int> s_setChildMounter;
+
+        [Component]
+        private static VNode MountsAnEffectChildHoldsARootAndThrows()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setChildMounter = setTick;
+            Hooks.UseLayoutEffect((Func<Action>)(() =>
+            {
+                if (tick > 0) s_mountedFromCommits.Add(V.Mount(new VisualElement(), V.Label(text: "mounted")));
+                return null!;
+            }), new object[] { tick });
+            Hooks.UseImperativeHandle(s_throwingHandle, () =>
+            {
+                if (tick == 0) return "handle";
+                setTick.Invoke(tick + 1);
+                throw new InvalidOperationException("handle failed");
+            });
+            return V.Div(children: tick > 0 ? new VNode[] { V.Component(EffectChild, key: "child") } : Array.Empty<VNode>());
+        }
+
+        // The child mounts inline in the pass the commit then throws out of, which stages its effect, so the root has a
+        // passive flush pending when the release, proceeding for the held mount, reaches its first item; and a passive
+        // flush ends by draining the root's sync lane, where the factory queued its update.
+        [Test]
+        public void Given_AThrowingDrainThatLeftAnInlineChildsEffectPending_When_ItsReleaseRunsAHeldMount_Then_ItsRootHasThrownOnce()
+        {
+            // Arrange
+            var thrower = V.Mount(new VisualElement(), V.Component(MountsAnEffectChildHoldsARootAndThrows));
+            _roots.Add(thrower);
+            var scheduler = thrower.GetSchedulerForTest();
+            s_setChildMounter.Invoke(1);
+
+            // Act
+            try
+            {
+                scheduler.DrainImmediateForTest();
+            }
+            catch (InvalidOperationException)
+            {
+            }
+
+            // Assert — 2 where the release's passive flush drained the root again
+            Assert.That(ThrowingDrainsOf(scheduler), Is.EqualTo(1));
+        }
+
         private sealed class Counter : Store<int>
         {
             public Counter() : base(0) { }
