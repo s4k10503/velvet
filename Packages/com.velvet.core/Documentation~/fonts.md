@@ -179,7 +179,7 @@ follows it at once, with no render: a label that takes its font from there shows
 An element whose font a `font-<name>`, weight, italic or width class resolved resolves again against the registry
 as it then is: one naming a family, or inheriting a family a `font-<name>` ancestor names, at once, and one that takes
 its family from its parent's font at the next update of its panel after that font has changed, or in the update that
-changes it where the parent is one too and takes a face there.
+changes it where the parent is one too, rendered by the same mounted tree, and takes a face there.
 
 ## Tailwind text-utility parity vs. UI Toolkit
 
