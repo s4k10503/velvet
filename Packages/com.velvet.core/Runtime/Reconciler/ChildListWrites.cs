@@ -722,7 +722,6 @@ namespace Velvet
         // one, and the first exception is rethrown once they have.
         private static void Apply(ReconcilePass pass)
         {
-            if (pass.Applying) return;
             pass.Applying = true;
             System.Runtime.ExceptionServices.ExceptionDispatchInfo? first = null;
             try
