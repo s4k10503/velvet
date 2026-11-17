@@ -344,8 +344,10 @@ namespace Velvet
         // the render that owns the pass keeps its tree (FiberRenderer.RenderAndReconcile) and the retry mounts what
         // suspended by patching this Portal.
         //
-        // In the pass of a wave (wave non-null), a z-* placement's throw is kept for the root that queued it, or for the
-        // closing root where none is named, and that root's later placements are skipped while the other roots' go on.
+        // In the pass of a wave (wave non-null), what a z-* placement throws is filed for the wave with the component that
+        // rendered the element and the drain goes on (PlaceRelocated), and what a Portal's children throw as the mount adds
+        // them is filed with the component that rendered the Portal and the drain ends (FiledForTheWave), each where that
+        // component is known.
         internal bool DrainPendingPortalMounts(ReconcilePass? wave = null)
         {
             HashSet<ComponentFiber>? childFibersBefore = null;

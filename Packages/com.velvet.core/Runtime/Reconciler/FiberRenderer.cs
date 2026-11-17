@@ -493,7 +493,8 @@ namespace Velvet
             var passContext = fiber.Reconciler?.Context;
             // A disposed fiber has nothing to reconcile into. The drain of a parked pass ahead of this call can dispose
             // it: a boundary above swaps in its fallback for an error that drain rendered. Inside a wave that fallback's
-            // deletion marks the fiber at once and disposes it only where the wave applies its writes (FiberWave).
+            // deletion can mark the fiber and leave its disposal to where the wave applies the teardown it recorded
+            // (FiberWave).
             if (passContext == null || fiber.IsBeingDeleted) return;
             // A mark left from work that has since rendered would keep every identity skip of this reconcile off.
             FiberPendingWork.Below(fiber);
