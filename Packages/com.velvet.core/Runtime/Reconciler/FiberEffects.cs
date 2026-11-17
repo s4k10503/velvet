@@ -431,6 +431,7 @@ namespace Velvet
             // A setup's catch can unmount a fiber later in this pass, and a boundary unmounted that way
             // must not deliver the report it still holds.
             if (!fiber.IsMounted) return;
+            if (!fiber.IsOffscreen) fiber.HasCommitted = true;
             // After every cleanup of the commit, so what the insertion effects and layout cleanups wrote is in the
             // layout the setups read, and per fiber, so what an earlier setup wrote is in it too.
             if (FiberLayoutReflow.ReadsLayout(fiber)) FiberLayoutReflow.LayOutFor(ctx, fiber);

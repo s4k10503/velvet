@@ -123,15 +123,12 @@ namespace Velvet
             }
         }
 
-        // What the ops and placements of the wave's pass threw, each queued for a boundary, which renders its fallback in a
-        // follow-up commit (ComponentBoundarySearch.CaptureFrom). A placement's search starts where React's
-        // commitHostPlacement starts it, at the return of the topmost fiber new in the commit, which carries the Placement
-        // flag: the component the placement is filed under where the wave did not mount it, else its nearest ancestor the
-        // wave did not mount, a mount root standing for React's host root. Any other failure's starts at the component it
-        // is filed under. A failure whose element was on a panel as it threw and is off one by now is not reported: where
-        // the wave's own writes took the element off, React would never have committed it, as it commits no host of a
-        // render it discarded. Each route runs whether or not the one before it threw, and the first one's exception is
-        // rethrown once all of them have run.
+        // What the ops and placements of the wave's pass threw, each queued for the boundary the search from where it was
+        // filed to start finds (ComponentBoundarySearch.CaptureFrom), which renders its fallback in a follow-up commit. A
+        // failure whose element was on a panel as it threw and is off one by now is not reported: where the wave's own
+        // writes took the element off, React would never have committed it, as it commits no host of a render it
+        // discarded. Each route runs whether or not the one before it threw, and the first one's exception is rethrown
+        // once all of them have run.
         private static void RouteFailures(ReconcilerContext ctx)
         {
             var failures = ctx.Pass.Failures;
@@ -140,25 +137,17 @@ namespace Velvet
             {
                 for (var i = 0; i < failures.Count; i++)
                 {
-                    var (owner, error, onPanel, placement) = failures[i];
+                    var (start, owner, error, onPanel) = failures[i];
                     if (onPanel is { panel: null }) continue;
-                    var failure = Capture(placement ? MountedBeforeTheWave(ctx.Pass, owner) : owner, owner, error);
+                    var failure = Capture(start, owner, error);
                     first ??= failure;
                 }
             }
             finally
             {
                 failures.Clear();
-                ctx.Pass.MountedInWave.Clear();
             }
             first?.Throw();
-        }
-
-        private static ComponentFiber? MountedBeforeTheWave(ReconcilePass pass, ComponentFiber owner)
-        {
-            ComponentFiber? fiber = owner;
-            while (fiber is { IsMountRoot: false } && pass.MountedInWave.Contains(fiber)) fiber = fiber.Parent;
-            return fiber;
         }
 
         // What the route itself threw, which leaves the routes behind it to run.

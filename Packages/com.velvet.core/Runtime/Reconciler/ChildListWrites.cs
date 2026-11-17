@@ -753,9 +753,10 @@ namespace Velvet
                     catch (Exception exception)
                     {
                         var added = pass.Ops[i].Kind == ReconcilePass.OpKind.Insert ? pass.Ops[i].Child : null;
-                        var owner = FailureOwner(pass, added);
-                        if (owner != null) pass.Fail(owner, exception, added, placement: added != null);
-                        else first ??= System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(exception);
+                        if (!FileFailure(pass, added, exception))
+                        {
+                            first ??= System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(exception);
+                        }
                     }
                 }
             }
@@ -786,10 +787,23 @@ namespace Velvet
             first?.Throw();
         }
 
-        private static ComponentFiber? FailureOwner(ReconcilePass pass, VisualElement? added)
+        // Files an insert of an element the wave created under the component that rendered it, its search starting where
+        // React's commit starts a placement's (ComponentBoundarySearch.PlacementSearchStart), and any other op under the
+        // root of its run. False where the pass is no wave's.
+        private static bool FileFailure(ReconcilePass pass, VisualElement? added, Exception exception)
         {
-            if (added == null) return pass.ApplyingRoot;
-            return pass.Owners.TryGetValue(added, out var owner) ? owner : pass.ApplyingRoot;
+            if (added != null)
+            {
+                if (pass.Owners.TryGetValue(added, out var rendered))
+                {
+                    pass.Fail(ComponentBoundarySearch.PlacementSearchStart(rendered.Owner, rendered.Portal), rendered.Owner,
+                        exception, added);
+                    return true;
+                }
+            }
+            if (pass.ApplyingRoot == null) return false;
+            pass.Fail(pass.ApplyingRoot, pass.ApplyingRoot, exception, added);
+            return true;
         }
 
         // Records where a turn begins and where it ends among the ops, for the teardowns attached to the anchor to run at

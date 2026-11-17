@@ -506,6 +506,11 @@ namespace Velvet
         /// </summary>
         public bool IsMounted { get; internal set; }
 
+        // Whether a commit's layout pass has reached this fiber shown (FiberEffects.RunLayoutSetup), which is when a
+        // render of it first counts as committed, as a React fiber has a current once a commit includes it. A render a
+        // Suspense keeps offscreen, or one whose time-sliced pass is still parked, has not reached that pass.
+        internal bool HasCommitted;
+
         /// <summary>
         /// Flag indicating that Render() is currently executing. Referenced by HookGuard to validate
         /// the hook invocation context.

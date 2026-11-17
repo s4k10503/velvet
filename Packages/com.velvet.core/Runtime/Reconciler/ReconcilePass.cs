@@ -49,24 +49,21 @@ namespace Velvet
         // The root of the op Apply is applying, whose run an op recorded behind it belongs to.
         internal ComponentFiber? ApplyingRoot;
 
-        // The component that rendered each element created while a wave records into the pass, which a failed insert
-        // of the element is filed under in place of the root of its run. Apply clears it with the ops.
-        internal readonly Dictionary<VisualElement, ComponentFiber> Owners = new();
+        // The component that rendered each element created while a wave records into the pass, with the Portal whose
+        // children it was created among, which a failed insert of the element is filed under in place of the root of its
+        // run. Apply clears it with the ops.
+        internal readonly Dictionary<VisualElement, (ComponentFiber Owner, VisualElement? Portal)> Owners = new();
 
-        // What the ops, z-layer mounts and Portal mounts of a wave's pass threw, for the wave to route (FiberWave): the
-        // component each is filed under, the element whose panel decides whether it is reported, kept only where that
-        // element was on a panel as it threw, and whether it is an element's placement, whose search for a boundary
-        // starts above the fibers the wave mounted.
-        internal readonly List<(ComponentFiber Owner, System.Exception Error, VisualElement? OnPanel, bool Placement)>
+        // What the ops, z-layer mounts and Portal mounts of a wave's pass threw, for the wave to route (FiberWave): where
+        // the search for its boundary starts, the component it belongs to, and the element whose panel decides whether it
+        // is reported, kept only where that element was on a panel as it threw.
+        internal readonly List<(ComponentFiber? Start, ComponentFiber Owner, System.Exception Error, VisualElement? OnPanel)>
             Failures = new();
-
-        // The fibers whose first render the open wave made, which a placement's search passes over.
-        internal readonly HashSet<ComponentFiber> MountedInWave = new();
 
         internal void BeginSegment(ComponentFiber? root) => Segments.Add((Ops.Count, root));
 
-        internal void Fail(ComponentFiber owner, System.Exception error, VisualElement? element, bool placement)
-            => Failures.Add((owner, error, element?.panel != null ? element : null, placement));
+        internal void Fail(ComponentFiber? start, ComponentFiber owner, System.Exception error, VisualElement? element)
+            => Failures.Add((start, owner, error, element?.panel != null ? element : null));
 
         // The renders of the pass on the stack, which a suspend nothing catches takes back.
         internal FiberPassJournal Journal { get; } = new();

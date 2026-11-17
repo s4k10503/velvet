@@ -69,6 +69,24 @@ namespace Velvet
                 // A search queued for the commit does not call it.
                 isRenderError: false, inCommit: true);
 
+        // Where the search for what placing an element threw starts, as React's commitHostPlacement starts it at the
+        // return of the fiber that carries the Placement flag: the topmost fiber new in the commit, or a Portal's direct
+        // child, which a Portal's mount places one by one. That is the component that rendered the element where a
+        // commit has taken it (ComponentFiber.HasCommitted), and otherwise its nearest ancestor one has, a mount root
+        // standing for React's host root, short of the component that rendered the Portal the element sits in, which is
+        // where the search starts for anything new among a Portal's children. Null where no such fiber is above it.
+        internal static ComponentFiber? PlacementSearchStart(
+            ComponentFiber owner, UnityEngine.UIElements.VisualElement? portal)
+        {
+            ComponentFiber? fiber = owner;
+            while (fiber is { IsMountRoot: false, HasCommitted: false })
+            {
+                if (portal != null && !ReferenceEquals(fiber.OwningPortalPlaceholder, portal)) return fiber;
+                fiber = fiber.Parent;
+            }
+            return fiber;
+        }
+
         // Where an error goes whose walk ends with neither a boundary nor the root V.Mount made taking it, and one Velvet
         // hands no boundary, as Framer Motion's completion callbacks run in a promise no boundary sees.
         internal static void ReportUncaught(Exception exception) => Debug.LogException(exception);

@@ -657,6 +657,33 @@ namespace Velvet.Tests
             Assert.That(log.ToString(), Is.EqualTo("caught:B1:attach:Portal"));
         }
 
+        [Component(IsErrorBoundary = true, DisplayName = "PB")]
+        private static VNode ShowsAStackedThrowerThroughAPortal()
+        {
+            Hooks.UseFallback(_ => V.Label(text: "fallback"));
+            return V.Portal(s_portalTarget, new VNode[]
+            {
+                V.Div(className: "relative", children: new VNode[]
+                {
+                    V.Custom<AttachThrower>(className: "absolute z-10", name: "Z2", key: "thrower"),
+                }),
+            }, key: "portal");
+        }
+
+        [Test]
+        public void Given_ATreeWhoseBoundaryRendersAPortalHoldingAZPlacedElementThatThrowsAsItAttaches_When_ItMounts_Then_ThatBoundaryReportsIt()
+        {
+            // Arrange — the Portal's target is on the panel
+            _host.Root.Add(s_portalTarget);
+            var log = new EventLog();
+
+            // Act
+            using var mounted = Mount(log, V.Component(ShowsAStackedThrowerThroughAPortal, key: "pb"));
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("caught:PB:attach:Z2:z"));
+        }
+
         // Throws from its first DetachFromPanelEvent alone, so the removal that takes it down again at the end of a case
         // does not throw.
         internal sealed class DetachThrower : VisualElement
