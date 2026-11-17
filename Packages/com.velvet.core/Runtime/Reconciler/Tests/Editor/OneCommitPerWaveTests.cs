@@ -46,6 +46,8 @@ namespace Velvet.Tests
         private static int s_handleThrowsLeft;
         private static StateUpdater<int> s_setHandleTick;
         private static ComponentFiber s_handleOwner;
+        private static ComponentFiber s_bystander;
+        private static readonly List<string> s_resumeLog = new();
 
         [SetUp]
         public void SetUp()
@@ -70,6 +72,8 @@ namespace Velvet.Tests
             s_handleThrowsLeft = 0;
             s_setHandleTick = default;
             s_handleOwner = null;
+            s_bystander = null;
+            s_resumeLog.Clear();
         }
 
         [TearDown]
@@ -258,11 +262,18 @@ namespace Velvet.Tests
         }
 
         [Component]
+        private static VNode CommittedChild(int value)
+        {
+            EventLog.UseInsertionAndLayoutEffects("C", new object[] { value });
+            return V.Div();
+        }
+
+        // Hands its value to a child it renders inline, which the abandon of a later render must leave alone.
+        [Component]
         private static VNode Committer()
         {
             var (value, _) = EventLog.UseState("Committed", 0);
-            EventLog.UseInsertionAndLayoutEffects("C", new object[] { value });
-            return V.Div();
+            return V.Component(CommittedChild, value, key: "child");
         }
 
         [Component(Compiler = false)]
@@ -314,6 +325,7 @@ namespace Velvet.Tests
         [Component]
         private static VNode Bystander()
         {
+            s_bystander = FiberAmbientStack.Current;
             EventLog.UseState("Bystander", 0);
             EventLog.UseRender("Bystander");
             return V.Div();
@@ -432,6 +444,30 @@ namespace Velvet.Tests
         }
 
         #endregion
+
+        [Component]
+        private static VNode TwoQueued()
+            => V.Fragment(V.Component(Bystander, key: "bystander"), V.Component(DeletedChild, key: "other"));
+
+        // GREEN_ON_BASE(characterization): the base leaves the immediate tier to its drain after a flush of one fiber.
+        // Making FiberWave.Open set WaveOwesIndicatorFlush reddens it, through the flush of that tier the door then
+        // runs.
+        [Test]
+        public void Given_TwoComponentsWithQueuedUpdates_When_OneIsFlushedOnItsOwn_Then_TheOtherIsLeftQueued()
+        {
+            // Arrange
+            var log = new EventLog();
+            using var mounted = V.Mount(new VisualElement(), log.Provide(V.Component(TwoQueued)));
+            log.Setter<int>("Bystander").Invoke(1);
+            log.Setter<int>("Child").Invoke(1);
+            log.Clear();
+
+            // Act
+            FiberWorkLoop.FlushState(s_bystander);
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("render:Bystander"));
+        }
 
         #region Work a wave runs inside another's
 
@@ -559,6 +595,70 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(string.Join(" ", s_queuedCommits), Is.EqualTo("queued:1"));
+        }
+
+        // Holds an entry the transition owns, so the resume that lands the transition's work owes it a render, and
+        // logs the layout effect of every render, since no dependencies are given.
+        [Component(Compiler = false)]
+        private static VNode LoggingHolder()
+        {
+            var (shown, add) = Hooks.UseOptimistic<string, string>("base", (current, action) => current + "+" + action);
+            s_add = add;
+            Hooks.UseLayoutEffect((Func<Action>)(() =>
+            {
+                s_resumeLog.Add("holder-layout");
+                return null;
+            }));
+            return V.Label(text: shown);
+        }
+
+        // Rows of host nodes, which take the time-sliceable fast path, the last holding a ref callback that is a new
+        // delegate at every render, so the render a resume completes replaces it.
+        [Component(Compiler = false)]
+        private static VNode SlicedRowsWithARef()
+        {
+            s_rows = FiberAmbientStack.Current;
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setRows = setTick;
+            var rows = new VNode[10];
+            for (var i = 0; i < 9; i++) rows[i] = V.Label(text: $"{i}-{tick}");
+            rows[9] = V.Div(refCallback: element =>
+            {
+                s_resumeLog.Add("ref:" + tick);
+                return () => s_resumeLog.Add("ref-x:" + tick);
+            });
+            return V.Fragment(children: rows);
+        }
+
+        [Component(Compiler = false)]
+        private static VNode ResumeOwesAHolder()
+            => V.Div(children: new VNode[]
+            {
+                V.Component(Starter, key: "starter"),
+                V.Component(LoggingHolder, key: "holder"),
+                V.Component(SlicedRowsWithARef, key: "rows"),
+            });
+
+        [Test]
+        public void Given_AResumeWhoseSettleOwesAnotherComponentARender_When_TheResumeCompletes_Then_TheRefTheResumeReplacesDetachesBeforeThatComponentsLayoutEffect()
+        {
+            // Arrange — the slice parks, so only the resume completes the pass and settles the transition
+            using var mounted = V.Mount(new VisualElement(), V.Component(ResumeOwesAHolder));
+            s_start.Invoke(() =>
+            {
+                s_add.Invoke("sent");
+                s_setRows.Invoke(1);
+            });
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            s_rows.FlushStateWithTinyBudgetForTest();
+            s_resumeLog.Clear();
+
+            // Act
+            s_rows.DrainTimeSlicedReconcileForTest();
+
+            // Assert
+            Assert.That(string.Join(" ", s_resumeLog.FindAll(entry => entry == "holder-layout" || entry == "ref-x:0")),
+                Is.EqualTo("ref-x:0 holder-layout"));
         }
 
         #endregion

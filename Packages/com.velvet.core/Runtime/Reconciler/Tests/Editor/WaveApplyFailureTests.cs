@@ -9,10 +9,13 @@ namespace Velvet.Tests
     /// Pins where an error goes that a component's host writes throw where one drain applies them — an element's
     /// panel-attach callback, here — as React's captureCommitPhaseError sends an error its commit meets: to the nearest
     /// boundary above the component whose render recorded the write, which renders its fallback in a follow-up commit.
-    /// Two such errors under one boundary are both reported; an error whose component a later component's render
-    /// error has already replaced with the boundary's fallback is not. The guards hold that each error reaches the
+    /// Two such errors under one boundary are both reported, whether one component's writes threw both or two
+    /// components' did; an error whose component a later component's render error has already replaced with the
+    /// boundary's fallback is not. The guards hold that each error reaches the
     /// boundary of its own component, whichever of the drain's components it came from, including where a later
-    /// component's Portal ends the drain's pass early and where the write is a <c>z-*</c> placement.
+    /// component's Portal ends the drain's pass early and where the write is a <c>z-*</c> placement. A mount is one
+    /// such commit as well: the error a mounting element throws reaches the root once the mount's layout effects have
+    /// run, and the root then takes down what the mount committed.
     /// </summary>
     /// <remarks>
     /// The tree mounts on a real panel, which is what runs an attach callback.
@@ -112,6 +115,24 @@ namespace Velvet.Tests
                 V.Component(MountsAThrower, new Named("C"), key: "c"));
         }
 
+        [Component]
+        private static VNode MountsTwoThrowers()
+        {
+            var (shown, _) = EventLog.UseState("Both", false);
+            return V.Div(children: new VNode[]
+            {
+                shown ? V.Custom<AttachThrower>(name: "X", key: "x") : null,
+                shown ? V.Custom<AttachThrower>(name: "Y", key: "y") : null,
+            });
+        }
+
+        [Component(IsErrorBoundary = true, DisplayName = "B")]
+        private static VNode TwoThrowersInOneComponent()
+        {
+            Hooks.UseFallback(_ => V.Label(text: "fallback"));
+            return V.Component(MountsTwoThrowers, key: "both");
+        }
+
         [Component(IsErrorBoundary = true, DisplayName = "B")]
         private static VNode AttachThrowThenRenderThrow()
         {
@@ -157,6 +178,34 @@ namespace Velvet.Tests
         private MountedTree Mount(EventLog log, VNode tree)
             => V.Mount(_host.Root, log.Provide(tree), log.ReportingErrors());
 
+        [Component(Compiler = false)]
+        private static VNode LaysOut()
+        {
+            var log = EventLog.UseLog();
+            Hooks.UseLayoutEffect(() =>
+            {
+                log.Add("lay:S");
+                return () => log.Add("lay-x:S");
+            }, Array.Empty<object>());
+            return V.Div();
+        }
+
+        // The root takes the error by rendering nothing, which takes down what the mount committed.
+        [Test]
+        public void Given_ATreeWhoseElementThrowsAsItAttaches_When_ItMounts_Then_TheMountsLayoutEffectsRunAndAreCleanedUpBeforeTheRootReportsTheError()
+        {
+            // Arrange
+            var log = new EventLog();
+
+            // Act
+            using var mounted = Mount(log, V.Fragment(
+                V.Component(LaysOut, key: "lays-out"),
+                V.Custom<AttachThrower>(name: "M", key: "thrower")));
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("lay:S lay-x:S uncaught:attach:M"));
+        }
+
         [Test]
         public void Given_TwoComponentsUnderOneBoundaryWhoseNewElementsThrowAsTheyAttach_When_OneDrainRendersBoth_Then_TheBoundaryReportsBothErrors()
         {
@@ -172,6 +221,22 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(log.ToString(), Is.EqualTo("caught:B:attach:A caught:B:attach:C"));
+        }
+
+        [Test]
+        public void Given_AComponentWhoseTwoNewElementsThrowAsTheyAttach_When_ADrainRendersIt_Then_ItsBoundaryReportsBothErrors()
+        {
+            // Arrange
+            var log = new EventLog();
+            using var mounted = Mount(log, V.Component(TwoThrowersInOneComponent));
+            log.Clear();
+
+            // Act
+            log.Setter<bool>("Both").Invoke(true);
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("caught:B:attach:X caught:B:attach:Y"));
         }
 
         [Test]
