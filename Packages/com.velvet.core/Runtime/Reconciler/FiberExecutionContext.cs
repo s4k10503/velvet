@@ -224,8 +224,9 @@ namespace Velvet
             s_capped.Add(request);
             UnityEngine.Debug.LogException(new InvalidOperationException(
                 "Maximum update depth exceeded. Work that waited for a root's render or commit to end ran "
-                + $"{MaxRunsPerRequest} times before control returned, and was asked for again. Velvet drops it there, "
-                + "as React limits nested updates, to prevent infinite loops."));
+                + $"{MaxRunsPerRequest} times before control returned, and was asked for again. Velvet does not run it "
+                + "again before control returns, as React limits nested updates, and the updates still queued for it "
+                + "stay queued."));
             return false;
         }
 

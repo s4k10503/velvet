@@ -29,5 +29,14 @@
   reads them as they were. The range a render of the list's host asks for still renders inside that render.
 - Work that waited for another root's render or commit and throws has its exception logged, rather than thrown out of
   the call that ended that work; the waiting work after it still runs, and `V.Mount` still returns its handle. Waiting
-  work that keeps asking for itself again is dropped once it has run 50 times before control returns, with "Maximum
-  update depth exceeded" logged; the rest of the waiting work, its own root's included, still runs.
+  work that keeps asking for itself again is not run again once it has run 50 times before control returns, and
+  "Maximum update depth exceeded" is logged; the updates still queued for it stay queued, and the rest of the waiting
+  work, its own root's included, still runs.
+- A click handler that sets another root's state renders that root before the click returns, rather than in that
+  root's next frame.
+- A `Hooks.Use` or query result that resolves while a root renders, commits or runs its `UseEffect`s renders once that
+  work has ended.
+- A click or focus change a `UseEffect` fires renders its update once that flush of `UseEffect`s has ended, rather than
+  inside the effect.
+- `MountedTree.Render` called while another root renders, commits or runs its `UseEffect`s renders once that work has
+  ended, and an error that render throws is logged rather than thrown to the caller.
