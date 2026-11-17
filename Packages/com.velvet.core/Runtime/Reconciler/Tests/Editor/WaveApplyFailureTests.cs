@@ -310,7 +310,8 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base catches the error in the pass of the component that threw it.
-        // Taking the root of every op from the last of ReconcilePass.Segments in ChildListWrites.Apply reddens it.
+        // Filing a failed insert in ChildListWrites.FailureOwner under the root of the last run in ReconcilePass.Segments,
+        // rather than under the component that rendered the element, reddens it.
         [Test]
         public void Given_TwoComponentsUnderBoundariesOfTheirOwnAndTheFirstsNewElementThrowsAsItAttaches_When_OneDrainRendersBoth_Then_TheFirstsBoundaryReportsIt()
         {
@@ -330,7 +331,8 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base catches the error in the pass of the component that threw it.
-        // Taking the root of every op from the first of ReconcilePass.Segments in ChildListWrites.Apply reddens it.
+        // Filing a failed insert in ChildListWrites.FailureOwner under the root of the first run in
+        // ReconcilePass.Segments, rather than under the component that rendered the element, reddens it.
         [Test]
         public void Given_TwoComponentsUnderBoundariesOfTheirOwnAndTheSecondsNewElementThrowsAsItAttaches_When_OneDrainRendersBoth_Then_TheSecondsBoundaryReportsIt()
         {
