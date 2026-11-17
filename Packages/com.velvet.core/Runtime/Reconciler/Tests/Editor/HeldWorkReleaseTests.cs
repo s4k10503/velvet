@@ -739,6 +739,51 @@ namespace Velvet.Tests
             LogAssert.NoUnexpectedReceived();
         }
 
+        private static StateUpdater<int> s_setQueuesAndThrows;
+
+        // From its first update on, queues another update of its own from its imperative-handle factory and throws, out
+        // of the drain committing it.
+        [Component]
+        private static VNode QueuesAndThrowsOnEveryUpdate()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setQueuesAndThrows = setTick;
+            Hooks.UseImperativeHandle(s_throwingHandle, () =>
+            {
+                if (tick == 0) return "handle";
+                setTick.Invoke(tick + 1);
+                throw new InvalidOperationException("handle failed");
+            });
+            return V.Label(text: "thrower");
+        }
+
+        private static int ThrowingDrainsOf(FiberBatchScheduler scheduler)
+            => (int)typeof(FiberBatchScheduler)
+                .GetField("_consecutiveThrowingDrains", BindingFlags.NonPublic | BindingFlags.Instance)!
+                .GetValue(scheduler)!;
+
+        // The held flush's own entry is the one the exception leaves, inside the release, whose root it leaves owing the
+        // sync lane for the update the factory queued.
+        [Test]
+        public void Given_AHeldFlushWhoseDrainThrowsAfterQueueingSyncLaneWork_When_ThePassEnds_Then_ItsRootHasThrownOnce()
+        {
+            // Arrange — the throw is logged where the release runs the held flush
+            LogAssert.Expect(LogType.Exception, new Regex("handle failed"));
+            var thrower = V.Mount(new VisualElement(), V.Component(QueuesAndThrowsOnEveryUpdate));
+            _roots.Add(thrower);
+            var scheduler = thrower.GetSchedulerForTest();
+
+            // Act
+            WalkAsking(() =>
+            {
+                s_setQueuesAndThrows.Invoke(1);
+                scheduler.FlushImmediate();
+            });
+
+            // Assert — the bound of throwing drains where the release drained the root again
+            Assert.That(ThrowingDrainsOf(scheduler), Is.EqualTo(1));
+        }
+
         // --- A render or commit step reached with no entry on the stack ---
 
         private MountedTree MountALabel()

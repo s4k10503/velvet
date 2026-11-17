@@ -53,6 +53,7 @@ namespace Velvet
         private static readonly List<FiberBatchScheduler> s_owingSyncLane = new(4);
         private static readonly Dictionary<(Request Kind, object Key), int> s_runs = new();
         private static readonly HashSet<(Request Kind, object Key)> s_capped = new();
+        private static readonly HashSet<FiberBatchScheduler> s_threw = new();
 
         internal static bool IsSet => s_set;
 
@@ -97,7 +98,9 @@ namespace Velvet
         private static void End(FiberBatchScheduler? owner, bool completed)
         {
             s_set = false;
-            Release(owner, completed ? null : owner);
+            // Ahead of the release, which returns at once where this entry is an item of one already running.
+            if (!completed && owner != null) s_threw.Add(owner);
+            Release(owner);
         }
 
         // run reaches the door again, which the release enters with the flag clear.
@@ -158,14 +161,18 @@ namespace Velvet
         // what one throws is logged, so it neither stops the items behind it nor becomes the failure of the entry that
         // released it.
         //
-        // An entry an exception is leaving does not have the sync-lane work its own scheduler owes flushed here: flushed,
-        // it would run that root's work again inside the call the exception is leaving. The frame-boundary drain the
-        // scheduler registered commits it instead, which is where FiberBatchScheduler bounds a run of drains that throw.
-        // What was held still runs.
-        private static void Release(FiberBatchScheduler? owner, FiberBatchScheduler? unwinding)
+        // Once an exception has left an entry of a scheduler, the outermost entry or one an item of this release opened,
+        // the sync-lane work that scheduler owes is not flushed here: flushed, it would run that root's work again inside
+        // the call the exception left. The frame-boundary drain the scheduler registered commits it instead, which is
+        // where FiberBatchScheduler bounds a run of drains that throw. What was held still runs.
+        private static void Release(FiberBatchScheduler? owner)
         {
             if (s_releasing) return;
-            if (s_held.Count == 0 && !OwesSyncLane(unwinding)) return;
+            if (s_held.Count == 0 && !OwesSyncLane())
+            {
+                s_threw.Clear();
+                return;
+            }
             s_releasing = true;
             var last = owner;
             try
@@ -187,7 +194,7 @@ namespace Velvet
                     }
                     else
                     {
-                        target = TakeOwingSyncLane(unwinding);
+                        target = TakeOwingSyncLane();
                         if (target == null) break;
                         // Keyed as FiberBatchScheduler.HoldFlush keys the same flush, so the two count as one request.
                         kind = Request.Flush;
@@ -207,6 +214,7 @@ namespace Velvet
                 s_releasing = false;
                 s_runs.Clear();
                 s_capped.Clear();
+                s_threw.Clear();
             }
         }
 
@@ -230,11 +238,11 @@ namespace Velvet
             return false;
         }
 
-        private static bool OwesSyncLane(FiberBatchScheduler? unwinding)
+        private static bool OwesSyncLane()
         {
             for (var i = 0; i < s_owingSyncLane.Count; i++)
             {
-                if (s_owingSyncLane[i] != unwinding && s_owingSyncLane[i].OwesSyncLane) return true;
+                if (Owes(s_owingSyncLane[i])) return true;
             }
             s_owingSyncLane.Clear();
             // MUTANT_SURVIVES(equivalent, literal): the list is empty here, so the release this would let through takes
@@ -242,16 +250,18 @@ namespace Velvet
             return false;
         }
 
-        private static FiberBatchScheduler? TakeOwingSyncLane(FiberBatchScheduler? unwinding)
+        private static FiberBatchScheduler? TakeOwingSyncLane()
         {
             while (s_owingSyncLane.Count > 0)
             {
                 var scheduler = s_owingSyncLane[0];
                 s_owingSyncLane.RemoveAt(0);
-                if (scheduler != unwinding && scheduler.OwesSyncLane) return scheduler;
+                if (Owes(scheduler)) return scheduler;
             }
             return null;
         }
+
+        private static bool Owes(FiberBatchScheduler scheduler) => scheduler.OwesSyncLane && !s_threw.Contains(scheduler);
 
         private static void RunIsolated<TState>(TState state, Action<TState> run)
         {
