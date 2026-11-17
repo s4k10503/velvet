@@ -245,10 +245,7 @@ namespace Velvet
                 }
 
                 unnamed = true;
-                // MUTANT_SURVIVES(equivalent, boundary): at Wait 0 with the parent unchanged, the mutant buffers the entry
-                // once, and the loop below only stores Wait -1 for it, which `>= 0` and `== 1` then read as `> 0` and
-                // `== 1` read Wait 0.
-                if (entry.Wait > 0 || ParentFont(pair.Key) != entry.Seen)
+                if (entry.Wait != 0 || ParentFont(pair.Key) != entry.Seen)
                 {
                     _buffer.Add(pair.Key);
                 }
@@ -266,11 +263,27 @@ namespace Velvet
                 var entry = Inheritors[element];
                 if (entry.Wait == 1 || ParentFont(element) != entry.Seen)
                 {
-                    Resolve(element, entry.Intent);
+                    ResolveDown(element, entry.Intent);
                 }
-                else
+                else if (entry.Wait != 0)
                 {
                     Inheritors[element] = new Inheritor(entry.Intent, null, entry.Seen, entry.Wait - 1);
+                }
+            }
+        }
+
+        // A child reads its font off its parent, so each unnamed inheritor directly under one resolved here is read again
+        // straight after it, in this Tick rather than the next.
+        private void ResolveDown(VisualElement element, in FontIntent intent)
+        {
+            Resolve(element, intent);
+            var count = element.hierarchy.childCount;
+            for (var i = 0; i < count; i++)
+            {
+                var child = element.hierarchy[i];
+                if (Inheritors.TryGetValue(child, out var entry) && entry.Named == null && ParentFont(child) != entry.Seen)
+                {
+                    ResolveDown(child, entry.Intent);
                 }
             }
         }
