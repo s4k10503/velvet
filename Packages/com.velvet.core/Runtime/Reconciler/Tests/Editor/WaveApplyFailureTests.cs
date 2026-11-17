@@ -27,7 +27,7 @@ namespace Velvet.Tests
         private VisualElement _mountPoint;
         private static VisualElement s_portalTarget;
         private static readonly List<string> s_reports = new();
-        private static readonly List<string> s_thrown = new();
+        private static readonly List<AttachThrower> s_built = new();
 
         [SetUp]
         public void SetUp()
@@ -37,7 +37,7 @@ namespace Velvet.Tests
             _host.Root.Add(_mountPoint);
             s_portalTarget = new VisualElement();
             s_reports.Clear();
-            s_thrown.Clear();
+            s_built.Clear();
         }
 
         [TearDown]
@@ -49,20 +49,19 @@ namespace Velvet.Tests
 
         // Stands in for a V.Custom<T> whose element registers a panel-attach callback that throws. The message says
         // whether the element attached as a relocated z-* element, so a case about a z-* placement fails where the
-        // arrangement stops making one, and it is kept, so a case whose reading leaves an error out can tell that the
-        // error was thrown.
+        // arrangement stops making one. Each one built is kept, so a case whose reading leaves an error out can tell
+        // that its render built the element, whether or not the element ever attaches.
         internal sealed class AttachThrower : VisualElement
         {
             public AttachThrower()
             {
-                RegisterCallback<AttachToPanelEvent>(_ =>
-                {
-                    var message = "attach:" + name + (FiberZLayerCoordinator.IsRelocatedReal(this) ? ":z" : "");
-                    s_thrown.Add(message);
-                    throw new InvalidOperationException(message);
-                });
+                s_built.Add(this);
+                RegisterCallback<AttachToPanelEvent>(_ => throw new InvalidOperationException(
+                    "attach:" + name + (FiberZLayerCoordinator.IsRelocatedReal(this) ? ":z" : "")));
             }
         }
+
+        private static bool Built(string name) => s_built.Exists(thrower => thrower.name == name);
 
         private sealed record Named(string Name);
 
@@ -273,8 +272,8 @@ namespace Velvet.Tests
             log.Setter<bool>("C").Invoke(true);
             mounted.GetSchedulerForTest().DrainImmediateForTest();
 
-            // Assert — where A's element never threw there was nothing to leave out, so that reads as a sentinel
-            Assert.That(s_thrown.Contains("attach:A") ? log.ToString() : "A's element never threw",
+            // Assert — where A's render never built its element there was nothing to leave out, so that reads as a sentinel
+            Assert.That(Built("A") ? log.ToString() : "A's element was never built",
                 Is.EqualTo("render:A render:C caught:B:render:C"));
         }
 
