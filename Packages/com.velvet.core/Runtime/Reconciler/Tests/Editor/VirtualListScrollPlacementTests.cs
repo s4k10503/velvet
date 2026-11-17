@@ -469,7 +469,9 @@ namespace Velvet.Tests
             return V.Label(name: item, text: item);
         }
 
-        // React's captureCommitPhaseError gives the boundary's root the sync lane, which the commit's end renders.
+        // GREEN_ON_BASE(characterization): the base rendered the fallback where the range's commit ended, as this does.
+        // FiberEffects.CommitStrandedLayoutWork renders the errors a commit captured once that commit is over, and the
+        // range calls it as it returns.
         [Test]
         public void Given_ARowWhoseLayoutEffectThrowsIntoItsOwnBoundary_When_AScrollRendersTheRow_Then_TheFallbackIsShownWhenTheScrollReturns()
         {
