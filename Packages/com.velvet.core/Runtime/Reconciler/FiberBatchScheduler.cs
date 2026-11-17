@@ -156,6 +156,11 @@ namespace Velvet
         private readonly HashSet<ComponentFiber> _unreached = new();
         private readonly List<ComponentFiber> _walk = new();
 
+        // The hosts whose VirtualList rows the last walk passed through, each with its render count then
+        // (ARowHostRendered), and OrderRestInTree's copy of what the drain has yet to render.
+        private readonly List<(ComponentFiber Host, int Renders)> _rowHosts = new();
+        private readonly List<ComponentFiber> _rest = new();
+
         private readonly Action _runImmediateCallback;
         private readonly Action _flushHeld;
         private readonly Action _flushHeldPassiveEffects;
@@ -715,6 +720,10 @@ namespace Velvet
                     // Not mirrored on the delayed tier: skipping a delayed entry that holds Normal or Urgent work
                     // would hold that work back rather than keep it from running early.
                     FiberWorkLoop.FlushStateWork(fiber);
+                    // A VirtualList host's render re-places the rows it holds without rendering them, so once one
+                    // has rendered, by its own entry or inside another's, what the drain has yet to render takes its
+                    // order from the tree again.
+                    if (ARowHostRendered()) OrderRestInTree(i);
                 }
                 _drainBuffer.Clear();
             }
@@ -753,6 +762,8 @@ namespace Velvet
         // ones it does.
         private void AddInTreeOrder(List<ComponentFiber> queued, List<ComponentFiber> into)
         {
+            // MUTANT_SURVIVES(equivalent, line removed): a host only an earlier walk noted holds no row over the fibers this one orders, so the sorts it goes on asking for keep their order.
+            _rowHosts.Clear();
             var root = queued.Count < 2 ? null : ContextRootAbove(queued);
             if (root == null)
             {
@@ -792,7 +803,32 @@ namespace Velvet
                     if (child.PendingWorkBelow || _unreached.Contains(child)) _walk.Insert(pushed, child);
                 }
                 OrderLatestFirst(_walk, pushed, root.Reconciler!.Context, ref tree);
+                if (HoldsARow(pushed)) _rowHosts.Add((fiber, fiber.RenderCount));
             }
+        }
+
+        // Whether a child the walk just pushed is a VirtualList row, the one child a mount places in an element of its
+        // own rather than inline in its parent's (FiberNodeFactory.CreateForComponentNode).
+        private bool HoldsARow(int from)
+        {
+            var i = from;
+            while (i < _walk.Count && _walk[i].IsInlineMounted) i++;
+            return i != _walk.Count;
+        }
+
+        private bool ARowHostRendered()
+        {
+            var h = 0;
+            while (h < _rowHosts.Count && _rowHosts[h].Host.RenderCount == _rowHosts[h].Renders) h++;
+            return h != _rowHosts.Count;
+        }
+
+        private void OrderRestInTree(int done)
+        {
+            for (var i = done + 1; i < _drainBuffer.Count; i++) _rest.Add(_drainBuffer[i]);
+            _drainBuffer.RemoveRange(done + 1, _rest.Count);
+            AddInTreeOrder(_rest, _drainBuffer);
+            _rest.Clear();
         }
 
         private static ComponentFiber? ContextRootAbove(List<ComponentFiber> queued)

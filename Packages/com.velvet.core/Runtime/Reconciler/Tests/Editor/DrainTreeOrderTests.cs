@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Reflection;
 using NUnit.Framework;
 using UnityEngine.UIElements;
 using Velvet.TestUtilities;
@@ -17,6 +19,8 @@ namespace Velvet.Tests
         private sealed record Named(string Name);
 
         private sealed record Logged(string Name, EventLog Log);
+
+        private sealed record ListOf(string Name);
 
         [Component]
         private static VNode Leaf(Named props)
@@ -108,6 +112,48 @@ namespace Velvet.Tests
             => V.Fragment(
                 V.Component(LoggedLeaf, new Logged("A", log), key: "a"),
                 V.Component(LoggedLeaf, new Logged("B", log), key: "b"));
+
+        // Each row is a component of its own, which the list mounts in an element of its own.
+        [Component]
+        private static VNode RowHost(ListOf list)
+        {
+            var (flipped, _) = EventLog.UseState(list.Name, false);
+            EventLog.UseRender(list.Name);
+            return V.VirtualList(
+                items: flipped ? new[] { "b", "a" } : new[] { "a", "b" },
+                keySelector: item => item,
+                itemHeight: 50f,
+                renderer: item => V.Component(Leaf, new Named(list.Name + item), key: item),
+                overscan: 0);
+        }
+
+        [Component]
+        private static VNode RowHostUnderAParent()
+        {
+            EventLog.UseState("G", 0);
+            EventLog.UseRender("G");
+            return V.Component(RowHost, new ListOf("H"), key: "h");
+        }
+
+        [Component]
+        private static VNode TwoRowHosts()
+            => V.Fragment(
+                V.Component(RowHost, new ListOf("H1"), key: "h1"),
+                V.Component(RowHost, new ListOf("H2"), key: "h2"));
+
+        // A headless mount measures no viewport, so each list is handed the height a layout pass would leave it, which
+        // shows both its rows, and renders them.
+        private static void ShowRows(MountedTree mounted)
+        {
+            var lists = new List<FiberVirtualListController>(mounted.Root.Reconciler.Context.VirtualListControllers.Values);
+            foreach (var list in lists)
+            {
+                typeof(FiberVirtualListController)
+                    .GetField("_viewportHeight", BindingFlags.NonPublic | BindingFlags.Instance)!
+                    .SetValue(list, 100f);
+                list.UpdateVisibleRange(scrollY: 0f, viewportHeight: 100f);
+            }
+        }
 
         private static ComponentFiber LoggedFiber(ComponentFiber fiber, string name)
         {
@@ -273,6 +319,71 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(log.ToString(), Is.EqualTo("render:Modal render:Footer"));
+        }
+
+        // H's render re-places its list's rows and renders neither of them.
+        [Test]
+        public void Given_TwoVirtualListRowsAndTheirHostReorderingThemInOneBatch_When_OneDrainRendersThem_Then_TheRowsRenderInTheHostsNewOrder()
+        {
+            // Arrange
+            var log = new EventLog();
+            using var mounted = V.Mount(new VisualElement(), log.Provide(V.Component(RowHost, new ListOf("H"))));
+            ShowRows(mounted);
+            log.Clear();
+
+            // Act
+            log.Setter<int>("Ha").Invoke(1);
+            log.Setter<int>("Hb").Invoke(1);
+            log.Setter<bool>("H").Invoke(true);
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("render:H render:Hb render:Ha"));
+        }
+
+        // H renders inside G's render rather than by its own entry, and re-places its list's rows there.
+        [Test]
+        public void Given_VirtualListRowsAndAParentWhoseRenderRendersTheirHostReorderingThem_When_OneDrainRendersThem_Then_TheRowsRenderInTheHostsNewOrder()
+        {
+            // Arrange
+            var log = new EventLog();
+            using var mounted = V.Mount(new VisualElement(), log.Provide(V.Component(RowHostUnderAParent)));
+            ShowRows(mounted);
+            log.Clear();
+
+            // Act
+            log.Setter<int>("Ha").Invoke(1);
+            log.Setter<int>("Hb").Invoke(1);
+            log.Setter<bool>("H").Invoke(true);
+            log.Setter<int>("G").Invoke(1);
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("render:G render:H render:Hb render:Ha"));
+        }
+
+        // H1 re-places its rows while H2's rows still wait behind them, and H2 re-places its own later in the drain.
+        [Test]
+        public void Given_TwoVirtualListHostsEachReorderingItsRowsInOneBatch_When_OneDrainRendersThem_Then_EachHostsRowsRenderInItsNewOrder()
+        {
+            // Arrange
+            var log = new EventLog();
+            using var mounted = V.Mount(new VisualElement(), log.Provide(V.Component(TwoRowHosts)));
+            ShowRows(mounted);
+            log.Clear();
+
+            // Act
+            log.Setter<int>("H1a").Invoke(1);
+            log.Setter<int>("H1b").Invoke(1);
+            log.Setter<int>("H2a").Invoke(1);
+            log.Setter<int>("H2b").Invoke(1);
+            log.Setter<bool>("H1").Invoke(true);
+            log.Setter<bool>("H2").Invoke(true);
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo(
+                "render:H1 render:H1b render:H1a render:H2 render:H2b render:H2a"));
         }
 
         // Taken out of its parent's children, A has no path from the root for the drain's walk to reach it by.
