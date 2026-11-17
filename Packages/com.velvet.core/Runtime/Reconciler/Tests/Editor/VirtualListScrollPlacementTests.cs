@@ -16,11 +16,11 @@ namespace Velvet.Tests
     /// holds — leaves the list's host waiting on the read, outside a transition, rather than leaving the scroll, alone
     /// in the range or ahead of a Component row, and the rows that scroll built stay in the list. A range a scroll asks
     /// for while a root renders or commits, its own root's included, renders once that has ended, before control
-    /// returns, and asked for more often than the nested-update limit throws nothing; a ScrollToItem made there still
-    /// reaches its item once the content is laid out. What a range's rows mount, the updates their layout effects make
-    /// and the fallback a row's boundary shows for an error one throws render before the scroll that rendered them
-    /// returns. A list its host renders again places its new rows inside that render, where the host's layout effect
-    /// reads them.
+    /// returns where no exception left the list's root's own work there, and asked for more often than the
+    /// nested-update limit throws nothing; a ScrollToItem made there still reaches its item once the content is laid
+    /// out. What a range's rows mount, the updates their layout effects make and the fallback a row's boundary shows
+    /// for an error one throws render before the scroll that rendered them returns. A list its host renders again
+    /// places its new rows inside that render, where the host's layout effect reads them.
     /// </summary>
     [TestFixture]
     internal sealed class VirtualListScrollPlacementTests
@@ -605,7 +605,7 @@ namespace Velvet.Tests
         // Here the drain that throws holds the range and leaves the child it mounted with its effect pending, so the
         // passive flush the release runs ahead of the range would end by draining the root's sync lane.
         [Test]
-        public void Given_ADrainThatThrowsAfterHoldingARangeOfItsOwnList_When_TheReleaseRendersTheRange_Then_ItsRootHasThrownOnce()
+        public void Given_ADrainThatThrowsAfterHoldingARangeOfItsOwnList_When_TheReleaseReachesTheRange_Then_ItsRootHasThrownOnce()
         {
             // Arrange — on a panel, so that the scroller's change reaches the list
             using var host = new HeadlessEditorPanelHost();
@@ -633,7 +633,7 @@ namespace Velvet.Tests
         // GREEN_ON_BASE(characterization): the base rendered the range inside the drain and drained once.
         // The scheduler's gate kept the passive flush ahead of the range's rows from running the child's effect there.
         [Test]
-        public void Given_ADrainThatThrowsAfterHoldingARangeAndMountingAChildWhoseEffectFailsIntoABoundary_When_TheReleaseRendersTheRange_Then_ItsRootHasThrownOnce()
+        public void Given_ADrainThatThrowsAfterHoldingARangeAndMountingAChildWhoseEffectFailsIntoABoundary_When_TheReleaseReachesTheRange_Then_ItsRootHasThrownOnce()
         {
             // Arrange — on a panel, so that the scroller's change reaches the list
             using var host = new HeadlessEditorPanelHost();

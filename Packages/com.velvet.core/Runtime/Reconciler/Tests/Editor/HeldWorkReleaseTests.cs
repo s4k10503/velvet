@@ -947,6 +947,198 @@ namespace Velvet.Tests
             Assert.That(s_mountedSaw, Is.EqualTo("ran"));
         }
 
+        // --- Held work that would render a root whose work threw ---
+
+        private static readonly string[] SixItems = { "item-0", "item-1", "item-2", "item-3", "item-4", "item-5" };
+        private static Ref<VirtualListHandle> s_rowListRef = null!;
+        private static readonly Ref<string> s_rowHandle = new();
+        private static int s_rowHandleRuns;
+        private static bool s_rowThrows;
+
+        [Component]
+        private static VNode ScrollsItsListThenThrowsOnce(string item)
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            Hooks.UseLayoutEffect((Func<Action>)(() =>
+            {
+                if (tick == 1) s_rowListRef.Current.ScrollToItem(1, VirtualListAlign.Start);
+                return null!;
+            }), new object[] { tick });
+            Hooks.UseImperativeHandle(s_rowHandle, () =>
+            {
+                if (tick == 0) return item;
+                s_rowHandleRuns++;
+                if (!s_rowThrows) return item;
+                s_rowThrows = false;
+                setTick.Invoke(tick + 1);
+                throw new InvalidOperationException("handle failed");
+            });
+            return V.Button(name: "bump-" + item, text: item, onClick: () => setTick.Invoke(1));
+        }
+
+        // On a panel, so that the scroller's change reaches the list. Each row's component mounts inline in an element
+        // row, where a range that patches the row renders it.
+        private static MountedTree MountARowThatScrollsItsList(HeadlessEditorPanelHost host)
+        {
+            s_rowListRef = new Ref<VirtualListHandle>();
+            s_rowHandleRuns = 0;
+            s_rowThrows = true;
+            var mounted = V.Mount(host.Root, V.VirtualList(SixItems, item => item, itemHeight: 50f,
+                renderer: item => V.Div(children: new VNode[] { V.Component(ScrollsItsListThenThrowsOnce, item) }),
+                overscan: 0, listRef: s_rowListRef));
+            var scrollView = host.Root.Q<ScrollView>();
+            var list = mounted.Root.Reconciler.Context.VirtualListControllers[scrollView];
+            typeof(FiberVirtualListController).GetField("_viewportHeight", BindingFlags.Instance | BindingFlags.NonPublic)!
+                .SetValue(list, 200f);
+            scrollView.verticalScroller.highValue = 4800f;
+            list.UpdateVisibleRange(0f, 200f);
+            return mounted;
+        }
+
+        private static void ClickTheSecondRow(HeadlessEditorPanelHost host)
+        {
+            try
+            {
+                host.Root.Q<Button>("bump-item-1").SimulateClick();
+            }
+            catch (InvalidOperationException)
+            {
+            }
+        }
+
+        [Test]
+        public void Given_ARowWhoseLayoutEffectScrollsItsListAndWhoseHandleThrows_When_ItsClickReturns_Then_TheHandleHasRunOnce()
+        {
+            // Arrange
+            using var host = new HeadlessEditorPanelHost();
+            using var mounted = MountARowThatScrollsItsList(host);
+
+            // Act
+            ClickTheSecondRow(host);
+
+            // Assert — 2 where the release's range rendered the update the handle queued
+            Assert.That(s_rowHandleRuns, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_ARowWhoseLayoutEffectScrollsItsListAndWhoseHandleThrows_When_TheRootsNextFrameRuns_Then_TheRangeTheScrollerAsksForHasRendered()
+        {
+            // Arrange
+            using var host = new HeadlessEditorPanelHost();
+            using var mounted = MountARowThatScrollsItsList(host);
+            ClickTheSecondRow(host);
+
+            // Act
+            EditorPanelTestHelpers.DriveSchedulerOnce(host.Panel);
+
+            // Assert — null where the release dropped the range rather than handing it to the frame
+            Assert.That(host.Root.Q<Button>("bump-item-4"), Is.Not.Null);
+        }
+
+        private static VelvetTaskCompletionSource<string> s_read = null!;
+        private static int s_readsReturned;
+        private static StateUpdater<int> s_setResolver;
+
+        [Component(Compiler = false)]
+        private static VNode ReadsTheResource()
+        {
+            var text = Hooks.Use(_ => s_read.Task);
+            s_readsReturned++;
+            return V.Label(text: text);
+        }
+
+        [Component(Memoize = true)]
+        private static VNode SuspendsOnTheRead()
+            => V.Suspense(fallback: V.Label(text: "loading"), children: new VNode[] { V.Component(ReadsTheResource) });
+
+        [Component]
+        private static VNode ResolvesTheReadThenThrows()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setResolver = setTick;
+            Hooks.UseLayoutEffect((Func<Action>)(() =>
+            {
+                if (tick > 0) s_read.TrySetResult("read");
+                return null!;
+            }), new object[] { tick });
+            Hooks.UseImperativeHandle(s_throwingHandle, () =>
+            {
+                if (tick == 0) return "handle";
+                setTick.Invoke(tick + 1);
+                throw new InvalidOperationException("handle failed");
+            });
+            return V.Div(children: new VNode[] { V.Component(SuspendsOnTheRead) });
+        }
+
+        [Test]
+        public void Given_ADrainThatThrowsAfterResolvingARead_When_TheExceptionLeaves_Then_TheReaderHasNotRenderedItsValue()
+        {
+            // Arrange
+            s_read = new VelvetTaskCompletionSource<string>();
+            s_readsReturned = 0;
+            var thrower = V.Mount(new VisualElement(), V.Component(ResolvesTheReadThenThrows));
+            _roots.Add(thrower);
+            var scheduler = thrower.GetSchedulerForTest();
+            s_setResolver.Invoke(1);
+
+            // Act
+            try
+            {
+                scheduler.DrainImmediateForTest();
+            }
+            catch (InvalidOperationException)
+            {
+            }
+
+            // Assert — 1 where the release rendered the resolved reader
+            Assert.That(s_readsReturned, Is.EqualTo(0));
+        }
+
+        private static MountedTree s_disposedFromItsCommit = null!;
+        private static StateUpdater<int> s_setDisposer;
+
+        [Component]
+        private static VNode DisposesItsRootThenThrows()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setDisposer = setTick;
+            Hooks.UseLayoutEffect((Func<Action>)(() =>
+            {
+                if (tick > 0) s_disposedFromItsCommit.Dispose();
+                return null!;
+            }), new object[] { tick });
+            Hooks.UseImperativeHandle(s_throwingHandle, () =>
+            {
+                if (tick == 0) return "handle";
+                setTick.Invoke(tick + 1);
+                throw new InvalidOperationException("handle failed");
+            });
+            return V.Label(text: "disposes");
+        }
+
+        [Test]
+        public void Given_ADrainThatThrowsAfterDisposingItsRoot_When_TheExceptionLeaves_Then_TheRootIsUnmounted()
+        {
+            // Arrange
+            var host = new VisualElement();
+            s_disposedFromItsCommit = V.Mount(host, V.Component(DisposesItsRootThenThrows));
+            _roots.Add(s_disposedFromItsCommit);
+            var scheduler = s_disposedFromItsCommit.GetSchedulerForTest();
+            s_setDisposer.Invoke(1);
+
+            // Act
+            try
+            {
+                scheduler.DrainImmediateForTest();
+            }
+            catch (InvalidOperationException)
+            {
+            }
+
+            // Assert — 1 where the release handed the unmount to the root's next frame
+            Assert.That(host.childCount, Is.EqualTo(0));
+        }
+
         private sealed class Counter : Store<int>
         {
             public Counter() : base(0) { }

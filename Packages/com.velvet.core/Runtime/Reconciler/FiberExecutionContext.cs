@@ -164,13 +164,15 @@ namespace Velvet
         // released it.
         //
         // Once an exception has left an entry of a scheduler, the outermost entry or one an item of this release opened,
-        // no drain of that scheduler runs in this release: drained, it would run that root's work again inside the call
-        // the exception left. FiberBatchScheduler.DrainImmediateWork, which a drain of either tier runs through, stands
-        // down for it; the one stand-down outside it is FiberWorkLoop.FlushState's, whose flush of one fiber does not run
-        // through it. Its held work and its pending passive effects still run as far as a drain they reach, a passive
-        // flush being no drain. What it leaves queued is committed by the frame-boundary drain the scheduler registered,
-        // which is where FiberBatchScheduler bounds a run of drains that throw, or by a later entry's release where it
-        // still owes the sync lane (IndexOfOwing).
+        // this release neither drains that root nor runs a held range, resolve or resume of it: each can run the root's
+        // work again inside the call the exception left, a drain by rendering what that work queued, and the others by
+        // rendering fibers of the root, which takes up the updates queued on them. FiberBatchScheduler.DrainImmediateWork,
+        // which a drain of either tier runs through, stands down for it, and so does FiberWorkLoop.FlushState, whose flush
+        // of one fiber does not run through it; a held range, resolve or resume of it is handed to the root's next frame
+        // instead (FiberBatchScheduler.RunInNextFrame). Its pending passive effects and its held work of other kinds still
+        // run, a passive flush being no drain. What it leaves queued is committed by the frame-boundary drain the
+        // scheduler registered, which is where FiberBatchScheduler bounds a run of drains that throw, or by a later
+        // entry's release where it still owes the sync lane (IndexOfOwing).
         private static void Release(FiberBatchScheduler? owner)
         {
             if (s_releasing) return;
@@ -213,7 +215,8 @@ namespace Velvet
                     {
                         RunIsolated(last, static scheduler => scheduler.FlushPendingPassiveEffects());
                     }
-                    if (run != null) RunIsolated(run, static held => held());
+                    if (target != null && s_threw.Contains(target) && TakesUpQueuedUpdates(kind)) target.RunInNextFrame(run!);
+                    else if (run != null) RunIsolated(run, static held => held());
                     else RunIsolated(target!, static scheduler => scheduler.FlushImmediate());
                     last = target ?? last;
                 }
@@ -269,6 +272,9 @@ namespace Velvet
             s_owingSyncLane.RemoveAt(index);
             return scheduler;
         }
+
+        private static bool TakesUpQueuedUpdates(Request kind)
+            => kind is Request.Range or Request.Resolve or Request.Resume;
 
         private static void RunIsolated<TState>(TState state, Action<TState> run)
         {

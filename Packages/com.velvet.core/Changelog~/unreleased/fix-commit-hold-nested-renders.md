@@ -31,11 +31,12 @@
   work that keeps asking for itself again is not run again once it has run 50 times before control returns, and
   "Maximum update depth exceeded" is logged; the updates still queued for it stay queued, and the rest of the waiting
   work, its own root's included, still runs.
-- Where an exception leaves a root's render, commit or `UseEffect` flush, nothing drains that root's updates again
-  before control returns, whatever another entry here says; the rest of its waiting work still runs. What the exception
-  leaves queued still renders where earlier versions rendered it, and where an update React gives the sync lane is
-  among it, the next render, commit or `UseEffect` flush of any root to end after control has returned also retries
-  it, if nothing has rendered it first.
+- Once an exception leaves a root's render, commit or `UseEffect` flush, that root's update drain does not run again
+  before control returns, even where another entry for this version says one of its updates would render. A
+  `V.VirtualList` range of that root, or a `Hooks.Use` or query result of it, that would otherwise be taken up before
+  control returns is taken up in the root's next frame instead, the range from where the scroller is then. Its updates
+  render at its next update drain, as in earlier versions, or, where one is an update React gives the sync lane, at the
+  end of the next render, commit or `UseEffect` flush of any root after control has returned, if that comes first.
 - A click handler that runs while no root is rendering, committing or running its `UseEffect`s, and sets another root's
   state outside a transition, renders that root before the click returns, rather than in that root's next frame.
 - A `Hooks.Use` or query result that resolves while a root renders, commits or runs its `UseEffect`s is taken up once

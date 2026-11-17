@@ -312,6 +312,14 @@ namespace Velvet
             _anchor.schedule.Execute(callback);
         }
 
+        // Held work of this root that FiberExecutionContext's release does not run, made in the root's next frame on the
+        // anchor the tiers' drains are registered on. A root with no anchor registers no drain either, and has no frame.
+        internal void RunInNextFrame(Action run)
+        {
+            var anchor = _anchor;
+            anchor?.schedule.Execute(() => PanelSchedulerCallback.Run(anchor, run, static held => held()));
+        }
+
         private void RunAdmitCallback(DelayedAdmission admission)
         {
             var outer = PanelSchedulerCallback.Enter(_anchor?.panel);
