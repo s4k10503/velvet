@@ -176,6 +176,11 @@ namespace Velvet.Tests
         private static VNode CompletedExitHost()
         {
             var keys = Hooks.UseStore(s_store, s => s.Keys);
+            Hooks.UseLayoutEffect(() =>
+            {
+                if (keys.Length == 0) s_completionsAtTheRemovingCommit = s_exitCompletions;
+                return (System.Action)null;
+            }, new object[] { keys });
             var children = new List<VNode>();
             foreach (var key in keys)
             {
@@ -190,10 +195,11 @@ namespace Velvet.Tests
         }
 
         private static int s_exitCompletions;
+        private static int s_completionsAtTheRemovingCommit;
 
         // GREEN_ON_BASE(characterization): the base's removing render left the completion for the passive flush.
-        // The store is subscribed before its write, so the state flush renders the removal its notification asks for
-        // and runs no passive flush, where a subscription finding the write would have rendered it inside one.
+        // The count is read in that render's own layout effect, ahead of every passive flush, which is where the
+        // completion runs.
         [Test]
         public void Given_ASpringExitWithNoChannelToDrive_When_TheKeyIsRemoved_Then_OnExitCompleteHasNotRunInThatRender()
         {
@@ -202,13 +208,14 @@ namespace Velvet.Tests
             s_store = store;
             using var mounted = V.Mount(_root, V.Component(CompletedExitHost, key: "host"));
             mounted.FlushEffectsForTest();
+            s_completionsAtTheRemovingCommit = -1;
 
             // Act
             store.Set("");
             mounted.FlushStateForTest();
 
-            // Assert
-            Assert.That(s_exitCompletions, Is.EqualTo(0));
+            // Assert — -1 where the removing render never committed
+            Assert.That(s_completionsAtTheRemovingCommit, Is.EqualTo(0));
         }
 
         // GREEN_ON_BASE(characterization): the base ran the completion once in the removing render, so it has run once after the flush as well.

@@ -43,6 +43,7 @@ namespace Velvet.Tests
 
         private static KeySetStore s_keyStore;
         private static string s_kind;
+        private static System.Action s_atTheRemovingCommit;
 
         private EditorPanelSimulator _sim;
 
@@ -54,6 +55,7 @@ namespace Velvet.Tests
             _sim.ResetTimePerSimulatedFrameToDefault();
             s_keyStore = null;
             s_kind = null;
+            s_atTheRemovingCommit = null;
         }
 
         [TearDown]
@@ -88,6 +90,11 @@ namespace Velvet.Tests
         private static VNode PresenceHost()
         {
             var keys = Hooks.UseStore(s_keyStore, s => s.Keys);
+            Hooks.UseLayoutEffect(() =>
+            {
+                if (keys.Length == 0) s_atTheRemovingCommit?.Invoke();
+                return (System.Action)null;
+            }, new object[] { keys });
             var children = new List<VNode>();
             foreach (var key in keys)
             {
@@ -179,21 +186,29 @@ namespace Velvet.Tests
             Assert.That(whileExiting + "|" + Entries(mounted), Is.EqualTo("0,1,1,1|0,1,0,0"));
         }
 
+        // GREEN_ON_BASE(characterization): the base kept the completed exit's wait until the key came back, as this does.
+        // The removing render's completion asks for the render that drops the leaves, and the drain that renders a
+        // store's change renders that one too before it returns. So the key comes back in the removing commit itself,
+        // where its entries are read with the spring exit completed and the drop not yet rendered.
         [Test]
         public void Given_ADescendantExitCompleted_When_TheKeyReturnsBeforeTheDropRender_Then_TheWaitAndItsRegistrationAreGone()
         {
-            // Arrange — one flush, so the spring exit completes and the render that would drop the leaves waits.
+            // Arrange
             using var keys = new KeySetStore("a");
             using var mounted = MountSettled("spring-row", keys);
+            string whileParked = null;
+            s_atTheRemovingCommit = () =>
+            {
+                var item = _sim.rootVisualElement.Q<VisualElement>("item");
+                whileParked = Entries(mounted) + ","
+                    + mounted.Root.Reconciler.Context.StyleAnimationScheduler.IsExiting(item);
+                keys.Set("a");
+            };
             keys.Set(string.Empty);
-            mounted.FlushStateForTest();
-            var item = _sim.rootVisualElement.Q<VisualElement>("item");
-            var whileParked = Entries(mounted) + ","
-                + mounted.Root.Reconciler.Context.StyleAnimationScheduler.IsExiting(item);
 
             // Act
-            keys.Set("a");
             mounted.FlushStateForTest();
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
 
             // Assert — parked with nothing still playing, then let go of.
             Assert.That(whileParked + "|" + Entries(mounted), Is.EqualTo("0,1,1,1,False|0,1,0,0"));
