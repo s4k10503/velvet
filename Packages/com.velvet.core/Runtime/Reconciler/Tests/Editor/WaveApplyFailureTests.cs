@@ -502,28 +502,25 @@ namespace Velvet.Tests
             Assert.That(log.ToString(), Is.EqualTo("uncaught:attach:Z:z"));
         }
 
-        [Component(IsErrorBoundary = true)]
-        private static VNode AddsAThrowerAheadOfARenderError()
-        {
-            Hooks.UseFallback(_ => V.Label(text: "fallback"));
-            return V.Fragment(
-                V.Div(children: new VNode[] { V.Custom<AttachThrower>(name: "M", key: "thrower") }),
-                V.Component(ThrowsAsItRenders, key: "render-thrower"));
-        }
+        [Component]
+        private static VNode BoundaryOverAThrowingPortal()
+            => V.Component(FirstBoundary, new Holds(V.Component(ShowsAThrowingPortal, key: "shower")), key: "b1");
 
         [Test]
-        public void Given_ARootFiberThatAddsANewElementThrowingAsItAttachesAheadOfAChildWhoseRenderThrows_When_FiberRendererMountsIt_Then_ItReportsOnlyTheRenderError()
+        public void Given_ARootFiberWhoseBoundaryHoldsAPortalWhoseChildThrowsAsItAttaches_When_FiberRendererMountsIt_Then_ThatBoundaryReportsIt()
         {
-            // Arrange
-            var root = FiberRenderer.CreateRoot(AddsAThrowerAheadOfARenderError, isErrorBoundary: true);
+            // Arrange — the Portal's target is on the panel
+            _host.Root.Add(s_portalTarget);
+            var root = FiberRenderer.CreateRoot(BoundaryOverAThrowingPortal);
 
             // Act
-            FiberRenderer.Mount(root, _mountPoint, onCaughtError: (error, _) => s_reports.Add("caught:" + error.Message));
+            FiberRenderer.Mount(root, _mountPoint,
+                onCaughtError: (error, info) => s_reports.Add("caught:" + info.ErrorBoundary + ":" + error.Message));
             var reports = string.Join(" ", s_reports);
             FiberRenderer.Dispose(root);
 
-            // Assert — where the render never built the element there was nothing to leave out, so that reads as a sentinel
-            Assert.That(Built("M") ? reports : "M was never built", Is.EqualTo("caught:render:Q"));
+            // Assert
+            Assert.That(reports, Is.EqualTo("caught:B1:attach:Portal"));
         }
 
         [Component]
