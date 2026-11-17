@@ -656,6 +656,65 @@ namespace Velvet.Tests
             Assert.That(log.ToString(), Is.EqualTo("caught:B1:attach:Portal"));
         }
 
+        // Throws from its first DetachFromPanelEvent alone, so the removal that takes it down again at the end of a case
+        // does not throw.
+        internal sealed class DetachThrower : VisualElement
+        {
+            private bool _thrown;
+
+            public DetachThrower()
+            {
+                RegisterCallback<DetachFromPanelEvent>(_ =>
+                {
+                    if (_thrown) return;
+                    _thrown = true;
+                    throw new InvalidOperationException("detach:" + name);
+                });
+            }
+        }
+
+        [Component]
+        private static VNode RemovesADetachThrower(Named props)
+        {
+            var (kept, _) = EventLog.UseState(props.Name, true);
+            var (rows, _) = EventLog.UseState(props.Name + "Rows", 0);
+            EventLog.UseRender(props.Name);
+            return V.Div(children: new VNode[]
+            {
+                kept ? V.Custom<DetachThrower>(name: props.Name, key: "thrower") : null,
+                rows > 0 ? V.Div(key: "row") : null,
+            });
+        }
+
+        [Component]
+        private static VNode QuietThenRemoving()
+            => V.Fragment(
+                V.Component(FirstBoundary, new Holds(V.Component(MountsADiv, new Named("R1"), key: "r1")), key: "b1"),
+                V.Component(SecondBoundary, new Holds(V.Component(RemovesADetachThrower, new Named("R2"), key: "r2")),
+                    key: "b2"));
+
+        // GREEN_ON_BASE(characterization): the base catches the error in the pass of the component whose removal threw it.
+        // Leaving ReconcilePass.Segments uncleared at the end of ChildListWrites.Apply reddens it: the first drain's runs
+        // then stay ahead of the second's, and the removal is filed under R1's.
+        [Test]
+        public void Given_TwoComponentsUnderBoundariesOfTheirOwnThatOneDrainRenders_When_ALaterDrainOfTheSecondRemovesAnElementThatThrowsAsItDetaches_Then_TheSecondsBoundaryReportsIt()
+        {
+            // Arrange — one drain renders both, each adding a row
+            var log = new EventLog();
+            using var mounted = Mount(log, V.Component(QuietThenRemoving));
+            log.Setter<bool>("R1").Invoke(true);
+            log.Setter<int>("R2Rows").Invoke(1);
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            log.Clear();
+
+            // Act
+            log.Setter<bool>("R2").Invoke(false);
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("render:R2 caught:B2:detach:R2"));
+        }
+
         #endregion
     }
 }
