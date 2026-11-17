@@ -683,6 +683,38 @@ namespace Velvet.Tests
             Assert.That(log.ToString(), Is.EqualTo("caught:PB:attach:Z2:z"));
         }
 
+        [Component(IsErrorBoundary = true, DisplayName = "Inner")]
+        private static VNode InnerOverAStackedThrower()
+        {
+            Hooks.UseFallback(_ => V.Label(text: "fallback"));
+            return V.Div(className: "relative", children: new VNode[]
+            {
+                V.Custom<AttachThrower>(className: "absolute z-10", name: "Z3", key: "thrower"),
+            });
+        }
+
+        [Component(IsErrorBoundary = true, DisplayName = "Outer")]
+        private static VNode OuterShowsInnerThroughAPortal()
+        {
+            Hooks.UseFallback(_ => V.Label(text: "fallback"));
+            return V.Portal(s_portalTarget, new VNode[] { V.Component(InnerOverAStackedThrower, key: "inner") },
+                key: "portal");
+        }
+
+        [Test]
+        public void Given_ABoundaryRenderingAPortalWhoseChildIsABoundaryOverAZPlacedElementThatThrowsAsItAttaches_When_ItMounts_Then_TheBoundaryThatRendersThePortalReportsIt()
+        {
+            // Arrange — the Portal's target is on the panel
+            _host.Root.Add(s_portalTarget);
+            var log = new EventLog();
+
+            // Act
+            using var mounted = Mount(log, V.Component(OuterShowsInnerThroughAPortal, key: "outer"));
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("caught:Outer:attach:Z3:z"));
+        }
+
         [Component(IsErrorBoundary = true, DisplayName = "A")]
         private static VNode FallsBackToAThrower()
         {
