@@ -35,6 +35,9 @@ namespace Velvet.Tests
         [TearDown]
         public void DisposeTheReconcilers()
         {
+            // First, since a root its own throw left owing the sync lane is drained where any other entry ends.
+            if (s_rootAMountThrewOutOf != null) FiberRenderer.Dispose(s_rootAMountThrewOutOf);
+            s_rootAMountThrewOutOf = null;
             foreach (var root in _roots) root.Dispose();
             _roots.Clear();
             foreach (var root in s_mountedFromCommits) root.Dispose();
@@ -44,6 +47,7 @@ namespace Velvet.Tests
         }
 
         private static readonly List<MountedTree> s_mountedFromCommits = new();
+        private static ComponentFiber? s_rootAMountThrewOutOf;
 
         private FiberBatchScheduler Holder => _holder.Context.BatchScheduler;
 
@@ -705,11 +709,13 @@ namespace Velvet.Tests
             Assert.That(scheduler.ImmediatePendingCount, Is.EqualTo(1));
         }
 
-        // Queues another update of its own from its imperative-handle factory and throws, from its first commit on.
         [Component]
         private static VNode QueuesAndThrowsFromItsFirstCommit()
         {
             var (tick, setTick) = Hooks.UseState(0);
+            var root = FiberAmbientStack.Current!;
+            while (root.Parent != null) root = root.Parent;
+            s_rootAMountThrewOutOf = root;
             Hooks.UseImperativeHandle(s_throwingHandle, () =>
             {
                 setTick.Invoke(tick + 1);

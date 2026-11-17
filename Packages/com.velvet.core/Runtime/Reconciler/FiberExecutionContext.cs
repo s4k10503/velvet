@@ -170,7 +170,7 @@ namespace Velvet
         private static void Release(FiberBatchScheduler? owner)
         {
             if (s_releasing) return;
-            if (s_held.Count == 0 && !OwesSyncLane())
+            if (s_held.Count == 0 && IndexOfOwing() < 0)
             {
                 s_threw.Clear();
                 return;
@@ -244,30 +244,28 @@ namespace Velvet
             return false;
         }
 
-        private static bool OwesSyncLane()
+        // The first listed scheduler that owes the sync lane and has not thrown in this release, or -1. One that owes nothing
+        // any more is delisted on the way; one that threw stays listed, for the release of a later entry to flush.
+        private static int IndexOfOwing()
         {
-            for (var i = 0; i < s_owingSyncLane.Count; i++)
+            for (var i = 0; i < s_owingSyncLane.Count;)
             {
-                if (Owes(s_owingSyncLane[i])) return true;
+                var scheduler = s_owingSyncLane[i];
+                if (!scheduler.OwesSyncLane) s_owingSyncLane.RemoveAt(i);
+                else if (s_threw.Contains(scheduler)) i++;
+                else return i;
             }
-            s_owingSyncLane.Clear();
-            // MUTANT_SURVIVES(equivalent, literal): the list is empty here, so the release this would let through takes
-            // nothing held and no owing scheduler, and ends before its first item.
-            return false;
+            return -1;
         }
 
         private static FiberBatchScheduler? TakeOwingSyncLane()
         {
-            while (s_owingSyncLane.Count > 0)
-            {
-                var scheduler = s_owingSyncLane[0];
-                s_owingSyncLane.RemoveAt(0);
-                if (Owes(scheduler)) return scheduler;
-            }
-            return null;
+            var index = IndexOfOwing();
+            if (index < 0) return null;
+            var scheduler = s_owingSyncLane[index];
+            s_owingSyncLane.RemoveAt(index);
+            return scheduler;
         }
-
-        private static bool Owes(FiberBatchScheduler scheduler) => scheduler.OwesSyncLane && !s_threw.Contains(scheduler);
 
         private static bool IsDrain(Request kind)
             => kind is Request.Flush or Request.FiberFlush or Request.PassiveFlush;

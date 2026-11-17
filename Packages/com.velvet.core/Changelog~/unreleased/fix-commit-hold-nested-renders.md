@@ -14,7 +14,8 @@
   update drain asked for waited for the main thread's next posted flush, and a state update a layout effect or
   `refCallback:` made in the commit of a `V.VirtualList` row a scroll or a resize rendered, or of a fallback a boundary
   showed for a `UseFrame` callback's error, waited for a later frame. Each now renders where the next render, commit or
-  `UseEffect` flush of any root ends, before control returns.
+  `UseEffect` flush of any root ends, before control returns; where an exception leaves that root's own work there
+  instead, it renders where the next one after it ends, or in the root's next frame if that comes first.
 - A `refCallback:` cleanup that throws as its element is removed was logged and reached no error boundary. It now goes
   to the nearest boundary above the component that rendered the element, which shows its fallback in a follow-up
   commit, as React's does; with none, the root renders nothing and reports it to `OnUncaughtError`, as it does for a

@@ -490,6 +490,71 @@ namespace Velvet.Tests
             Assert.That(_root.Q<Label>("fallback-item-50"), Is.Not.Null);
         }
 
+        private sealed class Count : Store<int>
+        {
+            public Count() : base(0) { }
+
+            public void Set(int value) => SetState(_ => value);
+
+            protected override void ResetCore() => SetState(_ => 0);
+        }
+
+        private static Count s_count;
+        private static int s_countRead;
+        private static bool s_rowThrowsOnce;
+        private static readonly Ref<string> s_rowHandle = new();
+
+        [Component]
+        private static VNode ThrowsOnceFromItsHandle(string item)
+        {
+            Hooks.UseImperativeHandle(s_rowHandle, () =>
+            {
+                if (!s_rowThrowsOnce) return item;
+                s_rowThrowsOnce = false;
+                throw new InvalidOperationException("row handle failed");
+            });
+            return V.Label(name: item, text: item);
+        }
+
+        [Component]
+        private static VNode ReadsTheCountBesideAList()
+        {
+            s_countRead = Hooks.UseStore(s_count, value => value);
+            return V.VirtualList(HundredItems, item => item, itemHeight: 50f,
+                renderer: item => V.Component<string>(ThrowsOnceFromItsHandle, item, key: item), overscan: 0);
+        }
+
+        // The store's change leaves the reader's root owing the sync lane, and the scroll's entry, which a row's throw
+        // leaves, ends without flushing it; the next root's entry to end does.
+        [Test]
+        public void Given_AStoreReaderWhoseScrollThrewOutOfItsRange_When_AnotherRootsClickEnds_Then_TheReaderHasRenderedTheChange()
+        {
+            // Arrange
+            s_count = new Count();
+            s_rowThrowsOnce = false;
+            using var mounted = V.Mount(_root, V.Component(ReadsTheCountBesideAList));
+            mounted.FlushEffectsForTest();
+            var scrollView = _root.Q<ScrollView>();
+            SetViewport(mounted, scrollView, 200f);
+            var other = new VisualElement();
+            using var idle = V.Mount(other, V.Button(name: "idle", onClick: () => { }));
+            s_count.Set(1);
+            s_rowThrowsOnce = true;
+            try
+            {
+                ControllerOf(mounted, scrollView).UpdateVisibleRange(2500f, 200f);
+            }
+            catch (InvalidOperationException)
+            {
+            }
+
+            // Act
+            other.Q<Button>("idle").SimulateClick();
+
+            // Assert
+            Assert.That(s_countRead, Is.EqualTo(1));
+        }
+
         private static readonly System.Collections.Generic.List<MountedTree> s_thumbs = new();
 
         [TearDown]
