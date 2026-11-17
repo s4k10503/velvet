@@ -352,6 +352,85 @@ namespace Velvet.Tests
             Assert.That(s_outerFallbacks, Is.EqualTo(1));
         }
 
+        [Component]
+        private static VNode ReadsItsProps(int value)
+        {
+            EventLog.UseState("OwnTick", 0);
+            EventLog.UseRender("Props", value);
+            return V.Div();
+        }
+
+        // Hands its value to a child it renders inline, whose later render of its own reads the props that render left.
+        [Component]
+        private static VNode HandsItsValueDown()
+        {
+            var (value, _) = EventLog.UseState("Handed", 0);
+            return V.Component(ReadsItsProps, value, key: "reader");
+        }
+
+        [Component]
+        private static VNode HanderThenSuspender()
+            => V.Fragment(
+                V.Component(HandsItsValueDown, key: "hander"),
+                V.Component(SuspendsWithNothingAbove, key: "suspender"));
+
+        // GREEN_ON_BASE(characterization): the base closes the first component's journal before the second renders.
+        // Leaving `_subsumedAtSegment` where it was in FiberPassJournal.TryOpen reddens it: the suspend's abandon then
+        // writes the earlier props back over the child the first component rendered.
+        [Test]
+        public void Given_AComponentThatHandsAValueToAChildAndALaterOneThatSuspendsWithNothingToCatchIt_When_TheChildRendersOnItsOwnAfterTheDrain_Then_ItReadsTheValueHandedToIt()
+        {
+            // Arrange
+            var log = new EventLog();
+            using var mounted = V.Mount(new VisualElement(), log.Provide(V.Component(HanderThenSuspender)));
+            log.Setter<int>("Handed").Invoke(1);
+            log.Setter<bool>("Reads").Invoke(true);
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            log.Clear();
+
+            // Act
+            log.Setter<int>("OwnTick").Invoke(1);
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("render:Props=1"));
+        }
+
+        [Component]
+        private static VNode PortalOfADiv()
+        {
+            var (shown, _) = EventLog.UseState("ShownDiv", false);
+            return V.Div(children: new VNode[]
+            {
+                shown ? V.Portal(s_portalTarget, new VNode[] { V.Div() }, key: "portal") : null,
+            });
+        }
+
+        [Component]
+        private static VNode PortalThenPatcherThenReader()
+            => V.Fragment(
+                V.Component(PortalOfADiv, key: "portal"),
+                V.Component(Patcher, key: "patcher"),
+                V.Component(LabelReader, key: "reader"));
+
+        [Test]
+        public void Given_AComponentWhosePortalMountsAheadOfOneThatPatchesALabel_When_OneDrainRendersBothAndALaterComponentReadingTheLabel_Then_TheLaterComponentReadsTheTextFromBeforeThePatch()
+        {
+            // Arrange
+            var log = new EventLog();
+            using var mounted = V.Mount(new VisualElement(), log.Provide(V.Component(PortalThenPatcherThenReader)));
+            log.Clear();
+
+            // Act
+            log.Setter<bool>("ShownDiv").Invoke(true);
+            log.Setter<string>("Text").Invoke("after");
+            log.Setter<int>("ReadLabel").Invoke(1);
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("render:LabelReader=before read:after"));
+        }
+
         [Component(Compiler = false)]
         private static VNode PortalReader()
         {
