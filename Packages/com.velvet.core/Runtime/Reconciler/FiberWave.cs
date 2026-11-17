@@ -30,6 +30,7 @@ namespace Velvet
             ctx.WaveOwesIndicatorFlush = false;
             ctx.WaveKeepsBatchOrder = false;
             ctx.DeferDrainLayoutEffects = true;
+            ctx.Pass.HoldsCaptures = true;
             ctx.Pass.Journal.Hold();
         }
 
@@ -155,39 +156,45 @@ namespace Velvet
         }
 
         // What the ops and placements of the wave's pass threw, each queued for the boundary the search from where it was
-        // filed to start finds (ComponentBoundarySearch.CaptureFrom), which renders its fallback in a follow-up commit. A
-        // failure whose element was on a panel as it threw and is off one by now is not reported: where the wave's own
-        // writes took the element off, React would never have committed it, as it commits no host of a render it
-        // discarded. Each route runs whether or not the one before it threw, and the first one's exception is rethrown
-        // once all of them have run.
+        // filed to start finds (ComponentBoundarySearch.CaptureFrom), which renders its fallback in a follow-up commit,
+        // in one order with what else the wave captured (CommitErrors.TakeHeld). A failure whose element was on a panel
+        // as it threw and is off one by now is not reported: where the wave's own writes took the element off, React
+        // would never have committed it, as it commits no host of a render it discarded. Each route runs whether or not
+        // the one before it threw, and the first one's exception is rethrown once all of them have run.
         private static void RouteFailures(ReconcilerContext ctx)
         {
-            var failures = ctx.Pass.Failures;
+            var pass = ctx.Pass;
+            var failures = pass.Failures;
             ExceptionDispatchInfo? first = null;
             try
             {
                 for (var i = 0; i < failures.Count; i++)
                 {
-                    var (start, owner, error, onPanel, sequence) = failures[i];
+                    var (start, owner, error, onPanel, place) = failures[i];
                     if (onPanel is { panel: null }) continue;
-                    var failure = Capture(start, owner, error, sequence);
+                    pass.Meets = place;
+                    var failure = Capture(start, owner, error);
                     first ??= failure;
                 }
             }
             finally
             {
+                // MUTANT_SURVIVES(equivalent, line removed): the place of the last failure routed is at or ahead of every
+                // place a later wave takes, as the place behind the ops applied is, so what that wave's walk throws ahead
+                // of its apply keeps its order.
+                pass.Meets = ReconcilePass.NoPlace;
                 failures.Clear();
+                CommitErrors.TakeHeld(ctx);
             }
             first?.Throw();
         }
 
         // What the route itself threw, which leaves the routes behind it to run.
-        private static ExceptionDispatchInfo? Capture(
-            ComponentFiber? start, ComponentFiber owner, Exception error, long sequence)
+        private static ExceptionDispatchInfo? Capture(ComponentFiber? start, ComponentFiber owner, Exception error)
         {
             try
             {
-                ComponentBoundarySearch.CaptureFrom(start, owner, error, sequence);
+                ComponentBoundarySearch.CaptureFrom(start, owner, error);
                 return null;
             }
             catch (Exception exception)

@@ -53,16 +53,39 @@ namespace Velvet
 
         // The component that rendered each element created while a wave records into the pass, with the Portal whose
         // children it was created among, which a failed insert of the element is filed under in place of the root of its
-        // run. Apply clears it with the ops.
-        internal readonly Dictionary<VisualElement, (ComponentFiber Owner, VisualElement? Portal)> Owners = new();
+        // run, and the place the element's walk ended at (PlaceBehindRecorded), which the failure takes. Apply clears it
+        // with the ops.
+        internal readonly Dictionary<VisualElement, (ComponentFiber Owner, VisualElement? Portal, long Place)> Owners
+            = new();
 
         // What the ops, z-layer mounts and Portal mounts of a wave's pass threw, for the wave to route (FiberWave): where
         // the search for its boundary starts, the component it belongs to, the element whose panel decides whether it
-        // is reported, kept only where that element was on a panel as it threw, and its place among the context's
-        // captures, taken as it throws so it is reported ahead of what the pass's turn ends throw after it
-        // (CommitErrors.Capture).
+        // is reported, kept only where that element was on a panel as it threw, and the place the wave's captures take
+        // it at.
         internal readonly List<(ComponentFiber? Start, ComponentFiber Owner, System.Exception Error, VisualElement? OnPanel,
-            long Sequence)> Failures = new();
+            long Place)> Failures = new();
+
+        // The places a wave makes its captures in the order of (CommitErrors.TakeHeld), g counting the ops of its passes
+        // ahead of a point. An op the apply runs is at 2g + 1, and what its turn end, ref detach or teardown throws takes
+        // that place. An element the walk creates is at 2g where its walk ends, behind the ops of what it holds, which is
+        // where React places it, ahead of the turns of the rows after it: the insert of a row into a container the pass
+        // did not create is recorded where the container's walk ends, behind those turns. Applied counts the ops the pass
+        // has applied, over every wave, since only their order within a wave is read. Meets is the place of the op Apply
+        // runs or of the failure the wave routes, and NoPlace otherwise, where what is thrown takes the place behind
+        // every op applied.
+        internal const long NoPlace = -1;
+        internal long Applied;
+        internal long Meets = NoPlace;
+
+        internal long PlaceBehindRecorded => 2 * (Applied + Ops.Count);
+
+        internal long PlaceNow => Meets != NoPlace ? Meets : 2 * Applied;
+
+        // The captures a wave takes from its opening until its failures are routed, which it then makes in the order of
+        // their places (CommitErrors.TakeHeld).
+        internal bool HoldsCaptures;
+        internal readonly List<(ComponentFiber Boundary, System.Exception Error, ErrorInfo Info, long Place)> HeldCaptures
+            = new();
 
         internal void BeginSegment(ComponentFiber? root) => Segments.Add((Ops.Count, root));
 
@@ -70,9 +93,9 @@ namespace Velvet
         // (Reconciler.FinishWavePass); Apply clears it as it ends. Where it is clear the layout commit runs that work.
         internal bool RunsTurnEnds;
 
-        internal void Fail(ComponentFiber? start, ComponentFiber owner, System.Exception error, VisualElement? element)
-            => Failures.Add((start, owner, error, element?.panel != null ? element : null,
-                owner.Reconciler is { } reconciler ? reconciler.Context.NextCaptureSequence++ : -1));
+        internal void Fail(ComponentFiber? start, ComponentFiber owner, System.Exception error, VisualElement? element,
+            long place)
+            => Failures.Add((start, owner, error, element?.panel != null ? element : null, place));
 
         // The renders of the pass on the stack, which a suspend nothing catches takes back.
         internal FiberPassJournal Journal { get; } = new();

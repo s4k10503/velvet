@@ -749,6 +749,7 @@ namespace Velvet
                 {
                     while (segment + 1 < pass.Segments.Count && pass.Segments[segment + 1].FirstOp <= i) segment++;
                     pass.ApplyingRoot = segment >= 0 ? pass.Segments[segment].Root : null;
+                    pass.Meets = 2 * (pass.Applied + i) + 1;
                     try
                     {
                         ApplyOp(pass, pass.Ops[i]);
@@ -767,6 +768,12 @@ namespace Velvet
             {
                 pass.Applying = false;
                 pass.RunsTurnEnds = false;
+                // MUTANT_SURVIVES(equivalent, line removed): what is thrown then takes the last op's place, 2g - 1, for
+                // the 2g behind it. Ops are odd and elements even, so the only places it can now tie or pass are that
+                // op's, whose captures were held first, and an element's at 2g, whose failure is held as the wave routes,
+                // after it: it keeps its order against both.
+                pass.Meets = ReconcilePass.NoPlace;
+                pass.Applied += pass.Ops.Count;
                 // MUTANT_SURVIVES(equivalent, line removed): ApplyingRoot is read only while Applying is set, and Apply
                 // writes it ahead of each op; the reset lets go of the fiber.
                 pass.ApplyingRoot = null;
@@ -792,8 +799,8 @@ namespace Velvet
         }
 
         // Files an insert of an element the wave created under the component that rendered it, its search starting where
-        // React's commit starts a placement's (ComponentBoundarySearch.PlacementSearchStart), and any other op under the
-        // root of its run. False where the pass is no wave's.
+        // React's commit starts a placement's (ComponentBoundarySearch.PlacementSearchStart), at the place the element's
+        // walk ended at, and any other op under the root of its run, at the op's. False where the pass is no wave's.
         private static bool FileFailure(ReconcilePass pass, VisualElement? added, Exception exception)
         {
             if (added != null)
@@ -801,12 +808,12 @@ namespace Velvet
                 if (pass.Owners.TryGetValue(added, out var rendered))
                 {
                     pass.Fail(ComponentBoundarySearch.PlacementSearchStart(rendered.Owner, rendered.Portal), rendered.Owner,
-                        exception, added);
+                        exception, added, rendered.Place);
                     return true;
                 }
             }
             if (pass.ApplyingRoot == null) return false;
-            pass.Fail(pass.ApplyingRoot, pass.ApplyingRoot, exception, added);
+            pass.Fail(pass.ApplyingRoot, pass.ApplyingRoot, exception, added, pass.PlaceNow);
             return true;
         }
 

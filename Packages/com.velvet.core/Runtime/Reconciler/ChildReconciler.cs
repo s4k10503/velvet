@@ -515,7 +515,7 @@ namespace Velvet
                 {
                     // The Portal is recorded with the rows its children left in the target, and the drain goes on to
                     // what was queued behind it.
-                    wave!.Fail(declaringFiber, declaringFiber!, exception, placeholder);
+                    wave!.Fail(declaringFiber, declaringFiber!, exception, placeholder, wave.PlaceNow);
                 }
                 finally
                 {
@@ -564,7 +564,8 @@ namespace Velvet
             }
             catch (Exception exception)
             {
-                wave.Fail(ComponentBoundarySearch.PlacementSearchStart(owner, node.Portal), owner, exception, node.Real);
+                wave.Fail(ComponentBoundarySearch.PlacementSearchStart(owner, node.Portal), owner, exception, node.Real,
+                    node.Place != ReconcilePass.NoPlace ? node.Place : wave.PlaceNow);
             }
         }
 

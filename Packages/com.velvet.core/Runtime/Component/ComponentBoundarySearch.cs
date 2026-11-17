@@ -62,13 +62,12 @@ namespace Velvet
             => CaptureFrom(owner, owner, exception);
 
         // As CaptureFromOwner, with the search starting at start rather than at the component the error belongs to; with
-        // no start, the error goes to ReportUncaught. sequence is the place among the captures the error was thrown at,
-        // where it was taken before the capture (CommitErrors.Capture).
-        internal static void CaptureFrom(ComponentFiber? start, ComponentFiber owner, Exception exception, long sequence = -1)
+        // no start, the error goes to ReportUncaught.
+        internal static void CaptureFrom(ComponentFiber? start, ComponentFiber owner, Exception exception)
             => PropagateFrom(start == null || start.CaughtError == null ? start : start.Parent, owner, exception,
                 // MUTANT_SURVIVES(equivalent, literal): isRenderError reaches only FiberErrorBoundary.TryCatch.
                 // A search queued for the commit does not call it.
-                isRenderError: false, inCommit: true, sequence);
+                isRenderError: false, inCommit: true);
 
         // Where the search for what placing an element threw starts, as React's commitHostPlacement starts it at the
         // return of the fiber that carries the Placement flag: the topmost fiber new in the commit, or a Portal's direct
@@ -100,7 +99,7 @@ namespace Velvet
                 inCommit: !isRenderError && first?.Reconciler?.Context.InCommitPhase == true);
 
         private static void PropagateFrom(ComponentFiber? first, ComponentFiber? throwingFiber, Exception exception,
-            bool isRenderError, bool inCommit, long sequence = -1)
+            bool isRenderError, bool inCommit)
         {
             var current = first;
             while (current != null)
@@ -121,7 +120,7 @@ namespace Velvet
                     continue;
                 }
                 if (current.CatchesErrors && (inCommit
-                        ? CommitErrors.Capture(current, throwingFiber, exception, sequence)
+                        ? CommitErrors.Capture(current, throwingFiber, exception)
                         : FiberErrorBoundary.TryCatch(current, throwingFiber, exception, isRenderError)))
                 {
                     return;
