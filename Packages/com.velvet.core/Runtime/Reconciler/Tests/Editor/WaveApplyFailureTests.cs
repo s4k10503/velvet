@@ -682,6 +682,31 @@ namespace Velvet.Tests
             Assert.That(log.ToString(), Is.EqualTo("caught:PB:attach:Z2:z"));
         }
 
+        [Component(IsErrorBoundary = true, DisplayName = "A")]
+        private static VNode FallsBackToAThrower()
+        {
+            Hooks.UseFallback(_ => V.Custom<AttachThrower>(name: "F", key: "fallback"));
+            return V.Component(ThrowsInRender, new Named("Child"), key: "child");
+        }
+
+        // A boundary that has caught leaves an error of its own fallback's element to the boundary above it, as
+        // react-migration.md's error-boundary row says.
+        [Test]
+        public void Given_ABoundaryThatCatchesAChildsRenderErrorIntoAFallbackElementThatThrowsAsItAttaches_When_ADrainRendersIt_Then_TheBoundaryAboveItTakesThatError()
+        {
+            // Arrange
+            var log = new EventLog();
+            using var mounted = Mount(log, V.Component(FallsBackToAThrower, key: "a"));
+            log.Clear();
+
+            // Act
+            log.Setter<bool>("Child").Invoke(true);
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("render:Child caught:A:render:Child uncaught:attach:F"));
+        }
+
         // Throws from its first DetachFromPanelEvent alone, so the removal that takes it down again at the end of a case
         // does not throw.
         internal sealed class DetachThrower : VisualElement
