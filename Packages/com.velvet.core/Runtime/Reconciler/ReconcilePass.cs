@@ -68,8 +68,8 @@ namespace Velvet
         // The places a wave makes its captures in the order of (CommitErrors.TakeHeld), g counting the ops of its passes
         // ahead of a point. An op the apply runs is at 2g + 1, and what its turn end, ref detach or teardown throws takes
         // that place. An element the walk creates is at 2g where its walk ends, behind the ops of what it holds and ahead
-        // of the turns of the rows after it, since the insert of a row into a container the pass did not create is
-        // recorded only where the container's walk ends, behind those turns. Applied counts the ops the pass
+        // of the turns of the rows after it, since the general walk records its insert where the container's walk ends
+        // (FiberNodeFactory.CreateElement), behind those turns. Applied counts the ops the pass
         // has applied, over every wave, since only their order within a wave is read. Meets is the place of the op Apply
         // runs or of the failure the wave routes, and NoPlace otherwise, where what is thrown takes the place behind
         // every op applied.
