@@ -40,12 +40,15 @@ namespace Velvet.Tests
             _host = null;
         }
 
-        // Stands in for a V.Custom<T> whose element registers a panel-attach callback that throws.
+        // Stands in for a V.Custom<T> whose element registers a panel-attach callback that throws. The message says
+        // whether the element attached as a relocated z-* element, so a case about a z-* placement fails where the
+        // arrangement stops making one.
         internal sealed class AttachThrower : VisualElement
         {
             public AttachThrower()
             {
-                RegisterCallback<AttachToPanelEvent>(_ => throw new InvalidOperationException("attach:" + name));
+                RegisterCallback<AttachToPanelEvent>(_ => throw new InvalidOperationException(
+                    "attach:" + name + (FiberZLayerCoordinator.IsRelocatedReal(this) ? ":z" : "")));
             }
         }
 
@@ -332,7 +335,7 @@ namespace Velvet.Tests
             mounted.GetSchedulerForTest().DrainImmediateForTest();
 
             // Assert
-            Assert.That(log.ToString(), Is.EqualTo("render:Modal caught:B1:attach:R1"));
+            Assert.That(log.ToString(), Is.EqualTo("render:Modal caught:B1:attach:R1:z"));
         }
     }
 }

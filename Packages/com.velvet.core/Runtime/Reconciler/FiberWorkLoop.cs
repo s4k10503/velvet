@@ -671,8 +671,8 @@ namespace Velvet
                     || (!fiber.LaneQueue.Contains(FiberUpdatePriority.Transition)
                         && !fiber.HasPromotedTransition));
 
-        // A flush inside a wave renders ahead of the wave's commit, and the door that opened the wave flushes the
-        // indicator once it has committed.
+        // A flush inside a wave renders ahead of the wave's commit: a door's wave flushes the indicator once it has
+        // committed (FlushAsWave), and a drain renders the tier it would flush in passes of its own.
         private static void FlushCompletedTransitionIndicator(ComponentFiber fiber)
         {
             if (!fiber.PendingReconcileDrainsTransitionWork) return;
