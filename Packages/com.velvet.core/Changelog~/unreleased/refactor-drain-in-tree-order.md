@@ -6,5 +6,6 @@
   one depth rendered in the order they were updated, and a deeper one rendered after every shallower one, wherever
   each sat in the tree.
 - A component rendering nothing as the last of a `V.Portal`'s children now runs its insertion, layout and passive
-  effects ahead of those of a later Portal's children, as React runs them. Before, the later Portal's children could
-  run theirs first.
+  effects ahead of those of a later Portal's children, and a Portal's children now run theirs ahead of a component
+  after the Portal that renders nothing as the last child of the element the Portal renders into, as React runs them.
+  Before, either could run the other way round.
