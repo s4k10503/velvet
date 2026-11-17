@@ -107,15 +107,15 @@ namespace Velvet
         internal static void Hold<TState>(Request kind, object? key, FiberBatchScheduler? owner, TState state, Action<TState> run)
         {
             if (key != null && IsHeld(kind, key)) return;
-            Hold(kind, key, owner, new Deferred<TState>(state, run).Run);
+            Hold(kind, key, owner, new HeldRun<TState>(state, run).Run);
         }
 
-        private sealed class Deferred<TState>
+        private sealed class HeldRun<TState>
         {
             private readonly TState _state;
             private readonly Action<TState> _run;
 
-            internal Deferred(TState state, Action<TState> run)
+            internal HeldRun(TState state, Action<TState> run)
             {
                 _state = state;
                 _run = run;
