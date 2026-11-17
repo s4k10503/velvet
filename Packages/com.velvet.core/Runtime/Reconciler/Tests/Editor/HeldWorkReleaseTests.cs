@@ -705,6 +705,40 @@ namespace Velvet.Tests
             Assert.That(scheduler.ImmediatePendingCount, Is.EqualTo(1));
         }
 
+        // Queues another update of its own from its imperative-handle factory and throws, from its first commit on.
+        [Component]
+        private static VNode QueuesAndThrowsFromItsFirstCommit()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            Hooks.UseImperativeHandle(s_throwingHandle, () =>
+            {
+                setTick.Invoke(tick + 1);
+                throw new InvalidOperationException("handle failed");
+            });
+            return V.Label(text: "thrower");
+        }
+
+        // V.Mount's entry is the one an exception is leaving here: the first commit threw before the mount's own closing
+        // flush, with its update owed the sync lane.
+        [Test]
+        public void Given_AMountWhoseFirstCommitThrowsAfterQueueingAnUpdate_When_TheExceptionLeavesVMount_Then_NothingIsLogged()
+        {
+            // Arrange
+            TestDelegate mount = () => V.Mount(new VisualElement(), V.Component(QueuesAndThrowsFromItsFirstCommit));
+
+            // Act
+            try
+            {
+                mount();
+            }
+            catch (InvalidOperationException)
+            {
+            }
+
+            // Assert — a drain the release ran again would have its throw logged
+            LogAssert.NoUnexpectedReceived();
+        }
+
         // --- A render or commit step reached with no entry on the stack ---
 
         private MountedTree MountALabel()
