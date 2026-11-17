@@ -741,13 +741,16 @@ namespace Velvet.Tests
 
         private static StateUpdater<int> s_setQueuesAndThrows;
 
-        // From its first update on, queues another update of its own from its imperative-handle factory and throws, out
-        // of the drain committing it.
+        private static ComponentFiber s_queuesAndThrowsFiber = null!;
+        private static int s_queuesAndThrowsTick;
+
         [Component]
         private static VNode QueuesAndThrowsOnEveryUpdate()
         {
             var (tick, setTick) = Hooks.UseState(0);
             s_setQueuesAndThrows = setTick;
+            s_queuesAndThrowsFiber = FiberAmbientStack.Current!;
+            s_queuesAndThrowsTick = tick;
             Hooks.UseImperativeHandle(s_throwingHandle, () =>
             {
                 if (tick == 0) return "handle";
@@ -782,6 +785,27 @@ namespace Velvet.Tests
 
             // Assert — the bound of throwing drains where the release drained the root again
             Assert.That(ThrowingDrainsOf(scheduler), Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_AHeldFlushOfARootThatThrows_When_AHeldFlushOfItsFiberFollows_Then_ThatFiberIsNotRenderedAgain()
+        {
+            // Arrange — the throw is logged where the release runs the held flush
+            LogAssert.Expect(LogType.Exception, new Regex("handle failed"));
+            var thrower = V.Mount(new VisualElement(), V.Component(QueuesAndThrowsOnEveryUpdate));
+            _roots.Add(thrower);
+            var scheduler = thrower.GetSchedulerForTest();
+
+            // Act
+            WalkAsking(() =>
+            {
+                s_setQueuesAndThrows.Invoke(1);
+                scheduler.FlushImmediate();
+                FiberWorkLoop.FlushState(s_queuesAndThrowsFiber);
+            });
+
+            // Assert — 2 where the release rendered the fiber again
+            Assert.That(s_queuesAndThrowsTick, Is.EqualTo(1));
         }
 
         [Component]
