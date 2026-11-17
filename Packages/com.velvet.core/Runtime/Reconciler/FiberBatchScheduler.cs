@@ -439,10 +439,13 @@ namespace Velvet
         // Renders the immediate tier when a passive drain queued sync-lane work, then flushes what those renders'
         // commits leave pending in turn. Called once a passive drain outside every immediate drain has run, as
         // React's passive flush ends by flushing sync work.
+        // Not where this root's work threw in the release running, the rule FiberExecutionContext's release keeps: a range
+        // of that root the release renders still runs its passive flush first, and the drain is left to the root's own.
         internal void FlushSyncWorkAfterPassiveEffects()
         {
             if (_inImmediateDrain || _draining || (_reconcileActiveProbe?.Invoke() ?? false)) return;
             if (!_syncLaneQueued || _immediateOrder.Count == 0) return;
+            if (FiberExecutionContext.Threw(this)) return;
             DrainImmediateWork();
         }
 

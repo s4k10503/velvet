@@ -57,6 +57,8 @@ namespace Velvet
 
         internal static bool IsSet => s_set;
 
+        internal static bool Threw(FiberBatchScheduler scheduler) => s_threw.Contains(scheduler);
+
         internal static void Enter<TState>(FiberBatchScheduler? owner, TState state, Action<TState> entry)
         {
             Begin();
