@@ -244,8 +244,9 @@ namespace Velvet
                 if (render.Fiber.IsDisposed || !render.Fiber.IsMounted) continue;
                 render.Before.WriteTo(render.Fiber);
             }
-            // MUTANT_SURVIVES(equivalent, boundary): the first entry of a segment is its owner's own render, recorded as its
-            // body returns and ahead of every render its walk makes, and the loop passes over the owner's.
+            // MUTANT_SURVIVES(equivalent, boundary): the first entry of a segment is its owner's own render.
+            // It is recorded as the owner's body returns, ahead of every render its walk makes, and the loop passes over
+            // the owner's.
             for (var i = _hooks.Count - 1; i >= _hooksAtSegment; i--)
             {
                 var render = _hooks[i];
