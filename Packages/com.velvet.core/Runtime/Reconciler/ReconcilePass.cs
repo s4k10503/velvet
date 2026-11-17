@@ -11,7 +11,7 @@ namespace Velvet
     // ChildListWrites owns what the recorded writes mean and how they apply; the fields here are its state.
     // FiberRenderer owns the journal's ends: the render that opens it completes the pass, or drops it when a suspend
     // that nothing in the pass catches abandons it. A wave holds the journal open across the renders it records into
-    // the pass (FiberWave), and each of those renders completes or drops its own.
+    // the pass (FiberWave), and a render that would have opened it completes or drops a segment of it instead.
     internal sealed class ReconcilePass
     {
         internal enum OpKind : byte { Insert, RemoveAt, RemoveChild, PatchPre, PatchPost, PatchTail, Teardown, FiberBegin, FiberEnd }

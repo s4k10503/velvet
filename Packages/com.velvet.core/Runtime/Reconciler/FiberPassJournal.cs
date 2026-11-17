@@ -102,9 +102,8 @@ namespace Velvet
     // the hook state. React discards the work in progress of an abandoned render the same way.
     //
     // The context's ReconcilePass owns the journal: the render that opens it completes the pass, which closes it, or
-    // drops the pass, which abandons it. A wave holds it open instead (FiberWave), so each render the wave records
-    // into the pass opens a segment of its own, which it ends or abandons, and the wave closes the journal once its
-    // pass has applied.
+    // drops the pass, which abandons it. A wave holds it open instead (FiberWave): a render that would open it opens a
+    // segment of it, which that render ends or abandons, and the wave closes the journal once its pass has applied.
     internal sealed class FiberPassJournal
     {
         private readonly List<SuspenseRender> _hooks = new();

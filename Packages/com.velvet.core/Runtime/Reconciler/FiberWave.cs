@@ -124,9 +124,9 @@ namespace Velvet
             }
         }
 
-        // What the ops and placements of the wave's pass threw, each queued for the nearest boundary above the root
-        // whose render recorded it, which renders its fallback in a follow-up commit, as React's
-        // captureCommitPhaseError queues an error its commit meets. A root the wave's own renders deleted is passed
+        // What the ops and placements of the wave's pass threw, each queued for the boundary that takes an error of the
+        // root whose render recorded it (ComponentBoundarySearch.CaptureFromRoot), which renders its fallback in a
+        // follow-up commit, as React's captureCommitPhaseError queues an error its commit meets. A root the wave's own renders deleted is passed
         // over, since that deletion replaced what its render wrote. Each route runs whether or not the one before it
         // threw, and the first one's exception is rethrown once all of them have run.
         private static void RouteFailures(ReconcilerContext ctx)

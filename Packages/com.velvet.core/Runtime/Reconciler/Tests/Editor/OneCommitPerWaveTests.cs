@@ -7,15 +7,17 @@ using Velvet.TestUtilities;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Pins that the components one wave renders — one drain, or one flush, mount or resumed slice a door runs — all
-    /// render before any of their host writes, deletion cleanups or hook commits apply, as React renders every root an
-    /// update reaches before it commits: a later component reads what an earlier one's deletion cleanup or patch had not
-    /// yet changed, and a component rendered twice in the wave compares its effect dependencies against what the commit
-    /// before the wave left. The guards below hold what the single pass has to keep: a component a deletion earlier in
-    /// the wave takes does not render, a suspend nothing catches gives up only the renders of the component it reached, a
+    /// Pins that the components one wave renders — one drain, or one flush, mount or resumed slice a door runs — render
+    /// before their host writes, deletion cleanups and hook commits apply, short of a Portal's mount, as React renders
+    /// the components one update reaches before it commits: a later component reads what an earlier one's deletion
+    /// cleanup or patch had not yet changed, a component rendered twice in the wave compares its effect dependencies
+    /// against what the commit before the wave left, and a render a resume's settle owes another component commits
+    /// with the resume. The guards below hold what the single pass has to keep: a component a deletion earlier in the
+    /// wave takes does not render, a suspend nothing catches gives up only the renders of the component it reached, a
     /// Portal whose child suspends still hands that suspend to the component that queued it, a VirtualList's rows render
     /// into the range rather than a wave of their own, a flush the wave owes renders without draining the tier inside
-    /// the wave, and an exception out of a commit leaves the next wave free to open.
+    /// the wave, a flush of one component leaves another's queued update to the tier's drain, and an exception out of a
+    /// commit leaves the next wave free to open.
     /// </summary>
     [TestFixture]
     internal sealed class OneCommitPerWaveTests

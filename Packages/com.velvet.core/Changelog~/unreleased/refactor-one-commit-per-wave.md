@@ -1,10 +1,11 @@
 ### Fixed
 
-- The components one batch of updates renders, and the components one flush, mount or resumed time-sliced render
-  renders, now all render before any of their element changes, removals or removed components' cleanups apply, and
-  their effects commit together, as React commits one render. Before, each component's changes applied as soon as it
-  had rendered, so a component rendering later in the batch could read an earlier one's new label text or a value an
-  earlier one's removed component wrote in its layout cleanup.
+- The components one batch of updates renders now render before their element changes, removals and removed
+  components' cleanups apply, and their effects commit together, as React commits one render; so do the components
+  one flush, mount or resumed time-sliced render renders. Before, each component's changes applied as soon as it had
+  rendered, so a component rendering later in the batch could read an earlier one's new label text, or a value an
+  earlier one's removed component wrote in its layout cleanup. A component that mounts a `V.Portal`'s or a
+  `V.WorldSpace`'s children still applies the changes rendered so far before the next component renders.
 - A component a transition's last work owes a render, to take its `UseOptimistic` entries down, now commits with the
   update that settled the transition: the refs that update replaces detach before that component's layout effects run.
   Where that component was also the one the transition updated, a layout effect whose dependency the transition
