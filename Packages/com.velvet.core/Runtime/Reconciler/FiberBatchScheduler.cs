@@ -31,7 +31,7 @@ namespace Velvet
         private const int ConsecutiveThrowingDrainLimit = 3;
         private int _consecutiveThrowingDrains;
 
-        // Bumped each time the bound is reached, which drops every hand-on made before it (RunInNextFrame).
+        // Bumped each time the bound is reached, which drops every droppable hand-on made before it (RunInNextFrame).
         private int _handOnGeneration;
 
         // Insertion-ordered pending queues: the List preserves enqueue order so the drain matches the
@@ -317,13 +317,15 @@ namespace Velvet
         }
 
         // Held work of this root that FiberExecutionContext's release does not run, made in a later frame on the anchor
-        // the tiers' drains are registered on. A root with no anchor registers no drain either, and has no frame. Past
-        // the bound on drains that throw, it is dropped as the updates queued then are.
-        internal void RunInNextFrame(Action run)
+        // the tiers' drains are registered on. A root with no anchor registers no drain either, and has no frame. Where
+        // droppable, as a range or a resume is, it is dropped past the bound on drains that throw, as the updates queued
+        // then are; a resolve, which is made once, runs whatever the count.
+        internal void RunInNextFrame(Action run, bool droppable)
         {
             var anchor = _anchor;
-            if (anchor == null || _consecutiveThrowingDrains >= ConsecutiveThrowingDrainLimit) return;
-            var handOn = new HandOn(this, run, _handOnGeneration);
+            if (anchor == null) return;
+            if (droppable && _consecutiveThrowingDrains >= ConsecutiveThrowingDrainLimit) return;
+            var handOn = new HandOn(this, run, droppable, _handOnGeneration);
             anchor.schedule.Execute(() => PanelSchedulerCallback.Run(anchor, handOn, static held => held.Run()));
         }
 
@@ -331,12 +333,14 @@ namespace Velvet
         {
             private readonly FiberBatchScheduler _scheduler;
             private readonly Action _run;
+            private readonly bool _droppable;
             private readonly int _generation;
 
-            internal HandOn(FiberBatchScheduler scheduler, Action run, int generation)
+            internal HandOn(FiberBatchScheduler scheduler, Action run, bool droppable, int generation)
             {
                 _scheduler = scheduler;
                 _run = run;
+                _droppable = droppable;
                 _generation = generation;
             }
 
@@ -345,7 +349,7 @@ namespace Velvet
             // Then_ThePanelsOtherScheduledWorkHasRun.
             internal void Run()
             {
-                if (_generation != _scheduler._handOnGeneration) return;
+                if (_droppable && _generation != _scheduler._handOnGeneration) return;
                 var completed = false;
                 try
                 {
@@ -361,9 +365,9 @@ namespace Velvet
         }
 
         // A commit that throws and queues itself again on every drain would otherwise throw once a frame for good, the
-        // same reason the nested-update cap drops its runaway rather than re-arming. Reaching the bound drops what was
-        // handed on before it as well: a drain that completes over the emptied tier resets the count, so a hand-on left
-        // to render the dropped update, which stays in its hook's slot, would start the run afresh.
+        // same reason the nested-update cap drops its runaway rather than re-arming. Reaching the bound drops the
+        // droppable hand-ons made before it as well: a drain that completes over the emptied tier resets the count, so a
+        // range left to render the dropped update, which stays in its hook's slot, would start the run afresh.
         private void CountRun(bool completed)
         {
             _consecutiveThrowingDrains = completed ? 0 : _consecutiveThrowingDrains + 1;

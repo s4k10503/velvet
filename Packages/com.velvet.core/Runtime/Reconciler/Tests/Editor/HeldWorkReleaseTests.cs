@@ -1195,7 +1195,7 @@ namespace Velvet.Tests
         {
             var text = Hooks.Use(_ => s_read.Task);
             s_readsReturned++;
-            return V.Label(text: text);
+            return V.Label(name: "read", text: text);
         }
 
         [Component(Memoize = true)]
@@ -1243,6 +1243,32 @@ namespace Velvet.Tests
 
             // Assert — 1 where the release rendered the resolved reader
             Assert.That(s_readsReturned, Is.EqualTo(0));
+        }
+
+        // The handle queues another update on every commit, so the root's frame drains go on throwing until the bound
+        // drops that update, after the read was handed on.
+        [Test]
+        public void Given_ARunawayDrainThatResolvedARead_When_TheRootsFramesRun_Then_TheReaderShowsItsValue()
+        {
+            // Arrange — the bound on throwing drains drops the runaway's queued update once
+            LogAssert.Expect(LogType.Error, new Regex("in a row threw"));
+            using var host = new HeadlessEditorPanelHost();
+            s_read = new VelvetTaskCompletionSource<string>();
+            using var thrower = V.Mount(host.Root, V.Component(ResolvesTheReadThenThrows));
+            s_setResolver.Invoke(1);
+            try
+            {
+                thrower.GetSchedulerForTest().DrainImmediateForTest();
+            }
+            catch (InvalidOperationException)
+            {
+            }
+
+            // Act
+            DrivePasses(host, 6);
+
+            // Assert — null where the bound dropped the resolve along with the runaway's update
+            Assert.That(host.Root.Q<Label>("read")?.text, Is.EqualTo("read"));
         }
 
         private static MountedTree s_disposedFromItsCommit = null!;

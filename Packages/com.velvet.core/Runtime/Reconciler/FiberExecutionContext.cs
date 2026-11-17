@@ -216,7 +216,7 @@ namespace Velvet
                     {
                         RunIsolated(last, static scheduler => scheduler.FlushPendingPassiveEffects());
                     }
-                    if (target != null && s_threw.Contains(target) && TakesUpQueuedUpdates(kind)) target.RunInNextFrame(run!);
+                    if (target != null && s_threw.Contains(target) && TakesUpQueuedUpdates(kind)) target.RunInNextFrame(run!, kind != Request.Resolve);
                     else if (run != null) RunIsolated(run, static held => held());
                     else RunIsolated(target!, static scheduler => scheduler.FlushImmediate());
                     last = target ?? last;

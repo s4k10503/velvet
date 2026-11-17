@@ -34,10 +34,11 @@
 - Once an exception leaves a root's render, commit or `UseEffect` flush, that root's update drain does not run again
   before control returns, even where another entry for this version says one of its updates would render. A
   `V.VirtualList` range of that root, or a `Hooks.Use` or query result of it, that would otherwise be taken up before
-  control returns is taken up in a later frame of that root instead, the range from where the scroller is then, unless
-  three update batches of that root in a row throw first, which drops it with the updates still queued. Its updates
-  render at its next update drain, as in earlier versions, or, where one is an update React gives the sync lane, at the
-  end of the next render, commit or `UseEffect` flush of any root after control has returned, if that comes first.
+  control returns is taken up in a later frame of that root instead, the range from where the scroller is then. A range
+  is dropped instead, with the updates still queued, where three update batches of that root in a row throw first. Its
+  updates render at its next update drain, as in earlier versions, or, where one is an update React gives the sync lane,
+  at the end of the next render, commit or `UseEffect` flush of any root after control has returned, if that comes
+  first.
 - A click handler that runs while no root is rendering, committing or running its `UseEffect`s, and sets another root's
   state outside a transition, renders that root before the click returns, rather than in that root's next frame.
 - A `Hooks.Use` or query result that resolves while a root renders, commits or runs its `UseEffect`s is taken up once
