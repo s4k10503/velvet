@@ -11,13 +11,14 @@ namespace Velvet.Tests
     /// Pins where a wave runs the insertion effects and layout cleanups of a component it updates or mounts, and the
     /// detach of a ref it replaces: as its writes apply, at the component's or the element's turn among the teardowns of
     /// the components it removes, where react-reconciler 19.1's <c>commitMutationEffectsOnFiber</c> runs them in its one
-    /// walk of the tree. The cases red on the base expect that function's order for their trees, read from its source
-    /// rather than run. The rest hold what the layout commit already did: an error those
-    /// cleanups throw reaches the boundary in a follow-up commit, a mounted component's insertion effect runs once more
-    /// under StrictMode and an updated one's does not, the effect runs with the render's own closure, a component row's
-    /// turn ends before its host's, a component a walk's boundary removes runs only its teardown, a render a suspend
-    /// abandons promotes no deps, a component mounted under one a commit has taken finds its element placed, and a wave
-    /// whose work the layout commit has to run keeps that commit's order.
+    /// walk of the tree. The cases red on the base expect what React does for their trees, read from its source rather
+    /// than run. The rest hold what the base already did: an error a write throws is reported ahead of a layout
+    /// cleanup's thrown after it, and one a replaced ref's detach throws reaches the boundary in a follow-up commit; the
+    /// effect runs with the render's own closure; a component a walk's boundary removes runs only its teardown, its
+    /// cleanups ahead of its element's ref detach; a render a suspend abandons promotes no deps; and a wave whose work
+    /// the layout commit has to run keeps that commit's order, where it renders a component row after its host, parks or
+    /// resumes a time-sliced render, mounts a Portal, renders what a settle owes, or mounts a component holding insertion
+    /// effects under one a commit has taken.
     /// </summary>
     [TestFixture]
     internal sealed class TurnEndOrderTests
@@ -263,6 +264,35 @@ namespace Velvet.Tests
             Assert.That(log.ToString(), Is.EqualTo("ins-x:U ins:U lay-x:U ins-x:D lay-x:D lay:U lay:M"));
         }
 
+        // The element around the mount is new with it, so that element is the one React places.
+        [Component]
+        private static VNode MountInANewElementThenDeletion()
+        {
+            var (shown, _) = EventLog.UseState("Shown", false);
+            return V.Fragment(
+                V.Div(key: "m", children: new VNode[]
+                {
+                    shown ? V.Div(key: "new", children: new VNode[] { V.Component(InsertsOnMount, key: "m") }) : null,
+                }),
+                V.Div(key: "x", children: new VNode[] { shown ? null : V.Component(Deleted, key: "d") }));
+        }
+
+        [Test]
+        public void Given_AComponentMountedInAnElementNewWithItAheadOfAnElementWhoseChildIsDeleted_When_OneDrainRendersBoth_Then_TheMountsInsertionEffectRunsFirst()
+        {
+            // Arrange
+            var log = new EventLog();
+            using var mounted = V.Mount(_root, log.Provide(V.Component(MountInANewElementThenDeletion)));
+            log.Clear();
+
+            // Act
+            log.Setter<bool>("Shown").Invoke(true);
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("ins:M ins-x:D lay-x:D"));
+        }
+
         // Reads, as its insertion effect runs, whether the element it rendered is in the tree.
         [Component]
         private static VNode InsertsAndLooksForItsElement()
@@ -287,8 +317,8 @@ namespace Velvet.Tests
 
         // GREEN_ON_BASE(characterization): the base runs a mount's insertion effects once the wave's writes have applied.
         // Making FiberWave.KeepBatchOrderForAPlacement return at once reddens it: the effect then runs at the component's
-        // turn, ahead of the insert that places its element, which React makes first for a component new under one its
-        // commit has taken.
+        // turn, ahead of the insert that places its element, which React makes first where the component itself is what
+        // its commit places: new under one that commit has taken, in an element the commit does not create.
         [Test]
         public void Given_AComponentMountedUnderOneACommitHasTaken_When_ItsInsertionEffectRuns_Then_ItFindsItsElementPlaced()
         {
@@ -356,6 +386,52 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(log.ToString(), Is.EqualTo("caught:Guard:U caught:Guard:D"));
+        }
+
+        // Stands in for a V.Custom<T> whose element registers a panel-attach callback that throws.
+        internal sealed class ThrowsAsItAttaches : VisualElement
+        {
+            public ThrowsAsItAttaches()
+                => RegisterCallback<AttachToPanelEvent>(_ => throw new InvalidOperationException("attach:" + name));
+        }
+
+        // The new element sits in an element of its own, so its insert applies as that element's walk ends, ahead of
+        // the component's turn.
+        [Component(IsErrorBoundary = true, DisplayName = "Guard")]
+        private static VNode GuardOverANewElementAheadOfAnUpdate()
+        {
+            var (shown, _) = EventLog.UseState("Shown", true);
+            Hooks.UseFallback(_ => V.Component(QuietFallback));
+            return V.Fragment(
+                V.Div(key: "a", children: new VNode[]
+                {
+                    shown ? null : V.Custom<ThrowsAsItAttaches>(name: "A", key: "thrower"),
+                }),
+                V.Component(UpdatedThrowing, shown, key: "u"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base reports an error a wave's write throws ahead of a layout cleanup's.
+        // Capturing a failure ReconcilePass.Fail files at a new place as FiberWave.RouteFailures routes it, rather than at
+        // the place it took as it was filed, reddens it: the cleanup's error, which the component's turn captures as it
+        // throws, is then reported first.
+        [Test]
+        public void Given_ABoundaryOverANewElementThatThrowsAsItAttachesAheadOfAComponentWhoseLayoutCleanupThrows_When_TheyCommit_Then_TheAttachErrorIsReportedFirst()
+        {
+            // Arrange — a real panel, which is what runs an attach callback
+            using var host = new HeadlessEditorPanelHost();
+            var mountPoint = new VisualElement();
+            host.Root.Add(mountPoint);
+            var log = new EventLog();
+            using var mounted = V.Mount(mountPoint, log.Provide(V.Component(GuardOverANewElementAheadOfAnUpdate)),
+                log.ReportingErrors());
+            log.Clear();
+
+            // Act
+            log.Setter<bool>("Shown").Invoke(false);
+            mounted.DrainForTest();
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("caught:Guard:attach:A caught:Guard:U"));
         }
 
         private static readonly Func<VisualElement, Action> s_throwingRef =
@@ -439,13 +515,12 @@ namespace Velvet.Tests
         [Component]
         private static VNode StrictInserts()
         {
-            var (value, _) = EventLog.UseState("Strict", 0);
             var log = EventLog.UseLog();
             Hooks.UseInsertionEffect(() =>
             {
                 log.Add("ins:S");
                 return () => log.Add("ins-x:S");
-            }, new object[] { value });
+            }, Array.Empty<object>());
             return V.Div();
         }
 
@@ -453,10 +528,10 @@ namespace Velvet.Tests
         [Component]
         private static VNode HoldsStrictInserts() => V.Component(StrictInserts, key: "s");
 
-        // GREEN_ON_BASE(characterization): the base runs a mount's insertion effect a second time under StrictMode.
-        // Passing false for isMount in FiberEffects.RunTurnEnd reddens it.
+        // React's doubleInvokeEffectsOnFiber runs a mount's layout and passive effects a second time, not its insertion
+        // effects.
         [Test]
-        public void Given_StrictModeOn_When_AComponentWithAnInsertionEffectMounts_Then_TheEffectIsSetUpCleanedUpAndSetUpAgain()
+        public void Given_StrictModeOn_When_AComponentWithAnInsertionEffectMounts_Then_TheEffectIsSetUpOnce()
         {
             // Arrange
             var log = new EventLog();
@@ -466,31 +541,12 @@ namespace Velvet.Tests
             using var mounted = V.Mount(_root, log.Provide(V.Component(HoldsStrictInserts)));
 
             // Assert
-            Assert.That(log.ToString(), Is.EqualTo("ins:S ins-x:S ins:S"));
-        }
-
-        // GREEN_ON_BASE(characterization): the base runs an update's insertion effect once under StrictMode.
-        // Passing true for isMount in FiberEffects.RunTurnEnd reddens it.
-        [Test]
-        public void Given_StrictModeOn_When_AComponentWithAnInsertionEffectUpdates_Then_TheEffectIsCleanedUpAndSetUpOnce()
-        {
-            // Arrange
-            var log = new EventLog();
-            FiberStrictMode.Enabled = true;
-            using var mounted = V.Mount(_root, log.Provide(V.Component(HoldsStrictInserts)));
-            log.Clear();
-
-            // Act
-            log.Setter<int>("Strict").Invoke(1);
-            mounted.GetSchedulerForTest().DrainImmediateForTest();
-
-            // Assert
-            Assert.That(log.ToString(), Is.EqualTo("ins-x:S ins:S"));
+            Assert.That(log.ToString(), Is.EqualTo("ins:S"));
         }
 
         #endregion
 
-        #region A root below a root
+        #region A component row below its host
 
         [Component]
         private static VNode RowWithACleanup()
@@ -527,9 +583,9 @@ namespace Velvet.Tests
             });
         }
 
-        // GREEN_ON_BASE(characterization): the base runs a drain's cleanups in post-order, a row before its host.
-        // Recording a root's turn end where its render returns, in FiberRenderer.EndOwnRowsTurn, reddens it: the host's
-        // turn then ends ahead of the row's, which renders after it.
+        // GREEN_ON_BASE(characterization): the base runs a row's layout cleanup before its host's, in the layout commit.
+        // Deleting the FiberWave.KeepBatchOrder call in Reconciler.BeginOrJoinPass reddens it: the host's turn then ends
+        // as its pass applies, ahead of the row's, which renders after it.
         [Test]
         public void Given_AVirtualListRowAndItsHostBothSet_When_OneDrainRendersBoth_Then_TheRowsLayoutCleanupRunsBeforeTheHosts()
         {
@@ -549,6 +605,68 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(string.Join(" ", s_log), Is.EqualTo("lay-x:R lay-x:H lay:R lay:H"));
+        }
+
+        private static readonly Func<VisualElement, Action> s_evenTickRef = _ =>
+        {
+            s_log.Add("ref:O");
+            return () => s_log.Add("ref-x:O");
+        };
+
+        private static readonly Func<VisualElement, Action> s_oddTickRef = _ =>
+        {
+            s_log.Add("ref:O");
+            return () => s_log.Add("ref-x:O");
+        };
+
+        // The list sits in an element whose ref callback alternates between two delegates, so each render of the host
+        // that moves its tick replaces that ref.
+        [Component]
+        private static VNode ListInAReffedElement()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setHost = setTick;
+            Hooks.UseLayoutEffect(() =>
+            {
+                s_log.Add("lay:H");
+                return () => s_log.Add("lay-x:H");
+            }, new object[] { tick });
+            return V.Div(
+                refCallback: tick % 2 == 0 ? s_evenTickRef : s_oddTickRef,
+                children: new VNode[]
+                {
+                    V.VirtualList(
+                        items: tick == 0 ? Array.Empty<string>() : new[] { "row" },
+                        keySelector: item => item,
+                        itemHeight: 50f,
+                        renderer: item => V.Component(RowWithACleanup, key: item),
+                        overscan: 0,
+                        key: "list"),
+                });
+        }
+
+        // GREEN_ON_BASE(characterization): the base detaches the element's ref after the row inside it is cleaned up.
+        // Deleting the FiberWave.KeepBatchOrder call in Reconciler.BeginOrJoinPass reddens it: the host's walk then
+        // detaches the ref as its pass applies, ahead of the row's cleanup, which renders after it.
+        [Test]
+        public void Given_AVirtualListRowInAnElementWhoseRefItsHostReplaces_When_OneDrainRendersBoth_Then_TheRowsLayoutCleanupRunsBeforeTheRefDetaches()
+        {
+            // Arrange — the viewport height a geometry pass would have left, so the host's render renders a range
+            using var mounted = V.Mount(_root, V.Component(ListInAReffedElement, key: "host"));
+            typeof(FiberVirtualListController)
+                .GetField("_viewportHeight", BindingFlags.NonPublic | BindingFlags.Instance)!
+                .SetValue(mounted.Root.Reconciler.Context.VirtualListControllers[_root.Q<ScrollView>()], 50f);
+            s_setHost.Invoke(1);
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            s_log.Clear();
+
+            // Act
+            s_setRow.Invoke(1);
+            s_setHost.Invoke(2);
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert
+            Assert.That(string.Join(" ", s_log.FindAll(entry => entry.Contains("-x:"))), Is.EqualTo("lay-x:R ref-x:O lay-x:H"));
         }
 
         #endregion
@@ -647,6 +765,98 @@ namespace Velvet.Tests
 
         #endregion
 
+        #region A time-sliced render
+
+        private sealed class Slicing
+        {
+            internal ComponentFiber Fiber;
+            internal int Version;
+            internal int QuietRows;
+        }
+
+        private sealed record SlicedDep(string Name, int Version);
+
+        [Component]
+        private static VNode ProbedSlicedRow(SlicedDep props)
+        {
+            EventLog.UseInsertionAndLayoutEffects(props.Name, new object[] { props.Version });
+            return V.Fragment(Array.Empty<VNode>());
+        }
+
+        [Component]
+        private static VNode QuietSlicedRow() => V.Fragment(Array.Empty<VNode>());
+
+        // Built as PortalCommitOrderEventLogTests.SlicedRows is, and for its reasons.
+        [Component(Compiler = false)]
+        private static VNode SlicedRows(Slicing slicing)
+        {
+            slicing.Fiber = FiberAmbientStack.Current;
+            var version = slicing.Version;
+            var rows = new VNode[3];
+            for (var i = 0; i < rows.Length; i++)
+            {
+                rows[i] = V.Div(key: "row" + i, children: new VNode?[]
+                {
+                    i < slicing.QuietRows
+                        ? V.Component(QuietSlicedRow, key: "row")
+                        : V.Component(ProbedSlicedRow, new SlicedDep("R" + i, version), key: "row"),
+                });
+            }
+            return V.Fragment(rows);
+        }
+
+        private static void SliceAndDrain(EventLog log, MountedTree mounted, Slicing slicing)
+        {
+            slicing.Version = 1;
+            slicing.Fiber!.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
+            slicing.Fiber.FlushStateWithTinyBudgetForTest();
+            log.Add(slicing.Fiber.HasPendingReconcileWorkForTest() ? "parked" : "never-parked");
+            slicing.Fiber.DrainTimeSlicedReconcileForTest();
+            mounted.DrainForTest();
+        }
+
+        // GREEN_ON_BASE(characterization): the base runs none of a parked render's cleanups while it is parked.
+        // Deleting the FiberWave.KeepBatchOrder call in Reconciler.MarkOwnerParked reddens it: the first slice's row then
+        // runs its cleanups as that slice's writes apply, ahead of the park.
+        [Test]
+        public void Given_ATimeSlicedTransitionOfRowsWithEffects_When_ItsFirstSliceParks_Then_NoCleanupRunsAheadOfThePark()
+        {
+            // Arrange
+            var log = new EventLog();
+            var slicing = new Slicing();
+            using var mounted = V.Mount(_root, log.Provide(V.Component(SlicedRows, slicing)));
+            mounted.DrainForTest();
+            log.Clear();
+
+            // Act
+            SliceAndDrain(log, mounted, slicing);
+
+            // Assert — a pass that never parked logs another marker first
+            Assert.That(log.ToString(), Does.StartWith("parked "));
+        }
+
+        // GREEN_ON_BASE(characterization): the base runs a time-sliced render's cleanups in tree order once it completes.
+        // Deleting the FiberWave.KeepBatchOrder call in Reconciler.ContinueReconcileWork reddens it: the slice that
+        // completes then runs its own row's cleanups as its writes apply, ahead of the rows earlier slices rendered.
+        [Test]
+        public void Given_ATimeSlicedTransitionWhoseFirstSlicedRowHasNoEffects_When_ItsSlicesComplete_Then_TheRowsCleanupsRunInTreeOrder()
+        {
+            // Arrange — the row the first slice renders has no effect, so nothing that slice renders has a turn to run
+            var log = new EventLog();
+            var slicing = new Slicing { QuietRows = 1 };
+            using var mounted = V.Mount(_root, log.Provide(V.Component(SlicedRows, slicing)));
+            mounted.DrainForTest();
+            log.Clear();
+
+            // Act
+            SliceAndDrain(log, mounted, slicing);
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("parked ins-x:R1 ins:R1 lay-x:R1 ins-x:R2 ins:R2 lay-x:R2 lay:R1 lay:R2"));
+        }
+
+        #endregion
+
         #region A render a suspend abandons
 
         private static VelvetTaskCompletionSource<string> s_read;
@@ -682,8 +892,9 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base leaves the deps of a render a suspend abandons unpromoted.
-        // Returning true at the end of FiberPassJournal.Holds reddens it: the abandoned render's turn then promotes them,
-        // and the render that retries finds its insertion effect's deps unchanged.
+        // Promoting the insertion effects' deps in FiberEffects.RunTurnEnd whether or not the pass journal holds the render
+        // reddens it: the abandoned render's turn then promotes them, and the render that retries finds its insertion
+        // effect's deps unchanged.
         [Test]
         public void Given_AComponentWhoseInsertionEffectDepsChangeInARenderASuspendAbandons_When_TheReadResolves_Then_TheRetryRunsTheEffect()
         {
@@ -737,7 +948,7 @@ namespace Velvet.Tests
         private static VNode PortalThenRefSwap()
             => V.Fragment(V.Component(OpensAPortal, key: "p"), V.Component(SwapsARef, key: "s"));
 
-        // GREEN_ON_BASE(characterization): the base runs a drain's cleanups and ref detaches in tree order.
+        // GREEN_ON_BASE(characterization): the base runs this layout cleanup and this ref detach in the layout commit.
         // Deleting the RunsTurnEnds check from the RefDetach arm of ChildListWrites.ApplyOp reddens it: the ref then
         // detaches as the second pass applies, ahead of the first component's cleanup.
         [Test]
@@ -774,7 +985,7 @@ namespace Velvet.Tests
         private static VNode PortalThenLayout()
             => V.Fragment(V.Component(OpensAPortal, key: "p"), V.Component(LaysOutAfter, key: "s"));
 
-        // GREEN_ON_BASE(characterization): the base runs every cleanup of a drain in the layout commit, in tree order.
+        // GREEN_ON_BASE(characterization): the base runs both layout cleanups in the layout commit, the first's first.
         // Deleting the RunsTurnEnds check from the FiberEnd arm of ChildListWrites.ApplyOp reddens it: the later
         // component's cleanup then runs as the second pass applies, ahead of the first's.
         [Test]
@@ -926,76 +1137,16 @@ namespace Velvet.Tests
             return V.Label(text: "reader:" + value);
         }
 
+        #endregion
+
+        #region A reveal
+
+        // Updated by its own state, so the drain renders it whether or not the reveal renders its parent again.
         [Component]
-        private static VNode InsertsWhileHidden(int tick)
+        private static VNode UpdatedAheadOfTheSuspense()
         {
-            var log = EventLog.UseLog();
-            Hooks.UseInsertionEffect(() =>
-            {
-                log.Add("ins:H");
-                return () => log.Add("ins-x:H");
-            }, new object[] { tick });
-            return V.Div();
-        }
-
-        // Handed a new object at every render of its parent, so each of those renders it and changes its effect's deps.
-        [Component]
-        private static VNode InsertsAfterTheSuspense(object renders)
-        {
-            var log = EventLog.UseLog();
-            Hooks.UseInsertionEffect(() =>
-            {
-                log.Add("ins:L");
-                return () => log.Add("ins-x:L");
-            }, new object[] { renders });
-            return V.Div();
-        }
-
-        [Component]
-        private static VNode SuspenseThenALaterComponent()
-        {
-            var (blocked, _) = EventLog.UseState("Blocked", 0);
-            var (tick, _) = EventLog.UseState("Tick", 0);
-            return V.Div(children: new VNode[]
-            {
-                V.Suspense(fallback: V.Label(text: "loading"), children: new VNode[]
-                {
-                    V.Component(InsertsWhileHidden, tick, key: "h"),
-                    V.Component(BlockingReader, blocked, key: "r"),
-                }),
-                V.Component(InsertsAfterTheSuspense, new object(), key: "l"),
-            });
-        }
-
-        // GREEN_ON_BASE(characterization): the base runs a revealed component's held insertion effect in tree order.
-        // Deleting the FiberWave.KeepBatchOrder call FiberEffects.ShowLayoutEffects makes reddens it: the later
-        // component's insertion effect then runs as the reveal's writes apply, ahead of the revealed one's.
-        [Test]
-        public void Given_AComponentRenderedWhileASuspenseHidesIt_When_TheSuspenseRevealsItBesideALaterComponentThatRendersAgain_Then_TheRevealedComponentsInsertionEffectRunsFirst()
-        {
-            // Arrange — the hidden component renders again behind the fallback, which holds its insertion effect
-            var log = new EventLog();
-            using var mounted = V.Mount(_root, log.Provide(V.Component(SuspenseThenALaterComponent)),
-                new MountOptions { OnCaughtError = (_, _) => { } });
-            log.Setter<int>("Blocked").Invoke(1);
-            mounted.GetSchedulerForTest().DrainImmediateForTest();
-            log.Setter<int>("Tick").Invoke(1);
-            mounted.GetSchedulerForTest().DrainImmediateForTest();
-            log.Clear();
-
-            // Act
-            s_source.TrySetResult(5);
-            mounted.GetSchedulerForTest().DrainImmediateForTest();
-
-            // Assert
-            Assert.That(log.ToString(), Is.EqualTo("ins-x:H ins:H ins-x:L ins:L"));
-        }
-
-        // Handed a new object at every render of its parent, as InsertsAfterTheSuspense is, ahead of the Suspense.
-        [Component]
-        private static VNode UpdatedAheadOfTheSuspense(object renders)
-        {
-            EventLog.UseInsertionAndLayoutEffects("U", new object[] { renders });
+            var (value, _) = EventLog.UseState("U", 0);
+            EventLog.UseInsertionAndLayoutEffects("U", new object[] { value });
             return V.Div();
         }
 
@@ -1019,7 +1170,7 @@ namespace Velvet.Tests
             var (blocked, _) = EventLog.UseState("Blocked", 0);
             return V.Div(children: new VNode[]
             {
-                V.Component(UpdatedAheadOfTheSuspense, new object(), key: "u"),
+                V.Component(UpdatedAheadOfTheSuspense, key: "u"),
                 V.Suspense(fallback: V.Component(FallbackWithCleanups, key: "f"), children: new VNode[]
                 {
                     V.Component(HiddenWithNothingHeld, key: "h"),
@@ -1029,9 +1180,9 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AComponentUpdatedAheadOfASuspenseThatHoldsNoInsertionEffect_When_TheSuspenseRevealsAndRemovesItsFallback_Then_TheUpdatedComponentsCleanupsRunFirst()
+        public void Given_AComponentUpdatedAheadOfASuspense_When_OneDrainRendersItAndTheSuspensesRevealThatRemovesItsFallback_Then_TheUpdatedComponentsCleanupsRunFirst()
         {
-            // Arrange — the hidden component does not render behind the fallback, so it holds no insertion effect
+            // Arrange
             var log = new EventLog();
             using var mounted = V.Mount(_root, log.Provide(V.Component(UpdatedThenARevealedSuspense)),
                 new MountOptions { OnCaughtError = (_, _) => { } });
@@ -1040,6 +1191,7 @@ namespace Velvet.Tests
             log.Clear();
 
             // Act
+            log.Setter<int>("U").Invoke(1);
             s_source.TrySetResult(5);
             mounted.GetSchedulerForTest().DrainImmediateForTest();
 
