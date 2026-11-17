@@ -156,7 +156,7 @@ namespace Velvet
         private readonly HashSet<ComponentFiber> _unreached = new();
         private readonly List<ComponentFiber> _walk = new();
 
-        // Each fiber above a VirtualList row the last walk passed through, with its render count then
+        // Each fiber above a component row the last walk passed through, with its render count then
         // (AFiberAboveARowRendered), and OrderRestInTree's copy of what the drain has yet to render.
         private readonly List<(ComponentFiber Fiber, int Renders)> _aboveRows = new();
         private readonly List<ComponentFiber> _rest = new();
@@ -720,8 +720,8 @@ namespace Velvet
                     // Not mirrored on the delayed tier: skipping a delayed entry that holds Normal or Urgent work
                     // would hold that work back rather than keep it from running early.
                     FiberWorkLoop.FlushStateWork(fiber);
-                    // Unlike a fiber an ancestor's render subsumes, a VirtualList row that render moves still renders
-                    // by its own entry, so once a fiber above a row the last walk passed through has rendered, what
+                    // Unlike a fiber an ancestor's render subsumes, a component row that render moves still renders
+                    // by its own entry, so once a fiber above one the last walk passed through has rendered, what
                     // the drain has yet to render takes its order from the tree again.
                     if (AFiberAboveARowRendered()) OrderRestInTree(i);
                 }
@@ -796,8 +796,9 @@ namespace Velvet
                 var fiber = _walk[_walk.Count - 1];
                 _walk.RemoveAt(_walk.Count - 1);
                 if (_unreached.Remove(fiber)) into.Add(fiber);
-                // A VirtualList row is the one child a mount places in an element of its own rather than inline in its
-                // parent's (FiberNodeFactory.CreateForComponentNode).
+                // A component row, the component a VirtualList's renderer returns as a row, is the one child a
+                // mount places in an element of its own rather than inline in its parent's
+                // (FiberNodeFactory.CreateForComponentNode).
                 if (!fiber.IsInlineMounted)
                 {
                     for (var above = fiber.Parent; above != null; above = above.Parent)

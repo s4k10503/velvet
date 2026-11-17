@@ -11,8 +11,7 @@ namespace Velvet.Tests
     /// Pins the order one drain of the immediate tier renders the components queued on it, as one
     /// <see cref="EventLog"/> string per case: of two components, neither holding the other and neither inside a third
     /// queued with them, the one earlier in the tree renders first, whichever setter ran first, as React 19 renders
-    /// them; VirtualList rows queued with a render that moves them render in their new order; and a component the
-    /// drain's walk cannot reach from the root renders after the ones it can.
+    /// them; and a component the drain's walk cannot reach from the root renders after the ones it can.
     /// </summary>
     [TestFixture]
     internal sealed class DrainTreeOrderTests
