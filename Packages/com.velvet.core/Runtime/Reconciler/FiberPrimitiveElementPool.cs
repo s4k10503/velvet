@@ -33,6 +33,8 @@ namespace Velvet
             // the control's own structure rather than a previous tenant's content. They reach the same
             // outcome by exclusion instead (FiberElementPoolReset.DetachForeignChildren).
             // PoolableWidgetChildBaselineTests pins which types those are.
+            // MUTANT_SURVIVES(equivalent, boundary): a childless button has nothing for ChildListWrites.Clear to take out.
+            // The same test in ResetLabelForReuse says what that call does for a label without children.
             if (button.childCount > 0) ChildListWrites.Clear(button);
 
             FiberElementPoolReset.ResetClassListAndCommon(button, TextElement.ussClassName, Button.ussClassName);

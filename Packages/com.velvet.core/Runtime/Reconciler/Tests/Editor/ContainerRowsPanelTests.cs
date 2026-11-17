@@ -154,6 +154,35 @@ namespace Velvet.Tests
             Assert.That(RowModelAccess.Peek(bystander)!.TotalCount, Is.EqualTo(3));
         }
 
+        // GREEN_ON_BASE(characterization): a change announced inside a write for a child marks that child's parent.
+        // The write does not touch that parent, so the mark is what has it compared when the write ends. Drop
+        // `NoteDuringOp(element.hierarchy.parent);` in NoteHierarchyChange and its model keeps the two rows it held.
+        [Test]
+        public void Given_AChildAddedBehindItsParentsModelOutsideTheWrite_When_ItsArrivalIsAnnouncedFromTheWritesDetach_Then_ThatParentsModelIsRebuilt()
+        {
+            // Arrange — the case above, with the announcement naming the child that arrived rather than the parent it
+            // arrived in.
+            var root = _window.rootVisualElement;
+            var source = new VisualElement();
+            var destination = new VisualElement();
+            var bystander = new VisualElement();
+            ChildListWrites.Add(root, source);
+            ChildListWrites.Add(root, destination);
+            ChildListWrites.Add(bystander, new VisualElement());
+            ChildListWrites.Add(bystander, new VisualElement());
+            var arrival = new VisualElement();
+            bystander.Add(arrival);
+            var child = new VisualElement();
+            ChildListWrites.Add(source, child);
+            child.RegisterCallback<DetachFromPanelEvent>(_ => ChildListWrites.NoteHierarchyChange(arrival));
+
+            // Act
+            ChildListWrites.Add(destination, child);
+
+            // Assert
+            Assert.That(RowModelAccess.Peek(bystander)!.TotalCount, Is.EqualTo(3));
+        }
+
         // GREEN_ON_BASE(characterization): the model drops a removed child before the call that detaches it.
         [Test]
         public void Given_AChildOfTwo_When_ItIsRemoved_Then_TheModelHoldsOneWhileItLeaves()

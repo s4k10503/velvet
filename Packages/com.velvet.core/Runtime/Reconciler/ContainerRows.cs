@@ -73,6 +73,8 @@ namespace Velvet
             {
                 Tally(Kinds[at], -1);
                 Length--;
+                // MUTANT_SURVIVES(equivalent, boundary): for the last row both copies move no rows.
+                // Each starts at the old length, which neither array is shorter than, so neither throws.
                 if (at < Length)
                 {
                     Array.Copy(Elements, at + 1, Elements, at, Length - at);
@@ -86,6 +88,11 @@ namespace Velvet
                 Array.Clear(Elements, 0, Length);
                 Length = 0;
                 Rendered = 0;
+                // MUTANT_SURVIVES(equivalent, line removed): Anchors only lets ToPhysical skip a pointless scan.
+                // ToPhysical is the only code that tests it, and skips a block at zero to spare scanning one with no
+                // row but Invisible ones. Left uncleared, it still counts at least the block's rows that are not
+                // Invisible, so it reads zero only where they number zero, and where it reads above zero over a block
+                // with none of them, the scan finds none and moves on as the skip would.
                 Anchors = 0;
             }
 
@@ -114,6 +121,7 @@ namespace Velvet
         // The exclusive bound of the slot range: what LogicalChildSlots.Count returns.
         internal int RenderedCount => _rendered;
 
+        // MUTANT_SURVIVES(equivalent, arithmetic): nothing in the repository reads SkippedCount.
         internal int SkippedCount => _total - _rendered;
 
         internal VisualElement? FirstElement => _total == 0 ? null : BlockAt(0).Elements[0];
@@ -240,6 +248,8 @@ namespace Velvet
         // LogicalChildSlots.ToLogical, over the model.
         internal int ToLogical(int physical)
         {
+            // MUTANT_SURVIVES(equivalent, boundary): at physical 0 the limit below is 0, so the loop never runs.
+            // What is returned is then the 0 the count starts from.
             if (physical <= 0) return 0;
             var limit = Math.Min(physical, _total);
             var rendered = 0;
