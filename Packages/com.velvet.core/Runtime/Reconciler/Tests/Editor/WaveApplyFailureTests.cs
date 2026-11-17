@@ -60,6 +60,7 @@ namespace Velvet.Tests
         private static VNode MountsAThrower(Named props)
         {
             var (shown, _) = EventLog.UseState(props.Name, false);
+            EventLog.UseRender(props.Name);
             return V.Div(children: new VNode[]
             {
                 shown ? V.Custom<AttachThrower>(name: props.Name, key: "thrower") : null,
@@ -71,6 +72,7 @@ namespace Velvet.Tests
         private static VNode MountsAStackedThrower(Named props)
         {
             var (shown, _) = EventLog.UseState(props.Name, false);
+            EventLog.UseRender(props.Name);
             return V.Div(className: "relative", children: new VNode[]
             {
                 shown ? V.Custom<AttachThrower>(className: "absolute z-10", name: props.Name, key: "thrower") : null,
@@ -81,6 +83,7 @@ namespace Velvet.Tests
         private static VNode MountsADiv(Named props)
         {
             var (shown, _) = EventLog.UseState(props.Name, false);
+            EventLog.UseRender(props.Name);
             return V.Div(children: new VNode[] { shown ? V.Div(name: props.Name, key: "div") : null });
         }
 
@@ -88,6 +91,7 @@ namespace Velvet.Tests
         private static VNode ThrowsInRender(Named props)
         {
             var (throws, _) = EventLog.UseState(props.Name, false);
+            EventLog.UseRender(props.Name);
             if (throws) throw new InvalidOperationException("render:" + props.Name);
             return V.Div();
         }
@@ -103,6 +107,7 @@ namespace Velvet.Tests
         private static VNode ShowsAPortal(Named props)
         {
             var (shown, _) = EventLog.UseState(props.Name, false);
+            EventLog.UseRender(props.Name);
             return V.Div(children: new VNode[]
             {
                 shown ? V.Portal(s_portalTarget, new VNode[] { V.Component(Modal, key: "modal") }, key: "portal") : null,
@@ -122,6 +127,7 @@ namespace Velvet.Tests
         private static VNode MountsTwoThrowers()
         {
             var (shown, _) = EventLog.UseState("Both", false);
+            EventLog.UseRender("Both");
             return V.Div(children: new VNode[]
             {
                 shown ? V.Custom<AttachThrower>(name: "X", key: "x") : null,
@@ -223,7 +229,7 @@ namespace Velvet.Tests
             mounted.GetSchedulerForTest().DrainImmediateForTest();
 
             // Assert
-            Assert.That(log.ToString(), Is.EqualTo("caught:B:attach:A caught:B:attach:C"));
+            Assert.That(log.ToString(), Is.EqualTo("render:A render:C caught:B:attach:A caught:B:attach:C"));
         }
 
         [Test]
@@ -239,7 +245,7 @@ namespace Velvet.Tests
             mounted.GetSchedulerForTest().DrainImmediateForTest();
 
             // Assert
-            Assert.That(log.ToString(), Is.EqualTo("caught:B:attach:X caught:B:attach:Y"));
+            Assert.That(log.ToString(), Is.EqualTo("render:Both caught:B:attach:X caught:B:attach:Y"));
         }
 
         [Test]
@@ -256,7 +262,7 @@ namespace Velvet.Tests
             mounted.GetSchedulerForTest().DrainImmediateForTest();
 
             // Assert
-            Assert.That(log.ToString(), Is.EqualTo("caught:B:render:C"));
+            Assert.That(log.ToString(), Is.EqualTo("render:A render:C caught:B:render:C"));
         }
 
         // GREEN_ON_BASE(characterization): the base catches the error in the pass of the component that threw it.
@@ -276,7 +282,7 @@ namespace Velvet.Tests
             mounted.GetSchedulerForTest().DrainImmediateForTest();
 
             // Assert
-            Assert.That(log.ToString(), Is.EqualTo("caught:B1:attach:R1"));
+            Assert.That(log.ToString(), Is.EqualTo("render:R1 render:R2 caught:B1:attach:R1"));
         }
 
         // GREEN_ON_BASE(characterization): the base catches the error in the pass of the component that threw it.
@@ -295,7 +301,7 @@ namespace Velvet.Tests
             mounted.GetSchedulerForTest().DrainImmediateForTest();
 
             // Assert
-            Assert.That(log.ToString(), Is.EqualTo("caught:B2:attach:R2"));
+            Assert.That(log.ToString(), Is.EqualTo("render:R1 render:R2 caught:B2:attach:R2"));
         }
 
         // GREEN_ON_BASE(characterization): the base catches the error in the first component's pass, apart from the Portal's.
@@ -315,7 +321,7 @@ namespace Velvet.Tests
             mounted.GetSchedulerForTest().DrainImmediateForTest();
 
             // Assert
-            Assert.That(log.ToString(), Is.EqualTo("render:Modal caught:B1:attach:R1"));
+            Assert.That(log.ToString(), Is.EqualTo("render:R1 render:R2 render:Modal caught:B1:attach:R1"));
         }
 
         // GREEN_ON_BASE(characterization): the base drains the z-* placement in the first component's own pass.
@@ -335,7 +341,7 @@ namespace Velvet.Tests
             mounted.GetSchedulerForTest().DrainImmediateForTest();
 
             // Assert
-            Assert.That(log.ToString(), Is.EqualTo("render:Modal caught:B1:attach:R1:z"));
+            Assert.That(log.ToString(), Is.EqualTo("render:R1 render:R2 render:Modal caught:B1:attach:R1:z"));
         }
     }
 }

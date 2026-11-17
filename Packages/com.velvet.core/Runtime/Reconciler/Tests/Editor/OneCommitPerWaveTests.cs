@@ -49,6 +49,7 @@ namespace Velvet.Tests
         private static StateUpdater<int> s_setHandleTick;
         private static ComponentFiber s_handleOwner;
         private static ComponentFiber s_bystander;
+        private static ComponentFiber s_child;
         private static readonly List<string> s_resumeLog = new();
 
         [SetUp]
@@ -75,6 +76,7 @@ namespace Velvet.Tests
             s_setHandleTick = default;
             s_handleOwner = null;
             s_bystander = null;
+            s_child = null;
             s_resumeLog.Clear();
         }
 
@@ -86,7 +88,12 @@ namespace Velvet.Tests
         [Component]
         private static VNode WritesInItsCleanup()
         {
-            Hooks.UseLayoutEffect(() => () => s_written = 1, Array.Empty<object>());
+            var log = EventLog.UseLog();
+            Hooks.UseLayoutEffect(() => () =>
+            {
+                s_written = 1;
+                log.Add("written");
+            }, Array.Empty<object>());
             return V.Div();
         }
 
@@ -123,7 +130,7 @@ namespace Velvet.Tests
             mounted.GetSchedulerForTest().DrainImmediateForTest();
 
             // Assert
-            Assert.That(log.ToString(), Is.EqualTo("render:Reader=0"));
+            Assert.That(log.ToString(), Is.EqualTo("render:Reader=0 written"));
         }
 
         [Component]
@@ -133,11 +140,18 @@ namespace Velvet.Tests
             return V.Label(text: text, refCallback: s_holdLabel);
         }
 
+        // Reads the label again in a layout effect, at every render since no dependencies are given.
         [Component]
         private static VNode LabelReader()
         {
+            var log = EventLog.UseLog();
             EventLog.UseState("ReadLabel", 0);
             EventLog.UseRender("LabelReader", s_label?.text);
+            Hooks.UseLayoutEffect((Func<Action>)(() =>
+            {
+                log.Add("read:" + s_label?.text);
+                return null;
+            }));
             return V.Div();
         }
 
@@ -159,7 +173,7 @@ namespace Velvet.Tests
             mounted.GetSchedulerForTest().DrainImmediateForTest();
 
             // Assert
-            Assert.That(log.ToString(), Is.EqualTo("render:LabelReader=before"));
+            Assert.That(log.ToString(), Is.EqualTo("render:LabelReader=before read:after"));
         }
 
         #endregion
@@ -183,6 +197,7 @@ namespace Velvet.Tests
         private static VNode DependencyHolder()
         {
             var log = EventLog.UseLog();
+            EventLog.UseRender("H");
             var (dependency, setDependency) = Hooks.UseState(0);
             var (shown, add) = Hooks.UseOptimistic<string, string>("base", (current, action) => current + "+" + action);
             s_setDependency = setDependency;
@@ -221,7 +236,7 @@ namespace Velvet.Tests
             mounted.GetSchedulerForTest().DrainDelayedForTest();
 
             // Assert
-            Assert.That(log.ToString(), Is.EqualTo("lay-x:H lay:H"));
+            Assert.That(log.ToString(), Is.EqualTo("render:H render:H lay-x:H lay:H"));
         }
 
         #endregion
@@ -231,6 +246,7 @@ namespace Velvet.Tests
         [Component]
         private static VNode DeletedChild()
         {
+            s_child = FiberAmbientStack.Current;
             EventLog.UseState("Child", 0);
             EventLog.UseRender("Child");
             return V.Div();
@@ -282,6 +298,7 @@ namespace Velvet.Tests
         private static VNode SuspendsWithNothingAbove()
         {
             var (reads, _) = EventLog.UseState("Reads", false);
+            EventLog.UseInsertionAndLayoutEffects("S", new object[] { reads });
             Hooks.Use(() => reads ? s_read.Task : VelvetTask.FromResult("read"), reads);
             return V.Div();
         }
@@ -467,8 +484,8 @@ namespace Velvet.Tests
             // Act
             FiberWorkLoop.FlushState(s_bystander);
 
-            // Assert
-            Assert.That(log.ToString(), Is.EqualTo("render:Bystander"));
+            // Assert — null where the other component holds no update the flush could have rendered
+            Assert.That(s_child.IsDirty ? log.ToString() : null, Is.EqualTo("render:Bystander"));
         }
 
         #region Work a wave runs inside another's
@@ -522,7 +539,8 @@ namespace Velvet.Tests
             return V.Label(text: "other-starter");
         }
 
-        // Holds an entry the first transition owns and an update of the second's.
+        // Holds an entry the first transition owns and an update of the second's, and logs what it shows at every
+        // commit, since no dependencies are given.
         [Component(Compiler = false)]
         private static VNode StarvedHolder()
         {
@@ -531,6 +549,11 @@ namespace Velvet.Tests
             var (shown, add) = Hooks.UseOptimistic<string, string>("base", (current, action) => current + "+" + action);
             s_setOther = setOther;
             s_add = add;
+            Hooks.UseLayoutEffect((Func<Action>)(() =>
+            {
+                s_queuedCommits.Add("holder:" + shown + ":" + other);
+                return null;
+            }));
             return V.Label(text: shown + ":" + other);
         }
 
@@ -595,8 +618,8 @@ namespace Velvet.Tests
             // Act
             s_rows.DrainTimeSlicedReconcileForTest();
 
-            // Assert
-            Assert.That(string.Join(" ", s_queuedCommits), Is.EqualTo("queued:1"));
+            // Assert — the holder shows the second transition's update only where its owed flush rendered that lane
+            Assert.That(string.Join(" ", s_queuedCommits), Is.EqualTo("holder:base:1 queued:1"));
         }
 
         // Holds an entry the transition owns, so the resume that lands the transition's work owes it a render, and
@@ -699,12 +722,14 @@ namespace Velvet.Tests
             using var mounted = V.Mount(new VisualElement(), log.Provide(V.Component(HandleOwner)));
             s_handleThrowsLeft = 1;
             s_setHandleTick.Invoke(1);
+            var threw = false;
             try
             {
                 FiberWorkLoop.FlushState(s_handleOwner);
             }
             catch (InvalidOperationException)
             {
+                threw = true;
             }
             log.Clear();
 
@@ -712,8 +737,8 @@ namespace Velvet.Tests
             s_setHandleTick.Invoke(2);
             FiberWorkLoop.FlushState(s_handleOwner);
 
-            // Assert
-            Assert.That(log.ToString(), Is.EqualTo("lay:2"));
+            // Assert — null where the first flush's commit threw nothing
+            Assert.That(threw ? log.ToString() : null, Is.EqualTo("lay:2"));
         }
 
         #endregion
