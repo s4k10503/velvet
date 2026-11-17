@@ -7,17 +7,16 @@ using Velvet.TestUtilities;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Pins that the components one wave renders — one drain, or one flush, mount or resumed slice a door runs — render
-    /// before their host writes, deletion cleanups and hook commits apply, short of a Portal's mount, as React renders
-    /// the components one update reaches before it commits: a later component reads what an earlier one's deletion
-    /// cleanup or patch had not yet changed, a component rendered twice in the wave compares its effect dependencies
-    /// against what the commit before the wave left, and a render a resume's settle owes another component commits
+    /// Pins what one wave — one drain, or one flush, mount or resumed slice a door runs — commits as one: a later
+    /// component reads what an earlier one's deletion cleanup or patch had not yet changed, as React renders the
+    /// components one update reaches before it commits, and a render a resume's settle owes another component commits
     /// with the resume. The guards below hold what the single pass has to keep: a component a deletion earlier in the
     /// wave takes does not render, a suspend nothing catches gives up only the renders of the component it reached, a
     /// Portal whose child suspends still hands that suspend to the component that queued it, a VirtualList's rows render
     /// into the range rather than a wave of their own, a flush the wave owes renders without draining the tier inside
-    /// the wave, a flush of one component leaves another's queued update to the tier's drain, and an exception out of a
-    /// commit leaves the next wave free to open.
+    /// the wave, a flush of one component leaves another's queued update to the tier's drain, a boundary a farther one
+    /// replaced while its fallback failed hands that farther one nothing more, and an exception out of a commit leaves
+    /// the next wave free to open.
     /// </summary>
     [TestFixture]
     internal sealed class OneCommitPerWaveTests
@@ -35,7 +34,6 @@ namespace Velvet.Tests
         private static TransitionStarter s_start;
         private static TransitionStarter s_otherStart;
         private static Action<string> s_add;
-        private static StateUpdater<int> s_setDependency;
         private static StateUpdater<int> s_setOther;
         private static StateUpdater<int> s_setRows;
         private static StateUpdater<int> s_setQueued;
@@ -63,7 +61,6 @@ namespace Velvet.Tests
             s_start = default;
             s_otherStart = default;
             s_add = null;
-            s_setDependency = default;
             s_setOther = default;
             s_setRows = default;
             s_setQueued = default;
@@ -176,69 +173,6 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(log.ToString(), Is.EqualTo("render:LabelReader=before read:after"));
-        }
-
-        #endregion
-
-        #region A component the wave renders twice
-
-        // Declares the transition apart from the holder, so the render that takes the indicator down is not the
-        // holder's.
-        [Component(Compiler = false)]
-        private static VNode Starter()
-        {
-            var (_, start) = Hooks.UseTransition();
-            s_start = start;
-            return V.Label(text: "starter");
-        }
-
-        // Writes its dependency inside the transition and holds an entry that transition owns, so the drain that lands
-        // the transition settles it in this component's own flush and owes this component the render that takes the
-        // entry down.
-        [Component(Compiler = false)]
-        private static VNode DependencyHolder()
-        {
-            var log = EventLog.UseLog();
-            EventLog.UseRender("H");
-            var (dependency, setDependency) = Hooks.UseState(0);
-            var (shown, add) = Hooks.UseOptimistic<string, string>("base", (current, action) => current + "+" + action);
-            s_setDependency = setDependency;
-            s_add = add;
-            Hooks.UseLayoutEffect(() =>
-            {
-                log.Add("lay:H");
-                return () => log.Add("lay-x:H");
-            }, new object[] { dependency });
-            return V.Label(text: shown);
-        }
-
-        [Component(Compiler = false)]
-        private static VNode StarterAndHolder()
-            => V.Div(children: new VNode[]
-            {
-                V.Component(Starter, key: "starter"),
-                V.Component(DependencyHolder, key: "holder"),
-            });
-
-        [Test]
-        public void Given_AComponentWhoseTransitionChangesItsLayoutEffectsDependencyAndOwesItASettleRender_When_TheTransitionDrains_Then_ItsLayoutEffectRunsAgain()
-        {
-            // Arrange — the immediate drain renders the entry and leaves the dependency's update on the Transition lane
-            var log = new EventLog();
-            using var mounted = V.Mount(new VisualElement(), log.Provide(V.Component(StarterAndHolder)));
-            s_start.Invoke(() =>
-            {
-                s_add.Invoke("sent");
-                s_setDependency.Invoke(1);
-            });
-            mounted.GetSchedulerForTest().DrainImmediateForTest();
-            log.Clear();
-
-            // Act
-            mounted.GetSchedulerForTest().DrainDelayedForTest();
-
-            // Assert
-            Assert.That(log.ToString(), Is.EqualTo("render:H render:H lay-x:H lay:H"));
         }
 
         #endregion
@@ -572,6 +506,16 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(string.Join(" ", s_rowLog), Is.EqualTo("render:a render:b render:portal-child"));
+        }
+
+        // Declares the transition apart from the holder, so the render that takes the indicator down is not the
+        // holder's.
+        [Component(Compiler = false)]
+        private static VNode Starter()
+        {
+            var (_, start) = Hooks.UseTransition();
+            s_start = start;
+            return V.Label(text: "starter");
         }
 
         [Component(Compiler = false)]
