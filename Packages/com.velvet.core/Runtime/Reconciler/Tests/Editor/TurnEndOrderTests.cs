@@ -480,7 +480,7 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base reports an error a wave's write throws ahead of a layout cleanup's.
-        // Leaving ReconcilePass.HoldsCaptures unset in ChildListWrites.Apply reddens it: the cleanup's error is then
+        // Leaving ReconcilePass.HoldsCaptures unset in FiberWave.Open reddens it: the cleanup's error is then
         // captured as the component's turn throws it, ahead of the attach error the wave routes once the pass has applied.
         [Test]
         public void Given_ABoundaryOverANewElementThatThrowsAsItAttachesAheadOfAComponentWhoseLayoutCleanupThrows_When_TheyCommit_Then_TheAttachErrorIsReportedFirst()
