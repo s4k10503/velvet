@@ -9,9 +9,10 @@ namespace Velvet.Tests
 {
     /// <summary>
     /// Pins the order one drain of the immediate tier renders the components queued on it, as one
-    /// <see cref="EventLog"/> string per case: of two components neither of which holds the other, the one earlier in
-    /// the tree renders first, whichever setter ran first, as React 19 renders them; and a component the drain's walk
-    /// cannot reach from the root renders after the ones it can.
+    /// <see cref="EventLog"/> string per case: of two components, neither holding the other and neither inside a third
+    /// queued with them, the one earlier in the tree renders first, whichever setter ran first, as React 19 renders
+    /// them; VirtualList rows queued with a render that moves them render in their new order; and a component the
+    /// drain's walk cannot reach from the root renders after the ones it can.
     /// </summary>
     [TestFixture]
     internal sealed class DrainTreeOrderTests
@@ -140,6 +141,19 @@ namespace Velvet.Tests
             => V.Fragment(
                 V.Component(RowHost, new ListOf("H1"), key: "h1"),
                 V.Component(RowHost, new ListOf("H2"), key: "h2"));
+
+        [Component(Memoize = true, Compiler = false)]
+        private static VNode MemoizedRowHost(ListOf list) => V.Component(RowHost, list);
+
+        [Component(Compiler = false)]
+        private static VNode SwappableMemoizedRowHosts()
+        {
+            var (swapped, _) = EventLog.UseState("F", false);
+            EventLog.UseRender("F");
+            var first = V.Component(MemoizedRowHost, new ListOf("H1"), key: "h1");
+            var second = V.Component(MemoizedRowHost, new ListOf("H2"), key: "h2");
+            return swapped ? V.Fragment(second, first) : V.Fragment(first, second);
+        }
 
         // A headless mount measures no viewport, so each list is handed the height a layout pass would leave it, which
         // shows both its rows, and renders them.
@@ -384,6 +398,28 @@ namespace Velvet.Tests
             // Assert
             Assert.That(log.ToString(), Is.EqualTo(
                 "render:H1 render:H1b render:H1a render:H2 render:H2b render:H2a"));
+        }
+
+        // F's render swaps the two lists without rendering either list's host.
+        [Test]
+        public void Given_VirtualListRowsAndAParentSwappingTheMemoizedComponentsHoldingTheirListsInOneBatch_When_OneDrainRendersThem_Then_TheRowsRenderInTheParentsNewOrder()
+        {
+            // Arrange
+            var log = new EventLog();
+            using var mounted = V.Mount(new VisualElement(), log.Provide(V.Component(SwappableMemoizedRowHosts)));
+            ShowRows(mounted);
+            log.Clear();
+
+            // Act
+            log.Setter<int>("H1a").Invoke(1);
+            log.Setter<int>("H1b").Invoke(1);
+            log.Setter<int>("H2a").Invoke(1);
+            log.Setter<int>("H2b").Invoke(1);
+            log.Setter<bool>("F").Invoke(true);
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("render:F render:H2a render:H2b render:H1a render:H1b"));
         }
 
         // Taken out of its parent's children, A has no path from the root for the drain's walk to reach it by.
