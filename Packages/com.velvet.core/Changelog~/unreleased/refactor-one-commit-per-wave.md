@@ -5,6 +5,6 @@
   layout effects run.
 - An error a new element's panel-attach callback throws as a batch of updates, a flush, a mount or a resumed time-sliced
   render applies the writes its renders recorded now goes to the error boundary at or above the component that
-  rendered the element the write adds, in a follow-up commit; where the element is off the panel again once those
-  writes have applied, the error reaches no boundary, as React never commits such an element. Before, it was handled
-  as a render error of the component whose update was rendering, so a boundary between the two never saw it.
+  rendered the element the write adds, in a follow-up commit, or reaches no boundary where the element is off the
+  panel again once those writes have applied. Before, it was handled as a render error of the component whose update
+  was rendering, so a boundary between the two never saw it.
