@@ -32,10 +32,10 @@
   work that keeps asking for itself again is not run again once it has run 50 times before control returns, and
   "Maximum update depth exceeded" is logged; the updates still queued for it stay queued, and the rest of the waiting
   work, its own root's included, still runs.
-- A click handler that sets another root's state renders that root before the click returns, rather than in that
-  root's next frame.
-- A `Hooks.Use` or query result that resolves while a root renders, commits or runs its `UseEffect`s renders once that
-  work has ended.
+- A click handler that runs while no root is rendering, committing or running its `UseEffect`s, and sets another root's
+  state outside a transition, renders that root before the click returns, rather than in that root's next frame.
+- A `Hooks.Use` or query result that resolves while a root renders, commits or runs its `UseEffect`s is taken up once
+  that work has ended rather than inside it; its `V.Suspense` boundary shows it at its root's next update drain.
 - A click or focus change a `UseEffect` fires renders its update once that flush of `UseEffect`s has ended, rather than
   inside the effect.
 - `MountedTree.Render` called while another root renders, commits or runs its `UseEffect`s renders once that work has
