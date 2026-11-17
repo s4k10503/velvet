@@ -345,8 +345,8 @@ namespace Velvet
             }
 
             // Logged here, as the release logs what an item throws, rather than thrown out to the panel's scheduler:
-            // what that does to the items behind it is held by the HeldWorkReleaseTests cases ending
-            // Then_ThePanelsOtherScheduledWorkHasRun.
+            // what that does to the items behind it is held by HeldWorkReleaseTests
+            // .Given_AHandedOnRangeWhoseNewRowThrowsAsItMounts_When_ThePanelRunsAPass_Then_ThePanelsOtherScheduledWorkHasRun.
             internal void Run()
             {
                 if (_droppable && _generation != _scheduler._handOnGeneration) return;
