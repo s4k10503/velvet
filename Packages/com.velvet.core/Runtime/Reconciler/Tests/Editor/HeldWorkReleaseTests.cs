@@ -613,52 +613,52 @@ namespace Velvet.Tests
             Assert.That(OwingTheSyncLane(), Has.No.Member(echo.GetSchedulerForTest()));
         }
 
-        private static int s_runawayRendered;
-        private static int s_runawayEffect;
-        private static StateUpdater<int> s_setRunaway;
+        private static int s_hostRendered;
+        private static int s_hostEffect;
+        private static StateUpdater<int> s_setHost;
+        private static ComponentFiber s_counterReaderFiber = null!;
 
-        // Once asked, writes a new value from every layout effect, past the nested-update limit, and records the value
-        // each commit's UseEffect saw.
         [Component]
-        private static VNode RunsAwayFromItsLayoutEffect()
+        private static VNode ReadsTheCounter()
         {
-            var (n, setN) = Hooks.UseState(0);
-            s_setRunaway = setN;
-            s_runawayRendered = n;
-            Hooks.UseLayoutEffect((Func<Action>)(() =>
-            {
-                if (n > 0) setN.Invoke(n + 1);
-                return null!;
-            }), new object[] { n });
-            Hooks.UseEffect(() =>
-            {
-                s_runawayEffect = n;
-                return (Action)null!;
-            }, new object[] { n });
-            return V.Label(text: "runaway");
+            s_counterReaderFiber = FiberAmbientStack.Current!;
+            Hooks.UseStore(s_counter, value => value);
+            return V.Label(text: "reads");
         }
 
-        // The limit drops the root's updates with its sync-lane flag still raised, and each pass of the drain ran the
-        // UseEffect of the commit before it, so the last commit's is pending.
-        [Test]
-        public void Given_AHeldFlushThatRunsPastTheNestedUpdateLimit_When_ThePassEnds_Then_ItsLastCommitsEffectIsStillPending()
+        [Component]
+        private static VNode HostsACounterReader()
         {
-            // Arrange — the limit's exception, logged where the release runs the held flush
-            LogAssert.Expect(LogType.Exception, new Regex("Maximum update depth exceeded"));
-            var runaway = V.Mount(new VisualElement(), V.Component(RunsAwayFromItsLayoutEffect));
-            _roots.Add(runaway);
-            runaway.FlushEffectsForTest();
-            var scheduler = runaway.GetSchedulerForTest();
+            var (n, setN) = Hooks.UseState(0);
+            s_setHost = setN;
+            s_hostRendered = n;
+            Hooks.UseEffect(() =>
+            {
+                s_hostEffect = n;
+                return (Action)null!;
+            }, new object[] { n });
+            return V.Div(children: new VNode[] { V.Component(ReadsTheCounter, key: "reader") });
+        }
+
+        // The counter's change raises the root's sync-lane flag beside its reader's update, and the unmount takes that
+        // update out of the tier without a drain, which leaves the flag raised over an empty tier: nothing is owed.
+        [Test]
+        public void Given_ARootWhoseOnlySyncLaneUpdateIsUnmountedUndrained_When_TheUnmountEnds_Then_ItsPendingEffectHasNotRun()
+        {
+            // Arrange — the host's second render commits with its effect left pending
+            s_counter = new Counter();
+            var host = V.Mount(new VisualElement(), V.Component(HostsACounterReader));
+            _roots.Add(host);
+            host.FlushEffectsForTest();
+            s_setHost.Invoke(1);
+            host.FlushStateForTest();
+            s_counter.Set(1);
 
             // Act
-            WalkAsking(() =>
-            {
-                s_setRunaway.Invoke(1);
-                scheduler.FlushImmediate();
-            });
+            FiberRenderer.Unmount(s_counterReaderFiber);
 
             // Assert — 0 where the release ran that effect
-            Assert.That(s_runawayRendered - s_runawayEffect, Is.EqualTo(1));
+            Assert.That(s_hostRendered - s_hostEffect, Is.EqualTo(1));
         }
 
         private static readonly Ref<string> s_throwingHandle = new();
