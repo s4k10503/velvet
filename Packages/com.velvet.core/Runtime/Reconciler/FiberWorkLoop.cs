@@ -362,6 +362,9 @@ namespace Velvet
                     (Fiber: fiber, Budget: timeSlicedBudgetMs), static state => FlushState(state.Fiber, state.Budget));
                 return;
             }
+            // A flush of one fiber renders queued work without either tier's drain, so it stands down where they do
+            // (FiberBatchScheduler.DrainImmediateWork).
+            if (scheduler != null && FiberExecutionContext.Threw(scheduler)) return;
             FiberExecutionContext.Enter(scheduler, (Fiber: fiber, Budget: timeSlicedBudgetMs),
                 static state => FlushStateWork(state.Fiber, state.Budget));
         }

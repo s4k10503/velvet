@@ -562,11 +562,18 @@ namespace Velvet.Tests
             return V.Label(text: "child");
         }
 
+        [Component]
+        private static VNode FailsFromItsEffect()
+        {
+            Hooks.UseEffect((Func<Action>)(() => throw new InvalidOperationException("effect failed")), Array.Empty<object>());
+            return V.Label(text: "child");
+        }
+
         private static StateUpdater<int> s_setScrollThrower;
         private static readonly Ref<string> s_scrollThrowerHandle = new();
 
         [Component]
-        private static VNode ScrollsItsListThenThrows()
+        private static VNode ScrollsItsListThenThrows(bool childsEffectFails)
         {
             var (tick, setTick) = Hooks.UseState(0);
             s_setScrollThrower = setTick;
@@ -583,9 +590,10 @@ namespace Velvet.Tests
             });
             var list = V.VirtualList(HundredItems, item => item, itemHeight: 50f,
                 renderer: item => V.Label(name: item, text: item), overscan: 0, listRef: s_ownListRef, key: "list");
-            return V.Div(children: tick > 0
-                ? new VNode[] { V.Component(EffectChild, key: "child"), list }
-                : new VNode[] { list });
+            var child = childsEffectFails
+                ? V.ErrorBoundary(_ => V.Label(text: "fallback"), new VNode[] { V.Component(FailsFromItsEffect) }, key: "child")
+                : V.Component(EffectChild, key: "child");
+            return V.Div(children: tick > 0 ? new VNode[] { child, list } : new VNode[] { list });
         }
 
         private static int ThrowingDrainsOf(FiberBatchScheduler scheduler)
@@ -595,14 +603,14 @@ namespace Velvet.Tests
 
         // GREEN_ON_BASE(characterization): the base rendered the range inside the drain, ahead of the throw, and drained once.
         // Here the drain that throws holds the range and leaves the child it mounted with its effect pending, so the
-        // range's passive flush, which the release runs, would end by draining the root's sync lane.
+        // passive flush the release runs ahead of the range would end by draining the root's sync lane.
         [Test]
         public void Given_ADrainThatThrowsAfterHoldingARangeOfItsOwnList_When_TheReleaseRendersTheRange_Then_ItsRootHasThrownOnce()
         {
             // Arrange — on a panel, so that the scroller's change reaches the list
             using var host = new HeadlessEditorPanelHost();
             s_ownListRef = new Ref<VirtualListHandle>();
-            using var mounted = V.Mount(host.Root, V.Component(ScrollsItsListThenThrows));
+            using var mounted = V.Mount(host.Root, V.Component(ScrollsItsListThenThrows, false));
             var scrollView = host.Root.Q<ScrollView>();
             SetViewport(mounted, scrollView, 200f);
             scrollView.verticalScroller.highValue = 4800f;
@@ -618,7 +626,35 @@ namespace Velvet.Tests
             {
             }
 
-            // Assert — 2 where the range's passive flush drained the root again
+            // Assert — 2 where the passive flush ahead of the range drained the root again
+            Assert.That(ThrowingDrainsOf(scheduler), Is.EqualTo(1));
+        }
+
+        // GREEN_ON_BASE(characterization): the base rendered the range inside the drain and drained once.
+        // The scheduler's gate kept the passive flush ahead of the range's rows from running the child's effect there.
+        [Test]
+        public void Given_ADrainThatThrowsAfterHoldingARangeAndMountingAChildWhoseEffectFailsIntoABoundary_When_TheReleaseRendersTheRange_Then_ItsRootHasThrownOnce()
+        {
+            // Arrange — on a panel, so that the scroller's change reaches the list
+            using var host = new HeadlessEditorPanelHost();
+            s_ownListRef = new Ref<VirtualListHandle>();
+            using var mounted = V.Mount(host.Root, V.Component(ScrollsItsListThenThrows, true), CaughtErrors.Unlogged);
+            var scrollView = host.Root.Q<ScrollView>();
+            SetViewport(mounted, scrollView, 200f);
+            scrollView.verticalScroller.highValue = 4800f;
+            var scheduler = mounted.GetSchedulerForTest();
+            s_setScrollThrower.Invoke(1);
+
+            // Act
+            try
+            {
+                scheduler.DrainImmediateForTest();
+            }
+            catch (InvalidOperationException)
+            {
+            }
+
+            // Assert — 2 where rendering the boundary's capture drained the root again
             Assert.That(ThrowingDrainsOf(scheduler), Is.EqualTo(1));
         }
 

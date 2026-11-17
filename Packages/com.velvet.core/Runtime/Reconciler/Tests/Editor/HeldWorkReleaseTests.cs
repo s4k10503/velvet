@@ -812,11 +812,49 @@ namespace Velvet.Tests
             Assert.That(s_queuesAndThrowsTick, Is.EqualTo(1));
         }
 
+        // The Transition-lane update comes first: queued behind the Normal one, it would leave the fiber off the
+        // Transition tier, whose drain would then have nothing of the root's to render.
+        [Test]
+        public void Given_AHeldFlushOfARootThatThrows_When_AHeldDrainOfItsTransitionTierFollows_Then_ItsFiberIsNotRenderedAgain()
+        {
+            // Arrange — the throw is logged where the release runs the held flush
+            LogAssert.Expect(LogType.Exception, new Regex("handle failed"));
+            var thrower = V.Mount(new VisualElement(), V.Component(QueuesAndThrowsOnEveryUpdate));
+            _roots.Add(thrower);
+            var scheduler = thrower.GetSchedulerForTest();
+
+            // Act
+            WalkAsking(() =>
+            {
+                s_queuesAndThrowsFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
+                s_setQueuesAndThrows.Invoke(1);
+                scheduler.FlushImmediate();
+                scheduler.DrainDelayedForTest();
+            });
+
+            // Assert — 2 where the Transition tier's drain rendered the fiber again
+            Assert.That(s_queuesAndThrowsTick, Is.EqualTo(1));
+        }
+
+        private static bool s_childsEffectRan;
+        private static string? s_mountedSaw;
+
         [Component]
         private static VNode EffectChild()
         {
-            Hooks.UseEffect(() => (Action)null!, Array.Empty<object>());
+            Hooks.UseEffect(() =>
+            {
+                s_childsEffectRan = true;
+                return (Action)null!;
+            }, Array.Empty<object>());
             return V.Label(text: "child");
+        }
+
+        [Component]
+        private static VNode ReadsWhetherTheChildsEffectRan()
+        {
+            s_mountedSaw = s_childsEffectRan ? "ran" : "pending";
+            return V.Label(text: "mounted");
         }
 
         private static StateUpdater<int> s_setChildMounter;
@@ -828,7 +866,7 @@ namespace Velvet.Tests
             s_setChildMounter = setTick;
             Hooks.UseLayoutEffect((Func<Action>)(() =>
             {
-                if (tick > 0) s_mountedFromCommits.Add(V.Mount(new VisualElement(), V.Label(text: "mounted")));
+                if (tick > 0) s_mountedFromCommits.Add(V.Mount(new VisualElement(), V.Component(ReadsWhetherTheChildsEffectRan)));
                 return null!;
             }), new object[] { tick });
             Hooks.UseImperativeHandle(s_throwingHandle, () =>
@@ -840,17 +878,21 @@ namespace Velvet.Tests
             return V.Div(children: tick > 0 ? new VNode[] { V.Component(EffectChild, key: "child") } : Array.Empty<VNode>());
         }
 
-        // The child mounts inline in the pass the commit then throws out of, which stages its effect, so the root has a
-        // passive flush pending when the release, proceeding for the held mount, reaches its first item; and a passive
-        // flush ends by draining the root's sync lane, where the factory queued its update.
+        private FiberBatchScheduler MountTheChildMounterWithAnUpdateQueued()
+        {
+            var thrower = V.Mount(new VisualElement(), V.Component(MountsAnEffectChildHoldsARootAndThrows));
+            _roots.Add(thrower);
+            s_childsEffectRan = false;
+            s_mountedSaw = null;
+            s_setChildMounter.Invoke(1);
+            return thrower.GetSchedulerForTest();
+        }
+
         [Test]
         public void Given_AThrowingDrainThatLeftAnInlineChildsEffectPending_When_ItsReleaseRunsAHeldMount_Then_ItsRootHasThrownOnce()
         {
             // Arrange
-            var thrower = V.Mount(new VisualElement(), V.Component(MountsAnEffectChildHoldsARootAndThrows));
-            _roots.Add(thrower);
-            var scheduler = thrower.GetSchedulerForTest();
-            s_setChildMounter.Invoke(1);
+            var scheduler = MountTheChildMounterWithAnUpdateQueued();
 
             // Act
             try
@@ -863,6 +905,25 @@ namespace Velvet.Tests
 
             // Assert — 2 where the release's passive flush drained the root again
             Assert.That(ThrowingDrainsOf(scheduler), Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_AThrowingDrainThatLeftAnInlineChildsEffectPending_When_ItsReleaseRunsAHeldMount_Then_TheEffectRanBeforeTheMountRendered()
+        {
+            // Arrange
+            var scheduler = MountTheChildMounterWithAnUpdateQueued();
+
+            // Act
+            try
+            {
+                scheduler.DrainImmediateForTest();
+            }
+            catch (InvalidOperationException)
+            {
+            }
+
+            // Assert — "pending" where the release left out the passive flush of the root that threw
+            Assert.That(s_mountedSaw, Is.EqualTo("ran"));
         }
 
         private sealed class Counter : Store<int>

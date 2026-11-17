@@ -370,8 +370,12 @@ namespace Velvet
             FiberExecutionContext.Hold(FiberExecutionContext.Request.Flush, this, this, _flushHeld);
         }
 
-        private void DrainImmediateWork()
+        // Each drain of the immediate tier runs through here, so this is where a scheduler an exception left an entry of
+        // in the release running stands down (FiberExecutionContext's release says why): it returns false and leaves the
+        // tier and its registration as they are.
+        private bool DrainImmediateWork()
         {
+            if (FiberExecutionContext.Threw(this)) return false;
             var completed = false;
             var wasInImmediateDrain = _inImmediateDrain;
             _inImmediateDrain = true;
@@ -402,6 +406,7 @@ namespace Velvet
                 if (_immediateOrder.Count == 0) _externalStoreRenderQueued = false;
                 if (_immediateOrder.Count > 0) ArmImmediateDrain();
             }
+            return true;
         }
 
         private void DrainImmediatePasses()
@@ -439,13 +444,10 @@ namespace Velvet
         // Renders the immediate tier when a passive drain queued sync-lane work, then flushes what those renders'
         // commits leave pending in turn. Called once a passive drain outside every immediate drain has run, as
         // React's passive flush ends by flushing sync work.
-        // Not where this root's work threw in the release running, the rule FiberExecutionContext's release keeps: a range
-        // of that root the release renders still runs its passive flush first, and the drain is left to the root's own.
         internal void FlushSyncWorkAfterPassiveEffects()
         {
             if (_inImmediateDrain || _draining || (_reconcileActiveProbe?.Invoke() ?? false)) return;
             if (!_syncLaneQueued || _immediateOrder.Count == 0) return;
-            if (FiberExecutionContext.Threw(this)) return;
             DrainImmediateWork();
         }
 
@@ -547,17 +549,19 @@ namespace Velvet
             // The immediate queue is committed first rather than trusting the panel to run its callback ahead of
             // this one. A Transition lane that pass re-enrols takes a later admission (see ScheduleDelayed), so
             // only a drain of every admission picks it up below.
+            var drained = false;
             try
             {
-                DrainImmediateAheadOfTheTransition();
+                drained = DrainImmediateAheadOfTheTransition();
             }
-            catch
+            finally
             {
-                // This admission's callback has run and registers nothing again, so entries still waiting for it
-                // would wait for a drain that never comes while their fibers stay dirty.
-                if (admission != null) ReadmitEntries(admission);
-                throw;
+                // This admission's callback has run and registers nothing again, so where the immediate drain threw or
+                // stood down, entries still waiting for it would wait for a drain that never comes while their fibers
+                // stay dirty.
+                if (!drained && admission != null) ReadmitEntries(admission);
             }
+            if (!drained) return;
             var kept = 0;
             for (var i = 0; i < _delayedOrder.Count; i++)
             {
@@ -593,14 +597,14 @@ namespace Velvet
         // task. Each round renders what the round before it scheduled. Bounded like the immediate drain's passes,
         // since an effect that sets state on every commit would otherwise hold the transition in this callback
         // forever; past the bound the transition renders, and what is still queued waits for the tier's callback.
-        private void DrainImmediateAheadOfTheTransition()
+        private bool DrainImmediateAheadOfTheTransition()
         {
             for (var rounds = 0; ; rounds++)
             {
-                DrainImmediateWork();
-                if (rounds == NestedUpdateLimit) return;
+                if (!DrainImmediateWork()) return false;
+                if (rounds == NestedUpdateLimit) return true;
                 FlushPendingPassiveEffectsWork();
-                if (_immediateOrder.Count == 0) return;
+                if (_immediateOrder.Count == 0) return true;
             }
         }
 

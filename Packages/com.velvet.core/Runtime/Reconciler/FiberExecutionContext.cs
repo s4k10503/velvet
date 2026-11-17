@@ -164,11 +164,13 @@ namespace Velvet
         // released it.
         //
         // Once an exception has left an entry of a scheduler, the outermost entry or one an item of this release opened,
-        // this release drains that scheduler no further: not for the sync-lane work it owes, not for a held flush of it,
-        // and not through the passive flush ahead of the next item, which ends by draining its sync lane
-        // (FiberEffects.DrainPassiveEffects). Drained, it would run that root's work again inside the call the exception
-        // left. The frame-boundary drain the scheduler registered commits that work instead, which is where
-        // FiberBatchScheduler bounds a run of drains that throw. Held work of other kinds still runs.
+        // no drain of that scheduler runs in this release: drained, it would run that root's work again inside the call
+        // the exception left. FiberBatchScheduler.DrainImmediateWork, which a drain of either tier runs through, stands
+        // down for it; the one stand-down outside it is FiberWorkLoop.FlushState's, whose flush of one fiber does not run
+        // through it. Its held work and its pending passive effects still run as far as a drain they reach, a passive
+        // flush being no drain. What it leaves queued is committed by the frame-boundary drain the scheduler registered,
+        // which is where FiberBatchScheduler bounds a run of drains that throw, or by a later entry's release where it
+        // still owes the sync lane (IndexOfOwing).
         private static void Release(FiberBatchScheduler? owner)
         {
             if (s_releasing) return;
@@ -205,10 +207,9 @@ namespace Velvet
                         key = target;
                     }
                     if (target is { IsDisposed: true }) continue;
-                    if (target != null && s_threw.Contains(target) && IsDrain(kind)) continue;
                     if (!Counted(kind, key)) continue;
                     // React's performSyncWorkOnRoot starts by flushing the passive effects of the commit before it.
-                    if (last is { IsDisposed: false } && !s_threw.Contains(last))
+                    if (last is { IsDisposed: false })
                     {
                         RunIsolated(last, static scheduler => scheduler.FlushPendingPassiveEffects());
                     }
@@ -268,9 +269,6 @@ namespace Velvet
             s_owingSyncLane.RemoveAt(index);
             return scheduler;
         }
-
-        private static bool IsDrain(Request kind)
-            => kind is Request.Flush or Request.FiberFlush or Request.PassiveFlush;
 
         private static void RunIsolated<TState>(TState state, Action<TState> run)
         {
