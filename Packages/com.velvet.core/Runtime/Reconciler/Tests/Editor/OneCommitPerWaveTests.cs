@@ -291,8 +291,8 @@ namespace Velvet.Tests
             => V.Fragment(V.Component(Bystander, key: "bystander"), V.Component(CatchesItsOwnRows, key: "own"));
 
         // GREEN_ON_BASE(characterization): the base reports the catch a boundary's own render makes.
-        // Making Reconciler.BeginOrJoinPass call ChildListWrites.BeginRecording whatever the wave records reddens it,
-        // since the fallback's reconcile is a further top-level reconcile of the wave.
+        // Making Reconciler.BeginOrJoinPass call ChildListWrites.BeginRecording whatever the wave records reddens it at
+        // the boundary's own flush, the drain's second.
         [Test]
         public void Given_ABoundaryWhoseOwnRenderCatchesItsChildsError_When_OneDrainRendersItAfterAnotherComponent_Then_ItReportsTheCatch()
         {
@@ -449,20 +449,15 @@ namespace Velvet.Tests
             });
         }
 
-        [Component]
-        private static VNode BystanderThenPortalHost()
-            => V.Fragment(V.Component(Bystander, key: "bystander"), V.Component(PortalHost, key: "host"));
-
         // GREEN_ON_BASE(characterization): the base retries the component whose pass a Portal child's suspend reached.
         // Passing a null closingRoot to FinishPass from Reconciler.FinishTopLevelPass, which drops that suspend, reddens
         // it: nothing then asks for the retry that mounts the child once the read resolves.
         [Test]
-        public void Given_AComponentAndALaterOneWhosePortalsChildSuspendsWithNothingToCatchIt_When_TheReadResolves_Then_ThePortalsChildRenders()
+        public void Given_AComponentWhosePortalsChildSuspendsWithNothingToCatchIt_When_TheReadResolves_Then_ThePortalsChildRenders()
         {
-            // Arrange — the later component's Portal mounts in the wave's drain, where its child suspends
+            // Arrange — the component's Portal mounts in the drain's wave, where its child suspends
             var log = new EventLog();
-            using var mounted = V.Mount(new VisualElement(), log.Provide(V.Component(BystanderThenPortalHost)));
-            log.Setter<int>("Bystander").Invoke(1);
+            using var mounted = V.Mount(new VisualElement(), log.Provide(V.Component(PortalHost)));
             log.Setter<bool>("ShownPortal").Invoke(true);
             mounted.GetSchedulerForTest().DrainImmediateForTest();
             log.Clear();

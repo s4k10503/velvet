@@ -830,6 +830,8 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base attaches the flush's ref after the layout effect below it.
+        // Deleting `if (DeferDrainLayoutEffects) return;` from ReconcilerContext.DrainRefAttaches reddens it: the ref
+        // then attaches where the wave's pass ends, ahead of the wave's layout effects.
         [Test]
         public void Given_AFlushWhoseSettledTransitionOwesAnotherComponentARender_When_BothCommit_Then_TheFlushsRefsStillAttachAfterTheLayoutEffectsOfTheComponentsBelowThem()
         {
@@ -848,10 +850,11 @@ namespace Velvet.Tests
             // Act
             FiberWorkLoop.FlushState(sibling);
 
-            // Assert — the tick the ref attached with is read beside the layout effect, because a flush that never
-            // rendered the sibling leaves the earlier ref in place and reads the same
-            Assert.That((string.Join(",", s_log), s_lastWatchedTick), Is.EqualTo(("reader:null", 1)),
-                "recorded order: " + string.Join(",", s_log));
+            // Assert — a flush that never rendered the sibling leaves the earlier ref in place and reads the same, so a
+            // ref attached with any tick but the flush's reads as a sentinel
+            Assert.That(
+                s_lastWatchedTick == 1 ? string.Join(",", s_log) : "the ref attached with tick " + s_lastWatchedTick,
+                Is.EqualTo("reader:null"));
         }
 
         // Owns the same write as OwedSibling and logs the order of a re-rendered component's own commit: the

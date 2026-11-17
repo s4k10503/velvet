@@ -614,7 +614,7 @@ namespace Velvet
         {
             // Bottom-up commit — descendant effects run before this fiber's so a
             // parent effect that reads a child imperative handle / measured size observes the
-            // child's already-applied effect. The drain pops fibers in LIFO order (deepest first).
+            // child's already-applied effect.
             FiberEffects.CommitSubtreeEffects(fiber);
             // This independent flush may have toggled a descendant's class / controlled value without
             // re-rendering an enclosing has- element; re-derive the registered has- elements now that the
@@ -772,7 +772,7 @@ namespace Velvet
                     {
                         // The commit is now fully applied — run the insertion / layout / passive effects FlushState
                         // deferred while this reconcile was paused. Runs once, only on the terminal chunk.
-                        // Bottom-up — descendant effects (LIFO drain) before this fiber's.
+                        // Bottom-up — descendant effects before this fiber's.
                         FiberEffects.CommitSubtreeEffects(fiber);
                         // Mirror FlushState's settled-flush pass: re-derive registered has- elements so a
                         // time-sliced flush that toggled a descendant's class / controlled value reflects on a

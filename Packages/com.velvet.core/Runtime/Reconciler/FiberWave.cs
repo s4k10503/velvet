@@ -12,8 +12,9 @@ namespace Velvet
     // renders before its commit. Those bodies open a wave only where a door runs them; run as the sub-work of an entry
     // already on the stack, they open none.
     //
-    // While a wave is open, a top-level render records into the context's pass rather than ending one of its own
-    // (Reconciler.ReconcileCatching), and a fiber's effect commit waits (FiberEffects.CommitSubtreeEffects). End
+    // While the wave records, a top-level render records into the context's pass rather than ending one of its own
+    // (Reconciler.ReconcileCatching; Reconciler.FinishTopLevelPass owns where a Portal's mount ends the pass early),
+    // and a fiber's effect commit waits (FiberEffects.CommitSubtreeEffects). End
     // applies the pass once the renders are done; Commit runs the one layout batch. The opener ends its wave in a
     // finally that sits inside the one that commits it, so a throw leaves neither the pass recording nor the commit
     // waiting. The commit lowers the deferral before it runs any effect, so a drain it starts opens a wave of its own.
