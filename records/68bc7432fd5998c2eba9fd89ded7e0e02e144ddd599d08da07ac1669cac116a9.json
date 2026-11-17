@@ -1,0 +1,31 @@
+{
+ "detail": "EditMode: 1 failed among the 433 case(s) that ran the site: Given_APortalAheadOfAnotherOnItsTargetUnmounted_When_TheSecondPortalsChildRerenders_Then_ItRewritesItsOwnRow",
+ "file": "a73bb26317359a920935835168efd29c8d32faed92e382a12c90b6f752e16b76",
+ "killers": [
+  {
+   "case": "Velvet.Tests.InlineSlotStartTests.Given_APortalAheadOfAnotherOnItsTargetUnmounted_When_TheSecondPortalsChildRerenders_Then_ItRewritesItsOwnRow",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/InlineSlotStartTests.cs": "826965e82071b5985a6dcb45bd23d18c1868cbf15eae3225194c48f1eb8fd046",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  }
+ ],
+ "measured_by": "43936684150",
+ "mutant": {
+  "after": ";",
+  "before": "FiberCommitWork.ShiftTenantsAfterPortalRange(_ctx.ComponentRegistry, target, placeholder, left, -count);",
+  "column": 12,
+  "line": 715,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberElementCleaner.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2d42ae91df468addf2c859a080ae2cddf443662f26d82ab72eb5b392ea699901",
+ "verdict": "killed"
+}

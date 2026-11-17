@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed among the 451 case(s) that ran the site: Given_AnInnerPresenceInsideAPortal_When_TheOuterKeyIsRemoved_Then_TheChildIsHeldUntilTheInnerExitCompletes",
+ "file": "a73bb26317359a920935835168efd29c8d32faed92e382a12c90b6f752e16b76",
+ "killers": [
+  {
+   "case": "Velvet.Tests.AnimatePresencePropagateTests.Given_AnInnerPresenceInsideAPortal_When_TheOuterKeyIsRemoved_Then_TheChildIsHeldUntilTheInnerExitCompletes",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/AnimatePresencePropagateTests.cs": "dce4a40e97215e5879b28f2da1fef059618e8a6a93b058269ebb35e7aa27ef27",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  }
+ ],
+ "measured_by": "43936684150",
+ "mutant": {
+  "after": ";",
+  "before": "ChildListWrites.PhysicalRange(target, physicalSlotStart, slotEnd, range);",
+  "column": 12,
+  "line": 660,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberElementCleaner.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2d42ae91df468addf2c859a080ae2cddf443662f26d82ab72eb5b392ea699901",
+ "verdict": "killed"
+}

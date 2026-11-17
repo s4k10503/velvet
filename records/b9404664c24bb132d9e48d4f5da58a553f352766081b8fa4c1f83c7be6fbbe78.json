@@ -1,0 +1,54 @@
+{
+ "detail": "EditMode: 4 failed among the 267 case(s) that ran the site: Given_ComponentWithDisplayName_When_HookTypeChanges_Then_MessageUsesDisplayName, Given_ComponentWithEmptyDisplayName_When_HookTypeChanges_Then_MessageUsesDefaultName, Given_PropsComponentCallingAHookFromItsRefCallback_When_ItReRenders_Then_TheGuardNamesTheComponent",
+ "file": "5f7f2936926645f2b460cad875261602af12a604530204ba9a53ea8c37989e41",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ComponentDisplayNameTests.Given_ComponentWithDisplayName_When_HookTypeChanges_Then_MessageUsesDisplayName",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/ComponentDisplayNameTests.cs": "b868828f80d29a6dbc22a8e1048f0b156a0a04765dabac9c9d40eb41a2b62893",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ComponentDisplayNameTests.Given_ComponentWithEmptyDisplayName_When_HookTypeChanges_Then_MessageUsesDefaultName",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/ComponentDisplayNameTests.cs": "b868828f80d29a6dbc22a8e1048f0b156a0a04765dabac9c9d40eb41a2b62893",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ComponentDisplayNameTests.Given_PropsComponentCallingAHookFromItsRefCallback_When_ItReRenders_Then_TheGuardNamesTheComponent",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/ComponentDisplayNameTests.cs": "b868828f80d29a6dbc22a8e1048f0b156a0a04765dabac9c9d40eb41a2b62893",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ComponentDisplayNameTests.Given_PropsComponentWithDisplayName_When_HookTypeChanges_Then_MessageUsesDisplayName",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/ComponentDisplayNameTests.cs": "b868828f80d29a6dbc22a8e1048f0b156a0a04765dabac9c9d40eb41a2b62893",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  }
+ ],
+ "measured_by": "43936684150",
+ "mutant": {
+  "after": "true",
+  "before": "false",
+  "column": 29,
+  "line": 270,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberErrorBoundary.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2d42ae91df468addf2c859a080ae2cddf443662f26d82ab72eb5b392ea699901",
+ "verdict": "killed"
+}

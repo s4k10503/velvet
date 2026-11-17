@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed: Given_ADestinationPoseWithAFontUtility_When_ATweenSwapStarts_Then_ItsFontIsWrittenAtTheRender",
+ "file": "0086ffdd2005fbf85961b7b95637f4c409b54b2ee40dc19bdee82ccec95907a5",
+ "killers": [
+  {
+   "case": "Velvet.Tests.MotionInlineHoldTests.Given_ADestinationPoseWithAFontUtility_When_ATweenSwapStarts_Then_ItsFontIsWrittenAtTheRender",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionInlineHoldTests.cs": "1c5c06d01e17ba67c464210fb97d00ed6adf25055f7cd72fdbfa2767371aeae2",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  }
+ ],
+ "measured_by": "43936684150",
+ "mutant": {
+  "after": ";",
+  "before": "Resolve(element, intent);",
+  "column": 12,
+  "line": 185,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberFontScope.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2d42ae91df468addf2c859a080ae2cddf443662f26d82ab72eb5b392ea699901",
+ "verdict": "killed"
+}

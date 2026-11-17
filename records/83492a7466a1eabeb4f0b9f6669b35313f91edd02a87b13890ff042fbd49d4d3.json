@@ -1,8 +1,17 @@
 {
- "detail": "EditMode survived; PlayMode: -",
+ "detail": "EditMode: 1 failed among the 439 case(s) that ran the site: Given_AModelMarkedStaleByAnAnnouncedChange_When_AReadRebuildsIt_Then_ItIsNoLongerMarkedStale",
  "file": "414b27ae90b68edb8021ff42af514966fdd68f1a004257d1807b3940832c47e2",
- "killers": [],
- "measured_by": "43856218771",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ContainerRowsTests.Given_AModelMarkedStaleByAnAnnouncedChange_When_AReadRebuildsIt_Then_ItIsNoLongerMarkedStale",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ContainerRowsTests.cs": "fe453e21e66493ae1b16fefd8f7772700525368c236e44f09da4fdd28cdd215f",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/RowModelAccess.cs": "c9281ca1bc8930756e7b643acf56772495143054fc02c02792727059325b4674",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  }
+ ],
+ "measured_by": "43936684150",
  "mutant": {
   "after": "true",
   "before": "false",
@@ -15,9 +24,9 @@
   ]
  },
  "mutator": 10,
- "platform": "PlayMode",
+ "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "77df84e62b7b22db9de849f53076452d06518cca50904ac9f617346a1acb092e",
- "verdict": "survived"
+ "tests": "2d42ae91df468addf2c859a080ae2cddf443662f26d82ab72eb5b392ea699901",
+ "verdict": "killed"
 }

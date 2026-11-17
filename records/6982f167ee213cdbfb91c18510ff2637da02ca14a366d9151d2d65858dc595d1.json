@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed among the 31 case(s) that ran the site: Given_AClippedButton_When_Unmounted_Then_TheInnerButtonLeavesTheDeadWrapper",
+ "file": "a73bb26317359a920935835168efd29c8d32faed92e382a12c90b6f752e16b76",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ClipPathWrapTests.Given_AClippedButton_When_Unmounted_Then_TheInnerButtonLeavesTheDeadWrapper",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ClipPathWrapTests.cs": "b1b543cdcb38ff9e33949c162b926278bfb78dd8e8968824081eeed8740f1c93",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/ZBandProbe.cs": "89b5305bd9e43f72156f5a3d8c6f121f5ebcbee121486fdbb8e4b04b315feaaa"
+   }
+  }
+ ],
+ "measured_by": "43936684150",
+ "mutant": {
+  "after": ";",
+  "before": "ChildListWrites.RemoveFromHierarchy(poolable);",
+  "column": 16,
+  "line": 73,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberElementCleaner.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2d42ae91df468addf2c859a080ae2cddf443662f26d82ab72eb5b392ea699901",
+ "verdict": "killed"
+}

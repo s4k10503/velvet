@@ -1,0 +1,33 @@
+{
+ "detail": "EditMode: 1 failed among the 471 case(s) that ran the site: Given_ABoundaryInsideAPendingPrimaryCatchingAnElementCallbackError_When_TheReadResolvesWithTheChildNoLongerThrowing_Then_ItRendersItsChildrenAndNothingWasReported",
+ "file": "5f7f2936926645f2b460cad875261602af12a604530204ba9a53ea8c37989e41",
+ "killers": [
+  {
+   "case": "Velvet.Tests.BoundaryCatchScopeTests.Given_ABoundaryInsideAPendingPrimaryCatchingAnElementCallbackError_When_TheReadResolvesWithTheChildNoLongerThrowing_Then_ItRendersItsChildrenAndNothingWasReported",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/BoundaryCatchScopeTests.cs": "0c57faccc1e3b07381880f10178fcd8181496fa99f22e18d8d28abf5a3e26176",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  }
+ ],
+ "measured_by": "43936684150",
+ "mutant": {
+  "after": "true",
+  "before": "false",
+  "column": 43,
+  "line": 367,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberErrorBoundary.cs",
+  "shadowed": [
+   "line removed"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2d42ae91df468addf2c859a080ae2cddf443662f26d82ab72eb5b392ea699901",
+ "verdict": "killed"
+}

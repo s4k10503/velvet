@@ -1,11 +1,11 @@
 {
- "detail": "EditMode: 4 failed: Given_AForeignMoveThatKeepsTheEndsAndAWriteAfterIt_When_APassBegins_Then_TheModelHoldsTheLiveOrder, Given_AFormerContainerWhoseInteriorWasSwappedBehindItsModel_When_AChildLeavesItAndThePassIsVerified_Then_TheDriftIsLogged, Given_AnInteriorMoveBehindTheModelsBackThatWasAnnounced_When_TheNextWriteArrives_Then_TheModelHoldsTheLiveOrder",
+ "detail": "EditMode: 6 failed: Given_AForeignMoveThatKeepsTheEndsAndAWriteAfterIt_When_APassBegins_Then_TheModelHoldsTheLiveOrder, Given_AFormerContainerWhoseInteriorWasSwappedBehindItsModel_When_AChildLeavesItAndThePassIsVerified_Then_TheDriftIsLogged, Given_AModelMarkedStaleByAnAnnouncedChange_When_APassBegins_Then_TheModelHoldsEachChildOnce",
  "file": "9125aa6ee2938bbff79e4a8cb99a67c24c3b3a632df21ac54f5e6f20dcb0cbbd",
  "killers": [
   {
    "case": "Velvet.Tests.ContainerRowsTests.Given_AForeignMoveThatKeepsTheEndsAndAWriteAfterIt_When_APassBegins_Then_TheModelHoldsTheLiveOrder",
    "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ContainerRowsTests.cs": "3809568a0996f1b43bf27dfe2d040ab615d8e48387738f98c5c95bbdf4b52e62",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ContainerRowsTests.cs": "fe453e21e66493ae1b16fefd8f7772700525368c236e44f09da4fdd28cdd215f",
     "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/RowModelAccess.cs": "c9281ca1bc8930756e7b643acf56772495143054fc02c02792727059325b4674",
     "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
    }
@@ -13,7 +13,23 @@
   {
    "case": "Velvet.Tests.ContainerRowsTests.Given_AFormerContainerWhoseInteriorWasSwappedBehindItsModel_When_AChildLeavesItAndThePassIsVerified_Then_TheDriftIsLogged",
    "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ContainerRowsTests.cs": "3809568a0996f1b43bf27dfe2d040ab615d8e48387738f98c5c95bbdf4b52e62",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ContainerRowsTests.cs": "fe453e21e66493ae1b16fefd8f7772700525368c236e44f09da4fdd28cdd215f",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/RowModelAccess.cs": "c9281ca1bc8930756e7b643acf56772495143054fc02c02792727059325b4674",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ContainerRowsTests.Given_AModelMarkedStaleByAnAnnouncedChange_When_APassBegins_Then_TheModelHoldsEachChildOnce",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ContainerRowsTests.cs": "fe453e21e66493ae1b16fefd8f7772700525368c236e44f09da4fdd28cdd215f",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/RowModelAccess.cs": "c9281ca1bc8930756e7b643acf56772495143054fc02c02792727059325b4674",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ContainerRowsTests.Given_AModelMarkedStaleByAnAnnouncedChange_When_AReadRebuildsIt_Then_ItIsNoLongerMarkedStale",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ContainerRowsTests.cs": "fe453e21e66493ae1b16fefd8f7772700525368c236e44f09da4fdd28cdd215f",
     "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/RowModelAccess.cs": "c9281ca1bc8930756e7b643acf56772495143054fc02c02792727059325b4674",
     "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
    }
@@ -21,7 +37,7 @@
   {
    "case": "Velvet.Tests.ContainerRowsTests.Given_AWriteThatReorderedBehindTheModelsBack_When_TheVerifierRuns_Then_ItLogsTheDrift",
    "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ContainerRowsTests.cs": "3809568a0996f1b43bf27dfe2d040ab615d8e48387738f98c5c95bbdf4b52e62",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ContainerRowsTests.cs": "fe453e21e66493ae1b16fefd8f7772700525368c236e44f09da4fdd28cdd215f",
     "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/RowModelAccess.cs": "c9281ca1bc8930756e7b643acf56772495143054fc02c02792727059325b4674",
     "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
    }
@@ -29,13 +45,13 @@
   {
    "case": "Velvet.Tests.ContainerRowsTests.Given_AnInteriorMoveBehindTheModelsBackThatWasAnnounced_When_TheNextWriteArrives_Then_TheModelHoldsTheLiveOrder",
    "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ContainerRowsTests.cs": "3809568a0996f1b43bf27dfe2d040ab615d8e48387738f98c5c95bbdf4b52e62",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ContainerRowsTests.cs": "fe453e21e66493ae1b16fefd8f7772700525368c236e44f09da4fdd28cdd215f",
     "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/RowModelAccess.cs": "c9281ca1bc8930756e7b643acf56772495143054fc02c02792727059325b4674",
     "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
    }
   }
  ],
- "measured_by": "43856218771",
+ "measured_by": "43936684150",
  "mutant": {
   "after": ";",
   "before": "Exit(parent);",
@@ -49,6 +65,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "77df84e62b7b22db9de849f53076452d06518cca50904ac9f617346a1acb092e",
+ "tests": "2d42ae91df468addf2c859a080ae2cddf443662f26d82ab72eb5b392ea699901",
  "verdict": "killed"
 }

@@ -1,11 +1,11 @@
 {
- "detail": "EditMode: 1 failed among the 50 case(s) that ran the site: Given_ALiveFeed_When_TheCameraIsRemoved_Then_TheFeedLeavesTheElement",
+ "detail": "EditMode: 1 failed among the 55 case(s) that ran the site: Given_ALiveFeed_When_TheCameraIsRemoved_Then_TheFeedLeavesTheElement",
  "file": "b59fa8ea80d9e47ab30111de122adb52525575a6f62b9572cad6d8889fb58c72",
  "killers": [
   {
    "case": "Velvet.Tests.SceneViewTests.Given_ALiveFeed_When_TheCameraIsRemoved_Then_TheFeedLeavesTheElement",
    "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/SceneViewTests.cs": "9e0b4f9a853671965b07361fe1e637e796ceef5bf2932a0fb74aa7cf1c7ff2a6",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/SceneViewTests.cs": "9f1d9572eb47c8bcf2e0c6e3ebf7a64a7ecd0001215dbc77337236ec23798b5f",
     "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
     "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
     "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
@@ -18,7 +18,7 @@
    }
   }
  ],
- "measured_by": "43708851232",
+ "measured_by": "43936684150",
  "mutant": {
   "after": ";",
   "before": "ChildListWrites.RemoveFromHierarchy(binding.Feed!);",
@@ -32,6 +32,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "5e7f3ea05d51d3347b1efe117704129307892f27510ec66bf3601001ec0ff3e0",
+ "tests": "2d42ae91df468addf2c859a080ae2cddf443662f26d82ab72eb5b392ea699901",
  "verdict": "killed"
 }

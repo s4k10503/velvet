@@ -1,5 +1,5 @@
 {
- "detail": "EditMode: 3 failed among the 2209 case(s) that ran the site: Given_ChangedDependency_When_PropsRenderRepeats_Then_UseCallbackRebuilds, Given_MountedComponent_When_ParentRerendersWithDifferentProps_Then_ChildObservesNewValue, Given_MountedComponent_When_ParentRerendersWithDifferentProps_Then_ChildReRendersExactlyOnce",
+ "detail": "EditMode: 3 failed among the 2210 case(s) that ran the site: Given_ChangedDependency_When_PropsRenderRepeats_Then_UseCallbackRebuilds, Given_MountedComponent_When_ParentRerendersWithDifferentProps_Then_ChildObservesNewValue, Given_MountedComponent_When_ParentRerendersWithDifferentProps_Then_ChildReRendersExactlyOnce",
  "file": "ca2108741e19000fdc5a8da729089ff0618d826ff9dcd1f58e7389a06c435479",
  "killers": [
   {
@@ -27,7 +27,7 @@
    }
   }
  ],
- "measured_by": "43922111500",
+ "measured_by": "43936684150",
  "mutant": {
   "after": ";",
   "before": "RunFactories(fiber, pending, withImperativeHandles);",
@@ -41,6 +41,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "77df84e62b7b22db9de849f53076452d06518cca50904ac9f617346a1acb092e",
+ "tests": "2d42ae91df468addf2c859a080ae2cddf443662f26d82ab72eb5b392ea699901",
  "verdict": "killed"
 }
