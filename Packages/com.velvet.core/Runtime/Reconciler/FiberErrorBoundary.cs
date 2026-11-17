@@ -281,6 +281,7 @@ namespace Velvet
                 // (ReportCarriedCatch), as React reports it from the commit that shows it.
                 fiber.CaughtError = (exception, InfoFor(fiber, throwingFiber));
                 fiber.CatchUnreported = true;
+                // MUTANT_SURVIVES(equivalent, line removed): result is true when this catch ends, so the if (result) block below drops the same entries; nothing on the way there reads PendingCompletions, and SuspendPassOwner queues the renders it asks for rather than running them.
                 ctx.DropCompletions(failedCompletions);
                 DropTheSwapsErrors(fiber);
                 FiberRenderer.SuspendPassOwner(fiber, FiberWorkLoop.IsRenderingTransitionLane);
