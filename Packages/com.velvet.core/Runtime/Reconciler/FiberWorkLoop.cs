@@ -420,6 +420,7 @@ namespace Velvet
                 if (scheduler != null && FiberExecutionContext.Threw(scheduler)) continue;
                 if (FiberLane.SchedulesOnImmediateTier(FiberLane.GetHighestPendingPriority(owed[i])))
                 {
+                    if (owed[i].Reconciler?.Context is { } context) FiberWave.KeepBatchOrder(context);
                     FlushStateWork(owed[i]);
                 }
             }

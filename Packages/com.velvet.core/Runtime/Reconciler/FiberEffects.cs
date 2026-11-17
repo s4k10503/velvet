@@ -156,6 +156,7 @@ namespace Velvet
             }
             ctx.DeferredInlineLayoutEffectFibers.Push((fiber, IsMount: false, ctx.CurrentPass));
             ScheduleRunEffects(fiber);
+            if (fiber.PendingInsertionEffects is { Count: > 0 }) FiberWave.KeepBatchOrder(ctx);
         }
 
         // Commits the inline fibers on the deferred stack and the pending caught-error reports where no commit
@@ -357,7 +358,7 @@ namespace Velvet
         // The cleanup pass: the batch's insertion effects and layout cleanups, and the cleanups of the refs the pass
         // that rides the commit replaces, each where React's mutation walk reaches its element
         // (FiberRefPlacement). A fiber a cleanup's catch unmounts in this pass has had its lists cleared by its
-        // unmount.
+        // unmount, and a fiber or ref whose turn end the wave's writes ran (RunTurnEnd) has nothing left here.
         private static void RunCleanupPass(
             ReconcilerContext ctx, List<(ComponentFiber Fiber, bool IsMount)> ordered, List<PendingRefAttach> refs)
         {
@@ -383,6 +384,32 @@ namespace Velvet
         {
             RunInsertionEffects(fiber, mountDoubleInvoke: isMount);
             HookEffectExecutor.RunCleanups(fiber, fiber.PendingLayoutEffects);
+        }
+
+        // Whether the cleanup pass has work for the fiber, which a turn end recorded for it would run instead.
+        internal static bool HasTurnEndWork(ComponentFiber fiber)
+            // MUTANT_SURVIVES(equivalent, boundary): an empty list leaves a turn end nothing to run.
+            => fiber.PendingInsertionEffects is { Count: > 0 } || fiber.PendingLayoutEffects is { Count: > 0 };
+
+        // A fiber's turn end (ChildListWrites.RecordTurnEnd), where React's mutation phase reaches a function component
+        // it updates or places: what the cleanup pass runs of the fiber, which then finds it run, at commit depth as
+        // there. It passes over a fiber that pass would not take (TakeBatch), one the wave is deleting among them. A
+        // render the pass journal holds promotes its effect factories where the journal closes, after the pass has
+        // applied, so its insertion effects are promoted here first.
+        internal static void RunTurnEnd(ComponentFiber fiber)
+        {
+            if (!fiber.IsMounted || fiber.IsBeingDeleted || fiber.LayoutEffectsHidden) return;
+            var ctx = fiber.Reconciler!.Context;
+            if (ctx.Pass.Journal.Holds(fiber)) HookEffectExecutor.CommitEffectDeps(fiber.InsertionEffects);
+            ctx.EffectCommitDepth++;
+            try
+            {
+                RunFiberCleanups(fiber, isMount: !fiber.HasCommitted);
+            }
+            finally
+            {
+                ctx.EffectCommitDepth--;
+            }
         }
 
         // The setup pass: the batch's imperative handles and layout setups, and the ref setups, in the order

@@ -170,6 +170,7 @@ namespace Velvet
 
         private void MarkOwnerParked()
         {
+            FiberWave.KeepBatchOrder(_ctx);
             if (Owner != null) FiberPendingWork.MarkAncestors(Owner);
         }
 
@@ -363,6 +364,7 @@ namespace Velvet
                 if (reconciledInto != null) PointerEventsScope.NoteReconciledInto(_ctx, reconciledInto);
                 return;
             }
+            FiberWave.KeepBatchOrder(_ctx);
             _ctx.WaveRecords = false;
             try
             {
@@ -378,10 +380,11 @@ namespace Velvet
         private bool JoinsTheWavesPass() => _ctx.WaveRecords && _ctx.Pass.Recording;
 
         // A render inside a wave records into the pass the wave holds, beginning it where a Portal mount ended the
-        // last, and starts a run of ops of its own in it.
+        // last, and starts a run of ops of its own in it, behind the turn ends of the roots it is not below.
         private void BeginOrJoinPass()
         {
             if (!JoinsTheWavesPass()) ChildListWrites.BeginRecording(_ctx.Pass);
+            ChildListWrites.EndRootTurnsOutside(Owner);
             if (_ctx.WaveRecords) _ctx.Pass.BeginSegment(Owner);
         }
 
@@ -389,6 +392,7 @@ namespace Velvet
         // pass it recorded into, so none is left to mount here.
         internal void FinishWavePass()
         {
+            _ctx.Pass.RunsTurnEnds = !_ctx.WaveKeepsBatchOrder;
             // MUTANT_SURVIVES(equivalent, literal): walked picks the signal a Portal's suspend ends a pass with.
             // FinishPass drops the suspend of a wave's pass that no root's render closes.
             FinishPass(reconciledInto: null, walked: true);
@@ -575,6 +579,7 @@ namespace Velvet
         internal void ContinueReconcileWork(double frameBudgetMs)
         {
             if (_ctx.IsDisposed || !HasPendingWork) { return; }
+            FiberWave.KeepBatchOrder(_ctx);
             using var _ = s_continueReconcileMarker.Auto();
 
             // A resume continues the same pass an earlier time-slice suspended, so while genuinely

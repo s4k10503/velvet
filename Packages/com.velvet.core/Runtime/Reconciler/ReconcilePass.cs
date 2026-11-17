@@ -14,7 +14,7 @@ namespace Velvet
     // the pass (FiberWave), and a render that would have opened it completes or drops a segment of it instead.
     internal sealed class ReconcilePass
     {
-        internal enum OpKind : byte { Insert, RemoveAt, RemoveChild, PatchPre, PatchPost, PatchTail, Teardown, FiberBegin, FiberEnd }
+        internal enum OpKind : byte { Insert, RemoveAt, RemoveChild, PatchPre, PatchPost, PatchTail, Teardown, FiberBegin, FiberEnd, RefDetach }
 
         internal struct Op
         {
@@ -23,9 +23,11 @@ namespace Velvet
             internal VisualElement Child;
             // The deletion a Teardown runs.
             internal DeletionCommit? Deletion;
-            // The turn a FiberBegin or a FiberEnd marks, and where the teardowns of the deletions that run at it are
-            // attached.
+            // The turn a FiberBegin marks, where the teardowns of the deletions that run at it are attached.
             internal TurnAnchor? Anchor;
+            // The fiber whose turn a FiberEnd ends; for a RefDetach, the component whose walk queued the ref that replaces
+            // Child's.
+            internal ComponentFiber? Fiber;
             // The index into Patches of a PatchPre, a PatchPost or a PatchTail.
             internal int Index;
             internal OpKind Kind;
@@ -61,6 +63,14 @@ namespace Velvet
             Failures = new();
 
         internal void BeginSegment(ComponentFiber? root) => Segments.Add((Ops.Count, root));
+
+        // Whether Apply runs the FiberEnd and RefDetach ops, which only a wave ending its pass sets
+        // (Reconciler.FinishWavePass); Apply clears it as it ends. Where it is clear the layout commit runs that work.
+        internal bool RunsTurnEnds;
+
+        // The roots a wave rendered at depth 0, each waiting to record its FiberEnd until a root that is not below it
+        // begins recording or the pass ends (ChildListWrites.HoldRootTurnEnd).
+        internal readonly List<ComponentFiber> RootsAwaitingTurnEnd = new();
 
         internal void Fail(ComponentFiber? start, ComponentFiber owner, System.Exception error, VisualElement? element)
             => Failures.Add((start, owner, error, element?.panel != null ? element : null));

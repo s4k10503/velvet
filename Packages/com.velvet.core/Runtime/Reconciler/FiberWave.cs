@@ -28,8 +28,34 @@ namespace Velvet
             ctx.WaveOpen = true;
             ctx.WaveRecords = true;
             ctx.WaveOwesIndicatorFlush = false;
+            ctx.WaveKeepsBatchOrder = false;
             ctx.DeferDrainLayoutEffects = true;
             ctx.Pass.Journal.Hold();
+        }
+
+        // A wave runs each fiber's insertion effects and layout cleanups, and each replaced ref's detach, as its pass
+        // applies, at the fiber's or the element's turn (ChildListWrites.RecordTurnEnd, RecordRefDetach); the layout
+        // commit runs what is left in tree order. The two agree only where the pass holds a turn for exactly what the
+        // commit would run, each where the tree puts it, so the wave leaves all of it to the layout commit where it
+        // - applied its writes up to a Portal's or a WorldSpace's mount, whose components mount behind them;
+        // - parked a render, whose cleanups wait for the commit that completes it;
+        // - resumed one, whose earlier slices left their turns to passes that have applied;
+        // - rendered a component a settle owes a render, after the renders that settle followed, wherever it sits;
+        // - revealed a component still holding insertion effects, which no turn holds where it did not render;
+        // - mounted a component holding insertion effects under a component a commit has taken, whose rows React places
+        //   before those effects run, and the wave's writes place, or place an element holding, where a container's walk
+        //   ends, behind the component's turn (KeepBatchOrderForAPlacement).
+        internal static void KeepBatchOrder(ReconcilerContext ctx)
+        {
+            if (ctx.WaveOpen) ctx.WaveKeepsBatchOrder = true;
+        }
+
+        // A mount root stands for React's host root, which a commit has always taken.
+        internal static void KeepBatchOrderForAPlacement(ComponentFiber fiber)
+        {
+            if (fiber.HasCommitted || (fiber.PendingInsertionEffects?.Count ?? 0) == 0) return;
+            if (fiber.Parent is { IsMountRoot: false, HasCommitted: false }) return;
+            if (fiber.Reconciler?.Context is { } ctx) KeepBatchOrder(ctx);
         }
 
         // Applies the pass the wave's renders recorded into, commits the hook state they staged, routes what the
