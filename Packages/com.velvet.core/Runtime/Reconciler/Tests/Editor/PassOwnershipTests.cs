@@ -25,8 +25,6 @@ namespace Velvet.Tests
         {
             _mounted?.Dispose();
             _mounted = null;
-            ChildListWrites.EndRecording(_second.Context.Pass);
-            ChildListWrites.EndRecording(_first.Context.Pass);
             _first.Dispose();
             _second.Dispose();
         }
