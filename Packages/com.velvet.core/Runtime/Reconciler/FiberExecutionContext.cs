@@ -167,12 +167,13 @@ namespace Velvet
         // this release neither drains that root nor runs a held range, resolve or resume of it: each can run the root's
         // work again inside the call the exception left, a drain by rendering what that work queued, and the others by
         // rendering fibers of the root, which takes up the updates queued on them. FiberBatchScheduler.DrainImmediateWork,
-        // which a drain of either tier runs through, stands down for it, and so does FiberWorkLoop.FlushState, whose flush
-        // of one fiber does not run through it; a held range, resolve or resume of it is handed to the root's next frame
-        // instead (FiberBatchScheduler.RunInNextFrame). Its pending passive effects and its held work of other kinds still
-        // run, a passive flush being no drain. What it leaves queued is committed by the frame-boundary drain the
-        // scheduler registered, which is where FiberBatchScheduler bounds a run of drains that throw, or by a later
-        // entry's release where it still owes the sync lane (IndexOfOwing).
+        // which a drain of either tier runs through, stands down for it, and so do FiberWorkLoop.FlushState and
+        // FiberWorkLoop.FlushOwedSettleRenders, whose flushes of one fiber do not run through it; a held range, resolve or
+        // resume of it is handed to the root's next frame instead (FiberBatchScheduler.RunInNextFrame). Its pending
+        // passive effects and its held work of other kinds still run, a passive flush being no drain. What it leaves
+        // queued is committed by the frame-boundary drain the scheduler registered, which is where FiberBatchScheduler
+        // bounds a run of drains that throw, or by a later entry's release where it still owes the sync lane
+        // (IndexOfOwing).
         private static void Release(FiberBatchScheduler? owner)
         {
             if (s_releasing) return;

@@ -406,12 +406,15 @@ namespace Velvet
         internal static void OweSettleRender(ComponentFiber holder) => s_owedSettleRenders?.Add(holder);
 
         // Only a holder still holding an immediate-tier lane is flushed, so Transition work it holds for itself
-        // keeps its tier, and one the flush skips (unmounted, hidden under a fallback, in a detached host)
-        // keeps its lane for the scheduler.
+        // keeps its tier, and one the flush skips (unmounted, hidden under a fallback, in a detached host, or of a
+        // root an exception left in the release running, as the FlushState door skips it) keeps its lane for the
+        // scheduler.
         private static void FlushOwedSettleRenders(List<ComponentFiber> owed)
         {
             for (var i = 0; i < owed.Count; i++)
             {
+                var scheduler = owed[i].Reconciler?.Context.BatchScheduler;
+                if (scheduler != null && FiberExecutionContext.Threw(scheduler)) continue;
                 if (FiberLane.SchedulesOnImmediateTier(FiberLane.GetHighestPendingPriority(owed[i])))
                 {
                     FlushStateWork(owed[i]);
