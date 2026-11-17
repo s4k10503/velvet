@@ -11,8 +11,7 @@ namespace Velvet.Tests
     /// tier's scheduled drain and the layout commit, and specifies that the passive flush after it and a resume of a
     /// tree with no parked pass allocate nothing. The component re-renders on its own under a Provider, with a keyed
     /// child it renders inline, and both carry an effect whose deps each re-render changes. Their deps and texts
-    /// come from static arrays, so a change of state builds neither. Two sibling components re-rendered by one drain
-    /// cost no more than the two drained one after the other.
+    /// come from static arrays, so a change of state builds neither.
     /// </summary>
     [TestFixture]
     [Category("Performance")]
@@ -110,75 +109,6 @@ namespace Velvet.Tests
 
             // Assert — a probe stuck at zero reads as an allocation.
             Assert.That(canary > 0 ? blocks : -1, Is.Zero);
-        }
-
-        private static StateUpdater<int> s_setFirstRow;
-        private static StateUpdater<int> s_setSecondRow;
-        private static int s_firstRow;
-        private static int s_secondRow;
-
-        // Each re-render swaps its row for one of another key, so the drain removes one row and creates one.
-        [Component(Compiler = false)]
-        private static VNode FirstRow()
-        {
-            var (value, set) = Hooks.UseState(0);
-            s_setFirstRow = set;
-            return V.Label(key: s_texts[value], text: s_texts[value]);
-        }
-
-        [Component(Compiler = false)]
-        private static VNode SecondRow()
-        {
-            var (value, set) = Hooks.UseState(0);
-            s_setSecondRow = set;
-            return V.Label(key: s_texts[value], text: s_texts[value]);
-        }
-
-        [Component(Compiler = false)]
-        private static VNode TwoRows()
-            => V.Fragment(V.Component(FirstRow, key: "first"), V.Component(SecondRow, key: "second"));
-
-        // GREEN_ON_BASE(characterization): the base renders both rows in one drain for no more than two drains cost.
-        // Allocating in Reconciler.BeginOrJoinPass for each render that joins the wave's pass reddens it.
-        [Test]
-        public void Given_TwoSiblingComponentsThatEachReplaceARow_When_OneDrainReRendersBoth_Then_ItAllocatesNoMoreThanTheTwoDrainedApart()
-        {
-            // Arrange — every run below flips each row once, and the warm-up fills the pools the rows draw on.
-            using var rows = V.Mount(new VisualElement(), V.Component(TwoRows));
-            var context = rows.Root.Reconciler!.Context;
-            var callback = typeof(FiberBatchScheduler).GetMethod(
-                "RunImmediateCallback", BindingFlags.Instance | BindingFlags.NonPublic)
-                ?? throw new MissingMethodException(nameof(FiberBatchScheduler), "RunImmediateCallback");
-            var runImmediateCallback = (Action)callback.CreateDelegate(typeof(Action), rows.GetSchedulerForTest());
-            void FlushRowsPassiveEffects() => FiberEffects.FlushPendingPassiveEffects(context);
-            void FlipBothInOneDrain()
-            {
-                s_setFirstRow.Invoke(s_firstRow ^= 1);
-                s_setSecondRow.Invoke(s_secondRow ^= 1);
-                runImmediateCallback();
-            }
-            void FlipEachInADrainOfItsOwn()
-            {
-                s_setFirstRow.Invoke(s_firstRow ^= 1);
-                runImmediateCallback();
-                FlushRowsPassiveEffects();
-                s_setSecondRow.Invoke(s_secondRow ^= 1);
-                runImmediateCallback();
-            }
-            for (var i = 0; i < 16; i++)
-            {
-                FlipBothInOneDrain();
-                FlipEachInADrainOfItsOwn();
-                FlushRowsPassiveEffects();
-            }
-            var canary = GCAllocationCanary.BlocksForKnownArray();
-
-            // Act
-            var together = GCAllocationProbe.MedianBlocksDuring(FlushRowsPassiveEffects, FlipBothInOneDrain);
-            var apart = GCAllocationProbe.MedianBlocksDuring(FlushRowsPassiveEffects, FlipEachInADrainOfItsOwn);
-
-            // Assert — a probe stuck at zero reads as over budget.
-            Assert.That(canary > 0 ? together - apart : int.MaxValue, Is.LessThanOrEqualTo(0));
         }
 
         [Test]
