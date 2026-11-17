@@ -1886,7 +1886,7 @@ namespace Velvet
         // Both Mount and update commits push onto this stack: MountInline pushes with
         // IsMount: true, SubsumeFiberIntoThisPass (parent re-render reaching an
         // existing inline child) pushes with IsMount: false. The drain forwards the flag
-        // to the insertion- and layout-effect passes as mountDoubleInvoke so
+        // to the layout-effect pass as mountDoubleInvoke so
         // the Editor-only mount double-invoke fires only on initial Mount, not on the deps-changed
         // re-expansion path: a layout effect on an update fires its deps
         // cleanup + setup once, not twice.
