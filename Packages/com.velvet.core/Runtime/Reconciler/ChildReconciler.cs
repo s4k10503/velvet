@@ -345,9 +345,9 @@ namespace Velvet
         // suspended by patching this Portal.
         //
         // In the pass of a wave (wave non-null), what a z-* placement throws is filed for the wave with the component that
-        // rendered the element and the drain goes on (PlaceRelocated), and what a Portal's children throw as the mount adds
-        // them is filed with the component that rendered the Portal and the drain ends (FiledForTheWave), each where that
-        // component is known.
+        // rendered the element (PlaceRelocated), and what a Portal's children throw as the mount adds them with the
+        // component that rendered the Portal (FiledForTheWave), each where that component is known; a throw so filed
+        // leaves the rest of the drain to run.
         internal bool DrainPendingPortalMounts(ReconcilePass? wave = null)
         {
             HashSet<ComponentFiber>? childFibersBefore = null;
@@ -513,9 +513,9 @@ namespace Velvet
                 }
                 catch (Exception exception) when (FiledForTheWave(wave, declaringFiber, exception))
                 {
-                    // The drain ends as the throw would have ended it.
+                    // The Portal is recorded with the rows its children left in the target, and the drain goes on to
+                    // what was queued behind it.
                     wave!.Fail(declaringFiber!, exception, placeholder, placement: false);
-                    return false;
                 }
                 finally
                 {

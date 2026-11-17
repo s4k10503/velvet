@@ -27,6 +27,7 @@ namespace Velvet.Tests
         private HeadlessEditorPanelHost _host;
         private VisualElement _mountPoint;
         private static VisualElement s_portalTarget;
+        private static VisualElement s_secondTarget;
         private static readonly List<string> s_reports = new();
         private static readonly List<AttachThrower> s_built = new();
 
@@ -37,6 +38,7 @@ namespace Velvet.Tests
             _mountPoint = new VisualElement();
             _host.Root.Add(_mountPoint);
             s_portalTarget = new VisualElement();
+            s_secondTarget = new VisualElement();
             s_reports.Clear();
             s_built.Clear();
         }
@@ -593,6 +595,39 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(log.ToString(), Is.EqualTo("render:R1 render:R2 caught:B1:attach:R1 caught:B3:attach:Portal"));
+        }
+
+        [Component]
+        private static VNode ShowsTwoPortals()
+        {
+            var (shown, _) = EventLog.UseState("Portals", false);
+            return V.Fragment(
+                V.Component(FirstBoundary, new Holds(shown
+                    ? V.Portal(s_portalTarget, new VNode[] { V.Custom<AttachThrower>(name: "First", key: "thrower") },
+                        key: "first")
+                    : null), key: "b1"),
+                V.Component(SecondBoundary, new Holds(shown
+                    ? V.Portal(s_secondTarget, new VNode[] { V.Label(text: "ok") }, key: "second")
+                    : null), key: "b2"));
+        }
+
+        [Test]
+        public void Given_TwoPortalsUnderBoundariesOfTheirOwnAndTheFirstsChildThrowsAsItAttaches_When_OneDrainShowsBoth_Then_TheSecondMountsAndTheFirstsBoundaryReportsIt()
+        {
+            // Arrange — both targets are on the panel
+            _host.Root.Add(s_portalTarget);
+            _host.Root.Add(s_secondTarget);
+            var log = new EventLog();
+            using var mounted = Mount(log, V.Component(ShowsTwoPortals));
+            log.Clear();
+
+            // Act
+            log.Setter<bool>("Portals").Invoke(true);
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert — a second Portal the throw left unmounted reads as such rather than as the report
+            Assert.That(s_secondTarget.Q<Label>()?.text == "ok" ? log.ToString() : "the second Portal never mounted",
+                Is.EqualTo("caught:B1:attach:First"));
         }
 
         [Component]
