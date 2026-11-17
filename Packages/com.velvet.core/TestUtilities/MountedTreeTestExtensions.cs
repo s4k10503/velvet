@@ -26,7 +26,7 @@ namespace Velvet.TestUtilities
         /// and takes out of the immediate tier each entry whose fiber holds no Urgent or Normal lane any more, as the
         /// drain that rendered it would have. Test-only. Must not be used from production code.
         /// </summary>
-        // Bypasses: the batch scheduler's drain buffer and its passes: production calls FiberWorkLoop.FlushState from inside DrainImmediate, over the buffer that pass built, and runs a sync-lane pass's passive flush as it ends.
+        // Bypasses: the batch scheduler's drain buffer and its passes: production calls FiberWorkLoop.FlushState from inside DrainImmediate, over the buffer that pass built, and runs a sync-lane pass's passive flush as it ends. Where a root owes the sync lane, the end of the helper's first entry drains it all the same, passes and passive flush included (FiberExecutionContext's release).
         public static void FlushStateForTest(this MountedTree mounted)
         {
             mounted.FlushEffectsForTest();
@@ -48,9 +48,10 @@ namespace Velvet.TestUtilities
 
         /// <summary>
         /// As <see cref="FlushStateForTest"/>, leaving the passive effects earlier commits left pending as they are,
-        /// for a case about what a render does while they still wait. Test-only.
+        /// for a case about what a render does while they still wait. Where a root owes the sync lane, the end of the
+        /// first flush runs them, and then drains that root (FiberExecutionContext's release). Test-only.
         /// </summary>
-        // Bypasses: the batch scheduler's drain buffer and its passes, as FlushStateForTest does, and the passive flush a drain runs before it renders.
+        // Bypasses: the batch scheduler's drain buffer and its passes, as FlushStateForTest does, and the passive flush a drain runs before it renders, except where a root owes the sync lane.
         public static void FlushStateKeepingPassiveEffectsForTest(this MountedTree mounted)
         {
             FiberTreeTraversal.Visit(mounted.Root, FiberWorkLoop.FlushState);
