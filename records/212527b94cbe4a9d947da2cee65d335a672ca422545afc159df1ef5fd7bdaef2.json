@@ -1,0 +1,31 @@
+{
+ "detail": "EditMode: 1 failed among the 4 case(s) that ran the site: Given_ADefaultFamily_When_AWeightWithNoFamilyClassIsApplied_Then_TheElementTakesTheDefaultFamilysFont",
+ "file": "3172950923cfd59bbf364bd31da9ad96199844d3037725906381f027866b3cc4",
+ "killers": [
+  {
+   "case": "Velvet.Tests.StyleFontTests.Given_ADefaultFamily_When_AWeightWithNoFamilyClassIsApplied_Then_TheElementTakesTheDefaultFamilysFont",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/StyleFontTests.cs": "be51d6a5e86486354767b2a0a3c98a9e36d1cdf3466bc2e60697f539cfc5944e",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  }
+ ],
+ "measured_by": "44036517794",
+ "mutant": {
+  "after": "true",
+  "before": "false",
+  "column": 62,
+  "line": 182,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleFontResolver.cs",
+  "shadowed": [
+   "line removed"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "4ab31ee6421c5603aa8b285ebc6bb30f1bfdee82c3b8101815a7c689d259e69c",
+ "verdict": "killed"
+}

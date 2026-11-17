@@ -5,8 +5,8 @@
   {
    "case": "Velvet.Tests.ContainerRowsPanelTests.Given_AnElementOutsideTheWriteWhoseListChangedBehindItsModel_When_ItsChangeIsAnnouncedFromTheWritesDetach_Then_ItsModelIsRebuilt",
    "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ContainerRowsPanelTests.cs": "9fc5cc37de1f62ea688f2fbdab3e1e4c9fda3269a977b6bdbbff1dda3de1ed3a",
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ContainerRowsTests.cs": "3809568a0996f1b43bf27dfe2d040ab615d8e48387738f98c5c95bbdf4b52e62",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ContainerRowsPanelTests.cs": "9e6c0e34903b76432d7825e8d427c649bf3307e8e6b1eb599916af6a7c450cde",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ContainerRowsTests.cs": "fe453e21e66493ae1b16fefd8f7772700525368c236e44f09da4fdd28cdd215f",
     "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/RowModelAccess.cs": "c9281ca1bc8930756e7b643acf56772495143054fc02c02792727059325b4674",
     "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
     "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
@@ -16,7 +16,7 @@
    }
   }
  ],
- "measured_by": "43922111500",
+ "measured_by": "44036517794",
  "mutant": {
   "after": "==",
   "before": "!=",
@@ -33,6 +33,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "77df84e62b7b22db9de849f53076452d06518cca50904ac9f617346a1acb092e",
+ "tests": "4ab31ee6421c5603aa8b285ebc6bb30f1bfdee82c3b8101815a7c689d259e69c",
  "verdict": "killed"
 }

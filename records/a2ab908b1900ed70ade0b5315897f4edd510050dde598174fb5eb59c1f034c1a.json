@@ -1,12 +1,12 @@
 {
- "detail": "EditMode: 1 failed among the 16 case(s) that ran the site: Given_ARendererThrowingOnOneItem_When_ThatRangeUpdateFails_Then_TheVisibleContainerShowsNoRows",
+ "detail": "EditMode: 1 failed among the 18 case(s) that ran the site: Given_ARendererThrowingOnOneItem_When_ThatRangeUpdateFails_Then_TheVisibleContainerShowsNoRows",
  "file": "fe5c44d191f58bbc46262e8fbaa9e50e4fa9874bab3b4017784621c8082aecdd",
  "killers": [
   {
    "case": "Velvet.Tests.VirtualListTests.Given_ARendererThrowingOnOneItem_When_ThatRangeUpdateFails_Then_TheVisibleContainerShowsNoRows",
    "files": {
     "Packages/com.velvet.core/Runtime/Component/Tests/Editor/PublicApiSurfaceTests.cs": "047f093054d47bed7fe15f75060d6c41bed15da284c22b5ea31fd014c737fb54",
-    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/VirtualListTests.cs": "aacf6a5871e0712f3eaaed47cd8c069ed4fa22abb3c567b79a8bde956f6510fb",
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/VirtualListTests.cs": "859bee6bec173819e6100b0a1b4ae6195b3031bf6182ee370312d01359132c0b",
     "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
     "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
     "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166",
@@ -15,7 +15,7 @@
    }
   }
  ],
- "measured_by": "43708851232",
+ "measured_by": "44036517794",
  "mutant": {
   "after": ";",
   "before": "ChildListWrites.Clear(_visibleContainer);",
@@ -29,6 +29,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "5e7f3ea05d51d3347b1efe117704129307892f27510ec66bf3601001ec0ff3e0",
+ "tests": "4ab31ee6421c5603aa8b285ebc6bb30f1bfdee82c3b8101815a7c689d259e69c",
  "verdict": "killed"
 }

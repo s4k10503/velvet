@@ -6,7 +6,7 @@
    "case": "Velvet.Tests.VirtualListTests.Given_ARendererReturningOneNodeForEveryItem_When_ARangeChangeKeepsARowInRange_Then_ThatRowKeepsItsElement",
    "files": {
     "Packages/com.velvet.core/Runtime/Component/Tests/Editor/PublicApiSurfaceTests.cs": "047f093054d47bed7fe15f75060d6c41bed15da284c22b5ea31fd014c737fb54",
-    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/VirtualListTests.cs": "aacf6a5871e0712f3eaaed47cd8c069ed4fa22abb3c567b79a8bde956f6510fb",
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/VirtualListTests.cs": "859bee6bec173819e6100b0a1b4ae6195b3031bf6182ee370312d01359132c0b",
     "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
     "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
     "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166",
@@ -18,7 +18,7 @@
    "case": "Velvet.Tests.VirtualListTests.Given_AnUnkeyedRowScrolledAwayAndBack_When_ItReturns_Then_WhatWasTypedIntoItIsGone",
    "files": {
     "Packages/com.velvet.core/Runtime/Component/Tests/Editor/PublicApiSurfaceTests.cs": "047f093054d47bed7fe15f75060d6c41bed15da284c22b5ea31fd014c737fb54",
-    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/VirtualListTests.cs": "aacf6a5871e0712f3eaaed47cd8c069ed4fa22abb3c567b79a8bde956f6510fb",
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/VirtualListTests.cs": "859bee6bec173819e6100b0a1b4ae6195b3031bf6182ee370312d01359132c0b",
     "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
     "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
     "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166",
@@ -30,7 +30,7 @@
    "case": "Velvet.Tests.VirtualListTests.Given_ClipPathItems_When_OverlappingRangeRepatchesThem_Then_ItemsAreNotDoubleWrapped",
    "files": {
     "Packages/com.velvet.core/Runtime/Component/Tests/Editor/PublicApiSurfaceTests.cs": "047f093054d47bed7fe15f75060d6c41bed15da284c22b5ea31fd014c737fb54",
-    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/VirtualListTests.cs": "aacf6a5871e0712f3eaaed47cd8c069ed4fa22abb3c567b79a8bde956f6510fb",
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/VirtualListTests.cs": "859bee6bec173819e6100b0a1b4ae6195b3031bf6182ee370312d01359132c0b",
     "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
     "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
     "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166",
@@ -42,7 +42,7 @@
    "case": "Velvet.Tests.VirtualListTests.Given_MountedVirtualListItem_When_SameKeyRendersADifferentNodeType_Then_TheNewTypeIsCreatedInstead",
    "files": {
     "Packages/com.velvet.core/Runtime/Component/Tests/Editor/PublicApiSurfaceTests.cs": "047f093054d47bed7fe15f75060d6c41bed15da284c22b5ea31fd014c737fb54",
-    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/VirtualListTests.cs": "aacf6a5871e0712f3eaaed47cd8c069ed4fa22abb3c567b79a8bde956f6510fb",
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/VirtualListTests.cs": "859bee6bec173819e6100b0a1b4ae6195b3031bf6182ee370312d01359132c0b",
     "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
     "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
     "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166",
@@ -54,7 +54,7 @@
    "case": "Velvet.Tests.VirtualListTests.Given_TwoItemsSharingAKey_When_BothAreScrolledAwayAndBack_Then_TheSecondReturnsAsANewElement",
    "files": {
     "Packages/com.velvet.core/Runtime/Component/Tests/Editor/PublicApiSurfaceTests.cs": "047f093054d47bed7fe15f75060d6c41bed15da284c22b5ea31fd014c737fb54",
-    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/VirtualListTests.cs": "aacf6a5871e0712f3eaaed47cd8c069ed4fa22abb3c567b79a8bde956f6510fb",
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/VirtualListTests.cs": "859bee6bec173819e6100b0a1b4ae6195b3031bf6182ee370312d01359132c0b",
     "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
     "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
     "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166",
@@ -63,7 +63,7 @@
    }
   }
  ],
- "measured_by": "43802113819",
+ "measured_by": "44036517794",
  "mutant": {
   "after": ";",
   "before": "ChildListWrites.RemoveAt(_visibleContainer, i);",
@@ -77,6 +77,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "8e7e1b10266f79fab5f5202a407f54c3c10d6b23f97889a416e135d0c09a9dce",
+ "tests": "4ab31ee6421c5603aa8b285ebc6bb30f1bfdee82c3b8101815a7c689d259e69c",
  "verdict": "killed"
 }

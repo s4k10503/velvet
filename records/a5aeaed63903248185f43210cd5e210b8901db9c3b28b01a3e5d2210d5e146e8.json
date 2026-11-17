@@ -1,0 +1,29 @@
+{
+ "detail": "EditMode: 1 failed: Given_AScheduledFontRead_When_NoInheritorLacksANamedFamilyAnyMore_Then_TheReadIsLetGo",
+ "file": "cab9076e539225b4af9f1780e60fcf585da93e3943b4c80c70953d948d184606",
+ "killers": [
+  {
+   "case": "Velvet.Tests.InheritedFontFamilyPanelTests.Given_AScheduledFontRead_When_NoInheritorLacksANamedFamilyAnyMore_Then_TheReadIsLetGo",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/InheritedFontFamilyPanelTests.cs": "c93acb782eb66d83a2d89eca64d00e419a0dfa7740d4ddadd022725395003ddf",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397"
+   }
+  }
+ ],
+ "measured_by": "44036517794",
+ "mutant": {
+  "after": ";",
+  "before": "_follow = null;",
+  "column": 16,
+  "line": 257,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberFontScope.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "4ab31ee6421c5603aa8b285ebc6bb30f1bfdee82c3b8101815a7c689d259e69c",
+ "verdict": "killed"
+}

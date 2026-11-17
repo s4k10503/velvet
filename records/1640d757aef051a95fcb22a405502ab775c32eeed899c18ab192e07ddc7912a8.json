@@ -1,0 +1,35 @@
+{
+ "detail": "EditMode: 1 failed among the 1 case(s) that ran the site: Given_ABoldLabelInABoldContainer_When_TheFontTheContainerInheritsChanges_Then_TheLabelFollowsInTheSameFrame",
+ "file": "cab9076e539225b4af9f1780e60fcf585da93e3943b4c80c70953d948d184606",
+ "killers": [
+  {
+   "case": "Velvet.Tests.FontFamilyFacesPanelTests.Given_ABoldLabelInABoldContainer_When_TheFontTheContainerInheritsChanges_Then_TheLabelFollowsInTheSameFrame",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/FontFamilyFacesPanelTests.cs": "25630da720b945ab11efb1e8c30bf8cc8e647bc23b77982ffedac1f504d6da8f",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26"
+   }
+  }
+ ],
+ "measured_by": "44036517794",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 79,
+  "line": 284,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberFontScope.cs",
+  "shadowed": [
+   "clause removed",
+   "equality",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "4ab31ee6421c5603aa8b285ebc6bb30f1bfdee82c3b8101815a7c689d259e69c",
+ "verdict": "killed"
+}
