@@ -245,7 +245,6 @@ namespace Velvet.Tests
             return V.Div();
         }
 
-        // Sixty readers of one query, each in a Suspense of its own, beside the component that writes their data.
         [Component]
         private static VNode SixtyReadersHost()
         {

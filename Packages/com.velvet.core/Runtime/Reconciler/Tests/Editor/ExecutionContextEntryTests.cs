@@ -60,7 +60,6 @@ namespace Velvet.Tests
         private static StateUpdater<bool> s_showClicker;
         private static ComponentFiber s_ownerFiber;
 
-        // On a click asks for its own render. c records what was written before it rendered.
         [Component]
         private static VNode RendersOnAClick(string name)
         {
@@ -75,7 +74,6 @@ namespace Velvet.Tests
             });
         }
 
-        // Writes from the effect its mount commits.
         [Component]
         private static VNode WritesFromItsMountEffect()
         {
