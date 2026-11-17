@@ -388,13 +388,14 @@ namespace Velvet.Tests
 
         // --- The bound ---
 
-        // One request, a flush of the holder's scheduler, held under the key a held flush carries.
-        private void HoldTheRepeatedRequest(Action run)
-            => FiberExecutionContext.Hold(FiberExecutionContext.Request.Flush, Holder, Holder, run);
+        // One request, a flush of root's scheduler, the holder's where none is named, held under the key a held flush
+        // carries.
+        private void HoldTheRepeatedRequest(Action run, FiberBatchScheduler? root = null)
+            => FiberExecutionContext.Hold(FiberExecutionContext.Request.Flush, root ?? Holder, root ?? Holder, run);
 
         // Held work that asks for itself again as that one request while it is made, times runs in all, finite where the
         // limit is not kept. At the fiftieth run, then is called after it has asked again.
-        private Action AskingForItself(int times, Action? eachRun = null, Action? then = null)
+        private Action AskingForItself(int times, Action? eachRun = null, Action? then = null, FiberBatchScheduler? root = null)
             => () =>
             {
                 var left = times;
@@ -403,10 +404,10 @@ namespace Velvet.Tests
                 {
                     eachRun?.Invoke();
                     if (--left == 0) return;
-                    HoldTheRepeatedRequest(again);
+                    HoldTheRepeatedRequest(again, root);
                     if (left == times - 50) then?.Invoke();
                 });
-                HoldTheRepeatedRequest(again);
+                HoldTheRepeatedRequest(again, root);
             };
 
         [Test]
@@ -611,6 +612,26 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(OwingTheSyncLane(), Has.No.Member(echo.GetSchedulerForTest()));
+        }
+
+        // The click leaves the root owing the sync lane, and its flush joins the request already held under the same key,
+        // which drains nothing; so the root still owes once the bound has refused that request and nothing else is held.
+        [Test]
+        public void Given_ARootOwingTheSyncLaneWhoseFlushTheBoundRefused_When_ThePassEnds_Then_TheReleaseReturns()
+        {
+            // Arrange
+            LogAssert.Expect(LogType.Exception, new Regex("Maximum update depth exceeded"));
+            var root = MountTheEcho().GetSchedulerForTest();
+
+            // Act
+            TestDelegate act = () => WalkAsking(() =>
+            {
+                AskingForItself(60, root: root)();
+                s_echoButton.SimulateClick();
+            });
+
+            // Assert — a release that took the refused root again would not return
+            Assert.That(act, Throws.Nothing);
         }
 
         private static int s_hostRendered;
