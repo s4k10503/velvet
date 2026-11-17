@@ -664,8 +664,6 @@ namespace Velvet.Tests
         private static readonly Ref<string> s_throwingHandle = new();
         private static StateUpdater<int> s_setThrower;
 
-        // From its first update on, mounts a root from its layout effect, then queues another update of its own from its
-        // imperative-handle factory and throws, out of the drain committing it.
         [Component]
         private static VNode MountsQueuesAndThrows()
         {
@@ -881,7 +879,6 @@ namespace Velvet.Tests
         private static bool s_throwOnce;
         private static StateUpdater<int> s_setCounterReader;
 
-        // Reads the counter, and throws once from its imperative-handle factory on an update once asked.
         [Component]
         private static VNode ReadsTheCounterAndThrowsOnceWhenAsked()
         {
