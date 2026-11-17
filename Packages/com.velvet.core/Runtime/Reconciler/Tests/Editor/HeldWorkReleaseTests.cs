@@ -976,14 +976,15 @@ namespace Velvet.Tests
 
         // On a panel, so that the scroller's change reaches the list. Each row's component mounts inline in an element
         // row, where a range that patches the row renders it.
-        private static MountedTree MountARowThatScrollsItsList(HeadlessEditorPanelHost host)
+        private static MountedTree MountARowThatScrollsItsList(HeadlessEditorPanelHost host, Func<string, VNode> row)
         {
             s_rowListRef = new Ref<VirtualListHandle>();
             s_rowHandleRuns = 0;
             s_rowThrows = true;
+            s_otherWorkRan = false;
+            s_scrolls = 0;
             var mounted = V.Mount(host.Root, V.VirtualList(SixItems, item => item, itemHeight: 50f,
-                renderer: item => V.Div(children: new VNode[] { V.Component(ScrollsItsListThenThrowsOnce, item) }),
-                overscan: 0, listRef: s_rowListRef));
+                renderer: item => V.Div(children: new VNode[] { row(item) }), overscan: 0, listRef: s_rowListRef));
             var scrollView = host.Root.Q<ScrollView>();
             var list = mounted.Root.Reconciler.Context.VirtualListControllers[scrollView];
             typeof(FiberVirtualListController).GetField("_viewportHeight", BindingFlags.Instance | BindingFlags.NonPublic)!
@@ -1009,7 +1010,7 @@ namespace Velvet.Tests
         {
             // Arrange
             using var host = new HeadlessEditorPanelHost();
-            using var mounted = MountARowThatScrollsItsList(host);
+            using var mounted = MountARowThatScrollsItsList(host, item => V.Component(ScrollsItsListThenThrowsOnce, item));
 
             // Act
             ClickTheSecondRow(host);
@@ -1023,7 +1024,7 @@ namespace Velvet.Tests
         {
             // Arrange
             using var host = new HeadlessEditorPanelHost();
-            using var mounted = MountARowThatScrollsItsList(host);
+            using var mounted = MountARowThatScrollsItsList(host, item => V.Component(ScrollsItsListThenThrowsOnce, item));
             ClickTheSecondRow(host);
 
             // Act
@@ -1031,6 +1032,158 @@ namespace Velvet.Tests
 
             // Assert — null where the release dropped the range rather than handing it to the frame
             Assert.That(host.Root.Q<Button>("bump-item-4"), Is.Not.Null);
+        }
+
+        private static bool s_otherWorkRan;
+
+        // Work of the panel's own, registered behind what the click registered.
+        private static void ScheduleOtherWork(HeadlessEditorPanelHost host)
+            => host.Root.schedule.Execute(() => s_otherWorkRan = true);
+
+        private static void DrivePasses(HeadlessEditorPanelHost host, int passes)
+        {
+            for (var i = 0; i < passes; i++)
+            {
+                try
+                {
+                    EditorPanelTestHelpers.DriveSchedulerOnce(host.Panel);
+                }
+                catch (TargetInvocationException)
+                {
+                }
+            }
+        }
+
+        [Component]
+        private static VNode ScrollsItsListBackAndForthThenThrows(string item)
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            Hooks.UseLayoutEffect((Func<Action>)(() =>
+            {
+                if (tick > 0) s_rowListRef.Current.ScrollToItem(tick % 2, VirtualListAlign.Start);
+                return null!;
+            }), new object[] { tick });
+            Hooks.UseImperativeHandle(s_rowHandle, () =>
+            {
+                if (tick == 0) return item;
+                s_rowHandleRuns++;
+                setTick.Invoke(tick + 1);
+                throw new InvalidOperationException("handle failed");
+            });
+            return V.Button(name: "bump-" + item, text: item, onClick: () => setTick.Invoke(1));
+        }
+
+        private static void ClickTheSecondRowThenScheduleOtherWork(HeadlessEditorPanelHost host)
+        {
+            ClickTheSecondRow(host);
+            ScheduleOtherWork(host);
+        }
+
+        [Test]
+        public void Given_ARowThatScrollsItsListBackAndForthAndThrowsOnEveryUpdate_When_ThePanelRunsSixPasses_Then_TheHandleHasRunThreeTimes()
+        {
+            // Arrange — the bound on throwing drains drops the queued update once
+            LogAssert.Expect(LogType.Error, new Regex("in a row threw"));
+            using var host = new HeadlessEditorPanelHost();
+            using var mounted = MountARowThatScrollsItsList(host, item => V.Component(ScrollsItsListBackAndForthThenThrows, item));
+            ClickTheSecondRowThenScheduleOtherWork(host);
+
+            // Act
+            DrivePasses(host, 6);
+
+            // Assert — one more on each later pass where the handed-on range runs again
+            Assert.That(s_rowHandleRuns, Is.EqualTo(3));
+        }
+
+        [Test]
+        public void Given_ARowThatScrollsItsListBackAndForthAndThrowsOnEveryUpdate_When_ThePanelRunsSixPasses_Then_ThePanelsOtherScheduledWorkHasRun()
+        {
+            // Arrange — the bound on throwing drains drops the queued update once
+            LogAssert.Expect(LogType.Error, new Regex("in a row threw"));
+            using var host = new HeadlessEditorPanelHost();
+            using var mounted = MountARowThatScrollsItsList(host, item => V.Component(ScrollsItsListBackAndForthThenThrows, item));
+            ClickTheSecondRowThenScheduleOtherWork(host);
+
+            // Act
+            DrivePasses(host, 6);
+
+            // Assert
+            Assert.That(s_otherWorkRan, Is.True);
+        }
+
+        private static int s_scrolls;
+
+        [Component]
+        private static VNode ScrollsItsListTheOtherWayOnEveryCommitThenThrows(string item)
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            Hooks.UseLayoutEffect((Func<Action>)(() =>
+            {
+                if (tick > 0) s_rowListRef.Current.ScrollToItem(s_scrolls++ % 2 == 0 ? 1 : 0, VirtualListAlign.Start);
+                return null!;
+            }));
+            Hooks.UseImperativeHandle(s_rowHandle, () =>
+            {
+                if (tick == 0) return item;
+                s_rowHandleRuns++;
+                throw new InvalidOperationException("handle failed");
+            });
+            return V.Button(name: "bump-" + item, text: item, onClick: () => setTick.Invoke(1));
+        }
+
+        // The handle queues nothing, so no drain of the root throws after the click's: the throws counted are the runs
+        // of the ranges handed on.
+        [Test]
+        public void Given_ARowWhoseEveryCommitScrollsItsListTheOtherWayAndThrows_When_ThePanelRunsSixPasses_Then_TheHandleHasRunFourTimes()
+        {
+            // Arrange — each of the three handed-on ranges that run logs what it throws
+            LogAssert.Expect(LogType.Exception, new Regex("handle failed"));
+            LogAssert.Expect(LogType.Exception, new Regex("handle failed"));
+            LogAssert.Expect(LogType.Exception, new Regex("handle failed"));
+            using var host = new HeadlessEditorPanelHost();
+            using var mounted = MountARowThatScrollsItsList(host, item => V.Component(ScrollsItsListTheOtherWayOnEveryCommitThenThrows, item));
+            ClickTheSecondRow(host);
+
+            // Act
+            DrivePasses(host, 6);
+
+            // Assert — one more on each later pass where a range handed on runs again
+            Assert.That(s_rowHandleRuns, Is.EqualTo(4));
+        }
+
+        [Component]
+        private static VNode ScrollsItsListThenItsFifthRowThrows(string item)
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            Hooks.UseLayoutEffect((Func<Action>)(() =>
+            {
+                if (tick == 1) s_rowListRef.Current.ScrollToItem(1, VirtualListAlign.Start);
+                return null!;
+            }), new object[] { tick });
+            Hooks.UseImperativeHandle(s_rowHandle, () =>
+            {
+                if (item == "item-4") throw new InvalidOperationException("row 4 failed");
+                if (tick == 0 || !s_rowThrows) return item;
+                s_rowThrows = false;
+                throw new InvalidOperationException("handle failed");
+            });
+            return V.Button(name: "bump-" + item, text: item, onClick: () => setTick.Invoke(1));
+        }
+
+        [Test]
+        public void Given_AHandedOnRangeWhoseNewRowThrowsAsItMounts_When_ThePanelRunsAPass_Then_ThePanelsOtherScheduledWorkHasRun()
+        {
+            // Arrange
+            LogAssert.Expect(LogType.Exception, new Regex("row 4 failed"));
+            using var host = new HeadlessEditorPanelHost();
+            using var mounted = MountARowThatScrollsItsList(host, item => V.Component(ScrollsItsListThenItsFifthRowThrows, item));
+            ClickTheSecondRowThenScheduleOtherWork(host);
+
+            // Act
+            DrivePasses(host, 1);
+
+            // Assert
+            Assert.That(s_otherWorkRan, Is.True);
         }
 
         private static VelvetTaskCompletionSource<string> s_read = null!;

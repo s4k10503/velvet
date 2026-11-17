@@ -26,9 +26,13 @@ namespace Velvet
         private const int NestedUpdateLimit = 50;
 
         // How many immediate drains in a row may throw before the updates queued after the last of them are dropped
-        // rather than re-armed (see DrainImmediate). A drain that completes resets the count.
+        // rather than re-armed (see CountRun). A drain that completes resets the count. Held work handed to a later
+        // frame (RunInNextFrame) counts as a drain here.
         private const int ConsecutiveThrowingDrainLimit = 3;
         private int _consecutiveThrowingDrains;
+
+        // Bumped each time the bound is reached, which drops every hand-on made before it (RunInNextFrame).
+        private int _handOnGeneration;
 
         // Insertion-ordered pending queues: the List preserves enqueue order so the drain matches the
         // pre-batching schedule.Execute registration order (a parent dirtied before its child flushes
@@ -312,12 +316,64 @@ namespace Velvet
             _anchor.schedule.Execute(callback);
         }
 
-        // Held work of this root that FiberExecutionContext's release does not run, made in the root's next frame on the
-        // anchor the tiers' drains are registered on. A root with no anchor registers no drain either, and has no frame.
+        // Held work of this root that FiberExecutionContext's release does not run, made in a later frame on the anchor
+        // the tiers' drains are registered on. A root with no anchor registers no drain either, and has no frame. Past
+        // the bound on drains that throw, it is dropped as the updates queued then are.
         internal void RunInNextFrame(Action run)
         {
             var anchor = _anchor;
-            anchor?.schedule.Execute(() => PanelSchedulerCallback.Run(anchor, run, static held => held()));
+            if (anchor == null || _consecutiveThrowingDrains >= ConsecutiveThrowingDrainLimit) return;
+            var handOn = new HandOn(this, run, _handOnGeneration);
+            anchor.schedule.Execute(() => PanelSchedulerCallback.Run(anchor, handOn, static held => held.Run()));
+        }
+
+        private sealed class HandOn
+        {
+            private readonly FiberBatchScheduler _scheduler;
+            private readonly Action _run;
+            private readonly int _generation;
+
+            internal HandOn(FiberBatchScheduler scheduler, Action run, int generation)
+            {
+                _scheduler = scheduler;
+                _run = run;
+                _generation = generation;
+            }
+
+            // Logged here, as the release logs what an item throws, rather than thrown out to the panel's scheduler:
+            // what that does to the items behind it is held by the HeldWorkReleaseTests cases ending
+            // Then_ThePanelsOtherScheduledWorkHasRun.
+            internal void Run()
+            {
+                if (_generation != _scheduler._handOnGeneration) return;
+                var completed = false;
+                try
+                {
+                    _run();
+                    completed = true;
+                }
+                catch (Exception thrown)
+                {
+                    UnityEngine.Debug.LogException(thrown);
+                }
+                _scheduler.CountRun(completed);
+            }
+        }
+
+        // A commit that throws and queues itself again on every drain would otherwise throw once a frame for good, the
+        // same reason the nested-update cap drops its runaway rather than re-arming. Reaching the bound drops what was
+        // handed on before it as well: a drain that completes over the emptied tier resets the count, so a hand-on left
+        // to render the dropped update, which stays in its hook's slot, would start the run afresh.
+        private void CountRun(bool completed)
+        {
+            _consecutiveThrowingDrains = completed ? 0 : _consecutiveThrowingDrains + 1;
+            if (_consecutiveThrowingDrains < ConsecutiveThrowingDrainLimit) return;
+            _handOnGeneration++;
+            if (_immediateOrder.Count == 0) return;
+            FiberLogger.LogError("Scheduler",
+                $"{ConsecutiveThrowingDrainLimit} update batches in a row threw, and the last left updates"
+                + " queued. Those updates were dropped.");
+            DropImmediateIntake();
         }
 
         private void RunAdmitCallback(DelayedAdmission admission)
@@ -402,16 +458,7 @@ namespace Velvet
                 // settle on a drop, or enqueued before the exception, and the loop that would have consumed it has
                 // exited. Only the registered callback lowers the flag; see _inImmediateCallback.
                 if (_inImmediateCallback) _immediateScheduled = false;
-                _consecutiveThrowingDrains = completed ? 0 : _consecutiveThrowingDrains + 1;
-                if (_consecutiveThrowingDrains >= ConsecutiveThrowingDrainLimit && _immediateOrder.Count > 0)
-                {
-                    // A commit that throws and queues itself again on every drain would otherwise throw once a frame
-                    // for good, the same reason the nested-update cap drops its runaway rather than re-arming.
-                    FiberLogger.LogError("Scheduler",
-                        $"{ConsecutiveThrowingDrainLimit} update batches in a row threw, and the last left updates"
-                        + " queued. Those updates were dropped.");
-                    DropImmediateIntake();
-                }
+                CountRun(completed);
                 if (_immediateOrder.Count == 0) _externalStoreRenderQueued = false;
                 if (_immediateOrder.Count > 0) ArmImmediateDrain();
             }
