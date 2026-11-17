@@ -42,22 +42,24 @@ namespace Velvet
         internal readonly HashSet<VisualElement> Created = new();
 
         // Where a wave records several roots' renders into the pass: the index of the first op each run belongs to, and
-        // the fiber whose render recorded it. Apply reads the root of each op off it, and clears it with the ops.
+        // the fiber whose render recorded it. Apply files a failed op under the root of its run where Owners names no
+        // component for it, and clears it with the ops.
         internal readonly List<(int FirstOp, ComponentFiber? Root)> Segments = new();
 
         // The root of the op Apply is applying, whose run an op recorded behind it belongs to.
         internal ComponentFiber? ApplyingRoot;
 
-        // What the ops and z-layer mounts of a wave's pass threw where it ended, each with the root whose render recorded
-        // it, for the wave to route.
-        internal readonly List<(ComponentFiber Root, System.Exception Error)> Failures = new();
+        // The component that rendered each element created while a wave records into the pass, which a failed insert
+        // of the element is filed under in place of the root of its run. Apply clears it with the ops.
+        internal readonly Dictionary<VisualElement, ComponentFiber> Owners = new();
+
+        // What the ops, z-layer mounts and Portal mounts of a wave's pass threw, each with the component it is filed
+        // under, for the wave to route.
+        internal readonly List<(ComponentFiber Owner, System.Exception Error)> Failures = new();
 
         internal void BeginSegment(ComponentFiber? root) => Segments.Add((Ops.Count, root));
 
-        // The root whose render records the ops being recorded now; null outside a wave.
-        internal ComponentFiber? RecordingRoot => Segments.Count > 0 ? Segments[^1].Root : null;
-
-        internal void Fail(ComponentFiber root, System.Exception error) => Failures.Add((root, error));
+        internal void Fail(ComponentFiber owner, System.Exception error) => Failures.Add((owner, error));
 
         // The renders of the pass on the stack, which a suspend nothing catches takes back.
         internal FiberPassJournal Journal { get; } = new();

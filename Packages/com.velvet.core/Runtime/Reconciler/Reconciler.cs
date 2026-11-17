@@ -412,9 +412,9 @@ namespace Velvet
         // rendered outside a pass ends with this (EndRangeForController), and can end inside the end of one of those
         // passes.
         //
-        // The pass of a wave keeps what its ops and placements threw for the wave to route (FiberWave.End). closingRoot
-        // is the root whose render a Portal mount ended the pass inside: a throw out of the Portal drain is kept for it,
-        // and the suspend of a Portal's mount goes to it.
+        // The pass of a wave keeps what its ops, placements and Portal mounts threw for the wave to route (FiberWave.End).
+        // closingRoot is the root whose render a Portal mount ended the pass inside, which the suspend of that mount goes
+        // to.
         private void FinishPass(VisualElement? reconciledInto, bool walked, ComponentFiber? closingRoot = null)
         {
             var wave = _ctx.Pass.Segments.Count > 0 ? _ctx.Pass : null;
@@ -450,17 +450,7 @@ namespace Velvet
                 }
                 try
                 {
-                    bool suspended;
-                    try
-                    {
-                        suspended = ChildPass.DrainPendingPortalMounts(wave, closingRoot);
-                    }
-                    catch (Exception exception) when (exception is not FiberSuspendSignal and not BoundaryCaughtSignal)
-                    {
-                        if (wave == null || closingRoot == null) throw;
-                        wave.Fail(closingRoot, exception);
-                        suspended = false;
-                    }
+                    var suspended = ChildPass.DrainPendingPortalMounts(wave);
                     // After the drain, whose own reconciles can tear down a Portal too.
                     foreach (var target in _ctx.PortalTargetsToRestyle)
                     {

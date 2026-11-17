@@ -684,7 +684,7 @@ namespace Velvet
         // An op recorded while the ops of a wave's pass apply belongs to the root whose op is applying.
         private static void RecordBehindApplyingRoot(ReconcilePass pass)
         {
-            if (pass.Applying && pass.ApplyingRoot != null && !ReferenceEquals(pass.RecordingRoot, pass.ApplyingRoot))
+            if (pass.Applying && pass.ApplyingRoot != null && !ReferenceEquals(pass.Segments[^1].Root, pass.ApplyingRoot))
             {
                 pass.BeginSegment(pass.ApplyingRoot);
             }
@@ -733,7 +733,8 @@ namespace Velvet
         // Puts the recorded writes on the live lists in the order they were made and ends recording. An op that throws
         // does not stop the ones behind it: the walk has moved on from each of them, so the live tree has to take every
         // one. The first exception is rethrown once they have, except where a wave recorded the ops: there each is kept
-        // with the root whose render recorded the op, for the wave to route (ReconcilePass.Failures).
+        // for the wave to route (ReconcilePass.Failures), filed under the component that rendered the element an insert
+        // adds, or else under the root whose render recorded the op.
         private static void Apply(ReconcilePass pass)
         {
             pass.Applying = true;
@@ -751,7 +752,8 @@ namespace Velvet
                     }
                     catch (Exception exception)
                     {
-                        if (pass.ApplyingRoot != null) pass.Fail(pass.ApplyingRoot, exception);
+                        var owner = FailureOwner(pass, pass.Ops[i]);
+                        if (owner != null) pass.Fail(owner, exception);
                         else first ??= System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(exception);
                     }
                 }
@@ -763,6 +765,7 @@ namespace Velvet
                 // writes it ahead of each op; the reset lets go of the fiber.
                 pass.ApplyingRoot = null;
                 pass.Segments.Clear();
+                pass.Owners.Clear();
                 pass.Ops.Clear();
                 pass.Patches.Clear();
                 pass.PendingParent.Clear();
@@ -780,6 +783,12 @@ namespace Velvet
                 s_nested.Clear();
             }
             first?.Throw();
+        }
+
+        private static ComponentFiber? FailureOwner(ReconcilePass pass, in ReconcilePass.Op op)
+        {
+            if (op.Kind != ReconcilePass.OpKind.Insert) return pass.ApplyingRoot;
+            return pass.Owners.TryGetValue(op.Child, out var owner) ? owner : pass.ApplyingRoot;
         }
 
         // Records where a turn begins and where it ends among the ops, for the teardowns attached to the anchor to run at

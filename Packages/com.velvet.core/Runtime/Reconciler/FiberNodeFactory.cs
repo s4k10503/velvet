@@ -37,7 +37,18 @@ namespace Velvet
             _host = host;
         }
 
+        // The component is read where the element is created rather than where its insert is recorded: the general walk
+        // records the insert once its container's walk has emitted every leaf (GeneralPathReconciler.FinalizeGeneralCommit),
+        // after the component that rendered the element has come off the stack.
         public VisualElement CreateElement(VNode? node)
+        {
+            var element = CreateUnownedElement(node);
+            var owner = _ctx.FiberStack.Current;
+            if (_ctx.WaveRecords && owner != null) _ctx.Pass.Owners[element] = owner;
+            return element;
+        }
+
+        private VisualElement CreateUnownedElement(VNode? node)
         {
             if (node == null)
             {

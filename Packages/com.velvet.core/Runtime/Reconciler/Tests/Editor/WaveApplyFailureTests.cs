@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using NUnit.Framework;
 using UnityEngine.UIElements;
 using Velvet.TestUtilities;
@@ -6,16 +7,15 @@ using Velvet.TestUtilities;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Pins where an error goes that a component's host writes throw where one drain applies them — an element's
-    /// panel-attach callback, here — as React's captureCommitPhaseError sends an error its commit meets: to the nearest
-    /// boundary above the component whose render recorded the write, which renders its fallback in a follow-up commit.
-    /// Two such errors under one boundary are both reported, whether one component's writes threw both or two
-    /// components' did; an error whose component a later component's render error has already replaced with the
-    /// boundary's fallback is not. The guards hold that each error reaches the
-    /// boundary of its own component, whichever of the drain's components it came from, including where a later
-    /// component's Portal ends the drain's pass early and where the write is a <c>z-*</c> placement. A mount is one
-    /// such commit as well: the error a mounting element throws reaches the root once the mount's layout effects have
-    /// run, and the root then takes down what the mount committed.
+    /// Pins where an error goes that a new element's panel-attach callback throws as a wave applies its writes: to the
+    /// nearest boundary at or above the component that rendered the element the write adds, which renders its fallback
+    /// in a follow-up commit. A boundary that renders the element itself catches it, and one inside the walk of the
+    /// component whose update the wave renders does as well. A <c>z-*</c> placement's error goes the same way, and a
+    /// Portal's mount files its child's error under the component that rendered the Portal. The errors of two writes,
+    /// or of two <c>z-*</c> placements, are both reported, as is a Portal child's beside a write's; one whose component
+    /// a later component's render error has already replaced with the boundary's fallback is not. A mount is one such
+    /// commit too: the error reaches a boundary inside the mounted tree, or else the root, which takes down what the
+    /// mount committed.
     /// </summary>
     /// <remarks>
     /// The tree mounts on a real panel, which is what runs an attach callback.
@@ -24,13 +24,20 @@ namespace Velvet.Tests
     internal sealed class WaveApplyFailureTests
     {
         private HeadlessEditorPanelHost _host;
+        private VisualElement _mountPoint;
         private static VisualElement s_portalTarget;
+        private static readonly List<string> s_reports = new();
+        private static readonly List<string> s_thrown = new();
 
         [SetUp]
         public void SetUp()
         {
             _host = new HeadlessEditorPanelHost();
+            _mountPoint = new VisualElement();
+            _host.Root.Add(_mountPoint);
             s_portalTarget = new VisualElement();
+            s_reports.Clear();
+            s_thrown.Clear();
         }
 
         [TearDown]
@@ -42,13 +49,18 @@ namespace Velvet.Tests
 
         // Stands in for a V.Custom<T> whose element registers a panel-attach callback that throws. The message says
         // whether the element attached as a relocated z-* element, so a case about a z-* placement fails where the
-        // arrangement stops making one.
+        // arrangement stops making one, and it is kept, so a case whose reading leaves an error out can tell that the
+        // error was thrown.
         internal sealed class AttachThrower : VisualElement
         {
             public AttachThrower()
             {
-                RegisterCallback<AttachToPanelEvent>(_ => throw new InvalidOperationException(
-                    "attach:" + name + (FiberZLayerCoordinator.IsRelocatedReal(this) ? ":z" : "")));
+                RegisterCallback<AttachToPanelEvent>(_ =>
+                {
+                    var message = "attach:" + name + (FiberZLayerCoordinator.IsRelocatedReal(this) ? ":z" : "");
+                    s_thrown.Add(message);
+                    throw new InvalidOperationException(message);
+                });
             }
         }
 
@@ -185,7 +197,7 @@ namespace Velvet.Tests
                 V.Component(SecondBoundary, new Holds(V.Component(ShowsAPortal, new Named("R2"), key: "r2")), key: "b2"));
 
         private MountedTree Mount(EventLog log, VNode tree)
-            => V.Mount(_host.Root, log.Provide(tree), log.ReportingErrors());
+            => V.Mount(_mountPoint, log.Provide(tree), log.ReportingErrors());
 
         [Component(Compiler = false)]
         private static VNode LaysOut()
@@ -261,8 +273,9 @@ namespace Velvet.Tests
             log.Setter<bool>("C").Invoke(true);
             mounted.GetSchedulerForTest().DrainImmediateForTest();
 
-            // Assert
-            Assert.That(log.ToString(), Is.EqualTo("render:A render:C caught:B:render:C"));
+            // Assert — where A's element never threw there was nothing to leave out, so that reads as a sentinel
+            Assert.That(s_thrown.Contains("attach:A") ? log.ToString() : "A's element never threw",
+                Is.EqualTo("render:A render:C caught:B:render:C"));
         }
 
         // GREEN_ON_BASE(characterization): the base catches the error in the pass of the component that threw it.
@@ -343,5 +356,182 @@ namespace Velvet.Tests
             // Assert
             Assert.That(log.ToString(), Is.EqualTo("render:R1 render:R2 render:Modal caught:B1:attach:R1:z"));
         }
+
+        #region Where the search for the boundary starts
+
+        [Component(IsErrorBoundary = true, DisplayName = "B3")]
+        private static VNode ThirdBoundary(Holds props)
+        {
+            Hooks.UseFallback(_ => V.Label(text: "fallback-3"));
+            return props.Child;
+        }
+
+        [Component]
+        private static VNode ThrowerWhenOpen(bool open)
+            => open ? V.Custom<AttachThrower>(name: "W", key: "thrower") : null;
+
+        [Component]
+        private static VNode OpensAThrowerUnderABoundary()
+        {
+            var (open, _) = EventLog.UseState("Open", false);
+            return V.Div(children: new VNode[]
+            {
+                V.Component(FirstBoundary, new Holds(V.Component(ThrowerWhenOpen, open, key: "widget")), key: "b1"),
+            });
+        }
+
+        [Test]
+        public void Given_ABoundaryInsideTheWalkOfTheDrainedComponentAroundTheOneWhoseNewElementThrowsAsItAttaches_When_TheDrainRendersIt_Then_ThatBoundaryReportsIt()
+        {
+            // Arrange
+            var log = new EventLog();
+            using var mounted = Mount(log, V.Component(OpensAThrowerUnderABoundary));
+            log.Clear();
+
+            // Act
+            log.Setter<bool>("Open").Invoke(true);
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("caught:B1:attach:W"));
+        }
+
+        [Component(IsErrorBoundary = true, DisplayName = "P")]
+        private static VNode RendersItsOwnThrower()
+        {
+            var (shown, _) = EventLog.UseState("P", false);
+            Hooks.UseFallback(_ => V.Label(text: "fallback"));
+            return V.Div(children: new VNode[] { shown ? V.Custom<AttachThrower>(name: "P", key: "thrower") : null });
+        }
+
+        [Test]
+        public void Given_ABoundaryWhoseOwnNewElementThrowsAsItAttaches_When_ADrainRendersIt_Then_ThatBoundaryReportsIt()
+        {
+            // Arrange
+            var log = new EventLog();
+            using var mounted = Mount(log, V.Component(RendersItsOwnThrower));
+            log.Clear();
+
+            // Act
+            log.Setter<bool>("P").Invoke(true);
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("caught:P:attach:P"));
+        }
+
+        [Component]
+        private static VNode Header() => V.Div(name: "header");
+
+        [Test]
+        public void Given_ATreeWhoseBoundaryHoldsAComponentWhoseElementThrowsAsItAttaches_When_ItMounts_Then_ThatBoundaryReportsItAndTheRestStays()
+        {
+            // Arrange
+            var log = new EventLog();
+
+            // Act
+            using var mounted = Mount(log, V.Fragment(
+                V.Component(Header, key: "header"),
+                V.Component(FirstBoundary, new Holds(V.Component(ThrowerWhenOpen, true, key: "widget")), key: "b1")));
+
+            // Assert — a header the error took down reads as such rather than as the report
+            Assert.That(_mountPoint.Q("header") != null ? log.ToString() : "the header was taken down",
+                Is.EqualTo("caught:B1:attach:W"));
+        }
+
+        [Component]
+        private static VNode BoundaryOverAThrower()
+            => V.Component(FirstBoundary, new Holds(V.Component(ThrowerWhenOpen, true, key: "widget")), key: "b1");
+
+        [Test]
+        public void Given_ARootFiberWhoseBoundaryHoldsAComponentWhoseElementThrowsAsItAttaches_When_FiberRendererMountsIt_Then_ThatBoundaryReportsIt()
+        {
+            // Arrange
+            var root = FiberRenderer.CreateRoot(BoundaryOverAThrower);
+
+            // Act
+            FiberRenderer.Mount(root, _mountPoint,
+                onCaughtError: (error, info) => s_reports.Add("caught:" + info.ErrorBoundary + ":" + error.Message));
+            var reports = string.Join(" ", s_reports);
+            FiberRenderer.Dispose(root);
+
+            // Assert
+            Assert.That(reports, Is.EqualTo("caught:B1:attach:W"));
+        }
+
+        [Component]
+        private static VNode MountsTwoStackedThrowers()
+        {
+            var (shown, _) = EventLog.UseState("Stacked", false);
+            EventLog.UseRender("Stacked");
+            return V.Div(className: "relative", children: new VNode[]
+            {
+                shown ? V.Custom<AttachThrower>(className: "absolute z-10", name: "X", key: "x") : null,
+                shown ? V.Custom<AttachThrower>(className: "absolute z-10", name: "Y", key: "y") : null,
+            });
+        }
+
+        [Component(IsErrorBoundary = true, DisplayName = "B")]
+        private static VNode TwoStackedThrowersInOneComponent()
+        {
+            Hooks.UseFallback(_ => V.Label(text: "fallback"));
+            return V.Component(MountsTwoStackedThrowers, key: "both");
+        }
+
+        [Test]
+        public void Given_AComponentWhoseTwoNewZPlacedElementsThrowAsTheyAttach_When_ADrainRendersIt_Then_ItsBoundaryReportsBothErrors()
+        {
+            // Arrange
+            var log = new EventLog();
+            using var mounted = Mount(log, V.Component(TwoStackedThrowersInOneComponent));
+            log.Clear();
+
+            // Act
+            log.Setter<bool>("Stacked").Invoke(true);
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("render:Stacked caught:B:attach:X:z caught:B:attach:Y:z"));
+        }
+
+        [Component]
+        private static VNode PortalOfAThrower(bool shown) => V.Div(children: new VNode[]
+        {
+            shown
+                ? V.Portal(s_portalTarget, new VNode[] { V.Custom<AttachThrower>(name: "Portal", key: "thrower") },
+                    key: "portal")
+                : null,
+        });
+
+        // Shows its Portal through a boundary it renders inline, so the component that renders the Portal is not the one
+        // whose update the drain renders.
+        [Component]
+        private static VNode ShowsAThrowingPortalUnderABoundary()
+        {
+            var (shown, _) = EventLog.UseState("R2", false);
+            EventLog.UseRender("R2");
+            return V.Component(ThirdBoundary, new Holds(V.Component(PortalOfAThrower, shown, key: "shower")), key: "b3");
+        }
+
+        [Test]
+        public void Given_AComponentWhoseNewElementThrowsAsItAttachesAndALaterOneWhosePortalsChildDoes_When_OneDrainRendersBoth_Then_EachIsReportedByTheBoundaryAroundTheComponentThatRenderedIt()
+        {
+            // Arrange — the Portal's target is on the panel, so its child attaches as the Portal mounts
+            _host.Root.Add(s_portalTarget);
+            var log = new EventLog();
+            using var mounted = Mount(log, V.Component(TwoBoundaries,
+                new Holds(V.Component(ShowsAThrowingPortalUnderABoundary, key: "r2"))));
+            log.Clear();
+
+            // Act
+            log.Setter<bool>("R1").Invoke(true);
+            log.Setter<bool>("R2").Invoke(true);
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("render:R1 render:R2 caught:B1:attach:R1 caught:B3:attach:Portal"));
+        }
+
+        #endregion
     }
 }

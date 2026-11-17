@@ -346,9 +346,8 @@ namespace Velvet
         //
         // In the pass of a wave (wave non-null), a z-* placement's throw is kept for the root that queued it, or for the
         // closing root where none is named, and that root's later placements are skipped while the other roots' go on.
-        internal bool DrainPendingPortalMounts(ReconcilePass? wave = null, ComponentFiber? closingRoot = null)
+        internal bool DrainPendingPortalMounts(ReconcilePass? wave = null)
         {
-            HashSet<ComponentFiber>? failedPlacements = null;
             HashSet<ComponentFiber>? childFibersBefore = null;
             var suspended = false;
             while (_ctx.PendingPortalMounts.Count > 0)
@@ -375,7 +374,7 @@ namespace Velvet
                     // subclass registered on it (PortalLayersTests pins that the insert reaches them).
                     // Leaving that application throw on the render's own escape path, outside a wave's pass, is the
                     // decision here.
-                    PlaceRelocated(placeholder, zLayerMount, wave, zLayerMount.Root ?? closingRoot, ref failedPlacements);
+                    PlaceRelocated(placeholder, zLayerMount, wave, zLayerMount.Owner);
                     continue;
                 }
                 if (!_ctx.PendingHostPlaceholders.Remove(placeholder)) continue;
@@ -510,6 +509,12 @@ namespace Velvet
                     mountSuspended = true;
                     RemoveRowsFrom(resolvedTarget, slotStart);
                 }
+                catch (Exception exception) when (FiledForTheWave(wave, declaringFiber, exception))
+                {
+                    // The drain ends as the throw would have ended it.
+                    wave!.Fail(declaringFiber!, exception);
+                    return false;
+                }
                 finally
                 {
                     _ctx.EnclosingPresenceChild = enclosingPresenceChild;
@@ -538,23 +543,26 @@ namespace Velvet
             return suspended;
         }
 
+        // Whether what a Portal's children threw as the mount added them goes to the wave, filed under the component
+        // that rendered the Portal.
+        private static bool FiledForTheWave(ReconcilePass? wave, ComponentFiber? declaringFiber, Exception exception)
+            => wave != null && declaringFiber != null && exception is not BoundaryCaughtSignal;
+
         private void PlaceRelocated(VisualElement placeholder, ZLayerMountNode node, ReconcilePass? wave,
-            ComponentFiber? root, ref HashSet<ComponentFiber>? failedPlacements)
+            ComponentFiber? owner)
         {
-            if (wave == null || root == null)
+            if (wave == null || owner == null)
             {
                 FiberZLayerCoordinator.ResolveQueuedMount(_ctx, placeholder, node);
                 return;
             }
-            if (failedPlacements != null && failedPlacements.Contains(root)) return;
             try
             {
                 FiberZLayerCoordinator.ResolveQueuedMount(_ctx, placeholder, node);
             }
             catch (Exception exception)
             {
-                (failedPlacements ??= new HashSet<ComponentFiber>()).Add(root);
-                wave.Fail(root, exception);
+                wave.Fail(owner, exception);
             }
         }
 

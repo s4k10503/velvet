@@ -62,16 +62,6 @@ namespace Velvet
             => PropagateFrom(owner.CaughtError == null ? owner : owner.Parent, owner, exception, isRenderError: false,
                 inCommit: true);
 
-        // Searched from where FiberErrorBoundary.OnRenderError searches for the root, and queued as CaptureFromOwner
-        // queues: what the writes a root's render recorded threw where a wave applied them (FiberWave).
-        internal static void CaptureFromRoot(ComponentFiber root, Exception exception)
-        {
-            if (root.IsMountRoot) CaptureFromOwner(root, exception);
-            // MUTANT_SURVIVES(equivalent, literal): isRenderError reaches only FiberErrorBoundary.TryCatch, which a
-            // search queued for the commit does not call.
-            else PropagateFrom(root.Parent, root, exception, isRenderError: false, inCommit: true);
-        }
-
         // Where an error goes whose walk ends with neither a boundary nor the root V.Mount made taking it, and one Velvet
         // hands no boundary, as Framer Motion's completion callbacks run in a promise no boundary sees.
         internal static void ReportUncaught(Exception exception) => Debug.LogException(exception);

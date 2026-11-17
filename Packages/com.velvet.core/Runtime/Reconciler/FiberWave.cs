@@ -124,11 +124,11 @@ namespace Velvet
             }
         }
 
-        // What the ops and placements of the wave's pass threw, each queued for the boundary that takes an error of the
-        // root whose render recorded it (ComponentBoundarySearch.CaptureFromRoot), which renders its fallback in a
-        // follow-up commit, as React's captureCommitPhaseError queues an error its commit meets. A root the wave's own renders deleted is passed
-        // over, since that deletion replaced what its render wrote. Each route runs whether or not the one before it
-        // threw, and the first one's exception is rethrown once all of them have run.
+        // What the ops and placements of the wave's pass threw, each queued for the boundary at or above the component it
+        // is filed under (ComponentBoundarySearch.CaptureFromOwner), which renders its fallback in a follow-up commit. A
+        // component the wave's own renders deleted is passed over, since that deletion replaced what it rendered. Each
+        // route runs whether or not the one before it threw, and the first one's exception is rethrown once all of them
+        // have run.
         private static void RouteFailures(ReconcilerContext ctx)
         {
             var failures = ctx.Pass.Failures;
@@ -137,9 +137,9 @@ namespace Velvet
             {
                 for (var i = 0; i < failures.Count; i++)
                 {
-                    var (root, error) = failures[i];
-                    if (root.IsBeingDeleted || root.IsDisposed) continue;
-                    var failure = Capture(root, error);
+                    var (owner, error) = failures[i];
+                    if (owner.IsBeingDeleted || owner.IsDisposed) continue;
+                    var failure = Capture(owner, error);
                     first ??= failure;
                 }
             }
@@ -151,11 +151,11 @@ namespace Velvet
         }
 
         // What the route itself threw, which leaves the routes behind it to run.
-        private static ExceptionDispatchInfo? Capture(ComponentFiber root, Exception error)
+        private static ExceptionDispatchInfo? Capture(ComponentFiber owner, Exception error)
         {
             try
             {
-                ComponentBoundarySearch.CaptureFromRoot(root, error);
+                ComponentBoundarySearch.CaptureFromOwner(owner, error);
                 return null;
             }
             catch (Exception exception)
