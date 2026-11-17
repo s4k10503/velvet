@@ -752,8 +752,9 @@ namespace Velvet
                     }
                     catch (Exception exception)
                     {
-                        var owner = FailureOwner(pass, pass.Ops[i]);
-                        if (owner != null) pass.Fail(owner, exception);
+                        var added = pass.Ops[i].Kind == ReconcilePass.OpKind.Insert ? pass.Ops[i].Child : null;
+                        var owner = FailureOwner(pass, added);
+                        if (owner != null) pass.Fail(owner, exception, added);
                         else first ??= System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(exception);
                     }
                 }
@@ -785,10 +786,10 @@ namespace Velvet
             first?.Throw();
         }
 
-        private static ComponentFiber? FailureOwner(ReconcilePass pass, in ReconcilePass.Op op)
+        private static ComponentFiber? FailureOwner(ReconcilePass pass, VisualElement? added)
         {
-            if (op.Kind != ReconcilePass.OpKind.Insert) return pass.ApplyingRoot;
-            return pass.Owners.TryGetValue(op.Child, out var owner) ? owner : pass.ApplyingRoot;
+            if (added == null) return pass.ApplyingRoot;
+            return pass.Owners.TryGetValue(added, out var owner) ? owner : pass.ApplyingRoot;
         }
 
         // Records where a turn begins and where it ends among the ops, for the teardowns attached to the anchor to run at

@@ -12,10 +12,11 @@ namespace Velvet.Tests
     /// in a follow-up commit. A boundary that renders the element itself catches it, and one inside the walk of the
     /// component whose update the wave renders does as well. A <c>z-*</c> placement's error goes the same way, and a
     /// Portal's mount files its child's error under the component that rendered the Portal. The errors of two writes,
-    /// or of two <c>z-*</c> placements, are both reported, as is a Portal child's beside a write's; one whose component
-    /// a later component's render error has already replaced with the boundary's fallback is not. A mount is one such
-    /// commit too: the error reaches a boundary inside the mounted tree, or else the root, which takes down what the
-    /// mount committed.
+    /// or of two <c>z-*</c> placements, are both reported, as is a Portal child's beside a write's. The error of an
+    /// element the wave takes off the panel again reaches no boundary, as React commits no host of a render it
+    /// discarded: here, one whose component a later component's render error replaced with the boundary's fallback, and
+    /// one the boundary's own catch replaced with its fallback. A mount is one such commit too: the error reaches a
+    /// boundary inside the mounted tree, or else the root, which takes down what the mount committed.
     /// </summary>
     /// <remarks>
     /// The tree mounts on a real panel, which is what runs an attach callback.
@@ -275,6 +276,37 @@ namespace Velvet.Tests
             // Assert — where A's render never built its element there was nothing to leave out, so that reads as a sentinel
             Assert.That(Built("A") ? log.ToString() : "A's element was never built",
                 Is.EqualTo("render:A render:C caught:B:render:C"));
+        }
+
+        [Component]
+        private static VNode ThrowsAsItRenders() => throw new InvalidOperationException("render:Q");
+
+        // Adds its new element to a Div it already holds ahead of the child whose render throws, so the walk records that
+        // insert before its own catch swaps the fallback in over both.
+        [Component(IsErrorBoundary = true, DisplayName = "Own")]
+        private static VNode CatchesOverItsOwnNewElement()
+        {
+            var (shown, _) = EventLog.UseState("Shown", false);
+            Hooks.UseFallback(_ => V.Label(text: "fallback"));
+            return V.Fragment(
+                V.Div(children: new VNode[] { shown ? V.Custom<AttachThrower>(name: "X", key: "thrower") : null }),
+                shown ? V.Component(ThrowsAsItRenders, key: "render-thrower") : null);
+        }
+
+        [Test]
+        public void Given_ABoundaryThatAddsANewElementThrowingAsItAttachesAheadOfAChildWhoseRenderThrows_When_ADrainRendersIt_Then_ItReportsOnlyTheRenderError()
+        {
+            // Arrange
+            var log = new EventLog();
+            using var mounted = Mount(log, V.Component(CatchesOverItsOwnNewElement));
+            log.Clear();
+
+            // Act
+            log.Setter<bool>("Shown").Invoke(true);
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert — where the render never built the element there was nothing to leave out, so that reads as a sentinel
+            Assert.That(Built("X") ? log.ToString() : "X was never built", Is.EqualTo("caught:Own:render:Q"));
         }
 
         // GREEN_ON_BASE(characterization): the base catches the error in the pass of the component that threw it.

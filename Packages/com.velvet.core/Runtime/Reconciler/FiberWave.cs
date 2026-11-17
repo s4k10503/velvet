@@ -124,10 +124,11 @@ namespace Velvet
         }
 
         // What the ops and placements of the wave's pass threw, each queued for the boundary at or above the component it
-        // is filed under (ComponentBoundarySearch.CaptureFromOwner), which renders its fallback in a follow-up commit. A
-        // component the wave's own renders deleted is passed over, since that deletion replaced what it rendered. Each
-        // route runs whether or not the one before it threw, and the first one's exception is rethrown once all of them
-        // have run.
+        // is filed under (ComponentBoundarySearch.CaptureFromOwner), which renders its fallback in a follow-up commit.
+        // What adding an element threw reaches no boundary where the element is off the panel again by now: where the
+        // wave's own writes took it off, React would never have committed it, as it commits no host of a render it
+        // discarded. Each route runs whether or not the one before it threw, and the first one's exception is rethrown
+        // once all of them have run.
         private static void RouteFailures(ReconcilerContext ctx)
         {
             var failures = ctx.Pass.Failures;
@@ -136,8 +137,8 @@ namespace Velvet
             {
                 for (var i = 0; i < failures.Count; i++)
                 {
-                    var (owner, error) = failures[i];
-                    if (owner.IsBeingDeleted || owner.IsDisposed) continue;
+                    var (owner, error, added) = failures[i];
+                    if (added is { panel: null }) continue;
                     var failure = Capture(owner, error);
                     first ??= failure;
                 }

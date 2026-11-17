@@ -512,7 +512,7 @@ namespace Velvet
                 catch (Exception exception) when (FiledForTheWave(wave, declaringFiber, exception))
                 {
                     // The drain ends as the throw would have ended it.
-                    wave!.Fail(declaringFiber!, exception);
+                    wave!.Fail(declaringFiber!, exception, placeholder);
                     return false;
                 }
                 finally
@@ -562,7 +562,7 @@ namespace Velvet
             }
             catch (Exception exception)
             {
-                wave.Fail(owner, exception);
+                wave.Fail(owner, exception, node.Real);
             }
         }
 

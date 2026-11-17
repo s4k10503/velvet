@@ -54,12 +54,13 @@ namespace Velvet
         internal readonly Dictionary<VisualElement, ComponentFiber> Owners = new();
 
         // What the ops, z-layer mounts and Portal mounts of a wave's pass threw, each with the component it is filed
-        // under, for the wave to route.
-        internal readonly List<(ComponentFiber Owner, System.Exception Error)> Failures = new();
+        // under and the element it was adding, where it was adding one, for the wave to route.
+        internal readonly List<(ComponentFiber Owner, System.Exception Error, VisualElement? Added)> Failures = new();
 
         internal void BeginSegment(ComponentFiber? root) => Segments.Add((Ops.Count, root));
 
-        internal void Fail(ComponentFiber owner, System.Exception error) => Failures.Add((owner, error));
+        internal void Fail(ComponentFiber owner, System.Exception error, VisualElement? added)
+            => Failures.Add((owner, error, added));
 
         // The renders of the pass on the stack, which a suspend nothing catches takes back.
         internal FiberPassJournal Journal { get; } = new();
