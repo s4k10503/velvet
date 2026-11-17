@@ -13,7 +13,7 @@ namespace Velvet.TestUtilities
         internal static void RunAsEntryForTest(Action body)
             => FiberExecutionContext.Enter<Action>(null, body, static run => run());
 
-        // Bypasses: the door: production disposes a VirtualList's controller where a pass's cleanup removes its list, inside that pass, or once its context is disposed (Reconciler.Dispose).
+        // Bypasses: the door: production disposes a VirtualList's controller inside the entry whose render or commit removes its list, or after its context is disposed (Reconciler.Dispose).
         internal static EntryDisposal DisposedAsEntryForTest(IDisposable target) => new(target);
 
         // Disposes its target, where a using statement ends, as the outermost entry.
@@ -23,6 +23,7 @@ namespace Velvet.TestUtilities
 
             internal EntryDisposal(IDisposable target) => _target = target;
 
+            // Bypasses: the door, as RunAsEntryForTest does.
             public void Dispose() => RunAsEntryForTest(_target.Dispose);
         }
     }
