@@ -833,8 +833,6 @@ namespace Velvet.Tests
             Assert.That(s_queuesAndThrowsTick, Is.EqualTo(1));
         }
 
-        // The Transition-lane update comes first: queued behind the Normal one, it would leave the fiber off the
-        // Transition tier, whose drain would then have nothing of the root's to render.
         [Test]
         public void Given_AHeldFlushOfARootThatThrows_When_AHeldDrainOfItsTransitionTierFollows_Then_ItsFiberIsNotRenderedAgain()
         {
