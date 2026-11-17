@@ -9,18 +9,19 @@ namespace Velvet.Tests
     /// <summary>
     /// Pins where an error goes that a new element's panel-attach callback throws as a wave applies its writes: to the
     /// nearest boundary at or above the component that rendered the element the write adds, passing over the components
-    /// the wave mounts, as React captures a placement's error from above the topmost fiber new in the commit; the
-    /// boundary renders its fallback in a follow-up commit. A boundary that renders the element itself catches it, and
-    /// one inside the walk of the component whose update the wave renders does as well, while a boundary that mounts
-    /// with the element does not, so a mount's error goes to the root, which takes the tree down. A <c>z-*</c>
-    /// placement's error goes the same way, and a Portal's mount files its child's error under the component that
-    /// rendered the Portal, whose own mount does not pass it over, and goes on to the Portals queued behind it. The
-    /// errors of two writes, or of two <c>z-*</c> placements, are both reported, as is a Portal child's beside a
-    /// write's. The error of an element the wave takes off the panel again is not reported, as React commits no host of
-    /// a render it discarded: here, one whose component a later component's render error replaced with the boundary's
-    /// fallback, and one the boundary's own catch replaced with its fallback; a Portal under a tree that was never on a
-    /// panel is still reported. A removal a later drain records is filed with that drain's run, not one an earlier drain
-    /// left behind.
+    /// no earlier commit has mounted, short of the component that rendered a Portal the element sits in, as React
+    /// starts the search for a placement's error at the return of the fiber its commit places; the boundary renders its
+    /// fallback in a follow-up commit. A boundary that renders the element itself catches it, and one inside the walk of
+    /// the component whose update the wave renders does as well, while a boundary that mounts with the element does not,
+    /// so a mount's error goes to the root, which takes the tree down, unless the element sits in a Portal that boundary
+    /// renders. A boundary that has caught leaves its fallback's element's error to the boundary above it. A Portal's
+    /// mount files its child's error under the component that rendered the Portal and goes on to the Portals queued
+    /// behind it. The errors of two writes, or of two <c>z-*</c> placements, are both reported, as is a Portal child's
+    /// beside a write's. The error of an element the wave takes off the panel again is not reported, as React commits no
+    /// host of a render it discarded: here, one whose component a later component's render error replaced with the
+    /// boundary's fallback, and one the boundary's own catch replaced with its fallback; a Portal under a tree that was
+    /// never on a panel is still reported. A removal a later drain records is filed with that drain's run, not one an
+    /// earlier drain left behind.
     /// </summary>
     /// <remarks>
     /// The tree mounts on a real panel, which is what runs an attach callback.
