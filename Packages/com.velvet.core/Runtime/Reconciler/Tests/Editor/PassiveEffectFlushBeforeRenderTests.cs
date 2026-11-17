@@ -732,6 +732,7 @@ namespace Velvet.Tests
         {
             var (value, setValue) = Hooks.UseState(0);
             s_setNestedTarget = setValue;
+            s_log.Add($"render:v{value}");
             Hooks.UseEffect(() =>
             {
                 s_log.Add($"target:v{value}");
@@ -766,7 +767,7 @@ namespace Velvet.Tests
             });
 
         [Test]
-        public void Given_AnEffectThatRendersAndClicksWhileThePassiveFlushRunsIt_When_TheFlushRuns_Then_TheEffectsThatRenderStagedWaitForItToReturn()
+        public void Given_AnEffectThatRendersAndClicksWhileThePassiveFlushRunsIt_When_TheFlushRuns_Then_TheRenderWaitsForItToEndAndWhatItStagesForTheNext()
         {
             // Arrange
             s_nestedRoot = _root;
@@ -777,7 +778,7 @@ namespace Velvet.Tests
             _mounted.FlushEffectsForTest();
 
             // Assert
-            Assert.That(s_log, Is.EqualTo(new[] { "target:v0", "flusher:start", "flusher:end", "target:v1" }));
+            Assert.That(string.Join(",", s_log), Is.EqualTo("render:v0,target:v0,flusher:start,flusher:end,render:v1"));
         }
 
         // --- A VirtualList range rendered outside a pass ---

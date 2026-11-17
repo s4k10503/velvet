@@ -271,7 +271,7 @@ namespace Velvet
                 }
                 else
                 {
-                    FiberRenderer.Mount(fiber, site.MountPoint, _ctx);
+                    FiberRenderer.MountWork(fiber, site.MountPoint, _ctx);
                 }
             }
             catch (FiberSuspendSignal)
@@ -288,14 +288,14 @@ namespace Velvet
                 if (_ctx.SuspensePrimaryDepth == 0) fiber.IsDirty = true;
                 throw;
             }
-            catch { FiberRenderer.Dispose(fiber); throw; }
+            catch { FiberRenderer.DisposeWork(fiber); throw; }
             // A first render that threw, where a boundary outside this walk took the error rather than unwinding the
             // walk: React discards a component whose first render threw, so it is not registered, and the hooks it
             // ran before the throw are released. One that suspended with nothing above it to catch the signal waits
             // for its read (FiberRenderer.RenderAndReconcile), holding it in a slot still pending.
             if (fiber.RenderCount == 0 && !ComponentBoundarySearch.HasPendingAsyncSlot(fiber))
             {
-                FiberRenderer.Dispose(fiber);
+                FiberRenderer.DisposeWork(fiber);
                 return fiber;
             }
             RegisterFiber(in site, identity, fiber);
@@ -404,7 +404,7 @@ namespace Velvet
 
         private void DisposeFiber(ComponentFiber fiber)
         {
-            FiberRenderer.Dispose(fiber);
+            FiberRenderer.DisposeWork(fiber);
             // A wrapper-less Suspense makes the fiber rendering it the boundary. When that fiber
             // unmounts while still suspended, prune its boundary state so no dangling fiber
             // reference survives in the context-level Suspense registries (they are keyed by the
@@ -838,7 +838,7 @@ namespace Velvet
             _wrapperIndex.Values.CopyTo(snapshot, _inlineInstances.Count);
             foreach (var fiber in snapshot)
             {
-                FiberRenderer.Dispose(fiber);
+                FiberRenderer.DisposeWork(fiber);
             }
             // Bulk clear is intentional: any nested Remove during the snapshot loop has already
             // partially mutated the indexes, but the registry is going away wholesale so the

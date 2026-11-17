@@ -167,7 +167,7 @@ namespace Velvet.Tests
             registry.InlineExplicitPositionKeyBoxes[(long.MinValue, "orphan")] = (new object(), 0);
 
             // Act
-            registry.Dispose();
+            FiberExecutionContextTestAccess.RunAsEntryForTest(registry.Dispose);
 
             // Assert
             Assert.That(registry.InlineExplicitPositionKeyBoxes, Is.Empty);

@@ -536,8 +536,8 @@ namespace Velvet.Tests
             });
         }
 
-        // GREEN_ON_BASE(characterization): the base rendered the click inside the setup, so the element left while the
-        // setup ran and the drain fired the cleanup itself, which reached the same boundary.
+        // GREEN_ON_BASE(characterization): the base rendered the click inside the setup, removing the element there.
+        // The drain then fired the cleanup itself, which reached the same boundary.
         [Test]
         public void Given_ARefCleanupThatThrowsAsARenderRemovesItsElement_When_ABoundaryIsRegisteredAboveIt_Then_ItCatchesInsteadOfTheConsole()
         {

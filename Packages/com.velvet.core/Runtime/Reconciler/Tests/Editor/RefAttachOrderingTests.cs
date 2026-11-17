@@ -420,20 +420,19 @@ namespace Velvet.Tests
             Assert.That(string.Join(",", s_log), Is.EqualTo("detach:departing,attach:arriving"));
         }
 
+        // GREEN_ON_BASE(characterization): the base took the element out while its setup ran and kept no entry for it.
+        // The render the setup's click asks for takes it out once the commit has ended now, and keeps none either.
         [Test]
-        public void Given_ASetupThatRemovesTheElementItWasHanded_When_TheDrainRecordsIt_Then_NoRefEntryIsLeftForIt()
+        public void Given_ASetupThatRemovesTheElementItWasHanded_When_TheRenderItAskedForEnds_Then_NoRefEntryIsLeftForIt()
         {
             // Arrange / Act
             using var mounted = V.Mount(Root,
                 V.Component(SelfRemovingHost, (Func<VisualElement, Action>)SelfRemovingSetup, key: "host"));
             var refCallbacks = mounted.Root.Reconciler.Context.RefCallbacks;
 
-            // Assert — the removal is read beside the entry it should have taken, because the same
-            // reading over a tree that still holds the element says nothing about the removal path.
+            // Assert — null where the tree still holds the element, which says nothing about the removal path
             Assert.That(
-                (s_selfRemoved != null && s_selfRemoved.parent == null,
-                    s_selfRemoved != null && refCallbacks.ContainsKey(s_selfRemoved)),
-                Is.EqualTo((true, false)));
+                s_selfRemoved is { parent: null } ? refCallbacks.ContainsKey(s_selfRemoved) : (bool?)null, Is.False);
         }
 
         // Resumes a slice at a time up to the boundary where the arrival's setup is queued and its
@@ -594,18 +593,17 @@ namespace Velvet.Tests
             return ((ICollection)field.GetValue(context)).Count;
         }
 
+        // GREEN_ON_BASE(characterization): the base ran the cleanup after the setup returned, its element already gone.
+        // The element leaves in the render the click asks for now, once the commit has ended, and that render runs it.
         [Test]
-        public void Given_ASetupWhoseElementLeavesWhileItRuns_When_ItReturnedACleanup_Then_ThatCleanupStillRuns()
+        public void Given_ASetupWhoseClickRemovesItsElement_When_ItReturnedACleanup_Then_ThatCleanupRunsAsTheElementLeaves()
         {
             // Arrange / Act
             using var mounted = V.Mount(Root,
                 V.Component(SelfRemovingHost, (Func<VisualElement, Action>)SelfRemovingSetupWithCleanup, key: "host"));
 
-            // Assert — the removal is read beside the count, because a tree that still holds the element
-            // owes the cleanup to a later removal and would read zero for a reason this case is not about.
-            Assert.That(
-                (s_selfRemoved != null && s_selfRemoved.parent == null, s_selfRemovedCleanups),
-                Is.EqualTo((true, 1)));
+            // Assert — -1 where the tree still holds the element, which owes the cleanup to a later removal
+            Assert.That(s_selfRemoved is { parent: null } ? s_selfRemovedCleanups : -1, Is.EqualTo(1));
         }
 
         // GREEN_ON_BASE(characterization): the base runs a setup as the walk reaches its element, so the
@@ -672,12 +670,13 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base's drain takes a replacement queued from inside the entry it replaces
-        // in the same drain; the layout commit this branch adds leaves a bare Reconciler's drain as it was.
+        // in the same drain, as this one does.
         [Test]
         public void Given_ABareReconcileWhoseSetupRebindsTheRefOfItsOwnElement_When_TheDrainContinues_Then_TheReplacementRunsInTheSameDrain()
         {
             // Arrange — no fiber is on the stack, so the drain at the end of the pass attaches the setups, and the
-            // replacement is queued while the drain is inside the entry it replaces.
+            // replacement is queued while the drain is inside the entry it replaces. The setup reconciles through the
+            // pass's body, as work inside an entry does; Reconcile would wait for the entry to end.
             var replacementAttaches = 0;
             Func<VisualElement, Action> replacement = _ =>
             {
@@ -690,7 +689,7 @@ namespace Velvet.Tests
             {
                 V.Div(name: "host", refCallback: _ =>
                 {
-                    Reconciler.Reconcile(Root, first, rebound);
+                    Reconciler.ReconcileCatching(Root, first, rebound, 0, 0, int.MaxValue);
                     return null;
                 }),
             };

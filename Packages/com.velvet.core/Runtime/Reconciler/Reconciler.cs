@@ -126,13 +126,10 @@ namespace Velvet
             {
                 _ctx.SetReconcilerBridge(this);
                 // Lets the batch scheduler block a synchronous discrete-event flush while any reconcile
-                // pass (including a time-sliced resume that runs outside the batch Drain) is on the stack, and while a
-                // root of any context renders or commits (ChildListWrites.Busy), which a handler fired inside must not
-                // render inside: React runs no root's flush there, and the flush waits for the outermost entry to end.
-                _ctx.BatchScheduler.SetReconcileActiveProbe(
-                    () => _ctx.SharedReconcileDepth > 0 || ChildListWrites.HoldsFlush(_ctx));
+                // pass (including a time-sliced resume that runs outside the batch Drain) is on the stack.
+                _ctx.BatchScheduler.SetReconcileActiveProbe(() => _ctx.SharedReconcileDepth > 0);
                 _ctx.BatchScheduler.SetIntakeDropCallback(_ctx.DropAllCaptures);
-                _ctx.BatchScheduler.SetPassiveEffectFlush(() => FiberEffects.FlushPendingPassiveEffects(_ctx));
+                _ctx.BatchScheduler.SetPassiveEffectFlush(() => FiberEffects.FlushPendingPassiveEffectsWork(_ctx));
                 // Brackets each drain to drive (1) the UseStore tearing guard — pinning is active only inside a
                 // drain, and each drain pass is a wave of its own — and (2) the layout-effect commit phase:
                 // fibers defer their effect commit during the drain so all renders precede any layout effect,
@@ -237,7 +234,18 @@ namespace Velvet
         /// </param>
         public void Reconcile(VisualElement? parent, VNode?[] oldChildren, VNode?[] newChildren,
             double frameBudgetMs = 0, int slotStart = 0, int slotLimit = int.MaxValue)
-            => ReconcileCatching(parent, oldChildren, newChildren, frameBudgetMs, slotStart, slotLimit, catchingBoundary: null);
+        {
+            var request = (Reconciler: this, Parent: parent, Old: oldChildren, New: newChildren, Budget: frameBudgetMs,
+                Start: slotStart, Limit: slotLimit);
+            if (FiberExecutionContext.IsSet)
+            {
+                FiberExecutionContext.Hold(FiberExecutionContext.Request.Reconcile, null, _ctx.BatchScheduler, request,
+                    static s => s.Reconciler.Reconcile(s.Parent, s.Old, s.New, s.Budget, s.Start, s.Limit));
+                return;
+            }
+            FiberExecutionContext.Enter(_ctx.BatchScheduler, request,
+                static s => s.Reconciler.ReconcileCatching(s.Parent, s.Old, s.New, s.Budget, s.Start, s.Limit));
+        }
 
         // As Reconcile, for an error boundary reconciling its own rows: a render error below it is caught inside
         // this reconcile and handed back, for the boundary to show its fallback once the reconcile has returned.
@@ -254,6 +262,7 @@ namespace Velvet
             ProfilerMarker.AutoScope profilerScope = default;
             if (isTopLevel)
             {
+                UnityEngine.Debug.Assert(FiberExecutionContext.IsSet, "A reconcile pass ran with no entry on the stack.");
                 profilerScope = s_reconcileMarker.Auto();
                 ChildListWrites.BeginPass();
                 _ctx.RelationalTreeWatch.Watch(parent?.panel);
@@ -351,18 +360,8 @@ namespace Velvet
         private void FinishTopLevelPass(VisualElement? reconciledInto, bool walked)
         {
             TakeAbort();
-            var completed = false;
-            try
-            {
-                FinishPass(reconciledInto, walked);
-                ChildListWrites.VerifyTouched();
-                completed = true;
-            }
-            finally
-            {
-                // A pass a fiber drives ends in its entry, outside the render this runs in.
-                if (_ctx.FiberStack.Current == null) ChildListWrites.ReleaseAfterBarePass(completed);
-            }
+            FinishPass(reconciledInto, walked);
+            ChildListWrites.VerifyTouched();
         }
 
         private void TakeAbort()
@@ -524,6 +523,18 @@ namespace Velvet
         /// </param>
         public void ContinueReconcile(double frameBudgetMs = 0)
         {
+            if (FiberExecutionContext.IsSet)
+            {
+                FiberExecutionContext.Hold(FiberExecutionContext.Request.Reconcile, null, _ctx.BatchScheduler,
+                    (Reconciler: this, Budget: frameBudgetMs), static s => s.Reconciler.ContinueReconcile(s.Budget));
+                return;
+            }
+            FiberExecutionContext.Enter(_ctx.BatchScheduler, (Reconciler: this, Budget: frameBudgetMs),
+                static s => s.Reconciler.ContinueReconcileWork(s.Budget));
+        }
+
+        internal void ContinueReconcileWork(double frameBudgetMs)
+        {
             if (_ctx.IsDisposed || !HasPendingWork) { return; }
             using var _ = s_continueReconcileMarker.Auto();
 
@@ -549,7 +560,11 @@ namespace Velvet
             // the probe a discrete event dispatched synchronously inside a slice would re-enter the
             // reconciler on the stack.
             var isTopLevel = _ctx.SharedReconcileDepth == 0;
-            if (isTopLevel) ChildListWrites.BeginRecording(_ctx.Pass);
+            if (isTopLevel)
+            {
+                UnityEngine.Debug.Assert(FiberExecutionContext.IsSet, "A resumed pass ran with no entry on the stack.");
+                ChildListWrites.BeginRecording(_ctx.Pass);
+            }
 
             // A resume continues the pass an earlier slice suspended, so a setup it queues carries that
             // pass — see Reconcile's own bracket for why the stamp is put back rather than cleared.
@@ -637,9 +652,9 @@ namespace Velvet
 
         private VisualElement SlotOccupantOf(VisualElement row) => FiberZLayerCoordinator.PlaceholderOf(_ctx, row) ?? row;
 
-        void IReconcilerBridge.FlushPendingPassiveEffectsForController() => _ctx.BatchScheduler.FlushPendingPassiveEffects();
+        void IReconcilerBridge.FlushPendingPassiveEffectsForController() => _ctx.BatchScheduler.FlushPendingPassiveEffectsWork();
 
-        bool IReconcilerBridge.HoldsRangeForController(Action render) => ChildListWrites.HoldsRange(_ctx, render);
+        FiberBatchScheduler IReconcilerBridge.SchedulerForController => _ctx.BatchScheduler;
 
         void IReconcilerBridge.HoldRowLayoutEffects()
             => _ctx.HeldRowLayoutEffects.Push(new List<(ComponentFiber fiber, bool mountDoubleInvoke)>());
@@ -683,6 +698,7 @@ namespace Velvet
         // whether this range opened the bracket, which EndRangeForController closes.
         bool IReconcilerBridge.BeginRangeForController()
         {
+            UnityEngine.Debug.Assert(FiberExecutionContext.IsSet, "A VirtualList range ran with no entry on the stack.");
             if (_ctx.SharedReconcileDepth > 0) return false;
             _ctx.SharedReconcileDepth++;
             _ctx.RangeBracketDepth = _ctx.SharedReconcileDepth;

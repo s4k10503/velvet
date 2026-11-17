@@ -49,7 +49,7 @@ namespace Velvet
         private float? _pendingScrollTarget;
         private ValueAnimation<float>? _smoothScroll;
         private bool _writingScroll;
-        private Action? _renderHeldRange;
+        private Action? _heldRange;
         private int _scrollRequestVersion;
         private float _axisValue;
         private (float low, float high) _axisRange;
@@ -239,6 +239,25 @@ namespace Velvet
 
         internal void UpdateVisibleRange(float scrollY, float viewportHeight)
         {
+            var scheduler = _reconciler.SchedulerForController;
+            if (FiberExecutionContext.IsSet)
+            {
+                FiberExecutionContext.Hold(FiberExecutionContext.Request.Range, this, scheduler, _heldRange ??= RenderHeldRange);
+                return;
+            }
+            FiberExecutionContext.Enter(scheduler, (List: this, ScrollY: scrollY, Viewport: viewportHeight),
+                static state => state.List.UpdateVisibleRangeWork(state.ScrollY, state.Viewport));
+        }
+
+        // Worked out again from where the scroller is when it is made, since one range is held for however many were
+        // asked for while it waited.
+        private void RenderHeldRange()
+        {
+            if (!_isDisposed && _viewportHeight > 0) UpdateVisibleRange(AxisScroller.value, _viewportHeight);
+        }
+
+        private void UpdateVisibleRangeWork(float scrollY, float viewportHeight)
+        {
             if (_isDisposed || _node.Items.Count == 0)
             {
                 // Not gated on the tracked range, which cannot say whether rows are held — the reason
@@ -267,7 +286,6 @@ namespace Velvet
 
         private void RenderRange(int newFirst, int newLast)
         {
-            if (_reconciler.HoldsRangeForController(_renderHeldRange ??= RenderHeldRange)) return;
             // Inside a pass or a drain the scheduler's gate makes this a no-op.
             _reconciler.FlushPendingPassiveEffectsForController();
             // A row's refs and layout effects read the row, which is in the list only once RebuildVisibleContainer
@@ -290,10 +308,6 @@ namespace Velvet
                 }
             }
         }
-
-        // Worked out again from where the scroller is when it is made, since HoldsRange queues one render for however
-        // many were asked for while it waited.
-        private void RenderHeldRange() => UpdateVisibleRange(AxisScroller.value, _viewportHeight);
 
         private void PlaceRange(int newFirst, int newLast)
         {
@@ -826,7 +840,7 @@ namespace Velvet
 
             if (_viewportHeight > 0)
             {
-                UpdateVisibleRange(AxisScroller.value, _viewportHeight);
+                UpdateVisibleRangeWork(AxisScroller.value, _viewportHeight);
             }
         }
     }

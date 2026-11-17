@@ -26,9 +26,13 @@ namespace Velvet
         private const int NestedUpdateLimit = 50;
 
         // How many immediate drains in a row may throw before the updates queued after the last of them are dropped
-        // rather than re-armed (see DrainImmediate). A drain that completes resets the count.
+        // rather than re-armed (see CountRun). A drain that completes resets the count. Held work handed to a later
+        // frame (RunInNextFrame) counts as a drain here.
         private const int ConsecutiveThrowingDrainLimit = 3;
         private int _consecutiveThrowingDrains;
+
+        // Bumped each time the bound is reached, which drops every droppable hand-on made before it (RunInNextFrame).
+        private int _handOnGeneration;
 
         // Insertion-ordered pending queues: the List preserves enqueue order so the drain matches the
         // pre-batching schedule.Execute registration order (a parent dirtied before its child flushes
@@ -88,8 +92,8 @@ namespace Velvet
         // because the danger is the reconcile-on-stack, not the tier.
         private bool _draining;
 
-        // Reports whether a reconcile pass is currently on the stack (SharedReconcileDepth > 0) or a root of any context
-        // renders or commits (ChildListWrites.Busy), registered by the owning Reconciler. _draining alone does not cover a time-sliced resume (ContinueReconcile): a
+        // Reports whether a reconcile pass is currently on the stack (SharedReconcileDepth > 0), registered by
+        // the owning Reconciler. _draining alone does not cover a time-sliced resume (ContinueReconcile): a
         // resume is scheduled via schedule.Execute, not through Drain, so _draining is false while it runs even
         // though a reconcile is on the stack. FlushImmediate also blocks on this probe so a discrete event
         // dispatched synchronously inside a slice cannot re-enter the reconciler. The hazard is the
@@ -134,6 +138,10 @@ namespace Velvet
         // fibers each one serves. Exposed for tests that assert coalescing; not used by production.
         internal int ScheduledCallbackCount { get; private set; }
 
+        internal bool IsDisposed { get; private set; }
+
+        internal bool OwesSyncLane => _syncLaneQueued && _immediateOrder.Count > 0;
+
         // Count of fibers awaiting the next-frame (Normal / Urgent) batch drain.
         internal int ImmediatePendingCount => _immediateOrder.Count;
 
@@ -146,8 +154,15 @@ namespace Velvet
         private readonly List<ComponentFiber> _drainBuffer = new();
 
         private readonly Action _runImmediateCallback;
+        private readonly Action _flushHeld;
+        private readonly Action _flushHeldPassiveEffects;
 
-        internal FiberBatchScheduler() => _runImmediateCallback = RunImmediateCallback;
+        internal FiberBatchScheduler()
+        {
+            _runImmediateCallback = RunImmediateCallback;
+            _flushHeld = FlushDiscreteEvent;
+            _flushHeldPassiveEffects = FlushPendingPassiveEffects;
+        }
 
         // Records the tree-stable element on which drain callbacks are registered. Called once when the
         // root fiber that owns this context mounts.
@@ -185,7 +200,7 @@ namespace Velvet
             if (_draining) _immediateWorkArrivedMidDrain = true;
             // An empty tier holds no sync-lane work, whatever left it empty: a drain, a Remove, a drop or a Clear.
             if (_immediateOrder.Count == 0) _syncLaneQueued = false;
-            if (FiberWorkLoop.IsInDiscreteEvent || fiber.Reconciler?.Context.InLayoutCommit == true) _syncLaneQueued = true;
+            if (FiberWorkLoop.IsInDiscreteEvent || fiber.Reconciler?.Context.InLayoutCommit == true) MarkSyncLane();
             _immediateIntake++;
             if (_immediateSet.Add(fiber)) _immediateOrder.Add(fiber);
             ArmImmediateDrain();
@@ -198,7 +213,7 @@ namespace Velvet
         // frame-boundary callback ScheduleImmediate registered still commits it when neither has.
         internal void OweExternalStoreFlush()
         {
-            _syncLaneQueued = true;
+            MarkSyncLane();
             if (_externalStoreRenderQueued) return;
             VelvetMainThread.Post(static scheduler => ((FiberBatchScheduler)scheduler!).FlushOwedExternalStoreRenders(), this);
             _externalStoreRenderQueued = true;
@@ -208,7 +223,17 @@ namespace Velvet
         // re-rendered the changed snapshot before a later slice's readers render it.
         internal void FlushOwedExternalStoreRenders()
         {
-            if (_externalStoreRenderQueued && _immediateOrder.Count > 0) FlushImmediate();
+            if (FiberExecutionContext.IsSet)
+            {
+                if (_externalStoreRenderQueued && _immediateOrder.Count > 0) HoldFlush();
+                return;
+            }
+            FiberExecutionContext.Enter(this, this, static scheduler => scheduler.FlushOwedExternalStoreRendersWork());
+        }
+
+        internal void FlushOwedExternalStoreRendersWork()
+        {
+            if (_externalStoreRenderQueued && _immediateOrder.Count > 0) FlushImmediateWork();
         }
 
         private void ArmImmediateDrain()
@@ -291,6 +316,72 @@ namespace Velvet
             _anchor.schedule.Execute(callback);
         }
 
+        // Held work of this root that FiberExecutionContext's release does not run, made in a later frame on the anchor
+        // the tiers' drains are registered on. A root with no anchor registers no drain either, and has no frame. Where
+        // droppable, as a range or a resume is, it is dropped past the bound on drains that throw; a resolve is not, for
+        // the reason CountRun gives.
+        internal void RunInNextFrame(Action run, bool droppable)
+        {
+            var anchor = _anchor;
+            if (anchor == null) return;
+            if (droppable && _consecutiveThrowingDrains >= ConsecutiveThrowingDrainLimit) return;
+            var handOn = new HandOn(this, run, droppable, _handOnGeneration);
+            anchor.schedule.Execute(() => PanelSchedulerCallback.Run(anchor, handOn, static held => held.Run()));
+        }
+
+        private sealed class HandOn
+        {
+            private readonly FiberBatchScheduler _scheduler;
+            private readonly Action _run;
+            private readonly bool _droppable;
+            private readonly int _generation;
+
+            internal HandOn(FiberBatchScheduler scheduler, Action run, bool droppable, int generation)
+            {
+                _scheduler = scheduler;
+                _run = run;
+                _droppable = droppable;
+                _generation = generation;
+            }
+
+            // Logged here, as the release logs what an item throws, rather than thrown out to the panel's scheduler:
+            // what that does to the items behind it is held by HeldWorkReleaseTests
+            // .Given_AHandedOnRangeWhoseNewRowThrowsAsItMounts_When_ThePanelRunsAPass_Then_ThePanelsOtherScheduledWorkHasRun.
+            internal void Run()
+            {
+                if (_droppable && _generation != _scheduler._handOnGeneration) return;
+                var completed = false;
+                try
+                {
+                    _run();
+                    completed = true;
+                }
+                catch (Exception thrown)
+                {
+                    UnityEngine.Debug.LogException(thrown);
+                }
+                _scheduler.CountRun(completed);
+            }
+        }
+
+        // Without the bound, a commit that throws and queues itself again on every drain would throw once a frame, the
+        // same reason the nested-update cap drops its runaway rather than re-arming. Reaching it does not end every such
+        // run: whatever renders the thrower afterwards folds in the dropped update, which stays in its hook's slot. So it
+        // drops the ranges and resumes handed on before it as well, since a drain that completes over the emptied tier
+        // resets the count, and a range or resume left to render the dropped update could start the run afresh. A resolve
+        // handed on is kept, because it is what retries the render waiting on its read.
+        private void CountRun(bool completed)
+        {
+            _consecutiveThrowingDrains = completed ? 0 : _consecutiveThrowingDrains + 1;
+            if (_consecutiveThrowingDrains < ConsecutiveThrowingDrainLimit) return;
+            _handOnGeneration++;
+            if (_immediateOrder.Count == 0) return;
+            FiberLogger.LogError("Scheduler",
+                $"{ConsecutiveThrowingDrainLimit} runs of a root's work in a row threw, and the last left updates"
+                + " queued. Those updates were dropped.");
+            DropImmediateIntake();
+        }
+
         private void RunAdmitCallback(DelayedAdmission admission)
         {
             var outer = PanelSchedulerCallback.Enter(_anchor?.panel);
@@ -326,16 +417,36 @@ namespace Velvet
             }
         }
 
-        // A top-level entry: what was held while a root rendered or committed is made where the outermost one ends.
         private void DrainImmediate()
         {
-            // A drain asked for while a root renders or commits waits for it, whoever asked: the probe queues the flush.
-            if (_reconcileActiveProbe?.Invoke() == true) return;
-            ChildListWrites.RunEntry(this, this, static scheduler => scheduler.DrainImmediateEntry());
+            if (FiberExecutionContext.IsSet)
+            {
+                // The registered callback has run, and the held flush registers another for what it leaves queued, unless
+                // that flush stands down (DrainImmediateWork), which leaves the tier with no callback registered.
+                if (_inImmediateCallback) _immediateScheduled = false;
+                HoldFlush();
+                return;
+            }
+            FiberExecutionContext.Enter(this, this, static scheduler => scheduler.DrainImmediateWork());
         }
 
-        private void DrainImmediateEntry()
+        // A flush asked for while this scheduler's immediate drain runs, or while a pass of either tier renders, is left to
+        // that drain: what a pass, or the passive flush ahead of one, queues renders before the drain returns, except an
+        // update the passive flush after a sync-lane pass queues off the sync lane, which DrainImmediatePasses leaves for
+        // the tier's next drain. A flush asked for anywhere else in an entry waits for the outermost entry to end, and then
+        // runs the passive effects earlier commits left pending before it drains.
+        internal void HoldFlush()
         {
+            if (_draining || _inImmediateDrain) return;
+            FiberExecutionContext.Hold(FiberExecutionContext.Request.Flush, this, this, _flushHeld);
+        }
+
+        // Each drain of the immediate tier runs through here, so this is where a scheduler an exception left an entry of
+        // in the release running stands down (FiberExecutionContext's release says why): it returns false and leaves the
+        // tier and its registration as they are.
+        private bool DrainImmediateWork()
+        {
+            if (FiberExecutionContext.Threw(this)) return false;
             var completed = false;
             var wasInImmediateDrain = _inImmediateDrain;
             _inImmediateDrain = true;
@@ -353,19 +464,11 @@ namespace Velvet
                 // settle on a drop, or enqueued before the exception, and the loop that would have consumed it has
                 // exited. Only the registered callback lowers the flag; see _inImmediateCallback.
                 if (_inImmediateCallback) _immediateScheduled = false;
-                _consecutiveThrowingDrains = completed ? 0 : _consecutiveThrowingDrains + 1;
-                if (_consecutiveThrowingDrains >= ConsecutiveThrowingDrainLimit && _immediateOrder.Count > 0)
-                {
-                    // A commit that throws and queues itself again on every drain would otherwise throw once a frame
-                    // for good, the same reason the nested-update cap drops its runaway rather than re-arming.
-                    FiberLogger.LogError("Scheduler",
-                        $"{ConsecutiveThrowingDrainLimit} update batches in a row threw, and the last left updates"
-                        + " queued. Those updates were dropped.");
-                    DropImmediateIntake();
-                }
+                CountRun(completed);
                 if (_immediateOrder.Count == 0) _externalStoreRenderQueued = false;
                 if (_immediateOrder.Count > 0) ArmImmediateDrain();
             }
+            return true;
         }
 
         private void DrainImmediatePasses()
@@ -394,7 +497,7 @@ namespace Velvet
                 // pending lane of its sync set, the default lane an effect's update takes included. So the passes
                 // below render the whole tier and count toward the same cap. A flush that forced no re-render leaves
                 // what it scheduled for the tier's next drain, as a default-lane update waits for React's next task.
-                FlushPendingPassiveEffects();
+                FlushPendingPassiveEffectsWork();
                 if (!_syncLaneQueued) return;
                 DrainImmediatePassesUpTo(ref totalPasses, ref renderedSyncLane);
             }
@@ -407,7 +510,7 @@ namespace Velvet
         {
             if (_inImmediateDrain || _draining || (_reconcileActiveProbe?.Invoke() ?? false)) return;
             if (!_syncLaneQueued || _immediateOrder.Count == 0) return;
-            DrainImmediate();
+            DrainImmediateWork();
         }
 
         private void DrainImmediatePassesUpTo(ref int totalPasses, ref bool renderedSyncLane)
@@ -493,26 +596,34 @@ namespace Velvet
 
         private void DrainDelayedTier(DelayedAdmission? admission)
         {
-            ChildListWrites.RunEntry(this, (Scheduler: this, Admission: admission),
-                static state => state.Scheduler.DrainDelayedTierEntry(state.Admission));
+            if (FiberExecutionContext.IsSet)
+            {
+                FiberExecutionContext.Hold(FiberExecutionContext.Request.DelayedFlush, (object?)admission ?? this, this,
+                    (Scheduler: this, Admission: admission), static state => state.Scheduler.DrainDelayedTier(state.Admission));
+                return;
+            }
+            FiberExecutionContext.Enter(this, (Scheduler: this, Admission: admission),
+                static state => state.Scheduler.DrainDelayedTierWork(state.Admission));
         }
 
-        private void DrainDelayedTierEntry(DelayedAdmission? admission)
+        private void DrainDelayedTierWork(DelayedAdmission? admission)
         {
             // The immediate queue is committed first rather than trusting the panel to run its callback ahead of
             // this one. A Transition lane that pass re-enrols takes a later admission (see ScheduleDelayed), so
             // only a drain of every admission picks it up below.
+            var drained = false;
             try
             {
-                DrainImmediateAheadOfTheTransition();
+                drained = DrainImmediateAheadOfTheTransition();
             }
-            catch
+            finally
             {
-                // This admission's callback has run and registers nothing again, so entries still waiting for it
-                // would wait for a drain that never comes while their fibers stay dirty.
-                if (admission != null) ReadmitEntries(admission);
-                throw;
+                // This admission's callback has run and registers nothing again, so where the immediate drain threw or
+                // stood down, entries still waiting for it would wait for a drain that never comes while their fibers
+                // stay dirty.
+                if (!drained && admission != null) ReadmitEntries(admission);
             }
+            if (!drained) return;
             var kept = 0;
             for (var i = 0; i < _delayedOrder.Count; i++)
             {
@@ -539,7 +650,7 @@ namespace Velvet
             // desync for the next immediate callback to converge.
             if (_immediateWorkArrivedMidDrain && _immediateOrder.Count > 0)
             {
-                DrainImmediate();
+                DrainImmediateWork();
             }
         }
 
@@ -548,14 +659,14 @@ namespace Velvet
         // task. Each round renders what the round before it scheduled. Bounded like the immediate drain's passes,
         // since an effect that sets state on every commit would otherwise hold the transition in this callback
         // forever; past the bound the transition renders, and what is still queued waits for the tier's callback.
-        private void DrainImmediateAheadOfTheTransition()
+        private bool DrainImmediateAheadOfTheTransition()
         {
             for (var rounds = 0; ; rounds++)
             {
-                DrainImmediate();
-                if (rounds == NestedUpdateLimit) return;
-                FlushPendingPassiveEffects();
-                if (_immediateOrder.Count == 0) return;
+                if (!DrainImmediateWork()) return false;
+                if (rounds == NestedUpdateLimit) return true;
+                FlushPendingPassiveEffectsWork();
+                if (_immediateOrder.Count == 0) return true;
             }
         }
 
@@ -565,7 +676,7 @@ namespace Velvet
             // React flushes pending passive effects before it starts a render, so an earlier commit's effects and
             // presence completions run before this pass renders. Ahead of the copy below, so on the immediate tier
             // an update one of them schedules joins this pass.
-            FlushPendingPassiveEffects();
+            FlushPendingPassiveEffectsWork();
             if (order.Count == 0) return;
             // Activate UseStore snapshot pinning for the span of this drain. Bracketed only on the outer drain
             // (a re-entrant call is blocked by _draining before reaching here) so a nested entry cannot reset
@@ -601,7 +712,7 @@ namespace Velvet
                     }
                     // Not mirrored on the delayed tier: skipping a delayed entry that holds Normal or Urgent work
                     // would hold that work back rather than keep it from running early.
-                    FiberWorkLoop.FlushState(fiber);
+                    FiberWorkLoop.FlushStateWork(fiber);
                 }
                 _drainBuffer.Clear();
             }
@@ -672,17 +783,20 @@ namespace Velvet
             return depth;
         }
 
-        // Whether a drain of the immediate tier can start from here: no drain of either tier, no reconcile pass on the
-        // stack and no root of any context rendering or committing. FlushImmediate checks _draining and the other two, and
-        // not whether a drain of the immediate tier is running, which renders what is queued itself.
+        // Whether a drain of the immediate tier can start from here: no drain of either tier and no reconcile pass is
+        // on the stack. FlushImmediate checks the first and the last of these; a drain of the immediate tier that
+        // is running renders what is queued itself.
         internal bool CanFlushImmediate => !_draining && !_inImmediateDrain && !(_reconcileActiveProbe?.Invoke() ?? false);
 
         // Marks the immediate tier's work as sync-lane work, which a drain that renders it follows with the passive
         // flush and another round of passes (DrainImmediatePasses).
-        internal void OweSyncLane() => _syncLaneQueued = true;
+        internal void OweSyncLane() => MarkSyncLane();
 
-        // Whether a commit this scheduler ran left sync-lane work, whose passive effects React flushes as the commit ends.
-        internal bool SyncLaneOwed => _syncLaneQueued;
+        private void MarkSyncLane()
+        {
+            _syncLaneQueued = true;
+            FiberExecutionContext.OweSyncLane(this);
+        }
 
         // Called by the owning Reconciler: what to forget along with the intake DropImmediateIntake drops.
         internal void SetIntakeDropCallback(Action onDropped) => _onIntakeDropped = onDropped;
@@ -690,25 +804,56 @@ namespace Velvet
         private Action? _onIntakeDropped;
 
         // Synchronously drains the next-frame (Normal / Urgent) batch now instead of waiting for the scheduled
-        // frame-boundary callback. Called at the end of a discrete user-input event handler so Urgent-lane
-        // updates scheduled during the handler commit synchronously, so the UI reflects them before the next frame. A frame-boundary
-        // callback registered earlier in the same batch stays registered and commits whatever arrives before it runs.
-        // No-op while ANY drain (immediate or delayed) is already running OR a reconcile pass is otherwise on
-        // the stack: a discrete event dispatched synchronously during a commit (e.g. focus loss when a focused
-        // element is removed during reconcile) would otherwise re-enter the reconciler while an outer reconcile
-        // is still on the stack — a nested reconcile at depth > 0 skips the top-level reset of abort /
-        // context-snapshot state and can corrupt the in-flight pass — and would also re-enter Drain
-        // and clobber the shared drain buffer mid-iteration. The block spans both tiers on purpose: the hazard
-        // is the reconcile already on the stack, not which tier is draining. A time-sliced resume
-        // (Reconciler.ContinueReconcile) runs via schedule.Execute rather than through
-        // Drain, so _draining is false during it; the reconcile-active probe
-        // (SetReconcileActiveProbe) catches that case via SharedReconcileDepth > 0, and a root of any context that
-        // renders or commits. The update is not lost — it stays queued, and commits where the outermost entry ends
-        // (ChildListWrites.Release) or on the next-frame callback that ScheduleImmediate already registered.
+        // frame-boundary callback. A frame-boundary callback registered earlier in the same batch stays registered
+        // and commits whatever arrives before it runs.
         internal void FlushImmediate()
         {
+            if (FiberExecutionContext.IsSet)
+            {
+                HoldFlush();
+                return;
+            }
+            FiberExecutionContext.Enter(this, this, static scheduler => scheduler.FlushImmediateWork());
+        }
+
+        // No-op while ANY drain (immediate or delayed) is already running OR a reconcile pass is otherwise on
+        // the stack: re-entering would run a nested reconcile at depth > 0, which skips the top-level reset of abort /
+        // context-snapshot state and can corrupt the in-flight pass, and would also re-enter Drain and clobber the
+        // shared drain buffer mid-iteration. The block spans both tiers on purpose: the hazard is the reconcile
+        // already on the stack, not which tier is draining. A time-sliced resume (Reconciler.ContinueReconcile)
+        // runs via schedule.Execute rather than through Drain, so _draining is false during it; the reconcile-active
+        // probe (SetReconcileActiveProbe) catches that case via SharedReconcileDepth > 0. The update is not lost — it
+        // stays queued and commits on the next-frame callback that ScheduleImmediate already registered.
+        internal void FlushImmediateWork()
+        {
             if (_draining || (_reconcileActiveProbe?.Invoke() ?? false)) return;
-            DrainImmediate();
+            DrainImmediateWork();
+        }
+
+        // Ends a discrete event's handler, at the outermost discrete boundary (FiberDiscreteEventScope).
+        internal void FlushDiscreteEvent()
+        {
+            if (FiberExecutionContext.IsSet)
+            {
+                HoldFlush();
+                return;
+            }
+            FiberExecutionContext.Enter(this, this, static scheduler => scheduler.FlushDiscreteEventWork());
+        }
+
+        // The passive effects are flushed here as well as before the drain's render (Drain), so an event that schedules
+        // no update still runs the effects of the commit before it. The flush still runs even if a runaway
+        // passive-effect loop throws its guard.
+        private void FlushDiscreteEventWork()
+        {
+            try
+            {
+                FlushPendingPassiveEffectsWork();
+            }
+            finally
+            {
+                FlushImmediateWork();
+            }
         }
 
         // React's task flushes pending passive effects and then renders the highest-priority lanes pending, so an
@@ -716,12 +861,22 @@ namespace Velvet
         internal void FlushPendingPassiveEffectsAheadOfAResume()
         {
             var intake = _immediateIntake;
-            FlushPendingPassiveEffects();
-            if (_immediateIntake != intake) FlushImmediate();
+            FlushPendingPassiveEffectsWork();
+            if (_immediateIntake != intake) FlushImmediateWork();
         }
 
-        // Gated like FlushImmediate so it never re-enters a live drain / reconcile.
         internal void FlushPendingPassiveEffects()
+        {
+            if (FiberExecutionContext.IsSet)
+            {
+                FiberExecutionContext.Hold(FiberExecutionContext.Request.PassiveFlush, this, this, _flushHeldPassiveEffects);
+                return;
+            }
+            FiberExecutionContext.Enter(this, this, static scheduler => scheduler.FlushPendingPassiveEffectsWork());
+        }
+
+        // Gated like FlushImmediateWork so it never re-enters a live drain / reconcile.
+        internal void FlushPendingPassiveEffectsWork()
         {
             if (_draining || (_reconcileActiveProbe?.Invoke() ?? false)) return;
             _flushPassiveEffects?.Invoke();
@@ -752,6 +907,7 @@ namespace Velvet
             _anchor = null;
             _onDrainBegin = null;
             _onDrainEnd = null;
+            IsDisposed = true;
         }
     }
 }

@@ -328,12 +328,12 @@ namespace Velvet
             {
                 var drain = new RowCountWindow(fiber);
                 var host = fiber.Reconciler!.Context.HostCommit;
-                fiber.Reconciler.ContinueReconcile(frameBudgetMs: 0);
+                fiber.Reconciler.ContinueReconcileWork(frameBudgetMs: 0);
                 host.ShiftRows(fiber, drain.UnshiftedChange);
             }
             else
             {
-                fiber.Reconciler!.ContinueReconcile(frameBudgetMs: 0);
+                fiber.Reconciler!.ContinueReconcileWork(frameBudgetMs: 0);
             }
             if (fiber.Reconciler != null)
             {

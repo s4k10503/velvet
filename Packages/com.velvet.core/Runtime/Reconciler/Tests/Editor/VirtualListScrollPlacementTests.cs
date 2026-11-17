@@ -14,10 +14,13 @@ namespace Velvet.Tests
     /// row renders a Portal of its own. A Portal a range that failed had built mounts nothing when the range renders
     /// again. A child of such a Portal that suspends with no Suspense above the list — a Portal row's own, or one a row
     /// holds — leaves the list's host waiting on the read, outside a transition, rather than leaving the scroll, alone
-    /// in the range or ahead of a Component row, and the rows that scroll built stay in the list. A range of one root
-    /// that a scroll asks for while another root's pass writes its elements renders once that root's render and commit
-    /// have ended, before control returns, and asked for more often than the nested-update limit throws nothing. A list
-    /// its host renders again places its new rows inside that render, where the host's layout effect reads them.
+    /// in the range or ahead of a Component row, and the rows that scroll built stay in the list. A range a scroll asks
+    /// for while a root renders or commits, its own root's included, renders once that has ended, before control
+    /// returns where no exception left the list's root's own work there, and asked for more often than the
+    /// nested-update limit throws nothing; a ScrollToItem made there still reaches its item once the content is laid
+    /// out. What a range's rows mount, the updates their layout effects make and the fallback a row's boundary shows
+    /// for an error one throws render before the scroll that rendered them returns. A list its host renders again
+    /// places its new rows inside that render, where the host's layout effect reads them.
     /// </summary>
     [TestFixture]
     internal sealed class VirtualListScrollPlacementTests
@@ -329,8 +332,8 @@ namespace Velvet.Tests
                 renderer: item => V.Label(text: item), overscan: 0);
         }
 
-        // GREEN_ON_BASE(characterization): the base renders the range of a list its host renders again inside that render,
-        // which the hold of another root's range leaves as it was.
+        // GREEN_ON_BASE(characterization): the base renders the range of a list its host renders again inside that render.
+        // Holding a range asked for from outside that render leaves this one as it was.
         [Test]
         public void Given_AListItsHostRendersAgainWithAViewport_When_TheHostsLayoutEffectRuns_Then_ItReadsTheNewRows()
         {
@@ -373,6 +376,417 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(thrown, Is.Null);
+        }
+
+        private static void SetViewport(MountedTree mounted, ScrollView scrollView, float height)
+            => typeof(FiberVirtualListController)
+                .GetField("_viewportHeight", BindingFlags.Instance | BindingFlags.NonPublic)!
+                .SetValue(mounted.Root.Reconciler.Context.VirtualListControllers[scrollView], height);
+
+        private static FiberVirtualListController ControllerOf(MountedTree mounted, ScrollView scrollView)
+            => mounted.Root.Reconciler.Context.VirtualListControllers[scrollView];
+
+        private static readonly string[] HundredItems = Enumerable.Range(0, 100).Select(i => "item-" + i).ToArray();
+
+        private static Ref<VirtualListHandle> s_ownListRef;
+        private static StateUpdater<int> s_setCount;
+
+        // Appends items as its count grows, and scrolls the last of them to the viewport's end in its layout effect.
+        [Component]
+        private static VNode AppendsAndScrollsToItsLastItem()
+        {
+            var (count, setCount) = Hooks.UseState(3);
+            s_setCount = setCount;
+            Hooks.UseLayoutEffect((Func<Action>)(() =>
+            {
+                if (count > 3) s_ownListRef.Current.ScrollToItem(count - 1, VirtualListAlign.End);
+                return null;
+            }), new object[] { count });
+            return V.VirtualList(HundredItems.Take(count).ToArray(), item => item, itemHeight: 50f,
+                renderer: item => V.Label(text: item), overscan: 0, listRef: s_ownListRef);
+        }
+
+        // GREEN_ON_BASE(characterization): the base runs the scroll's callback where the scroller changes, target kept.
+        // Holding the whole callback instead would replay it as a scroll the list did not make, cancelling the target.
+        [Test]
+        public void Given_AHostThatAppendsAndScrollsToItsLastItemInALayoutEffect_When_TheContentIsNextLaidOut_Then_TheListReachesThatItem()
+        {
+            // Arrange — on a panel, so that the scroller's change reaches the list. The scroller's range is the one the
+            // content's last layout left, short of the ten items the drain's render appends.
+            using var host = new HeadlessEditorPanelHost();
+            s_ownListRef = new Ref<VirtualListHandle>();
+            using var mounted = V.Mount(host.Root, V.Component(AppendsAndScrollsToItsLastItem));
+            var scrollView = host.Root.Q<ScrollView>();
+            SetViewport(mounted, scrollView, 200f);
+            scrollView.verticalScroller.highValue = 100f;
+            s_setCount.Invoke(10);
+            mounted.DrainForTest();
+
+            // Act
+            scrollView.verticalScroller.highValue = 300f;
+            using var evt = GeometryChangedEvent.GetPooled(UnityEngine.Rect.zero, UnityEngine.Rect.zero);
+            scrollView.contentContainer.SimulateEvent(evt);
+
+            // Assert
+            Assert.That(scrollView.verticalScroller.value, Is.EqualTo(300f));
+        }
+
+        // Sets its own state once from its layout effect, as a row measuring itself does.
+        [Component]
+        private static VNode SetsItsStateOnMount(string item)
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            Hooks.UseLayoutEffect((Func<Action>)(() =>
+            {
+                if (tick == 0) setTick.Invoke(1);
+                return null;
+            }), Array.Empty<object>());
+            return V.Label(name: item, text: item + ":" + tick);
+        }
+
+        // React renders an update a layout effect makes where the commit ends, whatever else is waiting then.
+        [Test]
+        public void Given_ARowWhoseLayoutEffectSetsItsState_When_AScrollRendersTheRow_Then_TheUpdateHasRenderedWhenTheScrollReturns()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.VirtualList(HundredItems, item => item, itemHeight: 50f,
+                renderer: item => V.Component<string>(SetsItsStateOnMount, item, key: item), overscan: 0));
+            var scrollView = _root.Q<ScrollView>();
+            SetViewport(mounted, scrollView, 200f);
+
+            // Act
+            ControllerOf(mounted, scrollView).UpdateVisibleRange(2500f, 200f);
+
+            // Assert — null where the row did not render
+            Assert.That(_root.Q<Label>("item-50")?.text, Is.EqualTo("item-50:1"));
+        }
+
+        [Component]
+        private static VNode ThrowsFromItsLayoutEffect(string item)
+        {
+            Hooks.UseLayoutEffect((Func<Action>)(() => throw new InvalidOperationException("row " + item)),
+                Array.Empty<object>());
+            return V.Label(name: item, text: item);
+        }
+
+        // GREEN_ON_BASE(characterization): the base rendered the fallback where the range's commit ended, as this does.
+        // FiberEffects.CommitStrandedLayoutWork renders the errors a commit captured once that commit is over, and the
+        // range calls it as it returns.
+        [Test]
+        public void Given_ARowWhoseLayoutEffectThrowsIntoItsOwnBoundary_When_AScrollRendersTheRow_Then_TheFallbackIsShownWhenTheScrollReturns()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.VirtualList(HundredItems, item => item, itemHeight: 50f,
+                renderer: item => V.ErrorBoundary(_ => V.Label(name: "fallback-" + item, text: "fallback"),
+                    new VNode[] { V.Component<string>(ThrowsFromItsLayoutEffect, item, key: "row") }, key: item),
+                overscan: 0), CaughtErrors.Unlogged);
+            var scrollView = _root.Q<ScrollView>();
+            SetViewport(mounted, scrollView, 200f);
+
+            // Act
+            ControllerOf(mounted, scrollView).UpdateVisibleRange(2500f, 200f);
+
+            // Assert
+            Assert.That(_root.Q<Label>("fallback-item-50"), Is.Not.Null);
+        }
+
+        private sealed class Count : Store<int>
+        {
+            public Count() : base(0) { }
+
+            public void Set(int value) => SetState(_ => value);
+
+            protected override void ResetCore() => SetState(_ => 0);
+        }
+
+        private static Count s_count;
+        private static int s_countRead;
+        private static bool s_rowThrowsOnce;
+        private static readonly Ref<string> s_rowHandle = new();
+
+        [Component]
+        private static VNode ThrowsOnceFromItsHandle(string item)
+        {
+            Hooks.UseImperativeHandle(s_rowHandle, () =>
+            {
+                if (!s_rowThrowsOnce) return item;
+                s_rowThrowsOnce = false;
+                throw new InvalidOperationException("row handle failed");
+            });
+            return V.Label(name: item, text: item);
+        }
+
+        [Component]
+        private static VNode ReadsTheCountBesideAList()
+        {
+            s_countRead = Hooks.UseStore(s_count, value => value);
+            return V.VirtualList(HundredItems, item => item, itemHeight: 50f,
+                renderer: item => V.Component<string>(ThrowsOnceFromItsHandle, item, key: item), overscan: 0);
+        }
+
+        // The store's change leaves the reader's root owing the sync lane, and the scroll's entry, which a row's throw
+        // leaves, ends without flushing it; the next root's entry to end does.
+        [Test]
+        public void Given_AStoreReaderWhoseScrollThrewOutOfItsRange_When_AnotherRootsClickEnds_Then_TheReaderHasRenderedTheChange()
+        {
+            // Arrange
+            s_count = new Count();
+            s_rowThrowsOnce = false;
+            using var mounted = V.Mount(_root, V.Component(ReadsTheCountBesideAList));
+            mounted.FlushEffectsForTest();
+            var scrollView = _root.Q<ScrollView>();
+            SetViewport(mounted, scrollView, 200f);
+            var other = new VisualElement();
+            using var idle = V.Mount(other, V.Button(name: "idle", onClick: () => { }));
+            s_count.Set(1);
+            s_rowThrowsOnce = true;
+            try
+            {
+                ControllerOf(mounted, scrollView).UpdateVisibleRange(2500f, 200f);
+            }
+            catch (InvalidOperationException)
+            {
+            }
+
+            // Act
+            other.Q<Button>("idle").SimulateClick();
+
+            // Assert
+            Assert.That(s_countRead, Is.EqualTo(1));
+        }
+
+        [Component]
+        private static VNode EffectChild()
+        {
+            Hooks.UseEffect(() => (Action)null, Array.Empty<object>());
+            return V.Label(text: "child");
+        }
+
+        [Component]
+        private static VNode FailsFromItsEffect()
+        {
+            Hooks.UseEffect((Func<Action>)(() => throw new InvalidOperationException("effect failed")), Array.Empty<object>());
+            return V.Label(text: "child");
+        }
+
+        private static StateUpdater<int> s_setScrollThrower;
+        private static readonly Ref<string> s_scrollThrowerHandle = new();
+
+        [Component]
+        private static VNode ScrollsItsListThenThrows(bool childsEffectFails)
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setScrollThrower = setTick;
+            Hooks.UseLayoutEffect((Func<Action>)(() =>
+            {
+                if (tick > 0) s_ownListRef.Current.ScrollToItem(50, VirtualListAlign.Start);
+                return null;
+            }), new object[] { tick });
+            Hooks.UseImperativeHandle(s_scrollThrowerHandle, () =>
+            {
+                if (tick == 0) return "handle";
+                setTick.Invoke(tick + 1);
+                throw new InvalidOperationException("handle failed");
+            });
+            var list = V.VirtualList(HundredItems, item => item, itemHeight: 50f,
+                renderer: item => V.Label(name: item, text: item), overscan: 0, listRef: s_ownListRef, key: "list");
+            var child = childsEffectFails
+                ? V.ErrorBoundary(_ => V.Label(text: "fallback"), new VNode[] { V.Component(FailsFromItsEffect) }, key: "child")
+                : V.Component(EffectChild, key: "child");
+            return V.Div(children: tick > 0 ? new VNode[] { child, list } : new VNode[] { list });
+        }
+
+        private static int ThrowingDrainsOf(FiberBatchScheduler scheduler)
+            => (int)typeof(FiberBatchScheduler)
+                .GetField("_consecutiveThrowingDrains", BindingFlags.NonPublic | BindingFlags.Instance)!
+                .GetValue(scheduler)!;
+
+        // GREEN_ON_BASE(characterization): the base rendered the range inside the drain, ahead of the throw, and drained once.
+        // Here the drain that throws holds the range and leaves the child it mounted with its effect pending, so the
+        // passive flush the release runs ahead of the range would end by draining the root's sync lane.
+        [Test]
+        public void Given_ADrainThatThrowsAfterHoldingARangeOfItsOwnList_When_TheReleaseReachesTheRange_Then_ItsRootHasThrownOnce()
+        {
+            // Arrange — on a panel, so that the scroller's change reaches the list
+            using var host = new HeadlessEditorPanelHost();
+            s_ownListRef = new Ref<VirtualListHandle>();
+            using var mounted = V.Mount(host.Root, V.Component(ScrollsItsListThenThrows, false));
+            var scrollView = host.Root.Q<ScrollView>();
+            SetViewport(mounted, scrollView, 200f);
+            scrollView.verticalScroller.highValue = 4800f;
+            var scheduler = mounted.GetSchedulerForTest();
+            s_setScrollThrower.Invoke(1);
+
+            // Act
+            try
+            {
+                scheduler.DrainImmediateForTest();
+            }
+            catch (InvalidOperationException)
+            {
+            }
+
+            // Assert — 2 where the passive flush ahead of the range drained the root again
+            Assert.That(ThrowingDrainsOf(scheduler), Is.EqualTo(1));
+        }
+
+        // GREEN_ON_BASE(characterization): the base rendered the range inside the drain and drained once.
+        // The scheduler's gate kept the passive flush ahead of the range's rows from running the child's effect there.
+        [Test]
+        public void Given_ADrainThatThrowsAfterHoldingARangeAndMountingAChildWhoseEffectFailsIntoABoundary_When_TheReleaseReachesTheRange_Then_ItsRootHasThrownOnce()
+        {
+            // Arrange — on a panel, so that the scroller's change reaches the list
+            using var host = new HeadlessEditorPanelHost();
+            s_ownListRef = new Ref<VirtualListHandle>();
+            using var mounted = V.Mount(host.Root, V.Component(ScrollsItsListThenThrows, true), CaughtErrors.Unlogged);
+            var scrollView = host.Root.Q<ScrollView>();
+            SetViewport(mounted, scrollView, 200f);
+            scrollView.verticalScroller.highValue = 4800f;
+            var scheduler = mounted.GetSchedulerForTest();
+            s_setScrollThrower.Invoke(1);
+
+            // Act
+            try
+            {
+                scheduler.DrainImmediateForTest();
+            }
+            catch (InvalidOperationException)
+            {
+            }
+
+            // Assert — 2 where rendering the boundary's capture drained the root again
+            Assert.That(ThrowingDrainsOf(scheduler), Is.EqualTo(1));
+        }
+
+        private static readonly System.Collections.Generic.List<MountedTree> s_thumbs = new();
+
+        [TearDown]
+        public void DisposeTheThumbs()
+        {
+            foreach (var thumb in s_thumbs) thumb.Dispose();
+            s_thumbs.Clear();
+        }
+
+        // GREEN_ON_BASE(characterization): the base rendered the root where the row's ref mounted it, inside the range.
+        [Test]
+        public void Given_ARowRefThatMountsARoot_When_TheListScrollsOutsideEveryEntry_Then_TheRootHasRenderedWhenTheScrollReturns()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.VirtualList(HundredItems, item => item, itemHeight: 50f,
+                renderer: item => V.Div(name: item, refCallback: element =>
+                {
+                    s_thumbs.Add(V.Mount(element, V.Label(text: "thumb")));
+                    return () => { };
+                }), overscan: 0));
+            var scrollView = _root.Q<ScrollView>();
+            SetViewport(mounted, scrollView, 200f);
+
+            // Act
+            ControllerOf(mounted, scrollView).UpdateVisibleRange(2500f, 200f);
+
+            // Assert — -1 where the row did not render
+            Assert.That(_root.Q<VisualElement>("item-50")?.childCount ?? -1, Is.EqualTo(1));
+        }
+
+        private static StateUpdater<bool> s_setScrolled;
+        private static string s_rowAfterTheScroll;
+
+        // Scrolls its own list to item 50 from its layout effect once asked, and records whether that row was in the list
+        // when ScrollToItem returned.
+        [Component]
+        private static VNode ScrollsItsOwnList()
+        {
+            var (scrolled, setScrolled) = Hooks.UseState(false);
+            s_setScrolled = setScrolled;
+            Hooks.UseLayoutEffect((Func<Action>)(() =>
+            {
+                if (!scrolled) return null;
+                s_ownListRef.Current.ScrollToItem(50, VirtualListAlign.Start);
+                s_rowAfterTheScroll = s_ownListRef.Current.Element.Q<Label>("item-50") == null ? "absent" : "present";
+                return null;
+            }), new object[] { scrolled });
+            return V.VirtualList(HundredItems, item => item, itemHeight: 50f,
+                renderer: item => V.Label(name: item, text: item), overscan: 0, listRef: s_ownListRef);
+        }
+
+        private MountedTree MountAListThatScrollsItself(HeadlessEditorPanelHost host)
+        {
+            s_ownListRef = new Ref<VirtualListHandle>();
+            s_rowAfterTheScroll = null;
+            var mounted = V.Mount(host.Root, V.Component(ScrollsItsOwnList));
+            var scrollView = host.Root.Q<ScrollView>();
+            SetViewport(mounted, scrollView, 200f);
+            scrollView.verticalScroller.highValue = 4800f;
+            s_setScrolled.Invoke(true);
+            return mounted;
+        }
+
+        // React's list renders a scrollToItem made in a layout effect as a state update, once that commit has ended.
+        [Test]
+        public void Given_AListsOwnLayoutEffectThatScrollsIt_When_ScrollToItemReturns_Then_TheNewRowsHaveNotRendered()
+        {
+            // Arrange
+            using var host = new HeadlessEditorPanelHost();
+            using var mounted = MountAListThatScrollsItself(host);
+
+            // Act
+            mounted.DrainForTest();
+
+            // Assert
+            Assert.That(s_rowAfterTheScroll, Is.EqualTo("absent"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base rendered the range where the scroll was made, inside the drain.
+        // The row is in the list by the time the drain returns either way.
+        [Test]
+        public void Given_AListsOwnLayoutEffectThatScrollsIt_When_TheDrainReturns_Then_TheNewRowsHaveRendered()
+        {
+            // Arrange
+            using var host = new HeadlessEditorPanelHost();
+            using var mounted = MountAListThatScrollsItself(host);
+
+            // Act
+            mounted.DrainForTest();
+
+            // Assert
+            Assert.That(host.Root.Q<Label>("item-50"), Is.Not.Null);
+        }
+
+        private static readonly System.Collections.Generic.List<string> s_rangeLog = new();
+
+        // Logs each item the list renders, and logs once item-10's row, as it is created, has scrolled the list to item 50.
+        private static MountedTree MountAListWhoseRowScrollsIt(HeadlessEditorPanelHost host)
+        {
+            s_ownListRef = new Ref<VirtualListHandle>();
+            var mounted = V.Mount(host.Root, V.VirtualList(HundredItems, item => item, itemHeight: 50f, renderer: item =>
+            {
+                s_rangeLog.Add(item);
+                return V.TextField(name: item, onCreated: item != "item-10" ? null : _ =>
+                {
+                    s_ownListRef.Current.ScrollToItem(50, VirtualListAlign.Start);
+                    s_rangeLog.Add("scrolled");
+                });
+            }, overscan: 0, listRef: s_ownListRef));
+            var scrollView = host.Root.Q<ScrollView>();
+            SetViewport(mounted, scrollView, 200f);
+            scrollView.verticalScroller.highValue = 4800f;
+            s_rangeLog.Clear();
+            return mounted;
+        }
+
+        [Test]
+        public void Given_ARowWhoseOnCreatedScrollsItsOwnList_When_TheRangeRenders_Then_TheSecondRangeRendersAfterTheFirstEnds()
+        {
+            // Arrange — on a panel, so that the scroller's change reaches the list
+            using var host = new HeadlessEditorPanelHost();
+            using var mounted = MountAListWhoseRowScrollsIt(host);
+
+            // Act
+            ControllerOf(mounted, host.Root.Q<ScrollView>()).UpdateVisibleRange(500f, 200f);
+
+            // Assert
+            Assert.That(string.Join(",", s_rangeLog),
+                Is.EqualTo("item-10,scrolled,item-11,item-12,item-13,item-50,item-51,item-52,item-53"));
         }
     }
 
