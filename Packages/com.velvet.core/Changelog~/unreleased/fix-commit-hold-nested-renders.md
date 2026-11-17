@@ -14,8 +14,7 @@
   update drain asked for waited for the main thread's next posted flush, and a state update a layout effect or
   `refCallback:` made in the commit of a `V.VirtualList` row a scroll or a resize rendered, or of a fallback a boundary
   showed for a `UseFrame` callback's error, waited for a later frame. Each now renders where the next render, commit or
-  `UseEffect` flush of any root ends, before control returns; where an exception leaves that root's own work there
-  instead, it renders where the next one after it ends, or in the root's next frame if that comes first.
+  `UseEffect` flush of any root ends, before control returns.
 - A `refCallback:` cleanup that throws as its element is removed was logged and reached no error boundary. It now goes
   to the nearest boundary above the component that rendered the element, which shows its fallback in a follow-up
   commit, as React's does; with none, the root renders nothing and reports it to `OnUncaughtError`, as it does for a
@@ -32,6 +31,11 @@
   work that keeps asking for itself again is not run again once it has run 50 times before control returns, and
   "Maximum update depth exceeded" is logged; the updates still queued for it stay queued, and the rest of the waiting
   work, its own root's included, still runs.
+- Where an exception leaves a root's render, commit or `UseEffect` flush, nothing drains that root's updates again
+  before control returns, whatever another entry here says; the rest of its waiting work still runs. What the exception
+  leaves queued still renders where earlier versions rendered it, and where an update React gives the sync lane is
+  among it, the next render, commit or `UseEffect` flush of any root to end after control has returned also retries
+  it, if nothing has rendered it first.
 - A click handler that runs while no root is rendering, committing or running its `UseEffect`s, and sets another root's
   state outside a transition, renders that root before the click returns, rather than in that root's next frame.
 - A `Hooks.Use` or query result that resolves while a root renders, commits or runs its `UseEffect`s is taken up once
