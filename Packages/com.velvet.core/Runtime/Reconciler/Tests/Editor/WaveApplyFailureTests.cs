@@ -11,17 +11,17 @@ namespace Velvet.Tests
     /// nearest boundary at or above the component that rendered the element the write adds, passing over the components
     /// no earlier commit has mounted, short of the component that rendered a Portal the element sits in, as React
     /// starts the search for a placement's error at the return of the fiber its commit places; the boundary renders its
-    /// fallback in a follow-up commit. A boundary that renders the element itself catches it, and one inside the walk of
-    /// the component whose update the wave renders does as well, while a boundary that mounts with the element does not,
-    /// so a mount's error goes to the root, which takes the tree down, unless the element sits in a Portal that boundary
-    /// renders. A boundary that has caught leaves its fallback's element's error to the boundary above it. A Portal's
-    /// mount files its child's error under the component that rendered the Portal and goes on to the Portals queued
-    /// behind it. The errors of two writes, or of two <c>z-*</c> placements, are both reported, as is a Portal child's
-    /// beside a write's. The error of an element the wave takes off the panel again is not reported, as React commits no
-    /// host of a render it discarded: here, one whose component a later component's render error replaced with the
-    /// boundary's fallback, and one the boundary's own catch replaced with its fallback; a Portal under a tree that was
-    /// never on a panel is still reported. A removal a later drain records is filed with that drain's run, not one an
-    /// earlier drain left behind.
+    /// fallback in a follow-up commit. A boundary that renders the element itself catches it, and one inside the walk
+    /// of the component whose update the wave renders does as well, while a boundary that mounts with the element does
+    /// not, so a mount's error goes to the root, which takes the tree down, unless the element sits in a Portal
+    /// rendered at or below that boundary. Here a boundary whose fallback element throws as it attaches reports its
+    /// catch and leaves that error to the boundary above it. A Portal's mount files its child's error under the
+    /// component that rendered the Portal and goes on to the Portals queued behind it. The errors of two writes, or of
+    /// two <c>z-*</c> placements, are both reported, as is a Portal child's beside a write's. The error of an element
+    /// the wave takes off the panel again is not reported, as React commits no host of a render it discarded: here, one
+    /// whose component a later component's render error replaced with the boundary's fallback, and one the boundary's
+    /// own catch replaced with its fallback; a Portal under a tree that was never on a panel is still reported. A
+    /// removal a later drain records is filed with that drain's run, not one an earlier drain left behind.
     /// </summary>
     /// <remarks>
     /// The tree mounts on a real panel, which is what runs an attach callback.
@@ -317,7 +317,7 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base catches the error in the pass of the component that threw it.
-        // Filing a failed insert in ChildListWrites.FailureOwner under the root of the last run in ReconcilePass.Segments,
+        // Filing a failed insert in ChildListWrites.FileFailure under the root of the last run in ReconcilePass.Segments,
         // rather than under the component that rendered the element, reddens it.
         [Test]
         public void Given_TwoComponentsUnderBoundariesOfTheirOwnAndTheFirstsNewElementThrowsAsItAttaches_When_OneDrainRendersBoth_Then_TheFirstsBoundaryReportsIt()
@@ -338,7 +338,7 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base catches the error in the pass of the component that threw it.
-        // Filing a failed insert in ChildListWrites.FailureOwner under the root of the first run in
+        // Filing a failed insert in ChildListWrites.FileFailure under the root of the first run in
         // ReconcilePass.Segments, rather than under the component that rendered the element, reddens it.
         [Test]
         public void Given_TwoComponentsUnderBoundariesOfTheirOwnAndTheSecondsNewElementThrowsAsItAttaches_When_OneDrainRendersBoth_Then_TheSecondsBoundaryReportsIt()
@@ -487,7 +487,8 @@ namespace Velvet.Tests
             });
 
         // GREEN_ON_BASE(characterization): the base hands the mount's z-* placement error to the root.
-        // Passing `placement: false` for a z-* placement in ChildReconciler.PlaceRelocated reddens it: B1 then catches.
+        // Passing the owner as the start in ChildReconciler.PlaceRelocated, rather than
+        // ComponentBoundarySearch.PlacementSearchStart's, reddens it: B1 then catches.
         [Test]
         public void Given_ATreeWhoseBoundaryHoldsAComponentWhoseZPlacedElementThrowsAsItAttaches_When_ItMounts_Then_TheRootReportsIt()
         {
@@ -690,9 +691,9 @@ namespace Velvet.Tests
         }
 
         // A boundary that has caught leaves an error of its own fallback's element to the boundary above it, as
-        // react-migration.md's error-boundary row says.
+        // react-migration.md's error-boundary row says; the base does too, and reports no catch for A.
         [Test]
-        public void Given_ABoundaryThatCatchesAChildsRenderErrorIntoAFallbackElementThatThrowsAsItAttaches_When_ADrainRendersIt_Then_TheBoundaryAboveItTakesThatError()
+        public void Given_ABoundaryWhoseFallbackElementThrowsAsItAttaches_When_ADrainHasItCatchAChildsRenderError_Then_TheBoundaryReportsItsCatchAndTheBoundaryAboveItTakesTheAttachError()
         {
             // Arrange
             var log = new EventLog();
