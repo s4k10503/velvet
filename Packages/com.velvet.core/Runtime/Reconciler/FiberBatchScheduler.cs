@@ -359,7 +359,8 @@ namespace Velvet
         {
             if (FiberExecutionContext.IsSet)
             {
-                // The registered callback has run, and the held flush registers another for what it leaves queued.
+                // The registered callback has run, and the held flush registers another for what it leaves queued, unless
+                // that flush stands down (DrainImmediateWork), which leaves the tier with no callback registered.
                 if (_inImmediateCallback) _immediateScheduled = false;
                 HoldFlush();
                 return;
