@@ -15,8 +15,8 @@ namespace Velvet
     // The walk follows the raw hierarchy, which is what reaches a control's internal parts. A z-* element relocated
     // among its siblings is reached with the rest: it stays a child of its own parent.
     //
-    // A context's scopes are walked again at the end of each of its top-level reconcile passes, or once at the end
-    // of a batch drain for all of the drain's passes (OnPassEnd, OnDrainEnd), and at once where a variant toggle or
+    // A context's scopes are walked again at the end of each of its top-level reconcile passes, or once where a wave
+    // commits for all of the wave's passes (OnPassEnd, OnDrainEnd; FiberWave), and at once where a variant toggle or
     // a VirtualList range render changes the tree outside any pass (RequestSyncAll), which is what enrols an element
     // mounted into the subtree since and lets go of one that has left it; an element that left by teardown is let
     // go of earlier, by FiberElementCleaner, before the pool can hand it to anyone else.
@@ -56,7 +56,7 @@ namespace Velvet
         // sees this tree change. The walk itself runs now only outside any pass, as for a variant toggle or a
         // VirtualList range render from the list's own callbacks. Within a pass — FinishTopLevelPass included,
         // where SharedReconcileDepth is already back at zero — the pass's end walks (OnPassEnd), and within a
-        // batch drain the drain's end does (OnDrainEnd), so a run of requests costs one walk.
+        // wave the wave's commit does (OnDrainEnd), so a run of requests costs one walk.
         internal static void RequestSyncAll(ReconcilerContext ctx)
         {
             if (ctx.MainPanelRoot != null)
@@ -96,8 +96,8 @@ namespace Velvet
             }
         }
 
-        // The end of a top-level pass (Reconciler.FinishTopLevelPass). Inside a batch drain the drain's end does the
-        // walking instead (OnDrainEnd), once for all of its passes.
+        // The end of a top-level pass (Reconciler.FinishPass). Inside a wave the wave's commit does the walking instead
+        // (OnDrainEnd), once for all of its passes.
         internal static void OnPassEnd(ReconcilerContext ctx, VisualElement? reconciledInto)
         {
             if (reconciledInto != null)

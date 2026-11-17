@@ -33,9 +33,8 @@ namespace Velvet
         // deferred descendant commits before this fiber's own layout effects.
         internal static void CommitSubtreeEffects(ComponentFiber fiber, bool mountDoubleInvoke = false)
         {
-            // During a batch drain, defer the effect commit to the end of the drain so all fibers' renders
-            // (mutations) land before any layout effect runs (commit-phase order). Outside a drain
-            // (mount / synchronous flush) run inline as before — there is no other fiber to order against.
+            // Inside a wave (FiberWave), defer the effect commit to the wave's commit so all fibers' renders
+            // (mutations) land before any layout effect runs (commit-phase order).
             var ctx = fiber.Reconciler?.Context;
             if (ctx is { DeferDrainLayoutEffects: true })
             {
@@ -66,10 +65,10 @@ namespace Velvet
             }
         }
 
-        // Runs the effect commits deferred during a batch drain (see CommitSubtreeEffects) after every fiber in
-        // the batch has rendered, as one commit, so the layout cleanups of every fiber the drain re-rendered run
-        // before any of their setups. Called at the end of the outer drain. The defer flag is cleared first so a
-        // layout effect that triggers further work commits inline.
+        // Runs the effect commits deferred during a wave (see CommitSubtreeEffects) after every fiber in it has
+        // rendered, as one commit, so the layout cleanups of every fiber the wave rendered run before any of their
+        // setups. Called where the wave commits (FiberWave). The defer flag is cleared first so a layout effect that
+        // triggers further work commits inline.
         internal static void FlushDeferredDrainLayoutEffects(ReconcilerContext ctx)
         {
             ctx.DeferDrainLayoutEffects = false;
@@ -163,7 +162,7 @@ namespace Velvet
         // is on the stack to do it. An entry that commits, or that renders or runs effects, has to end with this
         // call: a follow-up commit its layout setups left waits here, and so does a fallback a boundary showed
         // where no commit of a live root reaches it. A boundary's catch calls it as well, which is what commits a
-        // fallback shown from a frame callback. With a render, a reconcile, a batch drain, an effect commit or a
+        // fallback shown from a frame callback. With a render, a reconcile, a wave (FiberWave), an effect commit or a
         // ref-setup drain on the stack it does nothing, and the call at the end of what encloses it does the work.
         // What a parked time-sliced pass pushed stays on the stack for the commit that completes the pass. An error a
         // commit captured (CommitErrors.Capture) is rendered here as well, once the commit that threw is over.

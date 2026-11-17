@@ -13,6 +13,8 @@ namespace Velvet
     internal sealed class ZLayerMountNode : VNode
     {
         public VisualElement Real = null!;
+        // The root whose render queued the mount where a wave records several (ReconcilePass.RecordingRoot).
+        public ComponentFiber? Root;
     }
 
     // Brings CSS's paint order among siblings — z-index, positioned before unpositioned, flex order — to UI Toolkit,
@@ -316,7 +318,8 @@ namespace Velvet
             Hold(placeholder, Role.Slot, outer);
             Hold(outer, RoleFor(facts!.Value.Z), null, placeholder);
             ctx.ZLayerPlaceholders[placeholder] = outer;
-            ctx.PendingPortalMounts.Enqueue((placeholder, new ZLayerMountNode { Real = outer }, null, null, null));
+            ctx.PendingPortalMounts.Enqueue(
+                (placeholder, new ZLayerMountNode { Real = outer, Root = ctx.Pass.RecordingRoot }, null, null, null));
             return placeholder;
         }
 

@@ -2425,6 +2425,8 @@ namespace Velvet
             // (FiberRefPlacement) and runs the cleanups of the refs it replaced ahead of them. A bare
             // Reconciler.Reconcile has no fiber on the stack and nothing after it.
             if (FiberStack.Current != null) return;
+            // A wave's pass ends with no fiber on the stack and is followed by the wave's own commit (FiberWave).
+            if (DeferDrainLayoutEffects) return;
             _drainingRefAttaches = true;
             try
             {
@@ -2496,10 +2498,7 @@ namespace Velvet
 
         // The setups a layout commit attaches, in queue order: those no parked pass holds, owned by scope or by a
         // component below it, or by any component when scope is null. A commit rooted at a fiber leaves the rest
-        // to the commit that has the rest of their pass: a render owed ahead of a pass's own commit
-        // (FiberWorkLoop.FlushOwedSettleRenders) commits first, and attaching the pass's setups there would put
-        // them ahead of the layout effects that commit still has to run. Empty wherever DrainRefAttaches leaves
-        // the queue alone.
+        // to the commit that has the rest of their pass.
         internal List<PendingRefAttach> TakeRefAttaches(ComponentFiber? scope)
         {
             if (_pendingRefAttaches.Count == 0 || !CanRunRefSetups) return s_noRefAttaches;
@@ -3418,13 +3417,24 @@ namespace Velvet
         private readonly Dictionary<object, object?> _pinnedStoreSnapshots = new();
         private bool _storeSnapshotWaveActive;
 
-        // While a batch drain is in progress, fibers defer their effect commit (insertion / layout effects)
+        // While a wave is open (FiberWave), fibers defer their effect commit (insertion / layout effects)
         // here instead of running it immediately after their own render, so EVERY fiber's render (mutation)
-        // completes before ANY layout effect runs — the commit-phase order. Flushed in collection order at
-        // the end of the outer drain. Outside a drain (mount / synchronous flush) this stays false and effects
-        // run inline. See FiberEffects.CommitSubtreeEffects / FlushDeferredDrainLayoutEffects.
+        // completes before ANY layout effect runs — the commit-phase order. Flushed in collection order where
+        // the wave commits. Outside a wave this stays false and effects run inline. See
+        // FiberEffects.CommitSubtreeEffects / FlushDeferredDrainLayoutEffects.
         internal bool DeferDrainLayoutEffects;
         internal readonly List<(ComponentFiber fiber, bool mountDoubleInvoke)> PendingDrainLayoutEffects = new();
+
+        // FiberWave's state: whether a wave is open, whether a top-level render records into the wave's pass rather
+        // than ending a pass of its own, whether a flush the wave rendered owes the door that opened it the flush of a
+        // transition's indicator, and the has- regions of the flushes the wave rendered.
+        internal bool WaveOpen;
+        internal bool WaveRecords;
+        internal bool WaveOwesIndicatorFlush;
+        internal readonly List<VisualElement?> WaveHasVariantRegions = new();
+
+        // The Reconciler that owns this context, which ends a wave's pass (FiberWave.End).
+        internal Reconciler? Root { get; set; }
 
         // One list per virtual-list range render in progress, holding the effect commits of the rows it creates or
         // patches until it has placed them; a drain neither takes nor flushes them. See

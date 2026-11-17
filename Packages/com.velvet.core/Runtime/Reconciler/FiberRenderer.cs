@@ -74,7 +74,7 @@ namespace Velvet
         internal static void MountWork(ComponentFiber fiber, VisualElement? mountPoint, ReconcilerContext sharedContext)
         {
             SetupMount(fiber, mountPoint, sharedContext);
-            RenderMountedWork(fiber);
+            RenderMountedWork(fiber, opensWave: false);
         }
 
         private static void RenderMounted(ComponentFiber fiber)
@@ -85,7 +85,7 @@ namespace Velvet
                 return;
             }
             FiberExecutionContext.Enter(fiber.Reconciler!.Context.BatchScheduler, fiber,
-                static mounted => RenderMountedWork(mounted));
+                static mounted => RenderMountedWork(mounted, opensWave: true));
         }
 
         // As React's root.render() only schedules while a root renders or commits.
@@ -96,11 +96,28 @@ namespace Velvet
                     if (!held.IsDisposed && held.Reconciler != null) RenderMounted(held);
                 });
 
-        internal static void RenderMountedWork(ComponentFiber fiber)
+        // opensWave: a door runs this, so the mount is a wave of its own (FiberWave); the sub-work of an entry on the
+        // stack, a wrapper-mounted child or a VirtualList row, renders into whatever encloses it.
+        internal static void RenderMountedWork(ComponentFiber fiber, bool opensWave)
         {
             var context = fiber.Reconciler!.Context;
-            RenderAndReconcile(fiber);
-            FiberEffects.CommitSubtreeEffects(fiber, mountDoubleInvoke: true);
+            if (opensWave) FiberWave.Open(context);
+            try
+            {
+                try
+                {
+                    RenderAndReconcile(fiber);
+                }
+                finally
+                {
+                    if (opensWave) FiberWave.End(context);
+                }
+                FiberEffects.CommitSubtreeEffects(fiber, mountDoubleInvoke: true);
+            }
+            finally
+            {
+                if (opensWave) FiberWave.Commit(context);
+            }
             FiberEffects.CommitStrandedLayoutWork(context);
             // The setState-in-commit guarantee is entry-point-agnostic: a callback ref or layout
             // effect that writes state during THIS mount (the measure-in-ref pattern) must commit
@@ -703,7 +720,8 @@ namespace Velvet
             fiber.RenderCount++;
         }
 
-        // The pass of the context, when this render is the outermost on it and so completes or drops it.
+        // The pass of the context, when this render is the outermost on it and so completes or drops it, or completes or
+        // drops its own renders of a pass a wave holds (FiberPassJournal).
         private static ReconcilePass? OpenPass(ComponentFiber fiber)
         {
             var pass = fiber.Reconciler?.Context.Pass;

@@ -473,8 +473,8 @@ namespace Velvet
         // ---- Recorded writes ----
         //
         // Inside a pass, an insert, a move or a removal the walk makes through HostCommitQueue into a container the pass
-        // did not create updates the model and is recorded; the live list takes it no later than where FinishPass starts
-        // (EndRecording), in the order recorded. A node's patch halves are recorded in the same list (PatchPre and
+        // did not create updates the model and is recorded; the live list takes it where the pass's FinishPass starts
+        // (EndRecording), in the order recorded; a wave records several renders into one pass (FiberWave). A node's patch halves are recorded in the same list (PatchPre and
         // PatchPost, the children's ops between them), and so is the post-children tail of an element patched at once
         // (PatchTail). The readers the walk has moved to the model (ParentOf, ChildCount, ElementAtPhysical and the reads
         // above) answer from it meanwhile, and a container with a recorded write is skipped by the checks that compare the
@@ -600,6 +600,7 @@ namespace Velvet
             }
             Mark(pass, container);
             if (held) pass.PendingParent[child] = container;
+            RecordBehindApplyingRoot(pass);
             pass.Ops.Add(new ReconcilePass.Op
             {
                 Container = container, Caller = caller, Child = child, Index = index, Kind = ReconcilePass.OpKind.Insert,
@@ -643,6 +644,7 @@ namespace Velvet
                 pass.PendingParent[element] = null;
             }
             Mark(pass, container);
+            RecordBehindApplyingRoot(pass);
             pass.Ops.Add(new ReconcilePass.Op
             {
                 Container = container, Caller = caller, Index = index, Kind = ReconcilePass.OpKind.RemoveAt,
@@ -674,7 +676,17 @@ namespace Velvet
                 Touch(container);
             }
             pass.PendingParent[child] = null;
+            RecordBehindApplyingRoot(pass);
             pass.Ops.Add(new ReconcilePass.Op { Container = container, Child = child, Kind = ReconcilePass.OpKind.RemoveChild });
+        }
+
+        // An op recorded while the ops of a wave's pass apply belongs to the root whose op is applying.
+        private static void RecordBehindApplyingRoot(ReconcilePass pass)
+        {
+            if (pass.Applying && pass.ApplyingRoot != null && !ReferenceEquals(pass.RecordingRoot, pass.ApplyingRoot))
+            {
+                pass.BeginSegment(pass.ApplyingRoot);
+            }
         }
 
         // Whether a pass is recording writes it has not applied yet.
@@ -719,28 +731,35 @@ namespace Velvet
 
         // Puts the recorded writes on the live lists in the order they were made and ends recording. An op that throws
         // does not stop the ones behind it: the walk has moved on from each of them, so the live tree has to take every
-        // one, and the first exception is rethrown once they have.
+        // one. The first exception is rethrown once they have, except where a wave recorded the ops: there each root's
+        // first one is kept for the wave to route (ReconcilePass.Failures).
         private static void Apply(ReconcilePass pass)
         {
             pass.Applying = true;
             System.Runtime.ExceptionServices.ExceptionDispatchInfo? first = null;
+            var segment = -1;
             try
             {
                 for (var i = 0; i < pass.Ops.Count; i++)
                 {
+                    while (segment + 1 < pass.Segments.Count && pass.Segments[segment + 1].FirstOp <= i) segment++;
+                    pass.ApplyingRoot = segment >= 0 ? pass.Segments[segment].Root : null;
                     try
                     {
                         ApplyOp(pass, pass.Ops[i]);
                     }
                     catch (Exception exception)
                     {
-                        first ??= System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(exception);
+                        if (pass.ApplyingRoot != null) pass.Fail(pass.ApplyingRoot, exception);
+                        else first ??= System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(exception);
                     }
                 }
             }
             finally
             {
                 pass.Applying = false;
+                pass.ApplyingRoot = null;
+                pass.Segments.Clear();
                 pass.Ops.Clear();
                 pass.Patches.Clear();
                 pass.PendingParent.Clear();

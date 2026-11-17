@@ -1151,8 +1151,8 @@ namespace Velvet
             if (ids.Count == 0) ctx.LayoutIdBoxParents.Remove(parent);
         }
 
-        // Called where a render ends: the end of a batch drain, whose passes are one render, and the
-        // boundary of a top-level pass outside a drain.
+        // Called where a render ends: the commit of a wave (FiberWave), whose passes are one render, and the
+        // boundary of a top-level pass outside a wave.
         internal static void EndRender(ReconcilerContext ctx)
         {
             ctx.LayoutIdRestored.Clear();

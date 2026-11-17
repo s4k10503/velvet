@@ -624,8 +624,8 @@ namespace Velvet
 
         // Every overlay mounted under this session's scope shows the preview, as every dnd-kit
         // DragOverlay renders its children while its own context's drag is active. Runs at activation,
-        // at the end of every drain (JoinOverlaysAfterCommit), where the overlay's placeholder is already
-        // parented into its scope, and on every move for a mount that committed outside a drain; a
+        // at the end of every wave (JoinOverlaysAfterCommit), where the overlay's placeholder is already
+        // parented into its scope, and on every move for a mount that committed outside a wave; a
         // positioner already joined is skipped.
         private void JoinMountedOverlays()
         {
@@ -644,7 +644,7 @@ namespace Velvet
             }
         }
 
-        // Drain-end hook (Reconciler's drain-end callback): an overlay a render mounted joins on the
+        // A wave's commit runs it (FiberWave.CommitDeferred): an overlay a render mounted joins on the
         // commit that mounted it rather than on the next move.
         internal void JoinOverlaysAfterCommit()
         {

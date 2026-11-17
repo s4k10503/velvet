@@ -9,8 +9,9 @@ namespace Velvet
     // (ReconcilerContext.Pass) and reuses it for every top-level pass it runs.
     //
     // ChildListWrites owns what the recorded writes mean and how they apply; the fields here are its state.
-    // FiberRenderer owns the journal's two ends: the render that opens it completes the pass, or drops it when a
-    // suspend that nothing in the pass catches abandons it.
+    // FiberRenderer owns the journal's ends: the render that opens it completes the pass, or drops it when a suspend
+    // that nothing in the pass catches abandons it. A wave holds the journal open across the renders it records into
+    // the pass (FiberWave), and each of those renders completes or drops its own.
     internal sealed class ReconcilePass
     {
         internal enum OpKind : byte { Insert, RemoveAt, RemoveChild, PatchPre, PatchPost, PatchTail, Teardown, FiberBegin, FiberEnd }
@@ -39,6 +40,30 @@ namespace Velvet
         // what the pass takes off again where it applies.
         internal readonly Dictionary<VisualElement, int> PendingContainers = new();
         internal readonly HashSet<VisualElement> Created = new();
+
+        // Where a wave records several roots' renders into the pass: the index of the first op each run belongs to, and
+        // the fiber whose render recorded it. Apply reads the root of each op off it, and clears it with the ops.
+        internal readonly List<(int FirstOp, ComponentFiber? Root)> Segments = new();
+
+        // The root of the op Apply is applying, whose run an op recorded behind it belongs to.
+        internal ComponentFiber? ApplyingRoot;
+
+        // The first error each root's ops or z-layer mounts met where a wave's pass ended, for the wave to route.
+        internal readonly List<(ComponentFiber Root, System.Exception Error)> Failures = new();
+
+        internal void BeginSegment(ComponentFiber? root) => Segments.Add((Ops.Count, root));
+
+        // The root whose render records the ops being recorded now; null outside a wave.
+        internal ComponentFiber? RecordingRoot => Segments.Count > 0 ? Segments[^1].Root : null;
+
+        internal void Fail(ComponentFiber root, System.Exception error)
+        {
+            foreach (var (failed, _) in Failures)
+            {
+                if (ReferenceEquals(failed, root)) return;
+            }
+            Failures.Add((root, error));
+        }
 
         // The renders of the pass on the stack, which a suspend nothing catches takes back.
         internal FiberPassJournal Journal { get; } = new();
@@ -72,7 +97,11 @@ namespace Velvet
         // Returns whether this call opened the journal, which makes the caller the render that completes or drops the pass.
         internal bool TryOwn(ComponentFiber owner) => Journal.TryOpen(owner);
 
-        internal void Complete() => Journal.Close();
+        internal void Complete()
+        {
+            if (Journal.IsHeld) Journal.EndSegment();
+            else Journal.Close();
+        }
 
         internal void Drop() => Journal.Abandon();
     }

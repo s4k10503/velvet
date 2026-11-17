@@ -335,16 +335,20 @@ namespace Velvet
         // each relocated z-* element's arrival in its parent. A Portal's children reconcile can queue more;
         // they join the same queue, drained FIFO until empty, so a Portal mounts at the logical slot
         // (LogicalChildSlots.Count) after every earlier-drained Portal's children in the same target.
-        // Called only from Reconciler.FinishTopLevelPass, which Reconcile's and ContinueReconcile's top-level
-        // finally both reach, so the single-top-level-loop invariant holds across nested Portal-patch recursion.
+        // Called only from Reconciler.FinishPass, so the single-top-level-loop invariant holds across nested
+        // Portal-patch recursion.
         //
         // A child of a Portal that suspends does not stop the drain, since the entries behind it are the same pass's
         // and would be lost to the clear that follows it. The Portal is recorded with its children pending and the
         // result says one was, for the caller to end the pass with once the rest is done: its walk has committed, so
         // the render that owns the pass keeps its tree (FiberRenderer.RenderAndReconcile) and the retry mounts what
         // suspended by patching this Portal.
-        internal bool DrainPendingPortalMounts()
+        //
+        // In the pass of a wave (wave non-null), a z-* placement's throw is kept for the root that queued it, or for the
+        // closing root where none is named, and that root's later placements are skipped while the other roots' go on.
+        internal bool DrainPendingPortalMounts(ReconcilePass? wave = null, ComponentFiber? closingRoot = null)
         {
+            HashSet<ComponentFiber>? failedPlacements = null;
             HashSet<ComponentFiber>? childFibersBefore = null;
             var suspended = false;
             while (_ctx.PendingPortalMounts.Count > 0)
@@ -369,8 +373,9 @@ namespace Velvet
                     // target resolution and this arm resolves none — it performs the whole placement, and
                     // the insert that lands the element runs the panel-attach callbacks a V.Custom<T>
                     // subclass registered on it (PortalLayersTests pins that the insert reaches them).
-                    // Leaving that application throw on the render's own escape path is the decision here.
-                    FiberZLayerCoordinator.ResolveQueuedMount(_ctx, placeholder, zLayerMount);
+                    // Leaving that application throw on the render's own escape path, outside a wave's pass, is the
+                    // decision here.
+                    PlaceRelocated(placeholder, zLayerMount, wave, zLayerMount.Root ?? closingRoot, ref failedPlacements);
                     continue;
                 }
                 if (!_ctx.PendingHostPlaceholders.Remove(placeholder)) continue;
@@ -531,6 +536,26 @@ namespace Velvet
                 HideMountUnderHiddenSuspense(placeholder, resolvedTarget, slotStart, slotLength, declaringFiber);
             }
             return suspended;
+        }
+
+        private void PlaceRelocated(VisualElement placeholder, ZLayerMountNode node, ReconcilePass? wave,
+            ComponentFiber? root, ref HashSet<ComponentFiber>? failedPlacements)
+        {
+            if (wave == null || root == null)
+            {
+                FiberZLayerCoordinator.ResolveQueuedMount(_ctx, placeholder, node);
+                return;
+            }
+            if (failedPlacements != null && failedPlacements.Contains(root)) return;
+            try
+            {
+                FiberZLayerCoordinator.ResolveQueuedMount(_ctx, placeholder, node);
+            }
+            catch (Exception exception)
+            {
+                (failedPlacements ??= new HashSet<ComponentFiber>()).Add(root);
+                wave.Fail(root, exception);
+            }
         }
 
         // A Portal a render created inside children its Suspense hides was hidden with them before this

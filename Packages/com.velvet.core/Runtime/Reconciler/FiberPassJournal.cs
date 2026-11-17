@@ -102,7 +102,9 @@ namespace Velvet
     // the hook state. React discards the work in progress of an abandoned render the same way.
     //
     // The context's ReconcilePass owns the journal: the render that opens it completes the pass, which closes it, or
-    // drops the pass, which abandons it.
+    // drops the pass, which abandons it. A wave holds it open instead (FiberWave), so each render the wave records
+    // into the pass opens a segment of its own, which it ends or abandons, and the wave closes the journal once its
+    // pass has applied.
     internal sealed class FiberPassJournal
     {
         private readonly List<SuspenseRender> _hooks = new();
@@ -118,16 +120,33 @@ namespace Velvet
         private readonly Dictionary<ComponentFiber, FiberTrees> _trees = new();
         private readonly Dictionary<ComponentFiber, FiberBoundaryState> _boundaries = new();
         private ComponentFiber? _owner;
+        private bool _held;
+        // Where the open segment's renders start in _hooks and _subsumed, which Abandon takes back to.
+        private int _hooksAtSegment;
+        private int _subsumedAtSegment;
 
         internal bool IsOpen => _owner != null;
 
-        // Returns whether this call opened the journal, which makes the caller its owner.
+        internal bool IsHeld => _held;
+
+        // Returns whether this call opened the journal, or a segment of a held one, which makes the caller its owner.
         internal bool TryOpen(ComponentFiber owner)
         {
             if (_owner != null) return false;
             _owner = owner;
+            _hooksAtSegment = _hooks.Count;
+            _subsumedAtSegment = _subsumed.Count;
             return true;
         }
+
+        // A journal something already owns is left to it.
+        internal void Hold()
+        {
+            if (_owner == null) _held = true;
+        }
+
+        // A held journal keeps what the segment recorded for Close.
+        internal void EndSegment() => _owner = null;
 
         internal void RecordHooks(SuspenseRender render) => _hooks.Add(render);
 
@@ -212,19 +231,21 @@ namespace Velvet
                 _trees.Clear();
                 _boundaries.Clear();
                 _owner = null;
+                _held = false;
             }
         }
 
+        // Takes back the open segment's renders, which outside a held journal are all of them.
         internal void Abandon()
         {
             // Newest first, so a fiber rendered twice in the pass ends at what it held before the first.
-            for (var i = _subsumed.Count - 1; i >= 0; i--)
+            for (var i = _subsumed.Count - 1; i >= _subsumedAtSegment; i--)
             {
                 var render = _subsumed[i];
                 if (render.Fiber.IsDisposed || !render.Fiber.IsMounted) continue;
                 render.Before.WriteTo(render.Fiber);
             }
-            for (var i = _hooks.Count - 1; i >= 0; i--)
+            for (var i = _hooks.Count - 1; i >= _hooksAtSegment; i--)
             {
                 var render = _hooks[i];
                 // MUTANT_SURVIVES(unreachable, clause removed): a journaled render had the Reconciler FiberRenderer.Mount assigns, and FiberRenderer.Unmount's one production caller is Dispose, which sets IsDisposed first, so no entry point leaves a journaled fiber unmounted and undisposed.
@@ -238,8 +259,8 @@ namespace Velvet
                 // and the render that retries stages its own.
                 DropStagedHandles(render.Fiber);
             }
-            _hooks.Clear();
-            _subsumed.Clear();
+            _hooks.RemoveRange(_hooksAtSegment, _hooks.Count - _hooksAtSegment);
+            _subsumed.RemoveRange(_subsumedAtSegment, _subsumed.Count - _subsumedAtSegment);
         }
 
         private static void DropStagedHandles(ComponentFiber fiber)
