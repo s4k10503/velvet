@@ -1203,15 +1203,15 @@ namespace Velvet.Tests
             => V.Suspense(fallback: V.Label(text: "loading"), children: new VNode[] { V.Component(ReadsTheResource) });
 
         [Component]
-        private static VNode ResolvesTheReadThenThrows()
+        private static VNode ResolvesTheReadThenThrows(int resolvesAt)
         {
             var (tick, setTick) = Hooks.UseState(0);
             s_setResolver = setTick;
             Hooks.UseLayoutEffect((Func<Action>)(() =>
             {
-                if (tick > 0) s_read.TrySetResult("read");
+                if (tick == resolvesAt) s_read.TrySetResult("read");
                 return null!;
-            }), new object[] { tick });
+            }), new object[] { tick, resolvesAt });
             Hooks.UseImperativeHandle(s_throwingHandle, () =>
             {
                 if (tick == 0) return "handle";
@@ -1227,7 +1227,7 @@ namespace Velvet.Tests
             // Arrange
             s_read = new VelvetTaskCompletionSource<string>();
             s_readsReturned = 0;
-            var thrower = V.Mount(new VisualElement(), V.Component(ResolvesTheReadThenThrows));
+            var thrower = V.Mount(new VisualElement(), V.Component(ResolvesTheReadThenThrows, 1));
             _roots.Add(thrower);
             var scheduler = thrower.GetSchedulerForTest();
             s_setResolver.Invoke(1);
@@ -1245,16 +1245,12 @@ namespace Velvet.Tests
             Assert.That(s_readsReturned, Is.EqualTo(0));
         }
 
-        // The handle queues another update on every commit, so the root's frame drains go on throwing until the bound
-        // drops that update, after the read was handed on.
-        [Test]
-        public void Given_ARunawayDrainThatResolvedARead_When_TheRootsFramesRun_Then_TheReaderShowsItsValue()
+        // The handle queues another update from every update's commit, so the drain this makes throws first and the
+        // root's frame drains go on throwing until the bound drops the update.
+        private static MountedTree MountARunawayThatResolvesTheReadAt(HeadlessEditorPanelHost host, int tick)
         {
-            // Arrange — the bound on throwing drains drops the runaway's queued update once
-            LogAssert.Expect(LogType.Error, new Regex("in a row threw"));
-            using var host = new HeadlessEditorPanelHost();
             s_read = new VelvetTaskCompletionSource<string>();
-            using var thrower = V.Mount(host.Root, V.Component(ResolvesTheReadThenThrows));
+            var thrower = V.Mount(host.Root, V.Component(ResolvesTheReadThenThrows, tick));
             s_setResolver.Invoke(1);
             try
             {
@@ -1263,11 +1259,38 @@ namespace Velvet.Tests
             catch (InvalidOperationException)
             {
             }
+            return thrower;
+        }
+
+        [Test]
+        public void Given_ARunawayDrainThatResolvedARead_When_TheRootsFramesRun_Then_TheReaderShowsItsValue()
+        {
+            // Arrange — the bound on throwing drains drops the runaway's queued update once
+            LogAssert.Expect(LogType.Error, new Regex("in a row threw"));
+            using var host = new HeadlessEditorPanelHost();
+            using var thrower = MountARunawayThatResolvesTheReadAt(host, 1);
 
             // Act
             DrivePasses(host, 6);
 
             // Assert — null where the bound dropped the resolve along with the runaway's update
+            Assert.That(host.Root.Q<Label>("read")?.text, Is.EqualTo("read"));
+        }
+
+        // The third throw resolves the read and reaches the bound, so the release that hands the resolve on runs with the
+        // count already there.
+        [Test]
+        public void Given_ARunawayDrainThatResolvesAReadAtTheBound_When_TheRootsFramesRun_Then_TheReaderShowsItsValue()
+        {
+            // Arrange — the bound on throwing drains drops the runaway's queued update once
+            LogAssert.Expect(LogType.Error, new Regex("in a row threw"));
+            using var host = new HeadlessEditorPanelHost();
+            using var thrower = MountARunawayThatResolvesTheReadAt(host, 3);
+
+            // Act
+            DrivePasses(host, 6);
+
+            // Assert — null where the release refused to hand the resolve on past the bound
             Assert.That(host.Root.Q<Label>("read")?.text, Is.EqualTo("read"));
         }
 
