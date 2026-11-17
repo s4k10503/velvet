@@ -138,6 +138,14 @@ namespace Velvet.Tests
             => V.Fragment(V.Portal(props.Target,
                 new VNode[] { V.Component(ChildRenderingAComponentThenAnElement, key: "c1") }, key: "portal"));
 
+        private sealed record TwoTargets(VisualElement First, VisualElement Second);
+
+        [Component]
+        private static VNode PortalOfNothingThenAPortalIntoAnotherTarget(TwoTargets targets)
+            => V.Fragment(
+                V.Portal(targets.First, new VNode[] { V.Component(Empty, new Named("M"), key: "m") }, key: "first"),
+                V.Portal(targets.Second, new VNode[] { V.Component(Probed, new Named("T"), key: "t") }, key: "second"));
+
         [Component]
         private static VNode VirtualRow(Named props)
         {
@@ -253,6 +261,22 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(log.ToString(), Is.EqualTo("ins:E ins:C1 lay:E ref:D lay:C1 eff:E eff:C1"));
+        }
+
+        // M holds no row, so its output sits at the end of its Portal's range, which is where its target ends.
+        [Test]
+        public void Given_APortalChildRenderingNothingAheadOfAPortalIntoAnotherTarget_When_Mounted_Then_ItsEffectsRunAheadOfTheSecondPortalsChildInEveryPhase()
+        {
+            // Arrange
+            var log = new EventLog();
+
+            // Act
+            using var mounted = _renderer.Mount(log.Provide(V.Component(PortalOfNothingThenAPortalIntoAnotherTarget,
+                new TwoTargets(_renderer.CreatePortalTarget(), _renderer.CreatePortalTarget()))));
+            mounted.DrainForTest();
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("ins:M ins:T lay:M ref:T lay:T eff:M eff:T"));
         }
 
         [TestFixture]

@@ -252,9 +252,6 @@ namespace Velvet
             return Precedes(parent, element);
         }
 
-        // RenderedChildrenCache.StartOf, each container read once while the tree is held.
-        internal VisualElement? StartOf(ComponentFiber fiber, out VisualElement? endOf) => _rendered.StartOf(fiber, out endOf);
-
         // Where a walk down this tree reaches the fiber's output: in front of the row its slot holds, its own first row
         // where it holds any, or, where its slot holds no child of the element its rows are children of (RowParentOf),
         // behindLast that element's last child, which for a Portal child past its range's rows is the placeholder's.
@@ -290,23 +287,6 @@ namespace Velvet
             if (ia == 0) return atEnd;
             if (ib == 0) return !otherAtEnd;
             return SiblingPrecedes(chainB[ib - 1], chainA[ia - 1]);
-        }
-
-        // Whether element, or with atEnd the place behind its last child, comes after everything inside subtree.
-        internal bool ComesAfter(VisualElement subtree, VisualElement element, bool atEnd)
-        {
-            var chainA = ChainOf(subtree, _chainA);
-            var chainB = ChainOf(element, _chainB);
-            var ia = chainA.Count - 1;
-            var ib = chainB.Count - 1;
-            while (ia > 0 && ib > 0 && ReferenceEquals(chainA[ia - 1], chainB[ib - 1]))
-            {
-                ia--;
-                ib--;
-            }
-            if (ia == 0) return false;
-            if (ib == 0) return atEnd;
-            return SiblingPrecedes(chainA[ia - 1], chainB[ib - 1]);
         }
 
         // Whether the walk completes a before b: a is inside b, or comes earlier in the tree.

@@ -57,20 +57,5 @@ namespace Velvet
             Of(container);
             return _positionOf.TryGetValue((container, child), out var position) ? position.Slot : 0;
         }
-
-        // Where the fiber's output starts: its first row, or the row a fiber holding none sits in front of. Null for
-        // a fiber holding none behind the last row of a container, which endOf names, and for a fiber mounted
-        // nowhere.
-        internal VisualElement? StartOf(ComponentFiber fiber, out VisualElement? endOf)
-        {
-            endOf = null;
-            var mount = fiber.MountPoint;
-            if (mount == null) return null;
-            var rendered = Of(mount);
-            var slot = fiber.MountSlotStart;
-            if (slot >= 0 && slot < rendered.Count) return rendered[slot];
-            endOf = mount;
-            return null;
-        }
     }
 }
