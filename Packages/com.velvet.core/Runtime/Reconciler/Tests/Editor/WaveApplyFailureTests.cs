@@ -462,9 +462,6 @@ namespace Velvet.Tests
         [Component]
         private static VNode Header() => V.Div(name: "header");
 
-        // GREEN_ON_BASE(characterization): the base hands the mount's error to the root, which unmounts the tree.
-        // Starting a placement's search at the component it is filed under in FiberWave.RouteFailures, rather than
-        // above the components the wave mounted, reddens it: B1 then catches and the header stays.
         [Test]
         public void Given_ATreeWhoseBoundaryHoldsAComponentWhoseElementThrowsAsItAttaches_When_ItMounts_Then_TheRootReportsItAndTakesTheTreeDown()
         {
