@@ -474,8 +474,9 @@ namespace Velvet
         //
         // Inside a pass, an insert, a move or a removal the walk makes through HostCommitQueue into a container the pass
         // did not create updates the model and is recorded; the live list takes it where the pass's FinishPass starts
-        // (EndRecording), in the order recorded; a wave records several renders into one pass (FiberWave). A node's patch halves are recorded in the same list (PatchPre and
-        // PatchPost, the children's ops between them), and so is the post-children tail of an element patched at once
+        // (EndRecording), in the order recorded; a wave records several renders into one pass (FiberWave). A node's
+        // patch halves are recorded in the same list (PatchPre and PatchPost, the children's ops between them), and so
+        // is the post-children tail of an element patched at once
         // (PatchTail). The readers the walk has moved to the model (ParentOf, ChildCount, ElementAtPhysical and the reads
         // above) answer from it meanwhile, and a container with a recorded write is skipped by the checks that compare the
         // model with the live list. Insert, Remove, RemoveAt, RemoveFromHierarchy, HierarchyRemove and Clear made into such
@@ -731,8 +732,8 @@ namespace Velvet
 
         // Puts the recorded writes on the live lists in the order they were made and ends recording. An op that throws
         // does not stop the ones behind it: the walk has moved on from each of them, so the live tree has to take every
-        // one. The first exception is rethrown once they have, except where a wave recorded the ops: there each root's
-        // first one is kept for the wave to route (ReconcilePass.Failures).
+        // one. The first exception is rethrown once they have, except where a wave recorded the ops: there each is kept
+        // with the root whose render recorded the op, for the wave to route (ReconcilePass.Failures).
         private static void Apply(ReconcilePass pass)
         {
             pass.Applying = true;
@@ -758,6 +759,8 @@ namespace Velvet
             finally
             {
                 pass.Applying = false;
+                // MUTANT_SURVIVES(equivalent, line removed): ApplyingRoot is read only while Applying is set, and Apply
+                // writes it ahead of each op; the reset lets go of the fiber.
                 pass.ApplyingRoot = null;
                 pass.Segments.Clear();
                 pass.Ops.Clear();

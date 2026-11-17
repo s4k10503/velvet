@@ -67,6 +67,8 @@ namespace Velvet
         internal static void CaptureFromRoot(ComponentFiber root, Exception exception)
         {
             if (root.IsMountRoot) CaptureFromOwner(root, exception);
+            // MUTANT_SURVIVES(equivalent, literal): isRenderError reaches only FiberErrorBoundary.TryCatch, which a
+            // search queued for the commit does not call.
             else PropagateFrom(root.Parent, root, exception, isRenderError: false, inCommit: true);
         }
 

@@ -32,54 +32,40 @@ namespace Velvet
         }
 
         // Applies the pass the wave's renders recorded into, commits the hook state they staged, routes what the
-        // writes threw and refreshes the has- regions of the flushes the wave rendered. Returns at once where the
-        // wave has ended. Each step runs whether or not the one before it threw, and the first exception is rethrown
-        // once all of them have run.
+        // writes threw and refreshes the has- regions of the flushes the wave rendered, each step whether or not the
+        // one before it threw.
         internal static void End(ReconcilerContext ctx)
         {
-            if (!ctx.WaveOpen) return;
             ctx.WaveOpen = false;
             ctx.WaveRecords = false;
-            ExceptionDispatchInfo? first = null;
             try
             {
                 if (ctx.Pass.Recording) ctx.Root!.FinishWavePass();
             }
-            catch (Exception exception)
-            {
-                first = ExceptionDispatchInfo.Capture(exception);
-            }
-            try
-            {
-                if (ctx.Pass.Journal.IsHeld) ctx.Pass.Journal.Close();
-            }
-            catch (Exception exception)
-            {
-                first ??= ExceptionDispatchInfo.Capture(exception);
-            }
-            first ??= RouteFailures(ctx);
-            var regions = ctx.WaveHasVariantRegions;
-            try
-            {
-                for (var i = 0; i < regions.Count; i++) FiberNodePatcher.RefreshHasVariants(ctx, regions[i]);
-            }
-            catch (Exception exception)
-            {
-                first ??= ExceptionDispatchInfo.Capture(exception);
-            }
             finally
             {
-                regions.Clear();
+                try
+                {
+                    if (ctx.Pass.Journal.IsHeld) ctx.Pass.Journal.Close();
+                }
+                finally
+                {
+                    try
+                    {
+                        RouteFailures(ctx);
+                    }
+                    finally
+                    {
+                        RefreshHasVariantRegions(ctx);
+                    }
+                }
             }
-            first?.Throw();
         }
 
         // A door's commit: the layout batch of what the wave deferred, then the end of the render a layoutId reads,
-        // which a drain runs in its own end instead (Reconciler's drain callbacks). Returns at once where the wave
-        // has committed.
+        // which a drain runs in its own end instead (Reconciler's drain callbacks).
         internal static void Commit(ReconcilerContext ctx)
         {
-            if (!ctx.DeferDrainLayoutEffects) return;
             try
             {
                 CommitDeferred(ctx);
@@ -123,11 +109,27 @@ namespace Velvet
             FiberNodePatcher.RefreshHasVariants(ctx, region);
         }
 
+        private static void RefreshHasVariantRegions(ReconcilerContext ctx)
+        {
+            var regions = ctx.WaveHasVariantRegions;
+            try
+            {
+                for (var i = 0; i < regions.Count; i++) FiberNodePatcher.RefreshHasVariants(ctx, regions[i]);
+            }
+            finally
+            {
+                // MUTANT_SURVIVES(equivalent, line removed): a refresh re-derives a region from the tree as it stands,
+                // so refreshing a region a later wave lists again changes nothing; keeping it costs the walk.
+                regions.Clear();
+            }
+        }
+
         // What the ops and placements of the wave's pass threw, each queued for the nearest boundary above the root
         // whose render recorded it, which renders its fallback in a follow-up commit, as React's
         // captureCommitPhaseError queues an error its commit meets. A root the wave's own renders deleted is passed
-        // over, since that deletion replaced what its render wrote.
-        private static ExceptionDispatchInfo? RouteFailures(ReconcilerContext ctx)
+        // over, since that deletion replaced what its render wrote. Each route runs whether or not the one before it
+        // threw, and the first one's exception is rethrown once all of them have run.
+        private static void RouteFailures(ReconcilerContext ctx)
         {
             var failures = ctx.Pass.Failures;
             ExceptionDispatchInfo? first = null;
@@ -145,7 +147,7 @@ namespace Velvet
             {
                 failures.Clear();
             }
-            return first;
+            first?.Throw();
         }
 
         // What the route itself threw, which leaves the routes behind it to run.

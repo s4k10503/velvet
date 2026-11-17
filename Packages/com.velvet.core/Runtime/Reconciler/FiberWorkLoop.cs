@@ -569,10 +569,10 @@ namespace Velvet
             bool drainsTransitionWork, FiberUpdatePriority renderLane)
         {
             FiberWave.Open(context);
-            var owesIndicatorFlush = false;
+            bool owesIndicatorFlush;
             try
             {
-                var completed = false;
+                bool completed;
                 try
                 {
                     completed = RenderFlushedFiber(fiber, flushBudget, drainsTransitionWork, renderLane);
@@ -757,7 +757,7 @@ namespace Velvet
             var pushedOnto = FiberRenderer.PushFiber(fiber);
             try
             {
-                var completed = false;
+                bool completed;
                 try
                 {
                     try

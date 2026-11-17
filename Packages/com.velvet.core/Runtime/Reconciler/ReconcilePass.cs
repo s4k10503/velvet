@@ -48,7 +48,8 @@ namespace Velvet
         // The root of the op Apply is applying, whose run an op recorded behind it belongs to.
         internal ComponentFiber? ApplyingRoot;
 
-        // The first error each root's ops or z-layer mounts met where a wave's pass ended, for the wave to route.
+        // What the ops and z-layer mounts of a wave's pass threw where it ended, each with the root whose render recorded
+        // it, for the wave to route.
         internal readonly List<(ComponentFiber Root, System.Exception Error)> Failures = new();
 
         internal void BeginSegment(ComponentFiber? root) => Segments.Add((Ops.Count, root));
@@ -56,14 +57,7 @@ namespace Velvet
         // The root whose render records the ops being recorded now; null outside a wave.
         internal ComponentFiber? RecordingRoot => Segments.Count > 0 ? Segments[^1].Root : null;
 
-        internal void Fail(ComponentFiber root, System.Exception error)
-        {
-            foreach (var (failed, _) in Failures)
-            {
-                if (ReferenceEquals(failed, root)) return;
-            }
-            Failures.Add((root, error));
-        }
+        internal void Fail(ComponentFiber root, System.Exception error) => Failures.Add((root, error));
 
         // The renders of the pass on the stack, which a suspend nothing catches takes back.
         internal FiberPassJournal Journal { get; } = new();

@@ -389,6 +389,8 @@ namespace Velvet
         // pass it recorded into, so none is left to mount here.
         internal void FinishWavePass()
         {
+            // MUTANT_SURVIVES(equivalent, literal): walked picks the signal a Portal's suspend ends a pass with, and
+            // FinishPass drops the suspend of a wave's pass that no root's render closes.
             FinishPass(reconciledInto: null, walked: true);
             ChildListWrites.VerifyTouched();
         }
