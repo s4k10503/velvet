@@ -319,7 +319,7 @@ namespace Velvet
         // Held work of this root that FiberExecutionContext's release does not run, made in a later frame on the anchor
         // the tiers' drains are registered on. A root with no anchor registers no drain either, and has no frame. Where
         // droppable, as a range or a resume is, it is dropped past the bound on drains that throw, as the updates queued
-        // then are; a resolve, which is made once, runs whatever the count.
+        // then are; a resolve is not, for the reason CountRun gives.
         internal void RunInNextFrame(Action run, bool droppable)
         {
             var anchor = _anchor;
@@ -364,10 +364,13 @@ namespace Velvet
             }
         }
 
-        // A commit that throws and queues itself again on every drain would otherwise throw once a frame for good, the
-        // same reason the nested-update cap drops its runaway rather than re-arming. Reaching the bound drops the
-        // droppable hand-ons made before it as well: a drain that completes over the emptied tier resets the count, so a
-        // range left to render the dropped update, which stays in its hook's slot, would start the run afresh.
+        // Without the bound, a commit that throws and queues itself again on every drain would throw once a frame, the
+        // same reason the nested-update cap drops its runaway rather than re-arming. Reaching it does not end every such
+        // run: whatever renders the thrower afterwards folds in the dropped update, which stays in its hook's slot. So it
+        // drops the ranges and resumes handed on before it as well, since a drain that completes over the emptied tier
+        // resets the count, and a range or resume left to render the dropped update could start the run afresh. A resolve
+        // handed on is kept, because dropping it leaves its Suspense boundary on the fallback after the data arrived; a
+        // thrower that re-keys its reader on every commit can restart the run through the reveal that resolve renders.
         private void CountRun(bool completed)
         {
             _consecutiveThrowingDrains = completed ? 0 : _consecutiveThrowingDrains + 1;
