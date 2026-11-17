@@ -171,9 +171,9 @@ namespace Velvet
         // FiberWorkLoop.FlushOwedSettleRenders, whose flushes of one fiber do not run through it; a held range, resolve or
         // resume of it is handed to the root's next frame instead (FiberBatchScheduler.RunInNextFrame). Its pending
         // passive effects and its held work of other kinds still run, a passive flush being no drain. What it leaves
-        // queued is committed by the frame-boundary drain the scheduler registered, which is where FiberBatchScheduler
-        // bounds a run of drains that throw, or by a later entry's release where it still owes the sync lane
-        // (IndexOfOwing).
+        // queued is committed by the frame-boundary drain the scheduler registered, where one is registered, which is
+        // where FiberBatchScheduler bounds a run of drains that throw, or by a later entry's release where it still owes
+        // the sync lane (IndexOfOwing).
         private static void Release(FiberBatchScheduler? owner)
         {
             if (s_releasing) return;
