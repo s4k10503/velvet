@@ -845,11 +845,10 @@ namespace Velvet
             }
         }
 
-        // Applies what the pass recorded and ends it. Nothing is done where the pass is not the current one, as for
-        // FinishPass of a range rendered outside any pass.
+        // Applies what the pass recorded and ends it. FinishPass of a range rendered outside any pass ends the context's
+        // pass as well, which has nothing to apply: a pass records only while it is current.
         internal static void EndRecording(ReconcilePass pass)
         {
-            if (!ReferenceEquals(s_current, pass)) return;
             pass.Recording = false;
             try
             {
