@@ -304,6 +304,46 @@ namespace Velvet.Tests
             Assert.That(s_log, Is.EqualTo(new[] { "Thrower-entered", "Fallback-shown" }));
         }
 
+        [Component]
+        private static VNode FallbackThatUpdatesItself()
+        {
+            var (n, setN) = Hooks.UseState(0);
+            Hooks.UseLayoutEffect((System.Func<System.Action>)(() =>
+            {
+                if (n == 0) setN.Invoke(1);
+                return null;
+            }), System.Array.Empty<object>());
+            return V.Label(name: "fallback", text: "fallback:" + n);
+        }
+
+        [Component(IsErrorBoundary = true)]
+        private static VNode BoundaryWithAFallbackThatUpdatesItself()
+        {
+            Hooks.UseFallback(_ => V.Component(FallbackThatUpdatesItself, key: "fallback"));
+            return V.Component(ThrowerHost, key: "thrower");
+        }
+
+        // The swap the tick's failure makes is an entry of its own, which commits the fallback; the update its layout
+        // effect makes takes the sync lane, which that entry's end renders.
+        [Test]
+        public void Given_AUseFrameCallbackThatThrowsBelowABoundary_When_TheFallbacksLayoutEffectSetsItsState_Then_TheUpdateHasRenderedWhenTheTickReturns()
+        {
+            // Arrange — one ordinary tick first, which also absorbs the zero-delta arm-time firing
+            EditorPanelTestHelpers.SetPanelTimeFunction(_host.Panel, UseFrameFakeClockHost.ReadFakeClock);
+            _mounted = V.Mount(_host.Root, V.Component(BoundaryWithAFallbackThatUpdatesItself, key: "root"),
+                CaughtErrors.Unlogged);
+            _mounted.FlushEffectsForTest();
+            EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
+            s_shouldThrow = true;
+
+            // Act
+            UseFrameFakeClockHost.Ms += 16;
+            EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
+
+            // Assert — null where no fallback was shown
+            Assert.That(_host.Root.Q<Label>("fallback")?.text, Is.EqualTo("fallback:1"));
+        }
+
         // Order log for ThreeHostReorderParent below: each host's UseFrame appends its own id, so a test
         // can observe firing order between DIFFERENT components' callbacks (UseFrameFakeClockHost.Calls is
         // a single counter and cannot distinguish which of several hosts fired). Static for the same
