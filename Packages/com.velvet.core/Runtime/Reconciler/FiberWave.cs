@@ -118,8 +118,6 @@ namespace Velvet
             }
             finally
             {
-                // MUTANT_SURVIVES(equivalent, line removed): a refresh re-derives a region from the tree as it stands,
-                // so refreshing a region a later wave lists again changes nothing; keeping it costs the walk.
                 regions.Clear();
             }
         }
