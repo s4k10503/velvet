@@ -824,7 +824,7 @@ namespace Velvet
 
         // A tie, as where a fiber holding no rows sits in front of a sibling's first, reads false both ways and keeps
         // the Child chain's order, which a container's walk writes for the components it places
-        // (GeneralPathReconciler.CommitComponentOrder). A fiber mounted nowhere reads false both ways too.
+        // (GeneralPathReconciler.CommitComponentOrder).
         private static bool OutputStartsAfter(LogicalElementTree tree, ComponentFiber fiber, ComponentFiber other)
         {
             var place = tree.PlaceOf(fiber, out var behindLast);
