@@ -95,7 +95,8 @@ namespace Velvet
             foreach (var element in new List<VisualElement>(Families.Keys))
             {
                 // MUTANT_SURVIVES(equivalent, literal): Families holds only intents that name a family (Apply stores one under
-                // intent.HasFamily), and ApplyResolved reads foreign only for an intent that names none.
+                // intent.HasFamily), and ApplyResolved tests foreign only in a conjunction with !intent.HasFamily, which such
+                // an intent makes false.
                 StyleFontResolver.ApplyResolved(element, Families[element].Intent, null, foreign: false);
             }
 
@@ -244,6 +245,9 @@ namespace Velvet
                 }
 
                 unnamed = true;
+                // MUTANT_SURVIVES(equivalent, boundary): at Wait 0 with the parent unchanged, the mutant buffers the entry
+                // once, and the loop below only stores Wait -1 for it, which `>= 0` and `== 1` then read as `> 0` and
+                // `== 1` read Wait 0.
                 if (entry.Wait > 0 || ParentFont(pair.Key) != entry.Seen)
                 {
                     _buffer.Add(pair.Key);
