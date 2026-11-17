@@ -37,9 +37,13 @@ namespace Velvet.Tests
         {
             foreach (var root in _roots) root.Dispose();
             _roots.Clear();
+            foreach (var root in s_mountedFromCommits) root.Dispose();
+            s_mountedFromCommits.Clear();
             _walker.Dispose();
             _holder.Dispose();
         }
+
+        private static readonly List<MountedTree> s_mountedFromCommits = new();
 
         private FiberBatchScheduler Holder => _holder.Context.BatchScheduler;
 
@@ -605,6 +609,102 @@ namespace Velvet.Tests
             Assert.That(OwingTheSyncLane(), Has.No.Member(echo.GetSchedulerForTest()));
         }
 
+        private static int s_runawayRendered;
+        private static int s_runawayEffect;
+        private static StateUpdater<int> s_setRunaway;
+
+        // Once asked, writes a new value from every layout effect, past the nested-update limit, and records the value
+        // each commit's UseEffect saw.
+        [Component]
+        private static VNode RunsAwayFromItsLayoutEffect()
+        {
+            var (n, setN) = Hooks.UseState(0);
+            s_setRunaway = setN;
+            s_runawayRendered = n;
+            Hooks.UseLayoutEffect((Func<Action>)(() =>
+            {
+                if (n > 0) setN.Invoke(n + 1);
+                return null!;
+            }), new object[] { n });
+            Hooks.UseEffect(() =>
+            {
+                s_runawayEffect = n;
+                return (Action)null!;
+            }, new object[] { n });
+            return V.Label(text: "runaway");
+        }
+
+        // The limit drops the root's updates with its sync-lane flag still raised, and each pass of the drain ran the
+        // UseEffect of the commit before it, so the last commit's is pending.
+        [Test]
+        public void Given_AHeldFlushThatRunsPastTheNestedUpdateLimit_When_ThePassEnds_Then_ItsLastCommitsEffectIsStillPending()
+        {
+            // Arrange — the limit's exception, logged where the release runs the held flush
+            LogAssert.Expect(LogType.Exception, new Regex("Maximum update depth exceeded"));
+            var runaway = V.Mount(new VisualElement(), V.Component(RunsAwayFromItsLayoutEffect));
+            _roots.Add(runaway);
+            runaway.FlushEffectsForTest();
+            var scheduler = runaway.GetSchedulerForTest();
+
+            // Act
+            WalkAsking(() =>
+            {
+                s_setRunaway.Invoke(1);
+                scheduler.FlushImmediate();
+            });
+
+            // Assert — 0 where the release ran that effect
+            Assert.That(s_runawayRendered - s_runawayEffect, Is.EqualTo(1));
+        }
+
+        private static readonly Ref<string> s_throwingHandle = new();
+        private static StateUpdater<int> s_setThrower;
+
+        // From its first update on, mounts a root from its layout effect, then queues another update of its own from its
+        // imperative-handle factory and throws, out of the drain committing it.
+        [Component]
+        private static VNode MountsQueuesAndThrows()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setThrower = setTick;
+            Hooks.UseLayoutEffect((Func<Action>)(() =>
+            {
+                if (tick > 0) s_mountedFromCommits.Add(V.Mount(new VisualElement(), V.Label(text: "mounted")));
+                return null!;
+            }), new object[] { tick });
+            Hooks.UseImperativeHandle(s_throwingHandle, () =>
+            {
+                if (tick == 0) return "handle";
+                setTick.Invoke(tick + 1);
+                throw new InvalidOperationException("handle failed");
+            });
+            return V.Label(text: "thrower");
+        }
+
+        // The held mount makes the release proceed past an entry the exception is leaving, whose own root owes the sync
+        // lane for the update the factory queued.
+        [Test]
+        public void Given_ADrainThatHoldsAMountAndThrowsAfterQueueingItsOwnUpdate_When_TheExceptionLeaves_Then_TheUpdateIsStillQueued()
+        {
+            // Arrange
+            var thrower = V.Mount(new VisualElement(), V.Component(MountsQueuesAndThrows));
+            _roots.Add(thrower);
+            var scheduler = thrower.GetSchedulerForTest();
+            s_setThrower.Invoke(1);
+
+            // Act
+            try
+            {
+                scheduler.DrainImmediateForTest();
+            }
+            catch (InvalidOperationException)
+            {
+            }
+
+            // Assert — 0 where the release drained the root again
+            Assert.That(scheduler.ImmediatePendingCount, Is.EqualTo(1));
+        }
+
         // --- A render or commit step reached with no entry on the stack ---
 
         private MountedTree MountALabel()
@@ -644,6 +744,21 @@ namespace Velvet.Tests
                 FiberExecutionContext.Hold(FiberExecutionContext.Request.Flush, key, null, () => { });
                 FiberExecutionContext.Drop(FiberExecutionContext.Request.Flush, key);
             };
+
+            // Assert
+            Assert.That(act, Throws.Nothing);
+        }
+
+        [Test]
+        public void Given_WorkHeldWithNoEntryOnTheStack_When_AnEntryBegins_Then_ItAssertsThatTheWorkHadNoEntryToReleaseIt()
+        {
+            // Arrange — the hold asserts as well, and the entry's end runs what it held
+            LogAssert.Expect(LogType.Assert, "Work was held with no entry on the stack to release it.");
+            FiberExecutionContext.Hold(FiberExecutionContext.Request.Flush, null, null, () => { });
+            LogAssert.Expect(LogType.Assert, "Work is held with no entry left to release it.");
+
+            // Act
+            TestDelegate act = () => FiberExecutionContext.Enter<object?>(null, null, _ => { });
 
             // Assert
             Assert.That(act, Throws.Nothing);
