@@ -5,8 +5,7 @@ using UnityEngine.UIElements;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Specifies that a pass a root asks for while another is open waits for it, and that a pass that begins while
-    /// the pass of its own context applies begins nothing.
+    /// Specifies that a pass a root asks for while another is open waits for it.
     /// </summary>
     [TestFixture]
     internal sealed class PassOwnershipTests
@@ -152,24 +151,6 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(rendered, Is.EqualTo(1));
-        }
-
-        [Test]
-        public void Given_APassThatBeginsAgainWhileItApplies_When_BothEnds_Then_NoPassIsRecording()
-        {
-            // Arrange
-            var pass = _first.Context.Pass;
-            ChildListWrites.BeginRecording(pass);
-            pass.Applying = true;
-            ChildListWrites.BeginRecording(pass);
-            ChildListWrites.EndRecording(pass);
-            pass.Applying = false;
-
-            // Act
-            ChildListWrites.EndRecording(pass);
-
-            // Assert
-            Assert.That(ChildListWrites.IsRecording, Is.False);
         }
 
         private VNode[] TreeAskingForHeldWork(Action<FiberBatchScheduler> ask)

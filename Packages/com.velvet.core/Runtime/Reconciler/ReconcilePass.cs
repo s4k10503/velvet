@@ -69,12 +69,6 @@ namespace Velvet
         // Raised by HostCommitQueue around the writes it makes, which are the ones recorded.
         internal int ViaQueue;
 
-        // The pass that was current when this one began, which becomes current again where this one ends
-        // (ChildListWrites.EndRecording).
-        internal ReconcilePass? Enclosing;
-        // How many times BeginRecording has begun this pass without a matching end.
-        internal int Depth;
-
         // Returns whether this call opened the journal, which makes the caller the render that completes or drops the pass.
         internal bool TryOwn(ComponentFiber owner) => Journal.TryOpen(owner);
 

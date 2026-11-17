@@ -484,7 +484,7 @@ namespace Velvet
         // does not read while the pass applies.
         //
         // The list, and the parents it leaves pending, belong to the ReconcilePass that recorded them, and s_current is
-        // the one that is recording or applying, innermost first. Outside every pass nothing is recorded: ParentOf
+        // the one that is recording or applying. Outside every pass nothing is recorded: ParentOf
         // answers from the live tree and a write is made at once. The model of a container (s_rows) belongs to the container, whichever pass writes it, and the readers
         // of the model answer from the container's own Pending count, which each pass raises by what it marks and
         // takes off by the same amount where it applies.
@@ -509,28 +509,16 @@ namespace Velvet
 
         internal static QueueWriteScope QueueWrite() => new(s_current);
 
-        // Whether a pass is recording or its recorded writes are applying, whatever it has recorded. Where passes of two
-        // contexts are open at once this answers for the innermost.
+        // Whether a pass is recording or its recorded writes are applying, whatever it has recorded.
         internal static bool PassIsOpen => s_current is { Recording: true } or { Applying: true };
 
-        // No pass begins while another records, which the assertion holds: a reconcile begins its pass only inside an
-        // entry, where a door does not begin its work (FiberExecutionContext), so there are no recorded writes of another
-        // pass for it to apply or to read around. The pass that is applying begins nothing: what a reconcile started from
-        // inside the apply writes is recorded behind the ops being applied, and its end, which EndRecording leaves to the
-        // apply, has nothing to give back.
         internal static void BeginRecording(ReconcilePass pass)
         {
-            if (pass.Applying) return;
-            var open = s_current;
-            UnityEngine.Debug.Assert(open == null || open.Applying, "A pass began while another was recording.");
+            UnityEngine.Debug.Assert(s_current == null, "A pass began while another was recording or applying.");
             // MUTANT_SURVIVES(equivalent, line removed): EndRecording clears the set as every pass ends, so it is empty when the next one begins.
             pass.Created.Clear();
             pass.Recording = true;
-            if (pass.Depth++ == 0)
-            {
-                pass.Enclosing = open;
-                s_current = pass;
-            }
+            s_current = pass;
         }
 
         // A container the pass creates takes its children at once.
@@ -857,12 +845,11 @@ namespace Velvet
             }
         }
 
-        // Ends the pass's recording, applies what it recorded and makes the pass that was current when it began current
-        // again. Nothing is done where the pass is not the current one, as for FinishPass of a range rendered outside
-        // any pass, or while the pass is applying, which is an end asked for from inside the apply.
+        // Applies what the pass recorded and ends it. Nothing is done where the pass is not the current one, as for
+        // FinishPass of a range rendered outside any pass.
         internal static void EndRecording(ReconcilePass pass)
         {
-            if (!ReferenceEquals(s_current, pass) || pass.Applying) return;
+            if (!ReferenceEquals(s_current, pass)) return;
             pass.Recording = false;
             try
             {
@@ -871,17 +858,8 @@ namespace Velvet
             finally
             {
                 pass.Created.Clear();
-                if (--pass.Depth == 0)
-                {
-                    pass.ReleaseAnchors();
-                    s_current = pass.Enclosing;
-                    // MUTANT_SURVIVES(equivalent, line removed): BeginRecording assigns Enclosing before anything reads it.
-                    pass.Enclosing = null;
-                }
-                else
-                {
-                    pass.Recording = true;
-                }
+                pass.ReleaseAnchors();
+                s_current = null;
             }
         }
 
