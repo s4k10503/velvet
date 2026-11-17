@@ -53,14 +53,20 @@ namespace Velvet
         // of the element is filed under in place of the root of its run. Apply clears it with the ops.
         internal readonly Dictionary<VisualElement, ComponentFiber> Owners = new();
 
-        // What the ops, z-layer mounts and Portal mounts of a wave's pass threw, each with the component it is filed
-        // under and the element it was adding, where it was adding one, for the wave to route.
-        internal readonly List<(ComponentFiber Owner, System.Exception Error, VisualElement? Added)> Failures = new();
+        // What the ops, z-layer mounts and Portal mounts of a wave's pass threw, for the wave to route (FiberWave): the
+        // component each is filed under, the element whose panel decides whether it is reported, kept only where that
+        // element was on a panel as it threw, and whether it is an element's placement, whose search for a boundary
+        // starts above the fibers the wave mounted.
+        internal readonly List<(ComponentFiber Owner, System.Exception Error, VisualElement? OnPanel, bool Placement)>
+            Failures = new();
+
+        // The fibers whose first render the open wave made, which a placement's search passes over.
+        internal readonly HashSet<ComponentFiber> MountedInWave = new();
 
         internal void BeginSegment(ComponentFiber? root) => Segments.Add((Ops.Count, root));
 
-        internal void Fail(ComponentFiber owner, System.Exception error, VisualElement? added)
-            => Failures.Add((owner, error, added));
+        internal void Fail(ComponentFiber owner, System.Exception error, VisualElement? element, bool placement)
+            => Failures.Add((owner, error, element?.panel != null ? element : null, placement));
 
         // The renders of the pass on the stack, which a suspend nothing catches takes back.
         internal FiberPassJournal Journal { get; } = new();

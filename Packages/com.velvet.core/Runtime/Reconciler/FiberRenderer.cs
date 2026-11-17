@@ -554,6 +554,7 @@ namespace Velvet
             // nested expansion render (SharedReconcileDepth > 0) already has the cursor populated by the
             // ongoing walk, and a root fiber (Parent == null) pushes its own Providers during its reconcile.
             var contextSpine = RebuildsContextSpine(fiber) ? FiberContextSpine.Push(fiber) : default;
+            NoteMountInWave(fiber);
             var ownedPass = OpenPass(fiber);
             try
             {
@@ -720,6 +721,13 @@ namespace Velvet
             FiberCommitWork.ParkOldTreeIfPending(fiber, reconciler, oldTree, deferReconcile: false);
             fiber.ParkedPassSuspended = reconciler.HasPendingWork;
             fiber.RenderCount++;
+        }
+
+        // A fiber no render has committed yet is one the wave its first render runs in mounts (ReconcilePass.MountedInWave).
+        private static void NoteMountInWave(ComponentFiber fiber)
+        {
+            var context = fiber.Reconciler?.Context;
+            if (fiber.RenderCount == 0 && context is { WaveOpen: true }) context.Pass.MountedInWave.Add(fiber);
         }
 
         // The pass of the context, when this render is the outermost on it and so completes or drops it, or completes or

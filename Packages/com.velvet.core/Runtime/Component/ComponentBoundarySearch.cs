@@ -59,8 +59,15 @@ namespace Velvet
         // As PropagateFromOwner, queued for the boundary's follow-up commit wherever it is thrown, as React's
         // captureCommitPhaseError queues it.
         internal static void CaptureFromOwner(ComponentFiber owner, Exception exception)
-            => PropagateFrom(owner.CaughtError == null ? owner : owner.Parent, owner, exception, isRenderError: false,
-                inCommit: true);
+            => CaptureFrom(owner, owner, exception);
+
+        // As CaptureFromOwner, with the search starting at start rather than at the component the error belongs to; with
+        // no start, the error goes to ReportUncaught.
+        internal static void CaptureFrom(ComponentFiber? start, ComponentFiber owner, Exception exception)
+            => PropagateFrom(start == null || start.CaughtError == null ? start : start.Parent, owner, exception,
+                // MUTANT_SURVIVES(equivalent, literal): isRenderError reaches only FiberErrorBoundary.TryCatch.
+                // A search queued for the commit does not call it.
+                isRenderError: false, inCommit: true);
 
         // Where an error goes whose walk ends with neither a boundary nor the root V.Mount made taking it, and one Velvet
         // hands no boundary, as Framer Motion's completion callbacks run in a promise no boundary sees.

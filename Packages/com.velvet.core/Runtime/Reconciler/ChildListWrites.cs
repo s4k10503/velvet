@@ -754,7 +754,7 @@ namespace Velvet
                     {
                         var added = pass.Ops[i].Kind == ReconcilePass.OpKind.Insert ? pass.Ops[i].Child : null;
                         var owner = FailureOwner(pass, added);
-                        if (owner != null) pass.Fail(owner, exception, added);
+                        if (owner != null) pass.Fail(owner, exception, added, placement: added != null);
                         else first ??= System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(exception);
                     }
                 }

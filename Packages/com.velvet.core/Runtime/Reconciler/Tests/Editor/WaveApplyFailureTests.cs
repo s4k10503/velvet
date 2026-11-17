@@ -456,8 +456,11 @@ namespace Velvet.Tests
         [Component]
         private static VNode Header() => V.Div(name: "header");
 
+        // GREEN_ON_BASE(characterization): the base hands the mount's error to the root, which unmounts the tree.
+        // Starting a placement's search at the component it is filed under in FiberWave.RouteFailures, rather than
+        // above the components the wave mounted, reddens it: B1 then catches and the header stays.
         [Test]
-        public void Given_ATreeWhoseBoundaryHoldsAComponentWhoseElementThrowsAsItAttaches_When_ItMounts_Then_ThatBoundaryReportsItAndTheRestStays()
+        public void Given_ATreeWhoseBoundaryHoldsAComponentWhoseElementThrowsAsItAttaches_When_ItMounts_Then_TheRootReportsItAndTakesTheTreeDown()
         {
             // Arrange
             var log = new EventLog();
@@ -467,29 +470,56 @@ namespace Velvet.Tests
                 V.Component(Header, key: "header"),
                 V.Component(FirstBoundary, new Holds(V.Component(ThrowerWhenOpen, true, key: "widget")), key: "b1")));
 
-            // Assert — a header the error took down reads as such rather than as the report
-            Assert.That(_mountPoint.Q("header") != null ? log.ToString() : "the header was taken down",
-                Is.EqualTo("caught:B1:attach:W"));
+            // Assert — a header the error left mounted reads as such rather than as the report
+            Assert.That(_mountPoint.Q("header") == null ? log.ToString() : "the header stayed",
+                Is.EqualTo("uncaught:attach:W"));
         }
 
         [Component]
-        private static VNode BoundaryOverAThrower()
-            => V.Component(FirstBoundary, new Holds(V.Component(ThrowerWhenOpen, true, key: "widget")), key: "b1");
+        private static VNode StackedThrower()
+            => V.Div(className: "relative", children: new VNode[]
+            {
+                V.Custom<AttachThrower>(className: "absolute z-10", name: "Z", key: "thrower"),
+            });
 
+        // GREEN_ON_BASE(characterization): the base hands the mount's z-* placement error to the root.
+        // Passing `placement: false` for a z-* placement in ChildReconciler.PlaceRelocated reddens it: B1 then catches.
         [Test]
-        public void Given_ARootFiberWhoseBoundaryHoldsAComponentWhoseElementThrowsAsItAttaches_When_FiberRendererMountsIt_Then_ThatBoundaryReportsIt()
+        public void Given_ATreeWhoseBoundaryHoldsAComponentWhoseZPlacedElementThrowsAsItAttaches_When_ItMounts_Then_TheRootReportsIt()
         {
             // Arrange
-            var root = FiberRenderer.CreateRoot(BoundaryOverAThrower);
+            var log = new EventLog();
 
             // Act
-            FiberRenderer.Mount(root, _mountPoint,
-                onCaughtError: (error, info) => s_reports.Add("caught:" + info.ErrorBoundary + ":" + error.Message));
+            using var mounted = Mount(log,
+                V.Component(FirstBoundary, new Holds(V.Component(StackedThrower, key: "stacked")), key: "b1"));
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("uncaught:attach:Z:z"));
+        }
+
+        [Component(IsErrorBoundary = true)]
+        private static VNode AddsAThrowerAheadOfARenderError()
+        {
+            Hooks.UseFallback(_ => V.Label(text: "fallback"));
+            return V.Fragment(
+                V.Div(children: new VNode[] { V.Custom<AttachThrower>(name: "M", key: "thrower") }),
+                V.Component(ThrowsAsItRenders, key: "render-thrower"));
+        }
+
+        [Test]
+        public void Given_ARootFiberThatAddsANewElementThrowingAsItAttachesAheadOfAChildWhoseRenderThrows_When_FiberRendererMountsIt_Then_ItReportsOnlyTheRenderError()
+        {
+            // Arrange
+            var root = FiberRenderer.CreateRoot(AddsAThrowerAheadOfARenderError, isErrorBoundary: true);
+
+            // Act
+            FiberRenderer.Mount(root, _mountPoint, onCaughtError: (error, _) => s_reports.Add("caught:" + error.Message));
             var reports = string.Join(" ", s_reports);
             FiberRenderer.Dispose(root);
 
-            // Assert
-            Assert.That(reports, Is.EqualTo("caught:B1:attach:W"));
+            // Assert — where the render never built the element there was nothing to leave out, so that reads as a sentinel
+            Assert.That(Built("M") ? reports : "M was never built", Is.EqualTo("caught:render:Q"));
         }
 
         [Component]
@@ -563,6 +593,32 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(log.ToString(), Is.EqualTo("render:R1 render:R2 caught:B1:attach:R1 caught:B3:attach:Portal"));
+        }
+
+        [Component]
+        private static VNode ShowsAThrowingPortal()
+            => V.Div(children: new VNode[]
+            {
+                V.Portal(s_portalTarget, new VNode[] { V.Custom<AttachThrower>(name: "Portal", key: "thrower") },
+                    key: "portal"),
+            });
+
+        [Test]
+        public void Given_ATreeOffThePanelWhoseBoundaryHoldsAPortalIntoATargetOnIt_When_ItMountsAndThePortalsChildThrowsAsItAttaches_Then_TheBoundaryReportsIt()
+        {
+            // Arrange — the tree mounts into an element off the panel, and the Portal's target is on it
+            _host.Root.Add(s_portalTarget);
+            var page = new VisualElement();
+            var log = new EventLog();
+
+            // Act
+            using var mounted = V.Mount(page,
+                log.Provide(V.Component(FirstBoundary, new Holds(V.Component(ShowsAThrowingPortal, key: "shower")),
+                    key: "b1")),
+                log.ReportingErrors());
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("caught:B1:attach:Portal"));
         }
 
         #endregion
