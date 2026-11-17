@@ -784,6 +784,95 @@ namespace Velvet.Tests
             Assert.That(ThrowingDrainsOf(scheduler), Is.EqualTo(1));
         }
 
+        private sealed class Counter : Store<int>
+        {
+            public Counter() : base(0) { }
+
+            public void Set(int value) => SetState(_ => value);
+
+            protected override void ResetCore() => SetState(_ => 0);
+        }
+
+        private static Counter s_counter = null!;
+        private static int s_counterRead;
+        private static bool s_throwOnce;
+        private static StateUpdater<int> s_setCounterReader;
+
+        // Reads the counter, and throws once from its imperative-handle factory on an update once asked.
+        [Component]
+        private static VNode ReadsTheCounterAndThrowsOnceWhenAsked()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setCounterReader = setTick;
+            s_counterRead = Hooks.UseStore(s_counter, value => value);
+            Hooks.UseImperativeHandle(s_throwingHandle, () =>
+            {
+                if (tick == 0 || !s_throwOnce) return "handle";
+                s_throwOnce = false;
+                throw new InvalidOperationException("handle failed");
+            });
+            return V.Label(text: "reader");
+        }
+
+        private MountedTree MountTheCounterReader()
+        {
+            s_counter = new Counter();
+            var reader = V.Mount(new VisualElement(), V.Component(ReadsTheCounterAndThrowsOnceWhenAsked));
+            _roots.Add(reader);
+            reader.FlushEffectsForTest();
+            s_throwOnce = true;
+            s_setCounterReader.Invoke(1);
+            return reader;
+        }
+
+        private VisualElement MountAnIdleButton()
+        {
+            var host = new VisualElement();
+            _roots.Add(V.Mount(host, V.Button(name: "idle", onClick: () => { })));
+            return host;
+        }
+
+        // A drain that threw marks its root for the rest of the release it ended in, here one with nothing else to do.
+        [Test]
+        public void Given_ARootWhoseOwnEntryThrew_When_ALaterEntryEndsOwingItsSyncLane_Then_ItIsFlushed()
+        {
+            // Arrange
+            var reader = MountTheCounterReader();
+            var idle = MountAnIdleButton();
+            try
+            {
+                reader.GetSchedulerForTest().DrainImmediateForTest();
+            }
+            catch (InvalidOperationException)
+            {
+            }
+            s_counter.Set(1);
+
+            // Act
+            idle.Q<Button>("idle").SimulateClick();
+
+            // Assert
+            Assert.That(s_counterRead, Is.EqualTo(1));
+        }
+
+        // As above, for a drain a held flush ran, inside a release that went on past it.
+        [Test]
+        public void Given_ARootWhoseHeldFlushThrew_When_ALaterEntryEndsOwingItsSyncLane_Then_ItIsFlushed()
+        {
+            // Arrange — the throw is logged where the release runs the held flush
+            LogAssert.Expect(LogType.Exception, new Regex("handle failed"));
+            var reader = MountTheCounterReader();
+            var idle = MountAnIdleButton();
+            WalkAsking(() => reader.GetSchedulerForTest().FlushImmediate());
+            s_counter.Set(1);
+
+            // Act
+            idle.Q<Button>("idle").SimulateClick();
+
+            // Assert
+            Assert.That(s_counterRead, Is.EqualTo(1));
+        }
+
         // --- A render or commit step reached with no entry on the stack ---
 
         private MountedTree MountALabel()
