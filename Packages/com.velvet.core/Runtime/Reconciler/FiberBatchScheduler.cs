@@ -318,8 +318,8 @@ namespace Velvet
 
         // Held work of this root that FiberExecutionContext's release does not run, made in a later frame on the anchor
         // the tiers' drains are registered on. A root with no anchor registers no drain either, and has no frame. Where
-        // droppable, as a range or a resume is, it is dropped past the bound on drains that throw, as the updates queued
-        // then are; a resolve is not, for the reason CountRun gives.
+        // droppable, as a range or a resume is, it is dropped past the bound on drains that throw; a resolve is not, for
+        // the reason CountRun gives.
         internal void RunInNextFrame(Action run, bool droppable)
         {
             var anchor = _anchor;
@@ -369,8 +369,7 @@ namespace Velvet
         // run: whatever renders the thrower afterwards folds in the dropped update, which stays in its hook's slot. So it
         // drops the ranges and resumes handed on before it as well, since a drain that completes over the emptied tier
         // resets the count, and a range or resume left to render the dropped update could start the run afresh. A resolve
-        // handed on is kept, because dropping it leaves its Suspense boundary on the fallback after the data arrived; a
-        // thrower that re-keys its reader on every commit can restart the run through the reveal that resolve renders.
+        // handed on is kept, because it is what retries the render waiting on its read.
         private void CountRun(bool completed)
         {
             _consecutiveThrowingDrains = completed ? 0 : _consecutiveThrowingDrains + 1;

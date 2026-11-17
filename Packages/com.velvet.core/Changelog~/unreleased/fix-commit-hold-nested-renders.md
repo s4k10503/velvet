@@ -36,7 +36,7 @@
   `V.VirtualList` range of that root, or a `Hooks.Use` or query result of it, that would otherwise be taken up before
   control returns is taken up in a later frame of that root instead, the range from where the scroller is then. Where
   three runs of that root's work in a row throw first, the range is dropped instead, and so are the updates the root has
-  queued then, with an error logged where there were any. Otherwise its updates render at its next update drain, as in
+  queued then outside a transition, with an error logged where there were any. Otherwise its updates render at its next update drain, as in
   earlier versions, or, where one is an update React gives the sync lane, at the end of the next render, commit or
   `UseEffect` flush of any root after control has returned, if that comes first.
 - A click handler that runs while no root is rendering, committing or running its `UseEffect`s, and sets another root's
