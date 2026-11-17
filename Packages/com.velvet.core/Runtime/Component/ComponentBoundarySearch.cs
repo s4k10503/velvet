@@ -119,8 +119,9 @@ namespace Velvet
                 // fallback factory call and Reconcile pass for one visible outcome. This is NOT the same as
                 // current merely declining because its OWN fallback content failed with nowhere to escalate
                 // to (current survives that case — only the failed content's own subtree is gone — so the
-                // walk must still continue normally to next).
-                if (current.IsDisposed) return;
+                // walk must still continue normally to next). Inside a wave that replacement's deletion marks current
+                // at once and disposes it only where the wave applies its writes (FiberWave).
+                if (current.IsDisposed || current.IsBeingDeleted) return;
                 current = next;
             }
 

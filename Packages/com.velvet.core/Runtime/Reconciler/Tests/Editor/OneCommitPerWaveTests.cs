@@ -23,6 +23,7 @@ namespace Velvet.Tests
     internal sealed class OneCommitPerWaveTests
     {
         private static int s_written;
+        private static int s_outerFallbacks;
         private static Label s_label;
         private static readonly Action s_noCleanup = static () => { };
         private static readonly Func<VisualElement, Action> s_holdLabel = element =>
@@ -57,6 +58,7 @@ namespace Velvet.Tests
         {
             AsyncActionsInFlightTestAccess.ResetForTest();
             s_written = 0;
+            s_outerFallbacks = 0;
             s_label = null;
             s_start = default;
             s_otherStart = default;
@@ -373,6 +375,47 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(log.ToString(), Is.EqualTo("render:Bystander caught:Own:told"));
+        }
+
+        [Component]
+        private static VNode BrokenFallbackContent() => throw new InvalidOperationException("fallback content");
+
+        [Component(IsErrorBoundary = true)]
+        private static VNode CatchesItsOwnRowsIntoABrokenFallback()
+        {
+            var (throws, _) = EventLog.UseState("InnerThrows", false);
+            Hooks.UseFallback(_ => V.Component(BrokenFallbackContent, key: "content"));
+            return V.Component(ThrowsWhenTold, throws, key: "thrower");
+        }
+
+        [Component(IsErrorBoundary = true)]
+        private static VNode CountsItsFallbacks()
+        {
+            Hooks.UseFallback(_ =>
+            {
+                s_outerFallbacks++;
+                return V.Label(text: "outer");
+            });
+            return V.Component(CatchesItsOwnRowsIntoABrokenFallback, key: "inner");
+        }
+
+        // GREEN_ON_BASE(characterization): the base disposes the inner boundary as the outer one's fallback replaces it.
+        // Taking `|| fiber.IsBeingDeleted` out of FiberErrorBoundary.ShowCaughtFallback reddens it: the inner boundary
+        // then hands the error it caught to the outer one a second time.
+        [Test]
+        public void Given_ABoundaryWhoseOwnRenderCatchesIntoAFallbackThatThrows_When_ADrainRendersIt_Then_TheBoundaryAboveShowsItsFallbackOnce()
+        {
+            // Arrange
+            var log = new EventLog();
+            using var mounted = V.Mount(new VisualElement(), log.Provide(V.Component(CountsItsFallbacks)),
+                log.ReportingErrors());
+
+            // Act
+            log.Setter<bool>("InnerThrows").Invoke(true);
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert
+            Assert.That(s_outerFallbacks, Is.EqualTo(1));
         }
 
         [Component(Compiler = false)]
