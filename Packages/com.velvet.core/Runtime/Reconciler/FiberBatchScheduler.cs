@@ -721,11 +721,13 @@ namespace Velvet
                     // would hold that work back rather than keep it from running early.
                     FiberWorkLoop.FlushStateWork(fiber);
                     // A VirtualList host's render re-places the rows it holds without rendering them, so once one
-                    // has rendered, by its own entry or inside another's, what the drain has yet to render takes its
-                    // order from the tree again.
+                    // whose rows the last walk passed through has rendered, by its own entry or inside another's,
+                    // what the drain has yet to render takes its order from the tree again.
                     if (ARowHostRendered()) OrderRestInTree(i);
                 }
                 _drainBuffer.Clear();
+                // MUTANT_SURVIVES(equivalent, line removed): the next walk clears the list before reading it, so the entries only keep their hosts reachable until then.
+                _rowHosts.Clear();
             }
             finally
             {
@@ -762,7 +764,7 @@ namespace Velvet
         // ones it does.
         private void AddInTreeOrder(List<ComponentFiber> queued, List<ComponentFiber> into)
         {
-            // MUTANT_SURVIVES(equivalent, line removed): a host only an earlier walk noted holds no row over the fibers this one orders, so the sorts it goes on asking for keep their order.
+            // MUTANT_SURVIVES(equivalent, line removed): an entry an earlier walk of this drain left asks for a re-sort after every flush, and only the render of a host the last walk noted moves a fiber the drain has yet to render, so a re-sort it adds finds the rest in tree order already.
             _rowHosts.Clear();
             var root = queued.Count < 2 ? null : ContextRootAbove(queued);
             if (root == null)
