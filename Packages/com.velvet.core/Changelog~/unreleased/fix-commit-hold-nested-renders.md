@@ -35,7 +35,7 @@
   before control returns, even where another entry for this version says one of its updates would render. A
   `V.VirtualList` range of that root, or a `Hooks.Use` or query result of it, that would otherwise be taken up before
   control returns is taken up in a later frame of that root instead, the range from where the scroller is then. A range
-  is dropped instead, with the updates still queued, where three update batches of that root in a row throw first. Its
+  is dropped instead, with the updates still queued, where three runs of that root's work in a row throw first. Its
   updates render at its next update drain, as in earlier versions, or, where one is an update React gives the sync lane,
   at the end of the next render, commit or `UseEffect` flush of any root after control has returned, if that comes
   first.

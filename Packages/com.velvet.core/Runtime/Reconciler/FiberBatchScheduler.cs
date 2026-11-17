@@ -375,7 +375,7 @@ namespace Velvet
             _handOnGeneration++;
             if (_immediateOrder.Count == 0) return;
             FiberLogger.LogError("Scheduler",
-                $"{ConsecutiveThrowingDrainLimit} update batches in a row threw, and the last left updates"
+                $"{ConsecutiveThrowingDrainLimit} runs of a root's work in a row threw, and the last left updates"
                 + " queued. Those updates were dropped.");
             DropImmediateIntake();
         }
