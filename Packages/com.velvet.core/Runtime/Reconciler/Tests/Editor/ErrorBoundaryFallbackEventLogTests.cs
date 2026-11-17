@@ -201,8 +201,9 @@ namespace Velvet.Tests
         [TestFixture]
         internal sealed class UIToolkitOnlyFallbacks
         {
-            // GREEN_ON_BASE(characterization): the base unwinds a list row's error to the boundary whose render mounted
-            // the row, which takes its old rows down before its fallback mounts and reports once, as React commits it.
+            // GREEN_ON_BASE(characterization): the base hands a list row's failed fallback to the boundary whose render
+            // mounted the row, which takes its old rows down before its fallback mounts and reports once, as React
+            // commits it.
             [Test]
             public void Given_ARowBoundaryWhoseFallbackCannotBeCreated_When_ItMountsWhileTheBoundaryAboveRendersTheList_Then_TheBoundaryAboveReplacesItsRowsAndReportsTheCreationError()
             {
