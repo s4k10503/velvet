@@ -9,16 +9,18 @@ namespace Velvet.Tests
 {
     /// <summary>
     /// Pins where a wave runs the insertion effects and layout cleanups of a component it updates or mounts, and the
-    /// detach of a ref it replaces: as its writes apply, at the component's or the element's turn among the teardowns of
-    /// the components it removes, where react-reconciler 19.1's <c>commitMutationEffectsOnFiber</c> runs them in its one
-    /// walk of the tree. The cases red on the base expect what React does for their trees, read from its source rather
-    /// than run. The rest hold what the base already did: an error a write throws is reported ahead of a layout
-    /// cleanup's thrown after it, and one a replaced ref's detach throws reaches the boundary in a follow-up commit; the
-    /// effect runs with the render's own closure; a component a walk's boundary removes runs only its teardown, its
-    /// cleanups ahead of its element's ref detach; a render a suspend abandons promotes no deps; and a wave whose work
-    /// the layout commit has to run keeps that commit's order, where it renders a component row after its host, parks or
-    /// resumes a time-sliced render, mounts a Portal, renders what a settle owes, or mounts a component holding insertion
-    /// effects under one a commit has taken.
+    /// detach of a ref it replaces: as its writes apply, at the component's or the element's turn among the teardowns
+    /// of the components it removes, where react-reconciler 19.1's <c>commitMutationEffectsOnFiber</c> runs them in its
+    /// one walk of the tree. The cases red on the base expect what React does for their trees, read from its source
+    /// rather than run. The rest hold what the base already did: an error a new element throws as it attaches, as a row
+    /// beside a later component, inside an element of its own or relocated as a z-* element, is reported ahead of that
+    /// component's layout cleanup's, as a deletion's teardown's is ahead of a new Portal child's, and one a replaced
+    /// ref's detach throws reaches the boundary in a follow-up commit; the effect runs with the render's own closure; a
+    /// component a walk's boundary removes runs only its teardown, its cleanups ahead of its element's ref detach; a
+    /// render a suspend abandons promotes no deps; and a wave whose work the layout commit has to run keeps that
+    /// commit's order, where it renders a component row after its host, parks or resumes a time-sliced render, mounts a
+    /// Portal, renders what a settle owes, or mounts a component holding insertion effects under one a commit has
+    /// taken.
     /// </summary>
     [TestFixture]
     internal sealed class TurnEndOrderTests
@@ -30,7 +32,6 @@ namespace Velvet.Tests
         private static readonly List<string> s_log = new();
         private static StateUpdater<int> s_setHost;
         private static StateUpdater<int> s_setRow;
-        private static VelvetTaskCompletionSource<int> s_source;
         private static TransitionStarter s_start;
         private static Action<string> s_add;
         private static StateUpdater<int> s_setTick;
@@ -45,7 +46,6 @@ namespace Velvet.Tests
             s_log.Clear();
             s_setHost = default;
             s_setRow = default;
-            s_source = null;
             s_start = default;
             s_add = null;
             s_setTick = default;
@@ -388,11 +388,80 @@ namespace Velvet.Tests
             Assert.That(log.ToString(), Is.EqualTo("caught:Guard:U caught:Guard:D"));
         }
 
-        // Stands in for a V.Custom<T> whose element registers a panel-attach callback that throws.
+        // Stands in for a V.Custom<T> whose element registers a panel-attach callback that throws. The message says
+        // whether the element attached as a relocated z-* element, so a case about one fails where the arrangement stops
+        // making one.
         internal sealed class ThrowsAsItAttaches : VisualElement
         {
             public ThrowsAsItAttaches()
-                => RegisterCallback<AttachToPanelEvent>(_ => throw new InvalidOperationException("attach:" + name));
+                => RegisterCallback<AttachToPanelEvent>(_ => throw new InvalidOperationException(
+                    "attach:" + name + (FiberZLayerCoordinator.IsRelocatedReal(this) ? ":z" : "")));
+        }
+
+        private static MountedTree MountOnAPanel(HeadlessEditorPanelHost host, EventLog log, Func<VNode> render)
+        {
+            var mountPoint = new VisualElement();
+            host.Root.Add(mountPoint);
+            var mounted = V.Mount(mountPoint, log.Provide(V.Component(render)), log.ReportingErrors());
+            log.Clear();
+            return mounted;
+        }
+
+        // The new element is a row of the container the component's rows are in, so its insert is recorded where that
+        // container's walk ends, behind the component's turn.
+        [Component(IsErrorBoundary = true, DisplayName = "Guard")]
+        private static VNode GuardOverANewRowAheadOfAnUpdate()
+        {
+            var (shown, _) = EventLog.UseState("Shown", true);
+            Hooks.UseFallback(_ => V.Component(QuietFallback));
+            return V.Fragment(
+                shown ? null : V.Custom<ThrowsAsItAttaches>(name: "A", key: "thrower"),
+                V.Component(UpdatedThrowing, shown, key: "u"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base reports an error a wave's write throws ahead of a layout cleanup's.
+        // Filing a failed insert in ChildListWrites.FileFailure at the place of the insert's op, rather than at the place
+        // its element's walk ended at, reddens it: the insert applies behind the component's turn.
+        [Test]
+        public void Given_ABoundaryOverANewRowThatThrowsAsItAttachesAheadOfAComponentWhoseLayoutCleanupThrows_When_TheyCommit_Then_TheAttachErrorIsReportedFirst()
+        {
+            // Arrange — a real panel, which is what runs an attach callback
+            using var host = new HeadlessEditorPanelHost();
+            var log = new EventLog();
+            using var mounted = MountOnAPanel(host, log, GuardOverANewRowAheadOfAnUpdate);
+
+            // Act
+            log.Setter<bool>("Shown").Invoke(false);
+            mounted.DrainForTest();
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("caught:Guard:attach:A caught:Guard:U"));
+        }
+
+        [Component(IsErrorBoundary = true, DisplayName = "Guard")]
+        private static VNode GuardOverAnUpdateAheadOfANewRow()
+        {
+            var (shown, _) = EventLog.UseState("Shown", true);
+            Hooks.UseFallback(_ => V.Component(QuietFallback));
+            return V.Fragment(
+                V.Component(UpdatedThrowing, shown, key: "u"),
+                shown ? null : V.Custom<ThrowsAsItAttaches>(name: "A", key: "thrower"));
+        }
+
+        [Test]
+        public void Given_ABoundaryOverAComponentWhoseLayoutCleanupThrowsAheadOfANewRowThatThrowsAsItAttaches_When_TheyCommit_Then_TheCleanupsErrorIsReportedFirst()
+        {
+            // Arrange — a real panel, which is what runs an attach callback
+            using var host = new HeadlessEditorPanelHost();
+            var log = new EventLog();
+            using var mounted = MountOnAPanel(host, log, GuardOverAnUpdateAheadOfANewRow);
+
+            // Act
+            log.Setter<bool>("Shown").Invoke(false);
+            mounted.DrainForTest();
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("caught:Guard:U caught:Guard:attach:A"));
         }
 
         // The new element sits in an element of its own, so its insert applies as that element's walk ends, ahead of
@@ -411,20 +480,15 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base reports an error a wave's write throws ahead of a layout cleanup's.
-        // Capturing a failure ReconcilePass.Fail files at a new place as FiberWave.RouteFailures routes it, rather than at
-        // the place it took as it was filed, reddens it: the cleanup's error, which the component's turn captures as it
-        // throws, is then reported first.
+        // Leaving ReconcilePass.HoldsCaptures unset in ChildListWrites.Apply reddens it: the cleanup's error is then
+        // captured as the component's turn throws it, ahead of the attach error the wave routes once the pass has applied.
         [Test]
         public void Given_ABoundaryOverANewElementThatThrowsAsItAttachesAheadOfAComponentWhoseLayoutCleanupThrows_When_TheyCommit_Then_TheAttachErrorIsReportedFirst()
         {
             // Arrange — a real panel, which is what runs an attach callback
             using var host = new HeadlessEditorPanelHost();
-            var mountPoint = new VisualElement();
-            host.Root.Add(mountPoint);
             var log = new EventLog();
-            using var mounted = V.Mount(mountPoint, log.Provide(V.Component(GuardOverANewElementAheadOfAnUpdate)),
-                log.ReportingErrors());
-            log.Clear();
+            using var mounted = MountOnAPanel(host, log, GuardOverANewElementAheadOfAnUpdate);
 
             // Act
             log.Setter<bool>("Shown").Invoke(false);
@@ -432,6 +496,74 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(log.ToString(), Is.EqualTo("caught:Guard:attach:A caught:Guard:U"));
+        }
+
+        // The new element is relocated (FiberZLayerCoordinator), so it attaches where the pass's drain resolves its
+        // queued mount, after the pass has applied.
+        [Component(IsErrorBoundary = true, DisplayName = "Guard")]
+        private static VNode GuardOverANewStackedElementAheadOfAnUpdate()
+        {
+            var (shown, _) = EventLog.UseState("Shown", true);
+            Hooks.UseFallback(_ => V.Component(QuietFallback));
+            return V.Fragment(
+                V.Div(key: "a", className: "relative", children: new VNode[]
+                {
+                    shown ? null : V.Custom<ThrowsAsItAttaches>(className: "absolute z-10", name: "Z", key: "thrower"),
+                }),
+                V.Component(UpdatedThrowing, shown, key: "u"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base reports an error a wave's write throws ahead of a layout cleanup's.
+        // Filing a relocated element's failed placement in ChildReconciler.PlaceRelocated at the place behind every op
+        // applied, rather than at ZLayerMountNode.Place, reddens it: the placement then follows the component's turn.
+        [Test]
+        public void Given_ABoundaryOverANewStackedElementThatThrowsAsItAttachesAheadOfAComponentWhoseLayoutCleanupThrows_When_TheyCommit_Then_TheAttachErrorIsReportedFirst()
+        {
+            // Arrange — a real panel, which is what runs an attach callback
+            using var host = new HeadlessEditorPanelHost();
+            var log = new EventLog();
+            using var mounted = MountOnAPanel(host, log, GuardOverANewStackedElementAheadOfAnUpdate);
+
+            // Act
+            log.Setter<bool>("Shown").Invoke(false);
+            mounted.DrainForTest();
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("caught:Guard:attach:Z:z caught:Guard:U"));
+        }
+
+        // The Portal ends the pass at its mount, which follows the apply that runs the deletion's teardown.
+        [Component(IsErrorBoundary = true, DisplayName = "Guard")]
+        private static VNode GuardOverADeletionAheadOfANewPortal()
+        {
+            var (shown, _) = EventLog.UseState("Shown", true);
+            Hooks.UseFallback(_ => V.Component(QuietFallback));
+            return V.Fragment(
+                V.Div(key: "x", children: new VNode[] { shown ? V.Component(DeletedThrowing, key: "d") : null }),
+                shown
+                    ? null
+                    : V.Portal(s_portalTarget, new VNode[] { V.Custom<ThrowsAsItAttaches>(name: "P", key: "thrower") },
+                        key: "portal"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base reports what a deletion's teardown throws ahead of a Portal child's.
+        // Deleting the count of the ops applied from ChildListWrites.Apply reddens it: the Portal's mount, which runs
+        // after the apply, then takes the place ahead of every op.
+        [Test]
+        public void Given_ABoundaryOverAnElementWhoseChildsDeletionThrowsAheadOfANewPortalWhoseChildThrowsAsItAttaches_When_TheyCommit_Then_TheDeletionsErrorIsReportedFirst()
+        {
+            // Arrange — a real panel, which is what runs an attach callback, holding the Portal's target
+            using var host = new HeadlessEditorPanelHost();
+            host.Root.Add(s_portalTarget);
+            var log = new EventLog();
+            using var mounted = MountOnAPanel(host, log, GuardOverADeletionAheadOfANewPortal);
+
+            // Act
+            log.Setter<bool>("Shown").Invoke(false);
+            mounted.DrainForTest();
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("caught:Guard:D caught:Guard:attach:P"));
         }
 
         private static readonly Func<VisualElement, Action> s_throwingRef =
@@ -512,15 +644,11 @@ namespace Velvet.Tests
             Assert.That(log.ToString(), Is.EqualTo("ins-x:0 ins:1"));
         }
 
+        // The layout effect is set up twice where StrictMode reaches the mount, which the reading carries.
         [Component]
         private static VNode StrictInserts()
         {
-            var log = EventLog.UseLog();
-            Hooks.UseInsertionEffect(() =>
-            {
-                log.Add("ins:S");
-                return () => log.Add("ins-x:S");
-            }, Array.Empty<object>());
+            EventLog.UseInsertionAndLayoutEffects("S", Array.Empty<object>());
             return V.Div();
         }
 
@@ -531,7 +659,7 @@ namespace Velvet.Tests
         // React's doubleInvokeEffectsOnFiber runs a mount's layout and passive effects a second time, not its insertion
         // effects.
         [Test]
-        public void Given_StrictModeOn_When_AComponentWithAnInsertionEffectMounts_Then_TheEffectIsSetUpOnce()
+        public void Given_StrictModeOn_When_AComponentWithAnInsertionAndALayoutEffectMounts_Then_OnlyTheLayoutEffectIsSetUpTwice()
         {
             // Arrange
             var log = new EventLog();
@@ -541,7 +669,7 @@ namespace Velvet.Tests
             using var mounted = V.Mount(_root, log.Provide(V.Component(HoldsStrictInserts)));
 
             // Assert
-            Assert.That(log.ToString(), Is.EqualTo("ins:S"));
+            Assert.That(log.ToString(), Is.EqualTo("ins:S lay:S lay-x:S lay:S"));
         }
 
         #endregion
@@ -892,9 +1020,9 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base leaves the deps of a render a suspend abandons unpromoted.
-        // Promoting the insertion effects' deps in FiberEffects.RunTurnEnd whether or not the pass journal holds the render
-        // reddens it: the abandoned render's turn then promotes them, and the render that retries finds its insertion
-        // effect's deps unchanged.
+        // Promoting the insertion effects' deps in FiberEffects.RunTurnEnd unconditionally, with or without insertion
+        // effects pending and whether or not the pass journal holds the render, reddens it: the abandoned render's turn
+        // then promotes them, and the render that retries finds its insertion effect's deps unchanged.
         [Test]
         public void Given_AComponentWhoseInsertionEffectDepsChangeInARenderASuspendAbandons_When_TheReadResolves_Then_TheRetryRunsTheEffect()
         {
@@ -1128,25 +1256,24 @@ namespace Velvet.Tests
             Assert.That(string.Join(" ", s_log), Is.EqualTo("holder-x sibling-x"));
         }
 
-        [Component]
-        private static VNode BlockingReader(int blocked)
-        {
-            var value = Hooks.Use<int>(_ => blocked > 0
-                ? (s_source = new VelvetTaskCompletionSource<int>()).Task
-                : VelvetTask.FromResult(0), blocked);
-            return V.Label(text: "reader:" + value);
-        }
-
         #endregion
 
         #region A reveal
 
-        // Updated by its own state, so the drain renders it whether or not the reveal renders its parent again.
+        // Suspends on a read that never resolves while blocked, and reads at once otherwise.
         [Component]
-        private static VNode UpdatedAheadOfTheSuspense()
+        private static VNode BlockingReader(int blocked)
         {
-            var (value, _) = EventLog.UseState("U", 0);
-            EventLog.UseInsertionAndLayoutEffects("U", new object[] { value });
+            var value = Hooks.Use<int>(_ => blocked > 0
+                ? new VelvetTaskCompletionSource<int>().Task
+                : VelvetTask.FromResult(0), blocked);
+            return V.Label(text: "reader:" + value);
+        }
+
+        [Component]
+        private static VNode UpdatedAheadOfTheSuspense(int blocked)
+        {
+            EventLog.UseInsertionAndLayoutEffects("U", new object[] { blocked });
             return V.Div();
         }
 
@@ -1164,13 +1291,14 @@ namespace Velvet.Tests
             return V.Div();
         }
 
+        // One state updates the component and reveals the Suspense, so React commits both in one commit.
         [Component]
         private static VNode UpdatedThenARevealedSuspense()
         {
             var (blocked, _) = EventLog.UseState("Blocked", 0);
             return V.Div(children: new VNode[]
             {
-                V.Component(UpdatedAheadOfTheSuspense, key: "u"),
+                V.Component(UpdatedAheadOfTheSuspense, blocked, key: "u"),
                 V.Suspense(fallback: V.Component(FallbackWithCleanups, key: "f"), children: new VNode[]
                 {
                     V.Component(HiddenWithNothingHeld, key: "h"),
@@ -1180,7 +1308,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AComponentUpdatedAheadOfASuspense_When_OneDrainRendersItAndTheSuspensesRevealThatRemovesItsFallback_Then_TheUpdatedComponentsCleanupsRunFirst()
+        public void Given_AComponentUpdatedAheadOfASuspense_When_OneUpdateChangesItAndRevealsTheSuspenseRemovingItsFallback_Then_TheUpdatedComponentsCleanupsRunFirst()
         {
             // Arrange
             var log = new EventLog();
@@ -1191,8 +1319,7 @@ namespace Velvet.Tests
             log.Clear();
 
             // Act
-            log.Setter<int>("U").Invoke(1);
-            s_source.TrySetResult(5);
+            log.Setter<int>("Blocked").Invoke(0);
             mounted.GetSchedulerForTest().DrainImmediateForTest();
 
             // Assert
