@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode: the build stopped in Packages/com.velvet.core/Runtime/Reconciler/FiberErrorBoundary.cs",
+ "file": "4430e9c59e71865e50310bca9092af0f06c297b2504da8190e6ead09c4fcd30a",
+ "killers": [],
+ "measured_by": "43922111500",
+ "mutant": {
+  "after": "&&",
+  "before": "||",
+  "column": 38,
+  "line": 403,
+  "operator": "logic",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberErrorBoundary.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "77df84e62b7b22db9de849f53076452d06518cca50904ac9f617346a1acb092e",
+ "verdict": "uncompilable"
+}

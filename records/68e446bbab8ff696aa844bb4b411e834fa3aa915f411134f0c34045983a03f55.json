@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed: Given_TheProjectsStories_When_SmokeTested_Then_EachExampleMountsWithoutAnError",
+ "file": "84ef70713c3bf9df40be129ae3e25c48a474bda90f01f773e3d2062e805b293c",
+ "killers": [
+  {
+   "case": "Velvet.Tests.VelvetPreviewSmokeTestTests.Given_TheProjectsStories_When_SmokeTested_Then_EachExampleMountsWithoutAnError",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Preview/Tests/Editor/VelvetPreviewSmokeTestTests.cs": "28a269285379bfb3f76008dc0a7543a354dcc6c13a987832b1bc0ff9108151c3",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26"
+   }
+  }
+ ],
+ "measured_by": "43922111500",
+ "mutant": {
+  "after": ";",
+  "before": "_settle = Settle;",
+  "column": 12,
+  "line": 77,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberFontScope.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "77df84e62b7b22db9de849f53076452d06518cca50904ac9f617346a1acb092e",
+ "verdict": "killed"
+}

@@ -1,0 +1,28 @@
+{
+ "detail": "EditMode: 1 failed: Given_AnElementThatIsNotAChild_When_Removed_Then_EveryChildStays",
+ "file": "414b27ae90b68edb8021ff42af514966fdd68f1a004257d1807b3940832c47e2",
+ "killers": [
+  {
+   "case": "Velvet.Tests.HostCommitQueueRemovalTests.Given_AnElementThatIsNotAChild_When_Removed_Then_EveryChildStays",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/HostCommitQueueRemovalTests.cs": "3e92d96d0838f72b2ef60886694ca5dac7babdbb48a4d740457b2fc108fdae2a"
+   }
+  }
+ ],
+ "measured_by": "43922111500",
+ "mutant": {
+  "after": "<=",
+  "before": "<",
+  "column": 33,
+  "line": 43,
+  "operator": "boundary",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ContainerRows.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "77df84e62b7b22db9de849f53076452d06518cca50904ac9f617346a1acb092e",
+ "verdict": "killed"
+}

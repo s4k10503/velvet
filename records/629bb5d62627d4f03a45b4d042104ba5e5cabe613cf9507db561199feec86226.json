@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed among the 148 case(s) that ran the site: Given_AMemoizedComponentParkedInAPrimaryItsSuspenseHid_When_FramesPassAndTheSuspenseReveals_Then_ARowItsPassReachesReadsTheProvidersValue",
+ "file": "b7559776d6f88d03170bde7c75a9de73759a261d5e23369ee3f7067b13443cbf",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ParkedPassResumeTests.Given_AMemoizedComponentParkedInAPrimaryItsSuspenseHid_When_FramesPassAndTheSuspenseReveals_Then_ARowItsPassReachesReadsTheProvidersValue",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ParkedPassResumeTests.cs": "72a4c64fc996b36d6e4c2ed9e87ffd11b935c402c6590d4cb05f1534008e56d4",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  }
+ ],
+ "measured_by": "43922111500",
+ "mutant": {
+  "after": ";",
+  "before": "AddWithPortalChildren(row, roots, i, commit, walk, hidden);",
+  "column": 16,
+  "line": 1748,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/GeneralPathReconciler.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "77df84e62b7b22db9de849f53076452d06518cca50904ac9f617346a1acb092e",
+ "verdict": "killed"
+}

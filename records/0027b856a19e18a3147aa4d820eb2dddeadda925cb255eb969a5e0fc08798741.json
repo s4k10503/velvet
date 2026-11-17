@@ -1,0 +1,32 @@
+{
+ "detail": "EditMode: 1 failed among the 208 case(s) that ran the site: Given_AnUnplacedFiberStartingBeforeAnEarlierSibling_When_TheLimitIsRead_Then_ItIsThatSiblingsStart",
+ "file": "c14f21d539b4281a0d0b79d5fbce8021a01e58875368d8b0f96a4dd09067eefb",
+ "killers": [
+  {
+   "case": "Velvet.Tests.InlineSlotChainOrderTests.Given_AnUnplacedFiberStartingBeforeAnEarlierSibling_When_TheLimitIsRead_Then_ItIsThatSiblingsStart",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/InlineSlotChainOrderTests.cs": "0eb6caf673380ce1e1b9f1a30deb6711fb23d9ff6c2898bc58f7b45b41a54fa0",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  }
+ ],
+ "measured_by": "43922111500",
+ "mutant": {
+  "after": ">=",
+  "before": ">",
+  "column": 45,
+  "line": 39,
+  "operator": "boundary",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberCommitWork.cs",
+  "shadowed": [
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "77df84e62b7b22db9de849f53076452d06518cca50904ac9f617346a1acb092e",
+ "verdict": "killed"
+}

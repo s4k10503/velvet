@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "e6ef325689f2e55ce58ac0021ca1fc961969e90233c2d086016f4755ad8535a5",
+ "killers": [],
+ "measured_by": "43922111500",
+ "mutant": {
+  "after": ";",
+  "before": "ChildListWrites.Remove(caster, spacer);",
+  "column": 20,
+  "line": 74,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/SilhouetteBoundsSpacer.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "77df84e62b7b22db9de849f53076452d06518cca50904ac9f617346a1acb092e",
+ "verdict": "survived"
+}
