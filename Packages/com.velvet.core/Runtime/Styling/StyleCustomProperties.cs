@@ -573,6 +573,11 @@ namespace Velvet
                 return true;
             }
             var built = s_built.ToString();
+            var slash = StyleColorValueParser.ColorModifierSlashIndex(built, 0);
+            if (slash >= 0 && StyleColorValueParser.ModifierOutside(built.AsSpan(slash + 1)))
+            {
+                return false;
+            }
             var shape = UtilityShape.Of(built);
             return !StyleColorValueParser.RejectsAsColour(
                 built.Substring(shape.BodyStart, shape.MainClose - shape.BodyStart).Replace('_', ' '));

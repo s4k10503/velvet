@@ -91,14 +91,18 @@ namespace Velvet
             ["to"] = new[] { "length", "percentage" },
         };
 
-        // Whether the browser rejects value where it is written as a <color>: a value TryParseColor does not read,
-        // unless it is a function or a bare word, which this does not judge (var(), oklch(), currentcolor, a named
-        // colour TryParseColor does not know).
+        // Whether the browser rejects value where it is written as a <color>: a value TryParseColor does not read, unless it
+        // is a function, which this does not judge (var(), oklch()), or a word naming a colour (a named colour, currentcolor,
+        // transparent or a system colour: TailwindDataTypes.IsNamedColor), which TryParseColor may not know.
         internal static bool RejectsAsColour(string value)
         {
             if (value.IndexOf('(') >= 0 || TryParseColor(value.AsSpan(), out _))
             {
                 return false;
+            }
+            if (value.Length > 0 && Array.TrueForAll(value.ToCharArray(), char.IsLetter))
+            {
+                return !TailwindDataTypes.IsNamedColor(value);
             }
             foreach (var c in value)
             {
@@ -389,6 +393,10 @@ namespace Velvet
             }
             return percent < 0f || percent > 100f ? ColourVerdict.Rejected : ColourVerdict.Valid;
         }
+
+        // Whether an opacity modifier is a percentage outside 0..100, which leaves the colour Tailwind mixes it into invalid.
+        internal static bool ModifierOutside(ReadOnlySpan<char> modifier)
+            => TryParseModifierPercent(modifier, out var percent) && (percent < 0f || percent > 100f);
 
         // The colour of a palette name or a bracket, either followed by an opacity modifier (`red-500/50`, `[#f00]/50`),
         // at that opacity. False where the token is no colour or the modifier is none Tailwind generates.

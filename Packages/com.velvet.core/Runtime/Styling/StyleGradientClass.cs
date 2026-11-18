@@ -811,13 +811,20 @@ namespace Velvet
             => at != null ? (float.NaN, float.NaN)
                 : fraction == 0f ? (float.NaN, px) : px == 0f ? (fraction, float.NaN) : (fraction, px);
 
-        // Tailwind registers the stop colours as <color> with a transparent initial value, so a bracket it writes
-        // as a colour and the browser rejects leaves the stop transparent rather than unset.
+        // Tailwind registers the stop colours as <color> with a transparent initial value, so a bracket it writes as a
+        // colour and the browser rejects, a value that is none or an opacity modifier past 100%, leaves the stop
+        // transparent rather than unset.
         private static StopToken ColourStopToken(string suffix)
         {
             if (StyleColorValueParser.TryResolveColorWithModifier(suffix, out var c))
             {
                 return new StopToken { IsColor = true, Color = c };
+            }
+            var slash = StyleColorValueParser.ColorModifierSlashIndex(suffix, 0);
+            if (slash >= 0 && VelvetPalette.TryResolveColorToken(suffix.Substring(0, slash), out _)
+                && StyleColorValueParser.ModifierOutside(suffix.AsSpan(slash + 1)))
+            {
+                return new StopToken { IsColor = true, Color = Color.clear };
             }
             return StyleArbitraryValueResolver.TryStripBrackets(suffix, 0, out var inner)
                 && StyleColorValueParser.RejectsAsColour(inner.ToString())

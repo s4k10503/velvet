@@ -502,5 +502,99 @@ namespace Velvet.Tests
             // Assert
             Assert.That(tokens[tokens.Length - 1], Is.Not.EqualTo("caret-inherit"));
         }
+
+        // Chromium computes the unset for a bracket reading a word that names no colour (`--w: auto`): a transparent
+        // background, currentcolor for a divider, and transparent for both stops.
+        [Test]
+        public void Given_ABackgroundBracketOfAnotherTypeReadingAWordNamingNoColour_When_ItsReaderIsRead_Then_TheBackgroundIsInitial()
+        {
+            // Act
+            using var scope = new ReconcilerScope();
+            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(),
+                new VNode[] { V.Div(className: "[--w:auto] bg-[#0000ff] bg-[number:var(--w)]/50") });
+
+            // Assert
+            Assert.That(scope.Root[0].style.backgroundColor.keyword, Is.EqualTo(UnityEngine.UIElements.StyleKeyword.Initial));
+        }
+
+        [Test]
+        public void Given_ADivideBracketOfAnotherTypeReadingAWordNamingNoColour_When_ItsReaderIsRead_Then_TheDividerHasNoColour()
+        {
+            // Act
+            StyleDivideClass.TryExtract(ComposedFor("[--w:auto] divide-x-2 divide-[#0000ff] divide-[number:var(--w)]/50"), out var spec);
+
+            // Assert
+            Assert.That(spec.HasColor, Is.False);
+        }
+
+        [Test]
+        public void Given_AStopBracketOfAnotherTypeReadingAWordNamingNoColour_When_ItsReaderIsRead_Then_TheStopIsTransparent()
+        {
+            // Act
+            StyleGradientClass.TryExtract(
+                ComposedFor("[--w:auto] bg-linear-to-r from-[#0000ff] from-[number:var(--w)]/50 to-[#00ff00]"), out var spec);
+
+            // Assert
+            Assert.That(spec.Stops != null && spec.Stops.Length > 0 ? ColorUtility.ToHtmlStringRGBA(spec.Stops[0].Color) : "no stop",
+                Is.EqualTo("00000000"));
+        }
+
+        // A modifier past 100% leaves the colour invalid: Chromium makes a literal stop transparent and unsets a divider or
+        // a stop reading a variable.
+        [Test]
+        public void Given_AStopLiteralWithAModifierPast100_When_Extracted_Then_TheStopIsTransparent()
+        {
+            // Act
+            StyleGradientClass.TryExtract(
+                new[] { "bg-linear-to-r", "from-[#0000ff]", "from-[#ff0000]/150", "to-[#00ff00]" }, out var spec);
+
+            // Assert
+            Assert.That(spec.Stops != null && spec.Stops.Length > 0 ? ColorUtility.ToHtmlStringRGBA(spec.Stops[0].Color) : "no stop",
+                Is.EqualTo("00000000"));
+        }
+
+        [Test]
+        public void Given_ADivideBracketOfAnotherTypeReadingAColourWithAModifierPast100_When_ItsReaderIsRead_Then_TheDividerHasNoColour()
+        {
+            // Act
+            StyleDivideClass.TryExtract(ComposedFor("[--c:#ff0000] divide-x-2 divide-[#0000ff] divide-[number:var(--c)]/150"), out var spec);
+
+            // Assert
+            Assert.That(spec.HasColor, Is.False);
+        }
+
+        [Test]
+        public void Given_AStopBracketOfAnotherTypeReadingAColourWithAModifierPast100_When_ItsReaderIsRead_Then_TheStopIsTransparent()
+        {
+            // Act
+            StyleGradientClass.TryExtract(
+                ComposedFor("[--c:#ff0000] bg-linear-to-r from-[#0000ff] from-[number:var(--c)]/150 to-[#00ff00]"), out var spec);
+
+            // Assert
+            Assert.That(spec.Stops != null && spec.Stops.Length > 0 ? ColorUtility.ToHtmlStringRGBA(spec.Stops[0].Color) : "no stop",
+                Is.EqualTo("00000000"));
+        }
+
+        // The palette forms take a modifier too: Chromium draws `divide-red-500/50` and `from-red-500/50` at 50%.
+        [Test]
+        public void Given_ADividePaletteNameWithAModifier_When_Extracted_Then_ItIsThatColourAtThatOpacity()
+        {
+            // Act
+            StyleDivideClass.TryExtract(new[] { "divide-x-2", "divide-red-500/50" }, out var spec);
+
+            // Assert
+            Assert.That(ColorUtility.ToHtmlStringRGBA(spec.Color), Is.EqualTo(Palette("red-500").Substring(0, 6) + "80"));
+        }
+
+        [Test]
+        public void Given_AStopPaletteNameWithAModifier_When_Extracted_Then_ItIsThatColourAtThatOpacity()
+        {
+            // Act
+            StyleGradientClass.TryExtract(new[] { "bg-linear-to-r", "from-red-500/50", "to-[#00ff00]" }, out var spec);
+
+            // Assert
+            Assert.That(spec.Stops != null && spec.Stops.Length > 0 ? ColorUtility.ToHtmlStringRGBA(spec.Stops[0].Color) : "no stop",
+                Is.EqualTo(Palette("red-500").Substring(0, 6) + "80"));
+        }
     }
 }
