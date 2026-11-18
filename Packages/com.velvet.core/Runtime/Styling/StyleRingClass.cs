@@ -396,6 +396,11 @@ namespace Velvet
                 return;
             }
             // A bracketed modifier closes a bracket of its own, which is not the value's.
+            if (MixesMismatchedHint(suffix, root))
+            {
+                slots.Colour.Offer(important, true);
+                return;
+            }
             if (StyleColorValueParser.ColorModifierSlashIndex(suffix, 0) != -1
                 || !StyleArbitraryValueResolver.TryStripBrackets(suffix, 0, out var inner))
             {
@@ -424,6 +429,16 @@ namespace Velvet
                 return;
             }
             slots.Colour.Offer(important, StyleColorValueParser.RejectsAsColour(value));
+        }
+
+        // Whether suffix is a bracket whose type hint is neither the colour's nor root's width's, with an opacity modifier:
+        // Tailwind mixes the value into a colour, which it is not.
+        private static bool MixesMismatchedHint(string suffix, string root)
+        {
+            var slash = StyleColorValueParser.ColorModifierSlashIndex(suffix, 0);
+            return slash > 2 && suffix[0] == '[' && suffix[slash - 1] == ']'
+                && StyleArbitraryValueResolver.TrySplitTypeHint(suffix.AsSpan(1, slash - 2), out var hint, out _)
+                && hint != null && hint != "color" && !StyleColorValueParser.HintSelectsNonColour(root, hint);
         }
 
         // Tailwind's isPositiveInteger: String(Number(suffix)) === suffix, so digits without a leading zero, naming

@@ -35,3 +35,8 @@
 - A `shadow-[var(--x)]`, `ring-[length:var(--w)]` or `inset-ring-[length:var(--w)]` whose property a stylesheet
   declares no longer drops the element's ring and shadow before the property is first read: the unset is written after the
   element's styles are applied and the property is read again.
+- A `ring-`, `ring-offset-` or `inset-ring-` bracket typed as anything but a length, with an opacity modifier
+  (`ring-[number:5px]/50`), is a colour Tailwind mixes the value into, which the browser finds invalid: it now discards
+  the box-shadow, where the class was ignored. Chromium does the same for `ring-2 ring-[number:5px]/50`. The inheriting
+  colour roots (`fill-`, `stroke-`, `accent-`, `caret-`) under a hint of another type, which the browser computes as the
+  parent's value, are still ignored.

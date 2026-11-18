@@ -293,5 +293,42 @@ namespace Velvet.Tests
             // Assert
             Assert.That(reader, Is.Null);
         }
+
+        // Tailwind mixes the value of a bracket not typed as a colour into one when it has an opacity modifier, which the
+        // browser finds invalid where it is used (Chromium computes no box-shadow for `ring-2 ring-[number:5px]/50`).
+        [TestCase("ring-2 ring-[number:5px]/50")]
+        [TestCase("ring ring-offset-2 ring-offset-[number:5px]/50")]
+        [TestCase("shadow-lg inset-ring inset-ring-[percentage:5%]/50")]
+        public void Given_ARingBracketOfAnotherTypeWithAModifier_When_Extracted_Then_TheBoxShadowIsDiscarded(string classes)
+        {
+            // Act
+            var drawn = StyleShadowClass.TryExtract(StyleSpacingPrecedence.Normalize(classes.Split(' ')), out _)
+                || StyleRingClass.TryExtract(StyleSpacingPrecedence.Normalize(classes.Split(' ')), out _);
+
+            // Assert
+            Assert.That(drawn, Is.False);
+        }
+
+        [TestCase("ring-[number:var(--x)]/50")]
+        [TestCase("ring-offset-[number:var(--x)]/50")]
+        [TestCase("inset-ring-[percentage:var(--x)]/50")]
+        public void Given_AModifierOnARingBracketOfAnotherTypeReadingAProperty_When_Read_Then_ItIsAReader(string cls)
+        {
+            // Act
+            var reader = StyleCustomPropertyClass.Consumer(cls);
+
+            // Assert
+            Assert.That(reader, Is.Not.Null);
+        }
+
+        [Test]
+        public void Given_ARingBracketOfAnotherTypeWithAModifierReadingADeclaredProperty_When_Mounted_Then_NoRingIsDrawn()
+        {
+            // Act
+            var ring = Ring("[--x:5px] ring-2 ring-[number:var(--x)]/50");
+
+            // Assert
+            Assert.That(ring, Is.EqualTo(0f));
+        }
     }
 }

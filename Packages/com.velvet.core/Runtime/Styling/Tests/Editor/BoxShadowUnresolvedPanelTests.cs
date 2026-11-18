@@ -32,12 +32,8 @@ namespace Velvet.Tests
         }
 
         // The scheduler tick on which every reader is read again once its element is on a panel.
-        // The first tick leaves a reader its one wait after the attach, and the second reads it again.
-        private static void ReadReaders(VisualElement card)
-        {
-            EditorPanelTestHelpers.DriveSchedulerOnce(card.panel);
-            EditorPanelTestHelpers.DriveSchedulerOnce(card.panel);
-        }
+        // The tick on which every reader is read again once its element is on a panel.
+        private static void ReadReaders(VisualElement card) => EditorPanelTestHelpers.DriveSchedulerOnce(card.panel);
 
         private float Ring(VisualElement card)
         {
@@ -130,21 +126,46 @@ namespace Velvet.Tests
             Assert.That(Ring(card), Is.EqualTo(25f));
         }
 
-        [Test]
-        public void Given_AnElementWithTwoReadersOfStylesheetVariables_When_ItIsReattachedAheadOfItsStylePass_Then_NeitherIsDropped()
+        // The card is read where no stylesheet declares its properties, then put under a host whose stylesheet does, ahead of
+        // that host's style pass on it: what it read before is what it would read again without the styles applied.
+        private VisualElement Reparented()
         {
-            // Arrange — read once, then taken off the panel with the layout it was given.
-            _window.rootVisualElement.styleSheets.Add(UnityEditor.AssetDatabase.LoadAssetAtPath<StyleSheet>(ReaderSheet));
-            var card = Mount("shadow-var-host ring-[length:var(--w)] shadow-[var(--x)]");
+            _mounted = V.Mount(_window.rootVisualElement, V.Div(children: new VNode?[]
+            {
+                V.Div(name: "bare", children: new VNode?[]
+                {
+                    V.Div(name: "card", className: "ring-[length:var(--w)] shadow-[var(--x)]"),
+                }),
+                V.Div(name: "declaring", className: "shadow-var-host"),
+            }));
+            var declaring = _window.rootVisualElement.Q<VisualElement>("declaring");
+            declaring.styleSheets.Add(UnityEditor.AssetDatabase.LoadAssetAtPath<StyleSheet>(ReaderSheet));
+            var card = _window.rootVisualElement.Q<VisualElement>("card");
+            EditorPanelTestHelpers.ForcePanelUpdate(card.panel);
             ReadReaders(card);
-            card.RemoveFromHierarchy();
-
-            // Act
-            _window.rootVisualElement.Add(card);
+            declaring.Add(card);
             EditorPanelTestHelpers.DriveSchedulerOnce(card.panel);
+            return card;
+        }
+
+        [Test]
+        public void Given_AnElementWithTwoReadersOfStylesheetVariables_When_ItIsMovedUnderTheHostDeclaringThem_Then_ItsRingIsDrawn()
+        {
+            // Act
+            var card = Reparented();
 
             // Assert
-            Assert.That(Ring(card) > 0f && Shadow(card), Is.True);
+            Assert.That(Ring(card), Is.EqualTo(3f));
+        }
+
+        [Test]
+        public void Given_AnElementWithTwoReadersOfStylesheetVariables_When_ItIsMovedUnderTheHostDeclaringThem_Then_ItsShadowIsDrawn()
+        {
+            // Act
+            var card = Reparented();
+
+            // Assert
+            Assert.That(Shadow(card), Is.True);
         }
 
         [Test]

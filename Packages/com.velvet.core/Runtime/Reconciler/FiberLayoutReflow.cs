@@ -49,6 +49,19 @@ namespace Velvet
             }
         }
 
+        // Whether element's panel is as the last pass left it, and a later write by the caller, which the pass need not run
+        // again for, is taken as part of that pass.
+        internal static bool IsCurrent(IPanel? panel)
+            => panel != null && s_panels.TryGetValue(panel, out var layout) && layout != null && layout.IsCurrent();
+
+        internal static void Accept(IPanel? panel)
+        {
+            if (panel != null && s_panels.TryGetValue(panel, out var layout))
+            {
+                layout?.Accept();
+            }
+        }
+
         internal static bool ReadsLayout(ComponentFiber fiber)
         {
             if (fiber.PendingLayoutEffects is { Count: > 0 }) return true;
@@ -225,6 +238,10 @@ namespace Velvet
             // An unchanged panel version is taken as a layout this class has already brought up to date: the panel
             // moves it on every version change of an element on it, and the update case of
             // UseLayoutEffectLayoutReadTests fails when a layout-dirtying one stops moving it.
+            internal bool IsCurrent() => _laidOut && _version() == _laidOutVersion;
+
+            internal void Accept() => _laidOutVersion = _version();
+
             internal bool EnsureLaidOut()
             {
                 // MUTANT_SURVIVES(equivalent): a computation over a panel nothing changed on changes nothing.

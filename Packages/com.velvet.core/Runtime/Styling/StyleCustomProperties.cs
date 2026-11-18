@@ -535,6 +535,7 @@ namespace Velvet
                 payloads = new[] { consumer.UnsetUtility };
             }
             payloads = WithBang(consumer, payloads);
+            var current = IsCurrentBeforeUnset(target, consumer, resolved);
             Withdraw(target, consumer);
             consumer.Source = source;
             consumer.Resolved = true;
@@ -550,6 +551,20 @@ namespace Velvet
                     declarations: Repeat(consumer.Declaration, payloads.Length));
             }
             SettleWritten(target, consumer, WrittenBy(consumer.Applied, unset ? consumer.Property : null));
+            AcceptUnset(target, current);
+        }
+
+        // Whether the panel is as its last pass left it where consumer is about to write the unset that discards a
+        // box-shadow: that write is then no change a later reader's pass has to run for, which each would otherwise repeat.
+        private static bool IsCurrentBeforeUnset(VisualElement target, Consumer consumer, bool resolved)
+            => !resolved && consumer.DefersUnset && FiberLayoutReflow.IsCurrent(target.panel);
+
+        private static void AcceptUnset(VisualElement target, bool current)
+        {
+            if (current)
+            {
+                FiberLayoutReflow.Accept(target.panel);
+            }
         }
 
         // Whether consumer, whose var() did not resolve, waits before it writes the unset that discards the box-shadow,
