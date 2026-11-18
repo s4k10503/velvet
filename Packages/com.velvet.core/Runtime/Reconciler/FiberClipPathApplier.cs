@@ -164,15 +164,14 @@ namespace Velvet
         // Wraps an already-mounted element in place, inserting the wrapper at the element's slot.
         private void WrapClipPathInPlace(VisualElement element, ClipPathSpec? spec, bool correction = false)
         {
-            var parent = element.parent;
+            var parent = ChildListWrites.ParentOf(element);
             if (parent == null)
             {
                 // Not in the hierarchy (defensive): build the binding but there is no slot to insert into.
                 BuildClipPathWrapper(element, spec, correction);
                 return;
             }
-            ChildListWrites.SyncLive(parent);
-            var index = parent.IndexOf(element);
+            var index = ChildListWrites.PhysicalIndexOf(parent, element);
             var wrapper = BuildClipPathWrapper(element, spec, correction); // removes element from parent
             ChildListWrites.Insert(parent, index, wrapper);
         }

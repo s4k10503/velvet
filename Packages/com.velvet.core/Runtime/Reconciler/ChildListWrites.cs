@@ -290,26 +290,25 @@ namespace Velvet
         internal static void Add(VisualElement parent, VisualElement child)
         {
             var container = ContentOf(parent);
-            InsertCore(container, container.hierarchy.childCount, child, viaHierarchy: false, parent);
+            InsertCore(container, CountOf(container), child, viaHierarchy: false, parent);
         }
 
         internal static void HierarchyInsert(VisualElement parent, int index, VisualElement child)
             => InsertCore(parent, index, child, viaHierarchy: true, parent);
 
         internal static void HierarchyAdd(VisualElement parent, VisualElement child)
-            => InsertCore(parent, parent.hierarchy.childCount, child, viaHierarchy: true, parent);
+            => InsertCore(parent, CountOf(parent), child, viaHierarchy: true, parent);
 
         // UI Toolkit refuses an index past the child count as it stood before it detaches the child, then detaches it
         // and puts it at the index, clamped to the list it has left. The model takes the same two steps.
         private static void InsertCore(VisualElement container, int index, VisualElement child, bool viaHierarchy,
             VisualElement caller)
         {
-            if (RecordingPass(container, child) is { } pass)
+            if ((RecordingPass(container, child) ?? HoldingPass(container, child)) is { } pass)
             {
                 RecordInsert(pass, container, index, child, viaHierarchy, caller);
                 return;
             }
-            FlushIfPending(container, child);
             var left = child.hierarchy.parent;
             // MUTANT_SURVIVES(equivalent, arithmetic): readAt reaches only the probe in Agrees, and past the last child that probe repeats the last-child comparison made before it.
             var rows = Enter(container, Math.Min(index, container.hierarchy.childCount - 1));
@@ -342,7 +341,12 @@ namespace Velvet
                 return;
             }
             var container = ContentOf(parent);
-            FlushIfPending(container, child);
+            if (HoldingPass(container, child) is { } holding)
+            {
+                RequireChildOf(container, child);
+                RecordRemoveChild(holding, child);
+                return;
+            }
             var rows = Enter(container, -1);
             try
             {
@@ -358,7 +362,17 @@ namespace Velvet
 
         internal static void HierarchyRemove(VisualElement parent, VisualElement child)
         {
-            FlushIfPending(parent, child);
+            if (s_current is { Applying: true } applying)
+            {
+                RecordRemoveChild(applying, child);
+                return;
+            }
+            if (HoldingPass(parent, child) is { } holding)
+            {
+                RequireChildOf(parent, child);
+                RecordRemoveChild(holding, child);
+                return;
+            }
             var rows = Enter(parent, -1);
             try
             {
@@ -380,7 +394,11 @@ namespace Velvet
                 RecordRemoveAt(applying, container, parent, index);
                 return;
             }
-            FlushIfPending(container, null);
+            if (HoldingPass(container, null) is { } holding)
+            {
+                RecordRemoveAt(holding, container, parent, index);
+                return;
+            }
             var rows = Enter(container, index);
             try
             {
@@ -401,7 +419,11 @@ namespace Velvet
                 RecordRemoveChild(applying, child);
                 return;
             }
-            FlushIfPending(null, child);
+            if (HoldingPass(null, child) is { } holding)
+            {
+                RecordRemoveChild(holding, child);
+                return;
+            }
             var parent = child.hierarchy.parent;
             if (parent == null)
             {
@@ -425,7 +447,11 @@ namespace Velvet
         internal static void Clear(VisualElement parent)
         {
             var container = ContentOf(parent);
-            FlushIfPending(container, null);
+            if ((s_current is { Applying: true } applying ? applying : HoldingPass(container, null)) is { } recording)
+            {
+                RecordClear(recording, container, parent);
+                return;
+            }
             if (container.hierarchy.childCount == 0)
             {
                 parent.Clear();
@@ -453,8 +479,9 @@ namespace Velvet
         // not apply them, and the post-children passes of an element patched at once apply
         // every recorded op first (ApplyPendingPatches). The readers the walk has moved to the model (ParentOf, ChildCount, ElementAtPhysical and
         // the reads above) answer from it meanwhile, and a container with a recorded write is skipped by the checks that
-        // compare the model with the live list. Any other write into such a container applies the recorded ones first,
-        // except one made while they apply, which is recorded behind them.
+        // compare the model with the live list. Insert, Remove, RemoveAt, RemoveFromHierarchy, HierarchyRemove and Clear
+        // made into such a container, or of a child one holds, are recorded behind them too, and so is one made while
+        // they apply; HierarchySort applies them first, since it sorts the live list, and sorts it at once while they apply.
         //
         // The list, and the parents it leaves pending, belong to the ReconcilePass that recorded them, and s_current is
         // the one that is recording or applying, innermost first. Outside every pass nothing is recorded: ParentOf
@@ -633,6 +660,19 @@ namespace Velvet
             Touch(container);
         }
 
+        // UI Toolkit refuses a removal of a child that is not the container's, which a recorded one would not.
+        private static void RequireChildOf(VisualElement container, VisualElement child)
+        {
+            if (!ReferenceEquals(ParentOf(child), container)) throw new ArgumentException("This VisualElement is not my child", nameof(child));
+        }
+
+        // A clear is the removal of every row the model holds, last first.
+        private static void RecordClear(ReconcilePass pass, VisualElement container, VisualElement caller)
+        {
+            var rows = Synced(container, -1);
+            for (var index = rows.TotalCount - 1; index >= 0; index--) RecordRemoveAt(pass, container, caller, index);
+        }
+
         private static void RecordRemoveChild(ReconcilePass pass, VisualElement child)
         {
             var container = ParentOf(child);
@@ -682,20 +722,26 @@ namespace Velvet
             }
         }
 
-        // For a reader of container's live child list: the recorded writes of the container apply first.
+        // For a reader that writes what the live child list holds into the engine (FiberZLayerCoordinator.Realign) or
+        // that reads what the recorded patch halves wrote: the recorded writes of the container apply first.
         internal static void SyncLive(VisualElement container) => FlushIfPending(ContentOf(container), null);
 
 
         private static void FlushIfPending(VisualElement? container, VisualElement? child)
         {
+            if (HoldingPass(container, child) is { } pass) Apply(pass);
+        }
+
+        // The pass whose recorded ops hold the container, the child or the live parent of the child; null where none
+        // does or the pass is applying them. A writer that finds one records its write behind those ops, which the live
+        // list has not taken yet; FlushIfPending applies them instead.
+        private static ReconcilePass? HoldingPass(VisualElement? container, VisualElement? child)
+        {
             var pass = s_current;
-            if (pass == null || pass.Ops.Count == 0 || pass.Applying) return;
-            if ((container != null && pass.PendingContainers.ContainsKey(container))
+            if (pass == null || pass.Ops.Count == 0 || pass.Applying) return null;
+            return (container != null && pass.PendingContainers.ContainsKey(container))
                 || (child != null && (pass.PendingParent.ContainsKey(child)
-                    || (child.hierarchy.parent is { } live && pass.PendingContainers.ContainsKey(live)))))
-            {
-                Apply(pass);
-            }
+                    || (child.hierarchy.parent is { } live && pass.PendingContainers.ContainsKey(live)))) ? pass : null;
         }
 
         // Puts the recorded writes on the live lists in the order they were made and ends recording. An op that throws

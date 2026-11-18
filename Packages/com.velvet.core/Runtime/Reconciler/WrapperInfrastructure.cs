@@ -65,8 +65,7 @@ namespace Velvet
                 ChildListWrites.RemoveFromHierarchy(element);
                 return;
             }
-            ChildListWrites.SyncLive(parent);
-            var index = parent.IndexOf(wrapper);
+            var index = ChildListWrites.PhysicalIndexOf(parent, wrapper);
             ChildListWrites.RemoveFromHierarchy(element);
             ChildListWrites.RemoveFromHierarchy(wrapper);
             ChildListWrites.Insert(parent, index, element);
