@@ -757,6 +757,35 @@ namespace Velvet.Tests
             Assert.That(rewritten, Is.EqualTo(uss));
         }
 
+        [TestCase(":root { --x: a/**/b; }", ":root { --x: \"a b\"; }")]
+        [TestCase(":root { --x: a/**/b/**/c; }", ":root { --x: \"a b c\"; }")]
+        [TestCase(":root { --x: a/**/-b; }", ":root { --x: \"a -b\"; }")]
+        public void Given_IdentifiersGluedByAComment_When_TheSheetIsRewritten_Then_ItsValueIsQuoted(string uss, string expected)
+        {
+            // Arrange
+            // Act
+            var rewritten = RewriteWithin(uss);
+
+            // Assert
+            Assert.That(rewritten, Is.EqualTo(expected));
+        }
+
+        // GREEN_ON_BASE(characterization): the base already leaves each of these as written. A single identifier, a
+        // comment beside whitespace and a comment before another kind of token leave the importer nothing to join.
+        [TestCase(":root { --x: a/**/; }")]
+        [TestCase(":root { --x: /**/a; }")]
+        [TestCase(":root { --x: a /**/ b; }")]
+        [TestCase(":root { --x: a/**/1px; }")]
+        public void Given_ACommentThatGluesNoTwoIdentifiers_When_TheSheetIsRewritten_Then_ItIsUnchanged(string uss)
+        {
+            // Arrange
+            // Act
+            var rewritten = RewriteWithin(uss);
+
+            // Assert
+            Assert.That(rewritten, Is.EqualTo(uss));
+        }
+
         private static readonly TimeSpan RewriteBound = TimeSpan.FromSeconds(10);
 
         // On a thread of its own, so a rewrite that never returns fails its case rather than holding the suite; it then

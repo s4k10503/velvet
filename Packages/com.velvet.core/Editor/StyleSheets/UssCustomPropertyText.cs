@@ -363,7 +363,7 @@ namespace Velvet.Editor
             return text.Length;
         }
 
-        // A comment becomes a space, and so does a line break or a form feed, while a string, an escape and an unquoted
+        // A comment becomes comment, a space unless the caller says otherwise, and so does a line break or a form feed, while a string, an escape and an unquoted
         // URL path are kept whole, so what reads as one inside them stays. badUrl says whether the importer's lexer
         // raises an error on a URL path, which fails the sheet.
         private static string Flatten(string value, out bool badUrl, string comment = " ")
@@ -429,7 +429,8 @@ namespace Velvet.Editor
         }
 
         // Whether the importer would fail, drop or misread value: a token HasUnheldToken finds, or a comment
-        // HasCommentInArguments finds in written, the value before its comments are taken out. A value holding a
+        // HasCommentInArguments finds in written, the value before its comments are taken out, which
+        // HoldsAdjacentStrings also reads, through WithoutComments. A value holding a
         // backslash outside a string is left as written unless its URL is one UrlEnd refuses, so such a token in it
         // still fails the importer.
         internal static bool NeedsQuoting(string value, string written, out bool commentInResource)
@@ -440,11 +441,13 @@ namespace Velvet.Editor
                        || HasCommentInArguments(written, out commentInResource));
         }
 
-        // written as the importer's value builder keeps it, with a comment among the top-level tokens dropped rather than
-        // standing for the whitespace it separates them with.
+        private const string CommentMark = "\u0001";
+
+        // written as the importer's value builder keeps it: a comment among the top-level tokens is no whitespace between
+        // them, and CommentMark stands where it was so the tokens on its two sides stay two.
         private static string WithoutComments(string written)
         {
-            var bare = Flatten(written, out _, string.Empty);
+            var bare = Flatten(written, out _, CommentMark);
             SplitImportant(ref bare, out _);
             return bare.Trim();
         }
@@ -454,12 +457,16 @@ namespace Velvet.Editor
         private static bool HoldsAdjacentStrings(string value)
         {
             var tokens = 0;
-            for (var k = 0; k < value.Length; tokens++)
+            for (var k = 0; k < value.Length;)
             {
                 var end = TokenEnd(value, k);
-                if (value[k] is not ('"' or '\'') && (!StartsIdentifier(value, k) || end > NameEnd(value, k + 1)))
+                if (value[k] != CommentMark[0])
                 {
-                    return false;
+                    if (value[k] is not ('"' or '\'') && (!StartsIdentifier(value, k) || end > NameEnd(value, k + 1)))
+                    {
+                        return false;
+                    }
+                    tokens++;
                 }
                 k = end;
             }

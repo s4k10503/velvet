@@ -166,13 +166,14 @@ spaces do (`rgb(100%, 0%, 0%)` fails it, `rgb(0 0 0 / 50%)` is stored as opaque
 black, `rgb(0.5, 0, 0)` unscaled). So `Velvet.Editor` imports such a file itself,
 storing those custom properties as the text they were written with, a string beside one of those tokens
 (`"a" 1rem`) included, a string glued to an identifier or another string (`"a"b`, which the importer joins into one)
-included too, and a string alone (`"Inter"`) left as written, and writing an `!important` in another case,
+included too (also where a comment is all that separates them: `"a"/**/b`, `a/**/b`), and a string alone (`"Inter"`) left as written, and writing an `!important` in another case,
 which the importer also fails the file on, in lower case. It writes two more values as CSS reads them where the
 importer does not: an `rgb()` or `rgba()` it holds (three integers and an alpha) has a channel above 255 or below 0, and an alpha
 above 1 or below 0, clamped (`rgb(300, 0, 0)` is `rgb(255, 0, 0)`; one stored as text, such as `rgb(300, 0, 0.5)`, keeps its
 numbers, and Velvet's colour reader clamps them), and a `resource()` path the importer would shorten, one holding a
 range (`resource(u+1)`), a dimension (`icon@2x.png`), a percentage, a `#`, an `@` or a function, is stored as the text
-written, and one holding a comment as the text without it. A colour stored as text is read by Velvet's theme tokens,
+written, and one holding a comment as the text without it (a path holding a quote, or a backslash outside a string,
+is left as written, and the importer still stores it shortened). A colour stored as text is read by Velvet's theme tokens,
 not by a stock USS `color: var(--x)`. A new or edited file is imported first by
 the stock importer, which logs its error, and then again by Velvet's once the selection is written to the file's meta
 file; commit that meta file. The two settings of the stock importer's inspector, validation and unsupported selectors,
