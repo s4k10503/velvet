@@ -21,6 +21,8 @@ namespace Velvet.Tests
         // Holds layout-id-test-two, whose two durations pair with two properties, so a narrowing writes the timing lists.
         private const string PairedSheet = "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/LayoutIdTestRules.uss";
 
+        private const string KeywordListSheet = "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/EaseKeywordListTestSheet.uss";
+
         // The fraction of its way a width has covered a quarter of a second into a second-long transition from 0 to
         // 100, on an element whose transition list names inlineMode and which hold arranges.
         private static float QuarterSecondIn(EasingMode inlineMode, Action<VisualElement> hold)
@@ -32,9 +34,10 @@ namespace Velvet.Tests
                 hold(element);
             });
 
-        // The same on an element whose rules, from the class given, resolve the keyword and which write no inline list.
-        private static float QuarterSecondByRule(string ruleClass, Action<VisualElement> hold)
-            => QuarterSecondIn(host => host.Root.styleSheets.Add(AssetDatabase.LoadAssetAtPath<StyleSheet>(Sheet)), element =>
+        // The same on an element whose rules, from the class given in the sheet given, resolve the keyword and which write
+        // no inline list.
+        private static float QuarterSecondByRule(string ruleClass, Action<VisualElement> hold, string sheet = Sheet)
+            => QuarterSecondIn(host => host.Root.styleSheets.Add(AssetDatabase.LoadAssetAtPath<StyleSheet>(sheet)), element =>
             {
                 element.AddToClassList(ruleClass);
                 hold(element);
@@ -109,6 +112,20 @@ namespace Velvet.Tests
             // Act
             var fraction = QuarterSecondByRule("ease-in-test",
                 element => StyleEaseCurve.NoteClasses(element, new[] { "hover:ease-in" }));
+
+            // Assert
+            Assert.That(fraction, Is.EqualTo(expected).Within(0.02f));
+        }
+
+        [Test]
+        public void Given_ATransitionUtilityWhoseRulesGiveWidthEaseOutAndHeightEaseIn_When_AWidthTransitionRunsAQuarterSecond_Then_ItIsWhereTailwindsEaseOutStandsThere()
+        {
+            // Arrange
+            var expected = StyleEaseCurve.Evaluate(new BezierCurve(0f, 0f, 0.2f, 1f), 0.25f);
+
+            // Act
+            var fraction = QuarterSecondByRule("ease-in-then-out-test",
+                element => StyleEaseCurve.NoteClasses(element, new[] { "transition" }), KeywordListSheet);
 
             // Assert
             Assert.That(fraction, Is.EqualTo(expected).Within(0.02f));
