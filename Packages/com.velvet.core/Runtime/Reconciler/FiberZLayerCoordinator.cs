@@ -168,9 +168,17 @@ namespace Velvet
             return true;
         }
 
-        // The element occupying classElement's slot: its clip-path wrapper where one holds it.
+        // The element occupying classElement's slot: its clip-path wrapper or its wrapElement wrapper where one holds it.
         internal static VisualElement SlotOf(ReconcilerContext ctx, VisualElement classElement)
-            => ctx.ClipPathBindings.TryGetValue(classElement, out var binding) ? binding.Wrapper : classElement;
+        {
+            if (ctx.ClipPathBindings.TryGetValue(classElement, out var binding))
+            {
+                return binding.Wrapper;
+            }
+            var parent = ChildListWrites.ParentOf(classElement);
+            return parent != null && ctx.WrapperToInnerMap.TryGetValue(parent, out var inner)
+                && ReferenceEquals(inner, classElement) ? parent : classElement;
+        }
 
         // SlotOf's inverse.
         internal static VisualElement ClassElementOf(ReconcilerContext ctx, VisualElement slot)
