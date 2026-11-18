@@ -251,10 +251,9 @@ jobs:
 
   # ---------------------------------------------------------------------------
   # The milestone a pull request merges under, which scripts/pr/milestone.py decides and
-  # CONTRIBUTING.md's merging section owns. A milestone change, a base change and a milestone of the
-  # repository changing re-run nothing here, so the Milestone workflow runs this job again on each;
-  # the pull request is read live rather than off the event, because a re-run replays the event it
-  # already decided.
+  # CONTRIBUTING.md's merging section owns. The Milestone workflow runs this job again when a pull
+  # request's milestone or base, or a milestone of the repository, changes; the pull request is read
+  # live rather than off the event, for the reason test.yml's publication job gives for its body.
   # ---------------------------------------------------------------------------
   milestone:
     name: Milestone

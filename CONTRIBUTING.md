@@ -1528,9 +1528,9 @@ held to none of this, so `refuse/stack_merge_by_hand.py` refuses it.
 maintenance line only under the next version that branch publishes: the lowest open version
 milestone, by semver, among the versions it publishes — `main` every major from the one it builds
 up, as `maintenance_line.main_state` reads it, and a line its own major. So a `v3.1.0` pull request
-waits until `v3.0.2` is published and its milestone closed, and a `v4.0.0` one until every open v3
-milestone is. One that changes nothing under the package carries `Infrastructure` or a version, and
-merges at any time. The milestone has to suit what the pull request ships as well: an entry added to
+waits until `v3.0.2` is published and its milestone closed, and a `v4.0.0` one until no v3
+milestone is open. One that changes nothing under the package carries `Infrastructure` or an open
+version, and merges at any time. The milestone has to suit what the pull request ships as well: an entry added to
 `## [Unreleased — breaking]` wants a major's, an `### Added` entry or a `feat` title at least a
 minor's, and a release pull request carries the milestone of the version it closes. A change to the
 package does not merge onto a branch whose next version is published already, which `upm.yml`

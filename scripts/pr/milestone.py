@@ -5,8 +5,8 @@ CONTRIBUTING.md's merging section owns the rule a merge is held to, and its rele
 rule a release is held to; this is their reading. `settle.py`, `refuse/merge_off_milestone.py`, the
 `Source generators ▸ milestone` job and `upm.yml` ask it.
 
-The versions a branch publishes are read off `maintenance_line.main_state`: main every major from
-the one it builds up, and a line its own major.
+Main publishes every major from the one `maintenance_line.main_state` says it builds, and a line its
+own major.
 
 Run: python3 scripts/pr/milestone.py check --number <n> [--base <rev>] [--head <rev>]
      python3 scripts/pr/milestone.py release --version X.Y.Z
@@ -394,8 +394,8 @@ def rerun(api, number, deadline, now=time.time, sleep=time.sleep):
     run has finished, answering what it did. Raises Unread where the run is still going at
     `deadline`.
 
-    A run still going is waited for: its job may have read the milestone before the change that
-    brought this here, and GitHub runs a job again only in a finished run.
+    A run still going is waited for, since its job may have read the milestone before the change
+    that brought this here.
     """
     head = pull_request(api, number).sha
     while True:
@@ -416,7 +416,7 @@ def rerun(api, number, deadline, now=time.time, sleep=time.sleep):
     if job is None:
         return f"#{number}: run {run['id']} has no {JOB} job to run again"
     # Asked again last: a push landing meanwhile starts a run of its own, which reads the milestone
-    # itself, and running the old head's job again would join that run's concurrency group.
+    # itself.
     if pull_request(api, number).sha != head:
         return f"#{number}: its head moved past {head[:7]}, whose run is no longer the one to ask"
     api(f"actions/jobs/{job['id']}/rerun", "POST")
