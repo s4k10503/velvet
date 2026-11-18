@@ -50,6 +50,8 @@ namespace Velvet
         public IVisualElementScheduledItem? Retry;
         public List<VisualElement> StaleRows = new();
         public VisualElement? Probe;
+        public uint? RepaintStamp;
+        public int RepaintAdvances;
 
         // Creation order across every mounted tree. Of two contained scopes a landing crosses between, the
         // newer one keeps it; a strict order is what stops the two pulling focus back from each other.
@@ -1584,6 +1586,8 @@ namespace Velvet
                 return;
             }
             binding.StaleRows = RowsStillComputedHidden(scope);
+            binding.RepaintStamp = ReadRepaintStamp(scope);
+            binding.RepaintAdvances = 0;
             if (scope is FocusScopeStart marker)
             {
                 marker.style.opacity = ProbeOpacity;
@@ -1612,7 +1616,8 @@ namespace Velvet
                 || SuspenseHiddenElements.IsAtOrUnderHidden(scope) || SuspenseHiddenElements.IsAtOrUnderHidden(binding.PortalPlaceholder)
                 || (focused != null && !FiberFocusNavigator.ScopeContains(scope, focused))
                 || AutoFocusFirst(scope)
-                || StylePassRan(binding))
+                || StylePassRan(binding)
+                || RepaintedTwice(scope, binding))
             {
                 StopRetry(binding);
             }
@@ -1621,6 +1626,23 @@ namespace Velvet
         // A range's start is display: none by design, so an inline opacity the next style pass computes shows the pass
         // has run whatever the content's own display; an element scope falls back to the rows its hide left hidden.
         private const float ProbeOpacity = 0.5f;
+
+        private static readonly System.Reflection.PropertyInfo? s_repaintVersion = EngineMember.PanelRepaintVersion.ResolveProperty();
+
+        private static uint? ReadRepaintStamp(VisualElement scope)
+            => scope.panel is { } panel && s_repaintVersion?.GetValue(panel) is uint stamp ? stamp : null;
+
+        // The stamp is written as a repaint begins, ahead of that repaint's own style pass, so two advances mean one
+        // whole repaint has run since the retry started. A panel whose stamp does not resolve never reaches this stop.
+        private static bool RepaintedTwice(VisualElement scope, FocusScopeBinding binding)
+        {
+            if (ReadRepaintStamp(scope) is { } stamp && binding.RepaintStamp != stamp)
+            {
+                binding.RepaintStamp = stamp;
+                binding.RepaintAdvances++;
+            }
+            return binding.RepaintAdvances >= 2;
+        }
 
         private static bool StylePassRan(FocusScopeBinding binding)
             => binding.Probe != null

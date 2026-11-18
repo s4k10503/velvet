@@ -22,6 +22,7 @@ namespace Velvet.Tests
         private static VelvetTaskCompletionSource<int> s_sourceOther;
         private static StateUpdater<bool> s_setPlain;
         private static StateUpdater<string> s_setButtonClass;
+        private static bool s_elementScope;
 
         [SetUp]
         public void SetUp()
@@ -35,6 +36,7 @@ namespace Velvet.Tests
             s_sourceOther = null;
             s_setPlain = default;
             s_setButtonClass = default;
+            s_elementScope = false;
             s_target = new VisualElement { name = "target" };
             _host.Root.Add(s_target);
             _mounted = V.Mount(_host.Root, V.Component(HostRender, key: "host"));
@@ -222,6 +224,34 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AnElementScopeWhoseContentIsStylesheetHidden_When_TwoRepaintsRunAndAClassChangeShowsIt_Then_TheRetryHasStoppedAndFocusesNothing()
+        {
+            // Arrange
+            s_elementScope = true;
+            var sheet = UnityEditor.AssetDatabase.LoadAssetAtPath<StyleSheet>(
+                "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/SuspenseHiddenPortalFocus.uss");
+            _host.Root.styleSheets.Add(sheet);
+            Update(s_setBlocked, 1);
+            Update(s_setPortal, true);
+            Update(s_setButtonClass, "portal-focus-stylesheet-hidden");
+            Update(s_setScoped, true);
+            EditorPanelTestHelpers.ForcePanelUpdate(_host.Panel);
+            Resolve(s_source);
+            EditorPanelTestHelpers.RepaintOnce(_host.Panel);
+            EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
+            EditorPanelTestHelpers.RepaintOnce(_host.Panel);
+            EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
+
+            // Act
+            Update(s_setButtonClass, "");
+            EditorPanelTestHelpers.ForcePanelUpdate(_host.Panel);
+            EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
+
+            // Assert
+            Assert.That(Focused, Is.Null);
+        }
+
+        [Test]
         public void Given_ARevealedPortalFocusScopeWaitingOnAStylePass_When_TheBoundaryHidesItAgain_Then_TheRetryFocusesNothing()
         {
             // Arrange
@@ -314,7 +344,12 @@ namespace Velvet.Tests
                             ? V.Portal(s_target, children: new VNode[]
                             {
                                 V.Div(name: "plain"),
-                                scoped
+                                scoped && s_elementScope
+                                    ? FocusScopeElement.Div(autoFocus: true, children: new VNode[]
+                                    {
+                                        V.Button(name: "focusable", className: buttonClass),
+                                    })
+                                    : scoped
                                     ? V.FocusScope(autoFocus: true, children: new VNode[]
                                     {
                                         V.Button(name: "focusable", className: buttonClass),

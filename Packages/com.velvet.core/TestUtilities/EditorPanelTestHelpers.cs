@@ -34,6 +34,18 @@ namespace Velvet.TestUtilities
         }
 
         /// <summary>
+        /// Begins one repaint of the panel as a live panel does each frame, which stamps its repaint version ahead of
+        /// the update that ticks the scheduler and runs the style pass.
+        /// </summary>
+        public static void RepaintOnce(IPanel panel)
+        {
+            var repaint = panel.GetType().GetMethod("Repaint", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
+                null, new[] { typeof(UnityEngine.Event) }, null)
+                ?? throw new MissingMethodException(panel.GetType().FullName, "Repaint");
+            repaint.Invoke(panel, new object[] { new UnityEngine.Event { type = UnityEngine.EventType.Repaint } });
+        }
+
+        /// <summary>
         /// Pumps the panel's internal timer scheduler once — the same call a live panel issues once per
         /// frame — so an EditMode fixture can drive <c>schedule.Execute</c> items deterministically (the
         /// batchmode PlayerLoop never ticks them). The scheduler is internal engine surface, reached by
