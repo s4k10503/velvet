@@ -23,6 +23,9 @@ namespace Velvet
         internal abstract void RecordNotified();
         internal abstract object Notified(IQueryResultSource source);
         internal abstract bool ChangedSinceNotified { get; }
+        // The reading the latest render took, and whether it differs from one an earlier render took.
+        internal abstract object Reading { get; }
+        internal abstract bool DiffersFrom(object reading);
         // The query's own result computed afresh from its entry, and what differs from the one before.
         internal abstract QueryProperties RefreshChanges();
         internal abstract QueryProperties? NotifyOnChangeProps { get; }
@@ -100,6 +103,11 @@ namespace Velvet
         internal override object Notified(IQueryResultSource source) => _computer.Notified(source);
 
         internal override bool ChangedSinceNotified => _computer.ChangedSinceNotified;
+
+        internal override object Reading => _computer.Current;
+
+        internal override bool DiffersFrom(object reading)
+            => reading is not QuerySnapshot<TData> held || _computer.Current.DifferencesFrom(held) != QueryProperties.None;
 
         internal override QueryProperties RefreshChanges() => _computer.RefreshChanges(_observer.Entry ?? _entry, _settings);
 
@@ -269,6 +277,7 @@ namespace Velvet
         private QueryKey[] _lastKeys = Array.Empty<QueryKey>();
         private bool _hasCombined;
         private TCombined _combined = default!;
+        private object[] _combinedReadings = Array.Empty<object>();
 
         private readonly Action<QueryProperties> _trackProperty;
 
@@ -486,6 +495,30 @@ namespace Velvet
                 results[i] = refreshed ? _items[i].Refresh(source) : _items[i].Notified(source);
             }
             return results;
+        }
+
+        // A hook that has not committed holds no result of its own to replace, so a render whose reading differs from
+        // the one the cached combine was handed combines again, as the fresh observer v5 builds for a tree that
+        // suspended before its first commit does.
+        internal TCombined Combine(QueriesRead read, Delegate combine, Func<object[], TCombined> invokeCombine)
+        {
+            if (!_committed && _hasCombined && ReadingChanged(read.Items)) _resultVersion++;
+            var combined = Combine(read.Results, read.Keys, combine, invokeCombine);
+            if (!_committed)
+            {
+                _combinedReadings = Array.ConvertAll(read.Items, item => item.Reading);
+            }
+            return combined;
+        }
+
+        private bool ReadingChanged(QueriesItem[] items)
+        {
+            if (items.Length != _combinedReadings.Length) return false;
+            for (var i = 0; i < items.Length; i++)
+            {
+                if (items[i].DiffersFrom(_combinedReadings[i])) return true;
+            }
+            return false;
         }
 
         // TanStack's #combineResult: combine runs again only when the results were replaced, the queries' keys

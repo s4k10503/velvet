@@ -280,6 +280,27 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AFirstRenderThatSuspendedAfterItsCombine_When_ADataIsSetBeforeTheRetry_Then_TheComponentRendersWhatTheCombineMakesOfIt()
+        {
+            // Arrange
+            s_keys = new[] { "a" };
+            s_client.SetQueryData(new QueryKey("a"), 1);
+            using var mounted = Mount(() =>
+            {
+                var sum = Hooks.UseQueries(Queries(), s_sum, s_client);
+                var later = Hooks.UseSuspenseQuery(Options("b"), s_client);
+                return V.Label(text: "sum:" + sum + ",b:" + later.Data);
+            });
+
+            // Act
+            s_client.SetQueryData(new QueryKey("a"), 10);
+            Settle(mounted, () => Source("b").TrySetResult(2));
+
+            // Assert
+            Assert.That(Texts(), Is.EqualTo("sum:10,b:2"), "v5 builds a fresh observer for a tree that suspended before its first mount");
+        }
+
+        [Test]
         public void Given_ACombineOfWhetherEachHasData_When_AQuerysDataChangesButStillExists_Then_TheComponentDoesNotRenderAgain()
         {
             // Arrange
