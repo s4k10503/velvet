@@ -852,10 +852,12 @@ namespace Velvet
         // those run inside an entry. It runs in the entry's own host pass rather than in a bracket of each context's
         // anchor, which placed a transition a forced re-render asks for one pass early (TransitionFrameSchedulingTests).
         // A context comes off the list before its work runs, and what that work stages puts it back behind the others.
-        // What one context's work throws stands its scheduler down for the release, as an exception leaving its own entry
-        // does, and leaves the entry before its body runs, as what React's flush of pending effects throws leaves the
-        // work that ran it: the nested-update error among it.
-        internal static void FlushEveryContextsPendingPassiveWork()
+        // What the work of the root the entry is for (owner) throws leaves the entry as its body's would, so the
+        // nested-update error that root's own work reaches is thrown to that root's caller. What another root's work
+        // throws is logged and stands that root down for the release, as an exception leaving its own entry does, and the
+        // entry goes on: React captures what an effect throws for that effect's root, the nested-update error a setState
+        // there raises among it, so none of it reaches the caller of another root's work.
+        internal static void FlushEveryContextsPendingPassiveWork(FiberBatchScheduler? owner)
         {
             UnityEngine.Debug.Assert(!ChildListWrites.PassIsOpen, "Passive effects ran inside an open pass.");
             while (s_withPendingPassiveWork.Count > 0)
@@ -866,10 +868,10 @@ namespace Velvet
                 {
                     FlushPendingPassiveEffectsWork(context);
                 }
-                catch
+                catch (Exception thrown) when (context.BatchScheduler != owner)
                 {
                     FiberExecutionContext.StandDown(context.BatchScheduler);
-                    throw;
+                    UnityEngine.Debug.LogException(thrown);
                 }
             }
         }

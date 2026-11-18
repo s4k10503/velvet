@@ -71,7 +71,7 @@ namespace Velvet
             try
             {
                 // Inside the try, so an entry whose flush throws still ends.
-                FiberEffects.FlushEveryContextsPendingPassiveWork();
+                FiberEffects.FlushEveryContextsPendingPassiveWork(owner);
                 entry(state);
                 completed = true;
             }
@@ -87,7 +87,7 @@ namespace Velvet
             var completed = false;
             try
             {
-                FiberEffects.FlushEveryContextsPendingPassiveWork();
+                FiberEffects.FlushEveryContextsPendingPassiveWork(owner);
                 var result = entry(state);
                 completed = true;
                 return result;
