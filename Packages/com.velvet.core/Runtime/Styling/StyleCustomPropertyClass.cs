@@ -146,13 +146,22 @@ namespace Velvet
         }
 
         // Whether utility closes with a bracket, or with the bracket and a numeric opacity modifier after it
-        // (`shadow-[var(--x)]/50`).
+        // (`shadow-[var(--x)]/50`), which only a utility Tailwind writes a rule for with one is read as having: a shadow
+        // or a colour. The same class of any other utility is no class there and does nothing.
         private static bool EndsInBracketOrNumericModifier(string utility)
         {
             var slash = utility.LastIndexOf('/');
             var number = utility.AsSpan(slash + 1);
             return utility[utility.Length - 1] == ']'
-                || (slash > 1 && utility[slash - 1] == ']' && !number.IsEmpty && number.TrimStart("0123456789.".AsSpan()).IsEmpty);
+                || (slash > 1 && utility[slash - 1] == ']' && !number.IsEmpty && number.TrimStart("0123456789.".AsSpan()).IsEmpty
+                    && TakesOpacityModifier(utility.Substring(0, utility.IndexOf('[') - 1), utility.Substring(utility.IndexOf('[') + 1,
+                        slash - utility.IndexOf('[') - 2)));
+        }
+
+        private static bool TakesOpacityModifier(string root, string bracket)
+        {
+            StyleArbitraryValueResolver.TrySplitTypeHint(bracket.AsSpan(), out var hint, out _);
+            return root is "shadow" or "inset-shadow" || (StyleColorValueParser.DefaultsToColour(root) && (hint == null || hint == "color"));
         }
 
         // `prefix-(--x)`, `prefix-(hint:--x)` and a modifier's `/(--x)`, each written as the bracket Tailwind reads

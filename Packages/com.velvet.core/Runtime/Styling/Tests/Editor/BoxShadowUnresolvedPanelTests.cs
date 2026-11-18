@@ -17,13 +17,16 @@ namespace Velvet.Tests
         // The properties the cases read, declared on the element.
         private const string Declared = "[--x:0_0_5px_#ff0000] [--a:5px] [--b:#ff0000] [--w:3px] ";
 
-        private VisualElement Mount(string classes)
+        private VisualElement Mount(string classes, bool style = true)
         {
             _mounted?.Dispose();
             _window.rootVisualElement.Clear();
             _mounted = V.Mount(_window.rootVisualElement, V.Div(name: "card", className: classes));
             var card = _window.rootVisualElement.Q<VisualElement>("card");
-            EditorPanelTestHelpers.ForcePanelUpdate(card.panel);
+            if (style)
+            {
+                EditorPanelTestHelpers.ForcePanelUpdate(card.panel);
+            }
             return card;
         }
 
@@ -105,6 +108,54 @@ namespace Velvet.Tests
             // Assert — a ring written beside it, which the reader's unset would take with it where it was written ahead
             // of that read.
             Assert.That(Ring(card), Is.EqualTo(1f));
+        }
+
+        [Test]
+        public void Given_AReaderOfAStylesheetVariable_When_ASchedulerTickComesBeforeTheFirstStylePass_Then_TheRingIsStillDrawn()
+        {
+            // Arrange
+            _window.rootVisualElement.styleSheets.Add(UnityEditor.AssetDatabase.LoadAssetAtPath<StyleSheet>(RuleSheet));
+
+            // Act — the tick that reads every reader on attach, ahead of any style pass and layout.
+            var card = Mount("css-var-host ring ring-[length:var(--w)]", style: false);
+            ReadReaders(card);
+
+            // Assert
+            Assert.That(Ring(card), Is.EqualTo(1f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base keeps the ring and the shadow, as Tailwind orders shadow-lg after the reader.
+        [Test]
+        public void Given_ASizeTailwindEmitsAfterAnUnresolvedReader_When_BesideARing_Then_TheRingStays()
+        {
+            // Act
+            var card = Mount("ring-2 shadow-lg shadow-[var(--x)]");
+            ReadReaders(card);
+
+            // Assert
+            Assert.That(Ring(card), Is.EqualTo(2f));
+        }
+
+        [Test]
+        public void Given_AHoverReaderOfAnUndeclaredProperty_When_Hovered_Then_TheRingGoesWithTheShadow()
+        {
+            // Arrange — the control gives the property a shadow.
+            var control = Mount(Declared + "ring-2 shadow-lg hover:shadow-[var(--x)]");
+            using (var over = PointerOverEvent.GetPooled())
+            {
+                control.SimulateEvent(over);
+            }
+            var controlRing = Ring(control);
+            var card = Mount("ring-2 shadow-lg hover:shadow-[var(--x)]");
+
+            // Act
+            using (var over = PointerOverEvent.GetPooled())
+            {
+                card.SimulateEvent(over);
+            }
+
+            // Assert
+            Assert.That(controlRing == 2f ? Ring(card) : float.NaN, Is.EqualTo(0f));
         }
     }
 }

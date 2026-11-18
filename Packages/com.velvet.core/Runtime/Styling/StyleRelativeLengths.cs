@@ -62,7 +62,8 @@ namespace Velvet
             var box = PercentBox(parent, outer.resolvedStyle.position == Position.Absolute);
             var percent = !definite ? 0f : vertical is { } across ? (across ? box.y : box.x) : em;
             var viewport = ViewportOf(element);
-            var px = expression.Evaluate(new RelativeLengthBasis(font, RootUnitsOf(element), percent, viewport.width, viewport.height));
+            var px = expression.Evaluate(new RelativeLengthBasis(font, RootUnitsOf(element), percent, viewport.width, viewport.height,
+                ContainerWidthOf(element)));
             length = new StyleLength(new Length(px, LengthUnit.Pixel));
             return true;
         }

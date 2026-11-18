@@ -36,7 +36,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_TheIssuesLayerWithAContainerUnitAndAModifier_When_InsideAContainer_Then_ItIsDrawnAtTheModifiersAlpha()
+        public void Given_ALayerWithAContainerUnitAndAModifier_When_InsideAContainer_Then_ItIsDrawnAtTheModifiersAlpha()
         {
             // Act
             var card = Mount(StyleResponsiveScope.ContainerClass + " w-[400px] p-[20px]",
@@ -62,6 +62,19 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(spread, Is.EqualTo(Layer(again).Spread).Within(0.01f));
+        }
+
+        [Test]
+        public void Given_AWidthInContainerWidthUnits_When_InsideAContainer_Then_ItIsAPercentOfTheContentWidth()
+        {
+            // Act — Chromium computes 180px for 50cqw in a container 400px wide with 20px of padding.
+            var card = Mount(StyleResponsiveScope.ContainerClass + " w-[400px] p-[20px]", "w-[50cqw] h-[10px]");
+            EditorPanelTestHelpers.DriveSchedulerOnce(card.panel);
+            EditorPanelTestHelpers.ForcePanelUpdate(card.panel);
+            EditorPanelTestHelpers.DriveSchedulerOnce(card.panel);
+
+            // Assert
+            Assert.That(card.style.width.value.value, Is.EqualTo(180f).Within(0.01f));
         }
     }
 }

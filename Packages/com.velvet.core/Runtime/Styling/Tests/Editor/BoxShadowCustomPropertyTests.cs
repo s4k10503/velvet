@@ -219,29 +219,53 @@ namespace Velvet.Tests
             Assert.That(found ? ColorUtility.ToHtmlStringRGBA(layers[0].Color) : "none", Is.EqualTo(Palette("red-500")));
         }
 
-        // The last token of the family on the class source the passes read, once the reader resolves.
-        private static string LastOfFamily(string classes, string prefix)
+        // How far the payload a reader resolves to stands past the literal on the class source the passes read, the payload
+        // being the family's token that is neither the literal nor the reader's own; a distance no placement gives where
+        // the family holds none.
+        private static int PayloadPast(string classes, string prefix, string literal, string reader)
         {
             using var scope = new ReconcilerScope();
             scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), new VNode[] { V.Div(className: classes) });
             var composed = scope.Reconciler.Context.VariantGateClasses[scope.Root[0]].Resolved ?? Array.Empty<string>();
-            return Array.FindLast(composed, token => token.StartsWith(prefix, StringComparison.Ordinal)) ?? "none";
+            var payload = Array.FindIndex(composed,
+                token => token.StartsWith(prefix, StringComparison.Ordinal) && token != literal && token != reader);
+            return payload < 0 ? int.MinValue : payload - Array.IndexOf(composed, literal);
         }
 
         // Chromium computes the reader's value where both are important and Tailwind emits the reader after the literal:
         // gap 8px, skew 10deg, weight 700, a 5px divider.
-        [TestCase("[--g:8px] !gap-4 !gap-[var(--g)]", "!gap-", "!gap-4")]
-        [TestCase("[--s:10deg] !skew-x-6 !skew-x-[var(--s)]", "!skew-x-", "!skew-x-6")]
-        [TestCase("[--w:700] !font-[300] !font-[var(--w)]", "!font-", "!font-[300]")]
-        [TestCase("[--d:5px] !divide-x-2 !divide-x-[var(--d)]", "!divide-x-", "!divide-x-2")]
+        [TestCase("[--g:8px] !gap-4 !gap-[var(--g)]", "!gap-", "!gap-4", "!gap-[var(--g)]")]
+        [TestCase("[--s:10deg] !skew-x-6 !skew-x-[var(--s)]", "!skew-x-", "!skew-x-6", "!skew-x-[var(--s)]")]
+        [TestCase("[--w:700] !font-[300] !font-[var(--w)]", "!font-", "!font-[300]", "!font-[var(--w)]")]
+        [TestCase("[--d:5px] !divide-x-2 !divide-x-[var(--d)]", "!divide-x-", "!divide-x-2", "!divide-x-[var(--d)]")]
         public void Given_AnImportantReaderTailwindEmitsAfterAnImportantLiteral_When_ItResolves_Then_ItsPayloadFollowsTheLiteral(
-            string classes, string prefix, string literal)
+            string classes, string prefix, string literal, string reader)
         {
             // Act
-            var last = LastOfFamily(classes, prefix);
+            var past = PayloadPast(classes, prefix, literal, reader);
 
             // Assert
-            Assert.That(last, Is.Not.EqualTo(literal).And.Not.EqualTo("none"));
+            Assert.That(past, Is.GreaterThan(0));
+        }
+
+        // Tailwind 4.3.3 writes a rule for an opacity modifier after a shadow or a colour bracket.
+        [TestCase("shadow-[var(--x)]/50")]
+        [TestCase("inset-shadow-[var(--x)]/50")]
+        [TestCase("bg-[var(--x)]/50")]
+        [TestCase("ring-[var(--x)]/50")]
+        public void Given_ANumericModifierAfterAShadowOrColourBracketReadingAProperty_When_Read_Then_ItIsAReader(string cls)
+        {
+            Assert.That(StyleCustomPropertyClass.Consumer(cls), Is.Not.Null);
+        }
+
+        // GREEN_ON_BASE(characterization): the base reads none of these, which Tailwind writes no rule for.
+        [TestCase("gap-[var(--g)]/50")]
+        [TestCase("skew-x-[var(--s)]/50")]
+        [TestCase("ring-[length:var(--w)]/50")]
+        [TestCase("w-[var(--w)]/50")]
+        public void Given_ANumericModifierAfterABracketOfAUtilityWithNoRuleForOne_When_Read_Then_ItIsNoReader(string cls)
+        {
+            Assert.That(StyleCustomPropertyClass.Consumer(cls), Is.Null);
         }
     }
 }

@@ -184,7 +184,7 @@ while hovered). A `rotate-[…]` and a `scale-[…]` the browser rejects take no
 | `2rlh` | the root's line height under the preflight: 1.5 times the 16px a rem is taken at, 24px |
 | `50vw`, `50vh`, `50vmin`, `50vmax` | the panel — in an editor window, the window's content: its width, its height, the smaller and the larger of the two |
 | `50svw`, `50lvh`, `50dvmin`, … | the same as the unprefixed unit: a panel has no browser chrome to show or hide, which is where CSS makes the small, large and dynamic viewports equal |
-| `50cqw`, `50cqi`, `50cqmin`, `50cqmax`, `50cqh`, `50cqb` | the content width of the nearest ancestor marked `@container`, for `cqw` and `cqi`; a container is inline-size, so `cqh` and `cqb` are the panel's height, and `cqmin` and `cqmax` the smaller and the larger of the two. With no container above, `cqw` and `cqi` are the panel's width. Read by the lengths of a `shadow-[…]` |
+| `50cqw`, `50cqi`, `50cqmin`, `50cqmax`, `50cqh`, `50cqb` | the content width of the nearest ancestor marked `@container`, for `cqw` and `cqi`; a container is inline-size, so `cqh` and `cqb` are the panel's height, and `cqmin` and `cqmax` the smaller and the larger of the two. With no container above, `cqw` and `cqi` are the panel's width. Every length bracket reads them |
 | a math function mixing a percentage with a length, or reading an `em` or a viewport unit | each term against its own basis, as CSS evaluates it |
 
 The utilities that write a length-percentage inline read them:

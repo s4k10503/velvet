@@ -463,7 +463,7 @@ namespace Velvet
                 }
             }
             var context = s_variableContext?.GetValue(target);
-            if (ReferenceEquals(context, consumers.Context))
+            if (ReferenceEquals(context, consumers.Context) && !entries.Exists(entry => !entry.Resolved))
             {
                 return;
             }
@@ -550,11 +550,12 @@ namespace Velvet
             SettleWritten(target, consumer, WrittenBy(consumer.Applied, unset ? consumer.Property : null));
         }
 
-        // Whether consumer, whose var() did not resolve, waits for its element to reach a panel before it writes the unset that
-        // discards the box-shadow, leaving the element as it was until then.
+        // Whether consumer, whose var() did not resolve, waits for its element to be laid out on a panel, which follows its
+        // style pass whichever tick comes first, before it writes the unset that discards the box-shadow, leaving the
+        // element as it was until then. Poll reads a waiting consumer again on each tick.
         private static bool DefersUnset(VisualElement target, Consumer consumer, bool resolved)
         {
-            if (resolved || !consumer.DefersUnset || target.panel != null)
+            if (resolved || !consumer.DefersUnset || (target.panel != null && !float.IsNaN(target.layout.width)))
             {
                 return false;
             }
