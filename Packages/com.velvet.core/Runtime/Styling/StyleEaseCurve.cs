@@ -268,8 +268,7 @@ namespace Velvet
 
             public bool HasEntryFor(string property)
                 => DrivenTweenTiming.LastNaming(TweenOverrides, DrivenTweenTiming.Named(property)) != null;
-            public EaseFunction ShapedFor;
-            public Func<float, float>? Shaped;
+            public (EasingMode Mode, EaseFunction Function, Func<float, float> Curve)?[]? Shaped;
             public Func<Func<float, float>, Func<float, float>?>? ToShaped;
         }
 
@@ -282,8 +281,6 @@ namespace Velvet
 
         private static readonly Func<Func<float, float>, Func<float, float>?> s_engineToAcceleratedMotion =
             static current => MotionEasing.InPlaceOfEngineCurve(current, accelerated: true);
-
-        private static readonly Func<Func<float, float>, Func<float, float>?> s_keep = static _ => null;
 
         // The function the winning ease-[...] layer gives the element, or none; mode is the keyword left on the element
         // beside it.
@@ -450,9 +447,7 @@ namespace Velvet
             }
             var classes = MotionTweenTiming.PlaysCurve(element) ? null : ToShaped(element, binding);
             // Only the transitions the event reports, which start now: one already running keeps the curve it started
-            // on, as a CSS transition keeps its timing function. Under a tween each runs by its own keyword, since a
-            // tween's PropertyOverrides entries can name several, where the classes and the layer give one function for
-            // every transition.
+            // on, as a CSS transition keeps its timing function.
             foreach (var name in evt.stylePropertyNames)
             {
                 RunningStyleTransition.Retime(element, name,
@@ -460,40 +455,28 @@ namespace Velvet
             }
         }
 
-        // Replaces a curve with the classes' or the layer's function for the keyword every transition of the element
-        // resolves, and keeps it where they give none.
+        // Replaces the curve UI Toolkit runs a keyword by with the classes' or the layer's function for that keyword, and
+        // keeps one they give no function for.
         private static Func<Func<float, float>, Func<float, float>?> ToShaped(VisualElement element, Binding binding)
         {
-            if (!TryResolvedMode(element, out var mode) || CurveFor(element, mode) is not { } function)
+            var shaped = binding.Shaped ??= new (EasingMode, EaseFunction, Func<float, float>)?[s_candidates.Length];
+            for (var i = 0; i < shaped.Length; i++)
             {
-                return s_keep;
+                var function = CurveFor(element, s_candidates[i]);
+                if (function is { } given && shaped[i]?.Function.Equals(given) == true) continue;
+                shaped[i] = function is { } changed ? (s_candidates[i], changed, changed.Evaluate) : null;
             }
-            if (binding.Shaped == null || !binding.ShapedFor.Equals(function))
-            {
-                var shaped = function;
-                binding.ShapedFor = function;
-                binding.Shaped = t => shaped.Evaluate(t);
-                var given = binding.Shaped;
-                binding.ToShaped = _ => given;
-            }
-            return binding.ToShaped!;
+            return binding.ToShaped ??= current => InPlaceOf(current, shaped);
         }
 
-        // The keyword every transition the element resolves eases by, where there is one.
-        private static bool TryResolvedMode(VisualElement element, out EasingMode mode)
+        private static Func<float, float>? InPlaceOf(Func<float, float> engineCurve,
+            (EasingMode Mode, EaseFunction Function, Func<float, float> Curve)?[] shaped)
         {
-            mode = EasingMode.Ease;
-            var any = false;
-            foreach (var function in element.resolvedStyle.transitionTimingFunction)
+            foreach (var entry in shaped)
             {
-                if (any && function.mode != mode)
-                {
-                    return false;
-                }
-                mode = function.mode;
-                any = true;
+                if (entry is { } keyword && UssEasing.Is(engineCurve, keyword.Mode)) return keyword.Curve;
             }
-            return any;
+            return null;
         }
     }
 }
