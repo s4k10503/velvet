@@ -8,8 +8,11 @@ namespace Velvet.Tests
     /// Pins the focus a <c>V.FocusScope</c> with <c>autoFocus</c> takes when its <c>V.Portal</c> mounts into a target
     /// already on a panel, for a boundary that is showing its children and for one keeping them hidden.
     /// </summary>
-    internal sealed class SuspenseHiddenPortalFocusTests : PanelTestBase
+    internal sealed class SuspenseHiddenPortalFocusTests
     {
+        private HeadlessEditorPanelHost _host;
+        private MountedTree _mounted;
+
         private static StateUpdater<int> s_setBlocked;
         private static StateUpdater<int> s_setBlockedOther;
         private static StateUpdater<bool> s_setPortal;
@@ -18,19 +21,29 @@ namespace Velvet.Tests
         private static VelvetTaskCompletionSource<int> s_source;
         private static VelvetTaskCompletionSource<int> s_sourceOther;
 
-        public override void SetUp()
+        [SetUp]
+        public void SetUp()
         {
+            _host = new HeadlessEditorPanelHost();
             s_setBlocked = default;
             s_setBlockedOther = default;
             s_setPortal = default;
             s_setScoped = default;
             s_source = null;
             s_sourceOther = null;
-            base.SetUp();
             s_target = new VisualElement { name = "target" };
-            _window.rootVisualElement.Add(s_target);
-            _mounted = V.Mount(_window.rootVisualElement, V.Component(HostRender, key: "host"));
-            _window.Focus();
+            _host.Root.Add(s_target);
+            _mounted = V.Mount(_host.Root, V.Component(HostRender, key: "host"));
+            EditorPanelTestHelpers.ForcePanelUpdate(_host.Panel);
+        }
+
+        [TearDown]
+        public void TearDown()
+        {
+            _mounted?.Dispose();
+            _mounted = null;
+            _host?.Dispose();
+            _host = null;
         }
 
         private void Update<T>(StateUpdater<T> setter, T value)
@@ -46,7 +59,7 @@ namespace Velvet.Tests
             _mounted.GetSchedulerForTest().DrainImmediateForTest();
         }
 
-        private FocusController Controller => _window.rootVisualElement.panel.focusController;
+        private Focusable Focused => _host.Panel.focusController.focusedElement;
 
         // GREEN_ON_BASE(characterization): the base already leaves the autofocused button focused where nothing hides it.
         // What this pins is that the hidden cases below measure a focus the mount did take.
@@ -58,7 +71,7 @@ namespace Velvet.Tests
             Update(s_setScoped, true);
 
             // Assert
-            Assert.That(Controller.focusedElement, Is.SameAs(s_target.Q<Button>("focusable")));
+            Assert.That(Focused, Is.SameAs(s_target.Q<Button>("focusable")));
         }
 
         [Test]
@@ -72,7 +85,7 @@ namespace Velvet.Tests
             Update(s_setScoped, true);
 
             // Assert
-            Assert.That(Controller.focusedElement, Is.Null);
+            Assert.That(Focused, Is.Null);
         }
 
         [Test]
@@ -86,7 +99,7 @@ namespace Velvet.Tests
             Update(s_setPortal, true);
 
             // Assert
-            Assert.That(Controller.focusedElement, Is.Null);
+            Assert.That(Focused, Is.Null);
         }
 
         [Test]
@@ -101,7 +114,7 @@ namespace Velvet.Tests
             Resolve(s_source);
 
             // Assert
-            Assert.That(Controller.focusedElement, Is.SameAs(s_target.Q<Button>("focusable")));
+            Assert.That(Focused, Is.SameAs(s_target.Q<Button>("focusable")));
         }
 
         // GREEN_ON_BASE(characterization): the base focuses the button at the mount and the unmount takes the focus with it.
@@ -119,7 +132,7 @@ namespace Velvet.Tests
             Resolve(s_source);
 
             // Assert
-            Assert.That(Controller.focusedElement, Is.Null);
+            Assert.That(Focused, Is.Null);
         }
 
         [Test]
@@ -135,7 +148,7 @@ namespace Velvet.Tests
             Resolve(s_sourceOther);
 
             // Assert
-            Assert.That(Controller.focusedElement, Is.Null);
+            Assert.That(Focused, Is.Null);
         }
 
         [Component]
