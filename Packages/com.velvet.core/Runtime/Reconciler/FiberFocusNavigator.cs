@@ -1572,7 +1572,7 @@ namespace Velvet
         // A deferred scope's rows keep the computed display none their hide gave them until the panel's next style
         // pass, and none of them can take focus before it. The release applies the panel's styles first
         // (FiberLayoutReflow), which leaves them as they are where it cannot run, and then one attempt waits for the next
-        // tick there. SuspenseHiddenPortalFocusTests pins both.
+        // tick there. SuspenseHiddenPortalFocusTests pins the first.
         private static void TakeAutoFocus(VisualElement scope, FocusScopeBinding binding, bool afterStyles)
         {
             binding.AutoFocusFired = true;
