@@ -59,7 +59,7 @@ namespace Velvet.Tests
         // Get-only handles the walk does not descend into. Each is somebody else's subject.
         private static readonly Dictionary<string, string> NotDescended = new()
         {
-            ["style"] = "the inline scrub is enumerated in FiberElementPoolReset.ResetInlineStyle and pinned by PooledElementStyleGhostTests",
+            ["style"] = "the inline style is cleared by FiberElementPoolReset.ResetCommonState and pinned by PooledElementStyleGhostTests",
             ["schedule"] = "a handle onto items a pool return does not reach, which FiberElementPoolReset's limitations state",
             ["experimental"] = "reaches the same animation and style surfaces from a second direction",
         };
