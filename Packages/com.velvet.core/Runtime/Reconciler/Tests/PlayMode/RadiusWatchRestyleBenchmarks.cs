@@ -15,9 +15,10 @@ namespace Velvet.Tests.Performance
     /// <see cref="PanelFrameRecorder"/> reads, and the GC.Alloc blocks every thread charged in it.
     /// <para>
     /// Two arms over the same elements in one run, so the difference between them does not depend on the machine: in
-    /// the first every Div carries <see cref="CornerRadiusFit.WatchClass"/>, as the factory builds it, and in the second
-    /// the class is taken off each one after the mount. A case throws when the arm's elements do not hold what the arm
-    /// says, or when a frame ran none of a phase.
+    /// the first no Div has had a class of its own added or removed since it was built, which is the state of an
+    /// element before the radius fit watches style passes, and in the second each Div has, so it carries
+    /// <see cref="CornerRadiusFit.WatchClass"/>. A case throws when the arm's elements do not hold what the arm says,
+    /// or when a frame ran none of a phase.
     /// </para>
     /// </summary>
     [TestFixture]
@@ -36,6 +37,7 @@ namespace Velvet.Tests.Performance
         private PanelSettings _panelSettings = null!;
         private VisualElement _root = null!;
         private MountedTree _mounted = null!;
+        private static StateUpdater<bool> s_setOwnClass;
 
         [UnitySetUp]
         public IEnumerator SetUp()
@@ -65,29 +67,38 @@ namespace Velvet.Tests.Performance
 
         // GREEN_ON_BASE(characterization): a benchmark asserts nothing about its numbers, so the base runs it green.
         [UnityTest, Performance]
-        public IEnumerator RestyleFrames_1000DivsCarryingTheWatchClass() => Run(watched: true);
+        public IEnumerator RestyleFrames_1000DivsAfterAClassOfTheirOwnChanged() => Run(watched: true);
 
         // GREEN_ON_BASE(characterization): a benchmark asserts nothing about its numbers, so the base runs it green.
         [UnityTest, Performance]
-        public IEnumerator RestyleFrames_1000DivsWithoutTheWatchClass() => Run(watched: false);
+        public IEnumerator RestyleFrames_1000DivsNeverClassChanged() => Run(watched: false);
 
-        private IEnumerator Run(bool watched)
+        [Component]
+        private static VNode RenderDivs()
         {
+            var (own, setOwn) = Hooks.UseState(false);
+            s_setOwnClass = setOwn;
             var children = new VNode[Divs];
             for (var i = 0; i < Divs; i++)
             {
-                children[i] = V.Div(className: "w-[10px] h-[10px]", key: "div-" + i);
+                children[i] = V.Div(className: own ? "w-[10px] h-[10px] own-class" : "w-[10px] h-[10px]", key: "div-" + i);
             }
-            _mounted = V.Mount(_root, V.Div("flex flex-col", children));
+            return V.Div("flex flex-col", children);
+        }
+
+        private IEnumerator Run(bool watched)
+        {
+            _mounted = V.Mount(_root, V.Component(RenderDivs));
             _mounted.FlushStateForTest();
-            var top = _root[0];
-            if (!watched)
+            for (var i = 0; i < SettleFrames; i++)
             {
-                top.RemoveFromClassList(CornerRadiusFit.WatchClass);
-                for (var i = 0; i < top.childCount; i++)
-                {
-                    top[i].RemoveFromClassList(CornerRadiusFit.WatchClass);
-                }
+                yield return null;
+            }
+            var top = _root[0];
+            if (watched)
+            {
+                s_setOwnClass.Invoke(true);
+                _mounted.FlushStateForTest();
             }
             for (var i = 0; i < SettleFrames; i++)
             {
@@ -138,7 +149,7 @@ namespace Velvet.Tests.Performance
             {
                 throw new InvalidOperationException($"expected {Divs} mounted Divs, the root holds {top.childCount}");
             }
-            RequireWatch(top, watched, "the top Div");
+            RequireWatch(top, false, "the top Div");
             for (var i = 0; i < top.childCount; i++)
             {
                 RequireWatch(top[i], watched, $"Div {i}");

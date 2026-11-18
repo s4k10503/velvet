@@ -57,12 +57,12 @@ namespace Velvet
     /// declared change, and a <c>transition-all</c> element would otherwise animate from the unfitted radius
     /// when it is first laid out.
     ///
-    /// An element none of that reaches is observed from its creation (<see cref="Observe"/>, which the factory calls
-    /// beside adding <see cref="WatchClass"/>): the first size change or style pass that finds a radius resolved on it
-    /// attaches the fit, which then reads the rules' radius through <see cref="StyleCascade.Radius"/> and a length its
-    /// code writes as it does for any other element. A style pass reaches the fit through the custom property
-    /// <c>_preflight.uss</c> gives <see cref="WatchClass"/>, which the factory puts on each element it builds, so it
-    /// needs the bundled stylesheet attached.
+    /// An element none of that reaches is observed from its creation (<see cref="Observe"/>): the first size change or
+    /// style pass that finds a radius resolved on it attaches the fit, which then reads the rules' radius through
+    /// <see cref="StyleCascade.Radius"/> and a length its code writes as it does for any other element. A style pass
+    /// reaches the fit through the custom property <c>_preflight.uss</c> gives <see cref="WatchClass"/>, which goes on
+    /// an element once Velvet adds or removes a class no bundled sheet defines on it, so it needs the bundled stylesheet
+    /// attached and sees no change made to the class list from outside Velvet.
     /// </remarks>
     internal static class CornerRadiusFit
     {
@@ -111,8 +111,9 @@ namespace Velvet
         // Watches element for a radius its rules or its code give it, which no class or arbitrary value declared.
         public static void Observe(VisualElement element) => Watch(element);
 
-        // The class _preflight.uss keys the custom property on that makes UI Toolkit send an element its style passes. A
-        // recycled element loses it with the rest of its class list and gets it again when the factory builds with it.
+        // The class _preflight.uss keys the custom property on that makes UI Toolkit send an element its style passes. It
+        // goes on an element when a class no bundled sheet defines is added or removed on it, and a recycled element
+        // loses it with the rest of its class list.
         internal const string WatchClass = "velvet-radius-watch";
 
         // Watching a host sets its flag, and its type hands it its size changes and style passes, so watching one allocates
@@ -134,7 +135,30 @@ namespace Velvet
             if (cls.StartsWith(RadiusClassPrefix, StringComparison.Ordinal))
             {
                 GetOrAttach(element);
+                return;
             }
+            WatchForRule(element, cls);
+        }
+
+        // A class that leaves the element, whose rule may have given it the radius it now has.
+        public static void NoteRemoved(VisualElement element, string cls)
+        {
+            if (!cls.StartsWith(RadiusClassPrefix, StringComparison.Ordinal))
+            {
+                WatchForRule(element, cls);
+            }
+        }
+
+        // Only a class of the application's own can bring a radius with it that nothing here tracks, and only a change
+        // made after the element is on a panel is one the size change that lays it out does not reach.
+        private static void WatchForRule(VisualElement element, string cls)
+        {
+            if (element.panel == null || StyleUtilityProperties.TryGet(cls, out _) || element.ClassListContains(WatchClass))
+            {
+                return;
+            }
+            Watch(element);
+            element.AddToClassList(WatchClass);
         }
 
         public static void SetInline(VisualElement element, RadiusCorners corners, Length value)

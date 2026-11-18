@@ -436,9 +436,11 @@ no longer needs the fit. A keyword written there (`initial`) is left alone. A ch
 `transition-all` animates between the fitted radii rather than the declared ones. An element with no such class and
 no arbitrary radius is fitted all the same, from a radius your own stylesheet gives it or your code writes to `style`
 (`border-radius: 400px` on a `.pill` rule). It is checked each time its size changes, first layout included, and
-each time the element's style is resolved, so a class swap that brings a radius in after layout is fitted in the same
-update, with no size change. A write to `style` after layout is fitted at the element's next size change or style
-pass. The style pass needs the bundled stylesheet attached.
+each time the style of an element on which Velvet added or removed a class of your own (one no bundled sheet defines)
+is resolved, so a class swap that brings a radius in after layout is fitted in the same update, with no size change.
+That needs the bundled stylesheet attached, and it does not see a class change your code makes to the element outside
+Velvet, or a rule of your own keyed on an ancestor's class or on a pseudo-class that Velvet does not toggle. A write
+to `style` after layout is fitted at the element's next size change, or the next time one of those classes changes.
 
 **The wrapper-less paints under a hidden overflow.** UI Toolkit applies an element's own overflow clip to the
 element's own painted content, and cuts it at the **padding** box, while CSS clips neither a box-shadow nor a border

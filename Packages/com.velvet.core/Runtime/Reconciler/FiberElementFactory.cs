@@ -23,7 +23,7 @@ namespace Velvet
             ApplyStyles(element, node.Styles);
             ApplyEvents(element, node.Events);
             StyleTextInputColors.Track(element);
-            WatchRadius(element);
+            CornerRadiusFit.Observe(element);
             return element;
         }
 
@@ -42,14 +42,8 @@ namespace Velvet
             ApplyProps(element, node.Props);
             ApplyEvents(element, node.Events);
             StyleTextInputColors.Track(element);
-            WatchRadius(element);
-            return element;
-        }
-
-        private static void WatchRadius(VisualElement element)
-        {
-            element.AddToClassList(CornerRadiusFit.WatchClass);
             CornerRadiusFit.Observe(element);
+            return element;
         }
 
         private static VisualElement CreateByType(Type type)

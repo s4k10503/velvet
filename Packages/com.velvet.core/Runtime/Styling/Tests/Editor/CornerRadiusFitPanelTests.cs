@@ -511,7 +511,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ALaidOutBoxWhoseCodeWroteARadiusBeyondItsHeight_When_ItsClassChangesWithNoSizeChange_Then_ItsCornersAreScaled()
+        public void Given_ALaidOutBoxWhoseCodeWroteARadiusBeyondItsHeight_When_AClassOfTheApplicationsOwnArrivesWithNoSizeChange_Then_ItsCornersAreScaled()
         {
             // Arrange
             var box = MountSwitchable(WideBox);
@@ -520,8 +520,8 @@ namespace Velvet.Tests
             box.style.borderBottomRightRadius = 400f;
             box.style.borderBottomLeftRadius = 400f;
 
-            // Act — a style pass of its own, with the box still 330 x 34.
-            SwitchClass($"{WideBox} opacity-90");
+            // Act — a class no sheet defines arrives with the box still 330 x 34, which no size change follows.
+            SwitchClass($"{WideBox} unrelated-class");
 
             // Assert
             Assert.That(Radii(box), Is.EqualTo(new[] { 17f, 17f, 17f, 17f }).Within(1e-3f));

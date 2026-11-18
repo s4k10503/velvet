@@ -26,7 +26,7 @@
    that makes UI Toolkit send it CustomStyleResolvedEvent; see ColorReferenceWatch. */
 .velvet-color-reference { --velvet-color-reference: 1; }
 
-/* Gives an element Velvet builds, which the factory marks with this class, the custom property that makes
-   UI Toolkit send it CustomStyleResolvedEvent once its style is resolved; CornerRadiusFit reads a radius a class swap brings
-   in without a size change from that event. */
+/* Gives an element on which Velvet added or removed a class no bundled sheet defines (CornerRadiusFit.WatchClass) the
+   custom property that makes UI Toolkit send it CustomStyleResolvedEvent once its style is resolved; CornerRadiusFit reads
+   a radius that class swap brings in without a size change from that event. */
 .velvet-radius-watch { --velvet-radius-watch: 1; }

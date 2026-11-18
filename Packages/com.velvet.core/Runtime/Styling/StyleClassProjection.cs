@@ -64,6 +64,7 @@ namespace Velvet
 
         private static void RemoveFromModel(VisualElement element, string cls, long priority)
         {
+            CornerRadiusFit.NoteRemoved(element, cls);
             var model = StyleArbitraryValueResolver.TryGetProjection(element);
             if (model != null)
             {
