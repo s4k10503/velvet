@@ -9,6 +9,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import milestone  # noqa: E402
@@ -22,7 +23,7 @@ TODAY = milestone.Repository(OPEN, PUBLISHED, 3)
 
 
 def pull(title="v3.0.2", state="open", base="main", landing=None):
-    return milestone.PullRequest(title, state, base, landing or base, "topic", "a" * 40, 1, False)
+    return milestone.PullRequest(title, state, base, landing or base, "topic", "a" * 40, False)
 
 
 def adds(bump="patch", closes=()):
@@ -363,47 +364,12 @@ class ReadingTests(unittest.TestCase):
         # Act / Assert
         self.assertEqual(len(milestone.listed(api, "milestones?state=all")), milestone.PAGE + 3)
 
-    def test_Given_AListingWhoseCountIsKnown_When_ItsLastPageIsFull_Then_NoFurtherPageIsAsked(self):
-        # Arrange — a full last page otherwise reads as one with more behind it.
-        api, asked = pages(milestone.PAGE, milestone.PAGE)
-
-        # Act
-        milestone.listed(api, "pulls/7/files", expected=milestone.PAGE)
-
-        # Assert
-        self.assertEqual(len(asked), 1)
-
-    def test_Given_AFileMovedOutOfThePackage_When_ItsPathsAreRead_Then_ThePackageIsChanged(self):
-        # Arrange
-        def api(path, method="GET", fields=()):
-            return [{"filename": "scripts/moved.py",
-                     "previous_filename": "Packages/com.velvet.core/Runtime/Moved.cs"}]
-
-        # Act / Assert
-        self.assertTrue(milestone.changes_package(milestone.changed_paths(api, 7, 1)))
-
-    def test_Given_AFileListingShorterThanTheCountReported_When_Read_Then_ItIsUnread(self):
-        # Arrange
-        api, _ = pages(2)
-
-        # Act / Assert
-        with self.assertRaises(milestone.Unread):
-            milestone.changed_paths(api, 7, 5)
-
-    def test_Given_MoreFilesThanGitHubLists_When_Read_Then_SplittingIsNamed(self):
-        # Arrange
-        api, _ = pages(milestone.PAGE)
-
-        # Act / Assert
-        with self.assertRaisesRegex(milestone.Unread, "split it"):
-            milestone.changed_paths(api, 7, milestone.LISTED_FILES + 1)
-
     def test_Given_AStackMember_When_ItsPullRequestIsRead_Then_ItLandsOnTheStacksBase(self):
         # Arrange
         def api(path, method="GET", fields=()):
             return {"head": {"ref": "upper", "sha": "a" * 40, "repo": {"full_name": "o/r"}},
                     "base": {"ref": "lower", "repo": {"full_name": "o/r"}},
-                    "stack": {"number": 3, "base": {"ref": "main"}}, "changed_files": 1}
+                    "stack": {"number": 3, "base": {"ref": "main"}}}
 
         # Act / Assert
         self.assertEqual(milestone.pull_request(api, 7).landing, "main")
@@ -433,37 +399,48 @@ class ReadingTests(unittest.TestCase):
         self.assertEqual(asked[-1], "PATCH milestones/5 state=closed")
 
 
+HEAD = "a" * 40
+
+
+def actions(status="completed", job="completed", heads=None, runs=True, refuse=None,
+            conclusion="failure", event="pull_request", linked=True):
+    """An API over pull request 7 at HEAD whose newest generators run is in `status`, its Milestone
+    job in `job` with `conclusion`. `heads` is what each reading of the pull request answers in turn;
+    `refuse` is the run status read after a refused re-run, None for a re-run that is taken; `linked`
+    is whether the run names its pull request, which a fork's does not."""
+    heads = list(heads or [HEAD, HEAD])
+    posted = []
+
+    def ask(path, method="GET", fields=()):
+        if method == "POST":
+            if refuse is not None:
+                raise milestone.Unread("HTTP 403")
+            posted.append(path)
+            return None
+        if path.startswith("pulls/7"):
+            sha = heads.pop(0) if len(heads) > 1 else heads[0]
+            return {"head": {"ref": "topic", "sha": sha, "repo": {"full_name": "o/r"}},
+                    "base": {"ref": "main", "repo": {"full_name": "o/r"}}}
+        if path.startswith("pulls?state=open"):
+            return [{"number": 7, "head": {"sha": HEAD}}]
+        if path.startswith("actions/workflows/"):
+            return {"workflow_runs": [{"id": 11, "run_number": 4, "status": status,
+                                       "head_sha": HEAD}] if runs else []}
+        if path.endswith("/jobs?per_page=100"):
+            return {"jobs": [{"id": 21, "name": "Source generators (dotnet)"},
+                             {"id": 22, "name": milestone.JOB, "status": job,
+                              "conclusion": conclusion}]}
+        if path == "actions/runs/11":
+            return {"id": 11, "status": refuse or status, "event": event, "head_sha": HEAD,
+                    "pull_requests": [{"number": 7}] if linked else []}
+        raise AssertionError(path)
+    return ask, posted
+
+
 class RerunTests(unittest.TestCase):
-    HEAD = "a" * 40
-
-    def api(self, status="completed", job="completed", heads=None, runs=True, refuse=None):
-        """An API over one pull request at HEAD whose generators run is in `status` and whose
-        Milestone job is in `job`; `heads` is what each reading of the pull request answers, in turn,
-        and `refuse` the run status read after a refused re-run, None for a re-run that is taken."""
-        heads = list(heads or [self.HEAD, self.HEAD])
-        posted = []
-
-        def ask(path, method="GET", fields=()):
-            if method == "POST":
-                if refuse is not None:
-                    raise milestone.Unread("refused")
-                posted.append(path)
-                return None
-            if path.startswith("pulls/"):
-                sha = heads.pop(0) if len(heads) > 1 else heads[0]
-                return {"head": {"ref": "topic", "sha": sha}, "base": {"ref": "main"}}
-            if path.startswith("actions/workflows/"):
-                return {"workflow_runs": [{"id": 11, "run_number": 4, "status": status}]
-                        if runs else []}
-            if path.endswith("/jobs?per_page=100"):
-                return {"jobs": [{"id": 21, "name": "Source generators (dotnet)"},
-                                 {"id": 22, "name": milestone.JOB, "status": job}]}
-            return {"status": refuse}
-        return ask, posted
-
     def test_Given_AFinishedRun_When_RerunIsAsked_Then_OnlyTheMilestoneJobRunsAgain(self):
         # Arrange
-        api, posted = self.api()
+        api, posted = actions()
 
         # Act
         milestone.rerun(api, 7)
@@ -471,9 +448,23 @@ class RerunTests(unittest.TestCase):
         # Assert
         self.assertEqual(posted, ["actions/jobs/22/rerun"])
 
-    def test_Given_ARunStillGoingBeforeItsMilestoneJob_When_RerunIsAsked_Then_NothingRunsAgain(self):
+    def test_Given_ARunStillGoingBeforeItsMilestoneJob_When_RerunIsAsked_Then_TheJobIsLeftToRead(self):
         # Arrange
-        api, posted = self.api(status="in_progress", job="queued")
+        api, _ = actions(status="in_progress", job="queued")
+
+        # Act / Assert
+        self.assertIn("has yet to start its Milestone job", milestone.rerun(api, 7))
+
+    def test_Given_AMilestoneJobStillRunning_When_RerunIsAsked_Then_ItCountsAsHavingRead(self):
+        # Arrange — the job reads the pull request first, so one under way has read it.
+        api, _ = actions(status="in_progress", job="in_progress")
+
+        # Act / Assert
+        self.assertIn("its Milestone job has read the milestone", milestone.rerun(api, 7))
+
+    def test_Given_ARunStillGoingAfterItsMilestoneJob_When_RerunIsAsked_Then_NothingRunsAgain(self):
+        # Arrange
+        api, posted = actions(status="in_progress")
 
         # Act
         milestone.rerun(api, 7)
@@ -481,16 +472,9 @@ class RerunTests(unittest.TestCase):
         # Assert
         self.assertEqual(posted, [])
 
-    def test_Given_ARunStillGoingAfterItsMilestoneJob_When_RerunIsAsked_Then_TheJobsRerunIsNamed(self):
-        # Arrange
-        api, _ = self.api(status="in_progress")
-
-        # Act / Assert
-        self.assertIn("`gh run rerun 11 --job 22`", milestone.rerun(api, 7))
-
     def test_Given_AHeadThatMoved_When_RerunIsAsked_Then_NothingRunsAgain(self):
         # Arrange
-        api, posted = self.api(heads=[self.HEAD, "b" * 40])
+        api, posted = actions(heads=[HEAD, "b" * 40])
 
         # Act
         milestone.rerun(api, 7)
@@ -500,7 +484,7 @@ class RerunTests(unittest.TestCase):
 
     def test_Given_NoRunAtTheHeadYet_When_RerunIsAsked_Then_NothingRunsAgain(self):
         # Arrange
-        api, posted = self.api(runs=False)
+        api, posted = actions(runs=False)
 
         # Act
         milestone.rerun(api, 7)
@@ -510,18 +494,82 @@ class RerunTests(unittest.TestCase):
 
     def test_Given_AReRunRefusedBecauseOneIsGoing_When_RerunIsAsked_Then_ItIsNotAFailure(self):
         # Arrange — another event's re-run reached the run first.
-        api, _ = self.api(refuse="queued")
+        api, _ = actions(refuse="queued")
 
         # Act / Assert
         self.assertIn("running again already", milestone.rerun(api, 7))
 
-    def test_Given_AReRunRefusedOfAFinishedRun_When_RerunIsAsked_Then_ItIsUnread(self):
-        # Arrange
-        api, _ = self.api(refuse="completed")
+    def test_Given_AReRunGitHubRefusesOfAFinishedRun_When_RerunIsAsked_Then_APushIsNamed(self):
+        # Arrange — a run past the age GitHub runs again, say.
+        api, _ = actions(refuse="completed")
 
         # Act / Assert
-        with self.assertRaises(milestone.Unread):
-            milestone.rerun(api, 7)
+        self.assertIn("a push to its branch starts a run", milestone.rerun(api, 7))
+
+    def test_Given_AReadingThatFails_When_EveryOpenPullRequestIsAsked_Then_TheJobStillSucceeds(self):
+        # Arrange
+        def api(path, method="GET", fields=()):
+            raise milestone.Unread("HTTP 502")
+
+        # Act / Assert
+        self.assertEqual(milestone.rerun_all(api, [7]), 0)
+
+
+class ReconcileTests(unittest.TestCase):
+    """A finished run's Milestone verdict against a reading taken now, with `holds` what that
+    reading finds."""
+
+    def reconciled(self, holds, **arranged):
+        api, posted = actions(**arranged)
+        found = [] if holds else ["a reason"]
+        with mock.patch.object(milestone, "repository", lambda *_: TODAY), \
+                mock.patch.object(milestone, "change", lambda *_: adds()), \
+                mock.patch.object(milestone, "merge_reasons", lambda *_: found), \
+                mock.patch.object(milestone.published_check, "git", lambda *_, **__: ""):
+            said = milestone.reconcile(Path("."), api, 11, 30)
+        return posted, said
+
+    def test_Given_AFailedVerdictAndAMilestoneThatNowHolds_When_Reconciled_Then_TheJobRunsAgain(self):
+        # Act
+        posted, _ = self.reconciled(holds=True, conclusion="failure")
+
+        # Assert
+        self.assertEqual(posted, ["actions/jobs/22/rerun"])
+
+    def test_Given_APassingVerdictAndAMilestoneThatNowFails_When_Reconciled_Then_TheJobRunsAgain(self):
+        # Act
+        posted, _ = self.reconciled(holds=False, conclusion="success")
+
+        # Assert
+        self.assertEqual(posted, ["actions/jobs/22/rerun"])
+
+    def test_Given_AVerdictTheMilestoneStillAgreesWith_When_Reconciled_Then_NothingRunsAgain(self):
+        # Act
+        posted, _ = self.reconciled(holds=True, conclusion="success")
+
+        # Assert
+        self.assertEqual(posted, [])
+
+    def test_Given_AForksRunNamingNoPullRequest_When_Reconciled_Then_TheOpenOneAtItsHeadIsAsked(self):
+        # Act
+        posted, _ = self.reconciled(holds=True, conclusion="failure", linked=False)
+
+        # Assert
+        self.assertEqual(posted, ["actions/jobs/22/rerun"])
+
+    def test_Given_AHeadThatMovedPastTheRun_When_Reconciled_Then_NothingRunsAgain(self):
+        # Act
+        posted, _ = self.reconciled(holds=True, conclusion="failure", heads=["b" * 40])
+
+        # Assert
+        self.assertEqual(posted, [])
+
+    def test_Given_ARunOfAPush_When_Reconciled_Then_NothingRunsAgain(self):
+        # Act
+        posted, _ = self.reconciled(holds=True, conclusion="failure", event="push")
+
+        # Assert
+        self.assertEqual(posted, [])
 
 
 def git(directory, *args):
@@ -606,6 +654,16 @@ class ChangeReadingTests(unittest.TestCase):
 
         # Act / Assert
         self.assertFalse(milestone.change(self.directory, self.base, head, {"3.0.1"}).package)
+
+    def test_Given_AFileMovedOutOfThePackage_When_TheChangeIsRead_Then_ThePackageIsChanged(self):
+        # Arrange
+        self.write("Packages/com.velvet.core/Runtime/Moved.cs", "class Moved {}\n")
+        self.base = self.commit()
+        git(self.directory, "mv", "Packages/com.velvet.core/Runtime/Moved.cs", "Moved.cs")
+        head = self.commit()
+
+        # Act / Assert
+        self.assertTrue(milestone.change(self.directory, self.base, head, {"3.0.1"}).package)
 
     def test_Given_AHeadBehindABaseThatDrainedABreak_When_Read_Then_TheBreakIsNotItsOwn(self):
         # Arrange — the head branched while a break waited; the base has since released it.

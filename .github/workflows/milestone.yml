@@ -1,10 +1,12 @@
 name: Milestone
 
-# Runs the Milestone job of Source generators again when what it decides from changes without a push:
-# a pull request's milestone or base, or a milestone of the repository opening, closing, going or
-# being retitled. That job alone is asked to run again, so a milestone change re-runs no suite, and a
-# run still going is left alone; scripts/pr/milestone.py owns which run and job are asked and says
-# what a run left alone means, and CONTRIBUTING.md's merging section the rule the job holds.
+# Keeps the Milestone job of Source generators in step with the milestone when what it decides from
+# changes without a push. A pull request's milestone or base changing, or a milestone of the
+# repository opening, closing, going or being retitled, runs that job again in the pull request's
+# finished run; a run still going is left alone, and its completion compares the verdict its job
+# reached with a reading taken then, running the job again where the two differ. That job alone is
+# asked to run again, so none of this re-runs a suite. scripts/pr/milestone.py owns which run and job
+# are asked, and CONTRIBUTING.md's merging section the rule the job holds.
 #
 # No job checks out the pull request: the only code this runs is the default branch's, as in
 # automerge.yml.
@@ -13,12 +15,15 @@ on:
     types: [milestoned, demilestoned, edited]
   milestone:
     types: [created, opened, closed, edited, deleted]
+  workflow_run:
+    workflows: [Source generators]
+    types: [completed]
 
 permissions: {}
 
 # One run per pull request at a time, so two events at once do not both ask for the same re-run.
 concurrency:
-  group: milestone-${{ github.event.pull_request.number || 'repository' }}
+  group: milestone-${{ github.event.pull_request.number || github.event.workflow_run.pull_requests[0].number || 'repository' }}
   cancel-in-progress: false
 
 # Same reason test.yml gives.
@@ -29,27 +34,37 @@ jobs:
   rerun:
     name: Run the milestone check again
     # A pull request's edit is read only where it moved the base, and a milestone's only where it
-    # retitled it: the rest change nothing decided.
+    # retitled it: the rest change nothing decided. A finished run is read only where a pull request
+    # started it.
     if: >-
-      github.event.action != 'edited'
-      || (github.event_name == 'pull_request_target' && github.event.changes.base != null)
-      || (github.event_name == 'milestone' && github.event.changes.title != null)
+      (github.event_name == 'workflow_run' && github.event.workflow_run.event == 'pull_request')
+      || (github.event_name == 'pull_request_target'
+          && (github.event.action != 'edited' || github.event.changes.base != null))
+      || (github.event_name == 'milestone'
+          && (github.event.action != 'edited' || github.event.changes.title != null))
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
       actions: write
       contents: read
+      issues: read
       pull-requests: read
     steps:
+      # fetch-depth 0 for the history a reading from where the pull request branched needs.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0
 
       - env:
           GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          RUN: ${{ github.event.workflow_run.id }}
           NUMBER: ${{ github.event.pull_request.number }}
         run: |
-          if [ -n "$NUMBER" ]; then
+          if [ "$EVENT" = workflow_run ]; then
+            python3 scripts/pr/milestone.py reconcile --run "$RUN"
+          elif [ -n "$NUMBER" ]; then
             python3 scripts/pr/milestone.py rerun --number "$NUMBER"
           else
             python3 scripts/pr/milestone.py rerun --open

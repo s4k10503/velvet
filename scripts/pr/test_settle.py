@@ -215,7 +215,7 @@ class MergeDecisionTests(unittest.TestCase):
 Fabricated = collections.namedtuple(
     "Fabricated",
     "sha after branch base draft merge_state results holds held fork labels runs state jobs stack "
-    "tangled title line carried milestone paths change")
+    "tangled title line carried milestone change")
 
 PASSING = [{"name": "Required checks (Unity)", "bucket": "pass"}]
 
@@ -273,9 +273,8 @@ INFRASTRUCTURE = "Infrastructure"
 
 # A pull request's milestone readings answering as nothing to report: an Infrastructure milestone over
 # no file, for the scaffolds below that patch beneath the readings rather than at a table.
-MILESTONE_FIELDS = {"milestone": INFRASTRUCTURE, "milestone_state": "open", "changed": 0}
-NO_MILESTONE_READINGS = (("changed_paths", lambda *_: []),
-                         ("milestone_change", lambda *_: settle.milestone.NOTHING),
+MILESTONE_FIELDS = {"milestone": INFRASTRUCTURE, "milestone_state": "open"}
+NO_MILESTONE_READINGS = (("milestone_change", lambda *_: settle.milestone.NOTHING),
                          ("milestone_state", lambda *_: MILESTONES))
 
 # The milestones every table below is read against: main builds 3, v3.0.1 is the newest release, and
@@ -290,11 +289,11 @@ MILESTONES = types.SimpleNamespace(
 def fabricate(number, results=PASSING, draft=False, merge_state="clean", holds=(),
               held=False, moved=False, fork=False, base="main", branch=None, labels=(), runs=(),
               state="open", jobs=None, stack=None, tangled=None, title="fix(velvet): a fix",
-              line=None, carried=(), milestone=INFRASTRUCTURE, paths=(), change=None):
+              line=None, carried=(), milestone=INFRASTRUCTURE, change=None):
     """`line` is what `settle.line_reading` answers for the head, a line taking all of it unless a
     case says otherwise, and `carried` what `settle.line_carried` answers, no line's commits unless a
-    case says otherwise. `milestone` is the title the pull request carries, open, and `paths` and
-    `change` what `settle.changed_paths` and `settle.milestone_change` answer, None for no change:
+    case says otherwise. `milestone` is the title the pull request carries, open, and `change` what
+    `settle.milestone_change` answers, None for no change:
     Infrastructure over no change, which every base in the tables below takes, unless a case says
     otherwise. The change is resolved where it is read rather than here, so a table built at class
     definition does not reach settle's milestone reading."""
@@ -305,8 +304,7 @@ def fabricate(number, results=PASSING, draft=False, merge_state="clean", holds=(
                       held=held, fork=fork, labels=frozenset(labels), runs=list(runs), state=state,
                       jobs=jobs or {}, stack=stack, tangled=tangled, title=title,
                       line=line or settle.maintenance_line.Reading([], [], []),
-                      carried=list(carried), milestone=milestone, paths=tuple(paths),
-                      change=change)
+                      carried=list(carried), milestone=milestone, change=change)
 
 
 def base_state(held, base, red=(RED,), releasing=(RELEASING,), required=None):
@@ -400,10 +398,8 @@ def fabricated_readings(states, red=(RED,), releasing=(RELEASING,), required=Non
                 fork=states[number].fork, labels=states[number].labels, state=states[number].state,
                 stack=states[number].stack, title=states[number].title,
                 milestone=states[number].milestone,
-                milestone_state="open" if states[number].milestone else None,
-                changed=len(states[number].paths))),
-            ("changed_paths", lambda _project, number, _expected: list(states[number].paths)),
-            ("milestone_change", lambda _project, _base, sha, _versions:
+                milestone_state="open" if states[number].milestone else None)),
+            ("milestone_change", lambda _project, _number, _base, sha, _fork, _versions:
                 by_sha[sha].change or settle.milestone.NOTHING),
             ("line_reading", lambda _project, _line, sha: by_sha[sha].line),
             ("line_carried", lambda _project, _base, sha: by_sha[sha].carried),
@@ -2248,13 +2244,16 @@ class MilestoneMergeTests(unittest.TestCase):
         self.assertIn("carry v4.0.0 with `gh pr edit 1 --milestone v4.0.0`",
                       decided[0] if decided else "")
 
-    def test_Given_AForksPackageChange_When_TheMergeIsDecided_Then_ItsPathsAreReadOffTheApi(self):
-        # Arrange — its head is not fetched here, so the paths the API lists are all there is.
-        decided = self.decided(milestone=INFRASTRUCTURE, fork=True,
-                               paths=("Packages/com.velvet.core/Runtime/Fix.cs",))
+    def test_Given_AFork_When_ItsChangeIsRead_Then_ItsPullRequestsRefIsFetchedFirst(self):
+        # Arrange — origin's branches do not hold a fork's head.
+        fetched = []
+        with mock.patch.object(settle, "gh_git", lambda _project, *args: fetched.append(args)), \
+                mock.patch.object(settle.milestone, "change", lambda *_: None):
+            # Act
+            settle.milestone_change(Path("."), 7, "main", GREEN, True, set())
 
-        # Act / Assert
-        self.assertIn("carries Infrastructure, which is for a change outside it", "\n".join(decided))
+        # Assert
+        self.assertEqual(fetched, [("fetch", "--quiet", "origin", "pull/7/head")])
 
     def test_Given_APullRequestCarryingNoMilestone_When_Polled_Then_ItIsNotRecordedReady(self):
         # Act / Assert — every other reading is green, so the milestone is what keeps it out.

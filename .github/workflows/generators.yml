@@ -251,10 +251,10 @@ jobs:
 
   # ---------------------------------------------------------------------------
   # The milestone a pull request merges under, which scripts/pr/milestone.py decides and
-  # CONTRIBUTING.md's merging section owns. It runs after the jobs above, so a milestone set while the
-  # run is going is read here; the Milestone workflow and the release's close-milestone job run it
-  # again once the run has finished. The pull request is read live rather than off the event, for
-  # the reason test.yml's publication job gives for its body.
+  # CONTRIBUTING.md's merging section owns. It runs after the jobs above, so a milestone set before
+  # it starts is read here, and the Milestone workflow compares its verdict with the milestone once
+  # the run finishes. The pull request is read live rather than off the event, for the reason
+  # test.yml's publication job gives for its body.
   # ---------------------------------------------------------------------------
   milestone:
     name: Milestone

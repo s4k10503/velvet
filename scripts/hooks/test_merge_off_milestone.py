@@ -41,6 +41,16 @@ class MergeOffMilestoneTests(unittest.TestCase):
         cls.home = cls.root / "home"
         cls.home.mkdir()
         cls.project = worlds.build_world(cls.root / "world", unpublished_on_maintenance=False)
+        # A fragment on main and on the line, and a public API on the line, so a merge takes every
+        # git read the hook can: a fragment's contents and the API file are read where a tree has
+        # them.
+        fragment = {"Packages/com.velvet.core/Changelog~/unreleased/kept.md":
+                    "### Fixed\n\n- A fix.\n"}
+        write_and_commit(cls.project, fragment)
+        worlds.in_worktree(cls.project, cls.root, "2.x", lambda work: write_and_commit(
+            work, {**fragment, "Packages/com.velvet.core/PublicAPI.txt": "method Velvet.V.Old()\n"}))
+        worlds.git(cls.project, "push", "-q", "origin", "main", "2.x")
+        worlds.git(cls.project, "fetch", "-q", "origin")
         worlds.git(cls.project, "branch", PACKAGE_HEAD, "origin/2.x")
 
         def change_the_package(work):
@@ -51,6 +61,8 @@ class MergeOffMilestoneTests(unittest.TestCase):
 
         worlds.in_worktree(cls.project, cls.root, PACKAGE_HEAD, change_the_package)
         worlds.git(cls.project, "push", "-q", "origin", PACKAGE_HEAD)
+        # Where GitHub keeps a fork's head on the base repository, under a branch name origin lacks.
+        worlds.git(cls.project, "push", "-q", "origin", f"{PACKAGE_HEAD}:refs/pull/1/head")
         cls.bin = cls.root / "bin"
         cls.bin.mkdir()
         (cls.bin / "gh").write_text(worlds.STUB_GH, encoding="utf-8")
@@ -66,10 +78,13 @@ class MergeOffMilestoneTests(unittest.TestCase):
         shutil.rmtree(cls.root, ignore_errors=True)
 
     def merge(self, title="Infrastructure", head="topic", milestones=LINE_MILESTONES,
-              command=worlds.COMMAND, gh_fails=False):
-        """(exit code, stderr) of the hook posed a merge onto 2.x of `head` under `title`."""
+              command=worlds.COMMAND, gh_fails=False, fork=False):
+        """(exit code, stderr) of the hook posed a merge onto 2.x of `head` under `title`, from a
+        fork whose branch origin has not got where `fork` is set."""
         pull = worlds.at(self.project, head, "2.x")
         pull["milestone"] = {"number": 7, "title": title, "state": "open"} if title else None
+        if fork:
+            pull["head"] = {**pull["head"], "ref": "fork-only", "repo": {"full_name": "fork/velvet"}}
         environment = dict(os.environ, HOME=str(self.home),
                            PATH=str(self.bin) + os.pathsep + os.environ.get("PATH", ""),
                            VELVET_BASE_CHECK_PULLS=json.dumps({"1": pull}),
@@ -134,8 +149,21 @@ class MergeOffMilestoneTests(unittest.TestCase):
         # Assert
         self.assertEqual(code, ALLOWED)
 
-    def test_Given_APackageMerge_When_ItsGitReadsAreCounted_Then_TheyStayWithinTheBudget(self):
-        # Arrange
+    def test_Given_AForksPackageChange_When_Merged_Then_ItsHeadIsFetchedByItsPullRequestsRef(self):
+        # Act — its branch is not on origin, so a fetch naming the branch fails and refuses.
+        code, _ = self.merge(title="v2.0.0", head=PACKAGE_HEAD, fork=True)
+
+        # Assert
+        self.assertEqual(code, ALLOWED)
+
+    def test_Given_TwoMergesInOneCommand_When_Posed_Then_ItRefuses(self):
+        # Act / Assert
+        self.assertIn("merges 2 pull requests",
+                      self.refusal(command=worlds.COMMAND + " && gh pr merge 2 --squash "
+                                                            "--delete-branch"))
+
+    def test_Given_APackageMergeReadingEveryTree_When_ItsGitReadsAreCounted_Then_TheyAreTheBudgets(self):
+        # Arrange — the world holds a fragment on every tree read and an API file on the line.
         self.git_log.write_text("", encoding="utf-8")
         self.merge(title="v2.0.0", head=PACKAGE_HEAD)
 
@@ -144,7 +172,14 @@ class MergeOffMilestoneTests(unittest.TestCase):
                  if subcommand(line) not in ("fetch", "ls-remote")]
 
         # Assert
-        self.assertLessEqual(len(local), guard().LOCAL_READS)
+        self.assertEqual(len(local), guard().LOCAL_READS)
+
+
+def write_and_commit(work, files):
+    for path, text in files.items():
+        (work / path).parent.mkdir(parents=True, exist_ok=True)
+        (work / path).write_text(text, encoding="utf-8")
+    worlds.commit(work, "a fragment and an API file")
 
 
 def subcommand(line):
@@ -173,8 +208,8 @@ class BudgetTests(unittest.TestCase):
             (REPO_ROOT / ".harness/hooks.json").read_text(encoding="utf-8"))
             if entry["script"] == "refuse/merge_off_milestone.py")
 
-        # Act
-        spent = ((2 + hook.MILESTONE_PAGES) * hook.READ_TIMEOUT + hook.GIT_TIMEOUT
+        # Act — the number looked up, the pull request, the milestone pages and the tag listing.
+        spent = ((3 + hook.MILESTONE_PAGES) * hook.READ_TIMEOUT + hook.GIT_TIMEOUT
                  + hook.LOCAL_READS * hook.LOCAL_TIMEOUT)
 
         # Assert
@@ -186,8 +221,9 @@ class BudgetTests(unittest.TestCase):
         release = hook.milestone.published_check
 
         # Act
-        longest = max(inspect.signature(read).parameters["timeout"].default
-                      for read in (release.git, hook.milestone.release_notes.fragments_at))
+        longest = max([inspect.signature(read).parameters["timeout"].default
+                       for read in (release.git, hook.milestone.release_notes.fragments_at)]
+                      + [hook.milestone.GIT_TIMEOUT])
 
         # Assert
         self.assertLessEqual(longest, hook.LOCAL_TIMEOUT)

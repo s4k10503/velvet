@@ -35,11 +35,12 @@ HOOK_SCOPE = "session"
 # The decision is `milestone.py`'s, and its suite has no reason to spell this hook.
 DECISION_TESTS = ("scripts/pr/test_milestone.py",)
 
-# What one merge reads at worst, each at its bound: the pull request, `MILESTONE_PAGES` pages of
-# milestones and the tag listing at `READ_TIMEOUT`, one fetch at `GIT_TIMEOUT`, and `LOCAL_READS` git
-# reads of the fetched trees at `LOCAL_TIMEOUT`, published_check's own bound.
-# test_merge_off_milestone.py holds the sum under the timeout `.harness/hooks.json` registers, and
-# the git reads one merge takes under the count.
+# What one merge reads at worst, each at its bound: the pull request's number where the command names
+# none, the pull request, `MILESTONE_PAGES` pages of milestones and the tag listing at
+# `READ_TIMEOUT`, one fetch at `GIT_TIMEOUT`, and `LOCAL_READS` git reads of the fetched trees at
+# `LOCAL_TIMEOUT`. test_merge_off_milestone.py holds the sum under the timeout `.harness/hooks.json`
+# registers, and the git reads one merge takes to the count. A command is held to one merge, which
+# is what keeps it inside that sum.
 READ_TIMEOUT = 8
 MILESTONE_PAGES = 2
 GIT_TIMEOUT = 20
@@ -124,16 +125,21 @@ def main():
             "Name the pull request, or see every merge precondition at once:\n"
             "  python3 scripts/pr/settle.py merge <pr> --dry-run\n")
         return 2
+    if len(targets) > 1:
+        sys.stderr.write(
+            f"Refusing `gh pr merge`: this command merges {len(targets)} pull requests, and this "
+            "guard judges one per command inside the time it is given.\n\n"
+            "Merge them one command at a time, or with `python3 scripts/pr/settle.py merge <pr>`.\n")
+        return 2
     cwd = command_directory(command, payload.get("cwd") or ".")
     if cwd is UNRESOLVED_CD:
         sys.stderr.write("Refusing `gh pr merge`: which checkout the milestone would be read from "
                          f"could not be read.\n\n{UNPLACEABLE_MOVE}\n\n{NAME_THE_TREE}\n")
         return 2
-    for pr in targets:
-        refusal = refuse_one(cwd, pr)
-        if refusal is not None:
-            sys.stderr.write(refusal)
-            return 2
+    refusal = refuse_one(cwd, targets[0])
+    if refusal is not None:
+        sys.stderr.write(refusal)
+        return 2
     return 0
 
 

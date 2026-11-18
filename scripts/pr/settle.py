@@ -270,7 +270,7 @@ def head_sha(project, number):
 # not on the listing one, so a caller that wants it has to ask per pull request anyway.
 PullRequest = collections.namedtuple("PullRequest",
                                      "sha branch base draft merge_state fork state stack title "
-                                     "milestone milestone_state changed")
+                                     "milestone milestone_state")
 
 # The stack a pull request sits in: its number, and the branch the whole stack merges into.
 Stack = collections.namedtuple("Stack", "number base")
@@ -300,8 +300,7 @@ def pull_request(project, number):
                        Stack(stack["number"], stack["base"]["ref"]) if stack else None,
                        payload.get("title") or "",
                        (payload.get("milestone") or {}).get("title"),
-                       (payload.get("milestone") or {}).get("state"),
-                       payload.get("changed_files") or 0)
+                       (payload.get("milestone") or {}).get("state"))
 
 
 def stack_members(project, number):
@@ -790,12 +789,11 @@ def milestone_state(project):
     return milestone.repository(project, api(project), GH_TIMEOUT)
 
 
-def changed_paths(project, number, expected):
-    return milestone.changed_paths(api(project), number, expected)
-
-
-def milestone_change(project, base, sha, versions):
-    """`milestone.change` for `sha` against origin/<base>."""
+def milestone_change(project, number, base, sha, fork, versions):
+    """`milestone.change` for `sha` against origin/<base>, a fork's head fetched first by its pull
+    request's ref, since `project_state`'s fetch brings origin's branches alone."""
+    if fork:
+        gh_git(project, "fetch", "--quiet", "origin", f"pull/{number}/head")
     return milestone.change(project, f"origin/{base}", sha, versions)
 
 
@@ -865,10 +863,8 @@ def blocking_reasons(project, number, base=None, states=None, previous=()):
     line_squash = (maintenance_line.squash_reasons(landing,
                                                    line_carried(project, landing, before.sha))
                    if not before.fork and not long_lived_head else [])
-    # A fork's head is not fetched here, so only its paths are read, off the API.
-    change = (milestone.NOTHING._replace(package=milestone.changes_package(
-                  changed_paths(project, number, before.changed))) if before.fork
-              else milestone_change(project, before.base, before.sha, state.milestones.published))
+    change = milestone_change(project, number, before.base, before.sha, before.fork,
+                              state.milestones.published)
     milestone_pull_request = milestone.pull_request_reasons(
         number, before.milestone, before.milestone_state,
         milestone.suggested(change.package, landing, state.milestones))

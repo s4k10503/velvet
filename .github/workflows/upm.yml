@@ -234,8 +234,9 @@ jobs:
 
   # The published version's milestone closes with the release, so the next one becomes the version
   # pull requests merge under. A job of its own because the split leaves its checkout on the
-  # package-at-root tree, which holds no scripts. It runs the open pull requests' Milestone jobs
-  # again itself rather than leaving its close to the Milestone workflow.
+  # package-at-root tree, which holds no scripts. It asks for the open pull requests' Milestone jobs
+  # again itself rather than leaving its close to the Milestone workflow, in a step of its own whose
+  # outcome neither undoes the close nor fails the release.
   close-milestone:
     name: Close the published version's milestone
     needs: split
@@ -253,6 +254,9 @@ jobs:
       - env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ inputs.version }}
-        run: |
-          python3 scripts/pr/milestone.py close --version "$VERSION"
-          python3 scripts/pr/milestone.py rerun --open
+        run: python3 scripts/pr/milestone.py close --version "$VERSION"
+
+      - continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/pr/milestone.py rerun --open
