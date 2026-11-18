@@ -2177,7 +2177,12 @@ namespace Velvet
 
         // Whether a layout or passive commit is running, where an error an effect or a ref callback throws is captured
         // for its boundary rather than caught at once (ComponentBoundarySearch.PropagateFrom).
-        internal bool InCommitPhase => EffectCommitDepth > 0;
+        internal bool InCommitPhase => EffectCommitDepth > 0 || TeardownDepth > 0;
+
+        // The deletions running where a pass applies its recorded writes (DeletionCommit.Teardown). Their errors are
+        // captured like a commit's, and only the insertion and layout cleanups among them count in EffectCommitDepth, so
+        // a state update from a passive cleanup keeps the lane it has outside a commit.
+        internal int TeardownDepth;
 
         // Fibers with pending passive (UseEffect) effects awaiting the next post-paint drain. Unlike
         // layout effects (committed synchronously, bottom-up, before paint) passive effects fire

@@ -416,6 +416,13 @@ namespace Velvet
             _ctx.FiberMemoCache.Forget(fiber);
         }
 
+        // A deletion hides the fibers it disposes later where it decides (DeletionCommit), so no walk before the disposal
+        // pairs a node with one. The disposal's own hide finds them gone.
+        internal void HideFibers(List<ComponentFiber> fibers)
+        {
+            foreach (var fiber in fibers) Hide(fiber);
+        }
+
         // Hiding before the fiber's own cascade waits for Unmount to stop reconciling its rows during the walk.
         private void Hide(ComponentFiber fiber)
         {

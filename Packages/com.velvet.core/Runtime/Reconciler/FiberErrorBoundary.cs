@@ -412,8 +412,8 @@ namespace Velvet
         // reported in capture order; the newest is the one its fallback is handed, as React's getDerivedStateFromError
         // takes each and keeps the last. A render that a commit's own user code starts leaves them for the render
         // the commit's end asks for (FiberEffects.FlushCaptures). The rows the boundary showed go first, so the fallback mounts afresh as it does
-        // where TryCatch swaps it in, and a cleanup of those rows that throws is taken as one of the swap is, and
-        // reported after the captures. Inside a parent's walk the unmount would take rows that walk already holds, so
+        // where TryCatch swaps it in. A cleanup of those rows that throws in a removal that runs in the walk is taken as one of
+        // the swap is, and reported after the captures; in a deferred removal it is a capture of its own. Inside a parent's walk the unmount would take rows that walk already holds, so
         // the fallback is reconciled against them instead.
         private static void TakeCaptures(ComponentFiber fiber)
         {
@@ -421,6 +421,10 @@ namespace Velvet
             if (captures == null || captures.Count == 0) return;
             var ctx = fiber.Reconciler!.Context;
             if (ctx.InCommitPhase) return;
+            // A fallback that has not committed leaves its catch unreported, and an error captured meanwhile waits for the
+            // commit that shows it, as React raises the capture in that commit. ReportCarriedCatch asks for the render that
+            // takes it.
+            if (fiber.CatchUnreported) return;
             var taken = captures.ToArray();
             ctx.DropCapturesOf(fiber);
             if (ctx.SharedReconcileDepth == 0)
@@ -459,8 +463,16 @@ namespace Velvet
             {
                 foreach (var capture in earlier) QueueCatch(fiber.Reconciler!.Context, fiber, capture.Error, capture.Info);
             }
-            RecordCatch(fiber.Reconciler!.Context, fiber, error, info);
+            var ctx = fiber.Reconciler!.Context;
+            RecordCatch(ctx, fiber, error, info);
             fiber.CatchReportedFromCarry = true;
+            // What a commit captured while the fallback was suspended was left for this commit (TakeCaptures), whose render
+            // is asked for as a capture asks for its own.
+            if (fiber.PendingCaptures is { Count: > 0 })
+            {
+                FiberWorkLoop.ScheduleRerender(fiber, FiberUpdatePriority.Urgent);
+                ctx.BatchScheduler.OweSyncLane();
+            }
         }
 
         // react-error-boundary's setState(initialState), which follows its onReset: queued as a state update is,
@@ -487,6 +499,9 @@ namespace Velvet
                     return;
             }
             fiber.QueuedReset = QueuedErrorBoundaryReset.None;
+            // What was captured while the fallback had not committed is the error of the swap's own deletion, a commit that
+            // React never made, so the reset shows the children rather than a fallback for it.
+            if (fiber.CatchUnreported) fiber.Reconciler?.Context.DropCapturesOf(fiber);
             fiber.CaughtError = null;
             // The children mount afresh, as React's do after a reset: what a Suspense among them kept offscreen,
             // and the fallback recorded for it against this fiber, are not carried into the reset render.

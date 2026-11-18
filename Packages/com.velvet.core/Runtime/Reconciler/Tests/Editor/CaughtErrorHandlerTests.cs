@@ -418,13 +418,13 @@ namespace Velvet.Tests
             Assert.That(string.Join(", ", s_order), Is.EqualTo("fallback, caught"));
         }
 
-        // GREEN_ON_BASE(refactor): only how this case spells its MountOptions changed.
-        // OnCaughtError is now set as the init property the options take, which the base's record accepts too.
         [Test]
         public void Given_SiblingBoundariesCatchingInReverseTreeOrderInOnePassiveDrain_When_TheirFallbacksCommit_Then_TheReportsFollowTreeOrderAndEachFallbacksLayoutEffects()
         {
             // The second "two" is the cleanup the update's setup returned, which the fallback's commit runs as it deletes
-            // the child, and which React captures and reports in turn.
+            // the child. React's captureCommitPhaseError queues a capture update for it on the boundary, whose render has
+            // DidCapture set and so unmounts the fallback it shows and mounts it again (finishClassComponent's
+            // forceUnmountCurrentAndReconcile), which is the second "fallback"; the report follows that commit.
             // Arrange — the second boundary's child throws from its effect's cleanup, which the drain runs
             // before the first child's throwing setup.
             _mounted = V.Mount(
@@ -440,7 +440,7 @@ namespace Velvet.Tests
             _mounted.FlushEffectsForTest();
 
             // Assert
-            Assert.That(string.Join(", ", s_order), Is.EqualTo("one, fallback, two, two"));
+            Assert.That(string.Join(", ", s_order), Is.EqualTo("one, fallback, two, fallback, two"));
         }
 
         [Test]
@@ -811,13 +811,13 @@ namespace Velvet.Tests
                 Is.EqualTo("1 kept before | 0 kept after"));
         }
 
-        // GREEN_ON_BASE(refactor): only how this case spells its MountOptions changed.
-        // OnCaughtError is now set as the init property the options take, which the base's record accepts too.
         [Test]
         public void Given_SiblingBoundariesWhoseFallbacksBothHaveLayoutEffectsCatchingInReverseTreeOrder_When_TheirFallbacksCommit_Then_EachReportFollowsItsOwnFallbacksLayoutEffect()
         {
-            // The last "two" is the cleanup the update's setup returned, which the fallback's commit runs as it deletes
-            // the child, and which React captures and reports in turn.
+            // The last "two" is the cleanup the update's setup returned, which the fallback's commit runs as it
+            // deletes the child; the "fallback two" before it is the remounted fallback's layout effect. React's captureCommitPhaseError queues a capture update on the boundary, whose render has
+            // DidCapture set and so unmounts the fallback it shows and mounts it again (finishClassComponent's
+            // forceUnmountCurrentAndReconcile), and the report follows that commit.
             // Arrange — the second boundary catches first, so its fallback is pushed ahead of the first's.
             _mounted = V.Mount(
                 _root,
@@ -832,7 +832,7 @@ namespace Velvet.Tests
             _mounted.FlushEffectsForTest();
 
             // Assert
-            Assert.That(string.Join(", ", s_order), Is.EqualTo("fallback one, one, fallback two, two, two"));
+            Assert.That(string.Join(", ", s_order), Is.EqualTo("fallback one, one, fallback two, two, fallback two, two"));
         }
 
         // GREEN_ON_BASE(refactor): only how this case spells its MountOptions changed.
