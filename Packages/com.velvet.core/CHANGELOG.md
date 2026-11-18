@@ -7,6 +7,117 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased — breaking]
 
+## [3.0.1] - 2026-11-17
+
+### Highlights
+
+- A node a component keeps across renders comes back as it was built. One held in a composite value — a record in a
+  `UseState` or `UseMemo` slot, a props record, a `Store`'s state — and put back after a render that left it out had
+  its props and handlers cleared, or swapped for those of an element built in the meantime, so a label could show
+  another label's text and a button run another button's click handler. Each node a `V.*` factory builds now keeps
+  its own props, handlers and children.
+
+- An error boundary holds when its fallback suspends. Once the boundary had swapped its fallback in, a fallback that
+  suspended could throw a `NullReferenceException` out of the child's re-render that had thrown or, where a layout
+  effect had thrown at mount, let the internal suspend signal escape `V.Mount`. The boundary now keeps the error,
+  renders the fallback again when the read resolves and reports the catch once. A boundary whose fallback element
+  cannot be created hands the boundary above the error that creation threw, as React hands on the error of a
+  fallback's render, rather than the error the fallback was for.
+
+- Where no `font-<name>` sits on its element or above it, a weight, italic or width class keeps the font family the
+  element inherits. It takes the family an author's stylesheet or inline style sets above the element, as CSS inherits
+  `font-family`, and that family's face where one is registered, where it used to take a face of
+  `VelvetFonts.DefaultFamily`; a font no registered family holds stays, with the weight or italic emulated. A change
+  to the font registry now reaches the elements a `font-<name>` or weight class already resolved, which kept their
+  first font until created again.
+
+- Portals take their rows out first to last. A Portal that unmounts or moves to another element removes its rows from
+  its target in the order React removes a deleted portal's children, where it went last to first; a row a `z-*` or
+  `order-*` class lifts into a stacking layer still leaves after the rest. Where the leaving Portal holds a second
+  Portal into the same element, a Component that a third Portal mounts there keeps patching its own row, which its
+  next render could miss before.
+
+- `UseImperativeHandle` and ref cleanups run at their place in the commit. A handle is set up in hook order among the
+  component's layout effects — after the ones declared before it, ahead of the ones declared after — where every
+  handle used to be set up ahead of them all. A replaced ref callback's cleanup runs once the commit reaches its
+  element, after the cleanups of the components below it, rather than ahead of every cleanup in the commit.
+
+- Several render and commit paths allocate or scan less. The layout commit and the passive-effect flush order their
+  components in lists kept on the root, and the Normal and Urgent update drain and the passive-effect flush register
+  a callback the root builds once; a component re-rendering on its own under a Provider reuses across renders the
+  lists, the key-count table and the context stacks it used to allocate for each one; and a `UseContext` read no
+  longer allocates a record of the context it read. The class-family passes — gradient, shadow, ring, gap, grid,
+  stacking and others — take which families a class list names from one table they share, instead of each scanning
+  the list on every patch.
+
+- Auto-memoization caches values it used to pass over. A computed value in a `[Component]` body that can hold a node
+  in a field, or in a collection other than an array or `List<T>` of nodes, is now cached like any other value, and
+  the memoization report no longer declines it as holding nodes the pool could take back.
+
+### Changed
+
+- The gradient, `animate-*`, skew, shadow, border line-style, ring and outline, `backdrop-*`, `[&>*]:`, gap and space,
+  grid, divide, `pointer-events-*` and stacking (`z-*`, `order-*`, `absolute`, `relative`) passes no longer each scan
+  an element's class list on every patch to find whether it names their family. Which of those families a class list
+  names is read from its text alone and kept in a table by the list's identity, read again where another list has
+  taken its place, and each of those passes tests one bit of that reading.
+
+- A `[Component]` body's computed value that can hold a node in a field or in a collection other than an array or a
+  `List<T>` of nodes is now cached as any other value is. The memoization report used to decline it with "it can
+  hold nodes that nothing keeps out of the pool".
+
+- A component's re-render and commit allocate less. The layout commit and the passive-effect flush order the
+  components they run in lists kept on the root rather than built for each commit, and order nothing where one
+  component is staged. The drain of Normal and Urgent updates and the passive-effect flush each register a callback the
+  root builds once, rather than a new one per registration.
+- Scheduling a component's flush or its passive effects, retiring a render's previous output and resuming a
+  time-sliced render no longer build the closure of a branch the call does not take.
+- A `UseContext` read no longer allocates an object to record the context it read.
+- A component re-rendering on its own under a Provider reuses, across renders, the list of its ancestors, the list of
+  the Providers it pushes again, the table counting repeated component keys and the context cursor's per-context
+  stacks, rather than allocating them for each render.
+
+### Fixed
+
+- An error boundary whose fallback suspends after the boundary has swapped it in no longer throws a
+  `NullReferenceException` out of the render that threw (a child's own re-render) or lets the internal suspend signal out
+  of `V.Mount` (a layout effect that threw at mount). The boundary keeps the error it caught, renders its fallback again
+  when the read resolves, and reports the catch once, from the render whose fallback reconciles without suspending again.
+  Under a Suspense above the boundary the catch survives the Suspense showing its own fallback meanwhile.
+- A boundary whose fallback element cannot be created now hands the boundary above the error of the fallback's creation,
+  as React hands it the error of the fallback's render, rather than the error the fallback was for.
+
+- A weight, italic or width class on an element with no `font-<name>` on it or above it now keeps the family of the font
+  an author's stylesheet or inline style gives an element above it, as CSS keeps an inherited `font-family`, and takes
+  that family's face where one is registered; a font no registered family holds is kept and the weight or italic is
+  emulated on it, where the face was taken from `VelvetFonts.DefaultFamily` before.
+- A change to the font registry, whether `DefaultFamily` changing, a family registered or unregistered or the registry
+  cleared, now reaches the elements whose font a `font-<name>` or weight class resolved, which kept the asset they
+  first resolved until they were created again. While a mounted tree holds an element with a weight, italic or width
+  class and no `font-<name>` on it or above it, the tree reads the font each such element's parent resolves to at every
+  update of the panel it is mounted on, and stops once it holds none.
+
+- A Portal that unmounts or moves to another element now takes its rows out of the element it rendered into first to
+  last, as React removes a deleted portal's children. It took them out last to first before. A row that a `z-*` or
+  `order-*` class lifts into a stacking layer still leaves after the others.
+- When a Portal leaves an element with another Portal into that element declared inside its rows, a Component that a
+  third Portal mounts there now keeps patching its own row. Its next render could miss that row before.
+
+- `UseImperativeHandle` now sets its handle up in hook order with the component's layout effects: a layout effect
+  declared before it runs first and one declared after it runs after. Before, every handle was set up ahead of all of
+  the component's layout effects.
+- A replaced ref callback's cleanup now runs where its element's place in the commit is reached, after the cleanups of
+  the components below the element, rather than ahead of every cleanup of the commit.
+
+- A node a component keeps across renders inside a composite value — a record in a `Hooks.UseState` or
+  `Hooks.UseMemo` slot, a props record, a `Store`'s state — shows the props and handlers it was built with when a
+  later render puts it back. Once a render that left it out had replaced the tree it was in, its props bag and its
+  event array went back to a shared pool: it came back with them cleared, so a `V.Label(text: "carried")` kept that
+  way showed an empty text, and where another element had been built in between, with that element's values — a
+  label showed another label's text, a button ran another button's click handler. The `V.*` factories no longer pool
+  the props bags, event arrays and child arrays they build, so each node keeps its own, and a component replacing its
+  output no longer walks the trees its ancestors cache to find which of those parts it may hand back.
+
 ## [3.0.0] - 2026-11-14
 
 ### Highlights
