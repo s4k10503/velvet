@@ -604,7 +604,7 @@ namespace Velvet
         internal static void CleanupAllLayoutEffects(ComponentFiber fiber)
             => HookEffectExecutor.CleanupAll(fiber, fiber.LayoutEffects, fiber.PendingLayoutEffects);
 
-        // The deletion walk calls this where it reaches the fiber (DeletionCommit), and the fiber's unmount calls it too
+        // The deletion walk runs this for the fiber in the order it reached it (DeletionCommit), and the fiber's unmount calls it too
         // (FiberRenderer.Unmount). Each CleanupAll empties the lists it runs, so whichever call comes second finds
         // nothing left.
         internal static void CleanUpDeleted(ComponentFiber fiber)

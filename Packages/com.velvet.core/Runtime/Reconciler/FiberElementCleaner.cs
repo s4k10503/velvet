@@ -296,7 +296,7 @@ namespace Velvet
             _ctx.FiberMemoCache.Forget(element);
         }
 
-        // Reached ahead of the rest of the teardown where a deletion's walk reaches the element (DeletionCommit), which
+        // Run ahead of the rest of the teardown in the order a deletion's walk reached the element (DeletionCommit), which
         // leaves nothing for the teardown's own call.
         internal void DetachRef(VisualElement element)
         {
