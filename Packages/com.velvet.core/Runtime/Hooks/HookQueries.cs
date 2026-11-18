@@ -248,15 +248,18 @@ namespace Velvet
         private readonly Action _rerender;
         private QueryObserver[] _observers = Array.Empty<QueryObserver>();
         private QueriesItem[] _items = Array.Empty<QueriesItem>();
-        // TanStack's #result: replaced whenever an observer the hook holds tells it of a change, and by a commit that
-        // changes the observers or what they read. Its replacement is what lets combine run again.
+        // TanStack's #result: replaced whenever an observer the hook holds tells it of a change its own query notifies
+        // of, and by a commit that changes the observers or what they read, which a mount's does only as _committed
+        // says. Its replacement is what lets combine run again.
         private int _resultVersion;
         // Set while a commit hands the observers their options, when an observer that tells of a change is told
         // of once they all have, as v5's setQueries notifies once at its end.
         private bool _syncing;
         private bool _changedWhileSyncing;
-        // The mount's commit, and a StrictMode replay of it after LeaveAll, records the results without telling of
-        // them, since the render it commits read them.
+        // A mount's commit, and a StrictMode replay of it after LeaveAll, replaces the results only for a change an
+        // observer told of while syncing, which the render it commits did not read: v5's mount reaches setQueries with
+        // the observers its constructor matched before that render, and its replay with those it kept. It tells of
+        // them only where a query notifies of that change.
         private bool _committed;
         private Delegate? _combine;
         private Func<object[], TCombined>? _invokeCombine;
@@ -365,6 +368,7 @@ namespace Velvet
             var notify = _changedWhileSyncing && AnyQueryNotifies();
             if (!notify && !structural && !ResultsChanged()) return;
             RecordResults();
+            if (committed || _changedWhileSyncing) _resultVersion++;
             if (notify || committed) Notify(refreshed: true);
         }
 
@@ -393,7 +397,6 @@ namespace Velvet
             {
                 item.RecordNotified();
             }
-            _resultVersion++;
         }
 
         // TanStack's #onUpdate, for an observer the hook holds that told of a change its own query notifies of: that
