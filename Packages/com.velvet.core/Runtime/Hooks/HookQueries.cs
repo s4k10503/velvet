@@ -498,8 +498,7 @@ namespace Velvet
         }
 
         // A hook that has not committed holds no result of its own to replace, so a render whose reading differs from
-        // the one the cached combine was handed combines again, as the fresh observer v5 builds for a tree that
-        // suspended before its first commit does.
+        // the one the cached combine was handed combines again.
         internal TCombined Combine(QueriesRead read, Delegate combine, Func<object[], TCombined> invokeCombine)
         {
             if (!_committed && _hasCombined && ReadingChanged(read.Items)) _resultVersion++;
