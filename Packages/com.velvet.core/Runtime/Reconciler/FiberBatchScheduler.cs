@@ -168,7 +168,9 @@ namespace Velvet
         internal FiberBatchScheduler()
         {
             _runImmediateCallback = RunImmediateCallback;
-            _flushHeld = FlushDiscreteEvent;
+            // MUTANT_SURVIVES(equivalent, line removed): FiberExecutionContext.Release runs a held request that carries no
+            // run as its owner's FlushImmediate, which is what this delegate runs.
+            _flushHeld = FlushImmediate;
             _flushHeldPassiveEffects = FlushPendingPassiveEffects;
         }
 
@@ -527,7 +529,8 @@ namespace Velvet
 
         private void DrainImmediatePassesUpTo(ref int totalPasses, ref bool renderedSyncLane)
         {
-            while (_immediateOrder.Count > 0)
+            // A pass that held this root's disposal stood it down (Drain says why no later pass renders).
+            while (_immediateOrder.Count > 0 && !FiberExecutionContext.Threw(this))
             {
                 if (totalPasses > NestedUpdateLimit)
                 {
@@ -689,7 +692,9 @@ namespace Velvet
             // presence completions run before this pass renders. Ahead of the copy below, so on the immediate tier
             // an update one of them schedules joins this pass.
             FlushPendingPassiveEffectsWork();
-            if (order.Count == 0) return;
+            // An effect of that flush that disposed this root stood it down (MountedTree.Dispose): React's unmount render
+            // drops the root's pending updates, so this pass renders none of them.
+            if (order.Count == 0 || FiberExecutionContext.Threw(this)) return;
             // Activate UseStore snapshot pinning for the span of this drain. Bracketed only on the outer drain
             // (a re-entrant call is blocked by _draining before reaching here) so a nested entry cannot reset
             // the wave mid-flush.
@@ -922,41 +927,17 @@ namespace Velvet
             DrainImmediateWork();
         }
 
-        // Ends a discrete event's handler, at the outermost discrete boundary (FiberDiscreteEventScope).
-        internal void FlushDiscreteEvent()
-        {
-            if (FiberExecutionContext.IsSet)
-            {
-                HoldFlush();
-                return;
-            }
-            FiberExecutionContext.Enter(this, this, static scheduler => scheduler.FlushDiscreteEventWork());
-        }
-
-        // The passive effects are flushed here as well as before the drain's render (Drain), so an event that schedules
-        // no update still runs the effects of the commit before it. The flush still runs even if a runaway
-        // passive-effect loop throws its guard.
-        private void FlushDiscreteEventWork()
-        {
-            try
-            {
-                FlushPendingPassiveEffectsWork();
-            }
-            finally
-            {
-                FlushImmediateWork();
-            }
-        }
+        internal int ImmediateIntake => _immediateIntake;
 
         // React's task flushes pending passive effects and then renders the highest-priority lanes pending, so an
-        // update one of those effects schedules renders ahead of the transition the task was resuming.
-        internal void FlushPendingPassiveEffectsAheadOfAResume()
+        // update one of those effects schedules renders ahead of the transition the task was resuming. The entry that
+        // resumes it ran them as it started, and intake is ImmediateIntake from before that entry.
+        internal void FlushUpdatesQueuedAheadOfAResume(int intake)
         {
-            var intake = _immediateIntake;
-            FlushPendingPassiveEffectsWork();
             if (_immediateIntake != intake) FlushImmediateWork();
         }
 
+        // The entry runs the flush as it starts (FiberExecutionContext.Enter).
         internal void FlushPendingPassiveEffects()
         {
             if (FiberExecutionContext.IsSet)
@@ -964,7 +945,7 @@ namespace Velvet
                 FiberExecutionContext.Hold(FiberExecutionContext.Request.PassiveFlush, this, this, _flushHeldPassiveEffects);
                 return;
             }
-            FiberExecutionContext.Enter(this, this, static scheduler => scheduler.FlushPendingPassiveEffectsWork());
+            FiberExecutionContext.Enter(this, this, static _ => { });
         }
 
         // Gated like FlushImmediateWork so it never re-enters a live drain / reconcile.

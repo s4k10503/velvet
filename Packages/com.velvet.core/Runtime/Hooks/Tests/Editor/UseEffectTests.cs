@@ -205,18 +205,20 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_UnmountedBeforeFlush_When_EffectsFlushed_Then_PendingEffectIsSkipped()
+        public void Given_UnmountedBeforeFlush_When_EffectsFlushed_Then_OnlyTheUnmountsSetupAndCleanupHaveRun()
         {
-            // Arrange — unmount drops the pending effect via the CleanupAll path before it can run
+            // Arrange — the unmount runs the pending mount effect before it cleans it up, as React's root.unmount() does
             s_effectRecorderDeps = new object[] { 0 };
             var mounted = V.Mount(_root, V.Component(EffectRecorderRender, key: "effect"));
+            var ranBeforeTheUnmount = s_effectRecorderRunLog.Count;
             mounted.Dispose();
 
             // Act
             mounted.FlushEffectsForTest();
 
-            // Assert
-            Assert.That(s_effectRecorderRunLog, Is.Empty, "Flushing after unmount runs no effects");
+            // Assert — null where the effect ran before the unmount
+            Assert.That(ranBeforeTheUnmount == 0 ? s_effectRecorderRunLog : null,
+                Is.EqualTo(new[] { "effect", "cleanup" }));
         }
 
         [Test]

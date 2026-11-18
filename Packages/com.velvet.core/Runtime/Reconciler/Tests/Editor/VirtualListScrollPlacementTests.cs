@@ -602,8 +602,9 @@ namespace Velvet.Tests
                 .GetValue(scheduler)!;
 
         // GREEN_ON_BASE(characterization): the base rendered the range inside the drain, ahead of the throw, and drained once.
-        // Here the drain that throws holds the range and leaves the child it mounted with its effect pending, so the
-        // passive flush the release runs ahead of the range would end by draining the root's sync lane.
+        // Here the drain that throws holds the range and leaves the child it mounted with its effect pending. Have
+        // FiberExecutionContext.End leave a scheduler unmarked when its entry throws, and the release drains the root
+        // again: this reddens.
         [Test]
         public void Given_ADrainThatThrowsAfterHoldingARangeOfItsOwnList_When_TheReleaseReachesTheRange_Then_ItsRootHasThrownOnce()
         {
@@ -626,12 +627,13 @@ namespace Velvet.Tests
             {
             }
 
-            // Assert — 2 where the passive flush ahead of the range drained the root again
+            // Assert — 2 where the release drained the root again
             Assert.That(ThrowingDrainsOf(scheduler), Is.EqualTo(1));
         }
 
         // GREEN_ON_BASE(characterization): the base rendered the range inside the drain and drained once.
-        // The scheduler's gate kept the passive flush ahead of the range's rows from running the child's effect there.
+        // Have FiberExecutionContext.End leave a scheduler unmarked when its entry throws, and the release drains the root
+        // again: this reddens.
         [Test]
         public void Given_ADrainThatThrowsAfterHoldingARangeAndMountingAChildWhoseEffectFailsIntoABoundary_When_TheReleaseReachesTheRange_Then_ItsRootHasThrownOnce()
         {

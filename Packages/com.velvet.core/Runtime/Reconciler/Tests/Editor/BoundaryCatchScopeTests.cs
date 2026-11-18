@@ -2348,6 +2348,9 @@ namespace Velvet.Tests
             return V.Component(AbortedExitHostRender, key: "host");
         }
 
+        // GREEN_ON_BASE(characterization): the base put the ghost back after the abort as well.
+        // The removing render goes through one drain, since a later fiber's door in FlushStateForTest's walk would run
+        // the settle and render the owner's drop before the render the boundary aborts.
         // The presence's owner is an inline child the host's pass re-renders, and the boundary that aborts comes after it.
         [Test]
         public void Given_APresenceWhoseOwnerIsAnInlineChildOfAnAbortedPass_When_ItsGhostDropIsPutBack_Then_ThePresenceStillCommitsTheGhost()
@@ -2355,7 +2358,7 @@ namespace Velvet.Tests
             // Arrange — the child's exit settles, so the pass the boundary aborts is the one dropping it
             using var mounted = V.Mount(_root, V.Component(PoolGhostHostRender, key: "host"), CaughtErrors.Unlogged);
             s_setPoolGhostTick.Invoke(1);
-            mounted.FlushStateForTest();
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
             mounted.FlushEffectsForTest();
 
             // Act
@@ -2514,6 +2517,8 @@ namespace Velvet.Tests
             Assert.That(string.Join(",", s_exitOrder), Is.EqualTo("layout:1,exit"));
         }
 
+        // GREEN_ON_BASE(characterization): the base registered the drain at the commit that removed the child as well.
+        // The render goes through one drain, since a later fiber's door in FlushStateForTest's walk runs that drain.
         [Test]
         public void Given_APresenceWhoseChildLeavesWithNothingToAnimate_When_ARenderRemovesIt_Then_ThePassiveDrainIsRegisteredBeforeAnyFlush()
         {
@@ -2524,11 +2529,12 @@ namespace Velvet.Tests
 
             // Act
             s_setOrderedExitTick.Invoke(1);
-            mounted.FlushStateForTest();
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
 
-            // Assert — no passive effect is staged by this tree, so the drain is registered for the completion alone
-            Assert.That((mounted.Root.Reconciler.Context.PassiveEffectDrainScheduled, s_exitOrder.Contains("exit")),
-                Is.EqualTo((true, false)));
+            // Assert — no passive effect is staged by this tree, so the drain is registered for the completion alone;
+            // null where the completion has already run
+            var registered = mounted.Root.Reconciler.Context.PassiveEffectDrainScheduled;
+            Assert.That(s_exitOrder.Contains("exit") ? null : (bool?)registered, Is.True);
         }
 
         // GREEN_ON_BASE(characterization): the merge base completes the exit in the removing render, before its

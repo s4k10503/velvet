@@ -107,9 +107,8 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base already runs pending passive effects when a click's handler returns.
-        // A drain now flushes before its render as well, so this is the case that pins the boundary's own flush: drop
-        // `batchScheduler?.FlushPendingPassiveEffects();` from FiberDiscreteEventScope and this reddens, while
-        // PassiveEffectFlushBeforeUpdateTests' click case, whose click renders, stays green.
+        // The click schedules no update, so only the discrete boundary's own entry runs them: drop
+        // `batchScheduler?.FlushImmediate();` from FiberDiscreteEventScope and this reddens.
         [Test]
         public void Given_APendingPassiveEffect_When_AClickSchedulesNoUpdate_Then_TheEffectRuns()
         {

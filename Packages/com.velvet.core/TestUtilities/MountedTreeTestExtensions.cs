@@ -46,19 +46,6 @@ namespace Velvet.TestUtilities
             mounted.FlushEffectsForTest();
         }
 
-        /// <summary>
-        /// As <see cref="FlushStateForTest"/>, leaving the passive effects earlier commits left pending as they are,
-        /// for a case about what a render does while they still wait. Where a root owes the sync lane as one of the
-        /// flushes ends, that flush's end runs them and then drains that root, wherever FiberExecutionContext's release
-        /// drains one. Test-only.
-        /// </summary>
-        // Bypasses: the batch scheduler's drain buffer and its passes, as FlushStateForTest does, and the passive flush a drain runs before it renders, except where a root owes the sync lane.
-        public static void FlushStateKeepingPassiveEffectsForTest(this MountedTree mounted)
-        {
-            FiberTreeTraversal.Visit(mounted.Root, FiberWorkLoop.FlushState);
-            ConsumeRenderedImmediateEntries(mounted);
-        }
-
         // A drain takes its entries out of the tier before it renders them and clears the sync-lane flag with each
         // pass; an entry or a flag a state flush left behind would have the next drain, or a passive flush's closing
         // sync flush, render again what it already rendered and whatever has queued since. A fiber still holding an
@@ -95,7 +82,7 @@ namespace Velvet.TestUtilities
         /// same ordering production observes on the post-paint scheduler tick.
         /// Test-only. Must not be used from production code.
         /// </summary>
-        // Bypasses: the drain's registration and its anchor: production runs the scheduled drain FiberEffects.ArmPassiveDrain registers on the scheduler's anchor, and flushes early through FiberBatchScheduler.FlushPendingPassiveEffects before a render and as a sync-lane drain ends (FiberBatchScheduler.DrainImmediatePasses).
+        // Bypasses: the drain's registration and its anchor: production runs the scheduled drain FiberEffects.ArmPassiveDrain registers on the scheduler's anchor, and flushes early where an entry starts (FiberExecutionContext.Enter), ahead of a drain's later passes (FiberBatchScheduler.Drain) and as a sync-lane drain ends (FiberBatchScheduler.DrainImmediatePasses).
         public static void FlushEffectsForTest(this MountedTree mounted)
         {
             FiberEffects.FlushPendingPassiveEffects(mounted.Root);

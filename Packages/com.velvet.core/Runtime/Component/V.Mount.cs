@@ -189,6 +189,9 @@ namespace Velvet
             var context = Root.Reconciler?.Context;
             if (FiberExecutionContext.IsSet)
             {
+                // Stood down as the unmount is held, so the work of the root held ahead of it in the same release, a
+                // flush a click on the root asked for among it, renders nothing either.
+                if (context != null) FiberExecutionContext.StandDown(context.BatchScheduler);
                 FiberExecutionContext.Hold(FiberExecutionContext.Request.Unmount, Root, context?.BatchScheduler,
                     (Tree: this, Context: context), static held => held.Tree.Unmount(held.Context));
                 return;
@@ -196,12 +199,18 @@ namespace Velvet
             Unmount(context);
         }
 
+        // The root stands down before its unmount's entry, so the passive effects that entry starts by running still run
+        // but render nothing of the root, as React's root.unmount() folds the unmount and the root's pending updates into
+        // one render.
         private void Unmount(ReconcilerContext? context)
-            => FiberExecutionContext.Enter(context?.BatchScheduler, (Tree: this, Context: context), static state =>
+        {
+            if (context != null) FiberExecutionContext.StandDown(context.BatchScheduler);
+            FiberExecutionContext.Enter(context?.BatchScheduler, (Tree: this, Context: context), static state =>
             {
                 FiberRenderer.DisposeWork(state.Tree.Root);
                 StyleThemeTokens.Release(state.Context);
                 if (state.Context != null) FiberErrorBoundary.ReportErrorsDuringDisposal(state.Context);
             });
+        }
     }
 }

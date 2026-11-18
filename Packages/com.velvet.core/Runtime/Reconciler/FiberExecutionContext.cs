@@ -7,10 +7,11 @@ namespace Velvet
     // React's executionContext (RenderContext | CommitContext): one flag for every root, set while an entry renders,
     // commits or flushes passive effects. A door is the method something outside Velvet's render and commit calls —
     // the panel scheduler, a UI Toolkit callback, the main-thread pump, a public or test entry. Reached while the flag
-    // is clear, a door runs its body as the outermost entry. Reached while it is set, it is held, and what is held runs
-    // once the outermost entry has ended, in the order it was asked for; a flush of a scheduler whose own drain is on the
-    // stack is left to that drain instead (FiberBatchScheduler.HoldFlush). Velvet's render and commit code calls the
-    // body, never the door, which is what makes a call sub-work of the entry on the stack;
+    // is clear, a door runs its body as the outermost entry, once the passive effects the roots left pending have run,
+    // as React flushes pending passive effects before it renders or commits. Reached while it is set, it is held, and
+    // what is held runs once the outermost entry has ended, in the order it was asked for; a flush of a scheduler whose
+    // own drain is on the stack is left to that drain instead (FiberBatchScheduler.HoldFlush). Velvet's render and
+    // commit code calls the body, never the door, which is what makes a call sub-work of the entry on the stack;
     // scripts/test_quality/entry_sites_check.py holds the methods that may call a door.
     internal static class FiberExecutionContext
     {
@@ -59,12 +60,18 @@ namespace Velvet
 
         internal static bool Threw(FiberBatchScheduler scheduler) => s_threw.Contains(scheduler);
 
+        // For an exception that left a scheduler's pending passive work where an entry started rather than its own entry,
+        // and for a root about to unmount (MountedTree.Unmount).
+        internal static void StandDown(FiberBatchScheduler scheduler) => s_threw.Add(scheduler);
+
         internal static void Enter<TState>(FiberBatchScheduler? owner, TState state, Action<TState> entry)
         {
             Begin();
             var completed = false;
             try
             {
+                // Inside the try, so an entry whose flush throws still ends.
+                FiberEffects.FlushEveryContextsPendingPassiveWork(owner);
                 entry(state);
                 completed = true;
             }
@@ -80,6 +87,7 @@ namespace Velvet
             var completed = false;
             try
             {
+                FiberEffects.FlushEveryContextsPendingPassiveWork(owner);
                 var result = entry(state);
                 completed = true;
                 return result;
@@ -102,7 +110,7 @@ namespace Velvet
             s_set = false;
             // Ahead of the release, which returns at once where this entry is an item of one already running.
             if (!completed && owner != null) s_threw.Add(owner);
-            Release(owner);
+            Release();
         }
 
         // run reaches the door again, which the release enters with the flag clear.
@@ -164,17 +172,19 @@ namespace Velvet
         // released it.
         //
         // Once an exception has left an entry of a scheduler, the outermost entry or one an item of this release opened,
-        // this release neither drains that root nor runs a held range, resolve or resume of it: each can run the root's
-        // work again inside the call the exception left, a drain by rendering what that work queued, and the others by
-        // rendering fibers of the root, which takes up the updates queued on them. FiberBatchScheduler.DrainImmediateWork,
-        // which a drain of either tier runs through, stands down for it, and so do FiberWorkLoop.FlushState and
+        // or has left its pending passive work where an entry started (StandDown), this release neither drains that root
+        // nor runs a held range, resolve or resume of it: each can run the root's work again inside the call the
+        // exception left, a drain by rendering what that work queued, and the others by rendering fibers of the root,
+        // which takes up the updates queued on them. A root about to unmount stands down the same way (StandDown).
+        // FiberBatchScheduler.DrainImmediateWork, which a drain of either tier runs through, stands down for it, and so
+        // do FiberWorkLoop.FlushState and
         // FiberWorkLoop.FlushOwedSettleRenders, whose flushes of one fiber do not run through it; a held range, resolve or
-        // resume of it is handed to a later frame of that root instead (FiberBatchScheduler.RunInNextFrame). Its pending
-        // passive effects and its held work of other kinds still run, a passive flush being no drain. What it leaves
-        // queued is committed by the frame-boundary drain the scheduler registered, where one is registered, which is
-        // where FiberBatchScheduler bounds a run of drains that throw, or by a later entry's release where it still owes
-        // the sync lane (IndexOfOwing).
-        private static void Release(FiberBatchScheduler? owner)
+        // resume of it is handed to a later frame of that root instead (FiberBatchScheduler.RunInNextFrame). Its held work
+        // of other kinds still runs, and so do its pending passive effects wherever an item's entry starts, a passive
+        // flush being no drain. What it leaves queued is committed by the frame-boundary drain the scheduler registered,
+        // where one is registered, which is where FiberBatchScheduler bounds a run of drains that throw, or by a later
+        // entry's release where it still owes the sync lane (IndexOfOwing).
+        private static void Release()
         {
             if (s_releasing) return;
             if (s_held.Count == 0 && IndexOfOwing() < 0)
@@ -183,7 +193,6 @@ namespace Velvet
                 return;
             }
             s_releasing = true;
-            var last = owner;
             try
             {
                 while (true)
@@ -211,15 +220,9 @@ namespace Velvet
                     }
                     if (target is { IsDisposed: true }) continue;
                     if (!Counted(kind, key)) continue;
-                    // React's performSyncWorkOnRoot starts by flushing the passive effects of the commit before it.
-                    if (last is { IsDisposed: false })
-                    {
-                        RunIsolated(last, static scheduler => scheduler.FlushPendingPassiveEffects());
-                    }
                     if (target != null && s_threw.Contains(target) && TakesUpQueuedUpdates(kind)) target.RunInNextFrame(run!, kind != Request.Resolve);
                     else if (run != null) RunIsolated(run, static held => held());
                     else RunIsolated(target!, static scheduler => scheduler.FlushImmediate());
-                    last = target ?? last;
                 }
             }
             finally

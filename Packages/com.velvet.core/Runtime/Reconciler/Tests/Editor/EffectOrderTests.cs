@@ -537,30 +537,65 @@ namespace Velvet.Tests
                 "The update commit fires cleanup once and the new setup once — no StrictMode mount double-invoke");
         }
 
-        // GREEN_ON_BASE(characterization): the base's state flush already left the mount-staged entry pending for the bundle.
-        // FlushStateForTest now runs pending passive effects first, so this case takes the variant that does not.
-        [Test]
-        public void Given_StrictMode_When_MountAndUpdatePassiveEntriesDrainTogether_Then_StagedSetupRunsOnce()
+        private static readonly List<string> s_parkedChildLog = new();
+        private static bool s_parkedRowsShown;
+        private static string s_parkedToken;
+        private static ComponentFiber s_parkedOwnerFiber;
+
+        // Slow enough that a Transition slice's budget runs out after it, so the slice parks with it mounted.
+        [Component(Compiler = false)]
+        private static VNode SlowEffectChildRender(string token)
         {
-            // The bundle: V.Mount stages a passive effect on the inline child (PendingEffectsAreMount=true). Before
-            // the paint-tick fires, the parent re-renders with a new child token; the update-commit's schedule
-            // downgrades PendingEffectsAreMount to false, so the bundled drain runs no entry under the mount
-            // double-invoke. The prior mount-staged setup was abandoned by the update before paint, so only the
-            // final staged setup runs and there is no committed setup to clean.
-            // Arrange
+            System.Threading.Thread.Sleep(25);
+            Hooks.UseEffect(() =>
+            {
+                s_parkedChildLog.Add("setup:" + token);
+                return () => s_parkedChildLog.Add("cleanup:" + token);
+            }, new object[] { token });
+            return V.Label(text: token);
+        }
+
+        // Keyed Divs at the top level, so its reconcile takes the time-sliceable keyed path.
+        [Component(Compiler = false)]
+        private static VNode ParkingOwnerRender()
+        {
+            s_parkedOwnerFiber = FiberAmbientStack.Current;
+            if (!s_parkedRowsShown) return V.Fragment(children: new VNode[] { V.Label(text: "empty", key: "empty") });
+            return V.Fragment(children: new VNode[]
+            {
+                V.Div(key: "slow", children: new VNode[]
+                {
+                    V.Component<string>(SlowEffectChildRender, s_parkedToken, key: "child"),
+                }),
+                V.Div(key: "row1", children: new VNode[] { V.Label(text: "row-1") }),
+                V.Div(key: "row2", children: new VNode[] { V.Label(text: "row-2") }),
+            });
+        }
+
+        // React double-invokes the effects of a component in the commit that mounts it. The render that completes the
+        // parked pass mounting the child renders it again with the update and commits both.
+        [Test]
+        public void Given_StrictModeAndAParkedPassThatMountedAChild_When_AnUpdateCompletesThePassAndRendersTheChildAgain_Then_ItsMountEffectIsDoubleInvoked()
+        {
+            // Arrange — the Transition drain's slice parks after the slow child mounts
             FiberStrictMode.Enabled = true;
-            using var mounted = V.Mount(_root, V.Component(ReexpansionParentRender, key: "parent"));
-            // Intentionally do not flush effects: leave the mount-staged passive entry pending so the next setState
-            // bundles its update-staged entry into the same paint-tick.
+            s_parkedChildLog.Clear();
+            s_parkedRowsShown = false;
+            s_parkedToken = "a";
+            using var mounted = V.Mount(_root, V.Component(ParkingOwnerRender, key: "owner"));
+            mounted.FlushEffectsForTest();
+            s_parkedRowsShown = true;
+            s_parkedOwnerFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
+            mounted.GetSchedulerForTest().DrainDelayedForTest();
 
             // Act
-            s_reexpansionParentSet.Invoke("b");
-            mounted.FlushStateKeepingPassiveEffectsForTest();
+            s_parkedToken = "b";
+            s_parkedOwnerFiber.ScheduleRerenderForTest(FiberUpdatePriority.Urgent);
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
             mounted.FlushEffectsForTest();
 
-            // Assert
-            Assert.That((s_reexpansionChildEffectSetupCount, s_reexpansionChildEffectCleanupCount), Is.EqualTo((1, 0)),
-                "The bundled drain runs the staged setup once with no cleanup — no spurious StrictMode double-invoke");
+            // Assert — "setup:b" where the update took the mount's double-invoke away
+            Assert.That(string.Join(" ", s_parkedChildLog), Is.EqualTo("setup:b cleanup:b setup:b"));
         }
 
         #endregion

@@ -8,8 +8,6 @@
 - A discrete event's handler fired while a root renders or commits (a focus change a render's writes make, a click a
   layout effect, a `refCallback:` or a cleanup makes) rendered its update inside that work, whichever root the handler
   belongs to. It now renders once the work has ended, before control returns, as React's does.
-- A root that waited for another's work renders now after the `UseEffect`s still pending from the root whose work ran
-  just before it, whatever its commit's lane, as React flushes pending passive effects before it renders sync work.
 - A `Hooks.UseStore` or `UseSyncExternalStore` re-render that a store change made outside the reading root's own
   update drain asked for waited for the main thread's next posted flush, and a state update a layout effect or
   `refCallback:` made in the commit of a `V.VirtualList` row a scroll or a resize rendered, or of a fallback a boundary

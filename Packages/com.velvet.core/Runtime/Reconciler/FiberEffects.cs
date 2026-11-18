@@ -689,31 +689,13 @@ namespace Velvet
         // Does not schedule duplicates even when multiple renders run consecutively.
         // mountDoubleInvoke is captured here (rather than at run time) because the async
         // effect runs after this scheduling site has returned: only the mount commit's schedule sets it true.
-        // When a Mount-scheduled paint-tick is bundled with a subsequent update commit (parent
-        // re-render reaches the same inline child via SubsumeFiberIntoThisPass before
-        // the paint-tick fires), the early-return path downgrades PendingEffectsAreMount from
-        // true to false so the mixed drain does not spuriously double-invoke update-staged entries
-        // during the Editor-only double-invoke. The downgrade is one-way (true → false only); upgrading on a later
-        // Mount call would require Mount to follow an update commit on the same fiber, which the
-        // current architecture precludes (MountInline is the entry that creates the slot, update
-        // commits always come after). The tradeoff: Mount-staged entries bundled with an update
-        // lose their own mount double-invoke. A per-slot origin tag would preserve both
-        // behaviors but is a more invasive refactor (deferred).
+        // A staging that finds the fiber's drain already scheduled keeps the flag the first one set, so a mount staged
+        // again by an update before its drain still double-invokes, as React does for a component in the commit that
+        // mounts it.
         internal static void ScheduleRunEffects(ComponentFiber fiber, bool mountDoubleInvoke = false)
         {
             if (fiber.PendingEffects == null || fiber.PendingEffects.Count == 0) return;
-            if (fiber.EffectFlushScheduled)
-            {
-#if UNITY_EDITOR
-                // A mount commit and a subsequent update commit can both schedule effects before the
-                // first paint-tick fires (parent re-render reaches the same inline child via
-                // SubsumeFiberIntoThisPass before MountInline's scheduled drain runs). The bundled
-                // drain mixes Mount-staged and update-staged effects; downgrade the
-                // mount-double-invoke flag so update-staged effects are not spuriously double-invoked.
-                if (!mountDoubleInvoke) fiber.PendingEffectsAreMount = false;
-#endif
-                return;
-            }
+            if (fiber.EffectFlushScheduled) return;
             if (fiber.MountPoint == null) return;
             fiber.EffectFlushScheduled = true;
 #if UNITY_EDITOR
@@ -764,8 +746,16 @@ namespace Velvet
             FiberExecutionContext.Enter<ComponentFiber>(null, fiber, static run => RunEffects(run));
         }
 
+        // The contexts that have staged passive work since the start of an entry last took them off, in the order each
+        // staged it first. React keeps one root's passive effects pending and flushes them before it renders or commits
+        // anything; here each context keeps its own, and an entry starts by running theirs
+        // (FlushEveryContextsPendingPassiveWork).
+        private static readonly List<ReconcilerContext> s_withPendingPassiveWork = new();
+
+        // Ahead of the returns below, since a context with no anchor arms no drain and its work still waits for an entry.
         private static void ArmPassiveDrain(ReconcilerContext context)
         {
+            if (!s_withPendingPassiveWork.Contains(context)) s_withPendingPassiveWork.Add(context);
             if (context.PassiveEffectDrainScheduled) return;
             // One drain serves the whole context and only that drain clears the latch below, so the
             // registration has to sit on a host outliving any single subtree: the batch scheduler's
@@ -797,7 +787,8 @@ namespace Velvet
                     static held => DrainScheduledPassiveEffects(held));
                 return;
             }
-            FiberExecutionContext.Enter(context.BatchScheduler, context, static ctx => DrainPassiveEffects(ctx));
+            // The entry runs the drain as it starts (FiberExecutionContext.Enter).
+            FiberExecutionContext.Enter(context.BatchScheduler, context, static _ => { });
         }
 
         // An exit with nothing to animate, whose child the pass that just ended removed, settles in the
@@ -816,7 +807,7 @@ namespace Velvet
 
         // Run whether or not the presence's owner has unmounted since staging: an inner presence that leaves with
         // its enclosing child is gone by the flush, and Framer Motion still calls its onExitComplete.
-        internal static void RunPassiveCompletions(ReconcilerContext context)
+        private static void RunPassiveCompletions(ReconcilerContext context)
         {
             if (context.PendingPassiveCompletions.Count == 0) return;
             var completions = context.PendingPassiveCompletions.ToArray();
@@ -855,6 +846,34 @@ namespace Velvet
             // React's passive flush ends by flushing sync work, so a store hook's forced re-render renders before
             // the drain returns rather than on a later tick. Inside an immediate drain, that drain's own passes do.
             if (context.EffectCommitDepth == 0) context.BatchScheduler.FlushSyncWorkAfterPassiveEffects();
+        }
+
+        // Runs where an entry starts (FiberExecutionContext.Enter), outside every render, commit and passive flush, since
+        // those run inside an entry. It runs in the entry's own host pass rather than in a bracket of each context's
+        // anchor, which placed a transition a forced re-render asks for one pass early (TransitionFrameSchedulingTests).
+        // A context comes off the list before its work runs, and what that work stages puts it back behind the others.
+        // What the work of the root the entry is for (owner) throws leaves the entry as its body's would, so the
+        // nested-update error that root's own work reaches is thrown to that root's caller. What another root's work
+        // throws is logged and stands that root down for the release, as an exception leaving its own entry does, and the
+        // entry goes on: React captures what an effect throws for that effect's root, the nested-update error a setState
+        // there raises among it, so none of it reaches the caller of another root's work.
+        internal static void FlushEveryContextsPendingPassiveWork(FiberBatchScheduler? owner)
+        {
+            UnityEngine.Debug.Assert(!ChildListWrites.PassIsOpen, "Passive effects ran inside an open pass.");
+            while (s_withPendingPassiveWork.Count > 0)
+            {
+                var context = s_withPendingPassiveWork[0];
+                s_withPendingPassiveWork.RemoveAt(0);
+                try
+                {
+                    FlushPendingPassiveEffectsWork(context);
+                }
+                catch (Exception thrown) when (context.BatchScheduler != owner)
+                {
+                    FiberExecutionContext.StandDown(context.BatchScheduler);
+                    UnityEngine.Debug.LogException(thrown);
+                }
+            }
         }
 
         private static void RunPassivePhases(ReconcilerContext context)
@@ -1088,11 +1107,10 @@ namespace Velvet
             fiber.EffectFlushScheduled = false;
         }
 
-        // Synchronously runs the tree-wide, 2-phase passive-effect drain for the reconcile context that
-        // rootFiber belongs to (all cleanups before all setups, post-order). Mirrors the
-        // production post-paint drain but fires immediately, so tests / Editor tooling observe the
-        // passive ordering without waiting for the host scheduler. No-op when no passive effects are
-        // pending.
+        // Synchronously runs the 2-phase passive-effect drain (all cleanups before all setups, post-order) of the
+        // contexts holding pending work, rootFiber's where it holds any, where the entry it opens starts
+        // (FiberExecutionContext.Enter). Mirrors the production post-paint drain but fires immediately, so tests /
+        // Editor tooling observe the passive ordering without waiting for the host scheduler.
         public static void FlushPendingPassiveEffects(ComponentFiber rootFiber)
         {
             var context = rootFiber?.Reconciler?.Context;
@@ -1113,7 +1131,7 @@ namespace Velvet
                     context.BatchScheduler, context, static held => FlushPendingPassiveEffects(held));
                 return;
             }
-            FiberExecutionContext.Enter(context.BatchScheduler, context, static ctx => FlushPendingPassiveEffectsWork(ctx));
+            FiberExecutionContext.Enter(context.BatchScheduler, context, static _ => { });
         }
 
         internal static void FlushPendingPassiveEffectsWork(ReconcilerContext context)
