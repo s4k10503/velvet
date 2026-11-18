@@ -52,7 +52,6 @@ DOORS = {
         r"(?<!\bFiberEffects)\.FlushPendingPassiveEffects\b(?!\w)", SCHEDULER),
     "FiberEffects.FlushPendingPassiveEffects": (r"\bFiberEffects\.FlushPendingPassiveEffects\b(?!\w)", EFFECTS),
     "FiberBatchScheduler.FlushOwedExternalStoreRenders": (r"\bFlushOwedExternalStoreRenders\b(?!\w)", None),
-    "FiberBatchScheduler.FlushDiscreteEvent": (r"\bFlushDiscreteEvent\b(?!\w)", None),
     "FiberWorkLoop.FlushState": (r"\bFlushState\b(?!\w)", None),
     "FiberWorkLoop.ContinueReconcile": (r"\bFiberWorkLoop\.ContinueReconcile\b(?!\w)", WORK_LOOP),
     "Reconciler.ContinueReconcile": (r"(?<!\bFiberWorkLoop)\.ContinueReconcile\b(?!\w)", RECONCILER),
@@ -81,12 +80,12 @@ ALLOWED = {
     "FiberEffects.ScheduleStandaloneEffectRun": {"FiberEffects.RunScheduledEffects"},
     "FiberVirtualListController.OnGeometryChanged": {"FiberVirtualListController.UpdateVisibleRange"},
     "FiberVirtualListController.OnScrollValueChanged": {"FiberVirtualListController.UpdateVisibleRange"},
-    "FiberDiscreteEventScope.Run": {"FiberBatchScheduler.FlushDiscreteEvent"},
+    "FiberDiscreteEventScope.Run": {"FiberBatchScheduler.FlushImmediate"},
     "Hooks.UseCore": {"FiberRenderer.NotifyAsyncResourceCompleted"},
     # Held work runs through the door it was asked for at, with nothing set (FiberExecutionContext).
     "FiberExecutionContext.Release": {"FiberBatchScheduler.FlushImmediate"},
     "FiberBatchScheduler.FiberBatchScheduler": {
-        "FiberBatchScheduler.FlushDiscreteEvent", "FiberBatchScheduler.FlushPendingPassiveEffects"},
+        "FiberBatchScheduler.FlushImmediate", "FiberBatchScheduler.FlushPendingPassiveEffects"},
     "FiberRenderer.HoldFirstRender": {"FiberRenderer.RenderMounted"},
     "FiberVirtualListController.RenderHeldRange": {"FiberVirtualListController.UpdateVisibleRange"},
     # Public and preview entries, which something outside Velvet calls.

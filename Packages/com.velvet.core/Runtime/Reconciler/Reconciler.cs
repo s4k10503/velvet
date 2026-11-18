@@ -711,8 +711,6 @@ namespace Velvet
 
         private VisualElement SlotOccupantOf(VisualElement row) => FiberZLayerCoordinator.PlaceholderOf(_ctx, row) ?? row;
 
-        void IReconcilerBridge.FlushPendingPassiveEffectsForController() => _ctx.BatchScheduler.FlushPendingPassiveEffectsWork();
-
         FiberBatchScheduler IReconcilerBridge.SchedulerForController => _ctx.BatchScheduler;
 
         void IReconcilerBridge.HoldRowLayoutEffects()

@@ -60,7 +60,8 @@ namespace Velvet
 
         internal static bool Threw(FiberBatchScheduler scheduler) => s_threw.Contains(scheduler);
 
-        // For an exception that left a scheduler's pending passive work where an entry started, rather than its entry.
+        // For an exception that left a scheduler's pending passive work where an entry started rather than its own entry,
+        // and for a root about to unmount (MountedTree.Unmount).
         internal static void StandDown(FiberBatchScheduler scheduler) => s_threw.Add(scheduler);
 
         internal static void Enter<TState>(FiberBatchScheduler? owner, TState state, Action<TState> entry)
@@ -173,9 +174,10 @@ namespace Velvet
         // Once an exception has left an entry of a scheduler, the outermost entry or one an item of this release opened,
         // or has left its pending passive work where an entry started (StandDown), this release neither drains that root
         // nor runs a held range, resolve or resume of it: each can run the root's work again inside the call the
-        // exception left, a drain by rendering what that work queued, and the others by
-        // rendering fibers of the root, which takes up the updates queued on them. FiberBatchScheduler.DrainImmediateWork,
-        // which a drain of either tier runs through, stands down for it, and so do FiberWorkLoop.FlushState and
+        // exception left, a drain by rendering what that work queued, and the others by rendering fibers of the root,
+        // which takes up the updates queued on them. A root about to unmount stands down the same way (StandDown).
+        // FiberBatchScheduler.DrainImmediateWork, which a drain of either tier runs through, stands down for it, and so
+        // do FiberWorkLoop.FlushState and
         // FiberWorkLoop.FlushOwedSettleRenders, whose flushes of one fiber do not run through it; a held range, resolve or
         // resume of it is handed to a later frame of that root instead (FiberBatchScheduler.RunInNextFrame). Its held work
         // of other kinds still runs, and so do its pending passive effects wherever an item's entry starts, a passive

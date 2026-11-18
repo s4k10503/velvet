@@ -168,7 +168,9 @@ namespace Velvet
         internal FiberBatchScheduler()
         {
             _runImmediateCallback = RunImmediateCallback;
-            _flushHeld = FlushDiscreteEvent;
+            // MUTANT_SURVIVES(equivalent, line removed): FiberExecutionContext.Release runs a held request that carries no
+            // run as its owner's FlushImmediate, which is what this delegate runs.
+            _flushHeld = FlushImmediate;
             _flushHeldPassiveEffects = FlushPendingPassiveEffects;
         }
 
@@ -922,17 +924,6 @@ namespace Velvet
             DrainImmediateWork();
         }
 
-        // Ends a discrete event's handler, at the outermost discrete boundary (FiberDiscreteEventScope).
-        internal void FlushDiscreteEvent()
-        {
-            if (FiberExecutionContext.IsSet)
-            {
-                HoldFlush();
-                return;
-            }
-            FiberExecutionContext.Enter(this, this, static scheduler => scheduler.FlushImmediateWork());
-        }
-
         internal int ImmediateIntake => _immediateIntake;
 
         // React's task flushes pending passive effects and then renders the highest-priority lanes pending, so an
@@ -943,6 +934,7 @@ namespace Velvet
             if (_immediateIntake != intake) FlushImmediateWork();
         }
 
+        // The entry runs the flush as it starts (FiberExecutionContext.Enter).
         internal void FlushPendingPassiveEffects()
         {
             if (FiberExecutionContext.IsSet)
@@ -950,7 +942,10 @@ namespace Velvet
                 FiberExecutionContext.Hold(FiberExecutionContext.Request.PassiveFlush, this, this, _flushHeldPassiveEffects);
                 return;
             }
-            FiberExecutionContext.Enter(this, this, static scheduler => scheduler.FlushPendingPassiveEffectsWork());
+            // MUTANT_SURVIVES(equivalent, line removed): each caller outside an entry opens another right after it,
+            // VelvetPreviewHost.Settle its FlushImmediate and DrainImmediateForTest its drain, whose start runs the same
+            // flush, and no Runtime caller asks for this one inside an entry.
+            FiberExecutionContext.Enter(this, this, static _ => { });
         }
 
         // Gated like FlushImmediateWork so it never re-enters a live drain / reconcile.

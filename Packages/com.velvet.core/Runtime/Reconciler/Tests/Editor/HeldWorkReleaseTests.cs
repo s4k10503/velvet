@@ -370,7 +370,6 @@ namespace Velvet.Tests
             return V.Label(text: "effects");
         }
 
-        // Only the root's own passive flush runs its effect: the walker's, which the release runs ahead of it, does not.
         [Test]
         public void Given_ARootsPassiveFlushAskedForInsideAWalk_When_ThePassEnds_Then_ItsPendingEffectHasRun()
         {

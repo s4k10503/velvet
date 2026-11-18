@@ -124,8 +124,8 @@ namespace Velvet
             // before the caller regains control, exactly as a drain-driven flush loops until quiet —
             // otherwise the first painted frame shows the pre-write state. A mount inside a VirtualList
             // range render has no write to flush, its layout work being held for the range
-            // (IReconcilerBridge.HoldRowLayoutEffects), and what the queue holds there — the updates the
-            // range's own passive flush scheduled among them — is the scheduler's to drain, not this row's.
+            // (IReconcilerBridge.HoldRowLayoutEffects), and what the queue holds there — the updates the passive
+            // flush its entry started with scheduled among them — is the scheduler's to drain, not this row's.
             if (context.HeldRowLayoutEffects.Count == 0) fiber.Reconciler?.Context.BatchScheduler.FlushImmediateWork();
         }
 

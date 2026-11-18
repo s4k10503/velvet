@@ -689,31 +689,13 @@ namespace Velvet
         // Does not schedule duplicates even when multiple renders run consecutively.
         // mountDoubleInvoke is captured here (rather than at run time) because the async
         // effect runs after this scheduling site has returned: only the mount commit's schedule sets it true.
-        // When a Mount-scheduled paint-tick is bundled with a subsequent update commit (parent
-        // re-render reaches the same inline child via SubsumeFiberIntoThisPass before
-        // the paint-tick fires), the early-return path downgrades PendingEffectsAreMount from
-        // true to false so the mixed drain does not spuriously double-invoke update-staged entries
-        // during the Editor-only double-invoke. The downgrade is one-way (true → false only); upgrading on a later
-        // Mount call would require Mount to follow an update commit on the same fiber, which the
-        // current architecture precludes (MountInline is the entry that creates the slot, update
-        // commits always come after). The tradeoff: Mount-staged entries bundled with an update
-        // lose their own mount double-invoke. A per-slot origin tag would preserve both
-        // behaviors but is a more invasive refactor (deferred).
+        // A staging that finds the fiber's drain already scheduled keeps the flag the first one set, so a mount staged
+        // again by an update before its drain still double-invokes, as React does for a component in the commit that
+        // mounts it.
         internal static void ScheduleRunEffects(ComponentFiber fiber, bool mountDoubleInvoke = false)
         {
             if (fiber.PendingEffects == null || fiber.PendingEffects.Count == 0) return;
-            if (fiber.EffectFlushScheduled)
-            {
-#if UNITY_EDITOR
-                // A mount commit and a subsequent update commit can both schedule effects before the
-                // first paint-tick fires (parent re-render reaches the same inline child via
-                // SubsumeFiberIntoThisPass before MountInline's scheduled drain runs). The bundled
-                // drain mixes Mount-staged and update-staged effects; downgrade the
-                // mount-double-invoke flag so update-staged effects are not spuriously double-invoked.
-                if (!mountDoubleInvoke) fiber.PendingEffectsAreMount = false;
-#endif
-                return;
-            }
+            if (fiber.EffectFlushScheduled) return;
             if (fiber.MountPoint == null) return;
             fiber.EffectFlushScheduled = true;
 #if UNITY_EDITOR
@@ -805,7 +787,8 @@ namespace Velvet
                     static held => DrainScheduledPassiveEffects(held));
                 return;
             }
-            FiberExecutionContext.Enter(context.BatchScheduler, context, static ctx => DrainPassiveEffects(ctx));
+            // The entry runs the drain as it starts (FiberExecutionContext.Enter).
+            FiberExecutionContext.Enter(context.BatchScheduler, context, static _ => { });
         }
 
         // An exit with nothing to animate, whose child the pass that just ended removed, settles in the
@@ -1121,11 +1104,10 @@ namespace Velvet
             fiber.EffectFlushScheduled = false;
         }
 
-        // Synchronously runs the tree-wide, 2-phase passive-effect drain for the reconcile context that
-        // rootFiber belongs to (all cleanups before all setups, post-order). Mirrors the
-        // production post-paint drain but fires immediately, so tests / Editor tooling observe the
-        // passive ordering without waiting for the host scheduler. No-op when no passive effects are
-        // pending.
+        // Synchronously runs the 2-phase passive-effect drain (all cleanups before all setups, post-order) of the
+        // contexts holding pending work, rootFiber's where it holds any, where the entry it opens starts
+        // (FiberExecutionContext.Enter). Mirrors the production post-paint drain but fires immediately, so tests /
+        // Editor tooling observe the passive ordering without waiting for the host scheduler.
         public static void FlushPendingPassiveEffects(ComponentFiber rootFiber)
         {
             var context = rootFiber?.Reconciler?.Context;
@@ -1146,7 +1128,7 @@ namespace Velvet
                     context.BatchScheduler, context, static held => FlushPendingPassiveEffects(held));
                 return;
             }
-            FiberExecutionContext.Enter(context.BatchScheduler, context, static ctx => FlushPendingPassiveEffectsWork(ctx));
+            FiberExecutionContext.Enter(context.BatchScheduler, context, static _ => { });
         }
 
         internal static void FlushPendingPassiveEffectsWork(ReconcilerContext context)

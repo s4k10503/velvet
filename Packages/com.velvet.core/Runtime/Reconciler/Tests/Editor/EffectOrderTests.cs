@@ -537,6 +537,67 @@ namespace Velvet.Tests
                 "The update commit fires cleanup once and the new setup once — no StrictMode mount double-invoke");
         }
 
+        private static readonly List<string> s_parkedChildLog = new();
+        private static bool s_parkedRowsShown;
+        private static string s_parkedToken;
+        private static ComponentFiber s_parkedOwnerFiber;
+
+        // Slow enough that a Transition slice's budget runs out after it, so the slice parks with it mounted.
+        [Component(Compiler = false)]
+        private static VNode SlowEffectChildRender(string token)
+        {
+            System.Threading.Thread.Sleep(25);
+            Hooks.UseEffect(() =>
+            {
+                s_parkedChildLog.Add("setup:" + token);
+                return () => s_parkedChildLog.Add("cleanup:" + token);
+            }, new object[] { token });
+            return V.Label(text: token);
+        }
+
+        // Keyed Divs at the top level, so its reconcile takes the time-sliceable keyed path.
+        [Component(Compiler = false)]
+        private static VNode ParkingOwnerRender()
+        {
+            s_parkedOwnerFiber = FiberAmbientStack.Current;
+            if (!s_parkedRowsShown) return V.Fragment(children: new VNode[] { V.Label(text: "empty", key: "empty") });
+            return V.Fragment(children: new VNode[]
+            {
+                V.Div(key: "slow", children: new VNode[]
+                {
+                    V.Component<string>(SlowEffectChildRender, s_parkedToken, key: "child"),
+                }),
+                V.Div(key: "row1", children: new VNode[] { V.Label(text: "row-1") }),
+                V.Div(key: "row2", children: new VNode[] { V.Label(text: "row-2") }),
+            });
+        }
+
+        // React double-invokes the effects of a component in the commit that mounts it. The render that completes the
+        // parked pass mounting the child renders it again with the update and commits both.
+        [Test]
+        public void Given_StrictModeAndAParkedPassThatMountedAChild_When_AnUpdateCompletesThePassAndRendersTheChildAgain_Then_ItsMountEffectIsDoubleInvoked()
+        {
+            // Arrange — the Transition drain's slice parks after the slow child mounts
+            FiberStrictMode.Enabled = true;
+            s_parkedChildLog.Clear();
+            s_parkedRowsShown = false;
+            s_parkedToken = "a";
+            using var mounted = V.Mount(_root, V.Component(ParkingOwnerRender, key: "owner"));
+            mounted.FlushEffectsForTest();
+            s_parkedRowsShown = true;
+            s_parkedOwnerFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
+            mounted.GetSchedulerForTest().DrainDelayedForTest();
+
+            // Act
+            s_parkedToken = "b";
+            s_parkedOwnerFiber.ScheduleRerenderForTest(FiberUpdatePriority.Urgent);
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            mounted.FlushEffectsForTest();
+
+            // Assert — "setup:b" where the update took the mount's double-invoke away
+            Assert.That(string.Join(" ", s_parkedChildLog), Is.EqualTo("setup:b cleanup:b setup:b"));
+        }
+
         #endregion
     }
 

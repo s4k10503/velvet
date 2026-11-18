@@ -240,6 +240,21 @@ namespace Velvet.Tests
             Assert.That(s_forcedRenders, Is.EqualTo(1));
         }
 
+        // React's root.unmount() flushes the root's pending passive effects and then renders the unmount together
+        // with the update they scheduled, so nothing of the root renders again.
+        [Test]
+        public void Given_ARootWhosePendingEffectForcesARender_When_ItIsDisposed_Then_ItRendersNothingBeforeItsUnmount()
+        {
+            // Arrange — the root's mount effect is still pending
+            var mounted = V.Mount(new VisualElement(), V.Component(ThrowsOnItsForcedRender, key: "thrower"));
+
+            // Act
+            mounted.Dispose();
+
+            // Assert — null where the effect never ran
+            Assert.That(s_store.Current == 1 ? s_forcedRenders : (int?)null, Is.EqualTo(0));
+        }
+
         [Test]
         public void Given_APassRecording_When_AnEntryStarts_Then_ItAssertsThatItsFlushRunsInsideThePass()
         {
