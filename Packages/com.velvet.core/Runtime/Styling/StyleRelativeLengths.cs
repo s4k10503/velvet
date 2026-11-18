@@ -96,7 +96,7 @@ namespace Velvet
                 parent != null ? StyleTextEffectResolver.LineHeightOf(parent) : float.NaN);
             var viewport = ViewportOf(element);
             px = expression.Evaluate(new RelativeLengthBasis(font, RootUnitsOf(element), font.Em, viewport.width,
-                viewport.height));
+                viewport.height, ContainerWidthOf(element)));
             return true;
         }
 
@@ -110,7 +110,8 @@ namespace Velvet
                 return false;
             }
             var viewport = ViewportOf(element);
-            basis = new RelativeLengthBasis(UnitsOf(element), RootUnitsOf(element), percent, viewport.width, viewport.height);
+            basis = new RelativeLengthBasis(UnitsOf(element), RootUnitsOf(element), percent, viewport.width, viewport.height,
+                ContainerWidthOf(element));
             return true;
         }
 
@@ -206,6 +207,11 @@ namespace Velvet
             }, extraReading == null ? null : () => extraReading(state));
             return created;
         }
+
+        // The content width of the nearest container above element (StyleResponsiveScope.ResolveContainer), NaN where there
+        // is none or it has not been laid out.
+        private static float ContainerWidthOf(VisualElement element)
+            => StyleResponsiveScope.ResolveContainer(element, string.Empty)?.contentRect.width ?? float.NaN;
 
         // The font-relative units on element, at its computed font size and line height.
         private static FontUnitPixels UnitsOf(VisualElement element)
@@ -362,7 +368,8 @@ namespace Velvet
                 new ElementBox(element.layout.size, float.IsNaN(element.layout.width)),
                 parent == null ? default : Read(parent),
                 new PanelReading(onPanel ? ViewportOf(element).size : default, onPanel ? RootUnitsOf(element) : default,
-                    onPanel ? element.panel.scaledPixelsPerPoint : 0f));
+                    onPanel ? element.panel.scaledPixelsPerPoint : 0f),
+                ContainerWidthOf(element));
         }
 
         private static ParentReading Read(VisualElement parent)
@@ -385,7 +392,7 @@ namespace Velvet
         internal readonly record struct PanelReading(UnityEngine.Vector2 Viewport, FontUnitPixels RootFont, float PixelsPerPoint);
 
         internal readonly record struct Snapshot(FontUnitPixels OwnFont, Position Position, ElementBox Box,
-            ParentReading Parent, PanelReading Panel);
+            ParentReading Parent, PanelReading Panel, float ContainerWidth);
     }
 
     // Re-resolves an element's relative lengths on the panel's scheduler tick after anything they measure has

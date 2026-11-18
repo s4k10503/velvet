@@ -20,3 +20,14 @@
   `--x` holds. A class of another family no longer moves it.
 - `font-[var(--w)]` and `font-(--w)` named the family `var(--w)` and `(--w)` beside the weight the variable resolved
   to.
+- A `shadow-[…]` length in `cqw`, `cqi`, `cqh`, `cqb`, `cqmin` or `cqmax` (`shadow-[0_0_4px_1cqw_#000]/50`) drew no
+  shadow. It is now measured against the content width of the nearest `@container` ancestor, and against the panel
+  where there is none.
+- A `shadow-lg/[var(--a)]` or `shadow-lg/(--a)` whose property resolves to nothing now draws no box-shadow, as the
+  browser does.
+- An important reader of a custom property in `gap-*`, `skew-*`, `font-*` or `divide-*` now ranks among the element's
+  important utilities of its family by Tailwind's order: `!gap-4 !gap-[var(--g)]` computes the variable's gap, as it
+  does in the browser, where the literal's was kept.
+- A `shadow-[var(--x)]`, `ring-[length:var(--w)]` or `inset-ring-[length:var(--w)]` whose property a stylesheet
+  declares no longer drops the element's ring and shadow before the property is first read: the unset waits until the
+  element is on a panel.

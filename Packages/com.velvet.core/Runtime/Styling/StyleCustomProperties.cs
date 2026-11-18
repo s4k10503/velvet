@@ -87,10 +87,13 @@ namespace Velvet
             // (TryAppendShadowLayers). A theme class is not: Tailwind reads the colour variable into the layers of the
             // value its token holds, so a colour class reaches them, which is what the resolved text says.
             public readonly bool ShadowLayers;
-            // An important consumer of a box-shadow utility, whose tracked token keeps its bang
+            // An important consumer of a class-driven family whose tracked token keeps its bang
             // (StyleVariantPayload.IsImportanceAware): its payloads carry it, and so rank among the element's important
             // literals by the consumer's own place.
             public readonly bool KeepsBang;
+            // Whether the unset the consumer writes discards the element's box-shadow, which an element off a panel does
+            // not write: a variable a stylesheet declares is read only once the element is on one (Reresolve).
+            public readonly bool DefersUnset;
             // The resolution the applied state came from, null when the last one resolved nothing.
             public string? Source;
             public bool Resolved;
@@ -117,8 +120,6 @@ namespace Velvet
                 ShadowLayers = !themed && Shape.MainOpen > 0 && Shape.Hint != "color"
                     && (utility.AsSpan(0, Shape.MainOpen).SequenceEqual("shadow-".AsSpan())
                         || utility.AsSpan(0, Shape.MainOpen).SequenceEqual("inset-shadow-".AsSpan()));
-                KeepsBang = (priority & StyleLayerPriority.Important) != 0
-                    && (StyleShadowClass.IsShadowClass(utility) || StyleShadowClass.IsInsetBoxShadowClass(utility));
                 var readsVariable = utility.IndexOf("var(", StringComparison.OrdinalIgnoreCase) >= 0;
                 ReadsVariable = readsVariable;
                 ModifierReadsVariable = Shape.HasModifier
@@ -126,11 +127,15 @@ namespace Velvet
                 if (readsVariable)
                 {
                     Property = WrittenProperty(utility, Shape, AddedHint, out _);
-                    UnsetUtility = Property == null && Shape.MainOpen > 0
-                        ? PaintedUnset(utility.Substring(utility[0] == '-' ? 1 : 0, Shape.MainOpen - (utility[0] == '-' ? 1 : 0)),
-                            EffectiveHint)
-                        : null;
+                    UnsetUtility = Property != null ? null
+                        : Shape.MainOpen > 0
+                            ? PaintedUnset(utility.Substring(utility[0] == '-' ? 1 : 0, Shape.MainOpen - (utility[0] == '-' ? 1 : 0)),
+                                EffectiveHint)
+                            : StyleShadowClass.UnsetOfSizeWithModifier(utility);
+                    DefersUnset = UnsetUtility != null && s_discardingUnsets.Contains(UnsetUtility);
                 }
+                KeepsBang = (priority & StyleLayerPriority.Important) != 0 && Property == null
+                    && StyleVariantPayload.IsImportanceAware(utility);
             }
 
             public long Key => StyleLayerPriority.WithRule(Priority, Declaration);
@@ -499,6 +504,10 @@ namespace Velvet
             using var themeScope = StyleThemeTokens.Use(consumer.Context, target);
             s_built.Clear();
             var resolved = TryBuild(target, consumer, s_built);
+            if (DefersUnset(target, consumer, resolved))
+            {
+                return;
+            }
             if (consumer.Resolved && (resolved ? consumer.Source != null && Matches(s_built, consumer.Source) : consumer.Source == null))
             {
                 return;
@@ -523,10 +532,7 @@ namespace Velvet
             {
                 payloads = new[] { consumer.UnsetUtility };
             }
-            if (consumer.KeepsBang && payloads != null)
-            {
-                payloads = Array.ConvertAll(payloads, payload => "!" + payload);
-            }
+            payloads = WithBang(consumer, payloads);
             Withdraw(target, consumer);
             consumer.Source = source;
             consumer.Resolved = true;
@@ -543,6 +549,23 @@ namespace Velvet
             }
             SettleWritten(target, consumer, WrittenBy(consumer.Applied, unset ? consumer.Property : null));
         }
+
+        // Whether consumer, whose var() did not resolve, waits for its element to reach a panel before it writes the unset that
+        // discards the box-shadow, leaving the element as it was until then.
+        private static bool DefersUnset(VisualElement target, Consumer consumer, bool resolved)
+        {
+            if (resolved || !consumer.DefersUnset || target.panel != null)
+            {
+                return false;
+            }
+            Withdraw(target, consumer);
+            consumer.Source = null;
+            consumer.Resolved = false;
+            return true;
+        }
+
+        private static string[]? WithBang(Consumer consumer, string[]? payloads)
+            => consumer.KeepsBang && payloads != null ? Array.ConvertAll(payloads, payload => "!" + payload) : payloads;
 
         private static void Restack(VisualElement target, Consumer consumer)
         {

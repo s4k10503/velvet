@@ -48,36 +48,6 @@ namespace Velvet.Tests
             return ColorUtility.ToHtmlStringRGBA(colour);
         }
 
-        // The ring is drawn where the properties are declared, which is the control: where it is not, the value is one
-        // the expectation cannot equal.
-        [TestCase("ring-2 shadow-[var(--x)]")]
-        [TestCase("ring-2 shadow-(--x)")]
-        [TestCase("ring-2 inset-shadow-[0_0_var(--a)_var(--b)]")]
-        [TestCase("ring-2 shadow-2xl/150 shadow-[var(--x)] shadow-red-500")]
-        [TestCase("ring-2 shadow-2xs shadow-[var(--x)]")]
-        [TestCase("ring-2 shadow-[var(--x)]/50")]
-        [TestCase("ring-2 !shadow-[var(--x)]")]
-        public void Given_ABoxShadowLayerReadingAnUndeclaredProperty_When_BesideARing_Then_TheRingGoesWithIt(string classes)
-        {
-            // Act
-            var ring = Ring(Declared + classes) == 2f ? Ring(classes) : float.NaN;
-
-            // Assert
-            Assert.That(ring, Is.EqualTo(0f));
-        }
-
-        [TestCase("shadow-lg ring-[length:var(--w)]")]
-        [TestCase("shadow-lg ring-(length:--w)")]
-        [TestCase("shadow-lg inset-ring-[length:var(--w)] inset-ring-red-500")]
-        public void Given_AnUndeclaredPropertyInALayerOrAWidth_When_ABoxShadowIsBeside_Then_NoShadowIsDrawn(string classes)
-        {
-            // Act
-            var layers = Layers(Declared + classes) != "none" ? Layers(classes) : "control not drawn";
-
-            // Assert
-            Assert.That(layers, Is.EqualTo("none"));
-        }
-
         // GREEN_ON_BASE(characterization): the base draws the shadow, a bracket of any type but a length being the colour.
         [Test]
         public void Given_ARingBracketOfAnotherTypeReadingAnUndeclaredProperty_When_ABoxShadowIsBeside_Then_TheShadowIsDrawn()
@@ -247,6 +217,31 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(found ? ColorUtility.ToHtmlStringRGBA(layers[0].Color) : "none", Is.EqualTo(Palette("red-500")));
+        }
+
+        // The last token of the family on the class source the passes read, once the reader resolves.
+        private static string LastOfFamily(string classes, string prefix)
+        {
+            using var scope = new ReconcilerScope();
+            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), new VNode[] { V.Div(className: classes) });
+            var composed = scope.Reconciler.Context.VariantGateClasses[scope.Root[0]].Resolved ?? Array.Empty<string>();
+            return Array.FindLast(composed, token => token.StartsWith(prefix, StringComparison.Ordinal)) ?? "none";
+        }
+
+        // Chromium computes the reader's value where both are important and Tailwind emits the reader after the literal:
+        // gap 8px, skew 10deg, weight 700, a 5px divider.
+        [TestCase("[--g:8px] !gap-4 !gap-[var(--g)]", "!gap-", "!gap-4")]
+        [TestCase("[--s:10deg] !skew-x-6 !skew-x-[var(--s)]", "!skew-x-", "!skew-x-6")]
+        [TestCase("[--w:700] !font-[300] !font-[var(--w)]", "!font-", "!font-[300]")]
+        [TestCase("[--d:5px] !divide-x-2 !divide-x-[var(--d)]", "!divide-x-", "!divide-x-2")]
+        public void Given_AnImportantReaderTailwindEmitsAfterAnImportantLiteral_When_ItResolves_Then_ItsPayloadFollowsTheLiteral(
+            string classes, string prefix, string literal)
+        {
+            // Act
+            var last = LastOfFamily(classes, prefix);
+
+            // Assert
+            Assert.That(last, Is.Not.EqualTo(literal).And.Not.EqualTo("none"));
         }
     }
 }

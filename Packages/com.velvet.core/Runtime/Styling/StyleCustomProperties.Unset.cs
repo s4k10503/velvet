@@ -35,6 +35,11 @@ namespace Velvet
                 : unset.Typed;
         }
 
+        private static readonly HashSet<string> s_discardingUnsets = new(StringComparer.Ordinal)
+        {
+            "shadow-[0]", "inset-shadow-[0]", "ring-[length:0]", "inset-ring-[length:2]",
+        };
+
         private static readonly HashSet<string> s_ringBrackets = new(StringComparer.Ordinal)
         {
             "ring-", "ring-offset-", "inset-ring-",

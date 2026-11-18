@@ -671,6 +671,22 @@ namespace Velvet
         // The theme sizes Tailwind gives inset-shadow-*, which, unlike shadow-*, has no bare utility.
         private static readonly string[] s_insetPresets = { "2xs", "xs", "sm" };
 
+        // The utility standing for a shadow size whose /N reads a var() that resolves to nothing, which the layers' colours
+        // hold, so the box-shadow is invalid; null for any other utility.
+        internal static string? UnsetOfSizeWithModifier(string utility)
+        {
+            var slash = utility.IndexOf('/');
+            var inset = utility.StartsWith("inset-shadow", StringComparison.Ordinal);
+            var root = inset ? "inset-shadow" : "shadow";
+            if (slash < root.Length || !utility.StartsWith(root, StringComparison.Ordinal))
+            {
+                return null;
+            }
+            var head = utility.AsSpan(root.Length, slash - root.Length);
+            var size = head.IsEmpty ? !inset : head[0] == '-' && IsPreset(head.Slice(1), inset);
+            return size ? root + "-[0]" : null;
+        }
+
         private static bool IsPreset(ReadOnlySpan<char> suffix, bool inset)
         {
             if (inset)
