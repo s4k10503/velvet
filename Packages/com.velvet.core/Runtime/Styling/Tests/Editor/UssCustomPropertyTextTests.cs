@@ -60,10 +60,8 @@ namespace Velvet.Tests
         [TestCase(":root { --x: none() filter() url() URL(); }")]
         [TestCase(":root { --x: a\\!IMPORTANT; }")]
         [TestCase(":root { --x: var(--a, 1px) var(--a,1px) var(--a,,1px) var( --a ) var( ) Var(a); }")]
-        [TestCase(":root { --x: rgb(+1, 2, 3) rgba(-1, 2, 3, +.5); }")]
         [TestCase(":root { --x: rgb(1 /* c */ 2 3); }")]
         [TestCase(":root { --x: url(a/*c*/); }")]
-        [TestCase(":root { --x: resource(/* c */ a); }")]
         [TestCase(":root { --x: filter(url(a/*c*/)); }")]
         [TestCase(":root { --x: blur(4px) /* c */; }")]
         [TestCase(":root{--x:blur(4px)}")]
@@ -83,9 +81,6 @@ namespace Velvet.Tests
         [TestCase(":root { --x: \\31\r\nurl(b/*c); --y: 1rem; }")]
         [TestCase(":root { --x: a\\url(b/*c); --y: 1rem; }")]
         [TestCase(":root{--x:\\31 url(b c)}")]
-        [TestCase(":root { --x: @url(a\")\"); --y: 2px; }\n.b { color: red; }")]
-        [TestCase(":root { --x: #url(a\")\"); --y: 2px; }\n.b { color: red; }")]
-        [TestCase(":root { --x: \0url(a\")\"); --y: 2px; }\n.b { color: red; }")]
         [TestCase(":root { --x: @\\75rl(a\")\"); --y: 2px; }\n.b { color: red; }")]
         [TestCase(".a { --x: url(a")]
         [TestCase(".a { --x: url(\"a")]
@@ -150,7 +145,6 @@ namespace Velvet.Tests
         // GREEN_ON_BASE(characterization): the base already declines to rewrite each of these declarations as written.
         // An escape before a `--` makes it part of a name that is no custom property's.
         [TestCase(".a { --x\u007f: 1rem; }")]
-        [TestCase(":root { --x: \"a\" 1rem; }")]
         [TestCase(":root { \\41 --x: 1rem; }")]
         public void Given_ADeclarationTheRewriteDeclines_When_TheSheetIsRewritten_Then_ItIsUnchanged(string uss)
         {
@@ -491,6 +485,163 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(rewritten, Is.EqualTo(expected));
+        }
+
+        [TestCase(":root { --x: \"a\" 1rem; }", ":root { --x: \"\\\"a\\\" 1rem\"; }")]
+        [TestCase(":root { --x: 'a' 1rem; }", ":root { --x: \"'a' 1rem\"; }")]
+        [TestCase(":root { --x: \"a\" 16 / 9; }", ":root { --x: \"\\\"a\\\" 16 / 9\"; }")]
+        [TestCase(":root { --x: \"a\\\"b\" 1rem; }", ":root { --x: \"\\\"a\\\\\\\"b\\\" 1rem\"; }")]
+        [TestCase(":root { --x: var(--a, \"b\") 1rem; }", ":root { --x: \"var(--a, \\\"b\\\") 1rem\"; }")]
+        [TestCase(":root { --x: resource(\"a\") 1rem; }", ":root { --x: \"resource(\\\"a\\\") 1rem\"; }")]
+        [TestCase(":root { --x: rgb(\"a\", 0, 0); }", ":root { --x: \"rgb(\\\"a\\\", 0, 0)\"; }")]
+        [TestCase(":root { --x: var(--a, \"b)\", 1px); }", ":root { --x: \"var(--a, \\\"b)\\\", 1px)\"; }")]
+        [TestCase(":root { --x: \"a\nb\"; }", ":root { --x: \"\\\"a\\a b\\\"; }\"\n")]
+        [TestCase(":root { --x: @url(a\")\"); --y: 2px; }\n.b { color: red; }", ":root { --x: \"@url(a\\\")\\\")\"; --y: 2px; }\n.b { color: red; }")]
+        [TestCase(":root { --x: #url(a\")\"); --y: 2px; }\n.b { color: red; }", ":root { --x: \"#url(a\\\")\\\")\"; --y: 2px; }\n.b { color: red; }")]
+        [TestCase(":root { --x: \0url(a\")\"); --y: 2px; }\n.b { color: red; }", ":root { --x: \"\0url(a\\\")\\\")\"; --y: 2px; }\n.b { color: red; }")]
+        public void Given_AStringBesideATokenTheImporterRejects_When_TheSheetIsRewritten_Then_ItsValueIsQuoted(
+            string uss, string expected)
+        {
+            // Arrange
+            // Act
+            var rewritten = RewriteWithin(uss);
+
+            // Assert
+            Assert.That(rewritten, Is.EqualTo(expected));
+        }
+
+        // GREEN_ON_BASE(characterization): the base already leaves each of these as written. A string is one token
+        // whatever it holds, so a comma, a parenthesis or a comment opener in it is no token.
+        [TestCase(":root { --font: \"Inter\", 'Segoe UI', sans-serif; }")]
+        [TestCase(":root { --x: var(--a, \"b, c\"); }")]
+        [TestCase(":root { --x: var(--a, \"b)\"); }")]
+        [TestCase(":root { --x: var(--a, \"/* c */\"); }")]
+        [TestCase(":root { --x: \"a /* c */ b\" \"1rem\"; }")]
+        [TestCase(":root { --x: \"a\\\"b\"; }")]
+        [TestCase(":root { --x: resource(\"a)1rem\"); }")]
+        [TestCase(":root { --x: url(\"a)1rem\"); }")]
+        [TestCase(".a { --x: \"abc")]
+        public void Given_AValueHoldingAStringTheImporterHolds_When_TheSheetIsRewritten_Then_ItIsUnchanged(string uss)
+        {
+            // Arrange
+            // Act
+            var rewritten = RewriteWithin(uss);
+
+            // Assert
+            Assert.That(rewritten, Is.EqualTo(uss));
+        }
+
+        [TestCase(":root { --x: rgb(300, 0, 0); }", ":root { --x: rgb(255, 0, 0); }")]
+        [TestCase(":root { --x: rgb(256 0 0); }", ":root { --x: rgb(255 0 0); }")]
+        [TestCase(":root { --x: rgb(+300, 0, 0); }", ":root { --x: rgb(255, 0, 0); }")]
+        [TestCase(":root { --x: rgb(1, 999, 1000); }", ":root { --x: rgb(1, 255, 255); }")]
+        [TestCase(":root { --x: rgb(-1, 2, 3); }", ":root { --x: rgb(0, 2, 3); }")]
+        [TestCase(":root { --x: rgb(1 2 -300); }", ":root { --x: rgb(1 2 0); }")]
+        [TestCase(":root { --x: rgba(1, 2, 3, 2); }", ":root { --x: rgba(1, 2, 3, 1); }")]
+        [TestCase(":root { --x: rgba(1 2 3 / 1.5); }", ":root { --x: rgba(1 2 3 / 1); }")]
+        [TestCase(":root { --x: rgba(1, 2, 3, -0.5); }", ":root { --x: rgba(1, 2, 3, 0); }")]
+        [TestCase(":root { --x: rgba(300, 2, 3, 0.5); }", ":root { --x: rgba(255, 2, 3, 0.5); }")]
+        [TestCase(":root { --x: rgb(300, 0, 0) !important; }", ":root { --x: rgb(255, 0, 0) !important; }")]
+        [TestCase(":root { --x: rgb(1 /* c */ 2 300); }", ":root { --x: rgb(1   2 255); }")]
+        [TestCase(":root { --x: linear-gradient(rgb(300, 0, 0), blue); }", ":root { --x: linear-gradient(rgb(255, 0, 0), blue); }")]
+        [TestCase(":root { --x: blur(4px) rgb(300, 0, 0) rgba(1, 2, 3, 2); }", ":root { --x: blur(4px) rgb(255, 0, 0) rgba(1, 2, 3, 1); }")]
+        [TestCase(":root { --x: var(--a, rgb(300, 0, 0)); }", ":root { --x: var(--a, rgb(255, 0, 0)); }")]
+        public void Given_AnRgbChannelOrAlphaBeyondItsRange_When_TheSheetIsRewritten_Then_ItIsWrittenClamped(
+            string uss, string expected)
+        {
+            // Arrange
+            // Act
+            var rewritten = RewriteWithin(uss);
+
+            // Assert
+            Assert.That(rewritten, Is.EqualTo(expected));
+        }
+
+        // GREEN_ON_BASE(characterization): the base already leaves each of these as written. Each is on the edge of its
+        // range or inside it, so nothing is clamped.
+        [TestCase(":root { --x: rgb(255, 255, 255); }")]
+        [TestCase(":root { --x: rgb(0, 0, 0); }")]
+        [TestCase(":root { --x: rgb(-0, 0, 0); }")]
+        [TestCase(":root { --x: rgb(+1, 2, 3) rgba(-0, 2, 3, +.5); }")]
+        [TestCase(":root { --x: rgba(1, 2, 3, 1); }")]
+        [TestCase(":root { --x: rgba(1, 2, 3, 1.0); }")]
+        [TestCase(":root { --x: rgba(1, 2, 3, 0.0); }")]
+        [TestCase(":root { --x: rgba(1, 2, 3, 0); }")]
+        [TestCase(":root { --x: rgba(1 2 3 / 0.999); }")]
+        public void Given_AnRgbWithinItsRange_When_TheSheetIsRewritten_Then_ItIsUnchanged(string uss)
+        {
+            // Arrange
+            // Act
+            var rewritten = RewriteWithin(uss);
+
+            // Assert
+            Assert.That(rewritten, Is.EqualTo(uss));
+        }
+
+        // GREEN_ON_BASE(characterization): the base quotes it already, for the fraction; the channel in the text stays as
+        // written, since Velvet's colour reader clamps it.
+        [TestCase(":root { --x: rgb(300, 0, 0.5); }", ":root { --x: \"rgb(300, 0, 0.5)\"; }")]
+        public void Given_AnRgbBeyondItsRangeTheImporterAlsoReadsOtherwiseThanCss_When_TheSheetIsRewritten_Then_ItsValueIsQuotedAsWritten(
+            string uss, string expected)
+        {
+            // Arrange
+            // Act
+            var rewritten = RewriteWithin(uss);
+
+            // Assert
+            Assert.That(rewritten, Is.EqualTo(expected));
+        }
+
+        [TestCase(":root { --x: resource(u+1); }", ":root { --x: resource(\"u+1\"); }")]
+        [TestCase(":root { --x: resource(U+1F600); }", ":root { --x: resource(\"U+1F600\"); }")]
+        [TestCase(":root { --x: resource(u+?); }", ":root { --x: resource(\"u+?\"); }")]
+        [TestCase(":root { --x: resource( u+1 ); }", ":root { --x: resource(\"u+1\"); }")]
+        [TestCase(":root { --x: resource(img/u+1.png); }", ":root { --x: resource(\"img/u+1.png\"); }")]
+        [TestCase(":root { --x: resource(u+1 /* c */); }", ":root { --x: resource(\"u+1\"); }")]
+        [TestCase(":root { --x: resource(a u+1) 1px; }", ":root { --x: resource(\"au+1\") 1px; }")]
+        [TestCase(":root { --x: resource(u+1) !important; }", ":root { --x: resource(\"u+1\") !important; }")]
+        [TestCase(":root { --x: blur(resource(u+1)); }", ":root { --x: blur(resource(\"u+1\")); }")]
+        public void Given_AResourceHoldingARange_When_TheSheetIsRewritten_Then_ItsPathIsAStringOfTheText(
+            string uss, string expected)
+        {
+            // Arrange
+            // Act
+            var rewritten = RewriteWithin(uss);
+
+            // Assert
+            Assert.That(rewritten, Is.EqualTo(expected));
+        }
+
+        [TestCase(":root { --x: resource(/* c */ a); }", ":root { --x: resource(  a); }")]
+        [TestCase(":root { --x: resource(a/* c */b); }", ":root { --x: resource(a b); }")]
+        [TestCase(":root { --x: resource(a/b.png/* c */) !IMPORTANT; }", ":root { --x: resource(a/b.png ) !important; }")]
+        [TestCase(":root { --x: resource(/* \" */ a) 1px; }", ":root { --x: resource(  a) 1px; }")]
+        public void Given_AResourceHoldingAComment_When_TheSheetIsRewritten_Then_ItIsWrittenWithoutTheComment(
+            string uss, string expected)
+        {
+            // Arrange
+            // Act
+            var rewritten = RewriteWithin(uss);
+
+            // Assert
+            Assert.That(rewritten, Is.EqualTo(expected));
+        }
+
+        // GREEN_ON_BASE(characterization): the base already leaves each of these as written. A `u` after a name
+        // character starts no range, and a string among the arguments is left to the importer.
+        [TestCase(":root { --x: resource(menu+1); }")]
+        [TestCase(":root { --x: resource(\"u+1\"); }")]
+        [TestCase(":root { --x: resource(\"u+1\" u+1); }")]
+        [TestCase(":root { --x: resource(up+1); }")]
+        [TestCase(":root { --x: resource(a/b.png) /* c */; }")]
+        public void Given_AResourceTheImporterStoresAsWritten_When_TheSheetIsRewritten_Then_ItIsUnchanged(string uss)
+        {
+            // Arrange
+            // Act
+            var rewritten = RewriteWithin(uss);
+
+            // Assert
+            Assert.That(rewritten, Is.EqualTo(uss));
         }
 
         private static readonly TimeSpan RewriteBound = TimeSpan.FromSeconds(10);

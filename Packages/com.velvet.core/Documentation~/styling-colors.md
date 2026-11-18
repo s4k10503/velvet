@@ -164,8 +164,12 @@ stores as another colour than CSS reads an `rgb()` or `rgba()` holding anything 
 alike and, in `rgba()`, a number after them, after a further comma where commas separate them or after a `/` where
 spaces do (`rgb(100%, 0%, 0%)` fails it, `rgb(0 0 0 / 50%)` is stored as opaque
 black, `rgb(0.5, 0, 0)` unscaled). So `Velvet.Editor` imports such a file itself,
-storing those custom properties as the text they were written with, and writing an `!important` in another case,
-which the importer also fails the file on, in lower case. A colour stored as text is read by Velvet's theme tokens,
+storing those custom properties as the text they were written with, a string beside one of those tokens
+(`"a" 1rem`) included and a string alone (`"Inter"`) left as written, and writing an `!important` in another case,
+which the importer also fails the file on, in lower case. It writes two more values as CSS reads them where the
+importer does not: an `rgb()` or `rgba()` channel above 255 or below 0, and an alpha above 1 or below 0, are
+clamped (`rgb(300, 0, 0)` is `rgb(255, 0, 0)`), and a `resource()` path holding a range (`resource(u+1)`) is
+stored as the text written, and one holding a comment as the text without it. A colour stored as text is read by Velvet's theme tokens,
 not by a stock USS `color: var(--x)`. A new or edited file is imported first by
 the stock importer, which logs its error, and then again by Velvet's once the selection is written to the file's meta
 file; commit that meta file. The two settings of the stock importer's inspector, validation and unsupported selectors,

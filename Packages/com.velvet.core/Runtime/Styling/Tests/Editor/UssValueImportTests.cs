@@ -436,5 +436,137 @@ namespace Velvet.Tests
             // Assert
             Assert.That(stored, Is.EqualTo("resource(\"a/b.png\")"));
         }
+
+        // GREEN_ON_BASE(characterization): how the stock importer reads a resource() path is an engine fact the base meets
+        // too. UssCustomPropertyText.Normalized writes a path holding a range as a string, since the importer stores
+        // the range's digits, and one holding a comment without it, since the importer stores the comment's text.
+        [TestCase("resource(u+1)", "resource(\"1\")")]
+        [TestCase("resource(/* c */ a)", "resource(\" c a\")")]
+        [TestCase("resource(u+?)", "resource(\"?\")")]
+        public void Given_AResourcePathHoldingARangeOrAComment_When_TheStockImporterReadsTheRawSheet_Then_ItStoresAnotherPath(
+            string value, string expected)
+        {
+            // Arrange
+            // Act
+            var stored = StoredText(value);
+
+            // Assert
+            Assert.That(stored, Is.EqualTo(expected));
+        }
+
+        // GREEN_ON_BASE(characterization): how the stock importer reads a resource() path is an engine fact the base meets
+        // too. UssCustomPropertyText.HoldsRange takes a `u` after a name character for no range, and the importer
+        // stores such a path as written.
+        [Test]
+        public void Given_AResourcePathHoldingAPlusAfterANameCharacter_When_TheStockImporterReadsTheRawSheet_Then_ItStoresItAsWritten()
+        {
+            // Arrange
+            // Act
+            var stored = StoredText("resource(menu+1)");
+
+            // Assert
+            Assert.That(stored, Is.EqualTo("resource(\"menu+1\")"));
+        }
+
+        [TestCase("resource(u+1)", "resource(\"u+1\")")]
+        [TestCase("resource(U+1F600)", "resource(\"U+1F600\")")]
+        [TestCase("resource(img/u+1.png)", "resource(\"img/u+1.png\")")]
+        [TestCase("resource(/* c */ a)", "resource(\"a\")")]
+        [TestCase("resource(a/* c */b)", "resource(\"ab\")")]
+        public void Given_AResourceTheImporterStoresAnotherPathOf_When_TheRewrittenSheetIsImported_Then_ItStoresThePathAsWritten(
+            string value, string expected)
+        {
+            // Arrange
+            var uss = UssCustomPropertyTextTests.RewriteWithin(":root { " + Name + ": " + value + "; }") ?? string.Empty;
+
+            // Act
+            var stored = ImportedSheet(uss, sheet => sheet.importedWithErrors ? null : Spelled(sheet));
+
+            // Assert
+            Assert.That(stored, Is.EqualTo(expected));
+        }
+
+        // GREEN_ON_BASE(characterization): how the stock importer reads a string is an engine fact the base meets too.
+        // UssCustomPropertyText reads a string as one token, and quotes a value holding one beside a token the importer
+        // fails the sheet on.
+        [TestCase("\"a\" 1rem")]
+        [TestCase("'a' 1rem")]
+        [TestCase("\"a\" 16 / 9")]
+        [TestCase("var(--a, \"b\") 1rem")]
+        public void Given_AStringBesideATokenTheImporterRejects_When_TheStockImporterReadsTheRawSheet_Then_ItFailsTheSheet(string value)
+        {
+            // Arrange
+            // Act
+            var failed = FailsTheSheet(value);
+
+            // Assert
+            Assert.That(failed, Is.True);
+        }
+
+        [TestCase("\"a\" 1rem", "\"a\" 1rem")]
+        [TestCase("'a' 1rem", "'a' 1rem")]
+        [TestCase("\"a\" 16 / 9", "\"a\" 16 / 9")]
+        [TestCase("\"a\\\"b\" 1rem", "\"a\\\"b\" 1rem")]
+        public void Given_AStringBesideATokenTheImporterRejects_When_TheRewrittenSheetIsImported_Then_ItStoresItsText(
+            string value, string expected)
+        {
+            // Arrange
+            var uss = UssCustomPropertyTextTests.RewriteWithin(":root { " + Name + ": " + value + "; }") ?? string.Empty;
+
+            // Act
+            var stored = ImportedSheet(uss, sheet => sheet.importedWithErrors ? null : Spelled(sheet));
+
+            // Assert
+            Assert.That(stored, Is.EqualTo(expected));
+        }
+
+        // GREEN_ON_BASE(characterization): how the stock importer reads a string is an engine fact the base meets too.
+        // UssCustomPropertyText leaves these unquoted because the importer stores a value for them, whatever a string
+        // among them holds.
+        [TestCase("\"Inter\", 'Segoe UI', sans-serif")]
+        [TestCase("var(--a, \"b, c\")")]
+        [TestCase("var(--a, \"b)\")")]
+        [TestCase("var(--a, \"/* c */\")")]
+        [TestCase("\"a /* c */ b\" \"1rem\"")]
+        [TestCase("resource(\"a)1rem\")")]
+        [TestCase("url(\"a)1rem\")")]
+        public void Given_AValueHoldingAStringTheImporterHolds_When_TheStockImporterReadsTheRawSheet_Then_ItStoresSomeValue(string value)
+        {
+            // Arrange
+            // Act
+            var count = StoredValueCount(value);
+
+            // Assert
+            Assert.That(count, Is.GreaterThan(0));
+        }
+
+        [Test]
+        public void Given_AnRgbChannelAbove255_When_TheRewrittenSheetIsImported_Then_TheStoredRedIsOne()
+        {
+            // Arrange
+            var uss = UssCustomPropertyTextTests.RewriteWithin(":root { " + Name + ": rgb(300, 0, 0); }") ?? string.Empty;
+
+            // Act
+            var red = ImportedSheet(uss, sheet =>
+            {
+                var rules = EngineMember.StyleSheetRules.ResolveProperty()?.GetValue(sheet) as Array ?? Array.Empty<object>();
+                foreach (var rule in rules)
+                {
+                    var properties = EngineMember.StyleRuleProperties.ResolveProperty()?.GetValue(rule) as Array ?? Array.Empty<object>();
+                    foreach (var property in properties)
+                    {
+                        if (EngineMember.StylePropertyValues.ResolveProperty()?.GetValue(property) is Array { Length: > 0 } handles)
+                        {
+                            var color = (Color)EngineMember.StyleSheetReadColor.ResolveMethod()!.Invoke(sheet, new[] { handles.GetValue(0) })!;
+                            return (float?)color.r;
+                        }
+                    }
+                }
+                return null;
+            });
+
+            // Assert
+            Assert.That(red, Is.EqualTo(1f));
+        }
     }
 }

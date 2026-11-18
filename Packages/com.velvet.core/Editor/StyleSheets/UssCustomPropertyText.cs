@@ -1,7 +1,9 @@
 #nullable enable
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace Velvet.Editor
 {
@@ -14,7 +16,9 @@ namespace Velvet.Editor
     /// otherwise than CSS does fails the sheet or is stored as other tokens (<c>3.px</c> as <c>3 px</c>), as an
     /// <c>rgb()</c> holding a percentage is stored as another colour (<c>rgb(0 0 0 / 50%)</c> as opaque). Such a value
     /// becomes a quoted string of its own text, which the importer stores as written and the theme readers take back
-    /// as CSS (<see cref="StyleCustomProperties.Spell"/>).
+    /// as CSS (<see cref="StyleCustomProperties.Spell"/>). A value it holds is written as CSS reads it where the importer
+    /// does not: a channel or an alpha beyond its range is clamped, the path of a <c>resource()</c> holding a range is
+    /// spelled as a string, and one holding a comment is written without it.
     /// </summary>
     internal static class UssCustomPropertyText
     {
@@ -32,6 +36,8 @@ namespace Velvet.Editor
         {
             "px", "s", "ms", "deg", "grad", "rad", "turn",
         };
+
+        private static readonly Regex s_range = new(@"(?<![A-Za-z0-9_\-\u0080-\uffff])[uU]\+[0-9A-Fa-f?]", RegexOptions.CultureInvariant);
 
         // In NumberShape's letters: three integers separated alike, and for rgba() an alpha after them.
         private static readonly HashSet<string> s_heldChannels = new(StringComparer.Ordinal) { "i,i,i", "iii" };
@@ -176,12 +182,14 @@ namespace Velvet.Editor
             var value = Flatten(written, out var badUrl);
             var important = SplitImportant(ref value, out var importantAsWritten);
             value = value.Trim();
-            var quoted = badUrl || NeedsQuoting(value, written);
-            if (!quoted && importantAsWritten)
+            var commentInResource = false;
+            var quoted = badUrl || NeedsQuoting(value, written, out commentInResource);
+            var held = quoted ? value : Normalized(value);
+            if (!quoted && importantAsWritten && !commentInResource && held == value)
             {
                 return;
             }
-            var text = quoted ? Quote(value) : value;
+            var text = quoted ? Quote(value) : held;
             // The line breaks the value held and the text does not, so an importer message names the line the author
             // wrote; UssValueImportTests holds that the line of a property after it stays.
             var newlines = LineBreaks(written) - LineBreaks(text);
@@ -212,6 +220,95 @@ namespace Velvet.Editor
             }
             return text.Append('"').ToString();
         }
+
+        // value, which NeedsQuoting found held and Flatten took the comments out of, with the numbers of each rgb() and
+        // rgba() written as CSS clamps them, a channel to 0 to 255 and an alpha to 0 to 1, and each resource() path that
+        // holds a range and no string spelled as a string.
+        private static string Normalized(string value)
+        {
+            var text = new StringBuilder(value.Length);
+            AppendNormalized(value, 0, value.Length, text);
+            return text.ToString();
+        }
+
+        private static void AppendNormalized(string value, int start, int end, StringBuilder text)
+        {
+            var k = start;
+            while (k < end)
+            {
+                var tokenEnd = Math.Min(TokenEnd(value, k), end);
+                var nameEnd = StartsIdentifier(value, k) ? NameEnd(value, k + 1) : -1;
+                if (nameEnd < 0 || nameEnd >= tokenEnd || value[nameEnd] != '(')
+                {
+                    text.Append(value, k, tokenEnd - k);
+                    k = tokenEnd;
+                    continue;
+                }
+                var name = value.Substring(k, nameEnd - k);
+                var close = Math.Min(MatchOf(value, nameEnd), end);
+                var closed = close < value.Length && value[close] == ')';
+                text.Append(value, k, nameEnd + 1 - k);
+                if (name is "rgb" or "rgba")
+                {
+                    AppendClampedChannels(value, nameEnd + 1, close, text);
+                }
+                else if (name == "resource")
+                {
+                    AppendResourcePath(value.Substring(nameEnd + 1, close - nameEnd - 1), text);
+                }
+                else
+                {
+                    AppendNormalized(value, nameEnd + 1, close, text);
+                }
+                if (closed)
+                {
+                    text.Append(')');
+                }
+                k = closed ? close + 1 : close;
+            }
+        }
+
+        private static void AppendClampedChannels(string value, int start, int close, StringBuilder text)
+        {
+            var numbers = 0;
+            for (var k = start; k < close;)
+            {
+                var end = Math.Min(TokenEnd(value, k), close);
+                var token = value.Substring(k, end - k);
+                text.Append(StartsNumber(value, k) ? Clamped(token, numbers++ < 3 ? 255 : 1) : token);
+                k = end;
+            }
+        }
+
+        private static string Clamped(string number, int largest)
+        {
+            if (!double.TryParse(number, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed))
+            {
+                return number;
+            }
+            return parsed > largest ? largest.ToString(CultureInfo.InvariantCulture) : parsed < 0 ? "0" : number;
+        }
+
+        private static void AppendResourcePath(string path, StringBuilder text)
+        {
+            if (!HoldsRange(path) || path.IndexOfAny(new[] { '"', '\'' }) >= 0)
+            {
+                text.Append(path);
+                return;
+            }
+            text.Append('"');
+            foreach (var c in path)
+            {
+                if (!IsUrlSpace(c))
+                {
+                    text.Append(c);
+                }
+            }
+            text.Append('"');
+        }
+
+        // A range as the importer's lexer reads one, which UssValueImportTests holds.
+        private static bool HoldsRange(string text) => s_range.IsMatch(text);
 
         // The lines the importer's lexer counts: a CR and the LF after it make one, and a CR alone makes one too.
         private static int LineBreaks(string text)
@@ -326,27 +423,53 @@ namespace Velvet.Editor
         }
 
         // Whether the importer would fail, drop or misread value: a token HasUnheldToken finds, or a comment
-        // HasCommentInArguments finds in written, the value before its comments are taken out. A value holding a quote
-        // or a backslash is left as written unless its URL is one UrlEnd refuses, so such a token in it still fails
-        // the importer.
-        internal static bool NeedsQuoting(string value, string written)
-            => value.IndexOfAny(new[] { '"', '\'', '\\' }) < 0 && (HasUnheldToken(value) || HasCommentInArguments(written));
+        // HasCommentInArguments finds in written, the value before its comments are taken out. A value holding a
+        // backslash outside a string is left as written unless its URL is one UrlEnd refuses, so such a token in it
+        // still fails the importer.
+        internal static bool NeedsQuoting(string value, string written, out bool commentInResource)
+        {
+            commentInResource = false;
+            return !HoldsEscapeOutsideString(value)
+                   && (HasUnheldToken(value) || HasCommentInArguments(written, out commentInResource));
+        }
+
+        private static bool HoldsEscapeOutsideString(string value)
+        {
+            for (var i = 0; i < value.Length; i++)
+            {
+                if (value[i] == '\\')
+                {
+                    return true;
+                }
+                if (value[i] is '"' or '\'')
+                {
+                    i = WholeEnd(value, i) - 1;
+                }
+            }
+            return false;
+        }
 
         // The importer's lexer hands a function a comment among its arguments as a token, which rgb() and rgba() pass
-        // over, blur(), var() and linear-gradient() fail the sheet on, and resource() stores, left unread here as in
-        // HasUnheldToken; it reads a URL function's `/*` as part of the path. UssValueImportTests holds each of those.
-        private static bool HasCommentInArguments(string written)
+        // over, blur(), var() and linear-gradient() fail the sheet on, and resource() stores in its path; it reads a
+        // URL function's `/*` as part of the path. UssValueImportTests holds each of those. commentInResource says
+        // whether one stands among the arguments of a resource(), which the declaration is then written without.
+        private static bool HasCommentInArguments(string written, out bool commentInResource)
         {
+            commentInResource = false;
             var functions = new Stack<string>();
             var k = 0;
             while (k < written.Length)
             {
-                var comment = written[k] == '/' ? WholeEnd(written, k) : k;
+                var comment = written[k] is '/' or '"' or '\'' ? WholeEnd(written, k) : k;
                 if (comment > k)
                 {
-                    if (functions.TryPeek(out var function) && function is not ("rgb" or "rgba"))
+                    if (written[k] == '/' && functions.TryPeek(out var function) && function is not ("rgb" or "rgba"))
                     {
-                        return true;
+                        if (function != "resource")
+                        {
+                            return true;
+                        }
+                        commentInResource = true;
                     }
                     k = comment;
                     continue;
@@ -354,7 +477,7 @@ namespace Velvet.Editor
                 if (written[k] == '(')
                 {
                     var name = FunctionName(written, k);
-                    if (IsUrl(name) || name == "resource")
+                    if (IsUrl(name))
                     {
                         k = CloseOf(written, k);
                     }
@@ -380,7 +503,8 @@ namespace Velvet.Editor
         // it cannot parse or CSS reads further, a range, a number it misreads, or a full stop no digit follows, which
         // it drops after an integer and fails the sheet on elsewhere. A value of identifiers and delimiters alone,
         // which the importer keeps as one string instead, is quoted all the same. What a resource() with more than
-        // whitespace in it encloses is left unread, as the importer takes it as a path whatever it holds.
+        // whitespace in it encloses is left unread, as the importer takes it as a path whatever it holds; Normalized
+        // writes the path.
         // UssValueImportTests holds each of those. What the URL functions enclose is left to UrlEnd.
         private static bool HasUnheldToken(string value)
         {
@@ -410,6 +534,11 @@ namespace Velvet.Editor
         // Whether the importer holds the token at i as CSS reads it, moving i past the token where it does.
         private static bool ReadsHeldToken(string value, ref int i, ref int functions)
         {
+            if (value[i] is '"' or '\'')
+            {
+                i = WholeEnd(value, i);
+                return value[i - 1] is not ('\n' or '\r' or '\f');
+            }
             if (value[i] == '#')
             {
                 var digits = HexEnd(value, i + 1) - (i + 1);
@@ -493,6 +622,10 @@ namespace Velvet.Editor
                 {
                     return k;
                 }
+                else if (value[k] is '"' or '\'')
+                {
+                    k = WholeEnd(value, k) - 1;
+                }
             }
             return value.Length;
         }
@@ -503,6 +636,10 @@ namespace Velvet.Editor
             if (char.IsWhiteSpace(value[k]))
             {
                 return SpaceEnd(value, k);
+            }
+            if (value[k] is '"' or '\'')
+            {
+                return WholeEnd(value, k);
             }
             if (value[k] == '#')
             {
@@ -615,12 +752,21 @@ namespace Velvet.Editor
             return k;
         }
 
-        // The `)` after the `(` at open, or the end of value where none follows.
+        // The `)` after the `(` at open that no string holds, or the end of value where none follows.
         private static int CloseOf(string value, int open)
         {
-            var close = value.IndexOf(')', open);
-            // MUTANT_SURVIVES(equivalent, boundary): the search starts at a parenthesis after a name, so a match is never at 0.
-            return close < 0 ? value.Length : close;
+            for (var k = open; k < value.Length; k++)
+            {
+                if (value[k] == ')')
+                {
+                    return k;
+                }
+                if (value[k] is '"' or '\'')
+                {
+                    k = WholeEnd(value, k) - 1;
+                }
+            }
+            return value.Length;
         }
 
         // The importer's lexer takes url(), url-prefix() and domain() in any case as a path rather than as tokens, which
