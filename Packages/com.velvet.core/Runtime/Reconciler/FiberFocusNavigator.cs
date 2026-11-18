@@ -1482,8 +1482,9 @@ namespace Velvet
             binding.OnAttach = _ =>
             {
                 FiberFocusNavigator.EnsureAttached(element, ctx);
-                // A range's content is attached after its start; OnRangeEndAttached takes the autoFocus there.
-                if (element is not FocusScopeStart)
+                // A range's content is attached after its start; OnRangeEndAttached takes the autoFocus there, and
+                // the start takes it here when its end attached ahead of it.
+                if (element is not FocusScopeStart start || FocusScopeRange.EndOf(start)?.panel != null)
                 {
                     FireAutoFocusOnce(element, binding);
                 }

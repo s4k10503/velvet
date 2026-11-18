@@ -87,6 +87,27 @@ namespace Velvet
             return null;
         }
 
+        internal static FocusScopeEnd? EndOf(FocusScopeStart start)
+        {
+            var parent = start.hierarchy.parent;
+            var depth = 0;
+            for (var i = parent == null ? 0 : parent.hierarchy.IndexOf(start) + 1; parent != null && i < parent.hierarchy.childCount; i++)
+            {
+                switch (parent.hierarchy[i])
+                {
+                    case FocusScopeStart:
+                        depth++;
+                        break;
+                    case FocusScopeEnd end when depth == 0:
+                        return end;
+                    case FocusScopeEnd:
+                        depth--;
+                        break;
+                }
+            }
+            return null;
+        }
+
         // Whether `child`, one of the start's siblings, lies between the start and its end. A relocated element is
         // read at its placeholder: it paints in its parent's front band, past the end, yet belongs to the scope that
         // declares it.

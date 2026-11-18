@@ -60,8 +60,6 @@ namespace Velvet.Tests
 
         private Focusable Focused => _host.Panel.focusController.focusedElement;
 
-        // GREEN_ON_BASE(characterization): the base already leaves the autofocused button focused where nothing hides it.
-        // What this pins is that the hidden cases below measure a focus the mount did take.
         [Test]
         public void Given_APortalFocusScopeMountedUnderARevealedBoundary_When_ItMounts_Then_ItsButtonHoldsFocus()
         {
