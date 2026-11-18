@@ -17,8 +17,9 @@ namespace Velvet.Editor
     /// <c>rgb()</c> holding a percentage is stored as another colour (<c>rgb(0 0 0 / 50%)</c> as opaque). Such a value
     /// becomes a quoted string of its own text, which the importer stores as written and the theme readers take back
     /// as CSS (<see cref="StyleCustomProperties.Spell"/>). A value it holds is written as CSS reads it where the importer
-    /// does not: a channel or an alpha beyond its range is clamped, the path of a <c>resource()</c> holding a range is
-    /// spelled as a string, and one holding a comment is written without it.
+    /// does not: a channel or an alpha beyond its range is clamped in an <c>rgb()</c> or <c>rgba()</c> it holds, a
+    /// <c>resource()</c> path it would store shortened (a range, a dimension, a hash…) is spelled as a string, and one
+    /// holding a comment is written without it.
     /// </summary>
     internal static class UssCustomPropertyText
     {
@@ -224,8 +225,8 @@ namespace Velvet.Editor
         }
 
         // value, which NeedsQuoting found held and Flatten took the comments out of, with the numbers of each rgb() and
-        // rgba() written as CSS clamps them, a channel to 0 to 255 and an alpha to 0 to 1, and each resource() path that
-        // holds a range and no string spelled as a string.
+        // rgba() written as CSS clamps them, a channel to 0 to 255 and an alpha to 0 to 1, and each resource() path
+        // StoredOtherwise finds, where it holds no quote and no backslash, spelled as a string.
         private static string Normalized(string value)
         {
             var text = new StringBuilder(value.Length);
@@ -293,7 +294,7 @@ namespace Velvet.Editor
 
         private static void AppendResourcePath(string path, StringBuilder text)
         {
-            if (!StoredOtherwise(path) || path.IndexOfAny(new[] { '"', '\'' }) >= 0)
+            if (!StoredOtherwise(path) || path.IndexOfAny(new[] { '"', '\'', '\\' }) >= 0)
             {
                 text.Append(path);
                 return;
@@ -311,7 +312,7 @@ namespace Velvet.Editor
 
         // Whether the importer would store a resource() path other than as written: it stores the number of a dimension
         // or a percentage without its unit, a hash or an at-keyword without its sign, a function without its arguments
-        // and a range as its digits. UssValueImportTests holds what it stores for each.
+        // and a range as its digits. UssValueImportTests holds what it stores for each of those.
         private static bool StoredOtherwise(string path)
             => path.IndexOfAny(new[] { '#', '@', '%', '(' }) >= 0 || s_unitRun.IsMatch(path) || s_range.IsMatch(path);
 
@@ -365,7 +366,7 @@ namespace Velvet.Editor
         // A comment becomes a space, and so does a line break or a form feed, while a string, an escape and an unquoted
         // URL path are kept whole, so what reads as one inside them stays. badUrl says whether the importer's lexer
         // raises an error on a URL path, which fails the sheet.
-        private static string Flatten(string value, out bool badUrl)
+        private static string Flatten(string value, out bool badUrl, string comment = " ")
         {
             badUrl = false;
             var text = new StringBuilder(value.Length);
@@ -389,7 +390,7 @@ namespace Velvet.Editor
                 }
                 if (value[i] == '/')
                 {
-                    text.Append(' ');
+                    text.Append(comment);
                 }
                 else
                 {
@@ -435,7 +436,17 @@ namespace Velvet.Editor
         {
             commentInResource = false;
             return !HoldsEscapeOutsideString(value)
-                   && (HasUnheldToken(value) || HoldsAdjacentStrings(value) || HasCommentInArguments(written, out commentInResource));
+                   && (HasUnheldToken(value) || HoldsAdjacentStrings(WithoutComments(written))
+                       || HasCommentInArguments(written, out commentInResource));
+        }
+
+        // written as the importer's value builder keeps it, with a comment among the top-level tokens dropped rather than
+        // standing for the whitespace it separates them with.
+        private static string WithoutComments(string written)
+        {
+            var bare = Flatten(written, out _, string.Empty);
+            SplitImportant(ref bare, out _);
+            return bare.Trim();
         }
 
         // Whether value is one string beside identifiers or strings with nothing between them, which the importer joins

@@ -455,7 +455,7 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): how the stock importer reads a resource() path is an engine fact the base meets
-        // too. UssCustomPropertyText.HoldsRange takes a `u` after a name character for no range, and the importer
+        // too. UssCustomPropertyText.StoredOtherwise takes a `u` after a name character for no range, and the importer
         // stores such a path as written.
         [Test]
         public void Given_AResourcePathHoldingAPlusAfterANameCharacter_When_TheStockImporterReadsTheRawSheet_Then_ItStoresItAsWritten()
@@ -583,11 +583,13 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): how the stock importer reads a resource() path is an engine fact the base meets
-        // too. UssCustomPropertyText.StoredOtherwise takes a dimension and a percentage for tokens whose unit the
-        // importer drops from the path.
+        // too. UssCustomPropertyText.StoredOtherwise takes these tokens for ones the importer shortens in the path.
         [TestCase("resource(icon@2x.png)", "resource(\"icon@2.png\")")]
         [TestCase("resource(img/50%.png)", "resource(\"img/50.png\")")]
-        public void Given_AResourcePathHoldingADimensionOrAPercentage_When_TheStockImporterReadsTheRawSheet_Then_ItStoresAnotherPath(
+        [TestCase("resource(a#b)", "resource(\"ab\")")]
+        [TestCase("resource(@a)", "resource(\"a\")")]
+        [TestCase("resource(a(b)c)", "resource(\"ac\")")]
+        public void Given_AResourcePathHoldingATokenTheImporterShortens_When_TheStockImporterReadsTheRawSheet_Then_ItStoresAnotherPath(
             string value, string expected)
         {
             // Arrange

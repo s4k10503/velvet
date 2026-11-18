@@ -168,8 +168,9 @@ storing those custom properties as the text they were written with, a string bes
 (`"a" 1rem`) included, a string glued to an identifier or another string (`"a"b`, which the importer joins into one)
 included too, and a string alone (`"Inter"`) left as written, and writing an `!important` in another case,
 which the importer also fails the file on, in lower case. It writes two more values as CSS reads them where the
-importer does not: an `rgb()` or `rgba()` channel above 255 or below 0, and an alpha above 1 or below 0, are
-clamped (`rgb(300, 0, 0)` is `rgb(255, 0, 0)`), and a `resource()` path the importer would shorten, one holding a
+importer does not: an `rgb()` or `rgba()` it holds (three integers and an alpha) has a channel above 255 or below 0, and an alpha
+above 1 or below 0, clamped (`rgb(300, 0, 0)` is `rgb(255, 0, 0)`; one stored as text, such as `rgb(300, 0, 0.5)`, keeps its
+numbers, and Velvet's colour reader clamps them), and a `resource()` path the importer would shorten, one holding a
 range (`resource(u+1)`), a dimension (`icon@2x.png`), a percentage, a `#`, an `@` or a function, is stored as the text
 written, and one holding a comment as the text without it. A colour stored as text is read by Velvet's theme tokens,
 not by a stock USS `color: var(--x)`. A new or edited file is imported first by

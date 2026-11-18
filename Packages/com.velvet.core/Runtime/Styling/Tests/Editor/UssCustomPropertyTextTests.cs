@@ -715,6 +715,48 @@ namespace Velvet.Tests
             Assert.That(rewritten, Is.EqualTo(uss));
         }
 
+        [TestCase(":root { --x: \"a\"/* c */b; }", ":root { --x: \"\\\"a\\\" b\"; }")]
+        [TestCase(":root { --x: \"a\"/**/\"b\"; }", ":root { --x: \"\\\"a\\\" \\\"b\\\"\"; }")]
+        [TestCase(":root { --x: a/**/\"b\"; }", ":root { --x: \"a \\\"b\\\"\"; }")]
+        public void Given_AStringGluedToAnotherTokenByAComment_When_TheSheetIsRewritten_Then_ItsValueIsQuoted(
+            string uss, string expected)
+        {
+            // Arrange
+            // Act
+            var rewritten = RewriteWithin(uss);
+
+            // Assert
+            Assert.That(rewritten, Is.EqualTo(expected));
+        }
+
+        // GREEN_ON_BASE(characterization): the base already leaves each of these as written. A comment between a string
+        // and the next token has whitespace beside it, which keeps the importer from joining them.
+        [TestCase(":root { --x: \"a\" /* c */ b; }")]
+        [TestCase(":root { --x: \"a\"/* c */ b; }")]
+        public void Given_AStringSeparatedFromAnIdentifierByAComment_When_TheSheetIsRewritten_Then_ItIsUnchanged(string uss)
+        {
+            // Arrange
+            // Act
+            var rewritten = RewriteWithin(uss);
+
+            // Assert
+            Assert.That(rewritten, Is.EqualTo(uss));
+        }
+
+        // GREEN_ON_BASE(characterization): the base already leaves each of these as written. A backslash outside a string
+        // stands for a character the rewrite would have to decode to spell the path as a string.
+        [TestCase(":root { --x: resource(a\\ b%); }")]
+        [TestCase(":root { --x: resource(My\\ Folder/x@2x.png); }")]
+        public void Given_AResourceHoldingAnEscapeAndATokenTheImporterShortens_When_TheSheetIsRewritten_Then_ItIsUnchanged(string uss)
+        {
+            // Arrange
+            // Act
+            var rewritten = RewriteWithin(uss);
+
+            // Assert
+            Assert.That(rewritten, Is.EqualTo(uss));
+        }
+
         private static readonly TimeSpan RewriteBound = TimeSpan.FromSeconds(10);
 
         // On a thread of its own, so a rewrite that never returns fails its case rather than holding the suite; it then
