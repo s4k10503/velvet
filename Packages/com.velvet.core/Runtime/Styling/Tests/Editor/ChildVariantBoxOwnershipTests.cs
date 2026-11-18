@@ -593,8 +593,9 @@ namespace Velvet.Tests
             Assert.That((inRow, Inline(removed.style.marginLeft)), Is.EqualTo(("16", "null")));
         }
 
-        // GREEN_ON_BASE(characterization): a pooled Label keeps nothing of the gap row it left, which a
-        // hold outliving the layer map it lives in would break.
+        // GREEN_ON_BASE(characterization): the base hands the pooled Label to a later pass as well; what the case holds
+        // is that it keeps nothing of the gap row it left across that pass boundary, now that pooling waits for the end
+        // of the pass, which a hold outliving the layer map it lives in would break.
         [Test]
         public void Given_ALabelPooledOutOfAGapRow_When_ARowWithoutAGapRentsItInALaterPassWithItsOwnMargin_Then_TheOldGapIsNotHeld()
         {
