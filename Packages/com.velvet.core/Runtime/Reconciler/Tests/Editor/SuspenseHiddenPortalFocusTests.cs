@@ -76,6 +76,20 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_APortalMountedTogetherWithAFocusScopeUnderAHiddenBoundary_When_ItMounts_Then_NothingHoldsFocus()
+        {
+            // Arrange
+            Update(s_setBlocked, 1);
+            Update(s_setScoped, true);
+
+            // Act
+            Update(s_setPortal, true);
+
+            // Assert
+            Assert.That(Controller.focusedElement, Is.Null);
+        }
+
+        [Test]
         public void Given_APortalFocusScopeMountedUnderAHiddenBoundary_When_TheBoundaryReveals_Then_ItsButtonHoldsFocus()
         {
             // Arrange

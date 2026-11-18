@@ -47,6 +47,7 @@ namespace Velvet
         public bool AutoFocusFired;
         public EventCallback<AttachToPanelEvent>? OnAttach;
         public ReconcilerContext? Context;
+        public VisualElement? PortalPlaceholder;
 
         // Creation order across every mounted tree. Of two contained scopes a landing crosses between, the
         // newer one keeps it; a strict order is what stops the two pulling focus back from each other.
@@ -1472,6 +1473,7 @@ namespace Velvet
             {
                 RestoreTarget = FiberFocusNavigator.FocusedElementAnywhere(ctx),
                 Context = ctx,
+                PortalPlaceholder = ctx.CurrentPortalPlaceholder,
             };
             if (element is FocusScopeStart start)
             {
@@ -1555,7 +1557,7 @@ namespace Velvet
             {
                 return;
             }
-            var placeholder = binding.Context?.CurrentPortalPlaceholder;
+            var placeholder = binding.PortalPlaceholder;
             if (SuspenseHiddenElements.IsAtOrUnderHidden(scope) || SuspenseHiddenElements.IsAtOrUnderHidden(placeholder))
             {
                 if (binding.Context is { } ctx && !ctx.DeferredAutoFocus.Exists(entry => ReferenceEquals(entry.Scope, scope)))

@@ -175,8 +175,7 @@ namespace Velvet
             {
                 return binding.Wrapper;
             }
-            var parent = ChildListWrites.ParentOf(classElement);
-            return parent != null && ctx.WrapperToInnerMap.ContainsKey(parent) ? parent : classElement;
+            return WrapperInfrastructure.OuterOf(ctx, classElement);
         }
 
         // SlotOf's inverse.
