@@ -35,6 +35,16 @@ namespace Velvet.Tests
             }),
         });
 
+        private static VNode s_cachedPortal;
+
+        [Component(Compiler = false)]
+        private static VNode CachedPortalHost()
+        {
+            var (_, setPass) = Hooks.UseState(0);
+            s_setPass = setPass;
+            return V.Div(children: new VNode[] { s_cachedPortal });
+        }
+
         private static StateUpdater<int> s_setPass;
         private static bool s_pointerDownReached;
 
@@ -278,6 +288,46 @@ namespace Velvet.Tests
         {
             // Arrange
             yield return MountLayerHost(PanelFocusOrder.Isolated);
+            var document = LayerDocument;
+            var oldRoot = document.rootVisualElement;
+            var oldPanel = oldRoot.panel;
+
+            // Act
+            yield return ReplaceRoot(document);
+            var root = document.rootVisualElement;
+
+            // Assert
+            Assert.That(Replaced(root, oldRoot, oldPanel) && root.Q<VisualElement>("p1") != null, Is.True);
+        }
+
+        [UnityTest]
+        public IEnumerator Given_APortalMountedAtTheRootOfATreeWhoseHostPanelWasReplaced_When_NothingPatchesIt_Then_ItsNewRootHoldsThePortalsChildren()
+        {
+            // Arrange
+            _mounted = V.Mount(_panelGo.GetComponent<UIDocument>().rootVisualElement,
+                V.Portal(UILayer.Overlay, key: "portal", children: new VNode[] { V.Button(name: "p1") }));
+            yield return null;
+            yield return null;
+            var document = LayerDocument;
+            var oldRoot = document.rootVisualElement;
+            var oldPanel = oldRoot.panel;
+
+            // Act
+            yield return ReplaceRoot(document);
+            var root = document.rootVisualElement;
+
+            // Assert
+            Assert.That(Replaced(root, oldRoot, oldPanel) && root.Q<VisualElement>("p1") != null, Is.True);
+        }
+
+        [UnityTest]
+        public IEnumerator Given_APortalNodeTheDeclaringComponentReturnsAgain_When_ItsHostPanelWasReplaced_Then_ItsNewRootHoldsThePortalsChildren()
+        {
+            // Arrange
+            s_cachedPortal = V.Portal(UILayer.Overlay, key: "portal", children: new VNode[] { V.Button(name: "p1") });
+            _mounted = V.Mount(_panelGo.GetComponent<UIDocument>().rootVisualElement, V.Component(CachedPortalHost, key: "root"));
+            yield return null;
+            yield return null;
             var document = LayerDocument;
             var oldRoot = document.rootVisualElement;
             var oldPanel = oldRoot.panel;

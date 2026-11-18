@@ -226,6 +226,11 @@ namespace Velvet
         // may be stale; a clear one is not: every ancestor of a fiber with pending work carries it.
         internal bool PendingWorkBelow { get; set; }
 
+        // Set on a fiber that declares a Portal standing on a host root the engine replaced. The render that follows
+        // patches every node that may hold a Portal, identical to the last render's or not (ChildReconciler.SkipsIdentical),
+        // and clears it.
+        internal bool PortalRetargetOwed { get; set; }
+
         // Whether the pass SuspendedOn names was a transition's, which the retry then renders on the Transition lane.
         internal bool SuspendedInTransition { get; set; }
 

@@ -6,6 +6,7 @@ namespace Velvet
 {
     // Applies PanelHostFactory.ApplyRootSetup to each root a host's UIDocument builds after the one it was created
     // with. Pinned by FocusReplacedHostPanelTests.
+    [ExecuteAlways]
     internal sealed class PanelHostRootWatch : MonoBehaviour
     {
         private PanelHostRecord? _record;

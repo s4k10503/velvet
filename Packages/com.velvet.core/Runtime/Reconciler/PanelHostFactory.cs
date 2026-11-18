@@ -1,4 +1,5 @@
 #nullable enable
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UIElements;
 // Below 6.5 the enum is nested in UIDocument; Test ▸ newest-editor-compile compiles the side above it.
@@ -158,17 +159,29 @@ namespace Velvet
             }
         }
 
-        // The children of a portal into the replaced root stand on that dead root, and a Portal is patched onto the
-        // host's current root only when its declaring component renders, which is what
-        // ReconcilerContext.OnPortalTargetRegistered asks for a registered element in the same way.
+        // The children of a portal into the replaced root stand on that dead root. The portal's declaring component
+        // renders again, as ReconcilerContext.OnPortalTargetRegistered asks for a registered element, and the render
+        // patches the portal onto the host's current root whatever the component returns: PortalRetargetOwed keeps
+        // the identity skip off, and ChildrenPending makes the patch mount the children from nothing.
         private static void RenderPortalsInto(VisualElement previousRoot, ReconcilerContext ctx)
         {
-            foreach (var info in ctx.PortalState.Values)
+            List<VisualElement>? placeholders = null;
+            foreach (var entry in ctx.PortalState.Stored)
             {
-                if (!ReferenceEquals(info.Target, previousRoot) || info.DeclaringFiber == null)
+                if (ReferenceEquals(entry.Value.Target, previousRoot) && entry.Value.DeclaringFiber != null)
                 {
-                    continue;
+                    (placeholders ??= new List<VisualElement>()).Add(entry.Key);
                 }
+            }
+            if (placeholders == null)
+            {
+                return;
+            }
+            foreach (var placeholder in placeholders)
+            {
+                var info = ctx.PortalState.Stored[placeholder];
+                ctx.PortalState.Stored[placeholder] = info with { ChildrenPending = true };
+                info.DeclaringFiber!.PortalRetargetOwed = true;
                 info.DeclaringFiber.InvalidateMemoCache();
                 FiberWorkLoop.RequestRenderFromHook(info.DeclaringFiber);
             }
@@ -192,6 +205,7 @@ namespace Velvet
         // depth-sort in the scene, not by sorting order).
         public static void SyncDeclaring(PanelHostRecord record, UILayer? layer, IPanel? declaringPanel, ReconcilerContext ctx)
         {
+            record.DeclaringPanel = declaringPanel ?? record.DeclaringPanel;
             RecordDeclaringRoot(record, declaringPanel);
             var (declaring, baseOrder) = ResolveDeclaring(declaringPanel, ctx);
             var settings = record.Settings;

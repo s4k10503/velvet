@@ -88,8 +88,8 @@ namespace Velvet
         // would compute subtree rings that drift from the engine's own panel-wide ring, and registering
         // per call-site element would stack duplicate listeners whose relative order inverts the branch
         // priority. An element with no panel yet defers via a tracked self-removing attach hook (one per
-        // element — repeat calls while detached dedup). Called from V.Mount (main panel), PanelHostFactory
-        // (each host panel it creates) and PanelHostRootWatch (each root a host builds after that), ConfigurePortalFocusOrder (a chained portal's declaring panel, and the
+        // element — repeat calls while detached dedup). Called from V.Mount (main panel), PanelHostFactory.ApplyRootSetup
+        // (each root of a host panel, the first and each its document builds after it), ConfigurePortalFocusOrder (a chained portal's declaring panel, and the
         // host panel of a chained or appended one, which can be a new panel since the host was created, as
         // FocusChainedPortalTests' case for a host document disabled and enabled again holds), and the
         // focus-scope attach hook (whatever panel the scope lands in).
@@ -265,12 +265,13 @@ namespace Velvet
             }
         }
 
-        // Moves a replaced host root's chained-ring ownership to its successor.
+        // Moves a replaced host root's chained-ring ownership to its successor, ahead of a portal that registered on
+        // the successor first.
         internal static void RekeyChainedHost(VisualElement previousRoot, VisualElement root, ReconcilerContext ctx)
         {
             if (ctx.ChainedHostRoots.Remove(previousRoot, out var owner))
             {
-                ctx.ChainedHostRoots.TryAdd(root, owner);
+                ctx.ChainedHostRoots[root] = owner;
             }
         }
 
