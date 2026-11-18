@@ -47,17 +47,8 @@ namespace Velvet
         // against one element instance; churning the element under a ghost key strands its exit and leaks the
         // ghost).
         //
-        // Both DOM lookups are by ELEMENT, not index, so each move would naively cost a parent.IndexOf scan
-        // from zero — O(childCount) per move, O(N²) over a full rotation where almost every element moves (LIS
-        // size 1). The detach side has the same hidden cost: RemoveFromHierarchy scans for the element's index
-        // internally. <see cref="IndexOfNear"/> seeds each lookup from a running hint: the next move's right
-        // neighbour is the element just placed, and for the structured rotations that drive this path (reverse /
-        // sort-flip / carousel) consecutive removals also cluster, so both lookups resolve in O(1) — collapsing
-        // the scan term to O(N) for those shapes (the measured win). An unstructured shuffle has no such locality;
-        // there IndexOfNear falls back to a plain scan, no worse than the IndexOf / RemoveFromHierarchy it replaced.
-        // The residual O(N·childCount) of the incremental Insert/RemoveAt shifts themselves is unchanged — only the
-        // scan term is removed; the reorder still runs as one unyielded slice, so a huge single-frame rotation is
-        // bounded by that structural cost, not by this lookup.
+        // Both lookups are by ELEMENT and are answered by the container's row model rather than by a scan of its
+        // children (KeyedReorderRowReadScalingTests).
         internal void Reorder(
             VisualElement parent,
             List<(VisualElement? element, bool isExisting)> newElements,
@@ -89,12 +80,6 @@ namespace Velvet
                 ? parent.ElementAt(afterIndex)
                 : null;
 
-            // Search hints for IndexOfNear: the last insertion lands the right neighbour for the next move, and
-            // consecutive removals cluster, so seeding each search from the previous result keeps it O(1) on the
-            // common path.
-            var insertHint = afterIndex;
-            var removeHint = slotStart;
-
             for (var i = newElements.Count - 1; i >= 0; i--)
             {
                 if (lisIndices.Contains(i)) continue;
@@ -103,17 +88,14 @@ namespace Velvet
                 if (element == null) continue;
                 if (isExisting && element.parent == parent)
                 {
-                    // Equivalent to element.RemoveFromHierarchy() but skips its internal scan-from-zero by
-                    // locating the element near the previous removal.
-                    var removeAt = IndexOfNear(parent, element, removeHint);
+                    var removeAt = ChildListWrites.PhysicalIndexOf(parent, element);
                     if (removeAt >= 0)
                     {
-                        removeHint = removeAt;
                         ChildListWrites.RemoveAt(parent, removeAt);
                     }
                     else
                     {
-                        // MUTANT_SURVIVES(equivalent, line removed): IndexOfNear misses only an element outside the content list the insertion below indexes, and InsertCore takes the child out of wherever it stands.
+                        // MUTANT_SURVIVES(equivalent, line removed): PhysicalIndexOf misses only an element outside the content list the insertion below indexes, and InsertCore takes the child out of wherever it stands.
                         ChildListWrites.RemoveFromHierarchy(element);
                     }
                 }
@@ -130,9 +112,7 @@ namespace Velvet
 
                 if (nextSibling != null)
                 {
-                    var pos = IndexOfNear(parent, nextSibling, insertHint);
-                    ChildListWrites.Insert(parent, pos, element);
-                    insertHint = pos;
+                    ChildListWrites.Insert(parent, ChildListWrites.PhysicalIndexOf(parent, nextSibling), element);
                 }
                 else
                 {
@@ -141,37 +121,8 @@ namespace Velvet
                     // append past it.
                     var end = LogicalChildSlots.ToPhysical(parent, LogicalChildSlots.Count(parent));
                     ChildListWrites.Insert(parent, end, element);
-                    insertHint = end;
                 }
             }
-        }
-
-        // parent.IndexOf(target) that searches OUTWARD from a hint instead of from index 0. A VisualElement
-        // appears in its parent at most once, so the nearest match is THE match — the result equals
-        // parent.IndexOf(target). ElementAt is an O(1) list index, so when the hint has locality (the structured
-        // reorder shapes that drive this path — reverse / sort-flip / carousel — place each element at or beside
-        // the hint) the lookup resolves in O(1). Beyond a short window the hint has no locality (an unstructured
-        // shuffle's removal order does not track DOM position), so rather than spiral outward across the whole
-        // range — which, scanning BOTH directions, would cost ~2x a plain scan — it falls back to parent.IndexOf.
-        // That bounds the worst case to within a small constant of IndexOf (never the 2x blow-up). Returns -1 only
-        // when target is not a child (callers guard that case).
-        private static int IndexOfNear(VisualElement parent, VisualElement target, int hint)
-        {
-            var n = parent.childCount;
-            if (n == 0) return -1;
-            if (hint < 0) hint = 0; else if (hint >= n) hint = n - 1;
-            const int window = 8;
-            for (var d = 0; d <= window; d++)
-            {
-                var hi = hint + d;
-                if (hi < n && parent.ElementAt(hi) == target) return hi;
-                if (d > 0)
-                {
-                    var lo = hint - d;
-                    if (lo >= 0 && parent.ElementAt(lo) == target) return lo;
-                }
-            }
-            return parent.IndexOf(target);
         }
 
         // A Suspense's hide of one of its outermost host elements.

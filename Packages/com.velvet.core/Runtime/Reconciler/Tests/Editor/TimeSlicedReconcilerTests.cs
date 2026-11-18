@@ -579,10 +579,8 @@ namespace Velvet.Tests
 
         #region Large keyed reorder (hinted-search rewrite — correctness at scale)
 
-        // These assert final ORDER, so they guard that the hinted-search rewrite (IndexOfNear + RemoveAt) stays
-        // order-faithful at the scale where the per-move scan term mattered — a wrong hint index would surface as a
-        // transposed pair. They do not (and cannot, without a flaky wall-clock assert) measure the O(1)-vs-O(N)
-        // lookup cost the change is about; that win is verified by out-of-band measurement.
+        // These assert final order at a scale where a wrong move index would surface as a transposed pair. The
+        // reorder's lookup cost is pinned by KeyedReorderRowReadScalingTests.
 
         [Test]
         public void Given_LargeReversedKeyedList_When_TimeSliced_Then_ProducesExactReversedOrder()
