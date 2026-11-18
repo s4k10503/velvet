@@ -1,0 +1,23 @@
+{
+ "detail": "EditMode: the editor was killed at 1794s, 1.5 times the baseline's 1192s plus 5s, with no readable result",
+ "file": "d852db06292495e3eb91b95349d9f60761e5abdb0e6bb31287ccb2893a224d7b",
+ "killers": [],
+ "measured_by": "44205829737",
+ "mutant": {
+  "after": ">=",
+  "before": ">",
+  "column": 45,
+  "line": 241,
+  "operator": "boundary",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ContainerRows.cs",
+  "shadowed": [
+   "arithmetic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "1ffe9b69fd4b31e82bffe0c9c68363a06633552627b636a1086b2532975e99de",
+ "verdict": "killed (timed out)"
+}

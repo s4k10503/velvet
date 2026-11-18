@@ -1,0 +1,35 @@
+{
+ "detail": "EditMode: 1 failed among the 5 case(s) that ran the site: Given_ABoundaryWhoseFallbackElementCannotBeCreated_When_ItsChildsOwnRenderThrows_Then_TheBoundaryAboveShowsItsFallback",
+ "file": "fcd992316feba61e7d78a80bed485da79e52d33ab839d4269038db3c10f86ebe",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ErrorBoundaryFallbackEventLogTests+UIToolkitOnlyFallbacks.Given_ABoundaryWhoseFallbackElementCannotBeCreated_When_ItsChildsOwnRenderThrows_Then_TheBoundaryAboveShowsItsFallback",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ErrorBoundaryFallbackEventLogTests.cs": "4cf1242d9f3ca69c21c37d583653bb5cca4cc827c2847d821e3b2f5f767360b9",
+    "Packages/com.velvet.core/TestUtilities/EventLog.cs": "e191b8d91d56ab6eb1633a8f37e5282dd11f4cbfd649b59ab27deab3a1e4b490",
+    "Packages/com.velvet.core/TestUtilities/EventLogRenderer.cs": "59fbaf33c955e917c5359940c3d0a0f090fefdc0d2a41b370a75eb6ce7304abe",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  }
+ ],
+ "measured_by": "44205829737",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 23,
+  "line": 314,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberErrorBoundary.cs",
+  "shadowed": [
+   "guard removed",
+   "literal"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "1ffe9b69fd4b31e82bffe0c9c68363a06633552627b636a1086b2532975e99de",
+ "verdict": "killed"
+}
