@@ -25,7 +25,7 @@ declaration outranks a stylesheet's.
 
 - `var(--name)` and `var(--name, fallback)` anywhere in a utility's bracket, or in its modifier's: `w-[var(--w)]`,
   `from-[var(--brand)]`, `shadow-[0_2px_var(--blur)_#000]`, `w-[calc(var(--w)*2)]`, `bg-red-500/[var(--alpha)]`.
-  The fallback may hold further `var()`s, and a numeric modifier may follow the bracket of a shadow or a colour, as Tailwind writes a rule for there: `shadow-[var(--x)]/50`.
+  The fallback may hold further `var()`s, and a numeric modifier may follow the bracket of a shadow or a colour (`shadow-[var(--x)]/50`, `fill-[var(--c)]/50`), the utilities Tailwind writes a rule for it on.
 - Tailwind's shorthand: `bg-(--brand)` is `bg-[var(--brand)]`, `text-(length:--size)` is
   `text-[length:var(--size)]`, `w-(--w,calc(1rem*2))` is `w-[var(--w,calc(1rem*2))]`, and `bg-red-500/(--alpha)`
   is `bg-red-500/[var(--alpha)]`. A modifier's shorthand takes no type hint, so `bg-red-500/(number:--alpha)` is

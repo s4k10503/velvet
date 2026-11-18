@@ -11,8 +11,10 @@
   A layer coming from a `var()` is judged by its source: `shadow-[var(--x)] shadow-blue-500` keeps the colour `--x`
   holds, and `[--a:5px] [--b:red] ring shadow-[#ggg] shadow-[0_0_var(--a)_var(--b)]` draws the ring and the shadow
   rather than discarding both.
-- `shadow-[var(--x)]/50`, and `bg-[var(--c)]/50` and the other colour brackets, a reader with a numeric modifier, is
-  read: it was ignored. A utility Tailwind writes no rule for with one (`gap-[var(--g)]/50`) is still ignored.
+- `shadow-[var(--x)]/50`, and the same on `inset-shadow-`, `text-shadow-`, `drop-shadow-`, `bg-`, `text-`, `border-`,
+  `ring-`, `outline-`, `fill-`, `stroke-`, `accent-`, `caret-`, `decoration-` and `divide-` brackets, the families
+  Tailwind writes a rule for with an opacity modifier, is read as a reader: it was ignored. A utility Tailwind writes
+  no rule for with one (`gap-[var(--g)]/50`) is still ignored.
 - An important shadow reader (`!shadow-[var(--x)]`) now ranks among the element's important shadow sizes by Tailwind's
   order: beside `!shadow-2xs`, which Tailwind emits before it, the reader holds the layers, where the size did.
 - A reader of a custom property (`inset-shadow-[var(--x)]`, `gap-[var(--g)]`, …) resolved to a payload that was put

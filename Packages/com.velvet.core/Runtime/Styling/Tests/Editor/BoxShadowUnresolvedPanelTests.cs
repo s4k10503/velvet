@@ -31,7 +31,12 @@ namespace Velvet.Tests
         }
 
         // The scheduler tick on which every reader is read again once its element is on a panel.
-        private static void ReadReaders(VisualElement card) => EditorPanelTestHelpers.DriveSchedulerOnce(card.panel);
+        // The first tick leaves a reader its one wait after the attach, and the second reads it again.
+        private static void ReadReaders(VisualElement card)
+        {
+            EditorPanelTestHelpers.DriveSchedulerOnce(card.panel);
+            EditorPanelTestHelpers.DriveSchedulerOnce(card.panel);
+        }
 
         private float Ring(VisualElement card)
         {

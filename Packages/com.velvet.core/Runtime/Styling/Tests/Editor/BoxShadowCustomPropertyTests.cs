@@ -248,14 +248,30 @@ namespace Velvet.Tests
             Assert.That(past, Is.GreaterThan(0));
         }
 
-        // Tailwind 4.3.3 writes a rule for an opacity modifier after a shadow or a colour bracket.
+        // Tailwind 4.3.3 writes a rule for an opacity modifier after a bracket of each of these, measured per class.
         [TestCase("shadow-[var(--x)]/50")]
         [TestCase("inset-shadow-[var(--x)]/50")]
+        [TestCase("text-shadow-[var(--x)]/50")]
+        [TestCase("drop-shadow-[var(--x)]/50")]
+        [TestCase("shadow-[length:var(--x)]/50")]
         [TestCase("bg-[var(--x)]/50")]
+        [TestCase("text-[var(--x)]/50")]
+        [TestCase("border-[var(--x)]/50")]
         [TestCase("ring-[var(--x)]/50")]
-        public void Given_ANumericModifierAfterAShadowOrColourBracketReadingAProperty_When_Read_Then_ItIsAReader(string cls)
+        [TestCase("outline-[var(--x)]/50")]
+        [TestCase("fill-[var(--x)]/50")]
+        [TestCase("stroke-[var(--x)]/50")]
+        [TestCase("accent-[var(--x)]/50")]
+        [TestCase("caret-[var(--x)]/50")]
+        [TestCase("decoration-[var(--x)]/50")]
+        [TestCase("divide-[var(--x)]/50")]
+        public void Given_ANumericModifierAfterABracketOfAFamilyTailwindWritesARuleFor_When_Read_Then_ItIsAReader(string cls)
         {
-            Assert.That(StyleCustomPropertyClass.Consumer(cls), Is.Not.Null);
+            // Act
+            var reader = StyleCustomPropertyClass.Consumer(cls);
+
+            // Assert
+            Assert.That(reader, Is.Not.Null);
         }
 
         // GREEN_ON_BASE(characterization): the base reads none of these, which Tailwind writes no rule for.
@@ -265,7 +281,11 @@ namespace Velvet.Tests
         [TestCase("w-[var(--w)]/50")]
         public void Given_ANumericModifierAfterABracketOfAUtilityWithNoRuleForOne_When_Read_Then_ItIsNoReader(string cls)
         {
-            Assert.That(StyleCustomPropertyClass.Consumer(cls), Is.Null);
+            // Act
+            var reader = StyleCustomPropertyClass.Consumer(cls);
+
+            // Assert
+            Assert.That(reader, Is.Null);
         }
     }
 }

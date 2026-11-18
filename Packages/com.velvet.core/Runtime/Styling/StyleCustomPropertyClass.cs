@@ -146,8 +146,8 @@ namespace Velvet
         }
 
         // Whether utility closes with a bracket, or with the bracket and a numeric opacity modifier after it
-        // (`shadow-[var(--x)]/50`), which only a utility Tailwind writes a rule for with one is read as having: a shadow
-        // or a colour. The same class of any other utility is no class there and does nothing.
+        // (`shadow-[var(--x)]/50`), which only a utility Tailwind writes a rule for with one is read as having
+        // (TakesOpacityModifier). The same class of any other utility is no class there and does nothing.
         private static bool EndsInBracketOrNumericModifier(string utility)
         {
             var slash = utility.LastIndexOf('/');
@@ -158,10 +158,25 @@ namespace Velvet
                         slash - utility.IndexOf('[') - 2)));
         }
 
+        // The roots Tailwind 4.3.3 writes a rule for an opacity modifier on, measured per class: those of a shadow take it
+        // under any type hint, and those of a colour (these and the colour defaults of StyleColorValueParser) under no hint
+        // or the colour one.
+        private static readonly HashSet<string> s_shadowModifierRoots = new(StringComparer.Ordinal)
+        {
+            "shadow", "inset-shadow", "text-shadow", "drop-shadow",
+        };
+
+        private static readonly HashSet<string> s_colourModifierRoots = new(StringComparer.Ordinal)
+        {
+            "fill", "stroke", "accent", "caret", "decoration", "divide",
+        };
+
         private static bool TakesOpacityModifier(string root, string bracket)
         {
             StyleArbitraryValueResolver.TrySplitTypeHint(bracket.AsSpan(), out var hint, out _);
-            return root is "shadow" or "inset-shadow" || (StyleColorValueParser.DefaultsToColour(root) && (hint == null || hint == "color"));
+            return s_shadowModifierRoots.Contains(root)
+                || ((s_colourModifierRoots.Contains(root) || StyleColorValueParser.DefaultsToColour(root))
+                    && (hint == null || hint == "color"));
         }
 
         // `prefix-(--x)`, `prefix-(hint:--x)` and a modifier's `/(--x)`, each written as the bracket Tailwind reads

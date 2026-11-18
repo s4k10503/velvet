@@ -51,6 +51,9 @@ namespace Velvet
             // The variable context the poll last resolved against. The engine hands an element a new context
             // whenever a variable in scope of it changes, so an unchanged one leaves nothing for the poll to do.
             public object? Context;
+            // The reads an attach still leaves to wait for the element's style pass, which a layout the element kept across
+            // a detach does not show (DefersUnset).
+            public int PendingReads;
         }
 
         private sealed class Consumer
@@ -378,6 +381,7 @@ namespace Velvet
             {
                 return;
             }
+            consumers.PendingReads = 1;
             var deferred = false;
             foreach (var consumer in consumers.Entries.ToArray())
             {
@@ -550,14 +554,24 @@ namespace Velvet
             SettleWritten(target, consumer, WrittenBy(consumer.Applied, unset ? consumer.Property : null));
         }
 
-        // Whether consumer, whose var() did not resolve, waits for its element to be laid out on a panel, which follows its
-        // style pass whichever tick comes first, before it writes the unset that discards the box-shadow, leaving the
-        // element as it was until then. Poll reads a waiting consumer again on each tick.
+        // Whether consumer, whose var() did not resolve, waits before it writes the unset that discards the box-shadow,
+        // leaving the element as it was: for the element to be laid out on a panel, and for one read after an attach, since
+        // an element laid out before a detach keeps its layout and can be read ahead of its new style pass. Poll reads a
+        // waiting consumer again on each tick.
         private static bool DefersUnset(VisualElement target, Consumer consumer, bool resolved)
         {
-            if (resolved || !consumer.DefersUnset || (target.panel != null && !float.IsNaN(target.layout.width)))
+            if (resolved || !consumer.DefersUnset)
             {
                 return false;
+            }
+            if (target.panel != null && !float.IsNaN(target.layout.width))
+            {
+                if (!s_consumers.TryGetValue(target, out var consumers) || consumers.PendingReads == 0)
+                {
+                    return false;
+                }
+                consumers.PendingReads--;
+                target.schedule.Execute(() => ReresolveAll(target));
             }
             Withdraw(target, consumer);
             consumer.Source = null;
