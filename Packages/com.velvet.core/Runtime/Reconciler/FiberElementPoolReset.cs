@@ -126,19 +126,22 @@ namespace Velvet
                 lineBoxed.LineBox.Reset();
             }
 
-            // Clearing ANY inline property restores the matched-rules value THROUGH the transition system, so
-            // while the element is still on a panel every clear below can become a running animation instead —
-            // one that keeps painting what the reset just removed. Writing a transition longhand recomputes that
-            // data, and a zero total time contributes no transition at all, so the clears cancel instead of
-            // animating. Must precede the Clear below to cover all of it; PooledElementStyleGhostTests holds it
-            // against a stylesheet's transition. Scoped to that INLINE clear: the name / enabled-state resets after
-            // it change which rules match, and whatever the next styles pass transitions from that is its own.
-            // A detached element is not style-initialized, which already takes every clear down the cancel
-            // path — which is why no shipped caller can reach the defect, since they all detach first.
+            // Clearing an inline property restores the matched-rules value THROUGH the transition system, so while
+            // the element is still on a panel a clear can become a running animation instead — one that keeps
+            // painting what the reset just removed. A zero total time contributes no transition at all, so while
+            // the inline zero duration below applies the clears cancel instead of animating. Clear itself removes
+            // the zero along with the other inline values, and takes this group of properties last, after that
+            // removal; they are nulled here, under the zero, so none of them is left for it. Scoped to that INLINE
+            // clear: the name / enabled-state resets after it change which rules match, and whatever the next styles
+            // pass transitions from that is its own. A detached element is not style-initialized, which already
+            // takes every clear down the cancel path — which is why no shipped caller can reach the defect, since
+            // they all detach first. PooledElementStyleGhostTests holds opacity and rotate against a stylesheet's
+            // transition.
             if (element.panel != null)
             {
                 element.style.transitionDuration = new StyleList<TimeValue>(s_zeroDuration);
             }
+            ClearLateClearedStyle(element.style);
 
             // A filter tween still ticking would write its frames and its target onto the next consumer.
             StyleFilterTransitionDriver.Release(element);
@@ -215,6 +218,20 @@ namespace Velvet
             element.selection.selectAllOnMouseUp = defaults.selection.selectAllOnMouseUp;
             element.selection.cursorColor = defaults.selection.cursorColor;
             element.selection.selectionColor = defaults.selection.selectionColor;
+        }
+
+        // The properties IStyle.Clear removes after every other inline value, the zero duration included.
+        private static void ClearLateClearedStyle(IStyle style)
+        {
+            style.cursor = StyleKeyword.Null;
+            style.textShadow = StyleKeyword.Null;
+            style.unityTextAutoSize = StyleKeyword.Null;
+            style.transformOrigin = StyleKeyword.Null;
+            style.translate = StyleKeyword.Null;
+            style.rotate = StyleKeyword.Null;
+            style.scale = StyleKeyword.Null;
+            style.backgroundSize = StyleKeyword.Null;
+            style.filter = StyleKeyword.Null;
         }
 
         // Source for the zero transition duration written above. Shared because the inline-style write path

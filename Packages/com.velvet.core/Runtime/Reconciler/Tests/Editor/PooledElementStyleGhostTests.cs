@@ -26,10 +26,11 @@ namespace Velvet.Tests
     /// as the Button-children bug. GWT, one assert per case.
     /// The structural case pins the FULL reset surface: every settable inline style property is written and then
     /// compared against a freshly constructed element, so a property the reset leaves behind fails a test.
-    /// One case additionally resets an element that is still ATTACHED to a panel: clearing an inline filter goes
-    /// through the transition system, so the scrub must not turn itself into a running animation that keeps
-    /// painting what it just removed. Today's callers detach before resetting, which suppresses that path on its
-    /// own; the case pins the helper independently of that ordering.
+    /// Cases additionally reset an element that is still ATTACHED to a panel: clearing an inline value goes
+    /// through the transition system, so the reset must not turn itself into a running animation that keeps
+    /// painting what it just removed. They hold that for opacity and for rotate under a stylesheet's transition,
+    /// the two properties the cases reach. Today's callers detach before
+    /// resetting, which suppresses that path on its own; the cases pin the helper independently of that ordering.
     /// </summary>
     [TestFixture]
     internal sealed class PooledElementStyleGhostTests : VariantCleanupTestsBase
@@ -50,38 +51,6 @@ namespace Velvet.Tests
 
             // Assert — the letterSpacing is cleared, so the recycled label cannot ghost it onto the next consumer.
             Assert.AreEqual(StyleKeyword.Null, label.style.letterSpacing.keyword);
-        }
-
-        [Test]
-        public void Given_AnAttachedElementWithAFilterCoveringTransition_When_ResetForReuse_Then_NothingKeepsPaintingTheFilter()
-        {
-            // Arrange — an element on a real panel carrying a settled inline filter under a live whole-property
-            // transition (what transition-all / a bare duration-* resolves to). Clearing an inline filter goes
-            // through the transition system, so the clear can become a running animation that keeps painting
-            // the filter the reset just removed; the reset must hold regardless of whether its caller detached
-            // the element first. The fake clock makes the painted mid-animation value load-independent.
-            using var host = new HeadlessEditorPanelHost();
-            var now = 100.0;
-            EditorPanelTestHelpers.SetPanelTimeFunction(host.Panel, () => now);
-            var element = new VisualElement();
-            element.style.transitionDuration = new StyleList<TimeValue>(new List<TimeValue> { new TimeValue(0.3f) });
-            host.Root.Add(element);
-            EditorPanelTestHelpers.ForcePanelUpdate(host.Panel);
-            var blur = new FilterFunction(FilterFunctionType.Blur);
-            blur.AddParameter(new FilterParameter(12f));
-            element.style.filter = new List<FilterFunction> { blur };
-            now += 1.0;
-            EditorPanelTestHelpers.DriveAnimationsOnce(host.Panel);
-            Assume.That(element.resolvedStyle.filter, Is.Not.Empty,
-                "Precondition: the element paints its inline filter before the reset");
-
-            // Act — the shared pool reset runs, then the panel paints a frame.
-            FiberElementPoolReset.ResetCommonState(element);
-            now += 0.15;
-            EditorPanelTestHelpers.DriveAnimationsOnce(host.Panel);
-
-            // Assert — nothing is painting a filter any more.
-            Assert.That(element.resolvedStyle.filter, Is.Empty);
         }
 
         [Test]
@@ -294,35 +263,60 @@ namespace Velvet.Tests
 
         private const string FadeSheet = "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/LayoutIdTestRules.uss";
 
-        // GREEN_ON_BASE(characterization): the enumeration nulls the opacity ahead of the transition longhands, so
-        // the zero duration the reset writes first already stops the fade on the base; the case holds that the
-        // switch to Clear() keeps it, where the rule that restores the opacity is a stylesheet's.
-        [Test]
-        public void Given_AnElementUnderASheetsOpacityTransition_When_ResetForReuse_Then_NoTransitionStarts()
+        // The inline value `write` gives the element settles under the sheet's one-second linear transition, the
+        // reset runs, and half a second later `read` is returned. NaN where the value never settled at `settled`,
+        // which no expected value equals.
+        private static float ReadHalfASecondAfterResetUnderASheetTransition(
+            string transitionClass, Action<VisualElement> write, Func<VisualElement, float> read, float settled)
         {
-            // Arrange — the rule fades opacity over a second, so a clear that starts a transition leaves the
-            // opacity part-way after half of it.
             using var host = new HeadlessEditorPanelHost();
             var now = 100.0;
             EditorPanelTestHelpers.SetPanelTimeFunction(host.Panel, () => now);
             host.Root.styleSheets.Add(UnityEditor.AssetDatabase.LoadAssetAtPath<StyleSheet>(FadeSheet));
             var element = new VisualElement();
-            element.AddToClassList("layout-id-test-fade");
+            element.AddToClassList(transitionClass);
             host.Root.Add(element);
             EditorPanelTestHelpers.ForcePanelUpdate(host.Panel);
-            element.style.opacity = 0.2f;
+            write(element);
             now += 2.0;
             EditorPanelTestHelpers.DriveAnimationsOnce(host.Panel);
-            var settled = element.resolvedStyle.opacity;
+            var before = read(element);
 
-            // Act
             FiberElementPoolReset.ResetCommonState(element);
             now += 0.5;
             EditorPanelTestHelpers.DriveAnimationsOnce(host.Panel);
 
-            // Assert — NaN where the opacity never settled at the inline value, which the expected one never equals.
-            var opacity = Mathf.Approximately(settled, 0.2f) ? element.resolvedStyle.opacity : float.NaN;
+            return Mathf.Approximately(before, settled) ? read(element) : float.NaN;
+        }
+
+        // GREEN_ON_BASE(characterization): the enumeration nulls the opacity ahead of the transition longhands, so
+        // the zero duration the reset writes first already stops the fade on the base; the case holds that the
+        // switch to Clear() keeps it for a property Clear removes among its first group.
+        [Test]
+        public void Given_AnElementUnderASheetsOpacityTransition_When_ResetForReuse_Then_NoTransitionStarts()
+        {
+            // Arrange / Act — the rule fades opacity over a second, so a clear that starts a transition leaves the
+            // opacity part-way after half of it.
+            var opacity = ReadHalfASecondAfterResetUnderASheetTransition("layout-id-test-fade",
+                element => element.style.opacity = 0.2f, element => element.resolvedStyle.opacity, 0.2f);
+
+            // Assert
             Assert.That(opacity, Is.EqualTo(1f).Within(1e-3f));
+        }
+
+        // GREEN_ON_BASE(characterization): the enumeration nulls the rotate ahead of the transition longhands too.
+        // Clear removes rotate in a later group than opacity, after the inline duration is gone, so the reset
+        // clears that group itself while the zero duration still applies; without that this case reddens.
+        [Test]
+        public void Given_AnElementUnderASheetsRotateTransition_When_ResetForReuse_Then_NoTransitionStarts()
+        {
+            // Arrange / Act
+            var degrees = ReadHalfASecondAfterResetUnderASheetTransition("layout-id-test-turn",
+                element => element.style.rotate = new Rotate(new Angle(90f, AngleUnit.Degree)),
+                element => element.resolvedStyle.rotate.angle.ToDegrees(), 90f);
+
+            // Assert — fully back to no rotation, not part-way back.
+            Assert.That(degrees, Is.EqualTo(0f).Within(1e-3f));
         }
 
         // The inline rule a source asset gives an element; no element Velvet builds from C# has one, which is why
@@ -348,8 +342,10 @@ namespace Velvet.Tests
             var element = new VisualElement();
             var sheet = ScriptableObject.CreateInstance<StyleSheet>();
             var ruleType = typeof(VisualElement).Assembly.GetType("UnityEngine.UIElements.StyleRule")!;
+            var rule = Activator.CreateInstance(
+                ruleType, BindingFlags.Instance | BindingFlags.NonPublic, null, new object[] { sheet }, null);
             typeof(VisualElement).GetMethod("SetInlineRule", BindingFlags.Instance | BindingFlags.NonPublic)!
-                .Invoke(element, new[] { sheet, Activator.CreateInstance(ruleType, true) });
+                .Invoke(element, new[] { sheet, rule });
 
             // Act
             var carries = CarriesSourceAsset(element);
