@@ -3391,6 +3391,10 @@ namespace Velvet
         // cross-fiber case. Automatic batching is always on; there is no opt-out.
         internal FiberBatchScheduler BatchScheduler { get; } = new();
 
+        internal IHostScheduler HostScheduler => BatchScheduler.Host;
+
+        internal IFrameClock FrameClock { get; } = PanelFrameClock.Instance;
+
         // Tearing guard for Hooks.UseStore<TStore,TSel>. Holds the store snapshot pinned for the current
         // batch-scheduler drain pass (a wave), keyed by the Store reference (the value is the store's TState
         // snapshot, boxed). Every UseStore read of the same store within one wave returns the selector applied
