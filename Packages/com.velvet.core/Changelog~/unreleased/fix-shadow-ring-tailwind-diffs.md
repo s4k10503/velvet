@@ -12,7 +12,8 @@
   holds, and `[--a:5px] [--b:red] ring shadow-[#ggg] shadow-[0_0_var(--a)_var(--b)]` draws the ring and the shadow
   rather than discarding both.
 - `shadow-[var(--x)]/50`, and the same on `inset-shadow-`, `text-shadow-`, `drop-shadow-`, `bg-`, `text-`, `border-`,
-  `ring-`, `outline-`, `fill-`, `stroke-`, `accent-`, `caret-`, `decoration-` and `divide-` brackets, the families
+  `ring-`, `ring-offset-`, `inset-ring-`, `outline-`, `from-`, `via-`, `to-`, a border side's (`border-t-`), `fill-`,
+  `stroke-`, `accent-`, `caret-`, `decoration-` and `divide-` brackets, the families
   Tailwind writes a rule for with an opacity modifier, is read as a reader: it was ignored. A utility Tailwind writes
   no rule for with one (`gap-[var(--g)]/50`) is still ignored.
 - An important shadow reader (`!shadow-[var(--x)]`) now ranks among the element's important shadow sizes by Tailwind's
@@ -32,5 +33,5 @@
   important utilities of its family by Tailwind's order: `!gap-4 !gap-[var(--g)]` computes the variable's gap, as it
   does in the browser, where the literal's was kept.
 - A `shadow-[var(--x)]`, `ring-[length:var(--w)]` or `inset-ring-[length:var(--w)]` whose property a stylesheet
-  declares no longer drops the element's ring and shadow before the property is first read: the unset waits until the
-  element has been laid out on a panel.
+  declares no longer drops the element's ring and shadow before the property is first read: the unset is written after the
+  element's styles are applied and the property is read again.

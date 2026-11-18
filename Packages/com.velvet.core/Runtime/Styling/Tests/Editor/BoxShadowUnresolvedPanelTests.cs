@@ -13,6 +13,7 @@ namespace Velvet.Tests
     internal sealed class BoxShadowUnresolvedPanelTests : PanelTestBase
     {
         private const string RuleSheet = "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/CustomPropertyRule.uss";
+        private const string ReaderSheet = "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BoxShadowReaderRule.uss";
 
         // The properties the cases read, declared on the element.
         private const string Declared = "[--x:0_0_5px_#ff0000] [--a:5px] [--b:#ff0000] [--w:3px] ";
@@ -116,17 +117,50 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AReaderOfAStylesheetVariable_When_ASchedulerTickComesBeforeTheFirstStylePass_Then_TheRingIsStillDrawn()
+        public void Given_AReaderOfAStylesheetVariable_When_ASchedulerTickComesBeforeTheFirstStylePass_Then_ItIsReadAtThatTick()
         {
             // Arrange
             _window.rootVisualElement.styleSheets.Add(UnityEditor.AssetDatabase.LoadAssetAtPath<StyleSheet>(RuleSheet));
 
             // Act — the tick that reads every reader on attach, ahead of any style pass and layout.
             var card = Mount("css-var-host ring ring-[length:var(--w)]", style: false);
+            EditorPanelTestHelpers.DriveSchedulerOnce(card.panel);
+
+            // Assert — --w is 25px on .css-var-host.
+            Assert.That(Ring(card), Is.EqualTo(25f));
+        }
+
+        [Test]
+        public void Given_AnElementWithTwoReadersOfStylesheetVariables_When_ItIsReattachedAheadOfItsStylePass_Then_NeitherIsDropped()
+        {
+            // Arrange — read once, then taken off the panel with the layout it was given.
+            _window.rootVisualElement.styleSheets.Add(UnityEditor.AssetDatabase.LoadAssetAtPath<StyleSheet>(ReaderSheet));
+            var card = Mount("shadow-var-host ring-[length:var(--w)] shadow-[var(--x)]");
             ReadReaders(card);
+            card.RemoveFromHierarchy();
+
+            // Act
+            _window.rootVisualElement.Add(card);
+            EditorPanelTestHelpers.DriveSchedulerOnce(card.panel);
 
             // Assert
-            Assert.That(Ring(card), Is.EqualTo(1f));
+            Assert.That(Ring(card) > 0f && Shadow(card), Is.True);
+        }
+
+        [Test]
+        public void Given_AReaderOfAnUndeclaredProperty_When_ItsElementIsReattached_Then_TheBoxShadowStaysDiscarded()
+        {
+            // Arrange — the box-shadow is discarded once the reader is read.
+            var card = Mount("ring-2 shadow-lg shadow-[var(--x)]");
+            ReadReaders(card);
+            card.RemoveFromHierarchy();
+
+            // Act
+            _window.rootVisualElement.Add(card);
+            EditorPanelTestHelpers.DriveSchedulerOnce(card.panel);
+
+            // Assert
+            Assert.That(Shadow(card), Is.False);
         }
 
         // GREEN_ON_BASE(characterization): the base keeps the ring and the shadow, as Tailwind orders shadow-lg after the reader.

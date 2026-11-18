@@ -51,9 +51,6 @@ namespace Velvet
             // The variable context the poll last resolved against. The engine hands an element a new context
             // whenever a variable in scope of it changes, so an unchanged one leaves nothing for the poll to do.
             public object? Context;
-            // The reads an attach still leaves to wait for the element's style pass, which a layout the element kept across
-            // a detach does not show (DefersUnset).
-            public int PendingReads;
         }
 
         private sealed class Consumer
@@ -97,6 +94,8 @@ namespace Velvet
             // Whether the unset the consumer writes discards the element's box-shadow, which an element off a panel does
             // not write: a variable a stylesheet declares is read only once the element is on one (Reresolve).
             public readonly bool DefersUnset;
+            // Whether the unset has already waited the one read it waits where the styles could not be applied.
+            public bool Waited;
             // The resolution the applied state came from, null when the last one resolved nothing.
             public string? Source;
             public bool Resolved;
@@ -381,7 +380,6 @@ namespace Velvet
             {
                 return;
             }
-            consumers.PendingReads = 1;
             var deferred = false;
             foreach (var consumer in consumers.Entries.ToArray())
             {
@@ -467,7 +465,7 @@ namespace Velvet
                 }
             }
             var context = s_variableContext?.GetValue(target);
-            if (ReferenceEquals(context, consumers.Context) && !entries.Exists(entry => !entry.Resolved))
+            if (ReferenceEquals(context, consumers.Context))
             {
                 return;
             }
@@ -508,7 +506,7 @@ namespace Velvet
             using var themeScope = StyleThemeTokens.Use(consumer.Context, target);
             s_built.Clear();
             var resolved = TryBuild(target, consumer, s_built);
-            if (DefersUnset(target, consumer, resolved))
+            if (DefersUnset(target, consumer, ref resolved))
             {
                 return;
             }
@@ -555,22 +553,30 @@ namespace Velvet
         }
 
         // Whether consumer, whose var() did not resolve, waits before it writes the unset that discards the box-shadow,
-        // leaving the element as it was: for the element to be laid out on a panel, and for one read after an attach, since
-        // an element laid out before a detach keeps its layout and can be read ahead of its new style pass. Poll reads a
-        // waiting consumer again on each tick.
-        private static bool DefersUnset(VisualElement target, Consumer consumer, bool resolved)
+        // leaving the element as it was. On a panel the styles are applied first, which lays the element out as a ref
+        // callback would read it, and the property is read again (resolved): a stylesheet's variable is known only after
+        // the element's style pass, which a tick can come ahead of. Where that cannot run, the consumer waits one read,
+        // the next tick's; off a panel it waits for the attach.
+        private static bool DefersUnset(VisualElement target, Consumer consumer, ref bool resolved)
         {
-            if (resolved || !consumer.DefersUnset)
+            consumer.Waited &= !resolved;
+            if (resolved || !consumer.DefersUnset || (consumer.Resolved && consumer.Source == null))
             {
                 return false;
             }
-            if (target.panel != null && !float.IsNaN(target.layout.width))
+            if (target.panel != null && FiberLayoutReflow.TryLayOut(target))
             {
-                if (!s_consumers.TryGetValue(target, out var consumers) || consumers.PendingReads == 0)
-                {
-                    return false;
-                }
-                consumers.PendingReads--;
+                s_built.Clear();
+                resolved = TryBuild(target, consumer, s_built);
+                return false;
+            }
+            if (target.panel != null && consumer.Waited)
+            {
+                return false;
+            }
+            consumer.Waited = target.panel != null;
+            if (consumer.Waited)
+            {
                 target.schedule.Execute(() => ReresolveAll(target));
             }
             Withdraw(target, consumer);

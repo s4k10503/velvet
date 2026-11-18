@@ -158,9 +158,10 @@ namespace Velvet
                         slash - utility.IndexOf('[') - 2)));
         }
 
-        // The roots Tailwind 4.3.3 writes a rule for an opacity modifier on, measured per class: those of a shadow take it
-        // under any type hint, and those of a colour (these and the colour defaults of StyleColorValueParser) under no hint
-        // or the colour one.
+        // The roots Tailwind 4.3.3 writes a rule for an opacity modifier on: those of a shadow under any type hint, and those
+        // of a colour (these, and the colour defaults of StyleColorValueParser) under no hint or the colour one. Under any
+        // other hint the declaration it writes for a colour root is invalid in the browser, which computes the property's
+        // initial value, so ignoring the class is what the browser draws.
         private static readonly HashSet<string> s_shadowModifierRoots = new(StringComparer.Ordinal)
         {
             "shadow", "inset-shadow", "text-shadow", "drop-shadow",
