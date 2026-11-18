@@ -148,36 +148,6 @@ namespace Velvet.Tests
             Assert.That(Focused, Is.Null);
         }
 
-        [Test]
-        public void Diagnostic_PortalScopeFocus()
-        {
-            Update(s_setPortal, true);
-            Update(s_setScoped, true);
-            var button = s_target.Q<Button>("focusable");
-            var ctx = _mounted.Root.Reconciler.Context;
-            var fired = new System.Text.StringBuilder();
-            foreach (var pair in ctx.FocusScopeBindings)
-            {
-                fired.Append(pair.Key.GetType().Name).Append(":fired=").Append(pair.Value.AutoFocusFired)
-                    .Append(",autoSetting=").Append(pair.Value.Settings.AutoFocus)
-                    .Append(",onAttachNull=").Append(pair.Value.OnAttach == null)
-                    .Append(",keyPanel=").Append(pair.Key.panel == _host.Panel).Append(';');
-            }
-            var kids = new System.Text.StringBuilder();
-            foreach (var child in s_target.Children()) kids.Append(child.GetType().Name).Append('/').Append(child.name).Append(',');
-            Assert.Fail("button=" + (button != null)
-                + " buttonPanelIsHost=" + (button?.panel == _host.Panel)
-                + " canGrabFocus=" + button?.canGrabFocus
-                + " focusable=" + button?.focusable + " tabIndex=" + button?.tabIndex
-                + " display=" + button?.resolvedStyle.display + " visible=" + button?.visible
-                + " targetPanelIsHost=" + (s_target.panel == _host.Panel)
-                + " targetKids=" + kids
-                + " bindings=" + ctx.FocusScopeBindings.Count + " [" + fired + "]"
-                + " deferred=" + ctx.DeferredAutoFocus.Count
-                + " focused=" + (_host.Panel.focusController.focusedElement as VisualElement)?.name
-                + " pendingPortalMounts=" + ctx.PendingPortalMounts.Count);
-        }
-
         [Component]
         private static VNode ReaderRender(int blocked)
         {
