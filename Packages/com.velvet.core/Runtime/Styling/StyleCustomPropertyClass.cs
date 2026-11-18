@@ -56,7 +56,7 @@ namespace Velvet
         // has stripped the important bang and ruled out a variant.
         public static bool IsCustomPropertyToken(string core)
             => !string.IsNullOrEmpty(core)
-                && (((core[0] == '[' || core.IndexOf('(') >= 0 || core.IndexOf('_') >= 0)
+                && (((core[0] == '[' || core.IndexOf('(') >= 0 || core.IndexOf('_') >= 0 || core.IndexOf("]/", StringComparison.Ordinal) >= 0)
                     && (IsArbitraryProperty(core, out _, out _) || Consumer(core) != null))
                 || StyleThemeClass.Normalize(core) != null || StyleThemeClass.IsClearedBundled(core));
 
@@ -100,7 +100,7 @@ namespace Velvet
             {
                 return null;
             }
-            if (core[0] != '[' && core.IndexOf('(') < 0 && core.IndexOf('_') < 0)
+            if (core[0] != '[' && core.IndexOf('(') < 0 && core.IndexOf('_') < 0 && core.IndexOf("]/", StringComparison.Ordinal) < 0)
             {
                 return StyleThemeClass.Normalize(core);
             }

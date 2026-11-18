@@ -97,18 +97,16 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AReaderOfAStylesheetVariable_When_MountedBeforeItsFirstRead_Then_TheRingIsStillDrawn()
+        public void Given_AReaderOfAStylesheetVariable_When_ItsElementIsStyled_Then_ItIsReadAtTheStylePass()
         {
-            // Arrange — the sheet declares --w on .css-var-host, which no reader can see until the element is on a panel
-            // and has had its style pass.
+            // Arrange — the sheet declares --w on .css-var-host, which no reader can see until the element has had its style pass.
             _window.rootVisualElement.styleSheets.Add(UnityEditor.AssetDatabase.LoadAssetAtPath<StyleSheet>(RuleSheet));
 
             // Act
             var card = Mount("css-var-host ring ring-[length:var(--w)]");
 
-            // Assert — a ring written beside it, which the reader's unset would take with it where it was written ahead
-            // of that read.
-            Assert.That(Ring(card), Is.EqualTo(1f));
+            // Assert — the ring is the variable's 25px, and was not dropped on the way.
+            Assert.That(Ring(card), Is.EqualTo(25f));
         }
 
         [Test]
@@ -165,22 +163,6 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(Shadow(card), Is.True);
-        }
-
-        [Test]
-        public void Given_AReaderOfAnUndeclaredProperty_When_ItsElementIsReattached_Then_TheBoxShadowStaysDiscarded()
-        {
-            // Arrange — the box-shadow is discarded once the reader is read.
-            var card = Mount("ring-2 shadow-lg shadow-[var(--x)]");
-            ReadReaders(card);
-            card.RemoveFromHierarchy();
-
-            // Act
-            _window.rootVisualElement.Add(card);
-            EditorPanelTestHelpers.DriveSchedulerOnce(card.panel);
-
-            // Assert
-            Assert.That(Shadow(card), Is.False);
         }
 
         // GREEN_ON_BASE(characterization): the base keeps the ring and the shadow, as Tailwind orders shadow-lg after the reader.

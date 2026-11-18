@@ -69,9 +69,13 @@ namespace Velvet.Tests
         {
             // Act — Chromium computes 180px for 50cqw in a container 400px wide with 20px of padding.
             var card = Mount(StyleResponsiveScope.ContainerClass + " w-[400px] p-[20px]", "w-[50cqw] h-[10px]");
-            EditorPanelTestHelpers.DriveSchedulerOnce(card.panel);
-            EditorPanelTestHelpers.ForcePanelUpdate(card.panel);
-            EditorPanelTestHelpers.DriveSchedulerOnce(card.panel);
+            for (var pass = 0; pass < 3; pass++)
+            {
+                // The poll that re-reads a length after its container moves runs every 16 ms.
+                System.Threading.Thread.Sleep(20);
+                EditorPanelTestHelpers.DriveSchedulerOnce(card.panel);
+                EditorPanelTestHelpers.ForcePanelUpdate(card.panel);
+            }
 
             // Assert
             Assert.That(card.style.width.value.value, Is.EqualTo(180f).Within(0.01f));

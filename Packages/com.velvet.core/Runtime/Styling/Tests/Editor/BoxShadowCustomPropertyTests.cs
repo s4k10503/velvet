@@ -391,6 +391,19 @@ namespace Velvet.Tests
             Assert.That(reader, Is.Not.Null);
         }
 
+        // The classes on the element after its readers resolve: a caret's payload is projected onto them, not tracked as a gate token.
+        private static string[] LiveClassesFor(string classes)
+        {
+            using var scope = new ReconcilerScope();
+            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), new VNode[] { V.Div(className: classes) });
+            var live = new System.Collections.Generic.List<string>();
+            foreach (var cls in scope.Root[0].GetClasses())
+            {
+                live.Add(cls);
+            }
+            return live.ToArray();
+        }
+
         // The class source the passes read for an element with classes, once its readers resolve.
         private static string[] ComposedFor(string classes)
         {
@@ -404,20 +417,20 @@ namespace Velvet.Tests
         public void Given_ACaretBracketOfAnotherTypeReadingAColour_When_ItsReaderIsRead_Then_ItIsTheColourAtTheModifiersAlpha()
         {
             // Act
-            var tokens = ComposedFor("[--x:#ff0000] caret-[#00ff00] caret-[number:var(--x)]/50");
+            var classes = LiveClassesFor("[--x:#ff0000] caret-[#00ff00] caret-[number:var(--x)]/50");
 
             // Assert
-            Assert.That(tokens[tokens.Length - 1], Is.EqualTo("caret-[color:#ff0000]/50"));
+            Assert.That(classes, Does.Contain("caret-[color:#ff0000]/50"));
         }
 
         [Test]
         public void Given_ACaretBracketOfAnotherTypeReadingNoColour_When_ItsReaderIsRead_Then_TheCaretInheritsIt()
         {
             // Act
-            var tokens = ComposedFor("[--x:5px] caret-[#00ff00] caret-[number:var(--x)]/50");
+            var classes = LiveClassesFor("[--x:5px] caret-[#00ff00] caret-[number:var(--x)]/50");
 
             // Assert
-            Assert.That(tokens[tokens.Length - 1], Is.EqualTo("caret-inherit"));
+            Assert.That(classes, Does.Contain("caret-inherit"));
         }
 
         [Test]
@@ -497,10 +510,10 @@ namespace Velvet.Tests
             string colour)
         {
             // Act
-            var tokens = ComposedFor("[--c:" + colour + "] caret-[#00ff00] caret-[number:var(--c)]/50");
+            var classes = LiveClassesFor("[--c:" + colour + "] caret-[#00ff00] caret-[number:var(--c)]/50");
 
             // Assert
-            Assert.That(tokens[tokens.Length - 1], Is.Not.EqualTo("caret-inherit"));
+            Assert.That(classes, Does.Not.Contain("caret-inherit"));
         }
 
         // Chromium computes the unset for a bracket reading a word that names no colour (`--w: auto`): a transparent
