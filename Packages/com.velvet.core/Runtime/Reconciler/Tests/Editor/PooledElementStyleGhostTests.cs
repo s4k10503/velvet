@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using NUnit.Framework;
+using UnityEngine;
 using UnityEngine.UIElements;
 using Velvet.TestUtilities;
 
@@ -11,8 +12,8 @@ namespace Velvet.Tests
     /// <summary>
     /// Regression coverage for pooled-element state ghosting: a primitive returned to <see cref="VNodePool"/>
     /// must be reset so it cannot carry state its previous node set onto its next consumer. The inline-style
-    /// cases pin <c>FiberElementPoolReset.ResetInlineStyle</c>, which must null EVERY inline property Velvet
-    /// may set, including <c>letterSpacing</c> (written by the <c>tracking-[Npx]</c> arbitrary) — omitting it
+    /// cases pin the inline-style clear in <c>FiberElementPoolReset.ResetCommonState</c>, which must remove EVERY
+    /// inline property Velvet may set, including <c>letterSpacing</c> (written by the <c>tracking-[Npx]</c> arbitrary) — omitting it
     /// would let a recycled label keep its previous letter spacing and ghost it onto the next consumer whose
     /// node declares no <c>tracking-*</c> (the fresh node's empty oldClasses diff never clears it). The widget
     /// cases pin the per-widget reset helpers (<see cref="FiberTogglePoolHelper"/>,
@@ -23,13 +24,13 @@ namespace Velvet.Tests
     /// the previous consumer's state (TextField additionally carries a PII security contract: a recycled
     /// field must not surface a prior password / value). All three are the same pooled-reuse ghosting class
     /// as the Button-children bug. GWT, one assert per case.
-    /// The structural cases pin the FULL reset surface: every inline style property the reset scrubs is compared
-    /// against a freshly constructed element, in both directions, so dropping a scrubbed property from the helper
-    /// (reintroducing a ghost) or scrubbing a new one without extending the pinned contract list fails a test.
-    /// One case additionally resets an element that is still ATTACHED to a panel: clearing an inline filter goes
-    /// through the transition system, so the scrub must not turn itself into a running animation that keeps
-    /// painting what it just removed. Today's callers detach before resetting, which suppresses that path on its
-    /// own; the case pins the helper independently of that ordering.
+    /// The structural case pins the FULL reset surface: every settable inline style property is written and then
+    /// compared against a freshly constructed element, so a property the reset leaves behind fails a test.
+    /// Cases additionally reset an element that is still ATTACHED to a panel: clearing an inline value goes
+    /// through the transition system, so the reset must not turn itself into a running animation that keeps
+    /// painting what it just removed. They hold that for opacity and for rotate under a stylesheet's transition,
+    /// the two properties the cases reach. Today's callers detach before
+    /// resetting, which suppresses that path on its own; the cases pin the helper independently of that ordering.
     /// </summary>
     [TestFixture]
     internal sealed class PooledElementStyleGhostTests : VariantCleanupTestsBase
@@ -50,38 +51,6 @@ namespace Velvet.Tests
 
             // Assert — the letterSpacing is cleared, so the recycled label cannot ghost it onto the next consumer.
             Assert.AreEqual(StyleKeyword.Null, label.style.letterSpacing.keyword);
-        }
-
-        [Test]
-        public void Given_AnAttachedElementWithAFilterCoveringTransition_When_ResetForReuse_Then_NothingKeepsPaintingTheFilter()
-        {
-            // Arrange — an element on a real panel carrying a settled inline filter under a live whole-property
-            // transition (what transition-all / a bare duration-* resolves to). Clearing an inline filter goes
-            // through the transition system, so the clear can become a running animation that keeps painting
-            // the filter the reset just removed; the reset must hold regardless of whether its caller detached
-            // the element first. The fake clock makes the painted mid-animation value load-independent.
-            using var host = new HeadlessEditorPanelHost();
-            var now = 100.0;
-            EditorPanelTestHelpers.SetPanelTimeFunction(host.Panel, () => now);
-            var element = new VisualElement();
-            element.style.transitionDuration = new StyleList<TimeValue>(new List<TimeValue> { new TimeValue(0.3f) });
-            host.Root.Add(element);
-            EditorPanelTestHelpers.ForcePanelUpdate(host.Panel);
-            var blur = new FilterFunction(FilterFunctionType.Blur);
-            blur.AddParameter(new FilterParameter(12f));
-            element.style.filter = new List<FilterFunction> { blur };
-            now += 1.0;
-            EditorPanelTestHelpers.DriveAnimationsOnce(host.Panel);
-            Assume.That(element.resolvedStyle.filter, Is.Not.Empty,
-                "Precondition: the element paints its inline filter before the reset");
-
-            // Act — the shared pool reset runs, then the panel paints a frame.
-            FiberElementPoolReset.ResetCommonState(element);
-            now += 0.15;
-            EditorPanelTestHelpers.DriveAnimationsOnce(host.Panel);
-
-            // Assert — nothing is painting a filter any more.
-            Assert.That(element.resolvedStyle.filter, Is.Empty);
         }
 
         [Test]
@@ -225,137 +194,28 @@ namespace Velvet.Tests
                 Is.EqualTo((StyleKeyword.Undefined, 12, true, StyleKeyword.Null)));
         }
 
-        // Structural: the full inline-style scrub surface, compared against a fresh element
+        // Structural: every inline style property, compared against a fresh element
 
-        // Every inline style property FiberElementPoolReset.ResetInlineStyle scrubs. This list is the
-        // pinned reset contract: the structural test below fails when the helper stops scrubbing a
-        // listed property (a pool-reuse ghost) AND when it starts scrubbing an unlisted one (the new
-        // property would otherwise have no regression coverage), so the two cannot drift silently.
-        private static readonly string[] ScrubbedInlineStyleProperties =
-        {
-            nameof(IStyle.color),
-            nameof(IStyle.backgroundColor),
-            nameof(IStyle.backgroundImage),
-            nameof(IStyle.backgroundSize),
-            nameof(IStyle.backgroundPositionX),
-            nameof(IStyle.backgroundPositionY),
-            nameof(IStyle.backgroundRepeat),
-            nameof(IStyle.unitySliceTop),
-            nameof(IStyle.unitySliceRight),
-            nameof(IStyle.unitySliceBottom),
-            nameof(IStyle.unitySliceLeft),
-            nameof(IStyle.unitySliceScale),
-            nameof(IStyle.unitySliceType),
-            nameof(IStyle.opacity),
-            nameof(IStyle.display),
-            nameof(IStyle.visibility),
-            nameof(IStyle.overflow),
-            nameof(IStyle.width),
-            nameof(IStyle.height),
-            nameof(IStyle.minWidth),
-            nameof(IStyle.minHeight),
-            nameof(IStyle.maxWidth),
-            nameof(IStyle.maxHeight),
-            nameof(IStyle.marginLeft),
-            nameof(IStyle.marginRight),
-            nameof(IStyle.marginTop),
-            nameof(IStyle.marginBottom),
-            nameof(IStyle.paddingLeft),
-            nameof(IStyle.paddingRight),
-            nameof(IStyle.paddingTop),
-            nameof(IStyle.paddingBottom),
-            nameof(IStyle.borderLeftWidth),
-            nameof(IStyle.borderRightWidth),
-            nameof(IStyle.borderTopWidth),
-            nameof(IStyle.borderBottomWidth),
-            nameof(IStyle.borderLeftColor),
-            nameof(IStyle.borderRightColor),
-            nameof(IStyle.borderTopColor),
-            nameof(IStyle.borderBottomColor),
-            nameof(IStyle.borderTopLeftRadius),
-            nameof(IStyle.borderTopRightRadius),
-            nameof(IStyle.borderBottomLeftRadius),
-            nameof(IStyle.borderBottomRightRadius),
-            nameof(IStyle.flexGrow),
-            nameof(IStyle.flexShrink),
-            nameof(IStyle.flexBasis),
-            nameof(IStyle.flexDirection),
-            nameof(IStyle.flexWrap),
-            nameof(IStyle.alignSelf),
-            nameof(IStyle.alignItems),
-            nameof(IStyle.alignContent),
-            nameof(IStyle.justifyContent),
-            nameof(IStyle.position),
-            nameof(IStyle.left),
-            nameof(IStyle.right),
-            nameof(IStyle.top),
-            nameof(IStyle.bottom),
-            nameof(IStyle.fontSize),
-            nameof(IStyle.letterSpacing),
-            nameof(IStyle.unityFontDefinition),
-            nameof(IStyle.unityFontStyleAndWeight),
-            nameof(IStyle.unityTextAlign),
-            nameof(IStyle.whiteSpace),
-            nameof(IStyle.translate),
-            nameof(IStyle.rotate),
-            nameof(IStyle.scale),
-            nameof(IStyle.aspectRatio),
-            nameof(IStyle.filter),
-            nameof(IStyle.transformOrigin),
-            nameof(IStyle.transitionDuration),
-            nameof(IStyle.transitionDelay),
-            nameof(IStyle.transitionProperty),
-            nameof(IStyle.transitionTimingFunction),
-        };
-
-        // GREEN_ON_BASE(refactor): the reset drops an in-place list clear this editor's setter makes dead.
-        // Should a Null assignment ever leave the inline filter list readable again, filter reddens here.
         [Test]
-        public void Given_EveryInlineStylePropertyWritten_When_ResetForReuse_Then_ScrubbedPropertiesMatchTheContractList()
+        public void Given_EveryInlineStylePropertyWritten_When_ResetForReuse_Then_EveryPropertyReadsAsFresh()
         {
-            // Arrange — write EVERY settable IStyle property as a real inline entry. StyleKeyword.Initial is
-            // the sentinel because it is distinguishable from the unset state (which reads back as
-            // StyleKeyword.Null), so "reads equal to a fresh element" after the reset means exactly "scrubbed".
-            // Obsolete properties are excluded: they are synthetic shims whose getters derive from the real
-            // background properties instead of owning storage, so they would always read equal to fresh.
+            // Arrange — every settable IStyle property written as a real inline entry, the ones the reset once
+            // named and the ones it never did.
             var element = new VisualElement();
             var fresh = new VisualElement();
-            // unityMaterial is also excluded: its inline getter returns StyleKeyword.Null whenever the
-            // stored material object is null, so a keyword-only sentinel cannot round-trip and the
-            // property is indistinguishable from fresh without a live Material. Velvet's styling layer
-            // never writes it inline.
-            var properties = typeof(IStyle).GetProperties()
-                .Where(p => p.CanWrite && !p.IsDefined(typeof(ObsoleteAttribute))
-                    && p.Name != nameof(IStyle.unityMaterial))
-                .ToArray();
-            var unsettable = new List<string>();
-            foreach (var property in properties)
-            {
-                var sentinel = MakeStyleValue(property.PropertyType, StyleKeyword.Initial);
-                if (sentinel == null)
-                {
-                    unsettable.Add(property.Name);
-                    continue;
-                }
-                property.SetValue(element.style, sentinel);
-            }
-            Assume.That(unsettable, Is.Empty, "Precondition: every IStyle property type accepts a StyleKeyword value");
+            var properties = WritableInlineProperties();
+            var unsettable = WriteEveryInlineProperty(element, properties);
 
             // Act — the shared pool reset runs.
             FiberElementPoolReset.ResetCommonState(element);
 
-            // Assert — the set of properties that read back indistinguishable from a fresh element equals the
-            // pinned contract list, in both directions.
-            var observedScrubbed = properties
-                .Where(p => Equals(p.GetValue(element.style), p.GetValue(fresh.style)))
-                .Select(p => p.Name)
-                .ToArray();
-            var mismatches = ScrubbedInlineStyleProperties.Except(observedScrubbed)
-                .Select(name => $"not scrubbed by the reset (pool-reuse ghost): {name}")
-                .Concat(observedScrubbed.Except(ScrubbedInlineStyleProperties)
-                    .Select(name => $"scrubbed by the reset but missing from the contract list: {name}"))
+            // Assert — a property no sentinel could be written for is a gap in the case, so it reports too.
+            var ghosts = properties
+                .Where(p => !Equals(p.GetValue(element.style), p.GetValue(fresh.style)))
+                .Select(p => $"not scrubbed by the reset (pool-reuse ghost): {p.Name}")
+                .Concat(unsettable.Select(name => $"no value to write, unmeasured: {name}"))
                 .ToList();
-            Assert.That(mismatches, Is.Empty);
+            Assert.That(ghosts, Is.Empty);
         }
 
         // Structural: a plain VisualElement through ResetCommonState. Every field probed below is also a
@@ -399,6 +259,156 @@ namespace Velvet.Tests
                 .Select(probe => probe.Name)
                 .ToList();
             Assert.That(mismatches, Is.Empty);
+        }
+
+        private const string FadeSheet = "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/LayoutIdTestRules.uss";
+
+        // The inline value `write` gives the element settles under the sheet's one-second linear transition, the
+        // reset runs, and half a second later `read` is returned. NaN where the value never settled at `settled`,
+        // which no expected value equals.
+        private static float ReadHalfASecondAfterResetUnderASheetTransition(
+            string transitionClass, Action<VisualElement> write, Func<VisualElement, float> read, float settled)
+        {
+            using var host = new HeadlessEditorPanelHost();
+            var now = 100.0;
+            EditorPanelTestHelpers.SetPanelTimeFunction(host.Panel, () => now);
+            host.Root.styleSheets.Add(UnityEditor.AssetDatabase.LoadAssetAtPath<StyleSheet>(FadeSheet));
+            var element = new VisualElement();
+            element.AddToClassList(transitionClass);
+            host.Root.Add(element);
+            EditorPanelTestHelpers.ForcePanelUpdate(host.Panel);
+            write(element);
+            now += 2.0;
+            EditorPanelTestHelpers.DriveAnimationsOnce(host.Panel);
+            var before = read(element);
+
+            FiberElementPoolReset.ResetCommonState(element);
+            now += 0.5;
+            EditorPanelTestHelpers.DriveAnimationsOnce(host.Panel);
+
+            return Mathf.Approximately(before, settled) ? read(element) : float.NaN;
+        }
+
+        // GREEN_ON_BASE(characterization): the enumeration nulls the opacity ahead of the transition longhands, so
+        // the zero duration the reset writes first already stops the fade on the base; the case holds that the
+        // switch to Clear() keeps it for a property Clear removes among its first group.
+        [Test]
+        public void Given_AnElementUnderASheetsOpacityTransition_When_ResetForReuse_Then_NoTransitionStarts()
+        {
+            // Arrange / Act — the rule fades opacity over a second, so a clear that starts a transition leaves the
+            // opacity part-way after half of it.
+            var opacity = ReadHalfASecondAfterResetUnderASheetTransition("layout-id-test-fade",
+                element => element.style.opacity = 0.2f, element => element.resolvedStyle.opacity, 0.2f);
+
+            // Assert
+            Assert.That(opacity, Is.EqualTo(1f).Within(1e-3f));
+        }
+
+        // GREEN_ON_BASE(characterization): the enumeration nulls the rotate ahead of the transition longhands too.
+        // Clear removes rotate in a later group than opacity, after the inline duration is gone, so the reset
+        // clears that group itself while the zero duration still applies; without that this case reddens.
+        [Test]
+        public void Given_AnElementUnderASheetsRotateTransition_When_ResetForReuse_Then_NoTransitionStarts()
+        {
+            // Arrange / Act
+            var degrees = ReadHalfASecondAfterResetUnderASheetTransition("layout-id-test-turn",
+                element => element.style.rotate = new Rotate(new Angle(90f, AngleUnit.Degree)),
+                element => element.resolvedStyle.rotate.angle.ToDegrees(), 90f);
+
+            // Assert — fully back to no rotation, not part-way back.
+            Assert.That(degrees, Is.EqualTo(0f).Within(1e-3f));
+        }
+
+        // The inline rule a source asset gives an element; no element Velvet builds from C# has one, which is why
+        // Clear's source-asset flag changes nothing for the pool. Built by hand here because only a UXML-made
+        // element carries one.
+        private static bool CarriesSourceAsset(VisualElement element)
+        {
+            var access = typeof(VisualElement).GetField(
+                "inlineStyleAccess", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(element);
+            if (access == null)
+            {
+                return false;
+            }
+            var rule = access.GetType().GetProperty("inlineRule")!.GetValue(access);
+            return rule.GetType().GetField("sheet")!.GetValue(rule) != null;
+        }
+
+        // GREEN_ON_BASE(characterization): the positive control of the case below; it reads the probe and no production code.
+        [Test]
+        public void Given_AnElementWithAnInlineRuleFromASheet_When_TheProbeReadsIt_Then_ItCarriesASourceAsset()
+        {
+            // Arrange
+            var element = new VisualElement();
+            var sheet = ScriptableObject.CreateInstance<StyleSheet>();
+            var ruleType = typeof(VisualElement).Assembly.GetType("UnityEngine.UIElements.StyleRule")!;
+            var rule = Activator.CreateInstance(
+                ruleType, BindingFlags.Instance | BindingFlags.NonPublic, null, new object[] { sheet }, null);
+            typeof(VisualElement).GetMethod("SetInlineRule", BindingFlags.Instance | BindingFlags.NonPublic)!
+                .Invoke(element, new[] { sheet, rule });
+
+            // Act
+            var carries = CarriesSourceAsset(element);
+
+            // Assert
+            Assert.That(carries, Is.True);
+            UnityEngine.Object.DestroyImmediate(sheet);
+        }
+
+        // GREEN_ON_BASE(characterization): what Clear's source-asset flag would act on is absent from a tree the reconciler builds.
+        [Test]
+        public void Given_AMountedTreeOfPrimitives_When_EachElementIsProbedForASourceAsset_Then_NoneCarriesOne()
+        {
+            // Arrange — a tree the reconciler builds from C#, not from an asset.
+            using var mounted = V.Mount(_root, V.Div(name: "tree", className: "w-[10px]", children: new VNode[]
+            {
+                V.Label(name: "label", text: "a", className: "tracking-[2px]"),
+                V.Button(name: "button", text: "b"),
+                V.TextField(name: "field"),
+                V.Toggle(name: "toggle"),
+                V.Slider(name: "slider"),
+                V.ScrollView(name: "scroll"),
+            }));
+
+            // Act
+            var carrying = _root.Query<VisualElement>().Build().ToList()
+                .Where(CarriesSourceAsset)
+                .Select(element => element.name)
+                .ToList();
+
+            // Assert
+            Assert.That(carrying, Is.Empty);
+        }
+
+        // Obsolete properties are excluded: they are synthetic shims whose getters derive from the real background
+        // properties instead of owning storage, so they would always read equal to fresh. unityMaterial is also
+        // excluded: its inline getter returns StyleKeyword.Null whenever the stored material object is null, so a
+        // keyword-only sentinel cannot round-trip and the property is indistinguishable from fresh without a live
+        // Material. Velvet's styling layer never writes it inline.
+        private static PropertyInfo[] WritableInlineProperties()
+            => typeof(IStyle).GetProperties()
+                .Where(p => p.CanWrite && !p.IsDefined(typeof(ObsoleteAttribute))
+                    && p.Name != nameof(IStyle.unityMaterial))
+                .ToArray();
+
+        // Writes every property as a real inline entry. StyleKeyword.Initial is the sentinel because it is
+        // distinguishable from the unset state (which reads back as StyleKeyword.Null), so "reads equal to a fresh
+        // element" afterwards means exactly "scrubbed". Returns the names of the properties no sentinel could be
+        // built for, which stay unwritten.
+        private static List<string> WriteEveryInlineProperty(VisualElement element, PropertyInfo[] properties)
+        {
+            var unsettable = new List<string>();
+            foreach (var property in properties)
+            {
+                var sentinel = MakeStyleValue(property.PropertyType, StyleKeyword.Initial);
+                if (sentinel == null)
+                {
+                    unsettable.Add(property.Name);
+                    continue;
+                }
+                property.SetValue(element.style, sentinel);
+            }
+            return unsettable;
         }
 
         // Resolves a boxed style value carrying the given keyword for any IStyle property type. Every

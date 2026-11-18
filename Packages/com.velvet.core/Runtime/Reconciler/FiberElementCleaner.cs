@@ -371,6 +371,7 @@ namespace Velvet
             StyleArbitraryValueResolver.HandBackAll(element);
             // Ahead of ClearAll, which drops the layer map the watch is recorded in.
             StyleArbitraryValueResolver.ReleaseShownImageWatchOf(element);
+            StyleUserClassProperties.ReleaseDeferred(element);
             // Drop the arbitrary-value layer stack so a pooled widget does not inherit a prior consumer's
             // base/variant layers (state ghosting across pool reuse).
             StyleArbitraryValueResolver.ClearAll(element);

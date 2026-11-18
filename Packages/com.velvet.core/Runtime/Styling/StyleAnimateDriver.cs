@@ -945,17 +945,15 @@ namespace Velvet
                 StartTick(element, binding);
                 return;
             }
-            EventCallback<AttachToPanelEvent>? onAttach = null;
-            onAttach = _ =>
+            EventCallback<AttachToPanelEvent> onAttach = _ =>
             {
-                element.UnregisterCallback(onAttach);
                 binding.PendingAttach = null;
                 // Only start if this binding is still the live one (a cancel-before-attach clears Scheduled
                 // and unregisters this; but guard the StartTime baseline against a long off-panel delay).
                 binding.StartTime = binding.Clock.NowSec;
                 StartTick(element, binding);
             };
-            element.RegisterCallback(onAttach);
+            element.RegisterCallback(onAttach, CallbackOptions.Once);
             binding.PendingAttach = onAttach;
         }
 
