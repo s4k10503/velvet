@@ -189,6 +189,9 @@ namespace Velvet
             var context = Root.Reconciler?.Context;
             if (FiberExecutionContext.IsSet)
             {
+                // Stood down as the unmount is held, so the work of the root held ahead of it in the same release, a
+                // flush a click on the root asked for among it, renders nothing either.
+                if (context != null) FiberExecutionContext.StandDown(context.BatchScheduler);
                 FiberExecutionContext.Hold(FiberExecutionContext.Request.Unmount, Root, context?.BatchScheduler,
                     (Tree: this, Context: context), static held => held.Tree.Unmount(held.Context));
                 return;

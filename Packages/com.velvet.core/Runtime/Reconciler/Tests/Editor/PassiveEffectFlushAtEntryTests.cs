@@ -14,7 +14,9 @@ namespace Velvet.Tests
     /// anything (<c>performWorkOnRootViaSchedulerTask</c>, <c>performSyncWorkOnRoot</c>, and the loop <c>commitRoot</c>
     /// opens with): another root's update drain, the unmount of a root whose mount effect has not run, an error
     /// boundary's swap for a <c>UseFrame</c> callback's error, and the render a resolved read retries. What one root's
-    /// flush throws is logged, and stands that root down rather than the entry whose start ran it.
+    /// flush throws is logged, and stands that root down rather than the entry whose start ran it. A root disposed
+    /// renders nothing its pending effects force, nor, where its disposal is held inside an entry, a render held for it
+    /// ahead of the unmount.
     /// </summary>
     [TestFixture]
     internal sealed class PassiveEffectFlushAtEntryTests
@@ -253,6 +255,47 @@ namespace Velvet.Tests
 
             // Assert — null where the effect never ran
             Assert.That(s_store.Current == 1 ? s_forcedRenders : (int?)null, Is.EqualTo(0));
+        }
+
+        private static int s_secondTreeRenders;
+        private static MountedTree s_renderedThenDisposed;
+
+        [Component]
+        private static VNode SecondTree()
+        {
+            s_secondTreeRenders++;
+            return V.Label(text: "second");
+        }
+
+        // Hands the tree s_renderedThenDisposed holds a new tree to render and then disposes it, from its mount effect.
+        [Component]
+        private static VNode RendersAnotherTreeThenDisposesIt()
+        {
+            Hooks.UseEffect(() =>
+            {
+                s_renderedThenDisposed.Render(V.Component(SecondTree, key: "second"));
+                s_renderedThenDisposed.Dispose();
+                return (Action)null;
+            }, Array.Empty<object>());
+            return V.Div();
+        }
+
+        // React's root.unmount() folds the unmount into the sync render that the root.render() before it asked for, so
+        // the tree that render was handed never renders.
+        [Test]
+        public void Given_AnEffectThatRendersAnotherTreeAndThenDisposesIt_When_TheEffectRuns_Then_TheTreeItWasHandedNeverRenders()
+        {
+            // Arrange
+            s_secondTreeRenders = 0;
+            var target = V.Mount(new VisualElement(), V.Label(text: "first"));
+            s_renderedThenDisposed = target;
+            using var withTheEffect = V.Mount(new VisualElement(), V.Component(RendersAnotherTreeThenDisposesIt, key: "e"));
+
+            // Act
+            withTheEffect.FlushEffectsForTest();
+
+            // Assert — null where the tree was not disposed
+            Assert.That(target.Root.IsDisposed ? s_secondTreeRenders : (int?)null, Is.EqualTo(0));
         }
 
         [Test]

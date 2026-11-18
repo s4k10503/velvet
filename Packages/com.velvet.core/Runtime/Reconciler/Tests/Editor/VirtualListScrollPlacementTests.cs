@@ -603,8 +603,8 @@ namespace Velvet.Tests
 
         // GREEN_ON_BASE(characterization): the base rendered the range inside the drain, ahead of the throw, and drained once.
         // Here the drain that throws holds the range and leaves the child it mounted with its effect pending. Have
-        // FiberExecutionContext.End leave a scheduler unmarked when its entry throws, and the release runs the range,
-        // whose entry's passive flush ends by draining the root again: this reddens.
+        // FiberExecutionContext.End leave a scheduler unmarked when its entry throws, and the release drains the root
+        // again: this reddens.
         [Test]
         public void Given_ADrainThatThrowsAfterHoldingARangeOfItsOwnList_When_TheReleaseReachesTheRange_Then_ItsRootHasThrownOnce()
         {
@@ -632,9 +632,8 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base rendered the range inside the drain and drained once.
-        // Have FiberExecutionContext.End leave a scheduler unmarked when its entry throws, and the release runs the range,
-        // whose entry's passive flush captures the child's effect error and drains the root again to render it: this
-        // reddens.
+        // Have FiberExecutionContext.End leave a scheduler unmarked when its entry throws, and the release drains the root
+        // again: this reddens.
         [Test]
         public void Given_ADrainThatThrowsAfterHoldingARangeAndMountingAChildWhoseEffectFailsIntoABoundary_When_TheReleaseReachesTheRange_Then_ItsRootHasThrownOnce()
         {
