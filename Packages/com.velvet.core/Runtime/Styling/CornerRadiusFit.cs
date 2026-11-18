@@ -61,8 +61,8 @@ namespace Velvet
     /// style pass that finds a radius resolved on it attaches the fit, which then reads the rules' radius through
     /// <see cref="StyleCascade.Radius"/> and a length its code writes as it does for any other element. A style pass
     /// reaches the fit through the custom property <c>_preflight.uss</c> gives <see cref="WatchClass"/>, which goes on
-    /// an element once Velvet adds or removes a class no bundled sheet defines on it, so it needs the bundled stylesheet
-    /// attached and sees no change made to the class list from outside Velvet.
+    /// an element once Velvet adds or removes a class of the application's own on it (one Velvet resolves nothing for), so
+    /// it needs the bundled stylesheet attached and sees no change made to the class list from outside Velvet.
     /// </remarks>
     internal static class CornerRadiusFit
     {
@@ -112,7 +112,7 @@ namespace Velvet
         public static void Observe(VisualElement element) => Watch(element);
 
         // The class _preflight.uss keys the custom property on that makes UI Toolkit send an element its style passes. It
-        // goes on an element when a class no bundled sheet defines is added or removed on it, and a recycled element
+        // goes on an element when a class of the application's own is added or removed on it, and a recycled element
         // loses it with the rest of its class list.
         internal const string WatchClass = "velvet-radius-watch";
 
@@ -149,11 +149,25 @@ namespace Velvet
             }
         }
 
+        // A class Velvet resolves something for: a bundled utility, a family it realises in C#, an arbitrary value, a
+        // theme token, or the marker of a group or a peer. Whatever is left is the application's own.
+        private static bool ResolvedByVelvet(string cls)
+        {
+            var core = StyleArbitraryValueResolver.StripImportant(cls, out _);
+            return StyleUtilityProperties.TryGet(core, out _)
+                || StyleClassFamilies.Feeds(core)
+                || StyleArbitraryValueResolver.IsInlineResolved(core)
+                || StyleArbitraryValueResolver.IsFilterFamilyToken(core)
+                || StyleThemeClass.OwnsPlainToken(core)
+                || core == StyleRelationalVariantManipulator.GroupClass
+                || core == StyleRelationalVariantManipulator.PeerClass;
+        }
+
         // Only a class of the application's own can bring a radius with it that nothing here tracks, and only a change
         // made after the element is on a panel is one the size change that lays it out does not reach.
         private static void WatchForRule(VisualElement element, string cls)
         {
-            if (element.panel == null || StyleUtilityProperties.TryGet(cls, out _) || element.ClassListContains(WatchClass))
+            if (element.panel == null || element.ClassListContains(WatchClass) || ResolvedByVelvet(cls))
             {
                 return;
             }
@@ -275,7 +289,7 @@ namespace Velvet
         // The handler of an element's style pass, and a watched host's.
         internal static void OnStyleResolved(VisualElement element)
         {
-            var state = s_states.TryGetValue(element, out var tracked) ? tracked : AttachWhereRadiusResolves(element);
+            var state = s_states.TryGetValue(element, out var tracked) ? tracked : AttachIfMarked(element);
             if (state == null)
             {
                 return;
@@ -361,6 +375,10 @@ namespace Velvet
             }
             Refresh(element, state, suspendTransitions: true);
         }
+
+        // The style pass of an element nothing tracks reads it only where a class of the application's own marked it.
+        private static State? AttachIfMarked(VisualElement element)
+            => element.ClassListContains(WatchClass) ? AttachWhereRadiusResolves(element) : null;
 
         // The state of an element observed without a class or arbitrary value, once a radius resolves on it; null
         // while none does.

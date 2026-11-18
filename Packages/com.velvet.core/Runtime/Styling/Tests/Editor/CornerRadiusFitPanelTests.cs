@@ -511,6 +511,87 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ALaidOutBoxFittedFromAClassOfItsOwn_When_ThatClassIsRemovedWithNoSizeChange_Then_TheFittedSlotsAreGivenBack()
+        {
+            // Arrange — the box keeps its 330 x 34, so the removal reaches the fit by no size change.
+            AttachOwnRadiusSheet();
+            var box = MountSwitchable($"{WideBox} layout-id-test-uneven");
+
+            // Act
+            SwitchClass(WideBox);
+
+            // Assert
+            Assert.That(Radii(box), Is.EqualTo(new[] { 0f, 0f, 0f, 0f }).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_ALaidOutBoxFittedFromAClassOfItsOwn_When_AnAnimationChannelRemovesItWithNoSizeChange_Then_TheFittedSlotsAreGivenBack()
+        {
+            // Arrange — animation classes leave through StyleAnimationClassUtils rather than the patcher.
+            AttachOwnRadiusSheet();
+            var box = MountBox($"{WideBox} layout-id-test-uneven");
+
+            // Act
+            StyleAnimationClassUtils.RemoveClasses(box, new[] { "layout-id-test-uneven" });
+            ForcePanelUpdate(box.panel);
+
+            // Assert
+            Assert.That(Radii(box), Is.EqualTo(new[] { 0f, 0f, 0f, 0f }).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_ALaidOutBoxWithAHoverVariantOfAClassOfItsOwn_When_ItIsHoveredWithNoSizeChange_Then_ItsCornersAreScaled()
+        {
+            // Arrange
+            AttachOwnRadiusSheet();
+            var box = MountBox($"{WideBox} hover:layout-id-test-uneven");
+
+            // Act
+            using (var over = PointerOverEvent.GetPooled())
+            {
+                box.SimulateEvent(over);
+            }
+            ForcePanelUpdate(box.panel);
+
+            // Assert
+            Assert.That(Radii(box), Is.EqualTo(s_unevenRadiiFittedToWideBox).Within(1e-3f));
+        }
+
+        // Each token is one Velvet resolves something for, a family it realises in C# or a bundled utility written with its
+        // important marker, so none of them is the application's own and none can bring a radius the fit lacks.
+        [TestCase("ring-2")]
+        [TestCase("gap-4")]
+        [TestCase("shadow-md")]
+        [TestCase("blur-md")]
+        [TestCase("group")]
+        [TestCase("p-4!")]
+        [TestCase("!p-4")]
+        public void Given_ALaidOutBox_When_AClassVelvetResolvesArrives_Then_TheBoxIsNotMarkedForTheFit(string token)
+        {
+            // Arrange
+            var box = MountSwitchable(WideBox);
+
+            // Act
+            SwitchClass($"{WideBox} {token}");
+
+            // Assert
+            Assert.That(box.ClassListContains(CornerRadiusFit.WatchClass), Is.False);
+        }
+
+        [Test]
+        public void Given_ALaidOutBox_When_AClassOfTheApplicationsOwnArrives_Then_TheBoxIsMarkedForTheFit()
+        {
+            // Arrange — the control for the cases above: the same swap with a class nothing resolves.
+            var box = MountSwitchable(WideBox);
+
+            // Act
+            SwitchClass($"{WideBox} unrelated-class");
+
+            // Assert
+            Assert.That(box.ClassListContains(CornerRadiusFit.WatchClass), Is.True);
+        }
+
+        [Test]
         public void Given_ALaidOutBoxWhoseCodeWroteARadiusBeyondItsHeight_When_AClassOfTheApplicationsOwnArrivesWithNoSizeChange_Then_ItsCornersAreScaled()
         {
             // Arrange

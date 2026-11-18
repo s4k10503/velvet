@@ -180,8 +180,12 @@ namespace Velvet
             }
             else
             {
+                var held = dest.ClassListContains(cls);
                 dest.RemoveFromClassList(cls);
-                CornerRadiusFit.NoteRemoved(dest, cls);
+                if (held)
+                {
+                    CornerRadiusFit.NoteRemoved(dest, cls);
+                }
                 StyleClassProjection.RawRemoved(dest, cls);
             }
         }

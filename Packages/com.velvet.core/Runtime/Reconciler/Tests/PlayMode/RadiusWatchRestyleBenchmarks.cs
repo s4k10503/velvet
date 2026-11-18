@@ -14,11 +14,10 @@ namespace Velvet.Tests.Performance
     /// Velvet's utility stylesheet. Each sample is one such frame: the time the panel recorded under the markers
     /// <see cref="PanelFrameRecorder"/> reads, and the GC.Alloc blocks every thread charged in it.
     /// <para>
-    /// Two arms over the same elements in one run, so the difference between them does not depend on the machine: in
-    /// the first no Div has had a class of its own added or removed since it was built, which is the state of an
-    /// element before the radius fit watches style passes, and in the second each Div has, so it carries
-    /// <see cref="CornerRadiusFit.WatchClass"/>. A case throws when the arm's elements do not hold what the arm says,
-    /// or when a frame ran none of a phase.
+    /// Two cases, each over a fresh tree of the same shape. In the first no Div has had a class of its own added or
+    /// removed since it was built, which is the state of an element before the radius fit watches style passes. In the
+    /// second each Div has, so it carries <see cref="CornerRadiusFit.WatchClass"/>. A case throws when its elements do
+    /// not hold what it says, or when a frame ran none of a phase.
     /// </para>
     /// </summary>
     [TestFixture]
