@@ -171,6 +171,7 @@ namespace Velvet
                 if (reference.TryGetTarget(out var element))
                 {
                     StyleArbitraryValueResolver.TryGetProjection(element)?.Learn(element, cls, properties);
+                    CornerRadiusFit.Learned(element, properties);
                 }
             }
         }

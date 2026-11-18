@@ -557,18 +557,18 @@ namespace Velvet.Tests
             Assert.That(Radii(box), Is.EqualTo(s_unevenRadiiFittedToWideBox).Within(1e-3f));
         }
 
-        // Each token is one Velvet resolves something for, a family it realises in C# or a bundled utility written with its
-        // important marker, so none of them is the application's own and none can bring a radius the fit lacks.
+        // None of these writes a radius: Velvet realises the first four in C#, and the last two are rules of the application's
+        // own, one with no declaration at all and one that declares a transition.
         [TestCase("ring-2")]
         [TestCase("gap-4")]
         [TestCase("shadow-md")]
-        [TestCase("blur-md")]
-        [TestCase("group")]
-        [TestCase("p-4!")]
-        [TestCase("!p-4")]
-        public void Given_ALaidOutBox_When_AClassVelvetResolvesArrives_Then_TheBoxIsNotMarkedForTheFit(string token)
+        [TestCase("underline")]
+        [TestCase("unrelated-class")]
+        [TestCase("layout-id-test-fade")]
+        public void Given_ALaidOutBox_When_AClassThatWritesNoRadiusArrives_Then_TheBoxIsNotMarkedForTheFit(string token)
         {
             // Arrange
+            AttachOwnRadiusSheet();
             var box = MountSwitchable(WideBox);
 
             // Act
@@ -579,30 +579,46 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ALaidOutBox_When_AClassOfTheApplicationsOwnArrives_Then_TheBoxIsMarkedForTheFit()
+        public void Given_ALaidOutBox_When_ABundledClassWrittenWithTheImportantMarkerArrivesThroughAnAnimationChannel_Then_TheBoxIsNotMarkedForTheFit()
         {
-            // Arrange — the control for the cases above: the same swap with a class nothing resolves.
+            // Arrange — the one path that hands the fit the token as written, with its marker.
+            var box = MountBox(WideBox);
+
+            // Act
+            StyleAnimationClassUtils.AddClasses(box, new[] { "p-4!" });
+            ForcePanelUpdate(box.panel);
+
+            // Assert
+            Assert.That(box.ClassListContains(CornerRadiusFit.WatchClass), Is.False);
+        }
+
+        [Test]
+        public void Given_ALaidOutBox_When_AClassWhoseRuleWritesARadiusArrives_Then_TheBoxIsMarkedForTheFit()
+        {
+            // Arrange — the control for the cases above: the same swap with a class that writes one.
+            AttachOwnRadiusSheet();
             var box = MountSwitchable(WideBox);
 
             // Act
-            SwitchClass($"{WideBox} unrelated-class");
+            SwitchClass($"{WideBox} layout-id-test-uneven");
 
             // Assert
             Assert.That(box.ClassListContains(CornerRadiusFit.WatchClass), Is.True);
         }
 
         [Test]
-        public void Given_ALaidOutBoxWhoseCodeWroteARadiusBeyondItsHeight_When_AClassOfTheApplicationsOwnArrivesWithNoSizeChange_Then_ItsCornersAreScaled()
+        public void Given_ALaidOutBoxWhoseCodeWroteARadiusBeyondItsHeight_When_AClassThatWritesARadiusArrivesWithNoSizeChange_Then_ItsCornersAreScaled()
         {
-            // Arrange
+            // Arrange — the class's own 10px radius loses to the inline 400s, which are what the fit scales.
+            AttachOwnRadiusSheet();
             var box = MountSwitchable(WideBox);
             box.style.borderTopLeftRadius = 400f;
             box.style.borderTopRightRadius = 400f;
             box.style.borderBottomRightRadius = 400f;
             box.style.borderBottomLeftRadius = 400f;
 
-            // Act — a class no sheet defines arrives with the box still 330 x 34, which no size change follows.
-            SwitchClass($"{WideBox} unrelated-class");
+            // Act — the box stays 330 x 34, which no size change follows.
+            SwitchClass($"{WideBox} layout-id-test-round");
 
             // Assert
             Assert.That(Radii(box), Is.EqualTo(new[] { 17f, 17f, 17f, 17f }).Within(1e-3f));
