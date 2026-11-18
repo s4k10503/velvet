@@ -35,7 +35,8 @@ namespace Velvet
         // removing/inserting the element from its parent is forbidden. The diff inserts new leaves by slot, so a
         // patch that moved the slots would have a later insert land in the wrong place. New VNode types must preserve
         // this contract.
-        // Returns what occupies the element's slot once the patch is done (FiberNodePatcher.PatchSelfPost).
+        // Returns what occupies the element's slot as the patch leaves it, before a z-layer relocation the pass settles
+        // later (FiberNodePatcher.PatchSelfPost).
         internal VisualElement PatchNode(VisualElement element, VNode? oldNode, VNode? newNode)
         {
             var patch = new FiberNodePatcher.SelfPatch(element, oldNode, newNode);

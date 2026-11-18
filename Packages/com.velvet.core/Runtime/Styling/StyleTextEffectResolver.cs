@@ -152,14 +152,22 @@ namespace Velvet
         // inherited effect, rather than waiting for the ancestor's next pass. Idempotent (resolves from the raw).
         public static void OnTextSet(ReconcilerContext ctx, VisualElement element, string raw)
         {
-            // The mark belongs here rather than in CaptureRaw below: an element's Text prop calls CaptureRaw
-            // DIRECTLY and never routes through this method, while a TextNode reaches it only through here.
-            // Moving the mark down one call would mark every text-bearing element — see
-            // ReconcilerContext.TextNodeElements.
+            NoteTextSet(ctx, element, raw);
+            ShowTextSet(ctx, element);
+        }
+
+        // OnTextSet's half that records, which a patch that writes the element later makes where it runs. The mark
+        // belongs here rather than in CaptureRaw: an element's Text prop calls CaptureRaw DIRECTLY and never routes
+        // through this method, while a TextNode reaches it only through here. Moving the mark down one call would
+        // mark every text-bearing element — see ReconcilerContext.TextNodeElements.
+        public static void NoteTextSet(ReconcilerContext ctx, VisualElement element, string raw)
+        {
             ctx.TextNodeElements[element] = true;
             CaptureRaw(ctx, element, raw);
-            ApplyToElement(ctx, element);
         }
+
+        // OnTextSet's half that writes the element, from the raw text NoteTextSet captured.
+        public static void ShowTextSet(ReconcilerContext ctx, VisualElement element) => ApplyToElement(ctx, element);
 
         // The create-time entry to Apply. A freshly created element is detached and its side tables are empty, so
         // with no effect class of its own there is nothing for Apply to resolve, write or remove, and its
