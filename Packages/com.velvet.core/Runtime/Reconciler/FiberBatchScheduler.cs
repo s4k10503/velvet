@@ -172,6 +172,9 @@ namespace Velvet
             _flushHeldPassiveEffects = FlushPendingPassiveEffects;
         }
 
+        // The scheduler every callback of this context runs on: the root context's host scheduler.
+        internal IHostScheduler Host { get; } = PanelHostScheduler.Instance;
+
         // Records the tree-stable element on which drain callbacks are registered. Called once when the
         // root fiber that owns this context mounts.
         internal void SetAnchor(VisualElement anchor) => _anchor = anchor;
@@ -249,12 +252,12 @@ namespace Velvet
             if (_immediateScheduled || _anchor == null) return;
             _immediateScheduled = true;
             ScheduledCallbackCount++;
-            _anchor.schedule.Execute(_runImmediateCallback);
+            Host.Schedule(_anchor, _runImmediateCallback);
         }
 
         private void RunImmediateCallback()
         {
-            var outer = PanelSchedulerCallback.Enter(_anchor?.panel);
+            var outer = Host.Enter(_anchor);
             _inImmediateCallback = true;
             try
             {
@@ -263,7 +266,7 @@ namespace Velvet
             finally
             {
                 _inImmediateCallback = false;
-                PanelSchedulerCallback.Exit(outer);
+                Host.Exit(outer);
             }
         }
 
@@ -285,7 +288,7 @@ namespace Velvet
             if (fiber?.MountPoint == null) return;
             var queued = _delayedEntries.TryGetValue(fiber, out var entry);
             if (queued && entry.Deferrals >= FiberWorkLoop.TransitionStarvationThreshold) return;
-            var admission = PanelSchedulerCallback.InPassOf(_anchor) ? AdmissionForNextPass() : Unadmitted();
+            var admission = Host.InPassOf(_anchor) ? AdmissionForNextPass() : Unadmitted();
             if (!queued)
             {
                 _delayedOrder.Add(fiber);
@@ -300,8 +303,8 @@ namespace Velvet
         private DelayedAdmission AdmissionForNextPass()
         {
             var current = _admittedForNextPass;
-            if (current != null && current.RegisteredIn == PanelSchedulerCallback.Current) return current;
-            var admission = new DelayedAdmission(PanelSchedulerCallback.Current);
+            if (current != null && current.RegisteredIn == Host.CurrentPass) return current;
+            var admission = new DelayedAdmission(Host.CurrentPass);
             _admittedForNextPass = admission;
             Register(() => RunDelayedCallback(admission));
             return admission;
@@ -321,7 +324,7 @@ namespace Velvet
         {
             if (_anchor == null) return;
             ScheduledCallbackCount++;
-            _anchor.schedule.Execute(callback);
+            Host.Schedule(_anchor, callback);
         }
 
         // Held work of this root that FiberExecutionContext's release does not run, made in a later frame on the anchor
@@ -334,7 +337,8 @@ namespace Velvet
             if (anchor == null) return;
             if (droppable && _consecutiveThrowingDrains >= ConsecutiveThrowingDrainLimit) return;
             var handOn = new HandOn(this, run, droppable, _handOnGeneration);
-            anchor.schedule.Execute(() => PanelSchedulerCallback.Run(anchor, handOn, static held => held.Run()));
+            var host = Host;
+            host.Schedule(anchor, () => host.Run(anchor, handOn, static held => held.Run()));
         }
 
         private sealed class HandOn
@@ -392,7 +396,7 @@ namespace Velvet
 
         private void RunAdmitCallback(DelayedAdmission admission)
         {
-            var outer = PanelSchedulerCallback.Enter(_anchor?.panel);
+            var outer = Host.Enter(_anchor);
             try
             {
                 if (_unadmitted == admission) _unadmitted = null;
@@ -408,20 +412,20 @@ namespace Velvet
             }
             finally
             {
-                PanelSchedulerCallback.Exit(outer);
+                Host.Exit(outer);
             }
         }
 
         private void RunDelayedCallback(DelayedAdmission admission)
         {
-            var outer = PanelSchedulerCallback.Enter(_anchor?.panel);
+            var outer = Host.Enter(_anchor);
             try
             {
                 DrainDelayedTier(admission);
             }
             finally
             {
-                PanelSchedulerCallback.Exit(outer);
+                Host.Exit(outer);
             }
         }
 
@@ -597,7 +601,7 @@ namespace Velvet
                 var fiber = _delayedOrder[i];
                 var entry = _delayedEntries[fiber];
                 if (entry.Admission != spent) continue;
-                next ??= PanelSchedulerCallback.InPassOf(_anchor) ? AdmissionForNextPass() : Unadmitted();
+                next ??= Host.InPassOf(_anchor) ? AdmissionForNextPass() : Unadmitted();
                 _delayedEntries[fiber] = new DelayedEntry(next, entry.Deferrals);
             }
         }
