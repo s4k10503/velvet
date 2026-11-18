@@ -337,7 +337,10 @@ namespace Velvet
         // Kept out of ScheduleFlush, whose every call would otherwise build this closure
         // (RenderCommitAllocationTests).
         private static void ScheduleStandaloneFlush(ComponentFiber fiber)
-            => fiber.MountPoint?.schedule.Execute(() => FlushState(fiber));
+        {
+            if (fiber.MountPoint == null) return;
+            HostSchedulers.For(fiber).Schedule(fiber.MountPoint, () => FlushState(fiber));
+        }
 
         // Flushes the dirty state and runs RenderAndReconcile + the layout-effect commit.
         // Normally invoked automatically via schedule.Execute.
@@ -912,7 +915,10 @@ namespace Velvet
         // Kept out of ContinueReconcile, whose every call would otherwise build this closure
         // (RenderCommitAllocationTests).
         private static void ScheduleNextSlice(UnityEngine.UIElements.VisualElement mountPoint, ComponentFiber fiber)
-            => mountPoint.schedule.Execute(() => PanelSchedulerCallback.Run(mountPoint, fiber, ContinueReconcile));
+        {
+            var host = HostSchedulers.For(fiber);
+            host.Schedule(mountPoint, () => host.Run(mountPoint, fiber, ContinueReconcile));
+        }
 
         private static void PromoteStarvedTransitionLane(ComponentFiber fiber)
         {

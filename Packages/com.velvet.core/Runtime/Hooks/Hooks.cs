@@ -1322,7 +1322,7 @@ namespace Velvet
             // branch) would otherwise lose every priority value except the very first one — EnsureSubscribed
             // below has nothing else to fall back on once no live Subscription exists to mutate directly.
             var latestPriority = UseMutableRef<int>(priority);
-            var subscriptionRef = UseRef<UseFrameDispatcher.Subscription>();
+            var subscriptionRef = UseRef<IFrameSubscription>();
             if (!IsStrictDiagnosticPass(fiber))
             {
                 latest.Set(onFrame);
@@ -1347,37 +1347,10 @@ namespace Velvet
                     return null;
                 }
 
-                UseFrameDispatcher? dispatcher = null;
-                UseFrameDispatcher.Subscription? subscription = null;
-
-                void EnsureSubscribed()
-                {
-                    var panel = host.panel;
-                    if (panel == null)
-                    {
-                        return;
-                    }
-                    var currentDispatcher = UseFrameDispatcher.GetOrCreate(panel);
-                    if (subscription != null && ReferenceEquals(dispatcher, currentDispatcher))
-                    {
-                        // Same panel as before a transient detach (a keyed reorder is the common case) —
-                        // resume the SAME slot instead of resubscribing, which is what keeps this
-                        // component's position stable relative to same-priority siblings instead of
-                        // migrating to the end of the group the way a plain per-element scheduled item
-                        // would (see UseFrameDispatcher's own remarks).
-                        subscription.Active = true;
-                        return;
-                    }
-                    // First attach, or a move to a genuinely different panel (rare, and not tracked as a
-                    // stable cross-panel identity): latestPriority.Current is always this render's value
-                    // regardless of whether a Subscription existed to carry it, so it is the correct
-                    // source here too — not just for the true-first-subscribe case.
-                    if (subscription != null)
-                    {
-                        dispatcher!.Unsubscribe(subscription);
-                    }
-                    dispatcher = currentDispatcher;
-                    subscription = dispatcher.Subscribe(latestPriority.Current, dt =>
+                var subscription = (fiber.Reconciler?.Context.FrameClock ?? PanelFrameClock.Instance).Subscribe(
+                    host,
+                    latestPriority.Current,
+                    dt =>
                     {
                         try
                         {
@@ -1390,34 +1363,10 @@ namespace Velvet
                             // the nearest error boundary must receive user-callback failures either way.
                             ComponentBoundarySearch.PropagateException(fiber, ex);
                         }
-                    }, fiber.Reconciler?.Context.StyleAnimationScheduler.Clock);
-                    subscriptionRef.Set(subscription);
-                }
-
-                EventCallback<AttachToPanelEvent> onAttach = _ => EnsureSubscribed();
-                EventCallback<DetachFromPanelEvent> onDetach = _ =>
-                {
-                    if (subscription != null)
-                    {
-                        subscription.Active = false;
-                    }
-                };
-
-                host.RegisterCallback(onAttach);
-                host.RegisterCallback(onDetach);
-                // The passive effect runs post-commit, so the host is ordinarily already attached and no
-                // AttachToPanelEvent is coming — subscribe directly.
-                EnsureSubscribed();
-
-                return () =>
-                {
-                    host.UnregisterCallback(onAttach);
-                    host.UnregisterCallback(onDetach);
-                    if (subscription != null)
-                    {
-                        dispatcher!.Unsubscribe(subscription);
-                    }
-                };
+                    },
+                    fiber.Reconciler?.Context.StyleAnimationScheduler.Clock);
+                subscriptionRef.Set(subscription);
+                return subscription.Dispose;
             }, Array.Empty<object>());
         }
 
