@@ -376,7 +376,7 @@ namespace Velvet
         // over, which can be before its run event reaches OnRun
         // (Given_ATweenEnterEasingInCircThreeTenthsOfASecondIn_When_ACarryTakesItsOpacityOverBeforeItsRunEvent_Then_ItCarriesFramersWebAnimationsCircIn):
         // the one OnRun retimes it to. One OnRun leaves keeps its own: one that was running as the tween began or as the
-        // element began to be listened to, since OnRun sees only transitions that start, and one it has already seen.
+        // element began to be listened to, and one it has already seen.
         internal static Func<float, float> TakenOver(VisualElement element, string property, object id, double startSec,
             Func<float, float> curve)
         {
