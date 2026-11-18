@@ -35,7 +35,7 @@ namespace Velvet
     }
 
     // An element type that hands its own events to CornerRadiusFit.OnHostEvent while RadiusFitWatches is set, in place
-    // of the callback the fit registers on any other element it watches.
+    // of the callbacks the fit registers on any other element it watches.
     internal interface IRadiusFitHost
     {
         bool RadiusFitWatches { get; set; }
@@ -57,9 +57,12 @@ namespace Velvet
     /// declared change, and a <c>transition-all</c> element would otherwise animate from the unfitted radius
     /// when it is first laid out.
     ///
-    /// An element none of that reaches is observed from its creation (<see cref="Observe"/>): the first size change
-    /// that finds a radius resolved on it attaches the fit, which then reads the rules' radius through
-    /// <see cref="StyleCascade.Radius"/> and a length its code writes as it does for any other element.
+    /// An element none of that reaches is observed from its creation (<see cref="Observe"/>): the first size change or
+    /// style pass that finds a radius resolved on it attaches the fit, which then reads the rules' radius through
+    /// <see cref="StyleCascade.Radius"/> and a length its code writes as it does for any other element. A style pass
+    /// reaches the fit through the custom property that <see cref="RadiusWatchSheets"/> gives the selectors of each rule
+    /// that declares a radius, so a rule of those starting or stopping to match the element, whether a class, an ancestor's
+    /// class or a pseudo-class changed it, arrives in the pass that restyles the element.
     /// </remarks>
     internal static class CornerRadiusFit
     {
@@ -101,17 +104,20 @@ namespace Velvet
             // Whether the rules' radii are read from the cascade at each size change; set on a state a size change
             // attached rather than a class.
             public bool ReadsCascade;
+
+            // The matched rules' hash the last style event was read at.
+            public long? Rules;
         }
 
         private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<VisualElement, State> s_states = new();
 
         // Watches element for a radius its rules or its code give it, which no class or arbitrary value declared.
-        public static void Observe(VisualElement element) => WatchGeometry(element);
+        public static void Observe(VisualElement element) => Watch(element);
 
-        // Watching a host sets its flag, and its type hands it its size changes, so watching one allocates nothing
-        // (CornerRadiusFitObserveAllocationTests). Neither kind is ever unwatched: nothing unregisters the callback, and
-        // a host's flag outlives the pool, so a pooled host is still watched when it is rented again.
-        private static void WatchGeometry(VisualElement element)
+        // Watching a host sets its flag, and its type hands it its size changes and style passes, so watching one allocates
+        // nothing (CornerRadiusFitObserveAllocationTests). Neither kind is ever unwatched: nothing unregisters a callback,
+        // and a host's flag outlives the pool, so a pooled host is still watched when it is rented again.
+        private static void Watch(VisualElement element)
         {
             if (element is IRadiusFitHost host)
             {
@@ -119,6 +125,7 @@ namespace Velvet
                 return;
             }
             element.RegisterCallback(s_onGeometryChanged);
+            element.RegisterCallback(s_onStyleResolved);
         }
 
         public static void TrackClass(VisualElement element, string cls)
@@ -126,7 +133,41 @@ namespace Velvet
             if (cls.StartsWith(RadiusClassPrefix, StringComparison.Ordinal))
             {
                 GetOrAttach(element);
+                return;
             }
+            NoteClassWrite(element);
+        }
+
+        // A class written through Velvet on an element that holds a radius its code wrote, which no rule need declare for the
+        // class to leave it overflowing: nothing raises a style event for a class whose rule declares no radius, so the radius
+        // the element holds is fitted here, against the size it has.
+        public static void NoteClassWrite(VisualElement element)
+        {
+            if (element.panel == null)
+            {
+                return;
+            }
+            if (!s_states.TryGetValue(element, out var state))
+            {
+                if (!HoldsInlineRadius(element.style))
+                {
+                    return;
+                }
+                state = GetOrAttach(element);
+                state.ReadsCascade = true;
+            }
+            RefreshDeclared(element, state);
+        }
+
+        private static bool HoldsInlineRadius(IStyle style)
+        {
+            var held = false;
+            for (var i = 0; i < CornerCount; i++)
+            {
+                var slot = InlineCorner(style, i);
+                held |= slot.keyword == StyleKeyword.Undefined && slot.value.value > 0f;
+            }
+            return held;
         }
 
         public static void SetInline(VisualElement element, RadiusCorners corners, Length value)
@@ -188,6 +229,7 @@ namespace Velvet
         {
             s_states.Remove(element);
             s_holds.Remove(element);
+            s_chainsRead.Remove(element);
         }
 
         /// <summary>
@@ -223,7 +265,10 @@ namespace Velvet
             }
         }
 
-        private static readonly EventCallback<CustomStyleResolvedEvent> s_onStyleResolved = OnStyleResolved;
+        private static readonly CustomStyleProperty<float> s_watchProperty = new(RadiusWatchSheets.Property);
+
+        private static readonly EventCallback<CustomStyleResolvedEvent> s_onStyleResolved =
+            evt => OnStyleResolved((VisualElement)evt.currentTarget);
         private static readonly EventCallback<GeometryChangedEvent> s_onGeometryChanged =
             evt => OnGeometryChanged((VisualElement)evt.currentTarget, evt);
 
@@ -234,20 +279,28 @@ namespace Velvet
                 return state;
             }
             state = new State();
-            element.RegisterCallback(s_onStyleResolved);
-            WatchGeometry(element);
+            Watch(element);
             s_states.Add(element, state);
             return state;
         }
 
-        private static void OnStyleResolved(CustomStyleResolvedEvent evt)
+        // The handler of an element's style pass, and a watched host's.
+        internal static void OnStyleResolved(VisualElement element)
         {
-            var element = (VisualElement)evt.currentTarget;
-            if (!s_states.TryGetValue(element, out var state))
+            var state = s_states.TryGetValue(element, out var tracked) ? tracked : AttachIfWatched(element);
+            if (state == null)
             {
                 return;
             }
-            ReadSheet(element, state, evt.customStyle);
+            // The rules that matched the element are what the radii of its rules come from: a restyle that matched the same ones
+            // leaves what was read as it was.
+            var rules = StyleCascade.RulesHash(element);
+            if (rules != null && rules == state.Rules)
+            {
+                return;
+            }
+            state.Rules = rules;
+            ReadSheet(element, state, element.customStyle);
             RefreshDeclared(element, state);
         }
 
@@ -288,13 +341,40 @@ namespace Velvet
             return StyleArbitraryValueResolver.TryParseValue(text.AsSpan(), out var value, out var unit) ? new Length(value, unit) : null;
         }
 
-        // An event a watched host's type was handed, of which the fit reads its size changes.
+        // An event a watched host's type was handed, of which the fit reads its size changes and style passes.
         internal static void OnHostEvent(VisualElement host, EventBase evt)
         {
             if (evt is GeometryChangedEvent geometry)
             {
                 OnGeometryChanged(host, geometry);
             }
+            else if (evt is CustomStyleResolvedEvent)
+            {
+                OnStyleResolved(host);
+            }
+        }
+
+        // The parents whose stylesheets have been looked at for radius rules, so that the siblings of one do not look again.
+        private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<VisualElement, object> s_chainsRead = new();
+
+        // Looks, once for each parent, at the stylesheets above an element for rules that declare a radius, which
+        // RadiusWatchSheets gives their own property. A sheet an ancestor takes later is looked at when its stylesheets
+        // change (BorderPreflight's tick over the panel's ancestors).
+        private static void ReadSheetsAbove(VisualElement element)
+        {
+            if (element.styleSheets.count > 0)
+            {
+                RadiusWatchSheets.EnsureOn(element);
+                BorderPreflight.WatchSheets(element, self: true);
+            }
+            var parent = element.hierarchy.parent;
+            if (parent == null || s_chainsRead.TryGetValue(parent, out _))
+            {
+                return;
+            }
+            s_chainsRead.Add(parent, s_chainsRead);
+            RadiusWatchSheets.EnsureAbove(parent);
+            BorderPreflight.WatchSheets(element);
         }
 
         // A host's size change once its own geometry binding has run (FiberEventBindingManager.FitAfter).
@@ -309,6 +389,7 @@ namespace Velvet
         // The callback's handler, and a watched host's.
         internal static void OnGeometryChanged(VisualElement element, GeometryChangedEvent evt)
         {
+            ReadSheetsAbove(element);
             if (evt.oldRect.size == evt.newRect.size)
             {
                 return;
@@ -325,12 +406,26 @@ namespace Velvet
             Refresh(element, state, suspendTransitions: true);
         }
 
+        // The style pass of an element nothing tracks is read only where a rule declaring a radius matches it, which
+        // RadiusWatchSheets gives the property this asks for.
+        // The bundled radius classes are watched through the custom properties that restate them (_radius_declared.uss).
+        private static State? AttachIfWatched(VisualElement element)
+        {
+            var custom = element.customStyle;
+            var watched = custom.TryGetValue(s_watchProperty, out _);
+            for (var i = 0; i < CornerCount && !watched; i++)
+            {
+                watched = custom.TryGetValue(s_declaredProperties[i], out _);
+            }
+            return watched ? AttachWhereRadiusResolves(element) : null;
+        }
+
         // The state of an element observed without a class or arbitrary value, once a radius resolves on it; null
         // while none does.
         private static State? AttachWhereRadiusResolves(VisualElement element)
         {
             // The inline slots and the rules' radii are read as well as the resolved ones, which a style pass that
-            // follows the layout this fires in has not yet brought up to date.
+            // follows a layout has not yet brought up to date.
             var style = element.resolvedStyle;
             var resolves = false;
             for (var i = 0; i < CornerCount; i++)
