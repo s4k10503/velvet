@@ -151,8 +151,9 @@ namespace Velvet.Tests
         // level or among a function's arguments, a bracket no function name opens, a hex colour whose digits number
         // other than three, four, six or eight, an rgb() of other than three number tokens or an rgba() of fewer than
         // four, a range such as `u+1` counting as none, a function with nothing between its parentheses other than
-        // none(), filter() and the URL functions, a var() whose arguments ValidateVarFunction refuses, and a range; a
-        // comment among the arguments of blur(), var() and linear-gradient(), which
+        // none(), filter() and the URL functions, a resource() with whitespace alone between its parentheses, a var()
+        // whose arguments ValidateVarFunction refuses, and a range; a comment among the arguments of blur(), var() and
+        // linear-gradient(), which
         // UssCustomPropertyText.HasCommentInArguments takes for one; a URL path the lexer raises an error on, which
         // UssCustomPropertyText.UrlEnd takes for one; an `!important` in another case, which UssCustomPropertyText
         // writes in lower case; and a line break or a form feed in a string, which UssCustomPropertyText escapes inside
@@ -172,6 +173,7 @@ namespace Velvet.Tests
         [TestCase("blur()")]
         [TestCase("var()")]
         [TestCase("resource()")]
+        [TestCase("resource( )")]
         [TestCase("rgb()")]
         [TestCase("4px !IMPORTANT")]
         [TestCase("var(--a,)")]
@@ -337,6 +339,7 @@ namespace Velvet.Tests
         [TestCase("url(a\rb)", "url(a\rb)")]
         [TestCase("url(images/don't-panic.png)", "url(images/don't-panic.png)")]
         [TestCase("u+1", "u+1")]
+        [TestCase("resource( )", "resource( )")]
         public void Given_AValueTheImporterFailsTheSheetOn_When_TheRewrittenSheetIsImported_Then_ItStoresItsText(
             string value, string expected)
         {
