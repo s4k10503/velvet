@@ -84,6 +84,9 @@ namespace Velvet.Tests
             Assert.That(ranges[1].Start, Is.EqualTo(2));
         }
 
+        // GREEN_ON_BASE(characterization): once the inner holds no row there is nothing of the inner's for the outer's
+        // count to take in, so the base records the outer's one row too; this pins that leaving the inner's rows out of
+        // the outer's count keeps the outer's own.
         [Test]
         public void Given_APortalInsideAnotherOnOneTarget_When_ThePassPatchingTheOuterDropsTheInner_Then_TheOuterRecordsItsOneRow()
         {
