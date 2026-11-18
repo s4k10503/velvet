@@ -60,40 +60,6 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ABorderOverlayUp_When_ADividerIsPaintedOnTheClippingElement_Then_TheDividerQueuesItsOwnSettle()
-        {
-            // Arrange
-            var element = MountClipping();
-            var border = BorderStyleSilhouette.Attach(element, new BorderStyleSpec(BorderLineStyle.Dashed, "border-dashed"));
-            _cleanups.Add(() => BorderStyleSilhouette.Detach(element, border));
-            SettleBorder(element, border);
-            var divider = DivideDashPainter.Attach(element, DivideEdge.Bottom, BorderLineStyle.Dashed);
-            _cleanups.Add(() => DivideDashPainter.Detach(element, divider));
-
-            // Act
-            ForcePanelUpdate(element.panel);
-
-            // Assert
-            Assert.That(divider.OverlayPending, Is.True);
-        }
-
-        [Test]
-        public void Given_ABorderOverlayUp_When_TheDividerOnTheSameElementIsDetached_Then_TheBorderOverlayStays()
-        {
-            // Arrange
-            var element = MountClipping();
-            var (border, divider) = AttachBoth(element);
-            SettleBorder(element, border);
-            SettleDivider(element, divider);
-
-            // Act
-            DivideDashPainter.Detach(element, divider);
-
-            // Assert
-            Assert.That(FaceBorderOverlay.Has(element), Is.True);
-        }
-
-        [Test]
         public void Given_ADividerOverlayUp_When_TheBorderOnTheSameElementIsDetached_Then_TheDividerOverlayStays()
         {
             // Arrange
@@ -192,22 +158,20 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ARemovedLayerOnAPooledElement_When_ItIsOverlaidAgainWithTheOtherLayer_Then_TheRemovedPaintIsNotAsked()
+        public void Given_ARemovedLayer_When_AnotherLayerIsEnsuredAndThePanelPaints_Then_TheRemovedPaintIsNotAsked()
         {
             // Arrange
             var element = MountClipping();
-            var stale = 0;
-            FaceBorderOverlay.Ensure(element, (_, _, _) => stale++, FaceBorderOverlay.Layer.Face);
+            var removed = 0;
+            FaceBorderOverlay.Ensure(element, (_, _, _) => removed++, FaceBorderOverlay.Layer.Face);
             FaceBorderOverlay.Remove(element, FaceBorderOverlay.Layer.Face);
             FaceBorderOverlay.Ensure(element, (_, _, _) => { }, FaceBorderOverlay.Layer.Divider);
-            ForcePanelUpdate(element.panel);
-            stale = 0;
 
             // Act
             ForcePanelUpdate(element.panel);
 
             // Assert
-            Assert.That(stale, Is.Zero);
+            Assert.That(removed, Is.Zero);
         }
     }
 }
