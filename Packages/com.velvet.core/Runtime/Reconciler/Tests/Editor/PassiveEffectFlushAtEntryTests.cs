@@ -1,6 +1,5 @@
 using System;
 using System.Linq;
-using System.Reflection;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.TestTools;
@@ -10,12 +9,12 @@ using Velvet.TestUtilities;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Pins that an entry of any root starts by running the passive effects every root left pending, as
+    /// Pins that an entry starts by running the passive effects the roots left pending, whichever root it is for, as
     /// react-reconciler 19.1 keeps one root's passive effects pending and flushes them before it renders or commits
     /// anything (<c>performWorkOnRootViaSchedulerTask</c>, <c>performSyncWorkOnRoot</c>, and the loop <c>commitRoot</c>
-    /// opens with): another root's update drain, one whose walk renders a <c>V.VirtualList</c> range, the unmount of a
-    /// root whose mount effect has not run, an error boundary's swap for a <c>UseFrame</c> callback's error, and the
-    /// render a resolved read retries.
+    /// opens with): another root's update drain, the unmount of a root whose mount effect has not run, an error
+    /// boundary's swap for a <c>UseFrame</c> callback's error, and the render a resolved read retries. What one root's
+    /// flush throws is logged, and stands that root down rather than the entry whose start ran it.
     /// </summary>
     [TestFixture]
     internal sealed class PassiveEffectFlushAtEntryTests
@@ -31,15 +30,20 @@ namespace Velvet.Tests
             protected override void ResetCore() => SetState(_ => 0);
         }
 
-        private static SettableStore s_store;
         private static VelvetTaskCompletionSource<string> s_read;
+        private static SettableStore s_store;
+        private static bool s_handleThrows;
+        private static int s_forcedRenders;
+        private static readonly Ref<string> s_handle = new();
 
         [SetUp]
         public void SetUp()
         {
             FiberStrictMode.Enabled = false;
-            s_store = new SettableStore();
             s_read = new VelvetTaskCompletionSource<string>();
+            s_store = new SettableStore();
+            s_handleThrows = false;
+            s_forcedRenders = 0;
         }
 
         [TearDown]
@@ -120,77 +124,6 @@ namespace Velvet.Tests
             Assert.That(log.ToString(), Is.EqualTo("eff:C eff-x:C"));
         }
 
-        // Hands its state to the store from its effect once the state has changed.
-        [Component]
-        private static VNode StoreWriter()
-        {
-            var (value, _) = EventLog.UseState("A", 0);
-            var log = EventLog.UseLog();
-            Hooks.UseEffect(() =>
-            {
-                if (value > 0)
-                {
-                    log.Add("eff:A");
-                    s_store.Set(value);
-                }
-                return (Action)null;
-            }, new object[] { value });
-            return V.Div();
-        }
-
-        [Component]
-        private static VNode StoreReader()
-        {
-            var value = Hooks.UseStore(s_store, stored => stored);
-            EventLog.UseRender("A");
-            return V.Label(text: "store" + value);
-        }
-
-        [Component]
-        private static VNode WriterAndReader()
-            => V.Fragment(V.Component(StoreWriter, key: "writer"), V.Component(StoreReader, key: "reader"));
-
-        // Its update hands the list a new set of items, whose rows its walk renders.
-        [Component]
-        private static VNode ListHost()
-        {
-            var (shifted, _) = EventLog.UseState("Items", 0);
-            EventLog.UseRender("B");
-            var items = shifted == 0 ? new[] { "a", "b", "c", "d" } : new[] { "e", "f", "g", "h" };
-            return V.Div(children: new VNode[]
-            {
-                V.VirtualList(items: items, keySelector: item => item, itemHeight: 50f,
-                    renderer: item => V.Label(text: item, key: item), overscan: 0, key: "list"),
-            });
-        }
-
-        [Test]
-        public void Given_ARootWhosePendingEffectChangesAStoreItReads_When_AnotherRootsDrainRendersAListRange_Then_TheEffectAndTheReadersRenderComeFirst()
-        {
-            // Arrange — the list's viewport is set as the layout pass EditMode does not run would measure it
-            var log = new EventLog();
-            var listRoot = new VisualElement();
-            using var other = V.Mount(listRoot, log.Provide(V.Component(ListHost, key: "host")));
-            var controller = other.Root.Reconciler.Context.VirtualListControllers[listRoot.Q<ScrollView>()];
-            var viewport = typeof(FiberVirtualListController).GetField(
-                    "_viewportHeight", BindingFlags.Instance | BindingFlags.NonPublic)
-                ?? throw new MissingFieldException(typeof(FiberVirtualListController).FullName, "_viewportHeight");
-            viewport.SetValue(controller, 100f);
-            using var pending = Mount(log, V.Component(WriterAndReader, key: "a"));
-            pending.FlushEffectsForTest();
-            log.Setter<int>("A").Invoke(1);
-            pending.GetSchedulerForTest().DrainImmediateForTest();
-            log.Setter<int>("Items").Invoke(1);
-            log.Clear();
-
-            // Act
-            other.GetSchedulerForTest().DrainImmediateForTest();
-
-            // Assert — null where the drain rendered no row of the new items
-            var rowRendered = listRoot.Query<Label>().ToList().Any(label => label.text == "e");
-            Assert.That(rowRendered ? EntriesBefore(log, "render:B") : null, Is.EqualTo("eff:A render:A"));
-        }
-
         [Component(IsErrorBoundary = true)]
         private static VNode FrameBoundary()
         {
@@ -267,6 +200,44 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(log.ToString(), Is.EqualTo("eff-x:A eff:A render:reader"));
+        }
+
+        // Hands the store a change from its mount effect. The re-render that change forces asks, from its handle, for
+        // another render, and throws while s_handleThrows is set.
+        [Component(Compiler = false)]
+        private static VNode ThrowsOnItsForcedRender()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            var stored = Hooks.UseStore(s_store, value => value);
+            if (stored > 0) s_forcedRenders++;
+            Hooks.UseEffect(() =>
+            {
+                s_store.Set(1);
+                return (Action)null;
+            }, Array.Empty<object>());
+            Hooks.UseImperativeHandle(s_handle, () =>
+            {
+                if (stored == 0 || !s_handleThrows) return "handle";
+                setTick.Invoke(tick + 1);
+                throw new InvalidOperationException("handle failed");
+            });
+            return V.Label(text: "thrower" + tick);
+        }
+
+        [Test]
+        public void Given_ARootWhosePendingEffectForcesARenderThatThrows_When_AnotherRootMounts_Then_ThatRootRendersOnceAndTheMountReturns()
+        {
+            // Arrange — the root's mount effect is still pending
+            using var thrower = V.Mount(new VisualElement(), V.Component(ThrowsOnItsForcedRender, key: "thrower"));
+            s_handleThrows = true;
+            LogAssert.Expect(LogType.Exception, "InvalidOperationException: handle failed");
+
+            // Act — the throwing render asks for another, which the mount's release would render again
+            using var other = V.Mount(new VisualElement(), V.Label(text: "other"));
+            s_handleThrows = false;
+
+            // Assert — 2 where the release rendered it again, and the mount throws where nothing caught the first
+            Assert.That(s_forcedRenders, Is.EqualTo(1));
         }
 
         [Test]

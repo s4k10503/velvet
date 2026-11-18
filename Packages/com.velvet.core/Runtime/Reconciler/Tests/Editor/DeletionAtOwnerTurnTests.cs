@@ -1225,8 +1225,11 @@ namespace Velvet.Tests
             Assert.That(s_otherRenders - s_otherBefore, Is.EqualTo(1));
         }
 
+        // React's flushSyncWorkAcrossRoots takes the owner first, whose performSyncWorkOnRoot flushes the owner's commit's
+        // pending passive effects and returns without rendering, so the other root renders before the owner's owed tick 1
+        // and the effect that tick sets up.
         [Test]
-        public void Given_AFlushOfARootWhoseLayoutEffectOwesASyncLane_When_ARootIsHeldBehindIt_Then_TheCommittingRootsEffectsRanBeforeTheHeldRootRendered()
+        public void Given_AFlushOfARootWhoseLayoutEffectOwesASyncLane_When_ARootIsHeldBehindIt_Then_TheHeldRootRendersBeforeTheOwnersOwedRenderAndItsEffect()
         {
             // Arrange
             var (owner, other) = MountTheLayoutOwnerAndAnotherRoot();
@@ -1237,7 +1240,7 @@ namespace Velvet.Tests
             FlushTheLayoutOwner();
 
             // Assert
-            Assert.That(s_otherSawPassive, Is.EqualTo("passive effect of tick 1"));
+            Assert.That(s_otherSawPassive, Is.EqualTo("before the owner"));
         }
 
         [Component]

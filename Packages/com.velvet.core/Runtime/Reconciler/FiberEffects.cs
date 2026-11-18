@@ -766,7 +766,7 @@ namespace Velvet
 
         // The contexts that have staged passive work since the start of an entry last took them off, in the order each
         // staged it first. React keeps one root's passive effects pending and flushes them before it renders or commits
-        // anything; here each context keeps its own, so every entry starts by running all of them
+        // anything; here each context keeps its own, and an entry starts by running theirs
         // (FlushEveryContextsPendingPassiveWork).
         private static readonly List<ReconcilerContext> s_withPendingPassiveWork = new();
 
@@ -866,9 +866,11 @@ namespace Velvet
         }
 
         // Runs where an entry starts (FiberExecutionContext.Enter), outside every render, commit and passive flush, since
-        // those run inside an entry. Each context's work runs in a bracket of the anchor its scheduled drain runs on, so
-        // FiberBatchScheduler.ScheduleDelayed places a transition one of its effects asks for as it does there. A context
-        // comes off the list before its work runs, and what that work stages puts it back behind the others.
+        // those run inside an entry. It runs in the entry's own host pass rather than in a bracket of each context's
+        // anchor, which placed a transition a forced re-render asks for one pass early (TransitionFrameSchedulingTests).
+        // A context comes off the list before its work runs, and what that work stages puts it back behind the others.
+        // What one context's work throws is logged and stands its scheduler down for the release, as an exception
+        // leaving its own entry does, so the other contexts' work and the entry's own body still run.
         internal static void FlushEveryContextsPendingPassiveWork()
         {
             UnityEngine.Debug.Assert(!ChildListWrites.PassIsOpen, "Passive effects ran inside an open pass.");
@@ -876,8 +878,15 @@ namespace Velvet
             {
                 var context = s_withPendingPassiveWork[0];
                 s_withPendingPassiveWork.RemoveAt(0);
-                PanelSchedulerCallback.Run(
-                    context.PassiveEffectDrainAnchor, context, static flushed => FlushPendingPassiveEffectsWork(flushed));
+                try
+                {
+                    FlushPendingPassiveEffectsWork(context);
+                }
+                catch (Exception thrown)
+                {
+                    FiberExecutionContext.StandDown(context.BatchScheduler);
+                    UnityEngine.Debug.LogException(thrown);
+                }
             }
         }
 

@@ -7,7 +7,7 @@ namespace Velvet
     // React's executionContext (RenderContext | CommitContext): one flag for every root, set while an entry renders,
     // commits or flushes passive effects. A door is the method something outside Velvet's render and commit calls —
     // the panel scheduler, a UI Toolkit callback, the main-thread pump, a public or test entry. Reached while the flag
-    // is clear, a door runs its body as the outermost entry, once the passive effects every root left pending have run,
+    // is clear, a door runs its body as the outermost entry, once the passive effects the roots left pending have run,
     // as React flushes pending passive effects before it renders or commits. Reached while it is set, it is held, and
     // what is held runs once the outermost entry has ended, in the order it was asked for; a flush of a scheduler whose
     // own drain is on the stack is left to that drain instead (FiberBatchScheduler.HoldFlush). Velvet's render and
@@ -59,6 +59,9 @@ namespace Velvet
         internal static bool IsSet => s_set;
 
         internal static bool Threw(FiberBatchScheduler scheduler) => s_threw.Contains(scheduler);
+
+        // For an exception that left a scheduler's pending passive work where an entry started, rather than its entry.
+        internal static void StandDown(FiberBatchScheduler scheduler) => s_threw.Add(scheduler);
 
         internal static void Enter<TState>(FiberBatchScheduler? owner, TState state, Action<TState> entry)
         {
@@ -168,8 +171,9 @@ namespace Velvet
         // released it.
         //
         // Once an exception has left an entry of a scheduler, the outermost entry or one an item of this release opened,
-        // this release neither drains that root nor runs a held range, resolve or resume of it: each can run the root's
-        // work again inside the call the exception left, a drain by rendering what that work queued, and the others by
+        // or has left its pending passive work where an entry started (StandDown), this release neither drains that root
+        // nor runs a held range, resolve or resume of it: each can run the root's work again inside the call the
+        // exception left, a drain by rendering what that work queued, and the others by
         // rendering fibers of the root, which takes up the updates queued on them. FiberBatchScheduler.DrainImmediateWork,
         // which a drain of either tier runs through, stands down for it, and so do FiberWorkLoop.FlushState and
         // FiberWorkLoop.FlushOwedSettleRenders, whose flushes of one fiber do not run through it; a held range, resolve or
