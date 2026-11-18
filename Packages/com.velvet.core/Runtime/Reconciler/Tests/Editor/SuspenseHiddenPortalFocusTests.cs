@@ -20,6 +20,7 @@ namespace Velvet.Tests
         private static VisualElement s_target;
         private static VelvetTaskCompletionSource<int> s_source;
         private static VelvetTaskCompletionSource<int> s_sourceOther;
+        private static StateUpdater<bool> s_setPlain;
 
         [SetUp]
         public void SetUp()
@@ -31,6 +32,7 @@ namespace Velvet.Tests
             s_setScoped = default;
             s_source = null;
             s_sourceOther = null;
+            s_setPlain = default;
             s_target = new VisualElement { name = "target" };
             _host.Root.Add(s_target);
             _mounted = V.Mount(_host.Root, V.Component(HostRender, key: "host"));
@@ -60,6 +62,12 @@ namespace Velvet.Tests
 
         private Focusable Focused => _host.Panel.focusController.focusedElement;
 
+        // A scope that never tried to focus reads differently from one that did and is waiting for its reveal.
+        private string FocusedOrDeferred()
+            => Focused is VisualElement focused
+                ? focused.name
+                : $"none, {_mounted.Root.Reconciler.Context.DeferredAutoFocus.Count} deferred";
+
         [Test]
         public void Given_APortalFocusScopeMountedUnderARevealedBoundary_When_ItMounts_Then_ItsButtonHoldsFocus()
         {
@@ -82,7 +90,7 @@ namespace Velvet.Tests
             Update(s_setScoped, true);
 
             // Assert
-            Assert.That(Focused, Is.Null);
+            Assert.That(FocusedOrDeferred(), Is.EqualTo("none, 1 deferred"));
         }
 
         [Test]
@@ -96,7 +104,7 @@ namespace Velvet.Tests
             Update(s_setPortal, true);
 
             // Assert
-            Assert.That(Focused, Is.Null);
+            Assert.That(FocusedOrDeferred(), Is.EqualTo("none, 1 deferred"));
         }
 
         [Test]
@@ -114,7 +122,7 @@ namespace Velvet.Tests
             Assert.That(Focused, Is.SameAs(s_target.Q<Button>("focusable")));
         }
 
-        // GREEN_ON_BASE(characterization): the base focuses the button at the mount and the unmount takes the focus with it.
+        // GREEN_ON_BASE(characterization): the base never focuses a scope added to a Portal that already holds content.
         // What this pins is that a scope hidden at its mount and gone before the reveal takes no focus then.
         [Test]
         public void Given_AHiddenPortalFocusScopeThatUnmounts_When_TheBoundaryReveals_Then_NothingHoldsFocus()
@@ -145,7 +153,56 @@ namespace Velvet.Tests
             Resolve(s_sourceOther);
 
             // Assert
-            Assert.That(Focused, Is.Null);
+            Assert.That(FocusedOrDeferred(), Is.EqualTo("none, 1 deferred"));
+        }
+
+        [Test]
+        public void Given_AHiddenPortalFocusScopeAfterAStylePass_When_TheBoundaryRevealsAndTheNextStyleAndTickRun_Then_ItsButtonHoldsFocus()
+        {
+            // Arrange
+            Update(s_setBlocked, 1);
+            Update(s_setPortal, true);
+            Update(s_setScoped, true);
+            EditorPanelTestHelpers.ForcePanelUpdate(_host.Panel);
+
+            // Act
+            Resolve(s_source);
+            EditorPanelTestHelpers.ForcePanelUpdate(_host.Panel);
+            EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
+
+            // Assert
+            Assert.That(Focused, Is.SameAs(s_target.Q<Button>("focusable")));
+        }
+
+        [Test]
+        public void Given_AFocusScopeAddedToAMountedParent_When_ItMounts_Then_ItsButtonHoldsFocus()
+        {
+            // Arrange
+            var holder = new VisualElement();
+            _host.Root.Add(holder);
+            using var plain = V.Mount(holder, V.Component(PlainHostRender, key: "plain"));
+
+            // Act
+            s_setPlain.Invoke(true);
+            plain.FlushStateForTest();
+            plain.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert
+            Assert.That(Focused, Is.SameAs(holder.Q<Button>("late")));
+        }
+
+        [Component]
+        private static VNode PlainHostRender()
+        {
+            var (shown, setShown) = Hooks.UseState(false);
+            s_setPlain = setShown;
+            return V.Div(children: new VNode[]
+            {
+                V.Div(name: "before"),
+                shown
+                    ? V.FocusScope(autoFocus: true, children: new VNode[] { V.Button(name: "late") })
+                    : null,
+            });
         }
 
         [Component]

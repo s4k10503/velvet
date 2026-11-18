@@ -1457,13 +1457,13 @@ namespace Velvet
         }
     }
 
+    internal readonly record struct DeferredAutoFocus(VisualElement Scope, FocusScopeBinding Binding, VisualElement? Placeholder);
+
     // Attach/Update/Detach lifecycle for a focus-scope binding, dispatched through the shared
     // ApplyElementBinding plumbing exactly like SceneView/Particles/Anchored. Attach registers the
     // AutoFocus hook and lazily ensures the navigator on whatever panel the scope lands in; Detach is the
     // pool-reuse scrub (RestoreFocus itself runs in FiberElementCleaner BEFORE the element leaves the tree,
     // since focus dies the moment an element detaches).
-    internal readonly record struct DeferredAutoFocus(VisualElement Scope, FocusScopeBinding Binding, VisualElement? Placeholder);
-
     internal static class FocusScopeDriver
     {
         public static FocusScopeBinding Attach(VisualElement element, FocusScopeSettings settings, ReconcilerContext ctx)
@@ -1482,8 +1482,8 @@ namespace Velvet
             binding.OnAttach = _ =>
             {
                 FiberFocusNavigator.EnsureAttached(element, ctx);
-                // A range's content is attached after its start; OnRangeEndAttached takes the autoFocus there, and
-                // the start takes it here when its end attached ahead of it.
+                // A range's autoFocus fires from its start here once its end is on a panel, and from OnRangeEndAttached
+                // once its start is among the end's siblings; the latch takes whichever finds the other first.
                 if (element is not FocusScopeStart start || FocusScopeRange.EndOf(start)?.panel != null)
                 {
                     FireAutoFocusOnce(element, binding);
@@ -1535,7 +1535,7 @@ namespace Velvet
                     continue;
                 }
                 ctx.DeferredAutoFocus.Remove(entry);
-                TakeAutoFocus(entry.Scope, entry.Binding);
+                TakeAutoFocus(entry.Scope, entry.Binding, retryAfterStyle: true);
             }
         }
 
@@ -1566,16 +1566,21 @@ namespace Velvet
                 }
                 return;
             }
-            TakeAutoFocus(scope, binding);
+            TakeAutoFocus(scope, binding, retryAfterStyle: false);
         }
 
-        private static void TakeAutoFocus(VisualElement scope, FocusScopeBinding binding)
+        // A deferred scope's elements keep the computed display none their hide gave them until the panel's next style
+        // pass, and none of them can take focus before it, so the take is retried on the next ticks (SuspenseHiddenPortalFocusTests pins it).
+        private static void TakeAutoFocus(VisualElement scope, FocusScopeBinding binding, bool retryAfterStyle)
         {
             binding.AutoFocusFired = true;
-            if (binding.Settings.AutoFocus)
+            if (!binding.Settings.AutoFocus || AutoFocusFirst(scope) || !retryAfterStyle)
             {
-                AutoFocusFirst(scope);
+                return;
             }
+            var attempts = 0;
+            var focused = false;
+            scope.schedule.Execute(() => focused = AutoFocusFirst(scope)).Every(0).Until(() => focused || ++attempts >= 3);
         }
 
         // Focuses the scope's first focusable descendant (document order), skipped when focus already sits
@@ -1584,14 +1589,16 @@ namespace Velvet
         // style pass runs after this frame's mounts) — the engine ring would read empty here. A plain
         // traversal over the same focusability predicate (minus the displayed check) is what attach-time
         // can actually answer.
-        private static void AutoFocusFirst(VisualElement scopeRoot)
+        private static bool AutoFocusFirst(VisualElement scopeRoot)
         {
             var controller = scopeRoot.panel?.focusController;
             if (controller?.focusedElement is VisualElement current && FiberFocusNavigator.ScopeContains(scopeRoot, current))
             {
-                return;
+                return true;
             }
-            FindFirstFocusableInScope(scopeRoot)?.Focus();
+            var first = FindFirstFocusableInScope(scopeRoot);
+            first?.Focus();
+            return first != null;
         }
 
         internal static VisualElement? FindFirstFocusableInScope(VisualElement scope)
