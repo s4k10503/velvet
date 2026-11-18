@@ -4,35 +4,36 @@ using UnityEngine.UIElements;
 
 namespace Velvet
 {
-    // Attaches the focus navigator to the panel of each root a host's UIDocument builds after the one it was
-    // created with. Pinned by FocusReplacedHostPanelTests.
+    // Applies PanelHostFactory.ApplyRootSetup to each root a host's UIDocument builds after the one it was created
+    // with. Pinned by FocusReplacedHostPanelTests.
     internal sealed class PanelHostRootWatch : MonoBehaviour
     {
-        private UIDocument? _document;
+        private PanelHostRecord? _record;
         private ReconcilerContext? _ctx;
         private VisualElement? _root;
 
-        internal static void Watch(UIDocument document, ReconcilerContext ctx)
+        internal static void Watch(PanelHostRecord record, ReconcilerContext ctx)
         {
-            var watch = document.gameObject.AddComponent<PanelHostRootWatch>();
-            watch._document = document;
+            var watch = record.Document.gameObject.AddComponent<PanelHostRootWatch>();
+            watch._record = record;
             watch._ctx = ctx;
-            watch._root = document.rootVisualElement;
+            watch._root = record.Document.rootVisualElement;
         }
 
         private void LateUpdate()
         {
-            if (_document == null || _ctx == null || _ctx.IsDisposed)
+            if (_record == null || _record.Document == null || _ctx == null || _ctx.IsDisposed)
             {
                 return;
             }
-            var root = _document.rootVisualElement;
-            if (root == null || ReferenceEquals(root, _root))
+            var root = _record.Document.rootVisualElement;
+            if (root == null || root.panel == null || ReferenceEquals(root, _root))
             {
                 return;
             }
+            var previous = _root;
             _root = root;
-            FiberFocusNavigator.EnsureAttached(root, _ctx);
+            PanelHostFactory.ApplyRootSetup(_record, previous, _ctx);
         }
     }
 }

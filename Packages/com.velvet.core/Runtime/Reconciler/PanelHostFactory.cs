@@ -22,6 +22,7 @@ namespace Velvet
         public readonly UIDocument Document;
         public float BaseOrder;
         public bool DeclaringResolved;
+        public IPanel? DeclaringPanel;
 
         // Lets go of the holds the host's root takes: on FiberCrossPanelEventDispatcher's listeners, which
         // the event manager keeps for as long as its reconciler lives, and on DefaultFamilyRoots.
@@ -95,11 +96,9 @@ namespace Velvet
             record.DeclaringResolved = declaring != null;
             settings.sortingOrder = baseOrder + offset;
             AttachDocument(record.Document, settings);
-            RecordDeclaringRoot(record, declaringPanel);
-            record.ReleaseBridge = FiberCrossPanelEventDispatcher.AttachBridge(record.Document.rootVisualElement, ctx);
-            record.ReleaseBridge += DefaultFamilyRoots.Hold(record.Document.rootVisualElement).Dispose;
-            FiberFocusNavigator.EnsureAttached(record.Document.rootVisualElement, ctx);
-            PanelHostRootWatch.Watch(record.Document, ctx);
+            record.DeclaringPanel = declaringPanel;
+            ApplyRootSetup(record, null, ctx);
+            PanelHostRootWatch.Watch(record, ctx);
             return record;
         }
 
@@ -128,11 +127,9 @@ namespace Velvet
             settings.renderMode = PanelRenderMode.WorldSpace;
             record.Document.transform.SetPositionAndRotation(node.Position, node.Rotation);
             AttachDocument(record.Document, settings);
-            RecordDeclaringRoot(record, declaringPanel);
-            record.ReleaseBridge = FiberCrossPanelEventDispatcher.AttachBridge(record.Document.rootVisualElement, ctx);
-            record.ReleaseBridge += DefaultFamilyRoots.Hold(record.Document.rootVisualElement).Dispose;
-            FiberFocusNavigator.EnsureAttached(record.Document.rootVisualElement, ctx);
-            PanelHostRootWatch.Watch(record.Document, ctx);
+            record.DeclaringPanel = declaringPanel;
+            ApplyRootSetup(record, null, ctx);
+            PanelHostRootWatch.Watch(record, ctx);
             // The document derives its root sizing from (settings, size mode, size) but only
             // re-derives on a VALUE change, and the attach itself never re-runs it — so both size
             // settings are driven after the attach, with the mode round-tripped so the fixed
@@ -142,6 +139,22 @@ namespace Velvet
             record.Document.worldSpaceSize = node.PanelSize;
             record.Document.worldSpaceSizeMode = WorldSpaceSizeMode.Fixed;
             return record;
+        }
+
+        // What a host's root carries, applied to the first root and again to each root the document builds after it,
+        // so a rebuilt root is set up as the first was. previousRoot is the root being replaced, null for the first.
+        internal static void ApplyRootSetup(PanelHostRecord record, VisualElement? previousRoot, ReconcilerContext ctx)
+        {
+            var root = record.Document.rootVisualElement;
+            RecordDeclaringRoot(record, record.DeclaringPanel);
+            record.ReleaseBridge?.Invoke();
+            record.ReleaseBridge = FiberCrossPanelEventDispatcher.AttachBridge(root, ctx);
+            record.ReleaseBridge += DefaultFamilyRoots.Hold(root).Dispose;
+            FiberFocusNavigator.EnsureAttached(root, ctx);
+            if (previousRoot != null)
+            {
+                FiberFocusNavigator.RekeyChainedHost(previousRoot, root, ctx);
+            }
         }
 
         // The host's breakpoints answer the declaring panel's width: StyleResponsiveScope owns why.

@@ -265,6 +265,15 @@ namespace Velvet
             }
         }
 
+        // Moves a replaced host root's chained-ring ownership to its successor.
+        internal static void RekeyChainedHost(VisualElement previousRoot, VisualElement root, ReconcilerContext ctx)
+        {
+            if (ctx.ChainedHostRoots.Remove(previousRoot, out var owner))
+            {
+                ctx.ChainedHostRoots.TryAdd(root, owner);
+            }
+        }
+
         // Drops an appended portal's placeholder, and its host once no appended portal renders into it. Runs when
         // the portal unmounts (FiberElementCleaner) and whenever its FocusOrder is configured again.
         internal static void ReleaseAppended(VisualElement placeholder, ReconcilerContext ctx)
