@@ -6,3 +6,6 @@
   completions pending beside them, as React flushes its pending passive effects before it renders or commits anything.
   A tree disposed before its mount's `UseEffect`s ran now runs them and then their cleanups, as React's
   `root.unmount()` does. An exception one root's flush throws there is logged, and the rest of that work still runs.
+- A component mounted and rendered again before its `UseEffect`s ran, as when a render completes a parked transition
+  pass that mounted it, lost StrictMode's second run of its mount's `UseEffect`s. It now keeps it, as React runs it for
+  a component in the commit that mounts it.

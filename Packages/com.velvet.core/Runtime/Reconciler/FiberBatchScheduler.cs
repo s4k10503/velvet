@@ -942,9 +942,6 @@ namespace Velvet
                 FiberExecutionContext.Hold(FiberExecutionContext.Request.PassiveFlush, this, this, _flushHeldPassiveEffects);
                 return;
             }
-            // MUTANT_SURVIVES(equivalent, line removed): each caller outside an entry opens another right after it,
-            // VelvetPreviewHost.Settle its FlushImmediate and DrainImmediateForTest its drain, whose start runs the same
-            // flush, and no Runtime caller asks for this one inside an entry.
             FiberExecutionContext.Enter(this, this, static _ => { });
         }
 

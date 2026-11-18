@@ -370,16 +370,23 @@ namespace Velvet.Tests
             return V.Label(text: "effects");
         }
 
+        // GREEN_ON_BASE(characterization): the base ran the walker's held passive flush where the walk ended as well.
+        // The walk stages the effect after its entry's own start has flushed, so only the held request runs it: have
+        // FiberBatchScheduler.FlushPendingPassiveEffects return while an entry is on the stack rather than hold the
+        // request, and this reddens.
         [Test]
-        public void Given_ARootsPassiveFlushAskedForInsideAWalk_When_ThePassEnds_Then_ItsPendingEffectHasRun()
+        public void Given_AWalksOwnPassiveFlushAskedForInsideIt_When_ThePassEnds_Then_TheEffectItsRenderStagedHasRun()
         {
             // Arrange
-            var root = V.Mount(new VisualElement(), V.Component(CountsItsEffectRuns));
-            _roots.Add(root);
             s_effectRuns = 0;
+            var scheduler = _walker.Context.BatchScheduler;
 
             // Act
-            WalkAsking(() => root.GetSchedulerForTest().FlushPendingPassiveEffects());
+            _walker.Reconcile(new VisualElement(), Array.Empty<VNode>(), new VNode[]
+            {
+                V.Component(CountsItsEffectRuns, key: "effects"),
+                V.ScrollView(onCreated: _ => scheduler.FlushPendingPassiveEffects(), key: "asks"),
+            });
 
             // Assert
             Assert.That(s_effectRuns, Is.EqualTo(1));

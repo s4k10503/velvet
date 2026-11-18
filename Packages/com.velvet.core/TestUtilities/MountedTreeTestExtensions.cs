@@ -82,7 +82,7 @@ namespace Velvet.TestUtilities
         /// same ordering production observes on the post-paint scheduler tick.
         /// Test-only. Must not be used from production code.
         /// </summary>
-        // Bypasses: the drain's registration and its anchor: production runs the scheduled drain FiberEffects.ArmPassiveDrain registers on the scheduler's anchor, and flushes early through FiberBatchScheduler.FlushPendingPassiveEffects before a render and as a sync-lane drain ends (FiberBatchScheduler.DrainImmediatePasses).
+        // Bypasses: the drain's registration and its anchor: production runs the scheduled drain FiberEffects.ArmPassiveDrain registers on the scheduler's anchor, and flushes early where an entry starts (FiberExecutionContext.Enter), ahead of a drain's later passes (FiberBatchScheduler.Drain) and as a sync-lane drain ends (FiberBatchScheduler.DrainImmediatePasses).
         public static void FlushEffectsForTest(this MountedTree mounted)
         {
             FiberEffects.FlushPendingPassiveEffects(mounted.Root);

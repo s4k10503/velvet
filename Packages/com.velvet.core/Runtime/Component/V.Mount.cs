@@ -196,8 +196,8 @@ namespace Velvet
             Unmount(context);
         }
 
-        // The root stands down first, so the passive effects the entry starts by running still run but nothing of the root
-        // renders ahead of its unmount, as React's root.unmount() folds the unmount and the root's pending updates into
+        // The root stands down before its unmount's entry, so the passive effects that entry starts by running still run
+        // but render nothing of the root, as React's root.unmount() folds the unmount and the root's pending updates into
         // one render.
         private void Unmount(ReconcilerContext? context)
         {
