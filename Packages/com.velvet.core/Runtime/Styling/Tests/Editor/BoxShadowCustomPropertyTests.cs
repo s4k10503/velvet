@@ -289,8 +289,8 @@ namespace Velvet.Tests
             Assert.That(reader, Is.Null);
         }
 
-        // Tailwind mixes the value of a bracket not typed as a colour into one when it has an opacity modifier, which the
-        // browser finds invalid where it is used (Chromium computes no box-shadow for `ring-2 ring-[number:5px]/50`).
+        // Tailwind mixes the value of a ring bracket into a colour when it has an opacity modifier, a value that is none being
+        // invalid where the box-shadow reads it (Chromium computes no box-shadow for `ring-2 ring-[number:5px]/50`).
         [TestCase("ring-2 ring-[number:5px]/50")]
         [TestCase("ring ring-offset-2 ring-offset-[number:5px]/50")]
         [TestCase("shadow-lg inset-ring inset-ring-[percentage:5%]/50")]
@@ -317,7 +317,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ARingBracketOfAnotherTypeWithAModifierReadingADeclaredProperty_When_Mounted_Then_NoRingIsDrawn()
+        public void Given_ARingBracketOfAnotherTypeWithAModifierReadingAPropertyHoldingNoColour_When_Mounted_Then_NoRingIsDrawn()
         {
             // Act
             var ring = Ring("[--x:5px] ring-2 ring-[number:var(--x)]/50");
@@ -326,17 +326,29 @@ namespace Velvet.Tests
             Assert.That(ring, Is.EqualTo(0f));
         }
 
-        // Tailwind mixes the value of a colour utility's bracket typed as something else into a colour when it has an
-        // opacity modifier, which the browser finds invalid: the property computes as unset.
-        [TestCase("caret-[number:5px]/50")]
-        [TestCase("divide-[number:5px]/50")]
-        [TestCase("bg-[number:5]/50")]
-        [TestCase("border-[number:5]/50")]
-        [TestCase("border-t-[number:5]/50")]
-        [TestCase("outline-[line-width:5px]/50")]
-        [TestCase("from-[number:5]/50")]
-        [TestCase("text-[line-width:5px]/50")]
-        public void Given_AColourUtilitysBracketOfAnotherTypeWithAModifier_When_Read_Then_ItIsAReader(string cls)
+        // GREEN_ON_BASE(characterization): the base draws the ring, which holds a colour whatever the bracket's hint.
+        [Test]
+        public void Given_ARingBracketOfAnotherTypeWithAModifierReadingAColour_When_Mounted_Then_TheRingIsDrawn()
+        {
+            // Act
+            var ring = Ring("[--x:#ff0000] ring-2 ring-[number:var(--x)]/50");
+
+            // Assert
+            Assert.That(ring, Is.EqualTo(2f));
+        }
+
+        // A bracket reading a var() is typed by the browser by what the var() holds, whatever its hint says (Chromium computes
+        // a 50% colour for `bg-[number:var(--x)]/50` with --x: red, and the property's unset for --x: 5px).
+        [TestCase("caret-[number:var(--x)]/50")]
+        [TestCase("divide-[number:var(--x)]/50")]
+        [TestCase("bg-[number:var(--x)]/50")]
+        [TestCase("border-[number:var(--x)]/50")]
+        [TestCase("border-t-[number:var(--x)]/50")]
+        [TestCase("outline-[line-width:var(--x)]/50")]
+        [TestCase("from-[number:var(--x)]/50")]
+        [TestCase("text-[number:var(--x)]/50")]
+        [TestCase("text-[line-width:var(--x)]/50")]
+        public void Given_AColourUtilitysBracketOfAnotherTypeReadingAPropertyWithAModifier_When_Read_Then_ItIsAReader(string cls)
         {
             // Act
             var reader = StyleCustomPropertyClass.Consumer(cls);
@@ -345,18 +357,38 @@ namespace Velvet.Tests
             Assert.That(reader, Is.Not.Null);
         }
 
-        // GREEN_ON_BASE(characterization): the base reads none of these, whose hint is the utility's own width or size.
-        [TestCase("border-[length:5px]/50")]
-        [TestCase("outline-[length:5px]/50")]
-        [TestCase("text-[length:5px]/6")]
-        [TestCase("from-[length:5px]/50")]
-        public void Given_AColourUtilitysBracketTypedAsItsWidthOrSizeWithAModifier_When_Read_Then_ItIsNoReader(string cls)
+        // GREEN_ON_BASE(characterization): the base reads none of these. A literal colour is valid under any hint and one
+        // that is none is dropped with its class, so only the utility's own width or size hint has no colour rule.
+        [TestCase("caret-[number:5px]/50")]
+        [TestCase("bg-[number:#ff0000]/50")]
+        [TestCase("border-[number:5]/50")]
+        [TestCase("outline-[line-width:5px]/50")]
+        [TestCase("from-[number:#ff0000]/50")]
+        [TestCase("border-[length:var(--x)]/50")]
+        [TestCase("outline-[length:var(--x)]/50")]
+        [TestCase("text-[length:var(--x)]/6")]
+        [TestCase("from-[length:var(--x)]/50")]
+        public void Given_ALiteralBracketOrOneTypedAsTheUtilitysOwnWidthOrSizeWithAModifier_When_Read_Then_ItIsNoReader(string cls)
         {
             // Act
             var reader = StyleCustomPropertyClass.Consumer(cls);
 
             // Assert
             Assert.That(reader, Is.Null);
+        }
+
+        // A stop colour is a registered custom property, so Chromium leaves it at its initial value for a literal that is no
+        // colour, where the other colour utilities drop the class.
+        [TestCase("from-[number:5]/50")]
+        [TestCase("via-[number:5]/50")]
+        [TestCase("to-[number:5]/50")]
+        public void Given_AGradientStopLiteralOfAnotherTypeHoldingNoColour_When_Read_Then_ItIsAReader(string cls)
+        {
+            // Act
+            var reader = StyleCustomPropertyClass.Consumer(cls);
+
+            // Assert
+            Assert.That(reader, Is.Not.Null);
         }
 
         // The class source the passes read for an element with classes, once its readers resolve.
@@ -367,26 +399,47 @@ namespace Velvet.Tests
             return scope.Reconciler.Context.VariantGateClasses[scope.Root[0]].Resolved ?? Array.Empty<string>();
         }
 
-        // Chromium computes the divider's colour as currentcolor, the property's initial value, for
-        // `divide-x-2 divide-[#f00] divide-[number:var(--x)]/50`, and the parent's caret colour for the caret.
+        // Chromium keeps the earlier colour's place for a caret reading --x: red, and takes the parent's caret for --x: 5px.
         [Test]
-        public void Given_ADivideBracketOfAnotherTypeWithAModifierAfterAColour_When_ItsReaderIsRead_Then_TheDividerHasNoColour()
+        public void Given_ACaretBracketOfAnotherTypeReadingAColour_When_ItsReaderIsRead_Then_ItIsTheColourAtTheModifiersAlpha()
         {
             // Act
-            StyleDivideClass.TryExtract(ComposedFor("divide-x-2 divide-[#ff0000] divide-[number:5px]/50"), out var spec);
+            var tokens = ComposedFor("[--x:#ff0000] caret-[#00ff00] caret-[number:var(--x)]/50");
+
+            // Assert
+            Assert.That(tokens[tokens.Length - 1], Is.EqualTo("caret-[color:#ff0000]/50"));
+        }
+
+        [Test]
+        public void Given_ACaretBracketOfAnotherTypeReadingNoColour_When_ItsReaderIsRead_Then_TheCaretInheritsIt()
+        {
+            // Act
+            var tokens = ComposedFor("[--x:5px] caret-[#00ff00] caret-[number:var(--x)]/50");
+
+            // Assert
+            Assert.That(tokens[tokens.Length - 1], Is.EqualTo("caret-inherit"));
+        }
+
+        [Test]
+        public void Given_ADivideBracketOfAnotherTypeReadingNoColour_When_ItsReaderIsRead_Then_TheDividerHasNoColour()
+        {
+            // Act
+            StyleDivideClass.TryExtract(ComposedFor("[--x:5px] divide-x-2 divide-[#ff0000] divide-[number:var(--x)]/50"), out var spec);
 
             // Assert
             Assert.That(spec.HasColor, Is.False);
         }
 
-        [Test]
-        public void Given_ACaretBracketOfAnotherTypeWithAModifierAfterAColour_When_ItsReaderIsRead_Then_TheCaretInheritsIt()
+        // GREEN_ON_BASE(characterization): the base draws a ring whose bracket is typed as another type but holds a colour.
+        [TestCase("ring-2 ring-[number:#ff0000]/50")]
+        [TestCase("ring ring-offset-2 ring-offset-[number:#ff0000]/50")]
+        public void Given_ARingBracketOfAnotherTypeHoldingAColourWithAModifier_When_Extracted_Then_TheRingIsDrawn(string classes)
         {
             // Act
-            var tokens = ComposedFor("caret-[#ff0000] caret-[number:5px]/50");
+            var drawn = StyleRingClass.TryExtract(StyleSpacingPrecedence.Normalize(classes.Split(' ')), out _);
 
             // Assert
-            Assert.That(tokens[tokens.Length - 1], Is.EqualTo("caret-inherit"));
+            Assert.That(drawn, Is.True);
         }
     }
 }

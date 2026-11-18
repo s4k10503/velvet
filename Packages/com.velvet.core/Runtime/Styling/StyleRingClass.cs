@@ -395,12 +395,12 @@ namespace Velvet
                 slots.Width.Offer(important, false);
                 return;
             }
-            // A bracketed modifier closes a bracket of its own, which is not the value's.
-            if (MixesMismatchedHint(suffix, root))
+            if (MixesNonColour(suffix, root))
             {
                 slots.Colour.Offer(important, true);
                 return;
             }
+            // A bracketed modifier closes a bracket of its own, which is not the value's.
             if (StyleColorValueParser.ColorModifierSlashIndex(suffix, 0) != -1
                 || !StyleArbitraryValueResolver.TryStripBrackets(suffix, 0, out var inner))
             {
@@ -431,14 +431,16 @@ namespace Velvet
             slots.Colour.Offer(important, StyleColorValueParser.RejectsAsColour(value));
         }
 
-        // Whether suffix is a bracket whose type hint is neither the colour's nor root's width's, with an opacity modifier:
-        // Tailwind mixes the value into a colour, which it is not.
-        private static bool MixesMismatchedHint(string suffix, string root)
+        // Whether suffix is a bracket with an opacity modifier holding a value that is no colour, under a type hint that is
+        // not root's width's: Tailwind mixes it into a colour, a custom property the box-shadow reads, which the browser then
+        // finds invalid there. A colour under such a hint is valid, and read as a colour.
+        private static bool MixesNonColour(string suffix, string root)
         {
             var slash = StyleColorValueParser.ColorModifierSlashIndex(suffix, 0);
             return slash > 2 && suffix[0] == '[' && suffix[slash - 1] == ']'
-                && StyleArbitraryValueResolver.TrySplitTypeHint(suffix.AsSpan(1, slash - 2), out var hint, out _)
-                && hint != null && hint != "color" && !StyleColorValueParser.HintSelectsNonColour(root, hint);
+                && StyleArbitraryValueResolver.TrySplitTypeHint(suffix.AsSpan(1, slash - 2), out var hint, out var value)
+                && hint != null && !StyleColorValueParser.HintSelectsNonColour(root, hint)
+                && StyleColorValueParser.RejectsAsColour(value.ToString());
         }
 
         // Tailwind's isPositiveInteger: String(Number(suffix)) === suffix, so digits without a leading zero, naming

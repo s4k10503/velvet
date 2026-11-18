@@ -235,13 +235,13 @@ namespace Velvet
                 };
             }
 
-            // An unchanged panel version is taken as a layout this class has already brought up to date: the panel
-            // moves it on every version change of an element on it, and the update case of
-            // UseLayoutEffectLayoutReadTests fails when a layout-dirtying one stops moving it.
             internal bool IsCurrent() => _laidOut && _version() == _laidOutVersion;
 
             internal void Accept() => _laidOutVersion = _version();
 
+            // An unchanged panel version is taken as a layout this class has already brought up to date: the panel
+            // moves it on every version change of an element on it, and the update case of
+            // UseLayoutEffectLayoutReadTests fails when a layout-dirtying one stops moving it.
             internal bool EnsureLaidOut()
             {
                 // MUTANT_SURVIVES(equivalent): a computation over a panel nothing changed on changes nothing.

@@ -17,6 +17,8 @@ namespace Velvet
             {
                 into.Append(consumer.AddedHint).Append(':');
             }
+            // A bracket read as a colour is written with the colour's hint in place of its own.
+            from = consumer.RetypesColour ? consumer.Shape.BodyStart : from;
             s_resolving.Clear();
             return consumer.ShadowLayers
                 ? TryAppendShadowLayers(element, consumer, from, into)

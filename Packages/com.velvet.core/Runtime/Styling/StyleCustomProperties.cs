@@ -91,8 +91,10 @@ namespace Velvet
             // (StyleVariantPayload.IsImportanceAware): its payloads carry it, and so rank among the element's important
             // literals by the consumer's own place.
             public readonly bool KeepsBang;
-            // A colour utility's bracket typed as something else, with an opacity modifier: invalid, so it takes the unset
-            // of its colour whatever it reads (StyleCustomPropertyClass.MixesMismatchedColour).
+            // A colour utility's bracket reading a var(), typed as something else, with an opacity modifier: read as a colour,
+            // which the unset applies to where the value is none (StyleCustomPropertyClass.RetypesColour).
+            public readonly bool RetypesColour;
+            // A gradient stop's literal bracket of that kind holding no colour (StyleCustomPropertyClass.UnsetsLiteralStop).
             public readonly bool ForcesUnset;
             // Whether the unset the consumer writes discards the element's box-shadow, which an element off a panel does
             // not write: a variable a stylesheet declares is read only once the element is on one (Reresolve).
@@ -117,9 +119,10 @@ namespace Velvet
                 Order = order;
                 Context = context;
                 Shape = UtilityShape.Of(utility);
-                ForcesUnset = StyleCustomPropertyClass.MixesMismatchedColour(utility);
-                AddedHint = ForcesUnset ? "color" : DefaultHint(utility, Shape);
-                EffectiveHint = ForcesUnset ? "color" : Shape.Hint ?? AddedHint;
+                RetypesColour = StyleCustomPropertyClass.RetypesColour(utility);
+                ForcesUnset = StyleCustomPropertyClass.UnsetsLiteralStop(utility);
+                AddedHint = RetypesColour || ForcesUnset ? "color" : DefaultHint(utility, Shape);
+                EffectiveHint = RetypesColour || ForcesUnset ? "color" : Shape.Hint ?? AddedHint;
                 Sides = StyleCustomPropertyClass.SidesOf(utility, Shape);
                 StacksZ = StyleZIndexClass.VariableUtility(utility) != null;
                 StacksOrder = StyleOrderClass.VariableUtility(utility) != null;
@@ -509,7 +512,7 @@ namespace Velvet
         {
             using var themeScope = StyleThemeTokens.Use(consumer.Context, target);
             s_built.Clear();
-            var resolved = !consumer.ForcesUnset && TryBuild(target, consumer, s_built);
+            var resolved = BuildResolved(target, consumer);
             if (DefersUnset(target, consumer, ref resolved))
             {
                 return;
@@ -556,6 +559,23 @@ namespace Velvet
             }
             SettleWritten(target, consumer, WrittenBy(consumer.Applied, unset ? consumer.Property : null));
             AcceptUnset(target, current);
+        }
+
+        // Whether consumer resolves: its var()s do, and a bracket read as a colour holds one.
+        private static bool BuildResolved(VisualElement target, Consumer consumer)
+        {
+            if (consumer.ForcesUnset || !TryBuild(target, consumer, s_built))
+            {
+                return false;
+            }
+            if (!consumer.RetypesColour)
+            {
+                return true;
+            }
+            var built = s_built.ToString();
+            var shape = UtilityShape.Of(built);
+            return StyleColorValueParser.TryParseColor(
+                built.AsSpan(shape.BodyStart, shape.MainClose - shape.BodyStart).ToString().Replace('_', ' ').AsSpan(), out _);
         }
 
         // Whether the panel is as its last pass left it where consumer is about to write the unset that discards a

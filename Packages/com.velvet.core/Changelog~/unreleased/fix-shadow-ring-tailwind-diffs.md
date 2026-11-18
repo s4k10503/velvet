@@ -35,9 +35,12 @@
 - A `shadow-[var(--x)]`, `ring-[length:var(--w)]` or `inset-ring-[length:var(--w)]` whose property a stylesheet
   declares no longer drops the element's ring and shadow before the property is first read: the unset is written after the
   element's styles are applied and the property is read again.
-- A `ring-`, `ring-offset-` or `inset-ring-` bracket typed as anything but a length, with an opacity modifier
-  (`ring-[number:5px]/50`), is a colour Tailwind mixes the value into, which the browser finds invalid: it now discards
-  the box-shadow, where the class was ignored. The same on a `bg-`, `border-`, `outline-`, `from-`, `via-`, `to-`,
-  `text-`, `caret-` or `divide-` bracket makes the property its unset, as the browser computes it: the parent's colour
-  for a caret and a text colour, the initial value (currentcolor, or transparent for a background) for the others,
-  where a colour class before it kept its colour.
+- A `ring-`, `ring-offset-` or `inset-ring-` bracket typed as anything but a length, with an opacity modifier, is a
+  colour Tailwind mixes the value into: a value that is none (`ring-[number:5px]/50`) now discards the box-shadow, as the
+  browser does where the box-shadow reads it, where the class was ignored; a colour under that hint is drawn as before.
+- A `bg-`, `border-`, `outline-`, `text-`, `caret-` or `divide-` bracket reading a `var()`, typed as something else, with an
+  opacity modifier (`bg-[number:var(--x)]/50`) is read as the colour the variable holds, at that opacity, as the browser
+  reads it. Where the variable is undeclared or holds no colour the property takes its unset: the parent's colour for a
+  caret and a text colour, currentcolor for a border, an outline and a divider, transparent for a background, and for a
+  `from-`, `via-` or `to-` stop, which also takes it for a literal bracket of that kind holding no colour. The unset
+  replaces an earlier colour class of the property that Tailwind orders before it by its class name, as in the browser.

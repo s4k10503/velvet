@@ -139,7 +139,7 @@ namespace Velvet
                 return null;
             }
             var shape = UtilityShape.Of(expanded);
-            return expanded.IndexOf("var(", open, StringComparison.OrdinalIgnoreCase) > open || MixesMismatchedColour(expanded)
+            return expanded.IndexOf("var(", open, StringComparison.OrdinalIgnoreCase) > open || UnsetsLiteralStop(expanded)
                 || (SidesOf(expanded, shape) != null && HoldsSeveralValues(expanded, shape))
                 ? expanded
                 : null;
@@ -174,8 +174,7 @@ namespace Velvet
         }
 
         // The roots Tailwind 4.3.3 writes a rule for an opacity modifier on that Velvet reads: those of a shadow under any
-        // type hint, and those of a colour under a hint that is not a width's or a size's, which Tailwind mixes into a
-        // colour it is not (MixesMismatchedColour).
+        // type hint, and those of a colour under a hint that is not a width's or a size's.
         private static readonly HashSet<string> s_shadowModifierRoots = new(StringComparer.Ordinal)
         {
             "shadow", "inset-shadow", "drop-shadow",
@@ -187,16 +186,28 @@ namespace Velvet
         private static bool TakesOpacityModifier(string root, string? hint)
             => s_shadowModifierRoots.Contains(root)
                 || (IsColourRoot(root)
-                    && !StyleColorValueParser.HintSelectsNonColour(StyleBorderSideColor.IsSideRoot(root) ? "border" : root, hint)
-                    && !(root == "text" && hint == "number"));
+                    && !StyleColorValueParser.HintSelectsNonColour(StyleBorderSideColor.IsSideRoot(root) ? "border" : root, hint));
 
-        // Whether utility is a colour utility's bracket typed as something else, with a numeric opacity modifier: the colour
-        // Tailwind mixes the value into is invalid, which the browser computes as the property's unset. A ring's roots
-        // discard the box-shadow instead (StyleRingClass.MixesMismatchedHint).
-        internal static bool MixesMismatchedColour(string utility)
-            => TryReadNumericModifier(utility, out var root, out var hint) && hint != null && hint != "color"
-                && !(root is "ring" or "ring-offset" or "inset-ring") && TakesOpacityModifier(root, hint)
-                && !s_shadowModifierRoots.Contains(root);
+        // Whether utility is a colour utility's bracket reading a var() with an opacity modifier, typed as something other
+        // than a colour or the utility's own width or size. Tailwind passes the var() through untyped, so whether it is a
+        // colour is the value's to say, and the reader is read as a colour (a ring's, which discards the box-shadow where it
+        // is none, are read as they are: StyleRingClass.ReadBoxShadowPart).
+        internal static bool RetypesColour(string utility)
+            => utility.IndexOf("var(", StringComparison.OrdinalIgnoreCase) >= 0
+                && TryReadNumericModifier(utility, out var root, out var hint) && hint != null && hint != "color"
+                && !(root is "ring" or "ring-offset" or "inset-ring") && !s_shadowModifierRoots.Contains(root)
+                && TakesOpacityModifier(root, hint);
+
+        // Whether utility is a gradient stop's bracket typed as something else, with an opacity modifier, holding no
+        // colour: a stop colour is a registered custom property, which a value that is no colour leaves at its initial
+        // value, where the other colour utilities drop such a declaration with the rest of the class.
+        internal static bool UnsetsLiteralStop(string utility)
+            => TryReadNumericModifier(utility, out var root, out var hint) && root is "from" or "via" or "to"
+                && hint != null && hint != "color" && !StyleColorValueParser.HintSelectsNonColour(root, hint)
+                && utility.IndexOf("var(", StringComparison.OrdinalIgnoreCase) < 0
+                && StyleColorValueParser.RejectsAsColour(StyleArbitraryValueResolver.WithoutTypeHint(utility) is { } plain
+                    ? plain.Substring(plain.IndexOf('[') + 1, plain.LastIndexOf('/') - plain.IndexOf('[') - 2)
+                    : string.Empty);
 
         // `prefix-(--x)`, `prefix-(hint:--x)` and a modifier's `/(--x)`, each written as the bracket Tailwind reads
         // it as (`[var(--x)]`, `[hint:var(--x)]`). The token as it is when it holds none; null when a parenthesised
