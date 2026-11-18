@@ -677,7 +677,10 @@ namespace Velvet
         // Kept out of ScheduleRunEffects, whose every call would otherwise build this closure
         // (RenderCommitAllocationTests).
         private static void ScheduleStandaloneEffectRun(VisualElement mountPoint, ComponentFiber fiber)
-            => mountPoint.schedule.Execute(() => PanelSchedulerCallback.Run(fiber.MountPoint, fiber, RunEffects));
+        {
+            var host = HostSchedulers.For(fiber);
+            host.Schedule(mountPoint, () => host.Run(fiber.MountPoint, fiber, RunEffects));
+        }
 
         private static void ArmPassiveDrain(ReconcilerContext context)
         {
@@ -694,14 +697,14 @@ namespace Velvet
             if (anchor == null) return;
             context.PassiveEffectDrainScheduled = true;
             context.PassiveEffectDrainAnchor = anchor;
-            anchor.schedule.Execute(context.PassiveEffectDrainCallback ??= PassiveEffectDrainCallback(context));
+            context.HostScheduler.Schedule(anchor, context.PassiveEffectDrainCallback ??= PassiveEffectDrainCallback(context));
         }
 
         // Runs under the element the drain was armed on, which stays on the context when a dispose between the arming
         // and the run nulls the scheduler's anchor. One field serves every registration still waiting, since each
         // arming writes the same element: a context's anchor is set once.
         private static Action PassiveEffectDrainCallback(ReconcilerContext context)
-            => () => PanelSchedulerCallback.Run(
+            => () => context.HostScheduler.Run(
                 context.PassiveEffectDrainAnchor, context, static ctx => DrainPassiveEffects(ctx));
 
         // An exit with nothing to animate, whose child the pass that just ended removed, settles in the

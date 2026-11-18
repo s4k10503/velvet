@@ -16,30 +16,18 @@ namespace Velvet
 
         private static IPanel? s_currentPanel;
 
-        internal readonly struct Outer
+        internal static HostPass Enter(IPanel? panel)
         {
-            internal readonly int Id;
-            internal readonly IPanel? Panel;
-
-            internal Outer(int id, IPanel? panel)
-            {
-                Id = id;
-                Panel = panel;
-            }
-        }
-
-        internal static Outer Enter(IPanel? panel)
-        {
-            var outer = new Outer(Current, s_currentPanel);
+            var outer = new HostPass(Current, s_currentPanel);
             Current = ++s_started;
             s_currentPanel = panel;
             return outer;
         }
 
-        internal static void Exit(Outer outer)
+        internal static void Exit(HostPass outer)
         {
             Current = outer.Id;
-            s_currentPanel = outer.Panel;
+            s_currentPanel = (IPanel?)outer.Host;
         }
 
         internal static void Run<T>(VisualElement? host, T state, Action<T> body)
