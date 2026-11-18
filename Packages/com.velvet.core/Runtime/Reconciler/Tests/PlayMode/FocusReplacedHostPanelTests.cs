@@ -13,8 +13,8 @@ namespace Velvet.Tests
     /// <summary>
     /// A host document that stays disabled through a panel update comes back with a new root in a new panel. What the
     /// host's first root carried (the focus navigator, the chained ring, the event bridge, the default family and the
-    /// viewport of the declaring panel) is on the new root and panel too, with no patch of a portal into it. The
-    /// portal's children stay on the old root until a patch moves them.
+    /// viewport of the declaring panel) is on the new root and panel too, and so are the portal's children, with no
+    /// patch of the portal from outside.
     /// </summary>
     internal sealed class FocusReplacedHostPanelTests
     {
@@ -271,6 +271,79 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(replaced && s_pointerDownReached, Is.True);
+        }
+
+        [UnityTest]
+        public IEnumerator Given_ALayerHostWhosePanelWasReplaced_When_NothingPatchesThePortal_Then_ItsNewRootHoldsThePortalsChildren()
+        {
+            // Arrange
+            yield return MountLayerHost(PanelFocusOrder.Isolated);
+            var document = LayerDocument;
+            var oldRoot = document.rootVisualElement;
+            var oldPanel = oldRoot.panel;
+
+            // Act
+            yield return ReplaceRoot(document);
+            var root = document.rootVisualElement;
+
+            // Assert
+            Assert.That(Replaced(root, oldRoot, oldPanel) && root.Q<VisualElement>("p1") != null, Is.True);
+        }
+
+        [UnityTest]
+        public IEnumerator Given_AWorldSpaceHostWhosePanelWasReplaced_When_NothingPatchesIt_Then_ItsNewRootHoldsItsChildren()
+        {
+            // Arrange
+            _mounted = V.Mount(_panelGo.GetComponent<UIDocument>().rootVisualElement, V.Component(WorldSpaceHost, key: "root"));
+            yield return null;
+            yield return null;
+            var document = WorldSpaceDocument;
+            var oldRoot = document.rootVisualElement;
+            var oldPanel = oldRoot.panel;
+
+            // Act
+            yield return ReplaceRoot(document);
+            var root = document.rootVisualElement;
+
+            // Assert
+            Assert.That(Replaced(root, oldRoot, oldPanel) && root.Q<VisualElement>("ws1") != null, Is.True);
+        }
+
+        [UnityTest]
+        [TestCase(PanelFocusOrder.Appended, ExpectedResult = null,
+            TestName = "Given_AnAppendedLayerHostWhosePanelWasReplaced_When_NothingPatchesAndTabDispatchesFromTheHostsLastFocusable_Then_FocusReturnsToTheDeclaringPanel")]
+        [TestCase(PanelFocusOrder.Chained, ExpectedResult = null,
+            TestName = "Given_AChainedLayerHostWhosePanelWasReplaced_When_NothingPatchesAndTabDispatchesFromTheHostsLastFocusable_Then_FocusReturnsToTheDeclaringPanel")]
+        public IEnumerator Given_ALayerHostWhosePanelWasReplaced_When_NothingPatchesAndTabDispatchesFromTheHostsLastFocusable_Then_FocusReturnsToTheDeclaringPanel(
+            PanelFocusOrder order)
+        {
+            // Arrange
+            yield return MountLayerHost(order);
+            var document = LayerDocument;
+            var oldRoot = document.rootVisualElement;
+            var oldPanel = oldRoot.panel;
+            yield return ReplaceRoot(document);
+            yield return null;
+            var root = document.rootVisualElement;
+            var replaced = Replaced(root, oldRoot, oldPanel);
+            var p2 = root.Q<VisualElement>("p2");
+            var main1 = _panelGo.GetComponent<UIDocument>().rootVisualElement.Q<VisualElement>("main1");
+            p2?.Focus();
+            var held = p2 != null && p2.panel.focusController.focusedElement == p2;
+
+            // Act
+            using (var move = NavigationMoveEvent.GetPooled(NavigationMoveEvent.Direction.Next))
+            {
+                var from = p2 ?? root;
+                move.target = from;
+                from.SendEvent(move);
+            }
+            yield return null;
+            yield return null;
+            yield return null;
+
+            // Assert — null where the host kept its panel, or its p2 is missing or never took focus, which main1 can never be
+            Assert.That(replaced && held ? main1.panel.focusController.focusedElement : null, Is.EqualTo(main1));
         }
 
         [UnityTest]

@@ -154,6 +154,23 @@ namespace Velvet
             if (previousRoot != null)
             {
                 FiberFocusNavigator.RekeyChainedHost(previousRoot, root, ctx);
+                RenderPortalsInto(previousRoot, ctx);
+            }
+        }
+
+        // The children of a portal into the replaced root stand on that dead root, and a Portal is patched onto the
+        // host's current root only when its declaring component renders, which is what
+        // ReconcilerContext.OnPortalTargetRegistered asks for a registered element in the same way.
+        private static void RenderPortalsInto(VisualElement previousRoot, ReconcilerContext ctx)
+        {
+            foreach (var info in ctx.PortalState.Values)
+            {
+                if (!ReferenceEquals(info.Target, previousRoot) || info.DeclaringFiber == null)
+                {
+                    continue;
+                }
+                info.DeclaringFiber.InvalidateMemoCache();
+                FiberWorkLoop.RequestRenderFromHook(info.DeclaringFiber);
             }
         }
 
