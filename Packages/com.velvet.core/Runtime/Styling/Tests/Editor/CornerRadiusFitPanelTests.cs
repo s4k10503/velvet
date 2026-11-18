@@ -16,6 +16,11 @@ namespace Velvet.Tests
     /// </remarks>
     internal sealed class CornerRadiusFitPanelTests : PanelTestBase
     {
+        // A type of the application's own, which the factory builds through Activator.
+        internal sealed class RadiusWatchProbeBox : VisualElement
+        {
+        }
+
         private const string WideBox = "w-[330px] h-[34px]";
 
         private const string OwnRadiusSheet = "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/LayoutIdTestRules.uss";
@@ -77,6 +82,9 @@ namespace Velvet.Tests
             {
                 "label" => V.Label(name: "box", className: className),
                 "button" => V.Button(name: "box", className: className),
+                "textfield" => V.TextField(name: "box", className: className),
+                "toggle" => V.Toggle(name: "box", className: className),
+                "custom" => V.Custom<RadiusWatchProbeBox>(name: "box", className: className),
                 _ => V.ScrollView(name: "box", className: className),
             };
         }
@@ -479,40 +487,19 @@ namespace Velvet.Tests
             Assert.That(Radii(box), Is.EqualTo(s_unevenRadiiFittedToWideBox).Within(1e-3f));
         }
 
-        [Test]
-        public void Given_ALaidOutLabelWithNoRadius_When_ItsClassBecomesOneWhoseOwnRuleOverflowsItsHeight_Then_ItsCornersAreScaledWithNoSizeChange()
-        {
-            // Arrange — a Label is a host of the fit, whose own event handling the style pass reaches.
-            AttachOwnRadiusSheet();
-            var box = MountSwitchableOfKind("label");
-
-            // Act
-            SwitchClass($"{WideBox} layout-id-test-uneven");
-
-            // Assert
-            Assert.That(Radii(box), Is.EqualTo(s_unevenRadiiFittedToWideBox).Within(1e-3f));
-        }
-
-        [Test]
-        public void Given_ALaidOutButtonWithNoRadius_When_ItsClassBecomesOneWhoseOwnRuleOverflowsItsHeight_Then_ItsCornersAreScaledWithNoSizeChange()
+        // Each kind is a type the factory builds a different way: a Label and a Button are hosts of the fit, a TextField and a
+        // Toggle are pooled, a ScrollView is built directly, and RadiusWatchProbeBox reaches the factory's Activator fallback.
+        [TestCase("label")]
+        [TestCase("button")]
+        [TestCase("textfield")]
+        [TestCase("toggle")]
+        [TestCase("scroll")]
+        [TestCase("custom")]
+        public void Given_ALaidOutElementWithNoRadius_When_ItsClassBecomesOneWhoseOwnRuleOverflowsItsHeight_Then_ItsCornersAreScaledWithNoSizeChange(string kind)
         {
             // Arrange
             AttachOwnRadiusSheet();
-            var box = MountSwitchableOfKind("button");
-
-            // Act
-            SwitchClass($"{WideBox} layout-id-test-uneven");
-
-            // Assert
-            Assert.That(Radii(box), Is.EqualTo(s_unevenRadiiFittedToWideBox).Within(1e-3f));
-        }
-
-        [Test]
-        public void Given_ALaidOutScrollViewWithNoRadius_When_ItsClassBecomesOneWhoseOwnRuleOverflowsItsHeight_Then_ItsCornersAreScaledWithNoSizeChange()
-        {
-            // Arrange — a ScrollView is no host: the fit registers a callback on it.
-            AttachOwnRadiusSheet();
-            var box = MountSwitchableOfKind("scroll");
+            var box = MountSwitchableOfKind(kind);
 
             // Act
             SwitchClass($"{WideBox} layout-id-test-uneven");
@@ -524,7 +511,7 @@ namespace Velvet.Tests
         [Test]
         public void Given_ALaidOutBoxWhoseCodeWroteARadiusBeyondItsHeight_When_ItsClassChangesWithNoSizeChange_Then_ItsCornersAreScaled()
         {
-            // Arrange — the write itself raises neither a size change nor a style pass.
+            // Arrange
             var box = MountSwitchable(WideBox);
             box.style.borderTopLeftRadius = 400f;
             box.style.borderTopRightRadius = 400f;

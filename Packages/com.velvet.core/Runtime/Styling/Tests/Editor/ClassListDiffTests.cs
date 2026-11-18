@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using NUnit.Framework;
 using Velvet;
 using UnityEngine;
@@ -62,7 +64,7 @@ namespace Velvet.Tests
 
             // Assert
             CollectionAssert.AreEquivalent(
-                new[] { "btn", "btn--primary" }, _root.ElementAt(0).GetClasses());
+                new[] { "btn", "btn--primary" }, Classes(_root.ElementAt(0)));
         }
 
         [Test]
@@ -77,7 +79,7 @@ namespace Velvet.Tests
             _reconciler.Reconcile(_root, oldTree, newTree);
 
             // Assert
-            CollectionAssert.AreEquivalent(new[] { "btn" }, _root.ElementAt(0).GetClasses());
+            CollectionAssert.AreEquivalent(new[] { "btn" }, Classes(_root.ElementAt(0)));
         }
 
         [Test]
@@ -101,14 +103,14 @@ namespace Velvet.Tests
             };
             _reconciler.Reconcile(_root, Array.Empty<VNode>(), new VNode[] { oldNode });
             var element = _root.ElementAt(0);
-            Assume.That(element.GetClasses(), Is.EquivalentTo(new[] { "btn", "btn--primary" }),
+            Assume.That(Classes(element), Is.EquivalentTo(new[] { "btn", "btn--primary" }),
                 "Precondition: the first render applied both classes");
 
             // Act
             _reconciler.Reconcile(_root, new VNode[] { oldNode }, new VNode[] { newNode });
 
             // Assert
-            CollectionAssert.AreEquivalent(new[] { "btn", "btn--primary" }, element.GetClasses());
+            CollectionAssert.AreEquivalent(new[] { "btn", "btn--primary" }, Classes(element));
         }
 
         [Test]
@@ -124,7 +126,7 @@ namespace Velvet.Tests
 
             // Assert
             CollectionAssert.AreEquivalent(
-                new[] { "btn", "btn--primary" }, _root.ElementAt(0).GetClasses());
+                new[] { "btn", "btn--primary" }, Classes(_root.ElementAt(0)));
         }
 
         [Test]
@@ -140,7 +142,7 @@ namespace Velvet.Tests
 
             // Assert
             CollectionAssert.AreEquivalent(
-                new[] { "new-x", "new-y" }, _root.ElementAt(0).GetClasses());
+                new[] { "new-x", "new-y" }, Classes(_root.ElementAt(0)));
         }
 
         [Test]
@@ -224,5 +226,9 @@ namespace Velvet.Tests
             // Act + Assert
             Assert.DoesNotThrow(() => _reconciler.Reconcile(_root, oldTree, newTree));
         }
+
+        // The classes a className wrote and the reconciler's own, without the one the factory marks every element with.
+        private static IEnumerable<string> Classes(VisualElement element)
+            => element.GetClasses().Where(cls => cls != CornerRadiusFit.WatchClass);
     }
 }

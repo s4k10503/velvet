@@ -60,8 +60,8 @@ namespace Velvet
     /// An element none of that reaches is observed from its creation (<see cref="Observe"/>): the first size change or
     /// style pass that finds a radius resolved on it attaches the fit, which then reads the rules' radius through
     /// <see cref="StyleCascade.Radius"/> and a length its code writes as it does for any other element. A style
-    /// pass reaches the fit through the custom property <c>_preflight.uss</c> gives the types Velvet builds, so it
-    /// needs the bundled stylesheet attached.
+    /// pass reaches the fit through the custom property <c>_preflight.uss</c> gives <see cref="WatchClass"/>, which
+    /// <see cref="ObserveBuilt"/> puts on each element the factory builds, so it needs the bundled stylesheet attached.
     /// </remarks>
     internal static class CornerRadiusFit
     {
@@ -109,6 +109,18 @@ namespace Velvet
 
         // Watches element for a radius its rules or its code give it, which no class or arbitrary value declared.
         public static void Observe(VisualElement element) => Watch(element);
+
+        // The class _preflight.uss keys the custom property on that makes UI Toolkit send an element its style passes.
+        internal const string WatchClass = "velvet-radius-watch";
+
+        // Observe for an element the factory built, which also carries the class. Kept out of Observe, which allocates nothing
+        // (CornerRadiusFitObserveAllocationTests); a recycled element loses the class with the rest of its class list and
+        // gets it again when the factory builds with it.
+        public static void ObserveBuilt(VisualElement element)
+        {
+            element.AddToClassList(WatchClass);
+            Watch(element);
+        }
 
         // Watching a host sets its flag, and its type hands it its size changes and style passes, so watching one allocates
         // nothing (CornerRadiusFitObserveAllocationTests). Neither kind is ever unwatched: nothing unregisters a callback,
