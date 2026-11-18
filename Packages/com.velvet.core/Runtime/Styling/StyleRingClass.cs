@@ -433,16 +433,17 @@ namespace Velvet
                 keywordsPass: !(root == "inset-ring" && value.Equals("inset", System.StringComparison.OrdinalIgnoreCase))));
         }
 
-        // Whether suffix is a bracket with a numeric opacity modifier holding a value that is no colour, under a type hint
-        // that is not root's width's: Tailwind mixes it into a colour, a custom property the box-shadow reads, which the
-        // browser then finds invalid there. A colour under such a hint is valid, and read as a colour; a keyword is none,
-        // and so is a value Velvet's grammar rejects. A width's hint, or a modifier that reads a variable, leaves it as it was.
+        // Whether suffix is a bracket holding a value that is no colour, behind an opacity modifier that reads no variable
+        // and under no type hint or one that is not root's width's: Tailwind mixes it into a colour, a custom property the
+        // box-shadow reads, which the browser then finds invalid there. A colour under such a hint is valid, and read as a
+        // colour; a keyword is none, and so is a value Velvet's grammar rejects. A width's hint, or a modifier that reads a
+        // variable, leaves it as it was.
         private static bool MixesNonColour(string suffix, string root)
         {
             var slash = StyleColorValueParser.ColorModifierSlashIndex(suffix, 0);
             var modifier = slash < 0 ? ReadOnlySpan<char>.Empty : suffix.AsSpan(slash + 1);
             return slash > 2 && suffix[0] == '[' && suffix[slash - 1] == ']'
-                && !modifier.IsEmpty && modifier.TrimStart("0123456789.".AsSpan()).IsEmpty
+                && !modifier.IsEmpty && modifier[0] != '(' && modifier.IndexOf("var(".AsSpan()) < 0
                 && StyleArbitraryValueResolver.TrySplitTypeHint(suffix.AsSpan(1, slash - 2), out var hint, out var value)
                 && (hint == null || !StyleColorValueParser.HintSelectsNonColour(root, hint))
                 && (StyleColorValueParser.IsKeyword(value.ToString())
