@@ -1886,7 +1886,7 @@ namespace Velvet
         // Both Mount and update commits push onto this stack: MountInline pushes with
         // IsMount: true, SubsumeFiberIntoThisPass (parent re-render reaching an
         // existing inline child) pushes with IsMount: false. The drain forwards the flag
-        // to the insertion- and layout-effect passes as mountDoubleInvoke so
+        // to the layout-effect pass as mountDoubleInvoke so
         // the Editor-only mount double-invoke fires only on initial Mount, not on the deps-changed
         // re-expansion path: a layout effect on an update fires its deps
         // cleanup + setup once, not twice.
@@ -2294,9 +2294,10 @@ namespace Velvet
 
         // Cycles the ref installed on an element to match the node being committed: both the old cleanup and
         // the new setup after the pass, at its boundary or in the layout commit that follows it, the old first,
-        // as React detaches the refs of a commit before it attaches. Run mid-pass, the cleanup took away
-        // whatever the old setup published — a portal id — from the patches still to come in that pass, which
-        // an inline lambda, a new delegate at every render,
+        // as React detaches the refs of a commit before it attaches; in a wave that runs turn ends the cleanup runs
+        // where the wave's writes reach the element instead (ChildListWrites.RecordRefDetach). Run mid-pass, the
+        // cleanup took away whatever the old setup published — a portal id — from the patches still to come in that
+        // pass, which an inline lambda, a new delegate at every render,
         // turned into a render that re-published the id and asked for the next. A ref removed outright is
         // cleaned up at once. A patch carrying the SAME callback delegate is a no-op —
         // unconditionally re-invoking made any state write in a ref cleanup a per-patch mid-flush write,
@@ -2324,6 +2325,7 @@ namespace Velvet
             }
             var entry = (Element: (VisualElement?)element, Callback: refCallback,
                 Owner: FiberStack.Current, Pass: CurrentPass);
+            if (installed.Cleanup != null && entry.Owner != null) ChildListWrites.RecordRefDetach(element, entry.Owner);
             if (_pendingRefAttachIndex.TryGetValue(element, out var queued))
             {
                 _pendingRefAttaches[queued] = entry;
@@ -2479,6 +2481,23 @@ namespace Velvet
             finally
             {
                 _drainingRefAttaches = enclosing;
+            }
+        }
+
+        // A RefDetach a wave's writes reach (ChildListWrites.RecordRefDetach): the detach above, at commit depth as the
+        // layout commit's cleanup pass runs it. An element whose owner the wave is deleting leaves with it, and the
+        // teardown of that deletion detaches the ref where its walk reaches the element (FiberElementCleaner.DetachRef).
+        internal void DetachReplacedRefAtItsTurn(VisualElement element, ComponentFiber owner)
+        {
+            if (owner.IsBeingDeleted) return;
+            EffectCommitDepth++;
+            try
+            {
+                DetachReplacedRef(element);
+            }
+            finally
+            {
+                EffectCommitDepth--;
             }
         }
 
@@ -3436,6 +3455,10 @@ namespace Velvet
         internal bool WaveRecords;
         internal bool WaveOwesIndicatorFlush;
         internal readonly List<VisualElement?> WaveHasVariantRegions = new();
+
+        // Whether the wave leaves its turn ends and ref detaches to the layout commit rather than running them as its
+        // pass applies (FiberWave.KeepBatchOrder).
+        internal bool WaveKeepsBatchOrder;
 
         // The Reconciler that owns this context, which ends a wave's pass (FiberWave.End).
         internal Reconciler? Root { get; set; }

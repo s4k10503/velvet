@@ -628,6 +628,7 @@ namespace Velvet
 #endif
                 }
                 fiber.RenderCount++;
+                if (!deferReconcile) ChildListWrites.RecordTurnEnd(fiber);
             }
             catch (Exception ex)
             {

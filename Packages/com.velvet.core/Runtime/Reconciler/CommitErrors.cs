@@ -24,13 +24,48 @@ namespace Velvet
             }
             if (!boundary.IsMounted || boundary.FallbackFactory == null) return false;
             var info = FiberErrorBoundary.InfoFor(boundary, thrower);
+            var pass = ctx.Pass;
+            if (pass.HoldsCaptures)
+            {
+                pass.HeldCaptures.Add((boundary, error, info, pass.PlaceNow));
+                return true;
+            }
+            Take(ctx, boundary, error, info);
+            return true;
+        }
+
+        // Makes what a wave held (ReconcilePass.HoldsCaptures) in the order of their places (ReconcilePass.Meets). A tie
+        // keeps the order they were held in.
+        internal static void TakeHeld(ReconcilerContext ctx)
+        {
+            var pass = ctx.Pass;
+            pass.HoldsCaptures = false;
+            var held = pass.HeldCaptures;
+            try
+            {
+                for (var i = 1; i < held.Count; i++)
+                {
+                    var capture = held[i];
+                    var at = i;
+                    for (; at > 0 && held[at - 1].Place > capture.Place; at--) held[at] = held[at - 1];
+                    held[at] = capture;
+                }
+                foreach (var (boundary, error, info, _) in held) Take(ctx, boundary, error, info);
+            }
+            finally
+            {
+                held.Clear();
+            }
+        }
+
+        private static void Take(ReconcilerContext ctx, ComponentFiber boundary, Exception error, ErrorInfo info)
+        {
             (boundary.PendingCaptures ??= new()).Add((error, info, ctx.NextCaptureSequence++));
             if (!ctx.BoundariesOwedCaptures.Contains(boundary)) ctx.BoundariesOwedCaptures.Add(boundary);
             FiberWorkLoop.ScheduleRerender(boundary, FiberUpdatePriority.Urgent);
             // React flushes the sync work a passive effect's error queues as that flush ends, so the drain
             // that is flushing the effects renders the boundary rather than leaving it to the next frame.
             ctx.BatchScheduler.OweSyncLane();
-            return true;
         }
 
         // A boundary an ancestor's fallback replaced holds its captures no longer.

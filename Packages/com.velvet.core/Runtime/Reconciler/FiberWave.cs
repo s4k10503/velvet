@@ -28,8 +28,40 @@ namespace Velvet
             ctx.WaveOpen = true;
             ctx.WaveRecords = true;
             ctx.WaveOwesIndicatorFlush = false;
+            ctx.WaveKeepsBatchOrder = false;
             ctx.DeferDrainLayoutEffects = true;
+            ctx.Pass.HoldsCaptures = true;
             ctx.Pass.Journal.Hold();
+        }
+
+        // A wave runs each fiber's insertion effects and layout cleanups, and each replaced ref's detach, as its pass
+        // applies, at the fiber's or the element's turn (ChildListWrites.RecordTurnEnd, RecordRefDetach); the layout
+        // commit runs what is left in tree order. The two agree only where the pass holds a turn for exactly what the
+        // commit would run, each where the tree puts it, so the wave leaves all of it to the layout commit where it
+        // - applied its writes up to a Portal's or a WorldSpace's mount, whose components mount behind them;
+        // - parked a render, whose cleanups wait for the commit that completes it;
+        // - resumed one, whose earlier slices left their turns to passes that have applied;
+        // - rendered a component a settle owes a render, after the renders that settle followed, wherever it sits;
+        // - rendered a component row after the host it sits in, whose walk has recorded the turns and ref detaches of
+        //   what follows the row in the tree ahead of the row's own, since a row renders by its own entry rather than in
+        //   its host's walk (Reconciler.RendersBelowAnEarlierRoot);
+        // - mounted a component holding insertion effects under a component a commit has taken, into an element the
+        //   wave did not create: React places that component's rows before those effects run, and the wave places them
+        //   where the container's walk ends, behind the component's turn (KeepBatchOrderForAPlacement).
+        internal static void KeepBatchOrder(ReconcilerContext ctx)
+        {
+            if (ctx.WaveOpen) ctx.WaveKeepsBatchOrder = true;
+        }
+
+        // A mount root stands for React's host root, which a commit has always taken. An element the wave creates takes
+        // its children at once, and React places that element, not the component, after the component's insertion
+        // effects.
+        internal static void KeepBatchOrderForAPlacement(ComponentFiber fiber)
+        {
+            if (fiber.HasCommitted || (fiber.PendingInsertionEffects?.Count ?? 0) == 0) return;
+            if (fiber.Parent is { IsMountRoot: false, HasCommitted: false }) return;
+            if (ChildListWrites.IsCreatedByThePass(fiber.MountPoint)) return;
+            if (fiber.Reconciler?.Context is { } ctx) KeepBatchOrder(ctx);
         }
 
         // Applies the pass the wave's renders recorded into, commits the hook state they staged, routes what the
@@ -124,28 +156,35 @@ namespace Velvet
         }
 
         // What the ops and placements of the wave's pass threw, each queued for the boundary the search from where it was
-        // filed to start finds (ComponentBoundarySearch.CaptureFrom), which renders its fallback in a follow-up commit. A
-        // failure whose element was on a panel as it threw and is off one by now is not reported: where the wave's own
-        // writes took the element off, React would never have committed it, as it commits no host of a render it
-        // discarded. Each route runs whether or not the one before it threw, and the first one's exception is rethrown
-        // once all of them have run.
+        // filed to start finds (ComponentBoundarySearch.CaptureFrom), which renders its fallback in a follow-up commit,
+        // in one order with what else the wave captured (CommitErrors.TakeHeld). A failure whose element was on a panel
+        // as it threw and is off one by now is not reported: where the wave's own writes took the element off, React
+        // would never have committed it, as it commits no host of a render it discarded. Each route runs whether or not
+        // the one before it threw, and the first one's exception is rethrown once all of them have run.
         private static void RouteFailures(ReconcilerContext ctx)
         {
-            var failures = ctx.Pass.Failures;
+            var pass = ctx.Pass;
+            var failures = pass.Failures;
             ExceptionDispatchInfo? first = null;
             try
             {
                 for (var i = 0; i < failures.Count; i++)
                 {
-                    var (start, owner, error, onPanel) = failures[i];
+                    var (start, owner, error, onPanel, place) = failures[i];
                     if (onPanel is { panel: null }) continue;
+                    pass.Meets = place;
                     var failure = Capture(start, owner, error);
                     first ??= failure;
                 }
             }
             finally
             {
+                // MUTANT_SURVIVES(equivalent, line removed): the place of the last failure routed is at or ahead of every
+                // place a later wave takes, as the place behind the ops applied is, so what that wave's walk throws ahead
+                // of its apply keeps its order.
+                pass.Meets = ReconcilePass.NoPlace;
                 failures.Clear();
+                CommitErrors.TakeHeld(ctx);
             }
             first?.Throw();
         }
