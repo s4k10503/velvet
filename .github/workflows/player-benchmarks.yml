@@ -79,11 +79,13 @@ jobs:
             "unityci/editor:ubuntu-$version-linux-il2cpp-3" \
             sh -c 'python3 -u scripts/ci/player_benchmarks.py --filter "$TEST_FILTER" --output Logs/player-benchmarks'
 
+      # The docker step runs as root and leaves Logs owned by it, as mutation.yml's shards do.
       - name: Print the medians
         if: always()
         env:
           MEASURED_REF: ${{ inputs.ref }}
         run: |
+          sudo chown -R "$(id -u):$(id -g)" Logs
           python3 scripts/ci/benchmark_results.py Logs/player-benchmarks \
             --json Logs/player-benchmarks/benchmark.json --summary Logs/player-benchmarks/benchmark-summary.md
           { echo "### Player benchmark medians (IL2CPP, $MEASURED_REF)"; echo; \
