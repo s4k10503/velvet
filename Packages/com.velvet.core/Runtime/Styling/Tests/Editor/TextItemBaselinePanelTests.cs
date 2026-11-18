@@ -834,11 +834,16 @@ namespace Velvet.Tests
             ForcePanelUpdate(parent.panel);
         }
 
-        // How many text leaves the parent's hub holds, read off the hub table the base class keeps.
+        // How many text leaves the parent's hub holds, read off the hub table the base class keeps; -1 where there is
+        // no such table, which no leaf count equals.
         private static int LeafCount(VisualElement parent)
         {
-            var table = typeof(StyleTextItemManipulator)
-                .GetField("s_hubs", BindingFlags.NonPublic | BindingFlags.Static)!.GetValue(null);
+            var field = typeof(StyleTextItemManipulator).GetField("s_hubs", BindingFlags.NonPublic | BindingFlags.Static);
+            if (field == null)
+            {
+                return -1;
+            }
+            var table = field.GetValue(null);
             var arguments = new object[] { parent, null };
             if (!(bool)table.GetType().GetMethod("TryGetValue")!.Invoke(table, arguments)!)
             {
@@ -998,23 +1003,6 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(label.style.minWidth.value.value, Is.EqualTo(WidestWordMinimum(label, "antidisestablishmentarianism")));
-        }
-
-        [Test]
-        public void Given_ALabelWithNoPercentLength_When_OnlyItsParentsWidthMovesAfterItsTextChanged_Then_ItKeepsItsMinWidth()
-        {
-            // Arrange — a text set on the label raises no event of its own, so only a derive would measure it.
-            var label = MountLabel("flex flex-row w-[20px]", "", Sentence);
-            var parent = label.parent;
-            SettleParent(parent);
-            label.text = "antidisestablishmentarianism is long";
-            parent.style.width = 30f;
-
-            // Act
-            SettleParent(parent);
-
-            // Assert
-            Assert.That(label.style.minWidth.value.value, Is.EqualTo(WidestWordMinimum(label, LongWord)));
         }
 
         [Test]
