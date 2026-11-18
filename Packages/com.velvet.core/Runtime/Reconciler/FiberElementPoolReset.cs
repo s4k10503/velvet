@@ -131,7 +131,8 @@ namespace Velvet
             // painting what the reset just removed. A zero total time contributes no transition at all, so while
             // the inline zero duration below applies the clears cancel instead of animating. Clear itself removes
             // the zero along with the other inline values, and takes this group of properties last, after that
-            // removal; they are nulled here, under the zero, so none of them is left for it. Scoped to that INLINE
+            // removal; they are nulled under the zero just before it, after the releases below that write rotate and
+            // scale back, so none of them is left for it. Scoped to that INLINE
             // clear: the name / enabled-state resets after it change which rules match, and whatever the next styles
             // pass transitions from that is its own. A detached element is not style-initialized, which already
             // takes every clear down the cancel path — which is why no shipped caller can reach the defect, since
@@ -141,7 +142,6 @@ namespace Velvet
             {
                 element.style.transitionDuration = new StyleList<TimeValue>(s_zeroDuration);
             }
-            ClearLateClearedStyle(element.style);
 
             // A filter tween still ticking would write its frames and its target onto the next consumer.
             StyleFilterTransitionDriver.Release(element);
@@ -151,6 +151,7 @@ namespace Velvet
             MotionClock.Forget(element);
             // A skew composed into the rotate and scale would otherwise outlive the element's last use.
             AuthoredTransform.Release(element);
+            ClearLateClearedStyle(element.style);
             element.style.Clear();
             SuspenseHiddenElements.Release(element);
 
