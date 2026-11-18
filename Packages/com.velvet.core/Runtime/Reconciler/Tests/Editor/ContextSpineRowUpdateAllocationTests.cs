@@ -14,6 +14,8 @@ namespace Velvet.Tests
     {
         private sealed record RowProps(int Index, string Key);
 
+        private static readonly ComponentContext<string> ThemeContext = ComponentContext<string>.Create("default");
+
         private static RowProps[] s_rows;
         private static StateUpdater<int>[] s_setters;
 
@@ -30,6 +32,31 @@ namespace Velvet.Tests
             var (count, setCount) = Hooks.UseState(0);
             s_setters[props.Index] = setCount;
             return V.Label(text: "r" + props.Index + " " + count);
+        }
+
+        [Component(Compiler = false)]
+        private static VNode ProvidedListRender()
+        {
+            var (rows, _) = Hooks.UseState(s_rows);
+            return V.Provider(ThemeContext, "provided", new VNode[]
+            {
+                V.Div("flex flex-col", V.List(rows, row => row.Key, row => V.Component(ThemedRowRender, row))),
+            });
+        }
+
+        [Component(Compiler = false, Memoize = true)]
+        private static VNode ThemedRowRender(RowProps props)
+        {
+            var (count, setCount) = Hooks.UseState(0);
+            s_setters[props.Index] = setCount;
+            return V.Label(text: Hooks.UseContext(ThemeContext) + props.Index + " " + count);
+        }
+
+        private static void Seed(int rows)
+        {
+            s_rows = new RowProps[rows];
+            for (var i = 0; i < rows; i++) s_rows[i] = new RowProps(i, "row-" + i);
+            s_setters = new StateUpdater<int>[rows];
         }
 
         // The first update after a mount charges more than the ones after it, so each list is updated once
@@ -63,6 +90,41 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(at2000, Is.EqualTo(at250));
+        }
+
+        [Test]
+        public void Given_AListWhoseOutputHoldsNoProvider_When_ARowUpdates_Then_TheListFiberHoldsItsOutputAsFreeOfContext()
+        {
+            // Arrange
+            Seed(50);
+            using var mounted = V.Mount(new VisualElement(), V.Component(ListRender));
+            mounted.DrainForTest();
+
+            // Act
+            s_setters[25].Invoke(1);
+            mounted.DrainForTest();
+
+            // Assert
+            var list = mounted.Root;
+            Assert.That(list.ContextFreeOutputAnswer ? list.ContextFreeOutput : null, Is.SameAs(list.PreviousTree));
+        }
+
+        // GREEN_ON_BASE(characterization): the base walks the whole output and pushes the Provider, so the row reads its value there as well.
+        [Test]
+        public void Given_AListInsideAProvider_When_ARowUpdatesItsState_Then_TheRowStillReadsTheProvidedValue()
+        {
+            // Arrange
+            Seed(50);
+            var root = new VisualElement();
+            using var mounted = V.Mount(root, V.Component(ProvidedListRender));
+            mounted.DrainForTest();
+
+            // Act
+            s_setters[25].Invoke(1);
+            mounted.DrainForTest();
+
+            // Assert
+            Assert.That(((Label)root[0][25]).text, Is.EqualTo("provided25 1"));
         }
     }
 }

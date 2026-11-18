@@ -117,19 +117,8 @@ namespace Velvet
         // invariant that keeps it outside the child reconciler's [0, renderedChildCount) index range.
         private static bool IsAfterAllRenderedChildren(VisualElement caster, VisualElement spacer)
         {
-            var idx = caster.IndexOf(spacer);
-            if (idx < 0)
-            {
-                return false;
-            }
-            for (var i = idx + 1; i < caster.childCount; i++)
-            {
-                if (!LogicalChildSlots.IsInvisible(caster[i]))
-                {
-                    return false;
-                }
-            }
-            return true;
+            var idx = ChildListWrites.PhysicalIndexOf(caster, spacer);
+            return idx >= 0 && ChildListWrites.ToLogical(caster, idx + 1) == ChildListWrites.RenderedCount(caster);
         }
 
         internal static void Remove(VisualElement caster, ref VisualElement? spacer)

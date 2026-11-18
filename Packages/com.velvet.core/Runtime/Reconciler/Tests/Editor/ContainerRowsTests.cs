@@ -536,6 +536,23 @@ namespace Velvet.Tests
             Assert.That(RowModelAccess.Peek(parent)!.ElementAt(0), Is.SameAs(parent[0]));
         }
 
+        [Test]
+        public void Given_AScrollViewWrittenThroughItsHierarchy_When_ThePlacedChildIsLookedUp_Then_ItsHierarchyIndexIsAnswered()
+        {
+            // Arrange
+            var scroll = new ScrollView();
+            var first = new VisualElement();
+            var second = new VisualElement();
+            ChildListWrites.HierarchyAdd(scroll, first);
+            ChildListWrites.HierarchyInsert(scroll, 0, second);
+
+            // Act
+            var index = ChildListWrites.HierarchyIndexOf(scroll, second);
+
+            // Assert
+            Assert.That(index, Is.EqualTo(scroll.hierarchy.IndexOf(second)));
+        }
+
         // GREEN_ON_BASE(characterization): the base drops the model of an element whose side tables it clears. Drop
         // `ChildListWrites.Drop(element);` and a removed container keeps the model of the children it held.
         [Test]

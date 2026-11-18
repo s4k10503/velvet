@@ -14,6 +14,7 @@ namespace Velvet
         private readonly ScrollView _scrollView;
         private readonly VisualElement _spacer;
         private readonly VisualElement _visibleContainer;
+        private readonly List<VisualElement?> _slotRows = new();
         private readonly IReconcilerBridge _reconciler;
         // The fiber that rendered V.VirtualList and the live context cursor, captured so item renders (which
         // happen outside the reconcile pass) can inherit the context enclosing the list. _enclosingContext is
@@ -608,13 +609,16 @@ namespace Velvet
         private void RebuildVisibleContainer(int newFirst, int newCount, VisualElement[] newElements)
         {
             _reconciler.BeginRowPlacementForController(_visibleContainer);
-            for (var i = _visibleContainer.childCount - 1; i >= 0; i--)
+            _slotRows.Clear();
+            ChildListWrites.Rows(_visibleContainer, 0, ChildListWrites.RenderedCount(_visibleContainer), _slotRows);
+            for (var i = _slotRows.Count - 1; i >= 0; i--)
             {
-                if (!LogicalChildSlots.IsInvisible(_visibleContainer[i]))
+                if (_slotRows[i] is { } row)
                 {
-                    ChildListWrites.RemoveAt(_visibleContainer, i);
+                    ChildListWrites.Remove(_visibleContainer, row);
                 }
             }
+            _slotRows.Clear();
             var offset = (float)OffsetOf(newFirst);
             var container = _visibleContainer.style;
             container.flexDirection = _horizontal ? FlexDirection.Row : StyleKeyword.Null;
