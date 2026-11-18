@@ -58,6 +58,11 @@ namespace Velvet.SourceGenerators
         {
             var isNullable = field.Type.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T;
             var read = isNullable ? ((INamedTypeSymbol)field.Type).TypeArguments[0] : field.Type;
+            if (field.IsFixedSizeBuffer || read.TypeKind is TypeKind.Pointer or TypeKind.FunctionPointer)
+            {
+                return false;
+            }
+
             if (!read.IsValueType)
             {
                 return true;

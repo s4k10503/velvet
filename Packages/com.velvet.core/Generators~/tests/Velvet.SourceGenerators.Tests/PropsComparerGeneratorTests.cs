@@ -421,6 +421,8 @@ public sealed class Props : Base { public override int Id { get; init; } }";
         [InlineData("public sealed class Props { public System.TimeSpan Span { get; init; } }", "global::App.Control")]
         [InlineData("public struct Cell { private float _f; } public sealed class Props { public Cell C { get; init; } }", "global::App.Control")]
         [InlineData("public sealed class Props { public int this[int i] => i; public int N { get; init; } }", "global::App.Control,global::App.Props")]
+        [InlineData("public unsafe struct Buf { public fixed float V[4]; } public sealed class Props { public Buf B { get; init; } }", "global::App.Control")]
+        [InlineData("public unsafe struct Ptr { public int* P; } public sealed class Props { public Ptr B { get; init; } }", "global::App.Control")]
         [InlineData("public class Base { public int N { get; init; } } public sealed class Props : Base { public new int N { get; init; } }", "global::App.Control")]
         public void Given_PropsMember_When_TheRuntimeWalkCannotBeWrittenForIt_Then_TheWholeTypeIsLeftToTheRuntime(
             string types, string expected)
