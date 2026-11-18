@@ -1,0 +1,332 @@
+# Developer tooling: Preview window
+
+Velvet ships an editor-time preview suite — the **Storybook + Fast-Refresh equivalent** for
+Velvet UI. You declare a *story* (a named, self-contained snippet of UI) once, and the preview
+window mounts it onto a runtime UI Toolkit panel — the kind the game renders through — and
+live-renders it **without entering Play Mode**, showing the texture that panel renders into.
+Pointer, wheel, keyboard and navigation events on that texture are sent on to the panel, so they
+flow into the mounted tree's hooks and re-render in place, and while the window is visible it
+queues a player-loop update each tick, so Velvet's coalesced re-renders drain and Motion /
+AnimatePresence timers fire — animation runs live.
+
+The same story source feeds the **headless screenshot capture** path, so the set you eyeball
+interactively and the set captured for visual regression never drift apart.
+
+Open the window via **Window ▸ Velvet ▸ Preview**.
+
+## Declaring a story — `[VelvetPreview]`
+
+Annotate a `static` method that takes no parameters (or a single args object — see
+[Controls](#controls--args)) and returns a `VNode`:
+
+```csharp compile
+internal static class MyPreviews
+{
+    [VelvetPreview(Name = "Primary button", Group = "Buttons", Width = 240, Height = 80)]
+    private static VNode PrimaryButton() =>
+        V.Button(className: "bg-primary text-white px-4 py-2 rounded", text: "Save");
+}
+```
+
+The method is invoked whenever the host builds the story tree — at mount, and again for each
+args change, whose tree is reconciled against the mounted one rather than replacing it. So a component
+that keeps its type and position keeps its state across a knob edit, and the method runs once per
+keystroke on an edited field. The annotated method must be `static`,
+non-generic, return `VNode`, and take either no parameters or a single args object. An invalid
+signature is skipped with a console warning rather than silently dropped, so a mistyped story
+is noticed.
+
+`[VelvetPreview]` exposes four optional properties:
+
+| Property | Type | Default | Meaning |
+|---|---|---|---|
+| `Name` | `string` | the method name | Display name in the story list |
+| `Group` | `string` | the declaring type's name | Grouping heading (the Storybook "title" segment) |
+| `Width` | `int` | `0` (fill the window) | Preferred mount width in reference pixels |
+| `Height` | `int` | `0` (fill the window) | Preferred mount height in reference pixels |
+
+Stories are addressed by a stable `Group/Name` id, so two stories must not collide on both.
+Discovery refuses a set holding a duplicate id: `VelvetPreviewRegistry.DiscoverStories()` throws an
+`InvalidOperationException` naming each story whose id an earlier one holds together with that earlier
+one, and the window lists no stories and shows that message in its status line. Stories declared in **test-runner assemblies are
+excluded**, so fixture stories authored for unit tests never leak into the window or the
+capture set. The story list's **Refresh** button discovers the stories again rather than re-listing the
+set found last.
+
+A story carries no environment of its own. A method's explicit `Width`/`Height` always wins
+and is shown at its real footprint; a story with no explicit size fills the screen (and is the
+one a fixed viewport can simulate — see [Viewport](#viewport)).
+
+## Shared environment — `[VelvetPreviewSetup]`
+
+Cross-cutting setup that several stories share — registering fonts, seeding a store, wiring a
+localization resolver — belongs on a `[VelvetPreviewSetup]` method. Each full story mount runs
+every valid setup its assembly declares before building the tree, ordered by declaring type and then
+method name, and tears them down in the reverse order when that story is replaced or its host is
+disposed. A teardown that throws is logged and the rest still run. Args-control updates re-render
+only the tree and retain the current environment.
+
+The method must be `static`, parameterless, and return one of three teardown shapes:
+
+| Return | Teardown |
+|---|---|
+| `IDisposable` | `Dispose()` is called on teardown |
+| `Action` | the returned delegate is invoked on teardown |
+| `void` | nothing to undo |
+
+A setup can also hand the host an extra stylesheet to layer over Velvet's utilities — a
+project's design-token `:root` overrides or a custom theme — by setting
+`VelvetStyleHints.PreviewStyleSheet`. `VelvetPreviewRegistry.RunSetupFor(assembly)` consumes the hint as
+each setup returns and returns a `VelvetPreviewEnvironment` whose `StyleSheets` holds every published
+sheet in setup order; disposing it runs the teardowns. The host attaches those sheets **after** Velvet's
+utility sheet (so their later source order lets equal-specificity `:root` overrides win), so the sheets of
+several setups layer in setup order, and removes the sheets it added on teardown. A sheet overriding the
+semantic colours declares them per theme set the way
+[styling-variants.md](styling-variants.md) describes.
+
+### Real-world example
+
+A typical app registers one story per screen plus a controls-driven story, all sharing one
+environment that stands up the app's backend (fonts + store + API + localization) and publishes
+the app's token sheet:
+
+```csharp
+internal static class AppPreviews
+{
+    private const string Group = "App";
+
+    [VelvetPreviewSetup]
+    private static IDisposable Environment() => new AppEnvironment();
+
+    [VelvetPreview(Name = "Home", Group = Group)]
+    private static VNode Home() => Screen(HomeScreen.Render);
+
+    // ... one per screen ...
+
+    // A controls-driven story: edit the args in the panel and the button re-renders live.
+    [VelvetPreview(Name = "Button (Controls)", Group = Group)]
+    private static VNode ButtonControls(ButtonArgs args) =>
+        V.Div("app-root absolute inset-0 font-sans flex items-center justify-center",
+            V.Label(AppStyle.Button.Apply("flex-row",
+                ("tone", args.Tone.ToString().ToLower()),
+                ("size", args.Large ? "lg" : "md")), text: args.Label));
+
+    internal sealed class ButtonArgs
+    {
+        public string Label = "Submit";
+        public ButtonTone Tone = ButtonTone.Primary;
+        public bool Large;
+    }
+
+    internal enum ButtonTone { Primary, Glass, Gold }
+
+    private sealed class AppEnvironment : IDisposable
+    {
+        private readonly AppBackendScope _backend = new();
+
+        public AppEnvironment()
+        {
+            var tokens = AssetDatabase.LoadAssetAtPath<StyleSheet>(
+                "Assets/YourApp/styles/Tokens.uss");
+            if (tokens != null) VelvetStyleHints.PreviewStyleSheet = tokens;
+        }
+
+        public void Dispose()
+        {
+            VelvetStyleHints.PreviewStyleSheet = null;
+            _backend.Dispose();
+        }
+    }
+}
+```
+
+The live window and headless capture use the same story definitions and mount lifecycle, and
+can use the same panel: the window shows a story through a `VelvetPreviewPanel`, and a capture can be
+taken through one built from the same `PanelSettings` at the same size.
+See [Rendering](#rendering) for what that panel is and
+[Headless screenshot capture](#headless-screenshot-capture) for building one.
+
+## Rendering
+
+The window mounts the selected story onto a `VelvetPreviewPanel`: a runtime panel built from a
+copy of the `PanelSettings` chosen in the toolbar (see [Panel scale](#panel-scale)), rendering into
+a texture the size of the screen it simulates, with Velvet's utility stylesheet attached to its
+root. The panel's theme, text settings and scaling are therefore the game's own, and the canvas
+shows the texture the panel renders. With no `PanelSettings` chosen
+the panel is a constant-pixel-size panel at a scale of one with an empty theme.
+
+The copy renders into its own texture whatever target the chosen settings name, and maps every
+screen position off the panel; the window sends it the events its canvas receives. The texture is
+cleared to transparent below everything drawn into it, and a `V.Portal(layer:)` in the story draws
+into it too, at its layer's place around the panel. A world-space `PanelSettings` is copied as a screen panel at a scale of
+one. The stage backdrop ([Backgrounds](#backgrounds)) is drawn behind the canvas and is not part of
+the texture.
+
+## Addons
+
+The window's toolbar exposes a set of addons, each mirroring a Storybook one. The view-addon
+state (theme / background / zoom / outline / measure / viewport / panel settings) persists in `EditorPrefs`, so
+it survives remounts and domain reloads.
+
+### Controls / Args
+
+The **Controls** addon is the Storybook "controls" equivalent. If a story takes one supported
+args value, the window creates typed editor knobs for its supported public, writable members.
+Editing a knob replaces the current args value and re-renders the story with it, **without tearing down
+the assembly environment** — so a knob edited per keystroke does not re-register fonts, re-seed the
+store, or recreate the dummy API each time. What the re-render does to the tree is above, under
+[Declaring a story](#declaring-a-story--velvetpreview). An args type with no supported writable members
+shows no editable knobs.
+
+Public, writable fields and properties are turned into controls. The member's type, and a
+`[Range]` on it, pick the control where Storybook reads `argTypes`; the Storybook control each one
+stands for is named beside it, and an enum splits at five values where Storybook's inference does:
+
+| Member type | Control |
+|---|---|
+| `bool` | `Toggle` |
+| `int`, `long`, `float`, `double` | `IntegerField`, `LongField`, `FloatField`, `DoubleField` |
+| `int` or `float` carrying `[Range(min, max)]` | `SliderInt` / `Slider` over that range (Storybook's `range`) |
+| `string` | `TextField` |
+| `enum` of up to five values | `RadioButtonGroup` (Storybook's `radio`) |
+| `enum` of more than five values | `EnumField` (Storybook's `select`) |
+| `[Flags]` enum | `EnumFlagsField` (Storybook's `check`) |
+| `Color` (`UnityEngine.Color`) | `ColorField` |
+| `DateTime` | `TextField` holding the date as 2020-01-02 03:04:05; text that does not parse leaves the value as it was (Storybook's `date`) |
+| A `UnityEngine.Object` type | `ObjectField` picking assets of that type (Storybook's `file`) |
+| A one-dimensional array, a `List<T>`, or a class or struct with public writable members | A foldout of controls for its elements or members (Storybook's `object`) |
+
+A foldout is built when it is first expanded. An array or list foldout starts with a **Length**
+field that resizes it; a `null` one shows a **Set object** button when the type can be created (an
+array, or a non-abstract type with a public parameterless constructor); and a value that refers back
+to an object above it in the args shows a **cycle** note instead of its members. An edit hands the
+story a new args instance, copying each nested object, struct, array or list on the path to the
+edited member, so a component that takes part of the args as props sees the edit. A member no control edits — a delegate, a multi-dimensional array —
+shows a read-only note rather than crashing. Value-type args begin
+at `default(T)`; a class or record needs a public parameterless constructor. The first
+mount and the capture harness both use that initial value, which may be `null` for a
+nullable value type.
+
+### Viewport
+
+The **Viewport** addon simulates responsive widths. "Full" (the default) lets the canvas fill
+the stage. Typing a size into the toolbar's width/height fields switches the viewport to
+**Custom** and makes the screen that exact size in pixels, clamped to 1–8192 (the fields start
+at 1920×1080 the first time the window opens, and remember the last value entered). The panel is
+the screen, so the mounted story's `sm:`/`md:`/… breakpoints read the panel root's width the way
+they read a game panel's, with no viewport scope marked. A story's `@md:`-style container
+variants read the `@container` the story marks.
+
+Two behaviors are worth knowing:
+
+- **Re-mount on change.** Changing the viewport resizes the panel **and re-mounts the story**.
+- **A story's explicit size wins.** A story with an explicit `Width`/`Height` is always shown
+  at its real footprint: its panel is that footprint, so its breakpoints read the footprint's
+  width. The viewport then sets the screen whose scale that panel takes (see
+  [Panel scale](#panel-scale)), and the size of an axis the story leaves at `0`.
+
+### Theme
+
+The **Dark** toggle drives `VelvetTheme.IsDark`, so the mounted story's `dark:` variants
+re-evaluate live and the semantic colours switch to the dark token set with them (see
+[styling-variants.md](styling-variants.md)). It defaults on, matching the Dark stage backdrop
+below. The window captures the editor's (or a running game's) pre-existing theme
+once and restores it on close, and only reverts if the live value still equals what it last
+wrote — so toggling Dark in the preview never clobbers a concurrent writer.
+
+### Backgrounds
+
+The **BG** menu switches the stage backdrop (the Storybook "backgrounds" addon): **Dark** (a
+near-black, the default, so light UI stays legible), **Light** (a neutral gray for dark UI),
+and **Checkerboard** (a transparency grid behind the canvas).
+
+### Zoom
+
+The **Zoom** menu scales the canvas: **Fit** (the largest scale at which the canvas fits
+inside the stage), 50%, 100%, 200%. Fit recomputes against the stage and canvas sizes as they
+resize. At 100% the canvas draws one texture pixel per editor point; zoom scales the texture the
+panel rendered and does not re-render it, each texel drawn whole.
+
+### Panel scale
+
+The toolbar's **PanelSettings** field takes the game's `PanelSettings` asset, and the choice is remembered
+per object, so a `PanelSettings` stored as a sub-asset stays the one chosen. The window builds its panel
+from a copy of the chosen settings, rebuilding it and remounting the story when the choice changes. It
+treats the viewport as a screen of that many pixels (the stage itself, rounded to whole pixels, under
+**Full**), or the settings'
+target texture as the screen when they have one, and renders a story without an explicit size into a
+texture that size, where the copy resolves its own scale — `ConstantPixelSize`, `ConstantPhysicalSize`
+at `Screen.dpi`, or `ScaleWithScreenSize` with its reference resolution and screen match mode. A story
+with an explicit `Width`/`Height` is laid out at that size in the panel's units, at the scale the settings
+resolve for the screen, so its texture is the footprint times that scale. So a story's explicit
+`Width`/`Height`, and the breakpoints of a story without one, are read in the panel's units, and the
+status line shows the scale. With the field empty the panel's scale is one.
+
+### Outline / Measure
+
+The **Outline** and **Measure** toggles draw a non-interactive inspection overlay above the
+mounted story (it never steals the story's pointer events, so hover / click keep working
+underneath):
+
+- **Outline** — a 1px stroke around every element in the story subtree.
+- **Measure** — the box model (content + padding + margin bands, with px labels) of the
+  deepest element under the pointer.
+
+All overlay geometry is read from each element's box in the panel and mapped through the
+canvas's transform, which carries the zoom, so outlines and boxes stay aligned at any zoom
+level. Measure's labels are in the panel's units.
+
+## Smoke test
+
+`VelvetPreviewSmokeTest.Run()` is the counterpart of Storybook's test runner run over stories without
+a play function. It mounts every discovered story with its default args, through its
+`[VelvetPreviewSetup]` environment, onto a runtime panel that renders into a 1280×720 texture. It then
+runs pending passive effects and the renders and transitions they schedule, over 100 rounds, and
+returns one `VelvetPreviewSmokeResult` per story. A story fails when building or mounting it throws, a
+setup throws, or an exception no error boundary in the story catches is logged meanwhile. `Failure`
+names the build or mount exception, else the first such logged one. An error a boundary catches is
+logged as usual and does not fail the story. `Run` throws, as discovery does, when two stories share an
+id.
+
+**Window ▸ Velvet ▸ Run Preview Smoke Test** logs one error per failing story. A CI job runs it in a
+batch-mode editor with
+`-batchmode -executeMethod Velvet.Editor.Preview.VelvetPreviewSmokeTestCommand.RunAndExit`, which
+exits 1 when a story fails, discovery is refused or no story is found, and 0 when every story found passes.
+
+## Headless screenshot capture
+
+The same `[VelvetPreview]` registry also works as the data source for a headless, off-screen
+**visual-regression** capture pattern that a consumer project can build on top of Velvet's public
+building blocks: discover every story via `VelvetPreviewRegistry.DiscoverStories()`, build a
+`new VelvetPreviewPanel(settings, width, height)` from the game's `PanelSettings`, mount each story
+onto its `Root` through a `VelvetPreviewHost` (which runs the story's `[VelvetPreviewSetup]`
+environment), call the panel's `Render()`, and read its `Texture` back, writing one PNG per story.
+That is the panel the window shows a story through, at the window's screen size for a story without an
+explicit size. In Edit Mode a mount does not draw its story into the texture in its own frame; `Render()`
+draws a frame of every panel drawing into the texture before it returns, so a harness reads the texture
+back in the same call. Before it draws, it runs `VelvetPreviewPanel.SettlePasses` update passes over
+those panels, each a simulated frame that first moves the panel's clock on by
+`VelvetPreviewPanel.SettlePassMilliseconds`, and the clock stays moved afterwards. Work those panels time by
+their own clock advances as over that many frames: the renders, effects and state updates Velvet schedules
+there are in the capture, so is what Velvet measures from their layout, and a transition timed by that clock
+that ends within the passes is captured finished. Motion that reads its mount's `MotionClock`
+rather than the panel's time ([Clocks](motion.md#clocks-holding-motion-with-game-time)) moves only as far as
+that clock has. Work still scheduled after the passes is captured without waiting for it, and work the
+story resumes on a later editor or player frame, such as a `VelvetTask.Yield()` continuation, is in a capture
+taken by a `Render()` after that frame. An exception the frame does not catch reaches the harness as it was
+thrown.
+`VelvetPreviewPanelTests` holds that path. `StoryCaptureTests` captures every registered story in Play
+Mode, waiting for frames instead.
+A harness built from `VelvetPreviewRegistry` and `VelvetPreviewHost` shares story discovery and mount
+lifecycle with the live window and the smoke test.
+
+## Related tooling
+
+Velvet also ships **DevTools** — the React DevTools equivalent — a real-time VNode-tree
+inspector with time-travel through a component's state-change history, opened via **Window ▸
+Velvet ▸ DevTools Inspector**. In the editor, a successful `V.Mount` registers its root, and a
+registered fiber leaves the registry when it is disposed — a root when its `MountedTree` is
+disposed, and an interior fiber registered by hand with `VelvetDevToolsRegistry.Register(fiber,
+"Label")` when its tree unmounts it. A disposed fiber is not registered. Registering a fiber that is
+already registered relabels its entry and keeps its **Registered At**. `Clear` empties the whole
+registry.

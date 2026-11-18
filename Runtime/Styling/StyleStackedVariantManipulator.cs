@@ -1,0 +1,424 @@
+using System;
+using System.Collections.Generic;
+using UnityEngine.UIElements;
+
+namespace Velvet
+{
+    // Where an inner kind's signal comes from, and so which branch of the manipulator below owns it.
+    internal enum StackedInnerSource
+    {
+        ElementLocal,
+        Theme,
+        Responsive,
+        Container,
+        Relational,
+        Disabled,
+    }
+
+    // Applies a stacked-variant leaf payload iff BOTH the outer gate (set by the owning manipulator when its
+    // own condition holds) AND this inner variant's own signal are active, implementing variant
+    // stacking (dark:hover:bg-red == apply bg-red iff dark AND hovered, order-independent). One instance per
+    // (target, owner, inner-kind, leaf) lives in ReconcilerContext.StackedVariantManipulators and is torn down
+    // with the three top-level variant manipulators. It subscribes to the SAME signal source the matching
+    // top-level manipulator uses, but applies nothing until the outer gate opens. The leaf itself may STILL be
+    // a variant (dark:hover:focus:...): StyleVariantPayload.Apply recurses, spawning a further stacked
+    // manipulator gated by THIS one's combined state.
+    internal sealed class StyleStackedVariantManipulator : Manipulator, IVariantSettleTarget, IRelationalSettleTarget
+    {
+        private readonly ReconcilerContext _ctx;
+        private StyleThemeTokens.Follower? _themeFollower;
+        private readonly StyleVariantKind _innerKind;
+        private readonly StackedInnerSource _source;
+        // Non-null exactly for a relational inner: the source it resolves and the state it reacts to.
+        private readonly (bool IsPeer, StyleVariantClass.RelationalState State)? _relational;
+        private readonly string _innerName; // relational name of a NAMED inner (group-hover/sidebar:), else ""
+        // The condition of a Container inner, read from its spelling (_innerName); meaningful for that kind alone.
+        private StyleContainerQuery _query;
+        private readonly string[] _leaf;
+        private readonly long _priority;
+        // The position of the WHOLE stacked class (dark:hover:shadow-lg) in the className, not of the leaf it
+        // peels to — one written token is one declaration site, and that is the position a reader would point
+        // at when this leaf ties with another rule of the same rank.
+        private readonly int[] _declarations;
+
+        private bool _outerOn;
+        private bool _innerOn;
+        private bool _applied;
+        private ElementLocalVariantSignals _elementSignals = null!;
+        private ResponsiveWidthSource _widthSource = null!;
+        private RelationalSourceSet _relSignals = null!;
+        private readonly List<VisualElement> _relSources = new();
+        private DisabledVariantSignal _disabledSignal = null!;
+
+        public StyleStackedVariantManipulator(
+            ReconcilerContext ctx, StyleVariantKind innerKind, string? innerName, string?[] leaf, long priority,
+            int declaration)
+        {
+            _declarations = new[] { declaration };
+            _ctx = ctx;
+            _innerKind = innerKind;
+            _source = SourceOf(innerKind);
+            _relational = StyleVariantClass.RelationalOf(innerKind);
+            _innerName = innerName ?? string.Empty;
+            StyleContainerQuery.TryParse(_innerName, out _query);
+            _leaf = leaf != null
+                ? Array.ConvertAll(leaf, static x => x ?? string.Empty)
+                : Array.Empty<string>();
+            _priority = priority;
+        }
+
+        // Starts an element-local inner at a state held before this manipulator existed (see
+        // StyleVariantManipulator.Holds). Called before it is added, since adding hooks the signals that
+        // take it from there.
+        public void SeedInner(bool on) => _innerOn = on;
+
+        // Takes the rule's current place. Only while the leaf is not applied, so no layer is left under the old
+        // key.
+        public void Redeclare(int declaration)
+        {
+            if (!_applied)
+            {
+                _declarations[0] = declaration;
+            }
+        }
+
+        // Called by the owning manipulator each time its own gate flips.
+        public void SetOuterGate(bool on)
+        {
+            if (_outerOn == on)
+            {
+                return;
+            }
+            _outerOn = on;
+            Sync();
+        }
+
+        private static StackedInnerSource SourceOf(StyleVariantKind kind) => s_sourceOf[kind];
+
+        internal static bool IsElementLocalInner(StyleVariantKind kind) => SourceOf(kind) == StackedInnerSource.ElementLocal;
+
+        private static readonly VariantKindTable<StackedInnerSource> s_sourceOf = new(
+            (StyleVariantKind.Hover, StackedInnerSource.ElementLocal),
+            (StyleVariantKind.Focus, StackedInnerSource.ElementLocal),
+            (StyleVariantKind.FocusVisible, StackedInnerSource.ElementLocal),
+            (StyleVariantKind.Active, StackedInnerSource.ElementLocal),
+            (StyleVariantKind.Checked, StackedInnerSource.ElementLocal),
+            (StyleVariantKind.Disabled, StackedInnerSource.Disabled),
+            (StyleVariantKind.Dark, StackedInnerSource.Theme),
+            (StyleVariantKind.Sm, StackedInnerSource.Responsive),
+            (StyleVariantKind.Md, StackedInnerSource.Responsive),
+            (StyleVariantKind.Lg, StackedInnerSource.Responsive),
+            (StyleVariantKind.Xl, StackedInnerSource.Responsive),
+            (StyleVariantKind.Xxl, StackedInnerSource.Responsive),
+            (StyleVariantKind.Container, StackedInnerSource.Container),
+            (StyleVariantKind.GroupHover, StackedInnerSource.Relational),
+            (StyleVariantKind.GroupFocus, StackedInnerSource.Relational),
+            (StyleVariantKind.GroupFocusWithin, StackedInnerSource.Relational),
+            (StyleVariantKind.GroupActive, StackedInnerSource.Relational),
+            (StyleVariantKind.PeerHover, StackedInnerSource.Relational),
+            (StyleVariantKind.PeerFocus, StackedInnerSource.Relational),
+            (StyleVariantKind.PeerFocusWithin, StackedInnerSource.Relational),
+            (StyleVariantKind.PeerActive, StackedInnerSource.Relational),
+            (StyleVariantKind.PeerChecked, StackedInnerSource.Relational),
+            (StyleVariantKind.GroupDisabled, StackedInnerSource.Relational),
+            (StyleVariantKind.PeerDisabled, StackedInnerSource.Relational));
+
+#pragma warning disable CS8524 // no discard arm — see the remarks on StyleVariantKind
+        // Edge-based inners survive an outer-gate close (see ReconcilerContext.GateStackedVariant):
+        // their signals fire only on state edges, so a re-created manipulator could not re-seed a
+        // continuously-held hover/focus. Level-based inners (dark, responsive, container, disabled) re-derive their truth
+        // on attach and are detached on close to release their subscriptions.
+        internal bool RetainsAcrossOuterClose => _source switch
+        {
+            StackedInnerSource.ElementLocal or StackedInnerSource.Relational => true,
+            StackedInnerSource.Theme or StackedInnerSource.Responsive or StackedInnerSource.Container
+                or StackedInnerSource.Disabled => false,
+        };
+#pragma warning restore CS8524
+
+        private bool TracksChecked =>
+            _innerKind == StyleVariantKind.Checked
+            || _relational is { State: StyleVariantClass.RelationalState.Checked };
+
+        private bool TracksRelationalDisabled => _relational is { State: StyleVariantClass.RelationalState.Disabled };
+
+        // Forwards a drag session's synthetic release to the shared signal source (see
+        // ElementLocalVariantSignals.SettleRelease); a non-element-local inner (dark:/sm:) has no press
+        // state to settle and no signals instance, so the null-conditional is the whole guard.
+        public void SettleRelease() => _elementSignals?.SettleRelease();
+
+        // Forwards a snap-back's synthetic focus loss (see ElementLocalVariantSignals.SettleFocusLoss).
+        public void SettleFocusLoss() => _elementSignals?.SettleFocusLoss();
+
+        // Forwards a controlled write's synthetic checked edge (see ElementLocalVariantSignals.SettleChecked).
+        public void SettleChecked(bool value) => _elementSignals?.SettleChecked(value);
+
+        // The peer-checked inner's half of the same edge, arriving from the written SOURCE rather than from
+        // this manipulator's own target (see RelationalVariantSignals.SettleChecked). A non-relational inner
+        // has no signals instance, so the null-conditional is the whole guard.
+        public void SettleCheckedFromSource(VisualElement source, bool value)
+            => _relSignals?.SettleChecked(source, value);
+
+        protected override void RegisterCallbacksOnTarget()
+        {
+            if (_source == StackedInnerSource.ElementLocal)
+            {
+                _elementSignals ??= new ElementLocalVariantSignals(OnElementSignal);
+                _elementSignals.Hook(target, seedChecked: TracksChecked, registerChecked: TracksChecked);
+            }
+            else if (_source == StackedInnerSource.Theme)
+            {
+                VelvetTheme.DarkModeChanged += OnDarkChanged;
+                EvaluateDark();
+            }
+            else if (_source == StackedInnerSource.Disabled)
+            {
+                _disabledSignal ??= new DisabledVariantSignal(SetInner);
+                _disabledSignal.Hook(target);
+            }
+            else // width-driven or relational
+            {
+                target.RegisterCallback<AttachToPanelEvent>(OnAttach);
+                target.RegisterCallback<DetachFromPanelEvent>(OnDetach);
+                if (TracksWidth)
+                {
+                    StyleResponsiveScope.ScopesChanged += OnScopesChanged;
+                    (_themeFollower ??= new StyleThemeTokens.Follower(_ctx, () => target, EvaluateResponsive)).Attach();
+                }
+                if (_source == StackedInnerSource.Container)
+                {
+                    _watch ??= new StyleResponsiveScope.ScopeWatch(target, ScopeIsStale, OnScopesChanged);
+                    _watch.Start();
+                }
+                if (target.panel != null)
+                {
+                    if (TracksWidth)
+                    {
+                        HookWidth(target.panel.visualTree);
+                    }
+                    else
+                    {
+                        ResolveRelational();
+                    }
+                }
+            }
+        }
+
+        protected override void UnregisterCallbacksFromTarget()
+        {
+            ClearApplied();
+            _innerOn = false;
+            _outerOn = false;
+
+            if (_source == StackedInnerSource.ElementLocal)
+            {
+                _elementSignals?.Unhook();
+            }
+            else if (_source == StackedInnerSource.Theme)
+            {
+                VelvetTheme.DarkModeChanged -= OnDarkChanged;
+            }
+            else if (_source == StackedInnerSource.Disabled)
+            {
+                _disabledSignal?.Unhook();
+            }
+            else
+            {
+                target.UnregisterCallback<AttachToPanelEvent>(OnAttach);
+                target.UnregisterCallback<DetachFromPanelEvent>(OnDetach);
+                StyleResponsiveScope.ScopesChanged -= OnScopesChanged;
+                _themeFollower?.Detach();
+                _watch?.Stop();
+                _widthSource?.Unhook();
+                UnhookRelational();
+            }
+        }
+
+        #region element-local signals (hover / focus / focus-visible / active / checked; shared detection via ElementLocalVariantSignals)
+
+        // Opens/closes the inner gate when the detected element-local signal matches this stack's inner kind.
+        // SetInner dedups, so the focus-visible-drop-on-PointerDown (a no-op unless the ring is on) and any
+        // repeated edge are inert. The signal source applies the focus-visible heuristic and worldBound
+        // bubbling, so this only routes the edge.
+        private void OnElementSignal(VariantSignal signal, bool on)
+        {
+#pragma warning disable CS8524 // no discard arm: a signal this stack cannot route has to warn
+            var matches = signal switch
+            {
+                VariantSignal.Hover => _innerKind == StyleVariantKind.Hover,
+                VariantSignal.Focus => _innerKind == StyleVariantKind.Focus,
+                VariantSignal.FocusVisible => _innerKind == StyleVariantKind.FocusVisible,
+                VariantSignal.Active => _innerKind == StyleVariantKind.Active,
+                VariantSignal.Checked => _innerKind == StyleVariantKind.Checked,
+            };
+#pragma warning restore CS8524
+            if (matches)
+            {
+                SetInner(on);
+            }
+        }
+        #endregion
+
+        #region dark
+
+        private void OnDarkChanged() => EvaluateDark();
+        private void EvaluateDark() => SetInner(VelvetTheme.IsDark);
+        #endregion
+
+        #region responsive / relational attach lifecycle
+
+        private void OnAttach(AttachToPanelEvent evt)
+        {
+            if (TracksWidth)
+            {
+                HookWidth(evt.destinationPanel?.visualTree);
+            }
+            else
+            {
+                ResolveRelational();
+            }
+        }
+
+        private void OnDetach(DetachFromPanelEvent evt)
+        {
+            _widthSource?.Unhook();
+            UnhookRelational();
+            SetInner(false);
+        }
+        #endregion
+
+        #region responsive / container
+
+        // A viewport breakpoint and a container query read a width the same way and differ in where it comes
+        // from and in the test applied to it.
+        private bool TracksWidth => _source is StackedInnerSource.Responsive or StackedInnerSource.Container;
+
+        private void HookWidth(VisualElement? panelRoot)
+        {
+            _widthSource ??= new ResponsiveWidthSource(EvaluateResponsive);
+            _widthSource.Hook(ResolveWidthSource(panelRoot));
+            EvaluateResponsive();
+        }
+
+        private VisualElement? ResolveWidthSource(VisualElement? panelRoot)
+            => _source == StackedInnerSource.Container
+                ? StyleResponsiveScope.ResolveContainer(target, _query.Name)
+                : StyleResponsiveScope.ResolveWidthSource(target, panelRoot);
+
+        private void EvaluateResponsive()
+        {
+            using var themeScope = StyleThemeTokens.Use(_ctx, target);
+            if (_source == StackedInnerSource.Container)
+            {
+                // A threshold a sheet declares may have moved since the class was parsed.
+                var reads = StyleContainerQuery.TryParse(_innerName, out var current);
+                if (reads)
+                {
+                    _query = current;
+                }
+                SetInner(reads && _widthSource?.Satisfies(_query) == true);
+                return;
+            }
+
+            var width = _widthSource?.Width ?? 0f;
+            SetInner(width >= StyleVariantClass.BreakpointPx(_innerKind));
+        }
+
+        private StyleResponsiveScope.ScopeWatch? _watch;
+
+        private bool ScopeIsStale()
+            => !ReferenceEquals(_widthSource?.Root, StyleResponsiveScope.ResolveContainer(target, _query.Name));
+
+        private void OnScopesChanged()
+        {
+            if (target?.panel == null)
+            {
+                return;
+            }
+            HookWidth(target.panel.visualTree);
+        }
+        #endregion
+
+        #region group / peer (shared detection via RelationalVariantSignals)
+
+        private void ResolveRelational()
+        {
+            UnhookRelational();
+            if (_relational == null)
+            {
+                return;
+            }
+            RetargetRelational();
+        }
+
+        // Hooks the relational sources the tree now holds, keeping the state of each one already hooked.
+        internal void RetargetRelational()
+        {
+            if (_relational is not { } rel)
+            {
+                return;
+            }
+            if (target?.panel == null)
+            {
+                return;
+            }
+            // A named inner (dark:group-hover/sidebar:) resolves the `group/sidebar` source, not the unnamed one.
+            var sourceClass = StyleRelationalVariantManipulator.SourceClassFor(rel.IsPeer, _innerName);
+            StyleRelationalVariantManipulator.FindSources(target, rel.IsPeer, sourceClass, _ctx, _relSources);
+            _relSignals ??= new RelationalSourceSet(_ctx, OnRelSignal);
+            _relSignals.Retarget(_relSources, seedChecked: TracksChecked, registerChecked: TracksChecked,
+                trackDisabled: TracksRelationalDisabled);
+        }
+
+        private void UnhookRelational()
+        {
+            _relSignals?.Unhook();
+        }
+
+        // Opens/closes the inner gate when the detected relational signal matches this stack's inner kind.
+        private void OnRelSignal(RelationalVariantSignal signal, bool on)
+        {
+            if (_relational is { } rel && StyleVariantClass.StateOf(signal) == rel.State)
+            {
+                SetInner(on);
+            }
+        }
+        #endregion
+
+        #region gating
+
+        private void SetInner(bool on)
+        {
+            if (_innerOn == on)
+            {
+                return;
+            }
+            _innerOn = on;
+            Sync();
+        }
+
+        // Apply the leaf iff both gates hold; recurse so a still-nested leaf spawns a further stacked
+        // manipulator gated by this combined state.
+        private void Sync()
+        {
+            var want = _outerOn && _innerOn;
+            if (want == _applied)
+            {
+                return;
+            }
+            _applied = want;
+            StyleVariantPayload.Apply(target, _leaf, want, _priority, _ctx, this, _declarations);
+        }
+
+        private void ClearApplied()
+        {
+            if (!_applied)
+            {
+                return;
+            }
+            _applied = false;
+            StyleVariantPayload.Apply(target, _leaf, false, _priority, _ctx, this, _declarations);
+        }
+        #endregion
+    }
+}

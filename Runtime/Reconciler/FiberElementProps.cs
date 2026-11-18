@@ -1,0 +1,387 @@
+#nullable enable
+using System;
+using System.Collections.Generic;
+using UnityEngine;
+using UnityEngine.UIElements;
+
+namespace Velvet
+{
+    /// <summary>
+    /// Type-safe property bag for a VNode (text, tooltip, enabled/visible, field value, and
+    /// element-specific settings), passed as the <c>props:</c> argument of the <c>V.*</c> factories.
+    /// </summary>
+    public sealed class FiberElementProps
+    {
+        /// <summary>CSS class name toggled when Visible=false.</summary>
+        internal const string HiddenClassName = "hidden";
+
+        private bool _isReadOnly;
+
+        /// <summary>Text for Label / Button.</summary>
+        public string? Text { get => _text; set { ThrowIfReadOnly(); _text = value; } }
+        private string? _text;
+
+        /// <summary>Tooltip text.</summary>
+        public string? Tooltip { get => _tooltip; set { ThrowIfReadOnly(); _tooltip = value; } }
+        private string? _tooltip;
+
+        /// <summary>Maps to SetEnabled().</summary>
+        public bool? Enabled { get => _enabled; set { ThrowIfReadOnly(); _enabled = value; } }
+        private bool? _enabled;
+
+        /// <summary>When false, hides the element by toggling its "hidden" USS class.</summary>
+        public bool? Visible { get => _visible; set { ThrowIfReadOnly(); _visible = value; } }
+        private bool? _visible;
+
+        /// <summary>Generic binding for BaseField&lt;T&gt;.value.</summary>
+        public object? FieldValue { get => _fieldValue; set { ThrowIfReadOnly(); _fieldValue = value; } }
+        private object? _fieldValue;
+
+        /// <summary>Whether the element is focusable.</summary>
+        public bool? Focusable { get => _focusable; set { ThrowIfReadOnly(); _focusable = value; } }
+        private bool? _focusable;
+
+        /// <summary>
+        /// Maps to the element's tabIndex. Positive values sort ahead of 0 in the sequential (Tab) ring.
+        /// Caution: on runtime panels, -1 removes the element from BOTH the Tab ring AND 2D arrow/dpad/stick
+        /// navigation — it is not the web's "focusable but not tab-reachable". For a group with one Tab
+        /// stop, use a focus scope with SingleTabStop instead.
+        /// </summary>
+        public int? TabIndex { get => _tabIndex; set { ThrowIfReadOnly(); _tabIndex = value; } }
+        private int? _tabIndex;
+
+        /// <summary>
+        /// Maps to the element's delegatesFocus: focusing this element forwards to its first focusable
+        /// child, and the focus rings skip the element itself.
+        /// </summary>
+        public bool? DelegatesFocus { get => _delegatesFocus; set { ThrowIfReadOnly(); _delegatesFocus = value; } }
+        private bool? _delegatesFocus;
+
+        /// <summary>
+        /// Focus-scope behavior for this container element, whose subtree is the scope. Attachable to
+        /// ANY container — the modal Div you already have can be the scope; <c>V.FocusScope</c> scopes
+        /// children without a container around them.
+        /// </summary>
+        public FocusScopeSettings? FocusScope { get => _focusScope; set { ThrowIfReadOnly(); _focusScope = value; } }
+        private FocusScopeSettings? _focusScope;
+
+        /// <summary>
+        /// Drag-and-drop scope configuration for this container element.
+        /// Draggables and droppables pair with their nearest ancestor scope at event time.
+        /// </summary>
+        public DndContextSettings? DndContext { get => _dndContext; set { ThrowIfReadOnly(); _dndContext = value; } }
+        private DndContextSettings? _dndContext;
+
+        /// <summary>Drag-source configuration — the element carrying it
+        /// is the drag node itself.</summary>
+        public DraggableSettings? Draggable { get => _draggable; set { ThrowIfReadOnly(); _draggable = value; } }
+        private DraggableSettings? _draggable;
+
+        /// <summary>Drop-target configuration.</summary>
+        public DroppableSettings? Droppable { get => _droppable; set { ThrowIfReadOnly(); _droppable = value; } }
+        private DroppableSettings? _droppable;
+
+        /// <summary>Marker for the V.DragOverlay positioner (the framework-positioned drag preview).</summary>
+        public DragOverlaySettings? DragOverlay { get => _dragOverlay; set { ThrowIfReadOnly(); _dragOverlay = value; } }
+        private DragOverlaySettings? _dragOverlay;
+
+        /// <summary>
+        /// When true, a press that starts on this element or inside it never arms this element's own
+        /// draggable or an enclosing one, so a control keeps its own pointer gesture (a slider's thumb, a text
+        /// field's selection). A draggable inside this element still arms.
+        /// </summary>
+        public bool NoDrag { get => _noDrag; set { ThrowIfReadOnly(); _noDrag = value; } }
+        private bool _noDrag;
+
+        /// <summary>Slider-specific settings.</summary>
+        public SliderSettings? Slider { get => _slider; set { ThrowIfReadOnly(); _slider = value; } }
+        private SliderSettings? _slider;
+
+        /// <summary>SliderInt-specific settings.</summary>
+        public SliderIntSettings? SliderInt { get => _sliderInt; set { ThrowIfReadOnly(); _sliderInt = value; } }
+        private SliderIntSettings? _sliderInt;
+
+        /// <summary>ScrollView-specific settings.</summary>
+        public ScrollViewSettings? ScrollView { get => _scrollView; set { ThrowIfReadOnly(); _scrollView = value; } }
+        private ScrollViewSettings? _scrollView;
+
+        /// <summary>TextField-specific settings.</summary>
+        public TextFieldSettings? TextField { get => _textField; set { ThrowIfReadOnly(); _textField = value; } }
+        private TextFieldSettings? _textField;
+
+        /// <summary>Choices for DropdownField / RadioButtonGroup.</summary>
+        public ChoicesSettings? Choices { get => _choices; set { ThrowIfReadOnly(); _choices = value; } }
+        private ChoicesSettings? _choices;
+
+        /// <summary>SceneView-specific settings (the camera whose output the element displays).</summary>
+        public SceneViewSettings? SceneView { get => _sceneView; set { ThrowIfReadOnly(); _sceneView = value; } }
+        private SceneViewSettings? _sceneView;
+
+        /// <summary>Particles-specific settings (the effect the element simulates and draws).</summary>
+        public ParticlesSettings? Particles { get => _particles; set { ThrowIfReadOnly(); _particles = value; } }
+        private ParticlesSettings? _particles;
+
+        /// <summary>Anchored-specific settings (the 3D Transform this element's screen position tracks).</summary>
+        public AnchoredSettings? Anchored { get => _anchored; set { ThrowIfReadOnly(); _anchored = value; } }
+        private AnchoredSettings? _anchored;
+
+        /// <summary>
+        /// Carried <c>data-*</c> attribute values (key → value), the UI-Toolkit stand-in for HTML data
+        /// attributes. UI Toolkit has no attributes, so these are stored in the reconciler's per-element
+        /// side-table and matched by the <c>data-[key=value]:</c> / <c>data-[key]:</c> variants. Null = none.
+        /// </summary>
+        public IReadOnlyDictionary<string, string>? Data { get => _data; set { ThrowIfReadOnly(); _data = value; } }
+        private IReadOnlyDictionary<string, string>? _data;
+
+        /// <summary>
+        /// Carried <c>aria-*</c> attribute values (key → value), matched by the
+        /// <c>aria-[key=value]:</c> / <c>aria-[key]:</c> variants. Stored in the reconciler's per-element
+        /// side-table like <see cref="Data"/> (UI Toolkit has no HTML attributes). Null = none.
+        /// </summary>
+        public IReadOnlyDictionary<string, string>? Aria { get => _aria; set { ThrowIfReadOnly(); _aria = value; } }
+        private IReadOnlyDictionary<string, string>? _aria;
+
+        /// <summary>Shared read-only instance with no properties set; throws if mutated.</summary>
+        public static readonly FiberElementProps Empty = new() { _isReadOnly = true };
+
+        private void ThrowIfReadOnly()
+        {
+            if (_isReadOnly)
+                throw new InvalidOperationException("FiberElementProps.Empty is read-only and cannot be modified.");
+        }
+    }
+
+    /// <summary>
+    /// Slider.lowValue / highValue / direction / inverted, and the keyboard step. Record structural equality simplifies DiffProps.
+    /// A null <see cref="Direction"/> or <see cref="Inverted"/> is undeclared: one no render has declared is
+    /// not written, and one a render declared and a later render dropped is restored to what the slider
+    /// carried when a render first declared it. A null bound is written as 0 or 10 whenever either bound's
+    /// declaration changes. <see cref="Step"/> is Radix's <c>step</c>, and null is its default of 1.
+    /// </summary>
+    public sealed record SliderSettings(
+        float? LowValue = null,
+        float? HighValue = null,
+        SliderDirection? Direction = null,
+        bool? Inverted = null,
+        float? Step = null)
+    {
+        /// <summary>
+        /// Reads the range alone. Kept beside the five-member form the record declares so a two-element
+        /// deconstruction or positional pattern written against the record before it carried
+        /// <see cref="Direction"/>, <see cref="Inverted"/> and <see cref="Step"/> still compiles.
+        /// </summary>
+        public void Deconstruct(out float? LowValue, out float? HighValue)
+        {
+            LowValue = this.LowValue;
+            HighValue = this.HighValue;
+        }
+    }
+
+    /// <summary>
+    /// SliderInt.lowValue / highValue / direction / inverted, and the keyboard step: <see cref="SliderSettings"/>
+    /// over whole numbers, with the same undeclared and default rules.
+    /// </summary>
+    public sealed record SliderIntSettings(
+        int? LowValue = null,
+        int? HighValue = null,
+        SliderDirection? Direction = null,
+        bool? Inverted = null,
+        int? Step = null);
+
+    /// <summary>Controls ScrollView scroller visibility and touch-scroll behavior.</summary>
+    public sealed record ScrollViewSettings(
+        ScrollerVisibility? VerticalScrollerVisibility = null,
+        ScrollerVisibility? HorizontalScrollerVisibility = null,
+        ScrollView.TouchScrollBehavior? TouchScrollBehavior = null);
+
+    /// <summary>
+    /// TextField.isPasswordField, textEdition.placeholder, maxLength, isReadOnly, isDelayed, multiline,
+    /// keyboardType and autoCorrection.
+    /// A null member is undeclared: <see cref="FiberPropApplier.ApplyTextField"/> leaves a member no render
+    /// has declared untouched, and restores what the element was constructed with once a render that did
+    /// declare one drops it. An empty <see cref="Placeholder"/> is a declared empty placeholder.
+    /// </summary>
+    public sealed record TextFieldSettings(
+        bool? IsPassword = null,
+        string? Placeholder = null,
+        int? MaxLength = null,
+        bool? IsReadOnly = null,
+        bool? IsDelayed = null)
+    {
+        // Init-only rather than positional: a positional member would change the constructor and the
+        // Deconstruct that existing callers bind to.
+
+        /// <summary>TextField.multiline (HTML <c>&lt;textarea&gt;</c>).</summary>
+        public bool? Multiline { get; init; }
+
+        /// <summary>TextField.keyboardType (HTML <c>inputmode</c>).</summary>
+        public TouchScreenKeyboardType? KeyboardType { get; init; }
+
+        /// <summary>TextField.autoCorrection (HTML <c>autocorrect</c>).</summary>
+        public bool? AutoCorrection { get; init; }
+    }
+
+    /// <summary>List of choices for DropdownField / RadioButtonGroup.</summary>
+    public sealed record ChoicesSettings(
+        List<string>? Choices = null);
+
+    /// <summary>
+    /// The camera a SceneView element displays, plus its render-resolution policy. The framework owns
+    /// the RenderTexture: it is created at the element's laid-out pixel size (times
+    /// <see cref="ResolutionScale"/>), follows geometry changes, and is released on unmount.
+    /// The constructor fail-fasts on a non-positive or NaN scale so every construction path (the
+    /// factory, wrapper hosts, direct construction) shares one guard; a <c>with</c> expression
+    /// bypasses it like any record init.
+    /// </summary>
+    public sealed record SceneViewSettings
+    {
+        public Camera? Camera { get; init; }
+        public float ResolutionScale { get; init; } = 1f;
+
+        /// <exception cref="System.ArgumentOutOfRangeException"><paramref name="resolutionScale"/> is &lt;= 0 or NaN.</exception>
+        public SceneViewSettings(Camera? camera = null, float resolutionScale = 1f)
+        {
+            Camera = camera;
+            ResolutionScale = VelvetArgUtil.RequirePositiveFinite(resolutionScale, nameof(resolutionScale),
+                "resolutionScale must be greater than 0.");
+        }
+    }
+
+    /// <summary>
+    /// The particle effect a Particles element simulates and draws: the source effect (a prefab's
+    /// ParticleSystem, or a VFX Graph VisualEffect when no ParticleSystem is given — the framework
+    /// instantiates a hidden host from it and owns that instance), the play trigger, and the
+    /// world-unit → element-pixel mapping.
+    /// The constructor fail-fasts on a non-positive or NaN mapping so every construction path shares
+    /// one guard; a <c>with</c> expression bypasses it like any record init.
+    /// </summary>
+    public sealed record ParticlesSettings
+    {
+        public ParticleSystem? Effect { get; init; }
+        public UnityEngine.VFX.VisualEffect? VisualEffect { get; init; }
+        public PlayTrigger PlayOn { get; init; } = PlayTrigger.Mount;
+        public float PixelsPerUnit { get; init; } = 100f;
+
+        /// <exception cref="System.ArgumentOutOfRangeException"><paramref name="pixelsPerUnit"/> is &lt;= 0 or NaN.</exception>
+        public ParticlesSettings(ParticleSystem? effect = null, PlayTrigger playOn = PlayTrigger.Mount, float pixelsPerUnit = 100f)
+        {
+            Effect = effect;
+            PlayOn = playOn;
+            PixelsPerUnit = VelvetArgUtil.RequirePositiveFinite(pixelsPerUnit, nameof(pixelsPerUnit),
+                "pixelsPerUnit must be positive; it maps particle world units to element pixels.");
+        }
+    }
+
+    /// <summary>
+    /// Focus-management behavior for a container subtree: <see cref="Contain"/>, <see cref="RestoreFocus"/>,
+    /// and <see cref="AutoFocus"/> are straightforward toggles;
+    /// <see cref="SingleTabStop"/> is the WAI-ARIA composite-widget (roving) contract adapted to UI Toolkit,
+    /// where arrow/dpad movement inside the group is engine-native 2D navigation. Record structural
+    /// equality simplifies DiffProps.
+    /// </summary>
+    /// <param name="Contain">Tab/Shift-Tab wrap within the subtree (computed by a focus ring scoped to it);
+    /// a 2D/pointer move that exits the subtree is snapped back within the same event flush unless it
+    /// landed in a contained scope created after this one. A press on empty non-focusable space clears
+    /// focus to nothing first — that path re-focuses the scope on the panel's next scheduler tick, as does
+    /// focus that moves to another panel unless it lands in a portal declared inside the scope or in a
+    /// contained scope created after this one.</param>
+    /// <param name="RestoreFocus">On unmount while holding focus, refocus the element that held focus when the
+    /// scope mounted (skipped if that element is gone, detached, or cannot grab focus).</param>
+    /// <param name="AutoFocus">On mount (the scope's FIRST attach-to-panel, never a re-attach such as a
+    /// keyed reorder's), focus the scope's first focusable descendant (skipped when focus is already
+    /// inside the scope).</param>
+    /// <param name="SingleTabStop">The subtree behaves as one Tab stop: Tab from inside exits past the
+    /// remaining members (wrapping within the nearest containing scope, if any); Tab entering from outside
+    /// — in either direction — lands on the last-focused member, else the scope's first. An arrow/d-pad move
+    /// steps to the next member in hierarchy order (right, down) or the previous one (left, up) and never
+    /// leaves the subtree; <see cref="Orientation"/> ignores one axis's moves and <see cref="Wrap"/> continues
+    /// past an end.</param>
+    public sealed record FocusScopeSettings(
+        bool Contain = false,
+        bool RestoreFocus = false,
+        bool AutoFocus = false,
+        bool SingleTabStop = false)
+    {
+        /// <summary>
+        /// The axis arrow/d-pad moves travel inside a <see cref="SingleTabStop"/> group, as React Aria's
+        /// <c>useToolbar</c> takes an <c>orientation</c>. A move on the other axis is ignored before it moves
+        /// focus. Of nested groups, the outermost one's value decides; without <see cref="SingleTabStop"/>
+        /// it is not read.
+        /// </summary>
+        public FocusScopeOrientation Orientation { get; init; }
+
+        /// <summary>
+        /// Inside a <see cref="SingleTabStop"/> group, an arrow/d-pad move past the last member lands on the first
+        /// and one before the first lands on the last, as a React Aria radio group's arrows do. Without it the
+        /// move leaves focus where it is, as a React Aria toolbar's arrows do. Of nested groups, the outermost
+        /// one's value decides; without <see cref="SingleTabStop"/> it is not read.
+        /// </summary>
+        public bool Wrap { get; init; }
+    }
+
+    /// <summary>The axes an arrow/d-pad move may travel inside a <c>singleTabStop</c> group.</summary>
+    public enum FocusScopeOrientation
+    {
+        /// <summary>Moves on both axes travel between members.</summary>
+        Both,
+
+        /// <summary>Left and right moves travel; up and down keep focus on the member.</summary>
+        Horizontal,
+
+        /// <summary>Up and down moves travel; left and right keep focus on the member.</summary>
+        Vertical,
+    }
+
+    /// <summary>
+    /// The 3D Transform an Anchored element's screen position tracks, plus the camera whose projection
+    /// drives it (null resolves to <see cref="Camera.main"/> on every tick, so a scene's active camera
+    /// can change without a settings update), a pixel offset applied after projection, an opt-in physics
+    /// occlusion test, and an opt-in camera-distance scale factor. The constructor fail-fasts on a
+    /// non-positive or NaN <see cref="DistanceFactor"/> so every construction path (the factory, wrapper
+    /// hosts, direct construction) shares one guard; a <c>with</c> expression bypasses it like any record
+    /// init.
+    /// </summary>
+    public sealed record AnchoredSettings
+    {
+        public Transform? Target { get; init; }
+        public Camera? Camera { get; init; }
+        public Vector2 Offset { get; init; }
+        public bool HideWhenBehindCamera { get; init; } = true;
+        public bool Occlude { get; init; }
+        public LayerMask OccludeLayerMask { get; init; } = Physics.DefaultRaycastLayers;
+        public float? DistanceFactor { get; init; }
+
+        /// <exception cref="System.ArgumentOutOfRangeException"><paramref name="distanceFactor"/> is &lt;= 0, NaN, or positive infinity.</exception>
+        public AnchoredSettings(Transform? target, Camera? camera = null, Vector2 offset = default,
+            bool hideWhenBehindCamera = true, bool occlude = false, LayerMask? occludeLayerMask = null,
+            float? distanceFactor = null)
+        {
+            Target = target;
+            Camera = camera;
+            Offset = offset;
+            HideWhenBehindCamera = hideWhenBehindCamera;
+            Occlude = occlude;
+            OccludeLayerMask = occludeLayerMask ?? Physics.DefaultRaycastLayers;
+            DistanceFactor = distanceFactor.HasValue
+                ? VelvetArgUtil.RequirePositiveFinite(distanceFactor.Value, nameof(distanceFactor),
+                    "distanceFactor must be positive; the scale is it divided by the camera's visible height at the target.")
+                : null;
+        }
+    }
+
+    // Shared numeric precondition for the settings records above: several element factories carry a
+    // positive-finite float knob, and each duplicating its own NaN-safe check invites drift.
+    internal static class VelvetArgUtil
+    {
+        internal static float RequirePositiveFinite(float value, string paramName, string message)
+        {
+            // The negated > comparison catches NaN and non-positive values; PositiveInfinity is > 0f so
+            // it slips past that check on its own and needs its own guard to actually be "finite".
+            if (!(value > 0f) || float.IsPositiveInfinity(value))
+            {
+                throw new System.ArgumentOutOfRangeException(paramName, message);
+            }
+            return value;
+        }
+    }
+}

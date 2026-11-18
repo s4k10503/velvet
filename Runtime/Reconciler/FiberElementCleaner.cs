@@ -1,0 +1,872 @@
+using System;
+using System.Collections.Generic;
+using UnityEngine.UIElements;
+
+namespace Velvet
+{
+    // Element-exit teardown: every path that removes an element from the DOM funnels through here so
+    // the ~25 per-element resource categories are released exactly once (see CleanupElementResources).
+    internal sealed class FiberElementCleaner
+    {
+        private readonly ReconcilerContext _ctx;
+
+        public FiberElementCleaner(ReconcilerContext ctx)
+        {
+            _ctx = ctx;
+        }
+
+        public void RemoveElement(VisualElement parent, int index)
+        {
+            if (index < 0 || index >= parent.childCount)
+            {
+                return;
+            }
+
+            var element = parent.ElementAt(index);
+            var poolable = PoolableOccupantOf(element);
+            CleanupElement(element, element.panel, IsDiscardedAfterCleanup(element, poolable) ? element : null);
+            RemoveCleaned(parent, element);
+            ReturnOccupantToPool(element, poolable);
+        }
+
+        // Whether nothing outside the subtree keeps element or anything below it once its removal returns: the
+        // slot's poolable occupant is left to the collector, and no Portal range inside the subtree is torn out
+        // through CleanupPortal, which returns the children it holds to the pools after they were cleaned as
+        // descendants of this subtree.
+        private bool IsDiscardedAfterCleanup(VisualElement element, VisualElement poolable)
+            => PoolKindOf(poolable) == PoolKind.None && !HoldsAPortalTarget(element);
+
+        private bool HoldsAPortalTarget(VisualElement root)
+        {
+            foreach (var range in _ctx.PortalState.Stored.Values)
+            {
+                var target = range.Target;
+                if (target != null && root.Contains(target)) return true;
+            }
+            return false;
+        }
+
+        // Removes element by reference rather than at the index it was found at: its cleanup can take a child
+        // hosted before it out of the same parent (BackdropFilterLayer.Detach), which moves it down a slot.
+        private static void RemoveCleaned(VisualElement parent, VisualElement element)
+        {
+            var at = ChildListWrites.PhysicalIndexOf(parent, element);
+            if (at >= 0)
+            {
+                ChildListWrites.RemoveAt(parent, at);
+            }
+        }
+
+        // Resolves the poolable occupant of a slot: a clip-path-* leaf sits inside a
+        // structural wrapper, and the wrapper — not the widget — is the slot's element. Must run
+        // BEFORE CleanupElement, which consumes the wrapper map entry.
+        private VisualElement PoolableOccupantOf(VisualElement element)
+            => _ctx.WrapperToInnerMap.TryGetValue(element, out var inner) ? inner : element;
+
+        // Reclaims the slot's poolable occupant after cleanup. A wrapped inner is detached from its
+        // wrapper first so a pooled widget never carries the dead wrapper as its parent — mirroring
+        // the rollback-orphan path, which already unwraps before reclaiming.
+        private void ReturnOccupantToPool(VisualElement removed, VisualElement poolable)
+        {
+            if (!ReferenceEquals(poolable, removed))
+            {
+                ChildListWrites.RemoveFromHierarchy(poolable);
+            }
+            ReturnToPool(poolable);
+        }
+
+        // Returns a created-but-never-placed orphan element to the pool. Used by the speculative
+        // Suspense-primary commit rollback: a primary that suspends discards the elements it created
+        // before the suspend, and those orphans were never inserted into the DOM so
+        // RemoveElement / the general-commit finalize never reach them. EVERY orphan — leaf or
+        // container — gets its element-keyed resources released here, or the ReconcilerContext
+        // side-tables (variant manipulators, the structural/has/data/aria/supports rules,
+        // arbitrary-value layers, shadow/clip/gradient bindings) would retain the discarded element
+        // for the context's whole lifetime. A genuine poolable leaf is also reclaimed to the pool:
+        // a Button or a Label only when childless, since either can be given children — V.Button's own DSL,
+        // or V.Custom<T> for both — which CreateElement inline-expands into the element itself, while this
+        // branch releases resources for the orphan alone. Toggle / Slider / SliderInt / TextField are reclaimed
+        // unconditionally: each already holds its own constructed sub-element, so a count cannot separate
+        // that from a V.Custom child — their reset detaches one by exclusion instead
+        // (FiberElementPoolReset.DetachForeignChildren), on this path and on ordinary unmount alike. A
+        // container orphan — including a Button or a Label declared with children — has its subtree's
+        // resources released recursively via CleanupElementCore. The element was never in the hierarchy,
+        // so there is no DOM detach.
+        public void ReturnRolledBackOrphan(VisualElement? element)
+        {
+            if (element == null) return;
+            // A clip-path-* / ring / wrapElement orphan arrives as its structural WRAPPER (CreateElement
+            // returns the wrapper). Detach the inner from the wrapper, then reclaim it by the rules below —
+            // they release its binding-tracked resources (clip VectorImage, the wrapper-less skew + shadow
+            // paint bindings, geometry callbacks, the binding dictionary entries) and either pool it or recurse.
+            if (_ctx.WrapperToInnerMap.TryGetValue(element, out var innerOfWrapper))
+            {
+                // The factory records stacking facts on the wrapper, which the inner's cleanup below does not reach.
+                _ctx.ClearElementSideTables(element);
+                _ctx.WrapperToInnerMap.Remove(element);
+                ChildListWrites.RemoveFromHierarchy(innerOfWrapper);
+                ReturnRolledBackOrphan(innerOfWrapper);
+                return;
+            }
+
+            var exactType = PoolingType(element);
+            if (exactType == typeof(Toggle) || exactType == typeof(Slider) || exactType == typeof(TextField)
+                || exactType == typeof(SliderInt)
+                || ((exactType == typeof(Button) || exactType == typeof(Label)) && element.childCount == 0))
+            {
+                CleanupElementResources(element);
+                if (exactType == typeof(TextField))
+                {
+                    // Its input box carries what the field's surface utilities put on it (StyleInputBoxSurface):
+                    // stacked variant manipulators keyed by the box and paint bindings.
+                    CleanupDescendants(element);
+                }
+                ReturnToPool(element);
+            }
+            else
+            {
+                // A plain container orphan (Div), a Button or Label declared with children, or a user
+                // subclass of a poolable primitive (never pooled — see ReturnToPool).
+                CleanupElementCore(element);
+            }
+        }
+
+        // The type pooling dispatches on: the Button and Label subclasses Velvet itself builds (SkewPickRegion.cs) are
+        // the primitives they stand for, where any other subclass keeps its own type and stays out of the pool.
+        private static Type PoolingType(VisualElement element)
+            => element is SkewPickButton ? typeof(Button) : element is SkewPickLabel ? typeof(Label) : element.GetType();
+
+        private enum PoolKind { None, TextField, Toggle, Slider, SliderInt, Button, Label }
+
+        // The pool ReturnToPool puts an element in, None for one it leaves to the collector.
+        private static PoolKind PoolKindOf(VisualElement element)
+        {
+            var type = PoolingType(element);
+            if (type == typeof(TextField)) return PoolKind.TextField;
+            if (type == typeof(Toggle)) return PoolKind.Toggle;
+            if (type == typeof(Slider)) return PoolKind.Slider;
+            if (type == typeof(SliderInt)) return PoolKind.SliderInt;
+            if (type == typeof(Button)) return PoolKind.Button;
+            if (type == typeof(Label)) return PoolKind.Label;
+            return PoolKind.None;
+        }
+
+        // Returns the element to the VNodePool when the type supports pooling.
+        // Called after the element has been detached from the DOM hierarchy and Velvet-managed
+        // resources have been released. Dispatches on the EXACT runtime type, mirroring the
+        // factory's exact-type rent checks: a user subclass of a poolable primitive (mounted via
+        // V.Custom<T>) must never enter the shared pool — its own fields and constructor-registered
+        // callbacks survive the base-type reset, so a later plain rent would resurrect them on an
+        // unrelated mount.
+        private void ReturnToPool(VisualElement element)
+        {
+            FiberPropApplier.ForgetRecordedDefaults(element);
+            switch (PoolKindOf(element))
+            {
+                case PoolKind.TextField:
+                    VNodePool.ReturnTextField((TextField)element);
+                    break;
+                case PoolKind.Toggle:
+                    VNodePool.ReturnToggle((Toggle)element);
+                    break;
+                case PoolKind.Slider:
+                    VNodePool.ReturnSlider((Slider)element);
+                    break;
+                case PoolKind.SliderInt:
+                    VNodePool.ReturnSliderInt((SliderInt)element);
+                    break;
+                case PoolKind.Button:
+                    VNodePool.ReturnButton((Button)element);
+                    break;
+                case PoolKind.Label:
+                    VNodePool.ReturnLabel((Label)element);
+                    break;
+                default:
+                    return;
+            }
+            MotionLayoutIdDriver.ForgetParent(element, _ctx);
+        }
+
+        // DOM operations (RemoveAt / RemoveFromHierarchy) are performed by the caller.
+        public void CleanupElement(VisualElement element) => CleanupElement(element, element.panel, discardedRoot: null);
+
+        // `panel` is the one `element` is leaving, passed separately for a caller that has already detached it.
+        // `discardedRoot` is ReconcilerContext.DiscardedSubtreeRoot for the span of this teardown; a teardown
+        // nested in it (a portal's children, a relocated element) names its own, so none inherits it.
+        private void CleanupElement(VisualElement element, IPanel? panel, VisualElement? discardedRoot)
+        {
+            // A row a container's deletion took down already has nothing of it left to reach.
+            if (!_ctx.RemovalsTakenDown.Remove(element, out var mounted))
+            {
+                mounted = DeletionCommit.TakeDownLeaving(_ctx, this, element);
+            }
+            var enclosingRoot = _ctx.DiscardedSubtreeRoot;
+            _ctx.DiscardedSubtreeRoot = discardedRoot;
+            try
+            {
+                // Same wrapper → resources → portal → descendants teardown as the recursive descendant pass.
+                CleanupElementCore(element);
+            }
+            finally
+            {
+                _ctx.DiscardedSubtreeRoot = enclosingRoot;
+            }
+            // After the core, whose restore focus reads the focus this would drop.
+            PanelFocusMemory.Forget(panel, element);
+
+            // Wrapper-mounted fibers under this subtree were disposed by the recursive Remove(VE) above, but
+            // an inline-mounted fiber nested under a host element anchors on its PARENT FIBER, not a VE: when a
+            // host element is torn down out-of-band (type-swap, Portal unmount, VirtualList recycle, presence
+            // drop) its owning reconcile never walks into the host (it is an opaque leaf), so the orphan sweep
+            // does not reach the fiber and it would survive to be re-paired as a zombie on a same-key re-entry.
+            // Dispose by subtree containment here so its effect cleanups fire and a re-entry mounts fresh. This
+            // set is disjoint from the orphan sweep's (top-level inline fibers anchor on the parent, outside any
+            // removed child), so the disposal does not overlap; FiberRenderer.Dispose is idempotent regardless.
+            // The selection is the one DeletionCommit made above.
+            if (mounted != null) _ctx.ComponentRegistry.DisposeTogether(mounted);
+        }
+
+        // Detaches an element-keyed manipulator: removes it from the element and drops its side-table entry.
+        // One helper so a new manipulator side-table is torn down by adding a call here, not by re-deriving the
+        // TryGetValue / RemoveManipulator / Remove triple by hand (the ghost-leak / pool-reuse bug class).
+        private static void DetachManipulator<T>(VisualElement element, Dictionary<VisualElement, T> table)
+            where T : class, IManipulator
+        {
+            if (table.TryGetValue(element, out var manipulator))
+            {
+                element.RemoveManipulator(manipulator);
+                table.Remove(element);
+            }
+        }
+
+        // Releases resources for a single element (animations, events, components, gestures, VirtualList).
+        // Performs no DOM operations. Shared logic between CleanupElement and
+        // CleanupDescendants. Split into cohesive groups, called in their original sequence — see
+        // CleanupEffectAndStyleBindingResources' own note on why MotionLayoutIdDriver must run before
+        // ClearElementSideTables. A drag session's classes come off first, through the element's class
+        // projection, which the style group drops; the session itself is cancelled with the other drag
+        // bindings, once the style group has unbound the element's handlers.
+        private void CleanupElementResources(VisualElement element)
+        {
+            _ctx.ActiveDrag?.ReleaseClassesOf(element);
+            CleanupEffectAndStyleBindingResources(element);
+            CleanupPaintResources(element);
+            CleanupElementDriverResources(element);
+            CleanupFocusAndNavigationResources(element);
+            CleanupDndResources(element);
+            CleanupControllerResources(element);
+            _ctx.PrunePresenceParentElementState(element);
+            _ctx.PruneSuspenseContainerState(element);
+            _ctx.FiberMemoCache.Forget(element);
+        }
+
+        // Reached ahead of the rest of the teardown where a deletion's walk reaches the element (DeletionCommit), which
+        // leaves nothing for the teardown's own call.
+        internal void DetachRef(VisualElement element)
+        {
+            // An element leaving inside the pass that created it — a row removed after being created, a
+            // speculative orphan rolled back — still owes the setup the walk queued for it. Cancelling it
+            // is what keeps the drain from installing a ref on an element no tree holds.
+            _ctx.DropPendingRefAttach(element);
+            _ctx.ForgetRefDetachedWhileHidden(element);
+            if (!_ctx.RefCallbacks.TryGetValue(element, out var installedRef)) return;
+            _ctx.RefCallbacks.Remove(element);
+            // Contained the way Reconciler.ReleaseRefCallbacks contains the same user delegate. A throw
+            // escaping here skips the rest of this element's teardown — including the ring detach whose
+            // own note says skipping it strands a live band — and unwinds whichever removal loop called
+            // in, so the rows it had not reached yet stay in the tree.
+            try
+            {
+                installedRef.Cleanup?.Invoke();
+            }
+            catch (System.Exception exception)
+            {
+                FiberLogger.LogException("FiberElementCleaner", exception);
+            }
+        }
+
+        // Refs, animation/layout scheduling, the event + component registries, and every
+        // manipulator-backed or pure side-table style binding (variants, gap/divide/grid/balance,
+        // arbitrary values).
+        private void CleanupEffectAndStyleBindingResources(VisualElement element)
+        {
+            DetachRef(element);
+            _ctx.StyleAnimationScheduler.CancelEnter(element);
+            // Teardown-flavored: this element is being released for good (pool return / disposal), not merely
+            // interrupted, so an ordinary CancelExit's reversal hand-off (which assumes the element keeps
+            // living) must not run even though it can still be attached at this point — DOM detachment is the
+            // caller's own job, performed after this cleanup.
+            _ctx.StyleAnimationScheduler.CancelExitForTeardown(element);
+            // A descendant Motion leaving before its presence exit completes stops holding the exiting child;
+            // the cancel above keeps that exit from completing as well.
+            if (_ctx.PresenceDescendantExitWaits.Remove(element, out var exitWait))
+            {
+                exitWait.TearDown(element);
+            }
+            // Must run BEFORE ClearElementSideTables below: it reads ElementToLayoutId (one of the
+            // pure side-tables that call clears) to find this element's layoutId, if any, and cancels
+            // its in-flight tick / drops its LayoutIdRegistry entry so a departing element's tween
+            // never keeps ticking against it.
+            MotionLayoutIdDriver.CancelForTeardown(element, _ctx);
+            var belowDiscardedRoot = _ctx.IsBelowDiscardedRoot(element);
+            if (belowDiscardedRoot) _ctx.EventManager.ForgetDiscardedBindings(element);
+            else _ctx.EventManager.UnbindAll(element);
+            // A pooled Button is handed out again as the same instance, so the press origin recorded for it must
+            // not survive into whatever mounts it next; its gate callbacks stay registered (Park).
+            if (element is Button button)
+            {
+                if (belowDiscardedRoot) _ctx.EventManager.ForgetDiscarded(button);
+                else if (_ctx.DiscardedSubtreeRoot == null && PoolKindOf(button) == PoolKind.Button) _ctx.EventManager.Park(button);
+                else _ctx.EventManager.Forget(button);
+            }
+            _ctx.ComponentRegistry.Remove(element);
+            RelationalSourceSet.DropDeparted(_ctx, element);
+            DetachManipulator(element, _ctx.GestureManipulators);
+            DetachManipulator(element, _ctx.VariantManipulators);
+            DetachManipulator(element, _ctx.ConditionalVariantManipulators);
+            DetachManipulator(element, _ctx.ContainerVariantManipulators);
+            DetachManipulator(element, _ctx.RelationalVariantManipulators);
+            // has-[:checked]: / has-[:focus]: own an event manipulator (descendant-event-driven); detach it.
+            DetachManipulator(element, _ctx.HasVariantManipulators);
+            // Must run before ClearElementSideTables: that drops the claim, after which the [&>*]: container
+            // that applied the payloads can no longer release them from this element.
+            if (_ctx.ChildVariantOwners.TryGetValue(element, out var variantOwner))
+            {
+                ((StyleChildVariantManipulator)variantOwner).ReleasePayloads(element);
+            }
+            // The pure side-tables (structural / has-[.class]: / data-/aria- rules + their attribute store /
+            // supports- / Motion applied-classes) carry no manipulator and no disposable resource — their
+            // applied payloads die with the element — so dropping the element's entry is the whole teardown.
+            // Cleared through one mechanism so a new such side-table is wired by enrolling it in
+            // ReconcilerContext, not by adding a line here. Dropping these also prevents a pooled widget from
+            // ghosting a prior consumer's attributes / propagated-variant classes into its next mount.
+            _ctx.ClearElementSideTables(element);
+            // Detaching the element's stacked manipulators releases their inner-variant subscriptions (incl. a
+            // stacked dark:'s process-wide VelvetTheme.DarkModeChanged), which would otherwise outlive unmount.
+            _ctx.DetachStackedVariants(element);
+            DetachManipulator(element, _ctx.GapManipulators);
+            DetachManipulator(element, _ctx.CompositeFlowManipulators);
+            DetachManipulator(element, _ctx.DivideManipulators);
+            DetachManipulator(element, _ctx.GridManipulators);
+            DetachManipulator(element, _ctx.TextBalanceManipulators);
+            DetachManipulator(element, _ctx.FlexMinSizeManipulators);
+            DetachManipulator(element, _ctx.ChildVariantManipulators);
+            if (_ctx.PointerEventsScopes.TryGetValue(element, out var pointerEvents))
+            {
+                pointerEvents.Release();
+                _ctx.PointerEventsScopes.Remove(element);
+            }
+            // Before the pool return, which resets a control's own picking mode and not its internals'.
+            PointerEventsScope.ReleaseTorn(element);
+            // Must run before ClearAll, which drops the holds and the layers the hand-back resolves to.
+            StyleArbitraryValueResolver.HandBackAll(element);
+            // Ahead of ClearAll, which drops the layer map the watch is recorded in.
+            StyleArbitraryValueResolver.ReleaseShownImageWatchOf(element);
+            // Drop the arbitrary-value layer stack so a pooled widget does not inherit a prior consumer's
+            // base/variant layers (state ghosting across pool reuse).
+            StyleArbitraryValueResolver.ClearAll(element);
+            // Same reason for the per-frame drivers' transition suspension: a driver whose release this teardown
+            // pre-empted would otherwise stay recorded as an owner, and the reused element's next play would read
+            // that stale owner as "another driver is still live" and never hand transitions back to the cascade.
+            MotionNativeTransitionGuard.ReleaseAll(element);
+            StyleAnimateDriver.ForgetHolds(element);
+        }
+
+        // The generateVisualContent-driven paint bindings: shadow/clip/ring/border/divide/overline
+        // silhouettes, the baked gradient background, and the animate/filter-transition tick drivers.
+        private void CleanupPaintResources(VisualElement element)
+        {
+            if (_ctx.ShadowBindings.TryGetValue(element, out var shadowBinding))
+            {
+                // Detach unhooks the paint + re-bake callbacks so a pooled element cannot ghost a prior
+                // consumer's box shadow. The baked shadow textures are cached process-wide (BoxShadowBaker)
+                // and are NOT destroyed here — only this element's paint binding is dropped.
+                BoxShadowSilhouette.Detach(element, shadowBinding);
+                _ctx.ShadowBindings.Remove(element);
+            }
+            if (_ctx.ClipPathBindings.TryGetValue(element, out var clipPathBinding))
+            {
+                // Keyed by the INNER element (the wrapper carries the baked VectorImage background).
+                // Destroy the image explicitly: off-panel teardown (EditMode) has no
+                // DetachFromPanelEvent path that would otherwise release it.
+                clipPathBinding.DisposeImage();
+                if (clipPathBinding.OnGeometry != null)
+                {
+                    element.UnregisterCallback(clipPathBinding.OnGeometry);
+                }
+                _ctx.ClipPathBindings.Remove(element);
+            }
+            // The colours a ring class named, whether or not a band was drawn: a reused element would hand them to
+            // a descendant's -inherit.
+            BandColourInheritance.Forget(element);
+            if (_ctx.RingBindings.TryGetValue(element, out var ringBinding))
+            {
+                // The overlays hold no resource of their own, but they live in the element's PARENT and in the
+                // outline's host rather than in its subtree, so they do not leave with the element being
+                // removed — Detach is what takes them out of the hierarchy as well as unregistering the
+                // callbacks, and skipping it would strand a live band beside an unmounted element.
+                RingOverlay.Detach(element, ringBinding);
+                _ctx.RingBindings.Remove(element);
+            }
+            if (_ctx.BackdropBindings.TryGetValue(element, out var backdropBinding))
+            {
+                // Lives in the element's parent, as the ring band does.
+                BackdropFilterLayer.Detach(element, backdropBinding);
+                _ctx.BackdropBindings.Remove(element);
+            }
+            if (_ctx.BorderStyleBindings.TryGetValue(element, out var borderStyleBinding))
+            {
+                // BorderStyleSilhouette.Detach also unregisters the two callbacks the binding registered on
+                // the element. Nothing else does: neither FiberElementPoolReset nor FiberPrimitiveElementPool
+                // contains an UnregisterCallback, and this cleanup runs on every element while a pool return
+                // runs on five types.
+                BorderStyleSilhouette.Detach(element, borderStyleBinding);
+                _ctx.BorderStyleBindings.Remove(element);
+            }
+            if (_ctx.DivideDashBindings.TryGetValue(element, out var divideDashBinding))
+            {
+                // Keyed by the divided CHILD, so a keyed-list reorder recycling one child independently of its
+                // divide container is still caught here (the container's own manipulator may never re-run for
+                // it).
+                DivideDashPainter.Detach(element, divideDashBinding);
+                _ctx.DivideDashBindings.Remove(element);
+            }
+            if (_ctx.TextOverlineBindings.TryGetValue(element, out var overlineBinding))
+            {
+                TextOverlineSilhouette.Detach(element, overlineBinding);
+                _ctx.TextOverlineBindings.Remove(element);
+            }
+            if (_ctx.LeadingLengthProbes.TryGetValue(element, out var leadingProbe))
+            {
+                LeadingLengthProbe.Detach(_ctx, element, leadingProbe);
+            }
+            TextShownWatch.Detach(_ctx, element);
+            if (_ctx.GradientBackgrounds.TryGetValue(element, out var gradientBinding))
+            {
+                // Clear the baked gradient background-image so a pooled element cannot ghost a prior
+                // gradient onto its next consumer. The texture itself is shared/cached, so it is NOT
+                // destroyed here — only this element's reference is dropped.
+                GradientBackground.Detach(element, gradientBinding);
+                GradientBackground.Clear(element);
+                _ctx.GradientBackgrounds.Remove(element);
+            }
+            if (_ctx.AnimationBindings.TryGetValue(element, out var animationBinding))
+            {
+                // Pause the recurring tick and restore the styles the motion drove so a pooled element does
+                // not keep ticking or ghost a panned position / hue filter onto its next consumer.
+                StyleAnimateDriver.Detach(element, animationBinding);
+                _ctx.AnimationBindings.Remove(element);
+            }
+            if (_ctx.FilterTransitionBindings.TryGetValue(element, out var filterTransitionBinding))
+            {
+                // Pause the one-shot tick and unregister so a pooled element does not keep ticking a mid-flight
+                // filter tween. The inline filter itself is scrubbed by FiberElementPoolReset before reuse; the
+                // ClearAll above only drops the arbitrary-value layer map, never style.filter.
+                StyleFilterTransitionDriver.Detach(element, filterTransitionBinding);
+                _ctx.FilterTransitionBindings.Remove(element);
+            }
+            else if (StyleInputBoxSurface.IsBox(element))
+            {
+                // The reconciler never binds a field's input box up front, and the pool reset scrubs the
+                // control alone, so a tween the write hook bound there would tick onto a pooled field's next
+                // consumer.
+                StyleFilterTransitionDriver.DetachBound(element);
+            }
+        }
+
+        // The GameObject/texture-backed element drivers: SceneView camera output, the particle
+        // simulation host, and the anchored-projection tick.
+        private void CleanupElementDriverResources(VisualElement element)
+        {
+            if (_ctx.SceneViewBindings.TryGetValue(element, out var sceneViewBinding))
+            {
+                // Release both ends of the camera-output pair: the geometry callback, the camera's target
+                // (only when it still points at the framework texture — a user reassignment after mount is
+                // left intact), the texture itself, and the background image showing it.
+                SceneViewDriver.Detach(element, sceneViewBinding);
+                _ctx.SceneViewBindings.Remove(element);
+            }
+            if (_ctx.ParticlesBindings.TryGetValue(element, out var particlesBinding))
+            {
+                // Unhook the particle painter, pause the repaint tick, and destroy the hidden simulation
+                // host so no orphaned GameObject keeps simulating after the element leaves.
+                ParticlesDriver.Detach(element, particlesBinding);
+                _ctx.ParticlesBindings.Remove(element);
+            }
+            if (_ctx.AnchoredBindings.TryGetValue(element, out var anchoredBinding))
+            {
+                // Pause the recurring projection tick so a pooled element does not keep repositioning
+                // itself after it is reused for something unrelated.
+                AnchoredDriver.Detach(element, anchoredBinding);
+                _ctx.AnchoredBindings.Remove(element);
+            }
+        }
+
+        // The focus-scope binding (incl. its restore-focus hand-off), the departing-element scrub
+        // across every surviving scope's remembered member/restore target, chained-placeholder
+        // ring-edge ownership hand-off, and any still-pending navigator attach hook.
+        private void CleanupFocusAndNavigationResources(VisualElement element)
+        {
+            // A range's end can leave before its start, with its content still in place behind it: the scope is
+            // torn down at whichever goes first, while focus can still be read inside it.
+            if (element is FocusScopeEnd end && FocusScopeRange.StartOf(end) is { } start)
+            {
+                TearDownFocusScope(start);
+            }
+            TearDownFocusScope(element);
+            // A departing element must not linger as any scope's remembered member or restore target:
+            // pooled primitives get recycled into unrelated roles, and the liveness checks at use time
+            // (panel / canGrabFocus / Contains) all pass again for a recycled element mounted elsewhere,
+            // so focus would land on a widget in a different logical role. Dropping the reference here
+            // makes those paths fall back (ring-first entry / skipped restore) instead.
+            if (_ctx.FocusScopeBindings.Count > 0)
+            {
+                foreach (var scopeBinding in _ctx.FocusScopeBindings.Values)
+                {
+                    if (ReferenceEquals(scopeBinding.LastFocusedMember, element)) scopeBinding.LastFocusedMember = null;
+                    if (ReferenceEquals(scopeBinding.RestoreTarget, element)) scopeBinding.RestoreTarget = null;
+                }
+            }
+            // A chained portal placeholder unmounting releases both chained registries; if it owned the
+            // host's ring-edge escape, ownership is handed to a surviving chained placeholder of the same
+            // host (removal from ChainedPlaceholders first, so the departing one cannot re-elect itself).
+            if (_ctx.ChainedPlaceholders.Remove(element, out var chainedRecord))
+            {
+                var chainedHostRoot = chainedRecord.Document != null ? chainedRecord.Document.rootVisualElement : null;
+                FiberFocusNavigator.ReleaseChainedOwnership(element, chainedHostRoot, _ctx);
+            }
+            if (_ctx.AppendedPlaceholders.Count > 0)
+            {
+                FiberFocusNavigator.ReleaseAppended(element, _ctx);
+            }
+            // A deferred navigator attach hook still pending on this element unregisters with it — a
+            // pooled element must not carry a live hook into its next role.
+            if (_ctx.NavigatorPendingAttachHooks.Count > 0)
+            {
+                FiberFocusNavigator.ReleasePendingAttachHooks(element, _ctx);
+            }
+        }
+
+        private void TearDownFocusScope(VisualElement scope)
+        {
+            if (!_ctx.FocusScopeBindings.Remove(scope, out var focusScopeBinding))
+            {
+                return;
+            }
+            // The registry entry is dropped BEFORE the restore focus fires: the restore's own FocusIn
+            // must not see the dying scope as a live contain scope, or the snap-back would revert the
+            // restore straight back into the detaching subtree. RestoreFocus itself must still run
+            // BEFORE the scope's content physically leaves the tree (UI Toolkit clears the focused element
+            // the moment it detaches — the same ordering RescueFocusFromWorldSpaceHost exists for).
+            if (focusScopeBinding.Settings.RestoreFocus && FiberFocusNavigator.IsFocusedWithinScope(scope))
+            {
+                var restore = focusScopeBinding.RestoreTarget;
+                if (restore != null && restore.panel != null && restore.canGrabFocus)
+                {
+                    restore.Focus();
+                }
+            }
+            FocusScopeDriver.Detach(scope, focusScopeBinding);
+        }
+
+        // Drag-and-drop bindings: the draggable's pointer-down armer unregisters, and an element that
+        // is the active session's source or scope cancels that session teardown-flavored (synchronous
+        // scrub so the element reaches the pool clean, deferred user callback — an ARBITRARY user
+        // callback run mid-flush could read a half-mutated tree or re-enter the reconciler, so it
+        // waits for the flush like effect callbacks do; see DndActiveDrag. Plain state writes from
+        // mid-flush are safe — they schedule a follow-up render.)
+        private void CleanupDndResources(VisualElement element)
+        {
+            if (_ctx.DndScopeBindings.ContainsKey(element))
+            {
+                DndScopeDriver.Detach(element, _ctx);
+                _ctx.DndScopeBindings.Remove(element);
+            }
+            if (_ctx.DraggableBindings.TryGetValue(element, out var draggableBinding))
+            {
+                DndDraggableDriver.Detach(element, draggableBinding, _ctx);
+                _ctx.DraggableBindings.Remove(element);
+            }
+            if (_ctx.DroppableBindings.ContainsKey(element))
+            {
+                DndDroppableDriver.Detach(element, _ctx);
+                _ctx.DroppableBindings.Remove(element);
+            }
+            if (_ctx.DragOverlayBindings.ContainsKey(element))
+            {
+                DndOverlayDriver.Detach(element, _ctx);
+                _ctx.DragOverlayBindings.Remove(element);
+            }
+            _ctx.NoDragElements.Remove(element);
+            _ctx.ActiveDrag?.ForgetPressChainElement(element);
+        }
+
+        // The controller-owned bindings: VirtualList, which disposes its own pooled buffer.
+        private void CleanupControllerResources(VisualElement element)
+        {
+            if (_ctx.VirtualListControllers.TryGetValue(element, out var virtualListController))
+            {
+                virtualListController.Dispose();
+                _ctx.VirtualListControllers.Remove(element);
+            }
+        }
+
+        // Removes only this Portal's slot range from the target's children
+        // (slotStart .. slotStart + slotLength), preserving children placed by other
+        // Portals sharing the same target. Entry removal happens before target mutation to prevent double
+        // processing via CleanupDescendants recursion.
+        private void CleanupPortal(VisualElement element)
+        {
+            _ctx.PendingHostPlaceholders.Remove(element);
+            if (!_ctx.PortalState.TryGetValue(element, out var portalInfo))
+            {
+                return;
+            }
+
+            _ctx.PortalState.Remove(element);
+            // The RESOLVED target recorded at mount: the same removal works for registry, layer and
+            // world-space portals, and it stays correct even if a registry id was re-registered to
+            // a different element since (the children live where they were mounted). Null only for
+            // the never-mounted missing-registry-target path (SlotLength 0 — nothing to remove).
+            var target = portalInfo.Target;
+            if (target == null)
+            {
+                return;
+            }
+
+            ReleaseBridgeIfLastPortalOn(target);
+
+            // Before the removals: a Portal's top-level Component child mounts inline ON THE TARGET, so
+            // the per-element CleanupElement below never reaches its fiber and its effect cleanups would
+            // never run (ComponentRegistry.DisposeInlineFibersOwnedByPortal owns why the selection is by
+            // the placeholder rather than by the range being torn out).
+            _ctx.ComponentRegistry.DisposeInlineFibersOwnedByPortal(element);
+            _ctx.PrunePresencePortalState(element);
+            _ctx.PruneSuspenseContainerState(element);
+            // The retarget release reaches the placeholder through here alone.
+            _ctx.FiberMemoCache.Forget(element);
+
+            // Both ends of the range are LOGICAL, so BOTH are converted. Adding the logical length to the
+            // already-converted start mixes the two bases, and tears out one element too many the moment an
+            // invisible child sits anywhere inside the portal's range.
+            var physicalSlotStart = LogicalChildSlots.ToPhysical(target, portalInfo.SlotStart);
+            var slotEnd = LogicalChildSlots.ToPhysical(target, portalInfo.SlotStart + portalInfo.SlotLength);
+            if (slotEnd > target.childCount) slotEnd = target.childCount;
+            // Read before any is cleaned: a cleanup can take a child hosted before its element out of the target
+            // (RemoveCleaned), which would move the indices still to be visited.
+            // MUTANT_SURVIVES(equivalent, arithmetic): the expression sizes only the list's initial capacity, which bounds nothing PhysicalRange appends, and with both ends at zero or more the sum is a valid capacity too.
+            var range = new List<VisualElement>(Math.Max(slotEnd - physicalSlotStart, 0));
+            ChildListWrites.PhysicalRange(target, physicalSlotStart, slotEnd, range);
+            foreach (var child in range)
+            {
+                // An invisible child inside the range belongs to whichever paint owns it, not to the portal.
+                if (LogicalChildSlots.IsInvisible(child))
+                {
+                    continue;
+                }
+                var poolable = PoolableOccupantOf(child);
+                CleanupElement(child);
+                var left = new PortalSlotInfo(
+                    target, LogicalChildSlots.ToLogical(target, ChildListWrites.PhysicalIndexOf(target, child)), 1);
+                RemoveCleaned(target, child);
+                // The starts behind each row move as it leaves, not once for the whole range: a Portal that is one of
+                // the rows, or sits in one, reads its own range from its rows when CleanupElement reaches it and moves
+                // the starts behind that range, so by then those starts have to count every row already taken out.
+                // Shifting only ahead of a row holding a Portal misses a relocated row, whose Portal sits in its real
+                // element.
+                PortalSlotTracker.ShiftRangesBehind(_ctx.PortalState.Stored, target, element, left, -1);
+                FiberCommitWork.ShiftTenantsAfterPortalRange(_ctx.ComponentRegistry, target, element, left, -1);
+                ReturnOccupantToPool(child, poolable);
+            }
+
+            // Outside a pass nothing would drain the set.
+            if (portalInfo.SlotLength > 0 && _ctx.SharedReconcileDepth > 0)
+            {
+                _ctx.PortalTargetsToRestyle.Add(target);
+            }
+        }
+
+        // Empties a Portal's slot range on the element it is mounted into and leaves it in exactly the
+        // unresolved state a Portal that mounted before its id existed carries, so
+        // FiberNodePatcher.ResolvePortalTarget's tail rebases and mounts both the same way. Called before
+        // anything creates the replacements: the departing children's effect cleanups and fiber disposal
+        // must run before the arriving ones mount.
+        internal void ReleasePortalRangeForRetarget(VisualElement placeholder)
+        {
+            if (!_ctx.PortalState.TryGetValue(placeholder, out var info))
+            {
+                return;
+            }
+            // The departing children are a deletion's, taken down in its order before CleanupPortal releases them.
+            DeletionCommit.TakeDownLeaving(_ctx, this, placeholder);
+            CleanupPortal(placeholder);
+            _ctx.PortalState[placeholder] = info with { Target = null, SlotStart = 0, SlotLength = 0, First = null, Last = null };
+        }
+
+        // The synthetic-bubbling bridge is attached once per resolved TARGET while the Portals sharing that
+        // target are many, so it may only be released once the last of them has gone; this Portal's own
+        // PortalState entry is already removed by the time this runs. Counted by scanning PortalState
+        // rather than by a per-target counter, whose increment would have to sit outside the attach-once
+        // guard that skips every Portal after the first.
+        private void ReleaseBridgeIfLastPortalOn(VisualElement target)
+        {
+            if (!_ctx.SamePanelPortalBridges.TryGetValue(target, out var bridge))
+            {
+                return;
+            }
+
+            foreach (var info in _ctx.PortalState.Values)
+            {
+                if (ReferenceEquals(info.Target, target))
+                {
+                    return;
+                }
+            }
+
+            bridge.Release();
+            _ctx.SamePanelPortalBridges.Remove(target);
+        }
+
+        // Destroys the framework-owned world-space host bound to a departing placeholder. Runs
+        // AFTER CleanupPortal, which already removed and released the children living inside the
+        // host's root — what remains is the host GameObject and its runtime-created panel assets.
+        // Layer hosts are deliberately NOT torn down here: they are shared per layer and persist
+        // until reconciler disposal.
+        private void CleanupWorldSpaceHost(VisualElement element)
+        {
+            if (!_ctx.WorldSpaceBindings.TryGetValue(element, out var record))
+            {
+                return;
+            }
+
+            _ctx.WorldSpaceBindings.Remove(element);
+            // Focus, if the host held any, was already rescued by RescueFocusFromWorldSpaceHost
+            // before CleanupPortal removed this panel's content (see CleanupElementCore) — by this
+            // point the host's FocusController.focusedElement is already null regardless, since UI
+            // Toolkit clears it as soon as the focused element leaves the panel's visual tree.
+            PanelHostFactory.Destroy(record);
+        }
+
+        // Tears down the real element owned by a departing z-layer placeholder — mirrors CleanupPortal: the real
+        // element is not a DOM descendant of the placeholder (it is relocated elsewhere among the same parent's
+        // children), so the ordinary CleanupDescendants walk below would never reach it on its own. A no-op when
+        // element is not (or no longer) a z-layer placeholder. One still standing in the parent is left there until
+        // the pass ends (FiberZLayerCoordinator.TakeReal says why) and released by ReleaseRetiredZLayerReals, since
+        // a pooled element can be handed out again within the pass.
+        private void CleanupZLayerPlaceholder(VisualElement element)
+        {
+            var real = FiberZLayerCoordinator.TakeReal(_ctx, element, out var stillPlaced);
+            if (real == null)
+            {
+                return;
+            }
+            var poolable = PoolableOccupantOf(real);
+            // The real element shares its placeholder's panel.
+            CleanupElement(real, element.panel, discardedRoot: null);
+            if (stillPlaced)
+            {
+                _ctx.PendingZLayerDeadReals.Add((real, poolable));
+                return;
+            }
+            ReturnOccupantToPool(real, poolable);
+        }
+
+        // Removes and pools the relocated elements CleanupZLayerPlaceholder left standing. Runs from
+        // Reconciler.FinishTopLevelPass, where no diff holds a physical index into their parents.
+        internal void ReleaseRetiredZLayerReals()
+        {
+            if (_ctx.PendingZLayerDeadReals.Count == 0)
+            {
+                return;
+            }
+            var retired = _ctx.PendingZLayerDeadReals.ToArray();
+            _ctx.PendingZLayerDeadReals.Clear();
+            foreach (var (real, poolable) in retired)
+            {
+                FiberZLayerCoordinator.ForgetRetired(real);
+                ChildListWrites.RemoveFromHierarchy(real);
+                ReturnOccupantToPool(real, poolable);
+            }
+        }
+
+        // Recursively cleans up the descendants of an element. DOM operations are the caller's
+        // responsibility. Applies the same processing order as CleanupElement to each
+        // child, preventing silent bugs caused by asymmetric wrapper handling.
+        // element: Root element whose descendants are cleaned up.
+        // excluded:
+        // Child element to skip. Specified to prevent double cleanup of the inner element when the
+        // wrapper pattern places the inner as a direct child of element. When null,
+        // all children are processed.
+        private void CleanupDescendants(VisualElement element, VisualElement? excluded = null)
+        {
+            for (var i = 0; i < element.childCount; i++)
+            {
+                var child = element.ElementAt(i);
+                if (child == excluded)
+                {
+                    continue;
+                }
+
+                // A relocated element has a placeholder in this SAME child list, through which
+                // CleanupZLayerPlaceholder reaches and fully cleans it in this very loop; cleaning it here too
+                // would run the full CleanupElement sequence on it a second time.
+                // A retired one was cleaned when it was retired, and an anchor is internal.
+                if (FiberZLayerCoordinator.IsRelocatedReal(child) || FiberZLayerCoordinator.IsInternal(child))
+                {
+                    continue;
+                }
+
+                CleanupElementCore(child);
+            }
+        }
+
+        // The single element-teardown core: wrapper → resources → portal → descendants recursion, with no
+        // DOM operations. Shared by CleanupElement (the public entry, which additionally disposes inline
+        // fibers under the subtree) and by CleanupDescendants (the recursive loop body), so the wrapper
+        // handling lives in exactly one place — duplicating it into both callers would let their wrapper
+        // logic silently diverge.
+        //
+        // When a wrapper → inner link exists the inner element is a DOM child of the wrapper: it is fully
+        // cleaned here and excluded from the element's CleanupDescendants so it is not processed twice (when
+        // not a wrapper, innerElement is null and nothing is excluded).
+        //
+        // Descendant elements are NOT returned to VNodePool here because the descendant DOM remove is bulk
+        // (parent.RemoveAt) and individual children are not surfaced. Pool return is limited to the top-level
+        // element of RemoveElement and CleanupPortal.
+        private void CleanupElementCore(VisualElement element)
+        {
+            var isWrapper = _ctx.WrapperToInnerMap.TryGetValue(element, out var innerElement);
+            if (isWrapper)
+            {
+                CleanupElementResources(innerElement);
+                CleanupDescendants(innerElement);
+                _ctx.WrapperToInnerMap.Remove(element);
+            }
+
+            CleanupElementResources(element);
+            // Must run BEFORE CleanupPortal: UI Toolkit clears FocusController.focusedElement the
+            // moment the focused element leaves its panel's visual tree, which CleanupPortal's own
+            // target.RemoveAt(i) triggers below — checking for a focused element after that point
+            // always observes null.
+            RescueFocusFromWorldSpaceHost(element);
+            CleanupPortal(element);
+            CleanupWorldSpaceHost(element);
+            CleanupZLayerPlaceholder(element);
+            CleanupDescendants(element, innerElement);
+        }
+
+        // If element is a world-space placeholder whose host panel currently holds focus, hands focus
+        // back to the main panel before that panel's content (and soon its whole GameObject) is torn
+        // down — otherwise focus would either dangle on an about-to-be-destroyed FocusController or
+        // simply vanish, leaving keyboard input going nowhere until the app author notices.
+        private void RescueFocusFromWorldSpaceHost(VisualElement element)
+        {
+            if (!_ctx.WorldSpaceBindings.TryGetValue(element, out var record)) return;
+            var hostFocusController = record.Document != null ? record.Document.rootVisualElement?.panel?.focusController : null;
+            if (hostFocusController?.focusedElement != null)
+            {
+                _ctx.MainPanelRoot?.Focus();
+            }
+        }
+    }
+}

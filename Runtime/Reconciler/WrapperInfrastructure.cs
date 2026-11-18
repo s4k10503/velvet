@@ -1,0 +1,131 @@
+using System;
+using System.Collections.Generic;
+using UnityEngine.UIElements;
+
+namespace Velvet
+{
+    // Shared plumbing for the structural wrapper layers — the className-driven clip-path-* wrapper and the
+    // user wrapElement opt-in. Both the patcher (wrapper<->inner resolution exposed to the reconciler) and the
+    // wrapper element appliers (the wrap/unwrap surgery) depend on these, which is why they live here rather
+    // than on either; the slot-preserving unwrap surgery is what NodePatchWalk.PatchNode's contract with the
+    // reconciler depends on.
+    internal sealed class WrapperInfrastructure
+    {
+        private const string AnimateHuePrefix = "animate-hue";
+
+        private readonly ReconcilerContext _ctx;
+
+        public WrapperInfrastructure(ReconcilerContext ctx)
+        {
+            _ctx = ctx;
+        }
+
+        internal VisualElement ResolveWrapped(VisualElement domElement)
+            => _ctx.WrapperToInnerMap.GetValueOrDefault(domElement, domElement);
+
+        // The inverse of ResolveWrapped: the element's current top-level DOM node — its
+        // wrapper when it is the inner of one, else itself. Callers that hold a pre-patch element
+        // reference (the VirtualList bridge) use this after a patch, because a class-driven
+        // wrap/unwrap during the patch swaps which element occupies the slot.
+        internal VisualElement ResolveOuter(VisualElement element)
+        {
+            var parent = element.parent;
+            return parent != null
+                && _ctx.WrapperToInnerMap.TryGetValue(parent, out var inner)
+                && ReferenceEquals(inner, element)
+                ? parent
+                : element;
+        }
+
+        // True when element is already the inner of a wrapper (its direct parent maps to
+        // it in ReconcilerContext.WrapperToInnerMap) — e.g. a user wrapElement wrapper.
+        // Used to avoid stacking a className clip wrapper on top of an existing wrapper.
+        // Same predicate as ResolveOuter (which returns the wrapper instead of a bool), so it is
+        // expressed in those terms to keep the wrapper-identity rule defined in exactly one place.
+        internal bool IsAlreadyWrapped(VisualElement element)
+            => !ReferenceEquals(ResolveOuter(element), element);
+
+        // A wrapper that stands in for its inner in the parent's layout (see ClipPathLayoutBox).
+        internal static VisualElement CreatePassthroughWrapper(string ussClass)
+        {
+            var wrapper = new VisualElement { pickingMode = PickingMode.Ignore };
+            wrapper.AddToClassList(ussClass);
+            return wrapper;
+        }
+
+        // Removes wrapper from the tree and restores element (its inner) at the wrapper's
+        // slot. Binding-specific resource disposal and dictionary removal are the caller's job,
+        // done BEFORE this. Keeping the element at the SAME index is what NodePatchWalk.PatchNode's
+        // contract asks.
+        internal static void RemoveWrapperRestoreInner(VisualElement element, VisualElement wrapper)
+        {
+            var parent = wrapper.parent;
+            if (parent == null)
+            {
+                ChildListWrites.RemoveFromHierarchy(element);
+                return;
+            }
+            var index = parent.IndexOf(wrapper);
+            ChildListWrites.RemoveFromHierarchy(element);
+            ChildListWrites.RemoveFromHierarchy(wrapper);
+            ChildListWrites.Insert(parent, index, element);
+        }
+
+        // True when the class list carries an inline filter — a static filter-* utility or the animate-hue
+        // motion (which drives style.filter every frame) — in the base classes OR any state variant. A filter
+        // promotes the element to an offscreen render tree sized to its layout boundingBox, which clips a
+        // sheared silhouette / shadow bleed; the paint layers answer with a bounds-spacer (SilhouetteBoundsSpacer)
+        // that widens boundingBox. The spacer must exist whenever a filter COULD apply (a variant applies its
+        // payload at state time, outside this reconcile pass), so both checks peel variant layers to the leaf.
+        // Shared by the skew, drop-shadow and particles spacer gates above, so it lives here rather than on any
+        // one of those subsystems. The ring is NOT one of them: its band is hosted beside the element rather
+        // than inside the element's own offscreen filter tree, so no filter pass can clip it.
+        internal static bool CarriesFilter(string[] classNames)
+        {
+            if (classNames == null)
+            {
+                return false;
+            }
+            if (StyleFilterValueParser.HasFilterClass(classNames))
+            {
+                return true;
+            }
+            foreach (var cls in classNames)
+            {
+                // Same pass-over as StyleEaseCurve.IsTimingToken: a peel leaves a suffix of its class.
+                if (cls != null && cls.IndexOf(AnimateHuePrefix, StringComparison.Ordinal) != -1
+                    && StyleVariantClass.LeafOf(cls).StartsWith(AnimateHuePrefix, StringComparison.Ordinal))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        // As above for an element whose paint layers may sit on a field's input box. The box is not reconciled,
+        // so the array its re-sync hands over holds only the payloads applied right now; the payloads the
+        // control routes to it, applied or not, are read from the control's recorded array instead.
+        internal static bool CarriesFilter(ReconcilerContext ctx, VisualElement element, string[] classNames)
+        {
+            if (CarriesFilter(classNames))
+            {
+                return true;
+            }
+            if (!StyleInputBoxSurface.IsBox(element)
+                || !ctx.VariantGateClasses.TryGetValue(element.parent, out var control)
+                || control.Reconciled == null)
+            {
+                return false;
+            }
+            var routed = new List<string>();
+            foreach (var cls in control.Reconciled)
+            {
+                if (StyleChildVariantClass.TryParse(cls, out var payload, out var inputBoxOnly) && inputBoxOnly)
+                {
+                    routed.Add(payload);
+                }
+            }
+            return CarriesFilter(routed.ToArray());
+        }
+    }
+}

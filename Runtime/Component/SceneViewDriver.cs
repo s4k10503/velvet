@@ -1,0 +1,521 @@
+#nullable enable
+using System.Collections.Generic;
+using UnityEngine;
+using UnityEngine.UIElements;
+
+namespace Velvet
+{
+    // Reconciler-side bookkeeping for one SceneView element, keyed in
+    // ReconcilerContext.SceneViewBindings by the element itself. Holds the current settings (camera +
+    // resolution scale), the framework-owned RenderTexture the camera renders into, the child that shows
+    // it, the registered geometry callback (so it can be unregistered on detach), and the recurring tick
+    // (see SyncRepaintTick) so it can be paused whenever the texture is released.
+    internal sealed class SceneViewBinding
+    {
+        public SceneViewSettings Settings;
+        public RenderTexture? Texture;
+        public VisualElement? Feed;
+        // The camera this element switched off while a positive-priority UseFrame callback in its panel
+        // renders in its place, so the element switches back on that camera and no other.
+        public Camera? HeldCamera;
+        public EventCallback<GeometryChangedEvent>? OnGeometryChanged;
+        public IVisualElementScheduledItem? RepaintTick;
+        // An explicit camera/settings pass (attach, props update) claims the camera even from a
+        // foreign targetTexture; the intent is recorded here because the claiming sync itself may
+        // bail pre-layout and the FIRST sync that gets past the validity gate must inherit it.
+        // Layout- and tick-driven resyncs never claim a foreign target on their own.
+        public bool ClaimOnNextSync;
+        // Sticky record of which axis TryComputePixelSize last quantized as the "larger" one; null
+        // until the first successful derivation. See TryComputePixelSize for why this must persist
+        // across calls instead of being re-derived from the bare current size each time.
+        public bool? WidthWasQuantizedAxis;
+
+        public SceneViewBinding(SceneViewSettings settings)
+        {
+            Settings = settings;
+        }
+    }
+
+    /// <summary>
+    /// Drives a <see cref="SceneViewElement"/>'s camera-output display: a framework-owned
+    /// RenderTexture sized to the element's content box in pixels (times the resolution scale, rounded
+    /// up to reuse the existing texture across minor resizes — see <see cref="TryComputePixelSize"/>),
+    /// assigned to <c>camera.targetTexture</c>, and shown through the background image of a child laid
+    /// over that content box, above the element's own background. The child samples the LIVE texture —
+    /// the camera keeps rendering into it and UI Toolkit's command list samples it at draw time, so new
+    /// frames appear with no Velvet re-render and no pixel copy.
+    /// </summary>
+    internal static class SceneViewDriver
+    {
+        // Marks the child showing the camera output as a reconciler-invisible child of its element
+        // (SilhouetteBoundsSpacer.IsSpacer).
+        internal const string FeedMarkerClass = "velvet-scene-view-feed";
+
+        // Every texture a live SceneView shows, so an element whose camera targets another element's
+        // texture can tell a camera it shares with that element from one user code took over.
+        private static readonly HashSet<RenderTexture> s_feedTextures = new();
+
+        // Every binding holding its camera disabled.
+        private static readonly HashSet<SceneViewBinding> s_holding = new();
+
+#if UNITY_EDITOR
+        // A domain reload drops a binding whose mount nothing disposed without detaching it, and a scene save
+        // writes each camera's enabled flag, so each held camera is enabled before either; after a save the next
+        // tick holds it again.
+        static SceneViewDriver()
+        {
+            UnityEditor.AssemblyReloadEvents.beforeAssemblyReload += ReleaseEveryHeldCamera;
+            UnityEditor.SceneManagement.EditorSceneManager.sceneSaving += ReleaseEveryHeldCameraBeforeSaving;
+        }
+
+        private static void ReleaseEveryHeldCameraBeforeSaving(UnityEngine.SceneManagement.Scene scene, string path)
+            => ReleaseEveryHeldCamera();
+#endif
+
+        private static void ReleaseEveryHeldCamera()
+        {
+            foreach (var binding in new List<SceneViewBinding>(s_holding))
+            {
+                ReleaseHeldCamera(binding);
+            }
+        }
+
+        // Repaint cadence (~60fps), matching the recurring-tick interval the style animation drivers
+        // schedule with. Shared with the sibling per-frame element driver (ParticlesDriver).
+        internal const long RepaintIntervalMs = 16;
+
+        // The texture ceiling per axis. The sibling texture bakers bound their bake sizes the same
+        // way — an unbounded element (a stretch inside a huge scroll canvas) must not translate into
+        // an unbounded VRAM request. 4096 is comfortably above any sane on-screen element while still
+        // universally supported.
+        private const int MaxTextureSize = 4096;
+
+        // The pixel-size rounding grain TryComputePixelSize quantizes the larger axis up to. 16
+        // divides MaxTextureSize evenly (4096 / 16 = 256), so the ceiling clamp and this step never
+        // leave a leftover partial bucket at the boundary. Large enough to absorb the
+        // few-pixels-per-frame deltas a drag-resize or an animated layout produces — so most jitter
+        // keeps landing on the same bucket and reuses the existing RenderTexture instead of
+        // reallocating — while small enough that the worst-case 15px overshoot is negligible against
+        // any on-screen SceneView size.
+        private const int SizeQuantizationStep = 16;
+
+        // Wires the geometry-driven texture sync onto the element and returns the binding. The
+        // synchronous sync attempt covers a binding attached to an ALREADY laid-out element (a camera
+        // arriving through a patch, where no further geometry event may ever fire); at mount the
+        // element has no panel yet, so that attempt bails and the geometry callback (fired once layout
+        // settles) performs the first real sync.
+        public static SceneViewBinding Attach(VisualElement element, SceneViewSettings settings)
+        {
+            var binding = new SceneViewBinding(settings);
+            binding.OnGeometryChanged = _ => SyncTexture(element, binding);
+            element.RegisterCallback(binding.OnGeometryChanged);
+            binding.ClaimOnNextSync = true;
+            SyncTexture(element, binding);
+            return binding;
+        }
+
+        // Applies changed settings to a live binding: a swapped-out camera is released politely first,
+        // then the sync re-derives the rest — the surviving texture is re-targeted by the new camera
+        // when the pixel size is unchanged, and a camera removed to null releases both ends (the
+        // element stays mounted and inert). NB the props diff gating this call compares the settings
+        // RECORDS (value equality) while the camera fields here compare through Unity's overloaded ==;
+        // the two disagree when one side is a DESTROYED camera and the other is literal null (distinct
+        // record values, both "null" to Unity). Correctness therefore never rides on the record
+        // verdict alone: SyncTexture re-derives everything from its own camera == null check.
+        public static void Update(VisualElement element, SceneViewBinding binding, SceneViewSettings settings)
+        {
+            var previousCamera = binding.Settings.Camera;
+            binding.Settings = settings;
+            if (previousCamera != settings.Camera)
+            {
+                ReleaseCameraTarget(previousCamera, binding.Texture);
+                ReleaseHeldCamera(binding);
+            }
+            binding.ClaimOnNextSync = true;
+            SyncTexture(element, binding);
+        }
+
+        // Full teardown: unregisters the geometry callback and releases both ends of the output pair.
+        public static void Detach(VisualElement element, SceneViewBinding binding)
+        {
+            if (binding.OnGeometryChanged != null)
+            {
+                element.UnregisterCallback(binding.OnGeometryChanged);
+            }
+            ReleaseOutput(element, binding);
+        }
+
+        // (Re)creates or releases the texture to match the CURRENT layout and settings — the one sync
+        // point shared by attach, patch, geometry changes and the editor tick's staleness probe. No
+        // camera, or no renderable size (pre-layout NaN, a zero-sized rect, a detached element),
+        // releases any existing output; otherwise the texture is re-created only when the effective
+        // pixel size actually changed (keyed on the live texture's own dimensions), and an
+        // unchanged-size texture is simply re-targeted (where a camera swap lands).
+        // Claim intent: an explicit camera/settings pass sets ClaimOnNextSync and the first sync past
+        // the validity gate consumes it, claiming the camera even from a foreign targetTexture.
+        // Without it a resync reclaims only from null or from the framework's own outgoing texture;
+        // while user code holds the camera, the element keeps showing the last framework frame
+        // rather than re-deriving a texture nothing would render into.
+        private static void SyncTexture(VisualElement element, SceneViewBinding binding)
+        {
+            var camera = binding.Settings.Camera;
+            if (camera == null || element.panel == null
+                || !TryComputePixelSize(element, binding, out var pw, out var ph, out var usedWidthAsBasis))
+            {
+                ReleaseOutput(element, binding);
+                return;
+            }
+            var claim = binding.ClaimOnNextSync;
+            binding.ClaimOnNextSync = false;
+
+            if (binding.Texture != null && binding.Texture.width == pw && binding.Texture.height == ph)
+            {
+                // Confirmed: the live texture already matches this derivation, so this call's basis
+                // choice is the one actually in effect — safe to commit.
+                binding.WidthWasQuantizedAxis = usedWidthAsBasis;
+                if (camera.targetTexture != binding.Texture
+                    && (claim || camera.targetTexture == null))
+                {
+                    camera.targetTexture = binding.Texture;
+                    // The texture object the feed shows is unchanged, so nothing else marks the element
+                    // dirty on a bare camera swap — without this a dirty-on-demand panel would keep
+                    // showing the old camera's last frame.
+                    element.MarkDirtyRepaint();
+                }
+                SyncRepaintTick(element, binding);
+                return;
+            }
+
+            var previous = binding.Texture;
+            if (!claim && camera.targetTexture != null && camera.targetTexture != previous)
+            {
+                // The camera is borrowed: re-deriving the texture now would swap the background to an
+                // image nothing renders into and destroy the last good frame. Keep showing that
+                // frame; the next explicit camera/settings pass reclaims and re-derives the size. This
+                // call's (pw, ph, usedWidthAsBasis) is discarded rather than applied to any texture,
+                // so binding.WidthWasQuantizedAxis must NOT be touched here — committing it would let
+                // a transient geometry sample observed while borrowed silently steer the basis-axis
+                // choice for whatever texture the eventual reclaim actually creates.
+                SyncRepaintTick(element, binding);
+                return;
+            }
+
+            // Confirmed: about to create a fresh texture at exactly (pw, ph) — commit the basis that
+            // produced it.
+            binding.WidthWasQuantizedAxis = usedWidthAsBasis;
+            // Target the new texture BEFORE destroying the old one so the camera never points at a
+            // dead texture in between (the re-target is itself the polite release of our own texture).
+            var texture = new RenderTexture(pw, ph, 24);
+            binding.Texture = texture;
+            s_feedTextures.Add(texture);
+            camera.targetTexture = texture;
+            binding.Feed ??= CreateFeed();
+            binding.Feed.style.backgroundImage = Background.FromRenderTexture(texture);
+            SyncFeed(element, binding);
+            element.MarkDirtyRepaint();
+            if (previous != null)
+            {
+                // MUTANT_SURVIVES(equivalent): a destroyed texture left in the set equals no live camera target, so only the set's size changes.
+                s_feedTextures.Remove(previous);
+                previous.Release();
+                VelvetObjectUtil.Destroy(previous);
+            }
+            SyncRepaintTick(element, binding);
+        }
+
+        private static VisualElement CreateFeed()
+        {
+            var feed = new VisualElement { name = FeedMarkerClass, pickingMode = PickingMode.Ignore };
+            feed.AddToClassList(FeedMarkerClass);
+            feed.style.position = Position.Absolute;
+            return feed;
+        }
+
+        // Lays the feed over the element's content box and rounds its corners along the content edge: each
+        // corner's radius less the border and padding beside it, the larger side's where the two differ.
+        // Absolute offsets are taken from the padding box, so the padding alone insets the feed; SceneViewTests'
+        // Given_ABorderedPaddedSceneView_When_LayoutResolves_Then_TheFeedCoversTheContentBox pins that.
+        // The feed stays the first child, beneath every child rendered into the element, so it is inserted there
+        // rather than appended: a feed added again after a release would otherwise land after any child a portal
+        // rendered into the element meanwhile.
+        private static void SyncFeed(VisualElement element, SceneViewBinding binding)
+        {
+            var feed = binding.Feed!;
+            if (feed.parent != element || element.IndexOf(feed) != 0)
+            {
+                ChildListWrites.Insert(element, 0, feed);
+            }
+            var s = element.resolvedStyle;
+            feed.style.left = s.paddingLeft;
+            feed.style.top = s.paddingTop;
+            feed.style.right = s.paddingRight;
+            feed.style.bottom = s.paddingBottom;
+            var left = s.borderLeftWidth + s.paddingLeft;
+            var top = s.borderTopWidth + s.paddingTop;
+            var right = s.borderRightWidth + s.paddingRight;
+            var bottom = s.borderBottomWidth + s.paddingBottom;
+            feed.style.borderTopLeftRadius = Mathf.Max(0f, s.borderTopLeftRadius - Mathf.Max(left, top));
+            feed.style.borderTopRightRadius = Mathf.Max(0f, s.borderTopRightRadius - Mathf.Max(right, top));
+            feed.style.borderBottomRightRadius = Mathf.Max(0f, s.borderBottomRightRadius - Mathf.Max(right, bottom));
+            feed.style.borderBottomLeftRadius = Mathf.Max(0f, s.borderBottomLeftRadius - Mathf.Max(left, bottom));
+        }
+
+        // Derives the texture's target pixel size from the CURRENT layout, scale and pixel density —
+        // shared by the sync and the editor tick's staleness probe so the two can never disagree
+        // about what "current" means. Size in device pixels: content-box points times the resolution
+        // scale times the panel's pixel density, so a scaled panel (HiDPI editor, runtime panel
+        // scaling) gets pixel-sharp output. The floor keeps a sub-pixel rect from rounding to a
+        // zero-dimension texture (which RenderTexture creation rejects); the ceiling bounds the VRAM
+        // request like the sibling texture bakers bound theirs — applied as ONE shared shrink when
+        // either axis overflows, because clamping each axis independently would change the texture's
+        // aspect and distort the camera picture.
+        //
+        // The result is then quantized for reuse-friendliness, but — for the same distort-the-picture
+        // reason the shrink above is careful about — NOT by rounding each axis up independently: since
+        // SceneViewDriver never pins camera.aspect, Unity derives the camera's render aspect straight
+        // from the texture's own width/height, so a texture whose aspect drifts from the element's
+        // true aspect renders the scene visibly skewed. Instead the LARGER axis is quantized up to
+        // SizeQuantizationStep and the other axis is rescaled by the same factor, which keeps the
+        // texture's aspect equal to the element's true aspect while still landing same-aspect jitter
+        // (a uniform drag-resize, a DPI change) on a shared bucket so SyncTexture's exact-match reuse
+        // check hits instead of reallocating. A resize that itself changes the element's aspect ratio
+        // still gets a fresh texture either way — that's correct, not a regression, since the aspect
+        // actually changed.
+        //
+        // Which axis counts as "larger" is STICKY (binding.WidthWasQuantizedAxis), not re-derived from
+        // scratch on every call: for an element whose aspect ratio hovers near 1:1, re-deriving "is pw
+        // >= ph" from the bare current size would flip which axis is quantized on a 1px change in
+        // which axis is momentarily longer, picking an entirely different bucket for BOTH axes even
+        // though the element barely moved (a square avatar/minimap/preview, or ordinary sub-pixel
+        // layout jitter, would then defeat the whole point of quantizing). Once an axis is chosen it
+        // keeps being used as long as it is still at least as long as the other OR the gap between
+        // them is under one quantization step — only a gap that clears a full step flips the basis,
+        // so which axis is "larger" changes only when the element's aspect ratio has genuinely and
+        // durably changed, not on sub-step jitter.
+        // usedWidthAsBasis reports which axis THIS call would use as the quantization basis, given
+        // binding's CURRENT sticky state — it does not write binding.WidthWasQuantizedAxis itself.
+        // Not every caller ends up applying this call's (pw, ph) to a texture (SyncTexture's
+        // borrowed-camera bail-out keeps showing an older texture; OnRepaintTick's staleness probe
+        // only checks whether a resync is needed), so committing the sticky axis unconditionally
+        // here would let a call whose result is discarded still steer future basis-axis decisions —
+        // only the caller that actually confirms or creates a texture for (pw, ph) should commit it,
+        // via `binding.WidthWasQuantizedAxis = usedWidthAsBasis`.
+        private static bool TryComputePixelSize(VisualElement element, SceneViewBinding binding, out int pw, out int ph, out bool usedWidthAsBasis)
+        {
+            pw = 0;
+            ph = 0;
+            usedWidthAsBasis = false;
+            var w = element.contentRect.width;
+            var h = element.contentRect.height;
+            if (w <= 0f || h <= 0f || float.IsNaN(w) || float.IsNaN(h))
+            {
+                return false;
+            }
+            DevicePixels(w, h, binding.Settings.ResolutionScale * element.scaledPixelsPerPoint, out pw, out ph);
+            var useWidthAsBasis = DecideWidthAsBasis(binding.WidthWasQuantizedAxis, pw, ph);
+            usedWidthAsBasis = useWidthAsBasis;
+
+            if (useWidthAsBasis)
+            {
+                var quantizedW = Mathf.Min(QuantizeUp(pw), MaxTextureSize);
+                ph = Mathf.Max(1, Mathf.RoundToInt((float)quantizedW * ph / pw));
+                pw = quantizedW;
+            }
+            else
+            {
+                var quantizedH = Mathf.Min(QuantizeUp(ph), MaxTextureSize);
+                pw = Mathf.Max(1, Mathf.RoundToInt((float)quantizedH * pw / ph));
+                ph = quantizedH;
+            }
+            return true;
+        }
+
+        // A size in points times the pixel scale, floored at one pixel and held under the ceiling as described
+        // over TryComputePixelSize. ParticlesEffectView sizes its texture through it too.
+        internal static void DevicePixels(float w, float h, float pixelScale, out int pw, out int ph)
+        {
+            pw = Mathf.Max(1, Mathf.RoundToInt(w * pixelScale));
+            ph = Mathf.Max(1, Mathf.RoundToInt(h * pixelScale));
+            if (pw > MaxTextureSize || ph > MaxTextureSize)
+            {
+                var shrink = Mathf.Min((float)MaxTextureSize / pw, (float)MaxTextureSize / ph);
+                pw = Mathf.Clamp(Mathf.FloorToInt(pw * shrink), 1, MaxTextureSize);
+                ph = Mathf.Clamp(Mathf.FloorToInt(ph * shrink), 1, MaxTextureSize);
+            }
+        }
+
+        // Symmetric hysteresis: the axis last COMMITTED as the basis keeps being used unless the OTHER
+        // axis has pulled ahead by a full quantization step, so a sub-step wobble in which axis is
+        // momentarily longer never flips the basis.
+        private static bool DecideWidthAsBasis(bool? stickyToWidth, int pw, int ph)
+        {
+            if (stickyToWidth == null)
+            {
+                // No axis has been committed yet (first successful derivation for this element): there
+                // is no history to hold onto, so fall back to the plain larger-of-the-two comparison.
+                return pw >= ph;
+            }
+            if (stickyToWidth.Value)
+            {
+                // Width was last committed as the basis: keep it unless height has pulled ahead by a
+                // full quantization step.
+                return pw >= ph || ph - pw < SizeQuantizationStep;
+            }
+            // Height was last committed as the basis: keep it unless width has pulled ahead by a full
+            // quantization step.
+            return pw > ph && pw - ph >= SizeQuantizationStep;
+        }
+
+        // Rounds a pixel size up to the next SizeQuantizationStep multiple (e.g. 100 -> 112 at the
+        // 16px step); an already-aligned value passes through unchanged.
+        private static int QuantizeUp(int value)
+        {
+            return (value + SizeQuantizationStep - 1) / SizeQuantizationStep * SizeQuantizationStep;
+        }
+
+        // A recurring tick runs while a texture is live, on every panel type. The scheduled item fires
+        // only when the panel ticks its scheduler, so a headless (batch) editor panel schedules it
+        // inertly. Paused whenever the texture is released or the binding detaches.
+        private static void SyncRepaintTick(VisualElement element, SceneViewBinding binding)
+        {
+            if (binding.Texture != null && binding.RepaintTick == null)
+            {
+                binding.RepaintTick = element.schedule.Execute(() => OnRepaintTick(element, binding)).Every(RepaintIntervalMs);
+            }
+            else if (binding.Texture == null)
+            {
+                StopRepaintTick(binding);
+            }
+        }
+
+        // The tick is the staleness probe: a pixel-density change (a monitor-DPI move, a runtime
+        // panel-scale tweak) alters the derived pixel size without moving the element's geometry, so
+        // no geometry event re-derives the texture. It also re-lays the feed, which a padding or radius
+        // change reshapes without re-deriving the texture.
+        // The tick then renders the camera, after the probe, so a texture it just re-derived is rendered
+        // into before it is shown: into this element's texture outside Play Mode. A camera pointed at
+        // another SceneView's texture is rendered into this element's in Play Mode too and pointed back,
+        // and one pointed at nothing is claimed back, as a resync claims it. A camera user code pointed
+        // at a texture of its own renders where that code decides, and a disabled one is the caller's
+        // way of saying its output is unnecessary.
+        // An Editor-context panel repaints only when something marks it dirty (nothing in UI Toolkit
+        // knows the sampled texture's CONTENTS changed); a runtime panel draws every frame.
+        private static void OnRepaintTick(VisualElement element, SceneViewBinding binding)
+        {
+            // This is a staleness PROBE, not a commit: only checks whether the derived size still
+            // matches the live texture. The basis-axis choice this call computes is discarded — if a
+            // resync turns out to be needed, SyncTexture below re-derives (and, on that path, commits)
+            // it from scratch.
+            if (binding.Texture != null
+                && TryComputePixelSize(element, binding, out var pw, out var ph, out _)
+                && (binding.Texture.width != pw || binding.Texture.height != ph))
+            {
+                SyncTexture(element, binding);
+            }
+            if (binding.Texture == null)
+            {
+                return;
+            }
+            SyncFeed(element, binding);
+            SyncHeldCamera(element, binding);
+            var camera = binding.Settings.Camera;
+            if (camera != null && camera.isActiveAndEnabled)
+            {
+                var target = camera.targetTexture;
+                if (target == binding.Texture)
+                {
+                    if (!Application.isPlaying)
+                    {
+                        camera.Render();
+                    }
+                }
+                else if (target == null)
+                {
+                    camera.targetTexture = binding.Texture;
+                }
+                else if (s_feedTextures.Contains(target))
+                {
+                    camera.targetTexture = binding.Texture;
+                    camera.Render();
+                    camera.targetTexture = target;
+                }
+            }
+            if (element.panel?.contextType == ContextType.Editor)
+            {
+                element.MarkDirtyRepaint();
+            }
+        }
+
+        // A positive-priority UseFrame callback in the element's panel renders in place of the camera's
+        // own rendering, as react-three-fiber's root skips its own render while a useFrame subscriber with
+        // a positive renderPriority is registered: the element holds its camera disabled, which also stops
+        // the tick above rendering it, until no such callback is left.
+        private static void SyncHeldCamera(VisualElement element, SceneViewBinding binding)
+        {
+            var camera = binding.Settings.Camera;
+            if (element.panel != null && UseFrameDispatcher.TakesOverRendering(element.panel))
+            {
+                if (binding.HeldCamera == null && camera != null && camera.enabled)
+                {
+                    camera.enabled = false;
+                    binding.HeldCamera = camera;
+                    s_holding.Add(binding);
+                }
+            }
+            else
+            {
+                ReleaseHeldCamera(binding);
+            }
+        }
+
+        private static void ReleaseHeldCamera(SceneViewBinding binding)
+        {
+            if (binding.HeldCamera != null)
+            {
+                binding.HeldCamera.enabled = true;
+            }
+            binding.HeldCamera = null;
+            s_holding.Remove(binding);
+        }
+
+        private static void StopRepaintTick(SceneViewBinding binding)
+        {
+            binding.RepaintTick?.Pause();
+            binding.RepaintTick = null;
+        }
+
+        // Releases both ends of the output pair: politely untargets the camera, destroys the texture,
+        // and clears the background image so no dead-texture reference survives on the element.
+        private static void ReleaseOutput(VisualElement element, SceneViewBinding binding)
+        {
+            StopRepaintTick(binding);
+            ReleaseCameraTarget(binding.Settings.Camera, binding.Texture);
+            ReleaseHeldCamera(binding);
+            if (binding.Texture == null)
+            {
+                return;
+            }
+            // MUTANT_SURVIVES(equivalent): a destroyed texture left in the set equals no live camera target, so only the set's size changes.
+            s_feedTextures.Remove(binding.Texture);
+            binding.Texture.Release();
+            VelvetObjectUtil.Destroy(binding.Texture);
+            binding.Texture = null;
+            // The sticky basis-axis choice exists to keep a LIVE texture's bucket continuous across
+            // resizes; once the texture itself is gone there is nothing left to stay continuous with,
+            // so the next texture this binding creates derives its basis fresh from that size alone.
+            binding.WidthWasQuantizedAxis = null;
+            ChildListWrites.RemoveFromHierarchy(binding.Feed!);
+            element.MarkDirtyRepaint();
+        }
+
+        // Polite camera release: untargets ONLY when the camera still points at the framework texture,
+        // so a targetTexture the user reassigned after mount survives unmount untouched.
+        private static void ReleaseCameraTarget(Camera? camera, RenderTexture? texture)
+        {
+            if (camera != null && texture != null && camera.targetTexture == texture)
+            {
+                camera.targetTexture = null;
+            }
+        }
+    }
+}

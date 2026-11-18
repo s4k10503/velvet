@@ -1,0 +1,4246 @@
+// Full nullable checking: hook public surface and dependency arrays are part of the shipped API contract.
+#nullable enable
+using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Reflection;
+using System.Runtime.ExceptionServices;
+using System.Threading;
+using UnityEngine.UIElements;
+
+namespace Velvet
+{
+    /// <summary>
+    /// Single entry point for all hooks invoked from a <c>[Component] static VNode</c> body. Hooks may only
+    /// be called during Render(), unconditionally and in a stable order (the Rules of Hooks).
+    /// For example, <see cref="UseState{T}"/> returns the 2-tuple <c>(value, setValue)</c> where
+    /// <c>setValue</c> is a <see cref="StateUpdater{T}"/> accepting either a replacement value
+    /// (<c>setValue.Invoke(next)</c>) or a functional updater (<c>setValue.Invoke(prev =&gt; next)</c>).
+    /// </summary>
+    public static class Hooks
+    {
+        /// <summary>
+        /// Retrieves the currently rendering Fiber from <see cref="FiberAmbientStack"/>; throws when
+        /// null or when called outside of Render(). Counts the call in <see cref="ComponentFiber.HookCallCount"/>.
+        /// </summary>
+        private static ComponentFiber Resolve(string hookName)
+        {
+            var fiber = ResolveUncounted(hookName);
+            fiber.HookCallCount++;
+            return fiber;
+        }
+
+        // For a member that reads the fiber without being a hook, so it does not move HookCallCount.
+        internal static ComponentFiber ResolveUncounted(string memberName)
+        {
+            var fiber = FiberAmbientStack.Current;
+            HookGuard.ThrowIfNotRendering(fiber, memberName);
+            return fiber!;
+        }
+
+        /// <summary>
+        /// True while the StrictMode throwaway diagnostic render runs. Hooks that mutate committed state or
+        /// produce externally visible side effects suppress those during this pass. Always false in player
+        /// builds (the diagnostic exists only in the Editor).
+        /// </summary>
+        private static bool IsStrictDiagnosticPass(ComponentFiber? fiber)
+        {
+#if UNITY_EDITOR
+            return fiber!.IsStrictDiagnosticPass;
+#else
+            return false;
+#endif
+        }
+
+        #region UseState
+
+        /// <summary>
+        /// Local state hook. Must be used inside Render() only.
+        /// Returns the 2-tuple shape <c>(value, setValue)</c> where <c>setValue</c> is a single
+        /// <see cref="StateUpdater{T}"/> that accepts either a replacement value or a functional updater.
+        /// </summary>
+        /// <typeparam name="T">State type.</typeparam>
+        /// <param name="initial">Initial value used on the first render. Ignored on subsequent renders.</param>
+        /// <returns>
+        /// 2-tuple:
+        /// - <c>value</c>: current value
+        /// - <c>setValue</c>: <see cref="StateUpdater{T}"/>, reference-stable across renders — call
+        ///   <c>setValue.Invoke(next)</c> to replace the value, or <c>setValue.Invoke(prev =&gt; next)</c> for the
+        ///   functional updater (receives the state the updates written before it produce, safe to invoke from a
+        ///   closure captured by an earlier render).
+        /// </returns>
+        public static (T value, StateUpdater<T> setValue) UseState<T>(T initial)
+            => UseStateInternalCore(default, initial, "UseState");
+
+        /// <summary>
+        /// Lazy-initialized variant taking a factory invoked once for the initial value.
+        /// <paramref name="initialFactory"/> is invoked exactly once on the first render to produce the
+        /// initial state; subsequent renders skip the call. Use this when constructing the initial value
+        /// is expensive (large Map/Set/List allocation, etc.) so the cost is not paid on every render.
+        /// </summary>
+        /// <typeparam name="T">State type.</typeparam>
+        /// <param name="initialFactory">Factory invoked on first render only. Must not be null.</param>
+        /// <returns>
+        /// 2-tuple:
+        /// - <c>value</c>: current value
+        /// - <c>setValue</c>: <see cref="StateUpdater{T}"/> accepting a value or a functional updater,
+        ///   reference-stable across renders.
+        /// </returns>
+        public static (T value, StateUpdater<T> setValue) UseState<T>(Func<T> initialFactory)
+        {
+            if (initialFactory == null) throw new ArgumentNullException(nameof(initialFactory));
+            return UseStateInternalCore(initialFactory, default!, "UseState");
+        }
+
+        private static (T value, StateUpdater<T> setValue) UseStateInternalCore<T>(
+            Func<T>? initialFactory, T initial, string hookName)
+        {
+            var fiber = Resolve(hookName);
+            fiber.StateSlots ??= new List<HookStateSlot>();
+            var index = fiber.Indices.StateHookIndex++;
+            HookCountSentinel.ThrowIfPastCommittedCount(fiber);
+
+            if (index >= fiber.StateSlots.Count)
+            {
+                var seed = initialFactory != null ? initialFactory() : initial;
+                var slot = new HookStateSlot<T>(seed);
+                slot.Setter = new StateUpdater<T>(
+                    HookSetterFactory.CreateStateSetter(slot, fiber), HookSetterFactory.CreateStateUpdater(slot, fiber));
+                fiber.StateSlots.Add(slot);
+                return (slot.Value, slot.Setter);
+            }
+
+            if (fiber.StateSlots[index] is not HookStateSlot<T> typed)
+            {
+                throw HookSlotTypeMismatch(fiber, hookName, fiber.StateSlots[index].GetType(), typeof(T).Name, index);
+            }
+
+            return (typed.Process(fiber, FiberWorkLoop.RenderLane), typed.Setter);
+        }
+
+        #endregion
+
+        #region UseStore
+
+        /// <summary>
+        /// Subscribes to an external Store via a selector. Must be used inside Render() only. The subscription is
+        /// made in the passive effects of the commit, as <see cref="UseSyncExternalStore{T}"/> makes its own, so a
+        /// render that throws or suspends subscribes nothing; a change the store makes between the render and the
+        /// subscription re-renders the component once it is made. A change re-renders it as a
+        /// <see cref="UseSyncExternalStore{T}"/> notification does: on the Urgent lane, inside a transition as well.
+        /// </summary>
+        /// <typeparam name="TStore">Store snapshot type.</typeparam>
+        /// <typeparam name="TSel">Selected projection type returned to the component.</typeparam>
+        /// <param name="store">Store instance to subscribe to. Must not be null.</param>
+        /// <param name="selector">Pure projection from the store snapshot to the value the component cares about. Must not be null.</param>
+        /// <param name="comparer">
+        /// Equality comparer used to detect changes. The default applies the same <c>Object.is</c> rule as
+        /// the <c>UseState</c> setter, branch for branch — see the remarks on <see cref="StateUpdater{T}"/>.
+        /// Passing <see cref="EqualityComparer{TSel}.Default"/> therefore changes a non-string
+        /// reference-type selector, where it swaps instance identity for the type's own <c>Equals</c> so
+        /// that a selector returning a fresh <c>record class</c> instance of stable content skips the
+        /// re-render instead of triggering one. For a string selector, or a value-type selector other than
+        /// <c>float</c>/<c>double</c> — a <c>record struct</c> included — the default already gives the same
+        /// answer as that comparer, so passing it changes nothing.
+        /// </param>
+        /// <returns>The selected value at the current store snapshot.</returns>
+        public static TSel UseStore<TStore, TSel>(
+            Store<TStore> store,
+            Func<TStore, TSel> selector,
+            IEqualityComparer<TSel>? comparer = null)
+        {
+            if (store == null) throw new ArgumentNullException(nameof(store));
+            if (selector == null) throw new ArgumentNullException(nameof(selector));
+            var fiber = Resolve("UseStore");
+            fiber.StoreSlots ??= new List<HookStoreSlot>();
+            var index = fiber.Indices.StoreHookIndex++;
+            HookCountSentinel.ThrowIfPastCommittedCount(fiber);
+            var cmp = comparer ?? ObjectIsEqualityComparer<TSel>.Instance;
+
+            // Tearing guard: readers committed in one drain pass read the snapshot the pass pinned (see
+            // ReconcilerContext.PinStoreSnapshot) rather than the live store.Current.
+            var snapshot = PinStoreSnapshot(fiber, store);
+
+            if (index >= fiber.StoreSlots.Count)
+            {
+                var slot = new HookStoreSlot<TStore, TSel> { Store = store };
+                slot.SubscribeEffect = new HookEffectSlot { EffectFactory = () => SubscribeStore(fiber, slot) };
+                var selected = selector(snapshot);
+                slot.Render(selector, cmp, selected);
+
+                fiber.StoreSlots.Add(slot);
+                QueueStoreSubscription(fiber, slot);
+                QueueCatchUpIfPinnedBehind(fiber, slot, snapshot);
+                return selected;
+            }
+
+            if (fiber.StoreSlots[index] is not HookStoreSlot<TStore, TSel> typed)
+            {
+                throw HookSlotTypeMismatch(fiber, "UseStore", fiber.StoreSlots[index].GetType(),
+                    $"HookStoreSlot<{typeof(TStore).Name},{typeof(TSel).Name}>", index);
+            }
+
+            if (!ReferenceEquals(typed.Store, store))
+            {
+                throw new InvalidOperationException(
+                    $"{ComponentName(fiber)}: the store reference passed to UseStore differs from the previous render (slot #{index})." +
+                    " This violates the Rules of Hooks.");
+            }
+
+            var value = selector(snapshot);
+            typed.Render(selector, cmp, value);
+            QueueStoreSubscription(fiber, typed);
+            QueueCatchUpIfPinnedBehind(fiber, typed, snapshot);
+            return value;
+        }
+
+        // A render that throws or suspends has its pending passive effects truncated, so it subscribes nothing;
+        // the next render that commits finds no subscription and queues it again.
+        private static void QueueStoreSubscription<TStore, TSel>(ComponentFiber fiber, HookStoreSlot<TStore, TSel> slot)
+        {
+            if (slot.Subscription != null || IsStrictDiagnosticPass(fiber)) return;
+            var pending = fiber.PendingEffects ??= new List<HookEffectSlot>();
+            if (!pending.Contains(slot.SubscribeEffect)) pending.Add(slot.SubscribeEffect);
+        }
+
+        // A change re-renders as UseSyncExternalStore's does: on the sync lane, inside a transition as well, and
+        // flushed from the main thread's posted work. The notification between the render and this effect reached
+        // no subscriber, so the selection is compared once more against the live snapshot after subscribing.
+        private static Action SubscribeStore<TStore, TSel>(ComponentFiber fiber, HookStoreSlot<TStore, TSel> slot)
+        {
+            slot.Subscription = slot.Store.Subscribe(snapshot =>
+            {
+                if (SelectionChanged(fiber, slot, snapshot)) FiberWorkLoop.RequestExternalStoreRender(fiber);
+            });
+            if (SelectionChanged(fiber, slot, slot.Store.Current)) FiberWorkLoop.RequestExternalStoreRender(fiber);
+            return slot.Dispose;
+        }
+
+        // Whether snapshot asks the component for a render, recording the selection it compared against. A
+        // throwing selector is not swallowed: the render it asks for repeats the call, so the exception reaches the
+        // ErrorBoundary, symmetric with the unguarded render path.
+        private static bool SelectionChanged<TStore, TSel>(
+            ComponentFiber fiber, HookStoreSlot<TStore, TSel> slot, TStore snapshot)
+        {
+            if (fiber.IsDisposed) return false;
+            TSel next;
+            try
+            {
+                next = slot.Selector(snapshot);
+            }
+            catch
+            {
+                return true;
+            }
+
+            if (slot.Comparer.Equals(slot.LastValue, next)) return false;
+            slot.LastValue = next;
+            return true;
+        }
+
+        // A pin older than the store leaves a reader whose selection the mutation changed behind it with no
+        // notification still to come: the mutation notified before this render read the pin, or before this reader
+        // subscribed. As UseSyncExternalStore's check does, the passive effects of the commit compare the committed
+        // selection with the live store and force a sync-lane re-render, which reads the store in a later pass that
+        // pins afresh; a render that never commits queues nothing.
+        private static void QueueCatchUpIfPinnedBehind<TStore, TSel>(
+            ComponentFiber fiber, HookStoreSlot<TStore, TSel> slot, TStore snapshot)
+        {
+            var live = slot.Store.Current;
+            if (ObjectIs.AreEqual(snapshot, live) || IsStrictDiagnosticPass(fiber)) return;
+            if (slot.RenderedComparer.Equals(slot.RenderedValue, slot.RenderedSelector(live))) return;
+            slot.CatchUpEffect ??= new HookEffectSlot
+            {
+                EffectFactory = () =>
+                {
+                    if (SelectionChanged(fiber, slot, slot.Store.Current)) FiberWorkLoop.RequestExternalStoreRender(fiber);
+                    return null;
+                },
+            };
+            var pending = fiber.PendingEffects ??= new List<HookEffectSlot>();
+            if (!pending.Contains(slot.CatchUpEffect)) pending.Add(slot.CatchUpEffect);
+        }
+
+        // Returns the store snapshot pinned for the current batch drain wave (see
+        // ReconcilerContext.PinStoreSnapshot), or the live store.Current when the fiber has no Reconciler
+        // context yet. Pinning is reference-keyed on the store, so distinct stores never collide.
+        private static TStore PinStoreSnapshot<TStore>(ComponentFiber fiber, Store<TStore> store)
+        {
+            var ctx = fiber.Reconciler?.Context;
+            return ctx != null ? ctx.PinStoreSnapshot(store, store.Current) : store.Current;
+        }
+
+        #endregion
+
+        #region UseSyncExternalStore
+
+        /// <summary>
+        /// Subscribes to a store Velvet does not own and returns its current snapshot — the counterpart of React's
+        /// <c>useSyncExternalStore(subscribe, getSnapshot)</c>. Must be used inside Render() only.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <paramref name="getSnapshot"/> must return the same value, compared with <c>Object.is</c>, on every call
+        /// while the store has not changed: cache the snapshot instead of building a new one per read. A store-change
+        /// notification re-renders the component when <paramref name="getSnapshot"/> then returns a value that is not
+        /// <c>Object.is</c>-equal to the one it last committed, or throws. A render that returns another snapshot than
+        /// the previous one, or that subscribes, checks the snapshot again in its passive effects, so a snapshot built
+        /// afresh per read re-renders the component after every render until the scheduler's update-depth limit drops
+        /// the update and logs an error. In the Editor, a hook whose two consecutive reads in one render differ logs an
+        /// error once.
+        /// </para>
+        /// <para>
+        /// <paramref name="subscribe"/> receives the callback to invoke when the store changes and returns the action
+        /// that unsubscribes it. It is called in the passive effects of the first commit, and again, after the previous
+        /// subscription is removed, in those of a commit whose render passed a <paramref name="subscribe"/> that is
+        /// not <see cref="Delegate.Equals(object)"/> to the previous one, or that follows a call that threw. A render
+        /// whose body throws or suspends, and an attempt a render-phase update re-runs, subscribe and unsubscribe
+        /// nothing, and the StrictMode diagnostic render never calls it. A method group on the same instance compares equal across renders; a lambda capturing a
+        /// local is a new closure each render and re-subscribes on each later commit, as an inline subscribe function
+        /// does in React. Unmounting removes the subscription. A change the store makes between the render and the
+        /// subscription, or while <paramref name="subscribe"/> runs, re-renders the component once the subscription
+        /// is made.
+        /// </para>
+        /// <para>
+        /// The callback must be invoked on the Unity main thread: invoked from another thread, it throws
+        /// <see cref="InvalidOperationException"/> to its invoker and schedules nothing. The re-render it schedules
+        /// takes the Urgent lane and never the Transition lane, including when the store is mutated inside
+        /// <c>startTransition</c>, and the scheduler flushes it from the main thread's posted work instead of waiting
+        /// for its next frame-boundary callback. The scheduler's resume of a parked time-sliced pass flushes such a
+        /// re-render first, so readers the pass committed in an earlier slice show the changed snapshot before the next
+        /// slice renders it.
+        /// </para>
+        /// <para>
+        /// Within one batch drain pass, readers passing equal <paramref name="getSnapshot"/> delegates observe the
+        /// snapshot the pass's first read pinned, as readers of one store do through
+        /// <see cref="UseStore{TStore,TSel}"/>; the next pass, the delayed tier's included, pins afresh. A render
+        /// outside a drain reads the live snapshot. A render that returns a pin the store has moved past asks for a
+        /// re-render in its passive effects.
+        /// </para>
+        /// </remarks>
+        /// <typeparam name="T">Snapshot type.</typeparam>
+        /// <param name="subscribe">Registers a store-change callback and returns its unsubscribe action. Must not be null.</param>
+        /// <param name="getSnapshot">Returns the store's current snapshot. Must not be null.</param>
+        /// <returns>The store snapshot this render observes.</returns>
+        public static T UseSyncExternalStore<T>(Func<Action, Action> subscribe, Func<T> getSnapshot)
+        {
+            if (subscribe == null) throw new ArgumentNullException(nameof(subscribe));
+            if (getSnapshot == null) throw new ArgumentNullException(nameof(getSnapshot));
+            var fiber = Resolve("UseSyncExternalStore");
+            fiber.StoreSlots ??= new List<HookStoreSlot>();
+            var index = fiber.Indices.StoreHookIndex++;
+            HookCountSentinel.ThrowIfPastCommittedCount(fiber);
+
+            HookExternalStoreSlot<T> slot;
+            if (index >= fiber.StoreSlots.Count)
+            {
+                slot = new HookExternalStoreSlot<T> { Fiber = fiber };
+                fiber.StoreSlots.Add(slot);
+            }
+            else if (fiber.StoreSlots[index] is HookExternalStoreSlot<T> typed)
+            {
+                slot = typed;
+            }
+            else
+            {
+                throw HookSlotTypeMismatch(fiber, "UseSyncExternalStore", fiber.StoreSlots[index].GetType(),
+                    $"HookExternalStoreSlot<{typeof(T).Name}>", index);
+            }
+
+            var live = getSnapshot();
+#if UNITY_EDITOR
+            if (!slot.ReportedUncachedSnapshot && !ObjectIs.AreEqual(live, getSnapshot()))
+            {
+                slot.ReportedUncachedSnapshot = true;
+                FiberLogger.LogError("UseSyncExternalStore",
+                    $"{ComponentName(fiber)}: getSnapshot returned a different value on two consecutive reads." +
+                    " Cache the snapshot and return the same value until the store changes.");
+            }
+#endif
+            // The wave pin is keyed by getSnapshot itself: equal delegates read the same value, whichever
+            // component holds them.
+            var ctx = fiber.Reconciler?.Context;
+            var rendered = ctx != null ? ctx.PinStoreSnapshot(getSnapshot, live) : live;
+
+            // The StrictMode diagnostic render queues nothing: its closures are the discarded pass's.
+            if (!IsStrictDiagnosticPass(fiber))
+            {
+                slot.Render(fiber.PendingEffects ??= new List<HookEffectSlot>(), subscribe, getSnapshot, rendered);
+            }
+
+            return rendered;
+        }
+
+        #endregion
+
+        #region UseContext
+
+        /// <summary>
+        /// Reads the value of the given context from the nearest Provider.
+        /// Returns the context's default value when no Provider is present.
+        /// </summary>
+        /// <remarks>
+        /// Always reflects the nearest enclosing Provider at the moment Render() runs, including after an
+        /// isolated re-render (state update / context change), not a value pinned at first render.
+        /// </remarks>
+        /// <typeparam name="T">Context value type.</typeparam>
+        /// <param name="context">Context object to read. Must not be null.</param>
+        /// <returns>
+        /// Provided value when an ancestor Provider is present, otherwise <c>context.DefaultValue</c>, which
+        /// is null for a context created with a null default.
+        /// </returns>
+        public static T? UseContext<T>(ComponentContext<T> context)
+        {
+            if (context == null) throw new ArgumentNullException(nameof(context));
+            var fiber = Resolve("UseContext");
+            fiber.RegisterContextDependency(context);
+            var stack = fiber.Reconciler?.Context.ComponentContextStack;
+            return stack != null ? stack.Get(context) : context.DefaultValue;
+        }
+
+        #endregion
+
+        #region UseService
+
+        /// <summary>
+        /// Resolves a service from the <see cref="IHookServiceResolver"/> provided through
+        /// <see cref="HookServiceContext.Ref"/>. A service-locator hook that reads the host
+        /// resolver from context, keeping the lookup DI-framework-neutral.
+        /// </summary>
+        /// <typeparam name="T">Service contract type to resolve.</typeparam>
+        /// <returns>The instance returned by the host resolver.</returns>
+        /// <exception cref="InvalidOperationException">
+        /// Thrown when no <see cref="HookServiceContext"/> Provider is mounted above the caller,
+        /// or when the host <see cref="IHookServiceResolver"/> returns null in violation of its contract.
+        /// </exception>
+        public static T UseService<T>() where T : class
+        {
+            // Surface "UseService" in HookGuard's outside-of-render message instead of "UseContext".
+            _ = Resolve("UseService");
+            var resolver = UseContext(HookServiceContext.Ref)
+                ?? throw new InvalidOperationException(
+                    "HookServiceContext provider not found. " +
+                    "Mount V.Provider(HookServiceContext.Ref, value: resolver, ...) at the root.");
+            return resolver.Resolve<T>()
+                ?? throw new InvalidOperationException(
+                    $"IHookServiceResolver.Resolve<{typeof(T).Name}>() returned null. " +
+                    "The host resolver must return a non-null instance or throw.");
+        }
+
+        #endregion
+
+        #region UseCallback
+
+        /// <summary>
+        /// Returns the latest callback every render without memoization. With no deps argument the
+        /// callback behaves as identity — a fresh closure each render.
+        /// Use this overload only when you intentionally want the unmemoized form (e.g. handler that
+        /// already captures no render-scoped state). For memoized stable references prefer the
+        /// <see cref="UseCallback{T}(T, object?[])"/> overload with an explicit deps array.
+        /// </summary>
+        /// <remarks>
+        /// The single-argument overload exists so that omitting deps is unambiguous: the
+        /// <c>params object?[]? deps</c> overload would otherwise observe an empty array (not
+        /// <c>null</c>) and incorrectly freeze the callback to the first-render closure.
+        /// </remarks>
+        public static T UseCallback<T>(T callback) where T : Delegate
+        {
+            if (callback == null) throw new ArgumentNullException(nameof(callback));
+            var fiber = Resolve(nameof(UseCallback));
+            fiber.CallbackSlots ??= new List<HookCallbackSlot>();
+            var index = fiber.Indices.HookIndex++;
+            HookCountSentinel.ThrowIfPastCommittedCount(fiber);
+
+            // Stages into Next* like the deps overload, so the render-phase settle commit treats every
+            // callback slot uniformly even though this overload never memoizes.
+            if (index >= fiber.CallbackSlots.Count)
+            {
+                fiber.CallbackSlots.Add(new HookCallbackSlot
+                {
+                    NextCallback = callback,
+                    NextDeps = null,
+                });
+            }
+            else
+            {
+                var entry = fiber.CallbackSlots[index];
+                entry.NextCallback = callback;
+                entry.NextDeps = null;
+            }
+            return callback;
+        }
+
+        /// <summary>
+        /// Returns the same delegate reference as long as the dependency array is unchanged.
+        /// </summary>
+        /// <typeparam name="T">Delegate type to memoize.</typeparam>
+        /// <param name="callback">Callback to memoize. Captured on first render and on dependency changes.</param>
+        /// <param name="deps">Dependency values. When equal to the previous render (each dependency compared with <c>Object.is</c>), the cached callback is reused. Null means no dependency array at all — the callback is not memoized, exactly as if the deps argument had been left off.</param>
+        /// <returns>The cached callback reference (stable across renders while <paramref name="deps"/> are equal).</returns>
+        public static T UseCallback<T>(T callback, params object?[]? deps) where T : Delegate
+        {
+            var fiber = Resolve("UseCallback");
+            fiber.CallbackSlots ??= new List<HookCallbackSlot>();
+            var index = fiber.Indices.HookIndex++;
+            HookCountSentinel.ThrowIfPastCommittedCount(fiber);
+
+            if (index >= fiber.CallbackSlots.Count)
+            {
+                // New (mounting) slot: stage the callback / deps. The committed Callback / LastDeps are written
+                // when the render settles, so a discarded render-phase attempt cannot freeze a stale callback.
+                fiber.CallbackSlots.Add(new HookCallbackSlot
+                {
+                    NextCallback = callback,
+                    NextDeps = deps,
+                });
+                return callback;
+            }
+
+            var entry = fiber.CallbackSlots[index];
+            if (deps != null && entry.Callback != null && ObjectIs.AreEqualDeps(entry.LastDeps, deps))
+            {
+                // Unchanged vs the committed render: return the committed callback so its reference stays stable
+                // across a render-phase re-run. Comparing against the committed deps (never a discarded attempt)
+                // is what preserves referential stability when render-phase state oscillates back to its committed
+                // value.
+                entry.NextCallback = entry.Callback;
+                entry.NextDeps = entry.LastDeps;
+                return (T)entry.Callback;
+            }
+
+            // Changed, or a not-yet-committed mount slot revisited during a render-phase re-run: stage this
+            // render's callback; the committed value is promoted when the loop settles.
+            entry.NextCallback = callback;
+            entry.NextDeps = deps;
+            return callback;
+        }
+
+        // The overloads below name delegate shapes so a C# 9 caller, which has no natural type for a lambda,
+        // can leave the type argument off as TypeScript's useCallback does. None of them takes one type
+        // argument: beside UseCallback<T>, such an overload is a candidate for every existing explicit call,
+        // which a Func<TResult> one binds to itself for a null or a lambda returning a delegate
+        // (UseCallback<Action>(null) returning a Func<Action>), and an Action<T1> one makes ambiguous (CS0121).
+        // UseCallbackInferenceTests compiles both at C# 9.
+
+        /// <summary>Unmemoized <see cref="UseCallback{T}(T)"/> for a callback of type <c>Action</c>.</summary>
+        /// <param name="callback">The callback returned as-is.</param>
+        /// <returns><paramref name="callback"/>.</returns>
+        public static Action UseCallback(Action callback) => UseCallback<Action>(callback);
+
+        /// <summary>Memoized <see cref="UseCallback{T}(T, object?[])"/> for a callback of type <c>Action</c>.</summary>
+        /// <param name="callback">Callback to memoize.</param>
+        /// <param name="deps">Dependency values, compared as <see cref="UseCallback{T}(T, object?[])"/> compares them.</param>
+        /// <returns>The cached callback reference.</returns>
+        public static Action UseCallback(Action callback, params object?[]? deps) => UseCallback<Action>(callback, deps);
+
+        /// <summary>Unmemoized <see cref="UseCallback{T}(T)"/> for a callback of type <c>Action&lt;T1, T2&gt;</c>.</summary>
+        /// <param name="callback">The callback returned as-is.</param>
+        /// <returns><paramref name="callback"/>.</returns>
+        public static Action<T1, T2> UseCallback<T1, T2>(Action<T1, T2> callback) => UseCallback<Action<T1, T2>>(callback);
+
+        /// <summary>Memoized <see cref="UseCallback{T}(T, object?[])"/> for a callback of type <c>Action&lt;T1, T2&gt;</c>.</summary>
+        /// <param name="callback">Callback to memoize.</param>
+        /// <param name="deps">Dependency values, compared as <see cref="UseCallback{T}(T, object?[])"/> compares them.</param>
+        /// <returns>The cached callback reference.</returns>
+        public static Action<T1, T2> UseCallback<T1, T2>(Action<T1, T2> callback, params object?[]? deps) => UseCallback<Action<T1, T2>>(callback, deps);
+
+        /// <summary>Unmemoized <see cref="UseCallback{T}(T)"/> for a callback of type <c>Action&lt;T1, T2, T3&gt;</c>.</summary>
+        /// <param name="callback">The callback returned as-is.</param>
+        /// <returns><paramref name="callback"/>.</returns>
+        public static Action<T1, T2, T3> UseCallback<T1, T2, T3>(Action<T1, T2, T3> callback) => UseCallback<Action<T1, T2, T3>>(callback);
+
+        /// <summary>Memoized <see cref="UseCallback{T}(T, object?[])"/> for a callback of type <c>Action&lt;T1, T2, T3&gt;</c>.</summary>
+        /// <param name="callback">Callback to memoize.</param>
+        /// <param name="deps">Dependency values, compared as <see cref="UseCallback{T}(T, object?[])"/> compares them.</param>
+        /// <returns>The cached callback reference.</returns>
+        public static Action<T1, T2, T3> UseCallback<T1, T2, T3>(Action<T1, T2, T3> callback, params object?[]? deps) => UseCallback<Action<T1, T2, T3>>(callback, deps);
+
+        /// <summary>Unmemoized <see cref="UseCallback{T}(T)"/> for a callback of type <c>Func&lt;T1, TResult&gt;</c>.</summary>
+        /// <param name="callback">The callback returned as-is.</param>
+        /// <returns><paramref name="callback"/>.</returns>
+        public static Func<T1, TResult> UseCallback<T1, TResult>(Func<T1, TResult> callback) => UseCallback<Func<T1, TResult>>(callback);
+
+        /// <summary>Memoized <see cref="UseCallback{T}(T, object?[])"/> for a callback of type <c>Func&lt;T1, TResult&gt;</c>.</summary>
+        /// <param name="callback">Callback to memoize.</param>
+        /// <param name="deps">Dependency values, compared as <see cref="UseCallback{T}(T, object?[])"/> compares them.</param>
+        /// <returns>The cached callback reference.</returns>
+        public static Func<T1, TResult> UseCallback<T1, TResult>(Func<T1, TResult> callback, params object?[]? deps) => UseCallback<Func<T1, TResult>>(callback, deps);
+
+        /// <summary>Unmemoized <see cref="UseCallback{T}(T)"/> for a callback of type <c>Func&lt;T1, T2, TResult&gt;</c>.</summary>
+        /// <param name="callback">The callback returned as-is.</param>
+        /// <returns><paramref name="callback"/>.</returns>
+        public static Func<T1, T2, TResult> UseCallback<T1, T2, TResult>(Func<T1, T2, TResult> callback) => UseCallback<Func<T1, T2, TResult>>(callback);
+
+        /// <summary>Memoized <see cref="UseCallback{T}(T, object?[])"/> for a callback of type <c>Func&lt;T1, T2, TResult&gt;</c>.</summary>
+        /// <param name="callback">Callback to memoize.</param>
+        /// <param name="deps">Dependency values, compared as <see cref="UseCallback{T}(T, object?[])"/> compares them.</param>
+        /// <returns>The cached callback reference.</returns>
+        public static Func<T1, T2, TResult> UseCallback<T1, T2, TResult>(Func<T1, T2, TResult> callback, params object?[]? deps) => UseCallback<Func<T1, T2, TResult>>(callback, deps);
+
+        /// <summary>Unmemoized <see cref="UseCallback{T}(T)"/> for a callback of type <c>Func&lt;T1, T2, T3, TResult&gt;</c>.</summary>
+        /// <param name="callback">The callback returned as-is.</param>
+        /// <returns><paramref name="callback"/>.</returns>
+        public static Func<T1, T2, T3, TResult> UseCallback<T1, T2, T3, TResult>(Func<T1, T2, T3, TResult> callback) => UseCallback<Func<T1, T2, T3, TResult>>(callback);
+
+        /// <summary>Memoized <see cref="UseCallback{T}(T, object?[])"/> for a callback of type <c>Func&lt;T1, T2, T3, TResult&gt;</c>.</summary>
+        /// <param name="callback">Callback to memoize.</param>
+        /// <param name="deps">Dependency values, compared as <see cref="UseCallback{T}(T, object?[])"/> compares them.</param>
+        /// <returns>The cached callback reference.</returns>
+        public static Func<T1, T2, T3, TResult> UseCallback<T1, T2, T3, TResult>(Func<T1, T2, T3, TResult> callback, params object?[]? deps) => UseCallback<Func<T1, T2, T3, TResult>>(callback, deps);
+
+        #endregion
+
+        #region UseMemo
+
+        /// <summary>
+        /// Recomputes <paramref name="factory"/> on every render (no memoization). With no deps argument the
+        /// value is never cached — prefer the <see cref="UseMemo{T}(Func{T}, object[])"/> overload with an
+        /// explicit deps array to reuse the value while the dependencies are unchanged.
+        /// </summary>
+        /// <remarks>
+        /// The single-argument overload exists so that omitting deps is unambiguous: the
+        /// <c>params object?[]? deps</c> overload would otherwise observe an empty array (not <c>null</c>) and
+        /// incorrectly freeze the value to the first-render computation.
+        /// </remarks>
+        /// <typeparam name="T">Type of the value to compute.</typeparam>
+        /// <param name="factory">Factory invoked every render to produce the value.</param>
+        /// <returns>The freshly computed value.</returns>
+        public static T UseMemo<T>(Func<T> factory)
+        {
+            if (factory == null) throw new ArgumentNullException(nameof(factory));
+            var fiber = Resolve(nameof(UseMemo));
+            fiber.MemoValueSlots ??= new List<HookMemoValueSlot>();
+            var index = fiber.Indices.MemoValueHookIndex++;
+            HookCountSentinel.ThrowIfPastCommittedCount(fiber);
+
+            // Stages into Next* like the deps overload, so the render-phase settle commit treats every memo
+            // slot uniformly even though this overload never memoizes.
+            var value = factory();
+            if (index >= fiber.MemoValueSlots.Count)
+            {
+                fiber.MemoValueSlots.Add(new HookMemoValueSlot<T> { NextValue = value, NextDeps = null });
+            }
+            else
+            {
+                var entry = (HookMemoValueSlot<T>)fiber.MemoValueSlots[index];
+                entry.NextValue = value;
+                entry.NextDeps = null;
+            }
+            return value;
+        }
+
+        /// <summary>
+        /// Returns the same computed value as long as the dependency array is unchanged; recomputes
+        /// <paramref name="factory"/> only when a dependency changes.
+        /// </summary>
+        /// <typeparam name="T">Type of the value to memoize.</typeparam>
+        /// <param name="factory">Factory invoked to produce the value on the first render and whenever the deps change.</param>
+        /// <param name="deps">Dependency values. When equal to the previous render (each dependency compared with <c>Object.is</c>), the cached value is reused. Null means no dependency array at all — the value is recomputed every render, exactly as if the deps argument had been left off.</param>
+        /// <returns>The cached value (stable across renders while <paramref name="deps"/> are equal).</returns>
+        public static T UseMemo<T>(Func<T> factory, params object?[]? deps)
+        {
+            if (factory == null) throw new ArgumentNullException(nameof(factory));
+            var fiber = Resolve("UseMemo");
+            fiber.MemoValueSlots ??= new List<HookMemoValueSlot>();
+            var index = fiber.Indices.MemoValueHookIndex++;
+            HookCountSentinel.ThrowIfPastCommittedCount(fiber);
+
+            if (index >= fiber.MemoValueSlots.Count)
+            {
+                // New (mounting) slot: stage the value / deps. The committed Value / LastDeps are written when
+                // the render settles, so a discarded render-phase attempt cannot freeze a stale value.
+                var value = factory();
+                fiber.MemoValueSlots.Add(new HookMemoValueSlot<T> { NextValue = value, NextDeps = deps });
+                return value;
+            }
+
+            var entry = (HookMemoValueSlot<T>)fiber.MemoValueSlots[index];
+            if (deps != null && entry.Committed && ObjectIs.AreEqualDeps(entry.LastDeps, deps))
+            {
+                // Unchanged vs the committed render: return the committed value and re-stage the committed
+                // values so a render-phase re-run keeps them. Comparing against the committed deps (never a
+                // discarded attempt) is what preserves value stability when render-phase state oscillates.
+                entry.NextValue = entry.Value;
+                entry.NextDeps = entry.LastDeps;
+                return entry.Value;
+            }
+
+            // Changed, or a not-yet-committed mount slot revisited during a render-phase re-run: recompute and
+            // stage this render's value; the committed value is promoted when the loop settles.
+            var recomputed = factory();
+            entry.NextValue = recomputed;
+            entry.NextDeps = deps;
+            return recomputed;
+        }
+
+        #endregion
+
+        #region UseBlocker
+
+        /// <summary>
+        /// Blocks navigation departures while <paramref name="shouldBlock"/> is true, as React Router's
+        /// <c>useBlocker(boolean)</c> does. The component re-renders whenever the returned Blocker's state
+        /// changes. Must be used inside Render() only.
+        /// </summary>
+        /// <param name="shouldBlock">Whether a departure is blocked.</param>
+        /// <returns>The <see cref="RouteBlockerState"/> to render a confirmation from.</returns>
+        /// <exception cref="InvalidOperationException">No <c>V.RouterProvider</c> is mounted above the
+        /// caller.</exception>
+        public static RouteBlockerState UseBlocker(bool shouldBlock)
+            => UseBlockerCore(shouldBlock ? s_alwaysBlock : s_neverBlock, new object?[] { shouldBlock });
+
+        private static readonly Func<BlockerFunctionArgs, bool> s_alwaysBlock = _ => true;
+        private static readonly Func<BlockerFunctionArgs, bool> s_neverBlock = _ => false;
+
+        /// <summary>
+        /// Conditionally blocks navigation departures, handing the Blocker the predicate of every render so it
+        /// answers with the state the latest render captured. The component re-renders whenever the returned
+        /// Blocker's state changes. Must be used inside Render() only.
+        /// </summary>
+        /// <remarks>
+        /// The single-argument overload exists so that omitting deps is unambiguous — see
+        /// <see cref="UseCallback{T}(T)"/> for the hazard it avoids.
+        /// </remarks>
+        /// <param name="shouldBlock">Predicate; returning true blocks the departure.</param>
+        /// <returns>The <see cref="RouteBlockerState"/> to render a confirmation from.</returns>
+        /// <exception cref="InvalidOperationException">No <c>V.RouterProvider</c> is mounted above the
+        /// caller.</exception>
+        public static RouteBlockerState UseBlocker(Func<BlockerFunctionArgs, bool> shouldBlock)
+        {
+            if (shouldBlock == null) throw new ArgumentNullException(nameof(shouldBlock));
+            return UseBlockerCore(shouldBlock, null);
+        }
+
+        /// <summary>
+        /// Conditionally blocks navigation departures, handing the Blocker a render's predicate only when a
+        /// dependency changes. The component re-renders whenever the returned Blocker's state changes.
+        /// Must be used inside Render() only.
+        /// </summary>
+        /// <param name="shouldBlock">Predicate; returning true blocks the departure.</param>
+        /// <param name="deps">Dependency array. When null, every render's predicate is handed over.</param>
+        /// <returns>The <see cref="RouteBlockerState"/> to render a confirmation from.</returns>
+        /// <exception cref="InvalidOperationException">No <c>V.RouterProvider</c> is mounted above the
+        /// caller.</exception>
+        public static RouteBlockerState UseBlocker(Func<BlockerFunctionArgs, bool> shouldBlock, params object?[]? deps)
+        {
+            if (shouldBlock == null) throw new ArgumentNullException(nameof(shouldBlock));
+            return UseBlockerCore(shouldBlock, deps);
+        }
+
+        private static RouteBlockerState UseBlockerCore(Func<BlockerFunctionArgs, bool> shouldBlock, object?[]? deps)
+        {
+            var fiber = Resolve("UseBlocker");
+            var router = UseRouterOrThrow("UseBlocker");
+
+            fiber.BlockerSlots ??= new List<HookBlockerSlot>();
+            var index = fiber.Indices.BlockerHookIndex++;
+            HookCountSentinel.ThrowIfPastCommittedCount(fiber);
+
+            if (index < fiber.BlockerSlots.Count)
+            {
+                var existing = (RouteBlockerSlot)fiber.BlockerSlots[index];
+
+                // Compare against the committed deps. The registration change is staged and made at the
+                // render-phase settle, so a discarded attempt cannot leave its throwaway predicate closure
+                // answering for the committed Blocker.
+                var unchanged = deps != null
+                    && ReferenceEquals(existing.LastRouter, router)
+                    && ObjectIs.AreEqualDeps(existing.LastDeps, deps);
+                existing.NextDeps = deps;
+                existing.NextRouter = router;
+                existing.NextPredicate = unchanged ? null : shouldBlock;
+                return existing.State;
+            }
+
+            // New (mounting) slot: the public State is created now so it can be returned, and registered at the
+            // settle with the settled attempt's predicate closure.
+            var state = new RouteBlockerState();
+            state.StateChanged = () =>
+            {
+                if (!fiber.IsDisposed)
+                {
+                    RequestRender(fiber);
+                }
+            };
+            fiber.BlockerSlots.Add(new RouteBlockerSlot
+            {
+                State = state,
+                NextDeps = deps,
+                NextRouter = router,
+                NextPredicate = shouldBlock,
+            });
+            return state;
+        }
+
+        #endregion
+
+        #region Routing (descendant router hooks)
+
+        /// <summary>
+        /// Returns the current router location.
+        /// Reads <see cref="RouterContext.Location"/>; returns null until the router publishes its first
+        /// location.
+        /// </summary>
+        /// <exception cref="InvalidOperationException">No <c>V.RouterProvider</c> is mounted above the
+        /// caller.</exception>
+        public static RouterLocation? UseLocation()
+        {
+            _ = Resolve("UseLocation");
+            _ = UseRouterOrThrow("UseLocation");
+            return UseContext(RouterContext.Location);
+        }
+
+        /// <summary>
+        /// Returns the path parameters captured for the current location (cumulative across the matched
+        /// route chain). Returns an empty dictionary when
+        /// no router is mounted or no parameters were captured.
+        /// </summary>
+        public static IReadOnlyDictionary<string, string> UseParams()
+        {
+            _ = Resolve("UseParams");
+            var location = UseContext(RouterContext.Location);
+            return location?.Params ?? EmptyParams;
+        }
+
+        /// <summary>
+        /// Returns React Router's <c>navigate</c>: <c>navigate(to, options)</c> pushes (or, with
+        /// <see cref="NavigateOptions.Replace"/>, replaces) the target path, and <c>navigate(delta)</c> moves
+        /// along the history stack. The target may be
+        /// absolute (<c>/foo</c>) or relative (<c>.</c>, <c>..</c>, <c>../sibling</c>). Relative targets
+        /// resolve from the calling component's enclosing Outlet route level. Without one, the router uses
+        /// the current leaf route level when matches exist; otherwise it uses the current URL path, or the
+        /// root before the first location. <see cref="NavigateOptions.Relative"/> set to
+        /// <see cref="RelativeRoutingType.Path"/> drops URL segments of that route's pathname instead of whole
+        /// routes. Navigation is driven by the router <c>V.RouterProvider</c>
+        /// publishes above the caller.
+        /// </summary>
+        /// <returns>A stable delegate; the returned <see cref="VelvetTask{NavigationResult}"/> can be awaited or fire-and-forget.</returns>
+        /// <exception cref="InvalidOperationException">No <c>V.RouterProvider</c> is mounted above the
+        /// caller.</exception>
+        public static NavigateFunction UseNavigate()
+        {
+            _ = Resolve("UseNavigate");
+            var router = UseRouterOrThrow("UseNavigate");
+            var baseRouteIndex = UseBaseRouteIndex();
+            return UseCallback<NavigateFunction>(
+                (to, options) => to.IsDelta
+                    ? router.NavigateAsync(to.Delta)
+                    : router.NavigateAsync(to.To!, options, baseRouteIndex),
+                router, baseRouteIndex);
+        }
+
+        // Called by the hooks whose React Router counterparts refuse to run outside a router. UseParams,
+        // UseOutletContext and V.Outlet answer there instead, as theirs do, so they do not call it.
+        private static Router UseRouterOrThrow(string hookName)
+            => UseContext(RouterContext.Router)
+               ?? throw new InvalidOperationException(
+                   $"{hookName} may be used only beneath a V.RouterProvider.");
+
+        /// <summary>
+        /// The matched-route level a relative target resolves against for the calling component: a component
+        /// mounted by an Outlet at depth d owns <c>Matches[d - 1]</c>.
+        /// </summary>
+        internal static int UseBaseRouteIndex() => UseContext(RouterContext.Depth) - 1;
+
+        /// <summary>
+        /// Returns <see cref="Router.Navigation"/> of the <see cref="Router"/> <c>V.RouterProvider</c> publishes
+        /// above the caller, and re-renders the component as it changes.
+        /// </summary>
+        public static NavigationState UseNavigation()
+        {
+            _ = Resolve("UseNavigation");
+            var router = UseRouterOrThrow("UseNavigation");
+            // The state only schedules the re-render: what is returned is read from the router at render, so the
+            // render in which the provider's router changes reads the new router rather than the old one's
+            // last state.
+            var (_, setState) = UseState(router.Navigation);
+
+            UseEffect(() =>
+            {
+                void OnNavigation(NavigationState navigation) => setState.Invoke(navigation);
+
+                router.OnNavigationChanged += OnNavigation;
+                // Reconcile any transition that happened between render and effect attach.
+                setState.Invoke(router.Navigation);
+                return () =>
+                {
+                    router.OnNavigationChanged -= OnNavigation;
+                };
+            }, new object[] { router });
+
+            return router.Navigation;
+        }
+
+        /// <summary>
+        /// Returns the parsed query string of the current location together with a setter that navigates
+        /// to the same path with a new query string.
+        /// </summary>
+        /// <returns>
+        /// A tuple of (the parsed search parameters, a setter that replaces the query string and navigates). The
+        /// setter is reference-stable across renders; the parsed parameters are rebuilt every render.
+        /// </returns>
+        public static (ISearchParams searchParams, SearchParamsSetter setSearchParams) UseSearchParams()
+        {
+            _ = Resolve("UseSearchParams");
+            var router = UseRouterOrThrow("UseSearchParams");
+            var location = UseContext(RouterContext.Location);
+            var path = location?.Path ?? string.Empty;
+            var parsed = RouteQuery.ParseQuery(path);
+            return (parsed, router.SearchParamsSetter);
+        }
+
+        // Cache pattern -> single-route matcher so UseMatch does not allocate a RouteTree on every render.
+        // Velvet renders on the main thread, so a plain dictionary needs no synchronization. Cleared on each
+        // domain init so matchers are not retained across "Enter Play Mode (no Domain Reload)" sessions.
+        private static readonly Dictionary<string, RouteTree> s_useMatchTrees = new();
+
+        [UnityEngine.RuntimeInitializeOnLoadMethod(UnityEngine.RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetUseMatchTrees() => s_useMatchTrees.Clear();
+
+        /// <summary>
+        /// Returns the match for the given <paramref name="pattern"/> against the current location, or null
+        /// when it does not match. The pattern uses the same
+        /// segment syntax as routes (literal / <c>:param</c> / <c>*</c>); matching is case-insensitive.
+        /// </summary>
+        public static RouteMatch? UseMatch(string pattern)
+        {
+            if (pattern == null) throw new ArgumentNullException(nameof(pattern));
+            _ = Resolve("UseMatch");
+            _ = UseRouterOrThrow("UseMatch");
+            var location = UseContext(RouterContext.Location);
+            var path = RouteQuery.StripQuery(location?.Path);
+            if (path == null)
+            {
+                return null;
+            }
+
+            if (!s_useMatchTrees.TryGetValue(pattern, out var tree))
+            {
+                tree = new RouteTree(new[]
+                {
+                    new RouteDefinition { Path = pattern, Element = null },
+                });
+                s_useMatchTrees[pattern] = tree;
+            }
+            var matches = tree.Match(path);
+            return matches is { Count: > 0 } ? matches[matches.Count - 1] : null;
+        }
+
+        /// <summary>
+        /// Returns the context value supplied by the enclosing <c>Outlet</c>.
+        /// Returns <c>default</c> when no context was supplied.
+        /// </summary>
+        /// <typeparam name="T">Expected context value type.</typeparam>
+        public static T? UseOutletContext<T>()
+        {
+            _ = Resolve("UseOutletContext");
+            var value = UseContext(RouterContext.OutletContext);
+            return value is T typed ? typed : default;
+        }
+
+        /// <summary>
+        /// Returns the value the nearest <c>V.Await</c> above the caller resolved, cast to
+        /// <typeparamref name="T"/>: React Router's <c>useAsyncValue</c>. Returns <c>default</c> outside one,
+        /// and beneath one that is rendering its <c>errorElement</c>.
+        /// </summary>
+        /// <typeparam name="T">Expected value type.</typeparam>
+        public static T? UseAsyncValue<T>()
+        {
+            _ = Resolve("UseAsyncValue");
+            var outcome = UseContext(RouteAwait.Outcome);
+            return outcome?.Value is T typed ? typed : default;
+        }
+
+        /// <summary>
+        /// Returns the exception the nearest <c>V.Await</c> above the caller is rendering its
+        /// <c>errorElement</c> for: React Router's <c>useAsyncError</c>. Returns null elsewhere.
+        /// </summary>
+        public static Exception? UseAsyncError()
+        {
+            _ = Resolve("UseAsyncError");
+            return UseContext(RouteAwait.Outcome)?.Error;
+        }
+
+        /// <summary>
+        /// Returns a function that submits form data to a route's action, or with a <c>get</c> method navigates
+        /// with it as the query string: React Router's <c>useSubmit</c>. With no
+        /// <see cref="SubmitOptions.Action"/> it submits to the route the calling component renders in, and a
+        /// relative one resolves from there; <see cref="Router.SubmitAsync(object, SubmitOptions, System.Threading.CancellationToken)"/>
+        /// states the rest. The function keeps its identity across renders while the router and that route do.
+        /// </summary>
+        /// <exception cref="InvalidOperationException">No <c>V.RouterProvider</c> is mounted above the
+        /// caller.</exception>
+        public static SubmitFunction UseSubmit()
+        {
+            _ = Resolve("UseSubmit");
+            var router = UseRouterOrThrow("UseSubmit");
+            var baseRouteIndex = UseBaseRouteIndex();
+            return UseCallback<SubmitFunction>(
+                (formData, options) => router.SubmitAsync(formData, options, baseRouteIndex, default),
+                router, baseRouteIndex);
+        }
+
+        /// <summary>
+        /// Returns the result of the action that committed the current location, when the action belongs to the
+        /// route at the current Outlet depth, cast to <typeparamref name="T"/>: React Router's
+        /// <c>useActionData</c>. Returns <c>default</c> otherwise.
+        /// </summary>
+        /// <typeparam name="T">Expected action result type.</typeparam>
+        /// <exception cref="InvalidOperationException">No <c>V.RouterProvider</c> is mounted above the
+        /// caller.</exception>
+        public static T? UseActionData<T>()
+        {
+            _ = Resolve("UseActionData");
+            _ = UseRouterOrThrow("UseActionData");
+            var routeId = UseCurrentRouteId();
+            var data = UseContext(RouterContext.ActionData);
+            if (routeId == null)
+            {
+                return default;
+            }
+            data.TryGetValue(routeId, out var value);
+            return value is T typed ? typed : default;
+        }
+
+        /// <summary>
+        /// Returns the loader data for the route at the current Outlet depth, cast to <typeparamref name="T"/>.
+        /// Returns <c>default</c> when there is no data.
+        /// </summary>
+        /// <typeparam name="T">Expected loader data type.</typeparam>
+        public static T? UseLoaderData<T>()
+        {
+            _ = Resolve("UseLoaderData");
+            _ = UseRouterOrThrow("UseLoaderData");
+            var routeId = UseCurrentRouteId();
+            var data = UseContext(RouterContext.LoaderData);
+            if (routeId == null)
+            {
+                return default;
+            }
+            return data != null && data.TryGetValue(routeId, out var value) && value is T typed ? typed : default;
+        }
+
+        /// <summary>
+        /// Returns the error the calling route renders, as React Router's <c>useRouteError</c>: an error thrown below
+        /// its element, while rendering, from an effect or from an element callback, or else the error the router
+        /// committed for this route — a loader's, an action's or a refusal, which the router keys by the nearest
+        /// route with an <c>errorElement</c> at or above the one that failed. Null when there is none.
+        /// </summary>
+        public static Exception? UseRouteError()
+        {
+            _ = Resolve("UseRouteError");
+            _ = UseRouterOrThrow("UseRouteError");
+            var renderError = UseContext(RouteErrorBoundary.RenderError);
+            var location = UseContext(RouterContext.Location);
+            var depth = UseContext(RouterContext.Depth);
+            var errors = UseContext(RouterContext.Errors);
+            if (renderError != null)
+            {
+                return renderError;
+            }
+            if (location?.Matches == null || depth <= 0 || depth > location.Matches.Count || errors == null)
+            {
+                return null;
+            }
+            var routeId = location.Matches[depth - 1].RouteId;
+            return routeId != null && errors.TryGetValue(routeId, out var error) ? error : null;
+        }
+
+        /// <summary>
+        /// Returns every route matched by the current location, parent first, each with the loader data and
+        /// <see cref="RouteDefinition.Handle"/> it carries: React Router's <c>useMatches</c>.
+        /// </summary>
+        /// <exception cref="InvalidOperationException">No <c>V.RouterProvider</c> is mounted above the
+        /// caller.</exception>
+        public static IReadOnlyList<UiMatch> UseMatches()
+        {
+            _ = Resolve("UseMatches");
+            _ = UseRouterOrThrow("UseMatches");
+            var location = UseContext(RouterContext.Location);
+            var data = UseContext(RouterContext.LoaderData);
+            if (location?.Matches == null)
+            {
+                return System.Array.Empty<UiMatch>();
+            }
+            var matches = new UiMatch[location.Matches.Count];
+            for (var index = 0; index < matches.Length; index++)
+            {
+                var match = location.Matches[index];
+                object? routeData = null;
+                if (match.RouteId != null)
+                {
+                    data?.TryGetValue(match.RouteId, out routeData);
+                }
+                matches[index] = new UiMatch
+                {
+                    Id = match.RouteId ?? string.Empty,
+                    Pathname = match.PathnameBase,
+                    Params = match.Params,
+                    Data = routeData,
+                    Handle = match.Route?.Handle,
+                };
+            }
+            return matches;
+        }
+
+        /// <summary>
+        /// Returns the loader data of the route with the given <see cref="RouteDefinition.Id"/> (or
+        /// <see cref="RouteMatch.RouteId"/>) among the current location's matches, cast to
+        /// <typeparamref name="T"/>, from any component beneath the provider: React Router's
+        /// <c>useRouteLoaderData</c>. Returns <c>default</c> when that route has no data or is not matched.
+        /// </summary>
+        /// <typeparam name="T">Expected loader data type.</typeparam>
+        /// <exception cref="InvalidOperationException">No <c>V.RouterProvider</c> is mounted above the
+        /// caller.</exception>
+        public static T? UseRouteLoaderData<T>(string routeId)
+        {
+            if (routeId == null) throw new ArgumentNullException(nameof(routeId));
+            _ = Resolve("UseRouteLoaderData");
+            _ = UseRouterOrThrow("UseRouteLoaderData");
+            var data = UseContext(RouterContext.LoaderData);
+            object? value = null;
+            data?.TryGetValue(routeId, out value);
+            return value is T typed ? typed : default;
+        }
+
+        /// <summary>
+        /// True when a <c>V.RouterProvider</c> is mounted above the caller: React Router's
+        /// <c>useInRouterContext</c>.
+        /// </summary>
+        public static bool UseInRouterContext()
+        {
+            _ = Resolve("UseInRouterContext");
+            return UseContext(RouterContext.Router) != null;
+        }
+
+        /// <summary>
+        /// Returns how the current location was reached, and re-renders the component as the location
+        /// changes: React Router's <c>useNavigationType</c>.
+        /// </summary>
+        /// <exception cref="InvalidOperationException">No <c>V.RouterProvider</c> is mounted above the
+        /// caller.</exception>
+        public static NavigationType UseNavigationType()
+        {
+            _ = Resolve("UseNavigationType");
+            var router = UseRouterOrThrow("UseNavigationType");
+            _ = UseContext(RouterContext.Location);
+            return router.NavigationType;
+        }
+
+        /// <summary>
+        /// Resolves <paramref name="to"/> to an absolute pathname, search and hash as <c>UseNavigate</c>
+        /// would navigate to it from the calling component's route: React Router's <c>useResolvedPath</c>.
+        /// </summary>
+        /// <param name="to">Absolute or relative target; the empty string is the calling route itself.</param>
+        /// <param name="relative">Whether a <c>..</c> drops a route or a URL segment.</param>
+        /// <exception cref="InvalidOperationException">No <c>V.RouterProvider</c> is mounted above the
+        /// caller.</exception>
+        public static ResolvedPath UseResolvedPath(string to, RelativeRoutingType relative = RelativeRoutingType.Route)
+        {
+            if (to == null) throw new ArgumentNullException(nameof(to));
+            _ = Resolve("UseResolvedPath");
+            var router = UseRouterOrThrow("UseResolvedPath");
+            _ = UseContext(RouterContext.Location);
+            return router.ResolveTarget(to.Length == 0 ? "." : to, UseBaseRouteIndex(), relative);
+        }
+
+        /// <summary>
+        /// Returns the string an anchor would link <paramref name="to"/> with, its resolved pathname, search
+        /// and hash joined: React Router's <c>useHref</c>.
+        /// </summary>
+        /// <param name="to">Absolute or relative target; the empty string is the calling route itself.</param>
+        /// <param name="relative">Whether a <c>..</c> drops a route or a URL segment.</param>
+        /// <exception cref="InvalidOperationException">No <c>V.RouterProvider</c> is mounted above the
+        /// caller.</exception>
+        public static string UseHref(string to, RelativeRoutingType relative = RelativeRoutingType.Route)
+        {
+            if (to == null) throw new ArgumentNullException(nameof(to));
+            _ = Resolve("UseHref");
+            var router = UseRouterOrThrow("UseHref");
+            _ = UseContext(RouterContext.Location);
+            var path = router.ResolveTarget(to.Length == 0 ? "." : to, UseBaseRouteIndex(), relative);
+            return path.Pathname + path.Search + path.Hash;
+        }
+
+        private static readonly IReadOnlyDictionary<string, string> EmptyParams =
+            new Dictionary<string, string>();
+
+        /// <summary>
+        /// Resolves the RouteId of the route rendered at the caller's Outlet depth. A component mounted by
+        /// an Outlet sees <see cref="RouterContext.Depth"/> incremented to depth+1, so its own match is
+        /// <c>Matches[Depth - 1]</c>. Returns null when there is no enclosing matched route.
+        /// </summary>
+        private static string? UseCurrentRouteId()
+        {
+            var location = UseContext(RouterContext.Location);
+            var depth = UseContext(RouterContext.Depth);
+            if (location?.Matches == null || depth <= 0 || depth > location.Matches.Count)
+            {
+                return null;
+            }
+            return location.Matches[depth - 1].RouteId;
+        }
+
+        #endregion
+
+        #region UseLayoutEffect
+
+        /// <summary>
+        /// Position-based layout effect. Runs synchronously immediately after Render completes,
+        /// before the frame is painted, with the committed tree laid out: <c>layout</c>,
+        /// <c>resolvedStyle</c> and <c>worldBound</c> read here reflect this commit. A state update made here
+        /// re-renders before the frame is painted.
+        /// </summary>
+        /// <param name="factory">Effect body. Returns a cleanup Action invoked on unmount or when <paramref name="deps"/> change.</param>
+        /// <param name="deps">Dependency array. When equal to the previous render (each dependency compared with <c>Object.is</c>), the effect is skipped. When omitted or <c>null</c>, the effect runs on every render.</param>
+        public static void UseLayoutEffect(Func<Action?>? factory, object?[]? deps = null)
+        {
+            if (factory == null) throw new ArgumentNullException(nameof(factory));
+            var fiber = Resolve("UseLayoutEffect");
+            HookSlotRegistrar.RegisterLayoutEffect(
+                fiber,
+                ref fiber.LayoutEffects,
+                ref fiber.PendingLayoutEffects,
+                ref fiber.Indices.LayoutEffectHookIndex,
+                factory,
+                deps,
+                IsStrictDiagnosticPass(fiber));
+        }
+
+        /// <summary>IDisposable variant. Dispose() is called when deps change.</summary>
+        /// <param name="factory">Effect body returning an <see cref="IDisposable"/>. Disposed on unmount or when <paramref name="deps"/> change.</param>
+        /// <param name="deps">Dependency array. When equal to the previous render (each dependency compared with <c>Object.is</c>), the effect is skipped. When omitted or <c>null</c>, the effect runs on every render.</param>
+        public static void UseLayoutEffect(Func<IDisposable> factory, object?[]? deps = null)
+        {
+            if (factory == null) throw new ArgumentNullException(nameof(factory));
+            UseLayoutEffect(() => WrapDisposable(factory), deps);
+        }
+
+        #endregion
+
+        #region UseInsertionEffect
+
+        /// <summary>
+        /// Position-based insertion effect. Runs synchronously
+        /// after Render completes and <b>before</b> any <see cref="UseLayoutEffect(Func{Action}, object[])"/> of
+        /// the same commit. Intended for injecting styles: the DOM is not yet
+        /// laid out, so the body must not read layout or refs — use <see cref="UseLayoutEffect(Func{Action}, object[])"/>
+        /// for that.
+        /// </summary>
+        /// <param name="factory">Effect body. Returns a cleanup Action invoked on unmount or when <paramref name="deps"/> change.</param>
+        /// <param name="deps">Dependency array. When equal to the previous render (each dependency compared with <c>Object.is</c>), the effect is skipped. When omitted or <c>null</c>, the effect runs on every render.</param>
+        public static void UseInsertionEffect(Func<Action?>? factory, object?[]? deps = null)
+        {
+            if (factory == null) throw new ArgumentNullException(nameof(factory));
+            var fiber = Resolve("UseInsertionEffect");
+            HookSlotRegistrar.RegisterLayoutEffect(
+                fiber,
+                ref fiber.InsertionEffects,
+                ref fiber.PendingInsertionEffects,
+                ref fiber.Indices.InsertionEffectHookIndex,
+                factory,
+                deps,
+                IsStrictDiagnosticPass(fiber));
+        }
+
+        /// <summary>IDisposable variant. Dispose() is called when deps change.</summary>
+        /// <param name="factory">Effect body returning an <see cref="IDisposable"/>. Disposed on unmount or when <paramref name="deps"/> change.</param>
+        /// <param name="deps">Dependency array. When equal to the previous render (each dependency compared with <c>Object.is</c>), the effect is skipped. When omitted or <c>null</c>, the effect runs on every render.</param>
+        public static void UseInsertionEffect(Func<IDisposable> factory, object?[]? deps = null)
+        {
+            if (factory == null) throw new ArgumentNullException(nameof(factory));
+            UseInsertionEffect(() => WrapDisposable(factory), deps);
+        }
+
+        #endregion
+
+        #region UseEffect (async)
+
+        /// <summary>
+        /// Position-based asynchronous effect. Runs at the next frame boundary, after the frame is painted.
+        /// </summary>
+        /// <param name="factory">Effect body. Returns a cleanup Action invoked on unmount or when <paramref name="deps"/> change.</param>
+        /// <param name="deps">Dependency array. When equal to the previous render (each dependency compared with <c>Object.is</c>), the effect is skipped. When omitted or <c>null</c>, the effect runs on every render.</param>
+        public static void UseEffect(Func<Action?>? factory, object?[]? deps = null)
+        {
+            if (factory == null) throw new ArgumentNullException(nameof(factory));
+            var fiber = Resolve("UseEffect");
+            HookSlotRegistrar.RegisterEffect(
+                fiber,
+                ref fiber.Effects,
+                ref fiber.PendingEffects,
+                ref fiber.Indices.EffectHookIndex,
+                factory,
+                deps,
+                deduplicatePending: true,
+                diagnosticPass: IsStrictDiagnosticPass(fiber));
+        }
+
+        /// <summary>IDisposable variant.</summary>
+        /// <param name="factory">Effect body returning an <see cref="IDisposable"/>. Disposed on unmount or when <paramref name="deps"/> change.</param>
+        /// <param name="deps">Dependency array. When equal to the previous render (each dependency compared with <c>Object.is</c>), the effect is skipped. When omitted or <c>null</c>, the effect runs on every render.</param>
+        public static void UseEffect(Func<IDisposable> factory, object?[]? deps = null)
+        {
+            if (factory == null) throw new ArgumentNullException(nameof(factory));
+            UseEffect(() => WrapDisposable(factory), deps);
+        }
+
+        #endregion
+
+        #region UseFrame
+
+        /// <summary>
+        /// Per-frame callback: <paramref name="onFrame"/> runs once per frame with the elapsed time in
+        /// seconds while the component stays mounted, and stops on unmount. The latest render's closure
+        /// is always the one invoked — a re-render swaps the callback without re-subscribing — so
+        /// per-frame data flows without touching component state (the escape hatch for
+        /// simulation-driven visuals; setting state per frame would re-render the world every tick).
+        /// Frames tick while the component's host is attached to a panel and pause while it is not. The elapsed
+        /// time is measured on the mount's <see cref="MountOptions.MotionClock"/>, and a frame over which that
+        /// clock did not move invokes nothing.
+        /// <paramref name="priority"/> orders callbacks within the SAME panel — lower runs earlier,
+        /// equal priorities run in subscription (mount) order, and this stays true across a keyed
+        /// reorder of the host. A positive priority also takes rendering over, as in react-three-fiber:
+        /// while the host is attached, a <see cref="V.SceneView"/> showing its camera in the same panel
+        /// holds that camera disabled, and the callback renders it with <c>Camera.Render()</c>. The
+        /// latest render's priority applies live, the same way <paramref name="onFrame"/>
+        /// does — changing it does not restart the subscription or move it among same-priority siblings.
+        /// </summary>
+        /// <param name="onFrame">Invoked once per frame with the elapsed time in seconds (always positive).</param>
+        /// <param name="priority">Lower runs earlier within the same panel this frame. Defaults to 0.</param>
+        public static void UseFrame(Action<float> onFrame, int priority = 0)
+        {
+            if (onFrame == null) throw new ArgumentNullException(nameof(onFrame));
+            var fiber = Resolve("UseFrame");
+            // Every render overwrites the ref slot, and the subscribed callback below reads through it —
+            // that is what swaps in the latest closure without re-subscribing (the effect's empty deps
+            // never re-run). StrictMode's throwaway diagnostic pass must not swap the LIVE closure (its
+            // captures are the discarded pass's state), matching UseImperativeHandle's gate.
+            var latest = UseRef<Action<float>>();
+            // Kept live independent of whether a Subscription exists yet: a host that has not attached to
+            // a panel on its first several renders (an off-tree subtree, a not-yet-revealed Suspense
+            // branch) would otherwise lose every priority value except the very first one — EnsureSubscribed
+            // below has nothing else to fall back on once no live Subscription exists to mutate directly.
+            var latestPriority = UseMutableRef<int>(priority);
+            var subscriptionRef = UseRef<UseFrameDispatcher.Subscription>();
+            if (!IsStrictDiagnosticPass(fiber))
+            {
+                latest.Set(onFrame);
+                latestPriority.Current = priority;
+                // Applied directly to the live Subscription object (not deferred to the effect, which
+                // never re-runs for a priority-only change) — same "latest render wins" treatment as
+                // onFrame above, so a priority change takes effect next tick without disturbing this
+                // subscription's position among same-priority siblings.
+                if (subscriptionRef.Current != null)
+                {
+                    subscriptionRef.Current.Priority = priority;
+                }
+            }
+
+            UseEffect(() =>
+            {
+                // Resolved inside the effect factory: MountPoint is unset while rendering and assigned
+                // by commit time, and this passive effect runs after the commit has painted.
+                var host = fiber.MountPoint;
+                if (host == null)
+                {
+                    return null;
+                }
+
+                UseFrameDispatcher? dispatcher = null;
+                UseFrameDispatcher.Subscription? subscription = null;
+
+                void EnsureSubscribed()
+                {
+                    var panel = host.panel;
+                    if (panel == null)
+                    {
+                        return;
+                    }
+                    var currentDispatcher = UseFrameDispatcher.GetOrCreate(panel);
+                    if (subscription != null && ReferenceEquals(dispatcher, currentDispatcher))
+                    {
+                        // Same panel as before a transient detach (a keyed reorder is the common case) —
+                        // resume the SAME slot instead of resubscribing, which is what keeps this
+                        // component's position stable relative to same-priority siblings instead of
+                        // migrating to the end of the group the way a plain per-element scheduled item
+                        // would (see UseFrameDispatcher's own remarks).
+                        subscription.Active = true;
+                        return;
+                    }
+                    // First attach, or a move to a genuinely different panel (rare, and not tracked as a
+                    // stable cross-panel identity): latestPriority.Current is always this render's value
+                    // regardless of whether a Subscription existed to carry it, so it is the correct
+                    // source here too — not just for the true-first-subscribe case.
+                    if (subscription != null)
+                    {
+                        dispatcher!.Unsubscribe(subscription);
+                    }
+                    dispatcher = currentDispatcher;
+                    subscription = dispatcher.Subscribe(latestPriority.Current, dt =>
+                    {
+                        try
+                        {
+                            latest.Current?.Invoke(dt);
+                        }
+                        catch (Exception ex)
+                        {
+                            // Contained like an effect exception: an escaped throw must not stop the
+                            // dispatcher's tick from reaching the rest of this panel's subscribers, and
+                            // the nearest error boundary must receive user-callback failures either way.
+                            ComponentBoundarySearch.PropagateException(fiber, ex);
+                        }
+                    }, fiber.Reconciler?.Context.StyleAnimationScheduler.Clock);
+                    subscriptionRef.Set(subscription);
+                }
+
+                EventCallback<AttachToPanelEvent> onAttach = _ => EnsureSubscribed();
+                EventCallback<DetachFromPanelEvent> onDetach = _ =>
+                {
+                    if (subscription != null)
+                    {
+                        subscription.Active = false;
+                    }
+                };
+
+                host.RegisterCallback(onAttach);
+                host.RegisterCallback(onDetach);
+                // The passive effect runs post-commit, so the host is ordinarily already attached and no
+                // AttachToPanelEvent is coming — subscribe directly.
+                EnsureSubscribed();
+
+                return () =>
+                {
+                    host.UnregisterCallback(onAttach);
+                    host.UnregisterCallback(onDetach);
+                    if (subscription != null)
+                    {
+                        dispatcher!.Unsubscribe(subscription);
+                    }
+                };
+            }, Array.Empty<object>());
+        }
+
+        #endregion
+
+        #region UseAnimationSequence
+
+        /// <summary>
+        /// Plays an ordered <see cref="AnimationSequenceStep"/> array over time, exposing the active step's
+        /// label/transition to feed straight into a coordinator <c>V.Motion(animate:, transition:)</c>.
+        /// Velvet's timeline primitive: the hook owns the clock (via <see cref="UseFrame"/>) and the step
+        /// walk, so a caller never hand-rolls
+        /// <see cref="UseEffect(Func{Action},object[])"/> plus a timer plus <see cref="UseState{T}(T)"/> to
+        /// sequence a multi-stage animation. Descendant <c>V.Motion</c> nodes naming no label of their own
+        /// inherit the coordinator's label exactly as they already do for any hand-toggled label change; "one
+        /// at a time" fan-out across a list of such descendants is <c>StaggerChildrenSec</c> on a step's own
+        /// <see cref="AnimationSequenceStep.Transition"/> — there is no separate multi-target API.
+        /// </summary>
+        /// <param name="steps">The ordered sequence. Must not be null.</param>
+        /// <param name="deps">
+        /// When the sequence restarts from step 0, read as <see cref="UseEffect(Func{Action},object[])"/> reads
+        /// its list: on a changed entry, or on every render for null. A sequence meant to play once per mount
+        /// passes an empty array.
+        /// </param>
+        /// <param name="autoplay">Starts advancing on mount when true (default). When false, call
+        /// <c>controls.Play()</c> — e.g. from an <c>onClick</c> handler — to start it on demand. Read only
+        /// where <paramref name="deps"/> restarts the sequence, so a later <c>controls.Pause()</c> is not fought
+        /// by a re-render that keeps passing <c>autoplay: true</c>.</param>
+        /// <param name="loop">When true, the cursor wraps to step 0 after the last step's hold elapses and
+        /// <see cref="AnimationSequenceState.IsComplete"/> latches only for an empty <paramref name="steps"/>
+        /// list.</param>
+        public static (AnimationSequenceState state, AnimationSequenceControls controls) UseAnimationSequence(
+            IReadOnlyList<AnimationSequenceStep> steps, object?[]? deps, bool autoplay = true, bool loop = false)
+            => UseAnimationSequenceCore(steps, deps, autoplay, loop ? (int?)null : 1, 0f);
+
+        /// <summary>
+        /// Plays <paramref name="steps"/> as the overload taking <c>loop</c> does, a fixed number of times: the
+        /// Web Animations API's <c>iterations</c> and CSS's <c>animation-iteration-count</c>. Each pass after the
+        /// first starts at step 0 once the last step's hold elapses, and
+        /// <see cref="AnimationSequenceState.IsComplete"/> latches when the last pass's last hold elapses, with
+        /// that pass's last step still current. A gap between passes is <paramref name="repeatDelaySec"/>, Framer
+        /// Motion's <c>repeatDelay</c>; under <c>loop</c> a trailing <see cref="AnimationSequenceStep.Wait"/> step
+        /// is the same gap, since no completion waits behind it.
+        /// </summary>
+        /// <param name="steps">The ordered sequence. Must not be null.</param>
+        /// <param name="deps">As on the overload taking <c>loop</c>. A restart, from a changed entry here or
+        /// from <c>controls.Restart()</c>, plays every pass again.</param>
+        /// <param name="iterations">The number of passes, counting the first: Framer Motion's <c>repeat: n</c>
+        /// is <c>n + 1</c> here. Zero plays no pass, so no step commits and the sequence reads complete from its
+        /// mount render on. A count a re-render changes applies to the sequence as it plays, as the Web
+        /// Animations API's <c>updateTiming</c> does: a count no higher than the passes already finished completes
+        /// the sequence at the next frame, showing the end state a normal completion holds (the last step
+        /// current, no skipped <c>Call</c> run), and a count above them
+        /// resumes a completed sequence after the repeat gap, at the next pass's step 0. Throws
+        /// <see cref="ArgumentOutOfRangeException"/> when negative.</param>
+        /// <param name="autoplay">As on the overload taking <c>loop</c>.</param>
+        /// <param name="repeatDelaySec">Seconds the cursor waits on the last step between one pass and the next,
+        /// read as each gap begins. It follows no last pass, so it never delays completion. Throws
+        /// <see cref="ArgumentOutOfRangeException"/> when negative or not finite.</param>
+        public static (AnimationSequenceState state, AnimationSequenceControls controls) UseAnimationSequence(
+            IReadOnlyList<AnimationSequenceStep> steps, object?[]? deps, int iterations, bool autoplay = true,
+            float repeatDelaySec = 0f)
+        {
+            if (iterations < 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(iterations), iterations,
+                    "A sequence plays zero or more passes; the overload taking loop plays it without end.");
+            }
+            if (float.IsNaN(repeatDelaySec) || float.IsInfinity(repeatDelaySec) || repeatDelaySec < 0f)
+            {
+                throw new ArgumentOutOfRangeException(nameof(repeatDelaySec), repeatDelaySec,
+                    "A gap between passes is a finite number of seconds, zero or more.");
+            }
+            return UseAnimationSequenceCore(steps, deps, autoplay, iterations, repeatDelaySec);
+        }
+
+        /// <summary>
+        /// Framer Motion's <c>useAnimate</c>: a <c>scope</c> ref to give the root element (<c>refCallback: scope.SetElement</c>)
+        /// and an <see cref="Animator"/> whose <c>Animate</c> animates elements inside it by reference or by selector,
+        /// alone or as a sequence whose segments overlap through <see cref="AnimateAt"/>. Each call returns
+        /// <see cref="AnimateControls"/>. What it animates are inline values, so it reaches elements outside the
+        /// declarative Motion tree; the animations run on the mount's frames and are stopped when the component unmounts.
+        /// </summary>
+        public static (Ref<VisualElement> scope, Animator animate) UseAnimate()
+        {
+            Resolve("UseAnimate");
+            var holder = UseRef(static () => new Animator(new Ref<VisualElement>()));
+            var animator = holder.Current!;
+            UseFrame(animator.Tick);
+            UseEffect(() => animator.StopAll, Array.Empty<object?>());
+            return (animator.Scope, animator);
+        }
+
+        // A null iterations plays without end.
+        private static (AnimationSequenceState state, AnimationSequenceControls controls) UseAnimationSequenceCore(
+            IReadOnlyList<AnimationSequenceStep> steps, object?[]? deps, bool autoplay, int? iterations,
+            float repeatDelaySec)
+        {
+            if (steps == null) throw new ArgumentNullException(nameof(steps));
+            var fiber = Resolve("UseAnimationSequence");
+            var walker = UseRef(() => new SequenceWalker());
+            var (_, bumpRenderVersion) = UseState(0);
+            // MUTANT_SURVIVES(equivalent): every bump goes through here, so a decrement moves the version on each
+            // call as surely as an increment does, and nothing reads the version itself.
+            void Rerender() => bumpRenderVersion.Invoke(v => v + 1);
+
+            // Tracks the LATEST render's steps for controls.Restart() to read (see below) — mirrors UseFrame's
+            // own `latest.Set(onFrame)` pattern: a re-render must not leave an earlier render's Restart closing
+            // over a stale steps array, and the StrictMode throwaway diagnostic pass's steps must never become
+            // "latest" since that render is discarded.
+            var latestSteps = UseRef<IReadOnlyList<AnimationSequenceStep>>();
+            if (!IsStrictDiagnosticPass(fiber))
+            {
+                latestSteps.Set(steps);
+                // Under the same latest-render rule: the walker reads both on its next Advance or reseed.
+                walker.Current.Iterations = iterations;
+                walker.Current.RepeatDelaySec = repeatDelaySec;
+            }
+
+            UseEffect(() =>
+            {
+                // Before the Reset: step 0's Call callback can pause the walker it is arriving on.
+                walker.Current.IsPaused = !autoplay;
+                walker.Current.Reset(steps);
+                Rerender();
+                return (Action)null;
+            }, deps);
+
+            UseFrame(dt =>
+            {
+                // A speed of 0 holds the cursor as a pause does: Advance(0) would still cross a step that holds
+                // for no time, and apply a changed iteration count.
+                var speed = walker.Current.Playback.Rate;
+                if (walker.Current.IsPaused || speed == 0f)
+                {
+                    return;
+                }
+                var beforeGeneration = walker.Current.Generation;
+                var wasComplete = walker.Current.IsComplete;
+                walker.Current.Advance(dt * speed);
+                if (walker.Current.Generation != beforeGeneration || walker.Current.IsComplete != wasComplete)
+                {
+                    Rerender();
+                }
+            });
+
+            // Not the reset effect's cleanup, which would also run on every deps restart: a restart already
+            // abandons the wait in the walker's own reseed, so this one is for unmount.
+            UseEffect(() => walker.Current.AbandonAwait, Array.Empty<object>());
+
+            UseLayoutEffect(() =>
+            {
+                walker.Current.AfterCommit();
+                return (Action?)null;
+            });
+
+            var controls = new AnimationSequenceControls(
+                play: () =>
+                {
+                    // Unpaused before the reseed, so a step 0 Call callback that pauses the sequence stays paused.
+                    walker.Current.IsPaused = false;
+                    if (walker.Current.IsCancelled)
+                    {
+                        walker.Current.Reset(latestSteps.Current ?? steps);
+                        Rerender();
+                    }
+                },
+                pause: () => walker.Current.IsPaused = true,
+                restart: () =>
+                {
+                    walker.Current.Reset(latestSteps.Current ?? steps);
+                    Rerender();
+                },
+                cancel: () => walker.Current.Cancel(),
+                walker: walker.Current!);
+
+            // Before the mount effect's first reseed the walker has seen no steps, so it would read a sequence
+            // that plays nothing as not yet complete for the whole mount render.
+            var state = !walker.Current.HasReseeded && (iterations == 0 || steps.Count == 0)
+                ? new AnimationSequenceState(null, null, 0, true)
+                : walker.Current.ToState();
+            return (state, controls);
+        }
+
+        #endregion
+
+        #region UseFocusRing
+
+        /// <summary>
+        /// Exposes an element's focus state — and specifically
+        /// keyboard/gamepad-visible focus, as distinct from pointer focus — as re-rendering component
+        /// state. Pass <see cref="FocusRing.Ref"/> as the target element's <c>refCallback:</c>. For pure
+        /// styling, the <c>focus-visible:</c> class variant already covers the same distinction without a
+        /// hook — reach for this when the component must RENDER differently (e.g. a "press A to select"
+        /// hint), not just restyle.
+        /// <para>
+        /// When composing <see cref="FocusRing.Ref"/> with other per-element work in one callback,
+        /// wrap the composed lambda in <c>Hooks.UseCallback</c>: a per-render lambda is a fresh
+        /// identity each render, so every patch would cycle the ref (cleanup on a still-focused
+        /// element, then re-setup) — the same re-render feedback an inline ref that writes state on
+        /// every render would produce.
+        /// </para>
+        /// </summary>
+        public static FocusRing UseFocusRing()
+        {
+            var (isFocused, setFocused) = UseState(false);
+            var (isFocusVisible, setFocusVisible) = UseState(false);
+            var refCallback = UseCallback<Func<UnityEngine.UIElements.VisualElement, Action>>(element =>
+            {
+                var signals = new ElementLocalVariantSignals((signal, on) =>
+                {
+                    switch (signal)
+                    {
+                        case VariantSignal.Focus: setFocused.Invoke(on); break;
+                        case VariantSignal.FocusVisible: setFocusVisible.Invoke(on); break;
+                    }
+                });
+                signals.Hook(element, seedChecked: false, registerChecked: false);
+                return () =>
+                {
+                    signals.Unhook();
+                    // An element torn down WHILE FOCUSED gets no Blur through these signals (the
+                    // unhook above runs before the element leaves the panel), which would strand
+                    // the flags at true on a still-mounted component. The ref cycles only on
+                    // identity change or a host remount — never per patch — and a state write from
+                    // the commit phase schedules an ordinary follow-up render, so the correction is
+                    // a plain setter call; the setters are no-ops if the component itself unmounted.
+                    if (FiberFocusNavigator.IsFocusedElementWithin(element, out _))
+                    {
+                        setFocused.Invoke(false);
+                        setFocusVisible.Invoke(false);
+                    }
+                };
+                // Deps are the two setters — reference-stable across renders — so the ref identity
+                // never changes and a patch leaves the installed ref untouched.
+            }, setFocused, setFocusVisible);
+            return new FocusRing(isFocused, isFocusVisible, refCallback);
+        }
+
+        #endregion
+
+        #region Drag and drop
+
+        /// <summary>
+        /// Returns the drag the nearest <c>V.DndContext</c> holds — dnd-kit's <c>useDndContext</c>. The component
+        /// re-renders when the active draggable, the target it is over, the collision ranking or the active rect
+        /// changes. Returns <see cref="DndContextState.Idle"/> under no <c>V.DndContext</c>, including under a scope
+        /// declared only through <see cref="FiberElementProps.DndContext"/>.
+        /// </summary>
+        /// <returns>The scope's current drag state.</returns>
+        public static DndContextState UseDndContext()
+        {
+            _ = Resolve("UseDndContext");
+            var store = UseContext(DndContextStore.Context) ?? DndContextStore.Detached;
+            return UseStore(store.State, static state => state);
+        }
+
+        /// <summary>
+        /// Returns the drag state of the draggable <paramref name="id"/> names under the nearest <c>V.DndContext</c>
+        /// — dnd-kit's <c>useDraggable</c>, read-only: the element still carries <c>V.Draggable</c> or the
+        /// <see cref="FiberElementProps.Draggable"/> slot. The component re-renders when the active draggable or
+        /// the target it is over changes, and on every move while this draggable is the one dragged, for
+        /// <see cref="DraggableState.Transform"/>.
+        /// </summary>
+        /// <param name="id">The draggable's id. Must not be null.</param>
+        /// <returns>The draggable's current drag state.</returns>
+        public static DraggableState UseDraggable(string id)
+        {
+            if (id == null) throw new ArgumentNullException(nameof(id));
+            _ = Resolve("UseDraggable");
+            var store = UseContext(DndContextStore.Context) ?? DndContextStore.Detached;
+            var (active, over) = UseStore(store.State, static state => (state.Active, state.Over));
+            var transform = UseStore(store.Transform,
+                applied => applied.ActiveId == id ? applied.Value : (UnityEngine.Vector2?)null);
+            var isDragging = active?.Id == id;
+            return new DraggableState(isDragging, active, over, isDragging ? transform : null);
+        }
+
+        /// <summary>
+        /// Returns the drag state of the droppable <paramref name="id"/> names under the nearest
+        /// <c>V.DndContext</c> — dnd-kit's <c>useDroppable</c>, read-only: the element still carries
+        /// <c>V.Droppable</c> or the <see cref="FiberElementProps.Droppable"/> slot. The component re-renders when
+        /// the active draggable or the target it is over changes.
+        /// </summary>
+        /// <param name="id">The droppable's id. Must not be null.</param>
+        /// <returns>The droppable's current drag state.</returns>
+        public static DroppableState UseDroppable(string id)
+        {
+            if (id == null) throw new ArgumentNullException(nameof(id));
+            _ = Resolve("UseDroppable");
+            var store = UseContext(DndContextStore.Context) ?? DndContextStore.Detached;
+            var (active, over) = UseStore(store.State, static state => (state.Active, state.Over));
+            return new DroppableState(over?.Id == id, active, over);
+        }
+
+        /// <summary>
+        /// Registers <paramref name="listener"/> with the nearest <c>V.DndContext</c> while the component is
+        /// mounted — dnd-kit's <c>useDndMonitor</c>. Each callback runs after the context's own callback of the
+        /// same name; the one a render passes is the one called, without registering again.
+        /// </summary>
+        /// <param name="listener">The callbacks to run. Must not be null.</param>
+        /// <exception cref="InvalidOperationException">No <c>V.DndContext</c> is above the component.</exception>
+        public static void UseDndMonitor(DndMonitorListener listener)
+        {
+            if (listener == null) throw new ArgumentNullException(nameof(listener));
+            var fiber = Resolve("UseDndMonitor");
+            var store = UseContext(DndContextStore.Context)
+                ?? throw new InvalidOperationException(
+                    $"{ComponentName(fiber)}: Hooks.UseDndMonitor must be called inside a V.DndContext.");
+            var relay = UseRef(() => new DndMonitorRelay()).Current!;
+            UseLayoutEffect(() =>
+            {
+                relay.Listener = listener;
+                return (Action?)null;
+            });
+            UseEffect(() => store.Register(relay.Forwarder), new object?[] { store, relay });
+        }
+
+        /// <summary>
+        /// Returns the sorting state of the item <paramref name="id"/> names in the nearest <c>V.SortableContext</c>
+        /// — dnd-kit's <c>useSortable</c>, read-only: the element is <c>V.Sortable</c>, which moves the items aside
+        /// itself. The component re-renders when the context's items, the active draggable or the target it is
+        /// over changes. Outside a <c>V.SortableContext</c> every index is -1 and the items are empty.
+        /// </summary>
+        /// <param name="id">The item's id. Must not be null.</param>
+        /// <returns>The item's sorting state.</returns>
+        public static SortableState UseSortable(string id)
+        {
+            if (id == null) throw new ArgumentNullException(nameof(id));
+            _ = Resolve("UseSortable");
+            var context = UseContext(DndSortableContextValue.Context);
+            var store = UseContext(DndContextStore.Context) ?? DndContextStore.Detached;
+            var (active, over) = UseStore(store.State, static state => (state.Active, state.Over));
+            var items = context?.Items ?? System.Array.Empty<string>();
+            var index = DndSortable.IndexOf(items, id);
+            var activeIndex = DndSortable.IndexOf(items, active?.Id);
+            var overIndex = DndSortable.IndexOf(items, over?.Id);
+            var newIndex = activeIndex >= 0 && overIndex >= 0 && index >= 0
+                ? DndSortable.IndexOf(DndSortable.ArrayMove(items, activeIndex, overIndex), id)
+                : index;
+            return new SortableState
+            {
+                Index = index,
+                ActiveIndex = activeIndex,
+                OverIndex = overIndex,
+                NewIndex = newIndex,
+                IsSorting = active != null,
+                IsDragging = active?.Id == id,
+                IsOver = over?.Id == id,
+                Items = items,
+                ContainerId = context?.Id,
+            };
+        }
+
+        // The registration UseDndMonitor holds for the component's life, forwarding to the listener its latest
+        // committed render passed.
+        private sealed class DndMonitorRelay
+        {
+            internal DndMonitorListener? Listener;
+            internal readonly DndMonitorListener Forwarder;
+
+            internal DndMonitorRelay()
+            {
+                Forwarder = new DndMonitorListener(
+                    args => Listener?.OnDragStart?.Invoke(args),
+                    args => Listener?.OnDragMove?.Invoke(args),
+                    args => Listener?.OnDragOver?.Invoke(args),
+                    args => Listener?.OnDragEnd?.Invoke(args),
+                    args => Listener?.OnDragCancel?.Invoke(args));
+            }
+        }
+
+        #endregion
+
+        #region UseFocusManager
+
+        /// <summary>
+        /// Returns the <see cref="FocusManager"/> of the focus scope around this component — React Aria's
+        /// <c>useFocusManager</c>. The manager is reference-stable across renders and resolves the scope each
+        /// time a method is called, so call its methods from an event handler or an effect, not during render.
+        /// </summary>
+        public static FocusManager UseFocusManager()
+        {
+            var fiber = Resolve("UseFocusManager");
+            return UseRef(() => new FocusManager(fiber)).Current!;
+        }
+
+        #endregion
+
+        #region Refs
+
+        /// <summary>
+        /// Hook that returns the same <see cref="Ref{T}"/> across re-renders.
+        /// On the first render, creates a <c>new Ref&lt;T&gt;()</c>, stores it in the fiber slot, and returns
+        /// the same reference at the same position thereafter. <see cref="Ref{T}.Current"/> stays null until
+        /// it is assigned externally.
+        /// </summary>
+        /// <typeparam name="T">Reference target type.</typeparam>
+        /// <returns>The fiber-scoped <see cref="Ref{T}"/> stored at this hook position, reference-stable across renders.</returns>
+        public static Ref<T> UseRef<T>() where T : class => UseRef<T>(initialFactory: null);
+
+        /// <summary>
+        /// Variant of <see cref="UseRef{T}()"/> that takes an initial factory.
+        /// On the first render, invokes <paramref name="initialFactory"/> and stores the result into
+        /// <see cref="Ref{T}.Current"/>, seeding the ref with a lazily-constructed value.
+        /// </summary>
+        /// <typeparam name="T">Reference target type.</typeparam>
+        /// <param name="initialFactory">Factory invoked once on first render to seed <see cref="Ref{T}.Current"/>. Pass null to leave it unset.</param>
+        /// <returns>The fiber-scoped <see cref="Ref{T}"/> stored at this hook position, reference-stable across renders.</returns>
+        public static Ref<T> UseRef<T>(Func<T>? initialFactory) where T : class
+        {
+            var fiber = Resolve("UseRef");
+            fiber.RefSlots ??= new List<HookRefSlot>();
+            var index = fiber.Indices.RefHookIndex++;
+            HookCountSentinel.ThrowIfPastCommittedCount(fiber);
+
+            if (index >= fiber.RefSlots.Count)
+            {
+                var newRef = new Ref<T>();
+                if (initialFactory != null)
+                {
+                    ((IHookRefSetter)newRef).Set(initialFactory());
+                }
+                fiber.RefSlots.Add(new HookRefSlot { Ref = newRef });
+                return newRef;
+            }
+
+            if (fiber.RefSlots[index].Ref is not Ref<T> typed)
+            {
+                throw HookSlotTypeMismatch(fiber, "UseRef", fiber.RefSlots[index].Ref.GetType(),
+                    $"Ref<{typeof(T).Name}>", index);
+            }
+            return typed;
+        }
+
+        /// <summary>
+        /// Hook that returns the same <see cref="MutableRef{T}"/> across re-renders, used as an
+        /// instance-scoped mutable slot. Unlike <see cref="UseRef{T}()"/>, the type
+        /// parameter is unconstrained so value types can be stored directly.
+        /// On the first render, allocates <c>new MutableRef&lt;T&gt;(initial)</c> and stores it in the fiber
+        /// slot; subsequent renders return the same instance.
+        /// Writes to <see cref="MutableRef{T}.Current"/> do not schedule a re-render.
+        /// </summary>
+        /// <typeparam name="T">Stored value type. May be a value type or a reference type.</typeparam>
+        /// <param name="initial">Initial value applied on the first render only.</param>
+        /// <returns>The fiber-scoped <see cref="MutableRef{T}"/> stored at this hook position, reference-stable across renders.</returns>
+        public static MutableRef<T> UseMutableRef<T>(T initial) => UseMutableRefInternal<T>(initial, factory: null);
+
+        /// <summary>
+        /// Variant of <see cref="UseMutableRef{T}(T)"/> that takes a lazy factory. <paramref name="initialFactory"/>
+        /// is invoked only on the first render to seed <see cref="MutableRef{T}.Current"/>; subsequent renders
+        /// return the same instance without invoking the factory.
+        /// </summary>
+        /// <typeparam name="T">Stored value type. May be a value type or a reference type.</typeparam>
+        /// <param name="initialFactory">Factory invoked once on first render to produce the initial value.</param>
+        /// <returns>The fiber-scoped <see cref="MutableRef{T}"/> stored at this hook position, reference-stable across renders.</returns>
+        public static MutableRef<T> UseMutableRef<T>(Func<T> initialFactory)
+        {
+            if (initialFactory == null) throw new ArgumentNullException(nameof(initialFactory));
+            return UseMutableRefInternal<T>(default!, initialFactory);
+        }
+
+        private static MutableRef<T> UseMutableRefInternal<T>(T initial, Func<T>? factory)
+        {
+            var fiber = Resolve("UseMutableRef");
+            fiber.RefSlots ??= new List<HookRefSlot>();
+            var index = fiber.Indices.RefHookIndex++;
+            HookCountSentinel.ThrowIfPastCommittedCount(fiber);
+
+            if (index >= fiber.RefSlots.Count)
+            {
+                var seed = factory != null ? factory() : initial;
+                var newRef = new MutableRef<T>(seed);
+                fiber.RefSlots.Add(new HookRefSlot { Ref = newRef });
+                return newRef;
+            }
+
+            if (fiber.RefSlots[index].Ref is not MutableRef<T> typed)
+            {
+                throw HookSlotTypeMismatch(fiber, "UseMutableRef", fiber.RefSlots[index].Ref.GetType(),
+                    $"MutableRef<{typeof(T).Name}>", index);
+            }
+            return typed;
+        }
+
+        /// <summary>
+        /// Retrieves the handle reference passed by the parent via <c>V.Component&lt;TRef&gt;(componentRef:)</c>.
+        /// </summary>
+        /// <typeparam name="T">Handle type expected by this component.</typeparam>
+        /// <returns>The forwarded <see cref="Ref{T}"/>, or null when the parent did not forward one or types do not match.</returns>
+        public static Ref<T>? ForwardedRef<T>() where T : class
+        {
+            var fiber = ResolveUncounted("ForwardedRef");
+            return fiber.ExternalRef as Ref<T>;
+        }
+
+        #endregion
+
+        #region UseId
+
+        /// <summary>
+        /// Returns a stable unique ID string tied to the component instance
+        /// and slot position. Re-renders of the same component return the same ID; different instances
+        /// or different slots receive different IDs. Use as a unique key for label-to-field association
+        /// or aria attributes.
+        /// </summary>
+        /// <param name="prefix">
+        /// Optional prefix to prepend (omitted when null/empty).
+        /// Only the first render reflects this in the generated ID; changes on subsequent renders are
+        /// ignored (same convention as the initial value of UseState).
+        /// </param>
+        /// <returns>
+        /// Format is <c>:r{hex}:</c> (no prefix) or <c>{prefix}:r{hex}:</c> (with prefix). The value is stable
+        /// across renders, though as a string rather than as a reference.
+        /// </returns>
+        public static string UseId(string? prefix = null)
+        {
+            var fiber = Resolve("UseId");
+            fiber.IdSlots ??= new List<HookIdSlot>();
+            var index = fiber.Indices.IdHookIndex++;
+            HookCountSentinel.ThrowIfPastCommittedCount(fiber);
+
+            if (index >= fiber.IdSlots.Count)
+            {
+                // Tree-position based (fiber instance + slot index). Decentralized — different
+                // roots / different trees produce independent IDs without coordination, so there
+                // is no global counter to share between subsystems. The emitted
+                // <c>:r{...}:</c> format keeps DOM consumers (USS, aria) compatible.
+                var fiberHash = (uint)System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(fiber);
+                // Shift the small slot index into the high byte before XOR so a fiber's sibling slots spread
+                // across the id space instead of differing only in the low bits of the same fiber hash.
+                var slotKey = fiberHash ^ ((uint)index << 24);
+                var id = string.IsNullOrEmpty(prefix) ? $":r{slotKey:x}:" : $"{prefix}:r{slotKey:x}:";
+                fiber.IdSlots.Add(new HookIdSlot { Id = id });
+                return id;
+            }
+
+            return fiber.IdSlots[index].Id;
+        }
+
+        #endregion
+
+        #region UseImperativeHandle
+
+        /// <summary>
+        /// Builds a public handle (via <paramref name="factory"/>) and stores it into the
+        /// <see cref="Ref{THandle}"/> the parent passed via <c>componentRef:</c>. This no-deps overload
+        /// re-invokes the factory every render (equivalent to passing <c>null</c> as deps); it exists so omitting
+        /// deps is unambiguous — the <c>params object[]</c> overload would otherwise observe an empty array (not
+        /// <c>null</c>) and incorrectly freeze the handle to the first render.
+        /// </summary>
+        /// <typeparam name="THandle">Handle type exposed to the parent.</typeparam>
+        /// <param name="handleRef">Parent-supplied <see cref="Ref{THandle}"/> that receives the handle. May be null.</param>
+        /// <param name="factory">Factory invoked to build the handle on every render. Must not be null.</param>
+        public static void UseImperativeHandle<THandle>(
+            Ref<THandle> handleRef,
+            Func<THandle> factory) where THandle : class
+        {
+            if (factory == null) throw new ArgumentNullException(nameof(factory));
+            var fiber = Resolve(nameof(UseImperativeHandle));
+            fiber.ImperativeHandleSlots ??= new List<HookImperativeHandleSlot>();
+            var index = fiber.Indices.ImperativeHandleHookIndex++;
+            HookCountSentinel.ThrowIfPastCommittedCount(fiber);
+
+            // The StrictMode diagnostic render must not write into the parent-supplied ref (an externally
+            // visible side effect) nor re-run the handle factory; the cursor is advanced above for the purity
+            // check and the handle is not part of the render output signature.
+            if (IsStrictDiagnosticPass(fiber)) return;
+
+            // Stages the factory / ref; the handle is built and the parent ref is written at the render-phase
+            // settle so a discarded attempt cannot expose a throwaway handle.
+            if (index >= fiber.ImperativeHandleSlots.Count)
+            {
+                fiber.ImperativeHandleSlots.Add(new HookImperativeHandleSlot
+                {
+                    NextHandleRef = handleRef,
+                    NextFactory = factory,
+                    NextDeps = null,
+                    NextNeedsRecompute = true,
+                    LayoutEffectsBefore = fiber.Indices.LayoutEffectHookIndex,
+                });
+                return;
+            }
+
+            var entry = fiber.ImperativeHandleSlots[index];
+            entry.NextHandleRef = handleRef;
+            entry.NextFactory = factory;
+            entry.NextDeps = null;
+            entry.NextNeedsRecompute = true;
+        }
+
+        /// <summary>
+        /// Builds a handle via <paramref name="factory"/> and stores it into the parent-supplied
+        /// <see cref="Ref{THandle}"/>, rebuilding only when <paramref name="deps"/> change (compared with
+        /// <c>Object.is</c> semantics).
+        /// </summary>
+        /// <typeparam name="THandle">The imperative handle type exposed to the parent.</typeparam>
+        /// <param name="handleRef">The ref the parent passed via <c>componentRef:</c>.</param>
+        /// <param name="factory">Produces the handle; re-invoked when <paramref name="deps"/> change.</param>
+        /// <param name="deps">Dependency array gating recomputation. Null means no dependency array at all — the handle is rebuilt every render.</param>
+        public static void UseImperativeHandle<THandle>(
+            Ref<THandle> handleRef,
+            Func<THandle> factory,
+            params object?[]? deps) where THandle : class
+        {
+            if (factory == null) throw new ArgumentNullException(nameof(factory));
+            var fiber = Resolve("UseImperativeHandle");
+            fiber.ImperativeHandleSlots ??= new List<HookImperativeHandleSlot>();
+            var index = fiber.Indices.ImperativeHandleHookIndex++;
+            HookCountSentinel.ThrowIfPastCommittedCount(fiber);
+
+            // See the no-deps overload: the diagnostic render skips the ref write and factory invocation.
+            if (IsStrictDiagnosticPass(fiber)) return;
+
+            if (index >= fiber.ImperativeHandleSlots.Count)
+            {
+                fiber.ImperativeHandleSlots.Add(new HookImperativeHandleSlot
+                {
+                    NextHandleRef = handleRef,
+                    NextFactory = factory,
+                    NextDeps = deps,
+                    NextNeedsRecompute = true,
+                    LayoutEffectsBefore = fiber.Indices.LayoutEffectHookIndex,
+                });
+                return;
+            }
+
+            var entry = fiber.ImperativeHandleSlots[index];
+            // Compare against the committed deps. The handle recompute and the parent ref write (and any ref
+            // swap) are deferred to the render-phase settle so a discarded attempt cannot build the handle from a
+            // throwaway render or leave the parent ref pointing at it.
+            entry.NextHandleRef = handleRef;
+            entry.NextFactory = factory;
+            entry.NextDeps = deps;
+            entry.NextNeedsRecompute = deps == null || !ObjectIs.AreEqualDeps(entry.LastDeps, deps);
+        }
+
+        #endregion
+
+        #region UseReducer
+
+        /// <summary>
+        /// Local state hook that derives the next state from the current state and a dispatched action.
+        /// </summary>
+        /// <typeparam name="TState">State type managed by the reducer.</typeparam>
+        /// <typeparam name="TAction">Action type accepted by the reducer.</typeparam>
+        /// <param name="reducer">Pure reducer (state, action) =&gt; nextState. Must not be null.</param>
+        /// <param name="initial">Initial state used on the first render. Ignored on subsequent renders.</param>
+        /// <returns>
+        /// 2-tuple:
+        /// - <c>state</c>: current state value.
+        /// - <c>dispatch</c>: action dispatcher that schedules a re-render with the next state,
+        ///   reference-stable across renders.
+        /// </returns>
+        public static (TState state, Action<TAction> dispatch) UseReducer<TState, TAction>(
+            Func<TState, TAction, TState> reducer, TState initial)
+        {
+            if (reducer == null) throw new ArgumentNullException(nameof(reducer));
+            return UseReducerCore<TState, TAction>(reducer, initial);
+        }
+
+        /// <summary>
+        /// Lazy-initialized variant taking an <paramref name="init"/> function to compute the initial state.
+        /// <paramref name="init"/> is invoked exactly once with <paramref name="initialArg"/> on the first
+        /// render to produce the initial state, then never called again. Use this to defer expensive
+        /// initialization (large arrays, dictionaries, etc.) so that it does not run on every render.
+        /// </summary>
+        /// <typeparam name="TArg">Type of the argument forwarded to <paramref name="init"/>.</typeparam>
+        /// <typeparam name="TState">State type managed by the reducer.</typeparam>
+        /// <typeparam name="TAction">Action type accepted by the reducer.</typeparam>
+        /// <param name="reducer">Pure reducer (state, action) =&gt; nextState. Must not be null.</param>
+        /// <param name="initialArg">Argument passed to <paramref name="init"/> on the first render. Ignored afterwards.</param>
+        /// <param name="init">Initializer that computes the initial state from <paramref name="initialArg"/>. Must not be null.</param>
+        /// <returns>
+        /// 2-tuple:
+        /// - <c>state</c>: current state value.
+        /// - <c>dispatch</c>: action dispatcher that schedules a re-render with the next state,
+        ///   reference-stable across renders.
+        /// </returns>
+        public static (TState state, Action<TAction> dispatch) UseReducer<TArg, TState, TAction>(
+            Func<TState, TAction, TState> reducer, TArg initialArg, Func<TArg, TState> init)
+        {
+            if (reducer == null) throw new ArgumentNullException(nameof(reducer));
+            if (init == null) throw new ArgumentNullException(nameof(init));
+            var fiber = Resolve("UseReducer");
+            fiber.StateSlots ??= new List<HookStateSlot>();
+            var index = fiber.Indices.StateHookIndex++;
+            HookCountSentinel.ThrowIfPastCommittedCount(fiber);
+
+            if (index >= fiber.StateSlots.Count)
+            {
+                return CreateReducerSlot<TState, TAction>(fiber, init(initialArg), reducer);
+            }
+            return UpdateReducerSlot<TState, TAction>(fiber, index, reducer);
+        }
+
+        private static (TState state, Action<TAction> dispatch) UseReducerCore<TState, TAction>(
+            Func<TState, TAction, TState> reducer, TState initial)
+        {
+            var fiber = Resolve("UseReducer");
+            fiber.StateSlots ??= new List<HookStateSlot>();
+            var index = fiber.Indices.StateHookIndex++;
+            HookCountSentinel.ThrowIfPastCommittedCount(fiber);
+
+            if (index >= fiber.StateSlots.Count)
+            {
+                return CreateReducerSlot<TState, TAction>(fiber, initial, reducer);
+            }
+            return UpdateReducerSlot<TState, TAction>(fiber, index, reducer);
+        }
+
+        private static (TState state, Action<TAction> dispatch) CreateReducerSlot<TState, TAction>(
+            ComponentFiber fiber, TState initial, Func<TState, TAction, TState> reducer)
+        {
+            var slot = new ReducerSlot<TState, TAction>(initial, reducer);
+            slot.Dispatch = HookSetterFactory.CreateReducerDispatch(slot, fiber);
+            fiber.StateSlots!.Add(slot);
+            return (slot.Value, slot.Dispatch);
+        }
+
+        private static (TState state, Action<TAction> dispatch) UpdateReducerSlot<TState, TAction>(
+            ComponentFiber fiber, int index, Func<TState, TAction, TState> reducer)
+        {
+            if (fiber.StateSlots![index] is not ReducerSlot<TState, TAction> typed)
+            {
+                throw HookSlotTypeMismatch(fiber, "UseReducer", fiber.StateSlots[index].GetType(),
+                    $"ReducerSlot<{typeof(TState).Name},{typeof(TAction).Name}>", index);
+            }
+
+            typed.Reducer = reducer;
+            return (typed.Process(fiber, FiberWorkLoop.RenderLane), typed.Dispatch);
+        }
+
+        #endregion
+
+        #region Use (Suspense)
+
+        /// <summary>
+        /// Declaratively fetches asynchronous data; while pending, throws a <see cref="FiberSuspendSignal"/>
+        /// to delegate the fallback to the nearest Suspense Boundary.
+        /// </summary>
+        /// <remarks>
+        /// The hook is keyed by the resource identity, not by a dependency array:
+        /// the same resource returns the same result; presenting a different resource starts a new fetch.
+        /// The optional <paramref name="resourceKey"/> identifies the resource, compared with <c>Object.is</c>
+        /// semantics on the key's runtime type rather than by instance: a string rebuilt every render, or an id
+        /// re-boxed at the call boundary, names the same resource, while a fresh instance of any other reference
+        /// type starts a new one.
+        /// When omitted, the factory delegate's identity is the key — a stable (cached) factory reuses the running
+        /// resource, while a fresh closure each render is treated as a new resource. Pass a stable
+        /// <paramref name="resourceKey"/> (e.g. the query id) when the factory is a fresh closure but the
+        /// resource is logically the same.
+        /// </remarks>
+        /// <typeparam name="T">Resolved value type.</typeparam>
+        /// <param name="factory">Factory that returns a VelvetTask producing the value. Must not be null.</param>
+        /// <param name="resourceKey">Identity of the resource. When null, the factory delegate is the key.</param>
+        /// <returns>The resolved value once the resource completes successfully.</returns>
+        public static T Use<T>(Func<VelvetTask<T>> factory, object? resourceKey = null)
+        {
+            if (factory == null) throw new ArgumentNullException(nameof(factory));
+            return UseCore<T>(_ => factory(), resourceKey ?? factory, resourceKeyExplicit: resourceKey != null, "Use");
+        }
+
+        /// <summary>
+        /// CancellationToken-aware variant of <see cref="Use{T}(Func{VelvetTask{T}}, object)"/>.
+        /// The token is cancelled when the resource is superseded (a new key) or the component unmounts;
+        /// loader implementations are responsible for honoring it and aborting. A resource a transition's render
+        /// started is not superseded by a render of another lane that presents the old key: it is kept, and
+        /// cancelled only when a later transition presents a different key, or on unmount.
+        /// </summary>
+        /// <typeparam name="T">Resolved value type.</typeparam>
+        /// <param name="factory">Factory that receives a CancellationToken and returns a VelvetTask producing the value. Must not be null.</param>
+        /// <param name="resourceKey">Identity of the resource. When null, the factory delegate is the key.</param>
+        /// <returns>The resolved value once the resource completes successfully.</returns>
+        public static T Use<T>(Func<CancellationToken, VelvetTask<T>> factory, object? resourceKey = null)
+        {
+            if (factory == null) throw new ArgumentNullException(nameof(factory));
+            return UseCore<T>(factory, resourceKey ?? factory, resourceKeyExplicit: resourceKey != null, "Use");
+        }
+
+        private static T UseCore<T>(Func<CancellationToken, VelvetTask<T>> factory, object resourceKey, bool resourceKeyExplicit, string hookName)
+        {
+            var fiber = Resolve(hookName);
+            var slots = fiber.AsyncSlots;
+            var index = fiber.NextAsyncSlotIndex();
+            HookCountSentinel.ThrowIfPastCommittedCount(fiber);
+            // Cache on the Fiber to avoid allocating a closure on every render.
+            var onCompleted = fiber.AsyncResourceCompletedCallback ??= () =>
+            {
+                if (fiber.IsDisposed) return;
+                FiberRenderer.NotifyAsyncResourceCompleted(fiber);
+            };
+
+            FiberAsyncResource<T> resource;
+            if (index >= slots.Count)
+            {
+                resource = new FiberAsyncResource<T>(resourceKey)
+                {
+                    OnCompleted = onCompleted,
+                    StartedByTransition = FiberWorkLoop.IsRenderingTransitionLane,
+                };
+                slots.Add(resource);
+                resource.Start(factory);
+            }
+            else
+            {
+                var existing = slots[index];
+                // AreEqualObjects, not AreEqual: ResourceKey is declared object, which is exactly the
+                // erasure the comment over AreEqualObjects warns against.
+                // The StrictMode re-run of the render that read this resource is the same attempt, and React's
+                // second invocation keeps the thenable the first one tracked, whatever key it passes.
+                if (existing is FiberAsyncResource<T> typed
+                    && (ObjectIs.AreEqualObjects(typed.ResourceKey, resourceKey) || IsStrictDiagnosticPass(fiber)))
+                {
+                    resource = typed;
+                }
+                else
+                {
+#if UNITY_EDITOR
+                    // Footgun: when the caller omits resourceKey, the factory delegate identity
+                    // becomes the key — and a delegate built afresh on every render restarts the
+                    // resource permanently (never-resolving suspense). A key the caller passed changes
+                    // only where the caller changed it, so that change is not flagged.
+                    if (!resourceKeyExplicit && existing is FiberAsyncResource<T>)
+                    {
+                        FiberLogger.LogWarning(hookName,
+                            $"{hookName}<{typeof(T).Name}>: factory delegate identity changed across renders. " +
+                            "Pass a stable `resourceKey` (e.g. the query id) so the resource is not restarted every render.");
+                    }
+#endif
+                    var restored = fiber.RestoreOrRetireAsync<T>(index, existing, resourceKey);
+                    if (restored != null)
+                    {
+                        resource = restored;
+                        slots[index] = restored;
+                    }
+                    else
+                    {
+                        resource = new FiberAsyncResource<T>(resourceKey)
+                        {
+                            OnCompleted = onCompleted,
+                            StartedByTransition = FiberWorkLoop.IsRenderingTransitionLane,
+                        };
+                        slots[index] = resource;
+                        resource.Start(factory);
+                    }
+                }
+            }
+
+            switch (resource.Status)
+            {
+                case FiberAsyncResourceStatus.Success:
+                    return resource.Result;
+                case FiberAsyncResourceStatus.Error:
+                    throw resource.Error!;
+                default:
+                    fiber.Reconciler!.Context.SuspendingReader = fiber;
+                    FiberPendingWork.MarkAncestors(fiber);
+                    throw FiberSuspendSignal.Instance;
+            }
+        }
+
+        #endregion
+
+        #region UseFallback (functional Error Boundary)
+
+        /// <summary>
+        /// Registers a fallback factory inside Render() of an `[Component(IsErrorBoundary = true)]`
+        /// component. When this component catches a Render exception from a child, the registered factory
+        /// is invoked to produce the fallback VNode.
+        /// This API expresses, in functional Velvet, the Error Boundary pattern of returning a
+        /// fallback when a descendant render throws.
+        /// Must be called during Render since it is overwritten on every render.
+        /// </summary>
+        /// <remarks>
+        /// When called from a non-EB component (`[Component]` with IsErrorBoundary=false), the
+        /// factory is still stored on the fiber, but RenderFallback is only reached on the Error
+        /// Boundary path, so it is effectively a no-op. Do not call this hook from non-EB components.
+        /// <para/>
+        /// <b>Bubble-up</b>: when the factory returns <c>null</c> or itself throws, the exception
+        /// bubbles to the next enclosing Error Boundary, ultimately reaching the root, which unmounts the tree
+        /// and reports it to <see cref="MountOptions.OnUncaughtError"/> when no boundary catches it.
+        /// <para/>
+        /// Once the component has caught, each later render of it invokes the factory again with the error
+        /// it caught and renders what it returns in place of its children, until the component remounts —
+        /// give it a new <c>key</c> to render its children again — or is reset through
+        /// <see cref="UseErrorBoundaryReset"/>. On those renders a factory that returns
+        /// <c>null</c> or throws passes the error to the boundary above, as it does at the catch.
+        /// </remarks>
+        /// <param name="factory">Factory that receives the caught exception and returns the fallback VNode. Must not be null.</param>
+        public static void UseFallback(Func<Exception, VNode> factory)
+        {
+            if (factory == null) throw new ArgumentNullException(nameof(factory));
+            UseFallback((ex, _) => factory(ex));
+        }
+
+        /// <summary>
+        /// Two-argument fallback factory variant that receives the caught exception and an
+        /// <see cref="ErrorInfo"/> with the throwing fiber's <c>ComponentStack</c>, describing where
+        /// the error was caught.
+        /// </summary>
+        /// <remarks>
+        /// Same bubble-up semantics as the single-arg overload: returning <c>null</c> or throwing
+        /// re-propagates the original exception to the next enclosing Error Boundary.
+        /// </remarks>
+        /// <param name="factory">Factory that receives <c>(exception, info)</c> and returns the fallback VNode. Must not be null.</param>
+        public static void UseFallback(Func<Exception, ErrorInfo, VNode> factory)
+        {
+            if (factory == null) throw new ArgumentNullException(nameof(factory));
+            var fiber = Resolve(nameof(UseFallback));
+            fiber.FallbackFactory = factory;
+        }
+
+        /// <summary>
+        /// Lets an error boundary that has caught render its children again: react-error-boundary's
+        /// <c>resetErrorBoundary</c> as the returned <see cref="ErrorBoundaryReset"/>, its <c>resetKeys</c> as
+        /// <paramref name="resetKeys"/> and its <c>onReset</c> as <paramref name="onReset"/>. Call it inside Render()
+        /// of an `[Component(IsErrorBoundary = true)]` component.
+        /// </summary>
+        /// <remarks>
+        /// Invoking the reset while the boundary shows its fallback calls <paramref name="onReset"/> with
+        /// <see cref="ErrorBoundaryResetReason.ImperativeApi"/> and the arguments it was invoked with, then queues the
+        /// reset as a state update on the lane the call is made on; the boundary's next render on that lane renders
+        /// its children instead. Invoking it while the boundary shows its
+        /// children does nothing. The reset is reference-stable for the boundary's lifetime.
+        /// <para/>
+        /// A render of the boundary, made while it shows a fallback for an error caught before that render, that
+        /// passes <paramref name="resetKeys"/> differing from those its last committed render passed — in length, or
+        /// in any element compared with <c>Object.is</c> semantics, null reading as none — commits that fallback,
+        /// then, where the boundary still holds the error, calls <paramref name="onReset"/> with
+        /// <see cref="ErrorBoundaryResetReason.Keys"/> and both key arrays and queues the reset, as
+        /// react-error-boundary does from <c>componentDidUpdate</c>. Keys that change in the render in which a child
+        /// throws do not undo that catch.
+        /// <para/>
+        /// The children the fallback replaced were unmounted, so they mount again: their state starts over, and
+        /// a <see cref="Use{T}(Func{CancellationToken, VelvetTask{T}}, object)"/> among them starts its resource
+        /// again. This is how a failed <c>Use</c> load is retried.
+        /// </remarks>
+        /// <param name="resetKeys">Values whose change resets the boundary.</param>
+        /// <param name="onReset">Called before each reset, with what reset the boundary. The last committed render's is called.</param>
+        /// <returns>The boundary's reset.</returns>
+        /// <exception cref="InvalidOperationException">The calling component is not an error boundary.</exception>
+        public static ErrorBoundaryReset UseErrorBoundaryReset(
+            object?[]? resetKeys = null, Action<ErrorBoundaryResetDetails>? onReset = null)
+        {
+            var fiber = Resolve(nameof(UseErrorBoundaryReset));
+            if (!fiber.IsErrorBoundary)
+            {
+                throw new InvalidOperationException(
+                    $"{nameof(UseErrorBoundaryReset)} must be called from an [Component(IsErrorBoundary = true)] component.");
+            }
+            var slotRef = UseMutableRef((HookErrorBoundaryKeysSlot?)null);
+            var slot = slotRef.Current ??= new HookErrorBoundaryKeysSlot(fiber);
+
+            // An error caught before this render is react-error-boundary's prevState.error; one a child throws below
+            // this render is caught after the body has run, so it is not. The StrictMode re-run of a render that has
+            // already been counted would record itself as a render still to come.
+            if (!IsStrictDiagnosticPass(fiber)) slot.Record(resetKeys, onReset, fiber.CaughtError != null);
+            UseLayoutEffect(slot.Commit);
+            return fiber.ResetHandle;
+        }
+
+        /// <summary>
+        /// Gives a component below an error boundary that boundary's reset and a way to make it catch an error —
+        /// react-error-boundary's <c>useErrorBoundary()</c>.
+        /// </summary>
+        /// <remarks>
+        /// The boundary is the nearest `[Component(IsErrorBoundary = true)]` component or <c>V.ErrorBoundary</c>
+        /// above the caller, passing over the boundaries Velvet renders for routing as react-error-boundary's context
+        /// passes over React Router's; a component in a boundary's fallback content finds that boundary.
+        /// <see cref="ErrorBoundaryApi.ShowBoundary"/> makes the caller throw the error on its next render, which
+        /// reaches the boundaries above the caller as any render error does: the first that shows a fallback for it
+        /// catches it, and one that declines passes it up. <see cref="ErrorBoundaryApi.ResetBoundary"/> invokes the
+        /// boundary's reset with no arguments and forgets an error <c>ShowBoundary</c> was handed. Both are
+        /// reference-stable.
+        /// </remarks>
+        /// <returns>The boundary's reset and the error trigger.</returns>
+        /// <exception cref="InvalidOperationException">No such error boundary is above the calling component.</exception>
+        public static ErrorBoundaryApi UseErrorBoundary()
+        {
+            var fiber = Resolve(nameof(UseErrorBoundary));
+            var boundary = fiber.Parent;
+            for (; boundary != null && !(boundary.IsErrorBoundary && !boundary.IsFrameworkErrorBoundary); boundary = boundary.Parent)
+            {
+            }
+            if (boundary == null)
+            {
+                throw new InvalidOperationException(
+                    $"{nameof(UseErrorBoundary)} must be called below an [Component(IsErrorBoundary = true)] component.");
+            }
+            var (shown, setShown) = UseState((Exception?)null);
+            var apiRef = UseMutableRef((ErrorBoundaryApi?)null);
+            var api = apiRef.Current ??= CreateErrorBoundaryApi(boundary, setShown);
+            if (shown != null) ExceptionDispatchInfo.Capture(shown).Throw();
+            return api;
+        }
+
+        // Kept out of UseErrorBoundary so that its renders after the first allocate no closure.
+        private static ErrorBoundaryApi CreateErrorBoundaryApi(ComponentFiber boundary, StateUpdater<Exception?> setShown)
+            => new(
+                () =>
+                {
+                    boundary.ResetHandle.Invoke();
+                    setShown.Invoke((Exception?)null);
+                },
+                error =>
+                {
+                    if (error == null) throw new ArgumentNullException(nameof(error));
+                    setShown.Invoke(error);
+                });
+
+        #endregion
+
+        #region UseTransition
+
+        /// <summary>
+        /// Returns the pending state and starter for low-priority updates.
+        /// </summary>
+        /// <returns>
+        /// 2-tuple in the order (<c>isPending</c>, <c>startTransition</c>):
+        /// - <c>isPending</c>: true while an update this starter's callback scheduled is queued or being
+        ///   committed — through the terminal reconcile slice, wherever the state it wrote lives — and across
+        ///   an async transition's awaits. The component renders it true on the Urgent lane as soon as the
+        ///   call returns with it lit, ahead of the transition's own render.
+        /// - <c>startTransition</c>: a <see cref="TransitionStarter"/>, reference-stable across renders. Call
+        ///   <c>startTransition.Invoke(() =&gt; ...)</c>
+        ///   for synchronous updates or <c>startTransition.Invoke(async () =&gt; ...)</c> for async actions whose
+        ///   <c>isPending</c> stays true across awaits. A re-entrant call on the same starter joins the
+        ///   transition already running on it; a starter from another <c>UseTransition()</c> is a separate
+        ///   transition with its own <c>isPending</c>, even while the first one is still awaiting.
+        /// </returns>
+        public static (bool isPending, TransitionStarter startTransition) UseTransition()
+        {
+            var fiber = Resolve("UseTransition");
+            fiber.TransitionSlots ??= new List<HookTransitionSlot>();
+            var index = fiber.Indices.TransitionHookIndex++;
+            HookCountSentinel.ThrowIfPastCommittedCount(fiber);
+
+            if (index >= fiber.TransitionSlots.Count)
+            {
+                var slot = new HookTransitionSlot { DeclaringFiber = fiber };
+                // The starter captures this slot so each UseTransition() drives only its own pending flag:
+                // two transitions in one component are independent.
+                slot.Starter = new TransitionStarter(
+                    updates => FiberWorkLoop.StartTransition(fiber, slot, updates),
+                    asyncUpdates => FiberWorkLoop.StartTransition(fiber, slot, asyncUpdates).Forget());
+                fiber.TransitionSlots.Add(slot);
+                return (slot.IsPending, slot.Starter);
+            }
+
+            var existing = fiber.TransitionSlots[index];
+            ThrowPendingError(fiber, existing);
+            // See HookTransitionSlot.LastRenderedPending for why a read site writes.
+            existing.LastRenderedPending = existing.IsPending;
+            return (existing.IsPending, existing.Starter);
+        }
+
+        // A render off the Transition lane asks for it again rather than throwing, since React throws the error
+        // where the isPending update carrying it renders.
+        private static void ThrowPendingError(ComponentFiber fiber, HookTransitionSlot slot)
+        {
+            var error = slot.PendingError;
+            if (error == null)
+            {
+                return;
+            }
+            if (!FiberWorkLoop.IsRenderingTransitionLane)
+            {
+                FiberWorkLoop.RequestTransitionRerender(fiber);
+                return;
+            }
+            slot.PendingError = null;
+            error.Throw();
+        }
+
+        #endregion
+
+        #region UseMutation
+
+        /// <summary>
+        /// Returns a handle that tracks the lifecycle (Idle / Pending / Success / Error) of an async mutation.
+        /// The caller invokes <c>Mutate</c> / <c>MutateAsync</c> with
+        /// <typeparamref name="TVariables"/>; the <see cref="MutationOptions{TVariables, TData}.MutationFn"/> runs
+        /// and the handle's status / data / error fields are updated, triggering a re-render.
+        /// </summary>
+        /// <remarks>
+        /// TanStack Query's <c>useMutation</c>: each call builds a <see cref="Mutation"/> in the client's
+        /// <see cref="MutationCache"/>, where <see cref="UseMutationState{TResult}"/>,
+        /// <see cref="UseIsMutating"/> and the cache's own callbacks and events see it, and the handle shows the
+        /// newest one. The client is the one the first render resolved, and the options are filled in from its
+        /// defaults (<see cref="QueryClient.DefaultMutationOptions"/>). A call is built from the options the
+        /// component last committed and keeps them, except that a later commit hands its options to the call the
+        /// handle shows while that call is pending. Where the handle shows a failure and
+        /// <see cref="MutationOptionsBase.ThrowOnError"/> accepts it, the hook throws it from the render.
+        /// </remarks>
+        /// <typeparam name="TVariables">Mutation input variables type. Use <see cref="Unit"/> for "no variables".</typeparam>
+        /// <typeparam name="TData">Mutation result type. Use <see cref="Unit"/> for "no return value".</typeparam>
+        /// <param name="options">The mutation function plus optional success / error / settled callbacks.</param>
+        /// <param name="client">The client whose cache keeps the mutations; null reads the one
+        /// <see cref="QueryClientContext.Ref"/> provides, and throws when no Provider supplies one.</param>
+        /// <returns>A <see cref="MutationResult{TVariables, TData}"/>, reference-stable across renders.</returns>
+        public static MutationResult<TVariables, TData> UseMutation<TVariables, TData>(
+            MutationOptions<TVariables, TData> options, QueryClient? client = null)
+        {
+            if (options == null) throw new ArgumentNullException(nameof(options));
+            return UseContextFreeMutation<MutationOptions<TVariables, TData>, TVariables, TData>(
+                options, static defaulted => defaulted, client);
+        }
+
+        /// <summary>
+        /// Context-carrying overload of <see cref="UseMutation{TVariables, TData}"/>, TanStack Query's
+        /// <c>onMutate</c> form: <see cref="MutationOptions{TVariables, TData, TContext}.OnMutate"/> runs before
+        /// the mutation function, and its return value is the context that call's <c>OnSuccess</c> /
+        /// <c>OnError</c> / <c>OnSettled</c> receive.
+        /// </summary>
+        /// <typeparam name="TVariables">Mutation input variables type. Use <see cref="Unit"/> for "no variables".</typeparam>
+        /// <typeparam name="TData">Mutation result type. Use <see cref="Unit"/> for "no return value".</typeparam>
+        /// <typeparam name="TContext">The value <c>OnMutate</c> hands to the call's later callbacks, such as the
+        /// snapshot an optimistic write is rolled back to.</typeparam>
+        /// <param name="options">The mutation function plus the optional lifecycle callbacks.</param>
+        /// <param name="client">As <see cref="UseMutation{TVariables, TData}"/>.</param>
+        /// <returns>A <see cref="MutationResult{TVariables, TData}"/>, reference-stable across renders.</returns>
+        public static MutationResult<TVariables, TData> UseMutation<TVariables, TData, TContext>(
+            MutationOptions<TVariables, TData, TContext> options, QueryClient? client = null)
+        {
+            if (options == null) throw new ArgumentNullException(nameof(options));
+            var fiber = NextMutationSlot(out var index, out var existing);
+            var queryClient = UseMutationClient(client, existing);
+            var defaulted = queryClient.DefaultMutationOptions(options);
+            if (existing == null)
+            {
+                return AddMutationSlot(fiber, new HookContextMutationSlot<TVariables, TData, TContext>(),
+                    queryClient, options, defaulted, defaulted);
+            }
+
+            if (existing is not HookContextMutationSlot<TVariables, TData, TContext> typed)
+            {
+                throw HookSlotTypeMismatch(fiber, "UseMutation", existing.GetType(),
+                    $"HookContextMutationSlot<{typeof(TVariables).Name}, {typeof(TData).Name}, {typeof(TContext).Name}>",
+                    index);
+            }
+
+            return ObserveMutation(fiber, typed, options, defaulted, defaulted);
+        }
+
+        /// <summary>
+        /// Void-return overload of <see cref="UseMutation{TVariables, TData}"/>. Use when the mutation function
+        /// returns no data (typical for Store-action mutations where state is updated internally).
+        /// </summary>
+        public static MutationResult<TVariables, Unit> UseMutation<TVariables>(
+            MutationOptions<TVariables> options, QueryClient? client = null)
+        {
+            if (options == null) throw new ArgumentNullException(nameof(options));
+            return UseContextFreeMutation<MutationOptions<TVariables>, TVariables, Unit>(
+                options, static defaulted => AdaptVoidMutation(defaulted), client);
+        }
+
+        /// <summary>
+        /// No-input void overload of <see cref="UseMutation{TVariables, TData}"/>. Use when the mutation takes
+        /// no input and returns no data. Pair with <see cref="MutationResultExtensions.Mutate{TData}"/> to call
+        /// <c>mutation.Mutate()</c> without an explicit <c>Unit.Default</c> argument.
+        /// </summary>
+        public static MutationResult<Unit, Unit> UseMutation(MutationOptions options, QueryClient? client = null)
+        {
+            if (options == null) throw new ArgumentNullException(nameof(options));
+            return UseContextFreeMutation<MutationOptions, Unit, Unit>(
+                options, static defaulted => AdaptNoInputMutation(defaulted), client);
+        }
+
+        private static MutationOptions<TVariables, Unit> AdaptVoidMutation<TVariables>(MutationOptions<TVariables> options) => new(
+            MutationFn: options.MutationFn is { } mutationFn
+                ? async (v, context) =>
+                {
+                    await mutationFn(v, context);
+                    return Unit.Default;
+                }
+                : null,
+            OnSuccess: options.OnSuccess is { } onSuccess ? (_, v, context) => onSuccess(v, context) : null,
+            OnError: options.OnError)
+        {
+            OnSettled = options.OnSettled is { } onSettled ? (_, ex, v, context) => onSettled(ex, v, context) : null,
+        };
+
+        private static MutationOptions<Unit, Unit> AdaptNoInputMutation(MutationOptions options) => new(
+            MutationFn: options.MutationFn is { } mutationFn
+                ? async (_, context) =>
+                {
+                    await mutationFn(context);
+                    return Unit.Default;
+                }
+                : null,
+            OnSuccess: options.OnSuccess is { } onSuccess ? (_, _, context) => onSuccess(context) : null,
+            OnError: options.OnError is { } onError ? (ex, _, context) => onError(ex, context) : null)
+        {
+            OnSettled = options.OnSettled is { } onSettled ? (_, ex, _, context) => onSettled(ex, context) : null,
+        };
+
+        // The void overloads adapt the record the caller passed, once the client's defaults are filled into it, to
+        // the shape the slot invokes; the cache reads the key, scope, meta and the rest off the defaulted record,
+        // and hands that on as Mutation.Options.
+        private static MutationResult<TVariables, TData> UseContextFreeMutation<TOptions, TVariables, TData>(
+            TOptions options, Func<TOptions, MutationOptions<TVariables, TData>> adapt, QueryClient? client)
+            where TOptions : MutationOptionsBase
+        {
+            var fiber = NextMutationSlot(out var index, out var existing);
+            var queryClient = UseMutationClient(client, existing);
+            var defaulted = queryClient.DefaultMutationOptions(options);
+            var invocation = adapt(defaulted);
+            if (existing == null)
+            {
+                return AddMutationSlot(fiber, new HookMutationSlot<TVariables, TData>(), queryClient, options, defaulted, invocation);
+            }
+
+            if (existing is not HookMutationSlot<TVariables, TData> typed)
+            {
+                throw HookSlotTypeMismatch(fiber, "UseMutation", existing.GetType(),
+                    $"HookMutationSlot<{typeof(TVariables).Name}, {typeof(TData).Name}>", index);
+            }
+
+            return ObserveMutation(fiber, typed, options, defaulted, invocation);
+        }
+
+        // useQueryClient runs on every render and throws without a client, while the observer keeps the client it
+        // was built with.
+        private static QueryClient UseMutationClient(QueryClient? client, HookMutationSlot? existing)
+        {
+            var provided = UseContext(QueryClientContext.Ref);
+            var resolved = client ?? provided ?? throw new InvalidOperationException(
+                "UseMutation found no QueryClient. Mount V.Provider(QueryClientContext.Ref, value: client, ...) " +
+                "above the caller, or pass the client to UseMutation.");
+            return existing?.Client ?? resolved;
+        }
+
+        private static ComponentFiber NextMutationSlot(out int index, out HookMutationSlot? existing)
+        {
+            var fiber = Resolve("UseMutation");
+            fiber.MutationSlots ??= new List<HookMutationSlot>();
+            index = fiber.Indices.MutationHookIndex++;
+            HookCountSentinel.ThrowIfPastCommittedCount(fiber);
+            existing = index < fiber.MutationSlots.Count ? fiber.MutationSlots[index] : null;
+            return fiber;
+        }
+
+        // The observer starts with the first render's options, as v5's is constructed with them, so a call made
+        // before the first commit is built from those.
+        private static MutationResult<TVariables, TData> AddMutationSlot<TVariables, TData, TContext>(
+            ComponentFiber fiber,
+            HookMutationSlot<TVariables, TData, TContext> slot,
+            QueryClient client,
+            MutationOptionsBase passed,
+            MutationOptionsBase defaulted,
+            object invocation)
+        {
+            slot.Client = client;
+            slot.Observer = new MutationObserver(defaulted);
+            slot.CommittedInvocation = invocation;
+            slot.Result.MutateAction = (variables, callOptions) =>
+                RunMutationAsync(fiber, slot, variables, callOptions, rethrowOnFailure: false).Forget();
+            slot.Result.MutateAsyncFunc = (variables, callOptions) =>
+                RunMutationAsync(fiber, slot, variables, callOptions, rethrowOnFailure: true);
+            slot.Result.ResetAction = () => ResetMutation(fiber, slot);
+            slot.OptionsEffect = new HookEffectSlot { EffectFactory = () => CommitMutationOptions(fiber, slot) };
+            fiber.MutationSlots!.Add(slot);
+            return ObserveMutation(fiber, slot, passed, defaulted, invocation);
+        }
+
+        // TanStack's useMutation hands the observer its options in an effect keyed on the options object the caller
+        // passed, so a render passing the record the last commit applied queues nothing. Nor does a record equal to
+        // the applied one once the client's defaults are filled in: compared as the commit compares them, it would be
+        // announced to no listener and reset nothing, and a pending mutation would trade its options for equal ones.
+        // Queued on the fiber's pending passive effects rather than through UseEffect, which would count a hook of
+        // another kind against the component. Then v5's render-time throw: a failure the handle shows that
+        // throwOnError accepts, judged by the options the observer holds, goes to the nearest error boundary.
+        private static MutationResult<TVariables, TData> ObserveMutation<TVariables, TData, TContext>(
+            ComponentFiber fiber,
+            HookMutationSlot<TVariables, TData, TContext> slot,
+            MutationOptionsBase passed,
+            MutationOptionsBase defaulted,
+            object invocation)
+        {
+            slot.Passed = passed;
+            slot.Declared = defaulted;
+            slot.Invocation = invocation;
+            if (!ReferenceEquals(passed, slot.CommittedPassed) && !IsStrictDiagnosticPass(fiber)
+                && !Equals(defaulted, slot.CommittedDeclared))
+            {
+                var pending = fiber.PendingEffects ??= new List<HookEffectSlot>();
+                if (!pending.Contains(slot.OptionsEffect!)) pending.Add(slot.OptionsEffect!);
+            }
+
+            if (slot.Result.Error is { } error && slot.Observer.Options.ThrowOnError is { } rule && rule.Throws(error))
+            {
+                ExceptionDispatchInfo.Capture(error).Throw();
+            }
+            return slot.Result;
+        }
+
+        // TanStack's MutationObserver.setOptions: options unequal to the last applied are announced, a changed
+        // mutation key detaches the handle from its mutation, and otherwise a pending mutation takes the options.
+        private static Action? CommitMutationOptions<TVariables, TData, TContext>(
+            ComponentFiber fiber,
+            HookMutationSlot<TVariables, TData, TContext> slot)
+        {
+            if (ReferenceEquals(slot.Passed, slot.CommittedPassed) || IsMutationOwnerGone(fiber, slot)) return null;
+            var options = slot.Declared;
+            var previous = slot.CommittedDeclared;
+            slot.CommittedPassed = slot.Passed;
+            slot.CommittedDeclared = options;
+            slot.CommittedInvocation = slot.Invocation;
+            slot.Observer.Options = options;
+            if (!Equals(options, previous))
+            {
+                slot.Client.GetMutationCache().Notify(
+                    MutationCacheEventType.ObserverOptionsUpdated, slot.Current, observer: slot.Observer);
+            }
+
+            if (previous?.MutationKey != null && options.MutationKey != null && !previous.MutationKey.Equals(options.MutationKey))
+            {
+                ResetMutation(fiber, slot);
+            }
+            else if (slot.Current is { State.Status: MutationStatus.Pending } current)
+            {
+                current.SetOptions(options);
+                current.Invocation = slot.Invocation;
+            }
+            return null;
+        }
+
+        // rethrowOnFailure distinguishes the two call shapes: mutateAsync (true) returns a task its caller
+        // awaits, so a failure must reject; mutate (false) is fire-and-forget (dispatched via .Forget()) and
+        // reports failures through onError / the Error status only — it must never rethrow, or the forgotten
+        // task would surface an unobserved exception with no observer that can act on it.
+        private static async VelvetTask<TData> RunMutationAsync<TVariables, TData, TContext>(
+            ComponentFiber fiber,
+            HookMutationSlot<TVariables, TData, TContext> slot,
+            TVariables variables,
+            MutateOptions<TVariables, TData>? callOptions,
+            bool rethrowOnFailure)
+        {
+            // Two calls run side by side rather than the second aborting the first, as in TanStack, which
+            // hands a mutation no signal at all. Cancelling on re-entry dropped the first call's OnSuccess,
+            // so a double-tapped Buy charged the card and never ran the write that follows it.
+            // Neither does the unmount cancel: TanStack's observer only unsubscribes and the mutation runs
+            // on, so a call made after the unmount runs too and writes no handle. The token the function
+            // receives is the one the caller put on the call's MutateOptions, or none.
+            var token = callOptions?.CancellationToken ?? default;
+            // Who may write the OBSERVED result, which is the newest call, as TanStack's observer shows.
+            // Ownership is by generation now, not by holding the slot's only token: a superseded call still
+            // runs its callbacks, which is what TanStack's Mutation.execute does — it awaits them itself and
+            // consults no observer list. What detaching an observer suppresses there is the per-call form,
+            // mutate(vars, { onSuccess }), so callOptions is delivered only to the call that still owns
+            // the generation, the one CommitOutcome writes for.
+            var mine = ++slot.Generation;
+            var mutation = StartMutation(fiber, slot, variables);
+            var policy = mutation.Options.Retry ?? RetryPolicy.NoRetry;
+            var cache = slot.Client.GetMutationCache();
+            // Built once from the options the call starts with, as v5's execute builds it.
+            var functionContext = new MutationFunctionContext(slot.Client, mutation.Options.Meta, mutation.Options.MutationKey, token);
+            var reachedFunction = false;
+
+            // A local rather than a slot field, so overlapping calls each hand their callbacks their own
+            // context. It is still default when OnMutate throws, and that is what the failure path hands on.
+            var context = default(TContext)!;
+            try
+            {
+                // After the pending dispatch and inside the try, which is TanStack's order: OnMutate reads the
+                // handle as this call's pending one, and a throw from either fails the call before MutationFn.
+                if (cache.OnMutate is { } cacheOnMutate) await cacheOnMutate(variables, mutation, functionContext);
+                context = await slot.InvokeOnMutate(mutation.Invocation, variables, functionContext);
+                var boxed = slot.HasOnMutate(mutation.Invocation) ? slot.BoxContext(context) : null;
+                if (!Equals(boxed, mutation.State.Context)) mutation.DispatchPending(variables, boxed, mutation.State.IsPaused);
+                var call = new MutationCall<TVariables, TData, TContext>(fiber, slot, variables, mine, mutation, functionContext);
+                // The scope ahead of it may have settled while OnMutate ran.
+                if (mutation.State.IsPaused && policy.CanFetch() && cache.CanRun(mutation)) ContinueMutation(call);
+                reachedFunction = true;
+                // Each attempt reads the call's own options, which a commit replaces only while the handle still
+                // shows the call. The token is the caller's: unmount retires the slot and leaves the wait running.
+                var data = await policy.RunWithStateAsync(
+                    static (run, _) => run.Slot.InvokeMutationFn(run.Mutation.Invocation, run.Variables, run.FunctionContext),
+                    call,
+                    new RetryCallbacks<MutationCall<TVariables, TData, TContext>>
+                    {
+                        OnFail = static (run, error) =>
+                        {
+                            run.ShowIfOwned(result => result.MarkRetrying(error));
+                            run.Mutation.DispatchFailed(error);
+                        },
+                        OnPause = static run =>
+                        {
+                            run.ShowIfOwned(static result => result.MarkPaused());
+                            run.Mutation.DispatchPause();
+                        },
+                        OnContinue = ContinueMutation,
+                        CanRun = static run => run.Slot.Client.GetMutationCache().CanRun(run.Mutation),
+                        WaitToContinue = static run => run.Mutation.WaitToContinue(),
+                    },
+                    token);
+                mutation.SettleFunction();
+                // The handlers run before this call's outcome is committed, which is where TanStack
+                // dispatches it: what OnSuccess and OnSettled read is the handle as it stands rather than
+                // their own result. Any of them throwing leaves the call a failure with nothing of its own
+                // written, and the failure path below then runs OnError and OnSettled with that exception —
+                // a throwing OnSettled included, as TanStack's catch does. The cache's callback of each name
+                // runs before the options' one, as on the failure path.
+                if (cache.OnSuccess is { } cacheOnSuccess)
+                {
+                    await cacheOnSuccess(data, variables, mutation.State.Context, mutation, functionContext);
+                }
+                await slot.InvokeOnSuccess(mutation.Invocation, data, variables, context, functionContext);
+                if (cache.OnSettled is { } cacheOnSettled)
+                {
+                    await cacheOnSettled(data, null, mutation.State.Variables, mutation.State.Context, mutation, functionContext);
+                }
+                await slot.InvokeOnSettled(mutation.Invocation, data, null, variables, context, functionContext);
+                mutation.SettleSuccess(data);
+                if (CommitOutcome(fiber, slot, mine, data, error: null))
+                {
+                    callOptions?.Deliver(data, null, variables, slot.BoxContext(context), ObserverContext(slot, token));
+                }
+                mutation.Announce(MutationActionType.Success);
+                return data;
+            }
+            catch (Exception ex)
+            {
+                if (reachedFunction) mutation.SettleFunction();
+                await DeliverFailure(slot, mutation, ex, variables, context, functionContext);
+                mutation.SettleError(ex);
+                // Committed after the handlers for the same reason as a success.
+                if (CommitOutcome(fiber, slot, mine, default!, ex))
+                {
+                    callOptions?.Deliver(default, ex, variables, slot.BoxContext(context), ObserverContext(slot, token));
+                }
+                mutation.Announce(MutationActionType.Error);
+                if (rethrowOnFailure) throw;
+                return default!;
+            }
+            finally
+            {
+                cache.RunNext(mutation);
+            }
+        }
+
+        // The context v5's observer hands the per-call callbacks: built from the observer's own options.
+        private static MutationFunctionContext ObserverContext(HookMutationSlot slot, CancellationToken token)
+            => new(slot.Client, slot.Observer.Options.Meta, slot.Observer.Options.MutationKey, token);
+
+        // TanStack's MutationObserver.mutate up to Mutation.execute's first dispatch: the observer leaves the
+        // mutation it showed, a new one is built in the cache from the options the observer holds, and the observer
+        // takes it — after an unmount too, as v5's mutate does, so a call made then stays in the cache until it is
+        // removed by hand. It starts pending, paused when the network mode or an earlier mutation of its scope
+        // holds it.
+        private static Mutation StartMutation<TVariables, TData, TContext>(
+            ComponentFiber fiber,
+            HookMutationSlot<TVariables, TData, TContext> slot,
+            TVariables variables)
+        {
+            var cache = slot.Client.GetMutationCache();
+            slot.Current?.RemoveObserver(slot.Observer);
+            var mutation = cache.Build(slot.Observer.Options, slot.Client.Clock);
+            mutation.Invocation = slot.CommittedInvocation;
+            slot.Current = mutation;
+            mutation.AddObserver(slot.Observer);
+
+            var policy = mutation.Options.Retry ?? RetryPolicy.NoRetry;
+            var isPaused = !(policy.CanFetch() && cache.CanRun(mutation));
+            if (!IsMutationOwnerGone(fiber, slot))
+            {
+                slot.Result.MarkPending(variables);
+                if (isPaused) slot.Result.MarkPaused();
+                RequestRender(fiber);
+            }
+            mutation.DispatchPending(variables, null, isPaused);
+            return mutation;
+        }
+
+        private static void ContinueMutation<TVariables, TData, TContext>(MutationCall<TVariables, TData, TContext> call)
+        {
+            call.ShowIfOwned(static result => result.MarkContinued());
+            call.Mutation.DispatchContinue();
+        }
+
+        // Contained one by one, as TanStack contains them: a throwing OnError must not cost the call its
+        // OnSettled, and neither may cost it the outcome the caller commits after this returns. A task a
+        // handler returns is waited for before the next one runs, and a fault in it is contained as a throw is.
+        // The cache's callback of each name runs before the options' one.
+        private static async VelvetTask DeliverFailure<TVariables, TData, TContext>(
+            HookMutationSlot<TVariables, TData, TContext> slot,
+            Mutation mutation,
+            Exception error,
+            TVariables variables,
+            TContext context,
+            MutationFunctionContext functionContext)
+        {
+            var cache = slot.Client.GetMutationCache();
+            var cacheContext = mutation.State.Context;
+            try
+            {
+                if (cache.OnError is { } cacheOnError) await cacheOnError(error, variables, cacheContext, mutation, functionContext);
+            }
+            catch (Exception handlerEx)
+            {
+                VelvetTask.FromException(handlerEx).Forget();
+            }
+            try
+            {
+                await slot.InvokeOnError(mutation.Invocation, error, variables, context, functionContext);
+            }
+            catch (Exception handlerEx)
+            {
+                VelvetTask.FromException(handlerEx).Forget();
+            }
+            try
+            {
+                if (cache.OnSettled is { } cacheOnSettled)
+                {
+                    await cacheOnSettled(null, error, mutation.State.Variables, cacheContext, mutation, functionContext);
+                }
+            }
+            catch (Exception handlerEx)
+            {
+                VelvetTask.FromException(handlerEx).Forget();
+            }
+            try
+            {
+                await slot.InvokeOnSettled(mutation.Invocation, default!, error, variables, context, functionContext);
+            }
+            catch (Exception handlerEx)
+            {
+                VelvetTask.FromException(handlerEx).Forget();
+            }
+        }
+
+        // The slot's own mount is what counts, not the fiber: a remount clears the fiber's IsDisposed while
+        // a call from the earlier mount is still in flight, and that call must write and render nothing.
+        private static bool IsMutationOwnerGone(ComponentFiber fiber, HookMutationSlot slot) =>
+            slot.Retired || fiber.IsDisposed;
+
+        // The handlers above run whether or not the component is still mounted, as TanStack's option
+        // callbacks outlive the observer; only the handle and the render belong to the mounted component.
+        // Returns whether this call's outcome is the one the handle shows, which is also when its per-call
+        // callbacks are due.
+        private static bool CommitOutcome<TVariables, TData, TContext>(
+            ComponentFiber fiber,
+            HookMutationSlot<TVariables, TData, TContext> slot,
+            long generation,
+            TData data,
+            Exception? error)
+        {
+            if (IsMutationOwnerGone(fiber, slot)) return false;
+            var owns = generation == slot.Generation;
+            if (owns)
+            {
+                if (error == null) slot.Result.MarkSuccess(data);
+                else slot.Result.MarkFailed(error);
+            }
+            RequestRender(fiber);
+            return owns;
+        }
+
+        private readonly struct MutationCall<TVariables, TData, TContext>
+        {
+            public ComponentFiber Fiber { get; }
+            public HookMutationSlot<TVariables, TData, TContext> Slot { get; }
+            public TVariables Variables { get; }
+            public long Generation { get; }
+            public Mutation Mutation { get; }
+            public MutationFunctionContext FunctionContext { get; }
+
+            public MutationCall(
+                ComponentFiber fiber,
+                HookMutationSlot<TVariables, TData, TContext> slot,
+                TVariables variables,
+                long generation,
+                Mutation mutation,
+                MutationFunctionContext functionContext)
+            {
+                Fiber = fiber;
+                Slot = slot;
+                Variables = variables;
+                Generation = generation;
+                Mutation = mutation;
+                FunctionContext = functionContext;
+            }
+
+            // A call writes the handle only while it still owns it, as at its outcome: a retired slot is a
+            // mount that has gone, which Fiber.IsDisposed no longer says once a remount has cleared it.
+            public void ShowIfOwned(Action<MutationResult<TVariables, TData>> write)
+            {
+                if (IsMutationOwnerGone(Fiber, Slot) || Generation != Slot.Generation) return;
+                write(Slot.Result);
+                RequestRender(Fiber);
+            }
+        }
+
+        // TanStack's MutationObserver.reset: the observer leaves the mutation it shows, which runs on, whether or not
+        // the component is still mounted; only a mounted handle is put back to Idle.
+        private static void ResetMutation<TVariables, TData, TContext>(
+            ComponentFiber fiber,
+            HookMutationSlot<TVariables, TData, TContext> slot)
+        {
+            var current = slot.Current;
+            slot.Current = null;
+            current?.RemoveObserver(slot.Observer);
+            if (IsMutationOwnerGone(fiber, slot)) return;
+            slot.Generation++;
+            slot.Result.MarkIdle();
+            RequestRender(fiber);
+        }
+
+        #endregion
+
+        #region UseMutationState
+
+        /// <summary>
+        /// TanStack Query's <c>useMutationState({ filters, select })</c>: what
+        /// <see cref="MutationStateOptions{TResult}.Select"/> makes of each mutation in the client's
+        /// <see cref="MutationCache"/> that <see cref="MutationStateOptions{TResult}.Filters"/> selects, in the
+        /// order the mutations were added. The component re-renders when the list changes: a change in what a
+        /// mutation selects to, or in which mutations are selected. A list deeply equal to the one this hook last
+        /// returned is that same list, as v5's <c>replaceEqualDeep</c> shares it.
+        /// </summary>
+        /// <typeparam name="TResult">What each mutation selects to. Without a
+        /// <see cref="MutationStateOptions{TResult}.Select"/> it is the mutation's <see cref="MutationState"/>, so
+        /// <typeparamref name="TResult"/> must be one it can hold.</typeparam>
+        /// <param name="options">The filters and the selector; null selects every mutation's state.</param>
+        /// <param name="client">The client to read; null reads the one <see cref="QueryClientContext.Ref"/>
+        /// provides, and throws when no Provider supplies one.</param>
+        /// <returns>The selected values.</returns>
+        public static IReadOnlyList<TResult> UseMutationState<TResult>(
+            MutationStateOptions<TResult>? options, QueryClient? client = null)
+        {
+            if (options?.Select == null && !typeof(TResult).IsAssignableFrom(typeof(MutationState)))
+            {
+                throw new ArgumentException(
+                    $"MutationStateOptions<{typeof(TResult).Name}> needs a Select to turn a mutation into a {typeof(TResult).Name}.",
+                    nameof(options));
+            }
+            // Surface "UseMutationState" in HookGuard's outside-of-render message instead of "UseContext".
+            _ = Resolve("UseMutationState");
+            var provided = UseContext(QueryClientContext.Ref);
+            var queryClient = client ?? provided ?? throw new InvalidOperationException(
+                "UseMutationState found no QueryClient. Mount V.Provider(QueryClientContext.Ref, value: client, ...) " +
+                "above the caller, or pass the client to UseMutationState.");
+            var cache = queryClient.GetMutationCache();
+            var snapshots = UseMutableRef(static () => new MutationStateSnapshots<TResult>()).Current;
+            return UseSyncExternalStore(cache.StoreSubscribe, snapshots.Getter(cache, options));
+        }
+
+        /// <summary>
+        /// <see cref="UseMutationState{TResult}"/> without a selector: the <see cref="MutationState"/> of each
+        /// mutation <paramref name="filters"/> selects.
+        /// </summary>
+        public static IReadOnlyList<MutationState> UseMutationState(MutationFilters? filters = null, QueryClient? client = null)
+            => UseMutationState(new MutationStateOptions<MutationState> { Filters = filters }, client);
+
+        /// <summary>
+        /// TanStack Query's <c>useIsMutating(filters)</c>: how many of the mutations <paramref name="filters"/>
+        /// selects are pending, re-rendering the component when the number changes. The filters' own
+        /// <see cref="MutationFilters.Status"/> is replaced.
+        /// </summary>
+        public static int UseIsMutating(MutationFilters? filters = null, QueryClient? client = null)
+            => UseMutationState((filters ?? new MutationFilters()) with { Status = MutationStatus.Pending }, client).Count;
+
+        #endregion
+
+        #region UseQuery
+
+        /// <summary>
+        /// <see cref="UseQuery{TQueryFnData, TData}"/> for a query whose result holds the data its query function
+        /// returns.
+        /// </summary>
+        /// <typeparam name="T">The query's data type. Every query sharing a key must use the same one.</typeparam>
+        /// <param name="options">The key, the query function, and the options
+        /// <see cref="QueryOptions{TQueryFnData, TData}"/> lists.</param>
+        /// <param name="client">The client to read; null reads the one <see cref="QueryClientContext.Ref"/>
+        /// provides, and throws when no Provider supplies one.</param>
+        /// <returns>The entry's state as this render reads it.</returns>
+        public static QueryResult<T> UseQuery<T>(QueryOptions<T> options, QueryClient? client = null)
+            => UseQuery<T, T>(options, client);
+
+        /// <summary>
+        /// TanStack Query's <c>useQuery</c>. Reads the entry <paramref name="options"/>' key names in a
+        /// <see cref="QueryClient"/>, fetches it with the options' query function when it has no data or its
+        /// data is stale, and re-renders the component when a property of the result it reads changes.
+        /// Components reading one key share one entry and one request in flight, and the entry keeps its
+        /// result after they unmount, so a component mounting over it later renders that result at once.
+        /// </summary>
+        /// <remarks>
+        /// Not a Suspense hook: a query with no data yet returns <see cref="QueryStatus.Pending"/> rather than
+        /// suspending, as <c>useQuery</c> does; <see cref="UseSuspenseQuery{TQueryFnData, TData}"/> suspends.
+        /// <see cref="Use{T}(Func{CancellationToken, VelvetTask{T}}, object)"/> stays the cache-less <c>use()</c>.
+        /// <para/>
+        /// The component subscribes in a passive effect, as <c>useQuery</c> does, and a fetch that mounting
+        /// starts begins there. A change of key moves the subscription to the new key's entry: the result
+        /// shows that entry's data, or none, and nothing the old key's request delivers afterwards.
+        /// <para/>
+        /// A failed request runs again as <see cref="QueryOptionsBase{TQueryFnData, TData}.Retry"/> says before the
+        /// failure is the entry's error, and a request that lands is shared structurally with the data the entry
+        /// held (<see cref="QueryOptionsBase{TQueryFnData, TData}.StructuralSharing"/>), as <c>useQuery</c> does. Under
+        /// <see cref="QueryOptionsBase{TQueryFnData, TData}.ThrowOnError"/> the error is thrown from this call.
+        /// </remarks>
+        /// <typeparam name="TQueryFnData">The entry's data type. Every query sharing a key must use the same
+        /// one.</typeparam>
+        /// <typeparam name="TData">The result's data type, which
+        /// <see cref="QueryOptionsBase{TQueryFnData, TData}.Select"/> makes.</typeparam>
+        /// <param name="options">The key, the query function, and the options
+        /// <see cref="QueryOptions{TQueryFnData, TData}"/> lists.</param>
+        /// <param name="client">The client to read; null reads the one <see cref="QueryClientContext.Ref"/>
+        /// provides, and throws when no Provider supplies one.</param>
+        /// <returns>The entry's state as this render reads it.</returns>
+        public static QueryResult<TData> UseQuery<TQueryFnData, TData>(
+            QueryOptions<TQueryFnData, TData> options, QueryClient? client = null)
+        {
+            var query = UseQueryObserver(options, client, suspense: false, nameof(UseQuery));
+            query.ThrowIfError();
+            return query.Result;
+        }
+
+        /// <summary>
+        /// <see cref="UseSuspenseQuery{TQueryFnData, TData}"/> for a query whose result holds the data its query
+        /// function returns.
+        /// </summary>
+        /// <typeparam name="T">The query's data type. Every query sharing a key must use the same one.</typeparam>
+        /// <param name="options">As <see cref="UseQuery{T}"/>'s.</param>
+        /// <param name="client">As <see cref="UseQuery{T}"/>'s.</param>
+        /// <returns>The entry's state once it holds data or an error.</returns>
+        public static QueryResult<T> UseSuspenseQuery<T>(QueryOptions<T> options, QueryClient? client = null)
+            => UseSuspenseQuery<T, T>(options, client);
+
+        /// <summary>
+        /// TanStack Query's <c>useSuspenseQuery</c>: <see cref="UseQuery{TQueryFnData, TData}"/> that suspends to the
+        /// nearest <c>V.Suspense</c> while the result is <see cref="QueryStatus.Pending"/>, and throws to the nearest
+        /// error boundary when the entry's request has failed and it holds no data. While the nearest
+        /// <see cref="QueryErrorResetBoundary"/> stands reset, that error is not thrown and the result carries it;
+        /// otherwise the result is <see cref="QueryStatus.Success"/>, or <see cref="QueryStatus.Error"/> over data
+        /// a later request failed to refresh.
+        /// </summary>
+        /// <remarks>
+        /// The options are <see cref="UseQuery{TQueryFnData, TData}"/>'s, but that the query is always enabled,
+        /// <see cref="QueryOptionsBase{TQueryFnData, TData}.PlaceholderData"/> is ignored, and the error rule above
+        /// replaces <see cref="QueryOptionsBase{TQueryFnData, TData}.ThrowOnError"/> and its function. The stale time, and a garbage-collection
+        /// time, of less than a second count as a second, so the render that follows the suspension does not fetch
+        /// again. A suspending render starts the entry's request, or joins the one in flight, and the component
+        /// renders again once the entry holds data or the request has settled. Until the nearest
+        /// <see cref="QueryErrorResetBoundary"/> is reset, a component mounting over an entry whose request failed
+        /// and that holds no data throws its error rather than fetching again; a request that settles with no data
+        /// while a component is suspended on it undoes such a reset.
+        /// </remarks>
+        /// <typeparam name="TQueryFnData">As <see cref="UseQuery{TQueryFnData, TData}"/>'s.</typeparam>
+        /// <typeparam name="TData">As <see cref="UseQuery{TQueryFnData, TData}"/>'s.</typeparam>
+        /// <param name="options">As <see cref="UseQuery{TQueryFnData, TData}"/>'s.</param>
+        /// <param name="client">As <see cref="UseQuery{TQueryFnData, TData}"/>'s.</param>
+        /// <returns>The entry's state once it holds data or an error.</returns>
+        public static QueryResult<TData> UseSuspenseQuery<TQueryFnData, TData>(
+            QueryOptions<TQueryFnData, TData> options, QueryClient? client = null)
+        {
+            var query = UseQueryObserver(options, client, suspense: true, nameof(UseSuspenseQuery));
+            UseSuspendWhilePending(query);
+            query.ThrowIfError();
+            return query.Result;
+        }
+
+        /// <summary>
+        /// <see cref="UseInfiniteQuery{TQueryFnData, TPageParam, TData}"/> for a query whose result holds the pages
+        /// the entry holds.
+        /// </summary>
+        /// <typeparam name="TQueryFnData">What the query function returns for one page.</typeparam>
+        /// <typeparam name="TPageParam">What names a page.</typeparam>
+        /// <param name="options">The key, the page function, the first page's parameter and the paging.</param>
+        /// <param name="client">As <see cref="UseQuery{TQueryFnData, TData}"/>'s.</param>
+        /// <returns>The entry's state as this render reads it.</returns>
+        public static InfiniteQueryResult<InfiniteData<TQueryFnData, TPageParam>> UseInfiniteQuery<TQueryFnData, TPageParam>(
+            InfiniteQueryOptions<TQueryFnData, TPageParam> options, QueryClient? client = null)
+            => UseInfiniteQuery<TQueryFnData, TPageParam, InfiniteData<TQueryFnData, TPageParam>>(options, client);
+
+        /// <summary>
+        /// TanStack Query's <c>useInfiniteQuery</c>: <see cref="UseQuery{TQueryFnData, TData}"/> over an entry holding
+        /// pages. Its first request fetches the page
+        /// <see cref="InfiniteQueryOptions{TQueryFnData, TPageParam, TData}.InitialPageParam"/> names;
+        /// <see cref="InfiniteQueryResult{TData}.FetchNextPage"/> and
+        /// <see cref="InfiniteQueryResult{TData}.FetchPreviousPage"/> add a page at either end, and every other
+        /// request — a refetch, an invalidation, a mount over stale pages — fetches again from the first page, with
+        /// the parameter it was fetched with, as many pages as the entry holds, each named by
+        /// <see cref="InfiniteQueryOptions{TQueryFnData, TPageParam, TData}.GetNextPageParam"/> from the page before,
+        /// stopping early where it names none. A retry of such a request carries on from the page that failed.
+        /// </summary>
+        /// <typeparam name="TQueryFnData">What the query function returns for one page.</typeparam>
+        /// <typeparam name="TPageParam">What names a page.</typeparam>
+        /// <typeparam name="TData">What the select makes of the pages.</typeparam>
+        /// <param name="options">The key, the page function, the first page's parameter, the paging and the options
+        /// of <see cref="QueryOptions{TQueryFnData, TData}"/>.</param>
+        /// <param name="client">As <see cref="UseQuery{TQueryFnData, TData}"/>'s.</param>
+        /// <returns>The entry's state as this render reads it.</returns>
+        public static InfiniteQueryResult<TData> UseInfiniteQuery<TQueryFnData, TPageParam, TData>(
+            InfiniteQueryOptions<TQueryFnData, TPageParam, TData> options, QueryClient? client = null)
+        {
+            ValidateInfiniteQueryOptions(options);
+            var query = UseQueryObserver(options, client, suspense: false, nameof(UseInfiniteQuery));
+            query.ThrowIfError();
+            return (InfiniteQueryResult<TData>)query.Result;
+        }
+
+        /// <summary>
+        /// <see cref="UseSuspenseInfiniteQuery{TQueryFnData, TPageParam, TData}"/> for a query whose result holds the
+        /// pages the entry holds.
+        /// </summary>
+        /// <typeparam name="TQueryFnData">What the query function returns for one page.</typeparam>
+        /// <typeparam name="TPageParam">What names a page.</typeparam>
+        /// <param name="options">As <see cref="UseInfiniteQuery{TQueryFnData, TPageParam}"/>'s.</param>
+        /// <param name="client">As <see cref="UseQuery{TQueryFnData, TData}"/>'s.</param>
+        /// <returns>The entry's state once it holds pages or an error.</returns>
+        public static InfiniteQueryResult<InfiniteData<TQueryFnData, TPageParam>> UseSuspenseInfiniteQuery<TQueryFnData, TPageParam>(
+            InfiniteQueryOptions<TQueryFnData, TPageParam> options, QueryClient? client = null)
+            => UseSuspenseInfiniteQuery<TQueryFnData, TPageParam, InfiniteData<TQueryFnData, TPageParam>>(options, client);
+
+        /// <summary>
+        /// TanStack Query's <c>useSuspenseInfiniteQuery</c>: <see cref="UseInfiniteQuery{TQueryFnData, TPageParam, TData}"/>
+        /// that suspends and throws as <see cref="UseSuspenseQuery{TQueryFnData, TData}"/> does.
+        /// </summary>
+        /// <typeparam name="TQueryFnData">What the query function returns for one page.</typeparam>
+        /// <typeparam name="TPageParam">What names a page.</typeparam>
+        /// <typeparam name="TData">What the select makes of the pages.</typeparam>
+        /// <param name="options">As <see cref="UseInfiniteQuery{TQueryFnData, TPageParam, TData}"/>'s.</param>
+        /// <param name="client">As <see cref="UseQuery{TQueryFnData, TData}"/>'s.</param>
+        /// <returns>The entry's state once it holds pages or an error.</returns>
+        public static InfiniteQueryResult<TData> UseSuspenseInfiniteQuery<TQueryFnData, TPageParam, TData>(
+            InfiniteQueryOptions<TQueryFnData, TPageParam, TData> options, QueryClient? client = null)
+        {
+            ValidateInfiniteQueryOptions(options);
+            var query = UseQueryObserver(options, client, suspense: true, nameof(UseSuspenseInfiniteQuery));
+            UseSuspendWhilePending(query);
+            query.ThrowIfError();
+            return (InfiniteQueryResult<TData>)query.Result;
+        }
+
+        private static void ValidateInfiniteQueryOptions<TQueryFnData, TPageParam, TData>(
+            InfiniteQueryOptions<TQueryFnData, TPageParam, TData> options)
+        {
+            if (options == null) throw new ArgumentNullException(nameof(options));
+            if (options.QueryFn == null) throw new ArgumentException("InfiniteQueryOptions.QueryFn must not be null.", nameof(options));
+            if (options.GetNextPageParam == null)
+            {
+                throw new ArgumentException("InfiniteQueryOptions.GetNextPageParam must not be null.", nameof(options));
+            }
+        }
+
+        /// <summary>
+        /// TanStack Query's <c>useQueries({ queries })</c> over a list of queries of one data type, so the number of
+        /// queries can change from render to render: <see cref="UseQuery{TQueryFnData, TData}"/> over each of
+        /// <paramref name="queries"/> in one hook. Across renders the queries over one entry are handed the observers held
+        /// over it in the list's order, whatever their positions, and one none is left for gets a new one. The component
+        /// re-renders when a property of a result it has read changes in any of them: a
+        /// property read from one result is tracked for all of them. The first
+        /// query whose error <see cref="QueryOptionsBase{TQueryFnData, TData}.ThrowOnError"/> throws is thrown from
+        /// this call. The overloads taking each query as its own argument keep each query's data types.
+        /// </summary>
+        /// <typeparam name="TQueryFnData">As <see cref="UseQuery{TQueryFnData, TData}"/>'s.</typeparam>
+        /// <typeparam name="TData">As <see cref="UseQuery{TQueryFnData, TData}"/>'s.</typeparam>
+        /// <param name="queries">The queries, each as <see cref="UseQuery{TQueryFnData, TData}"/> takes it.</param>
+        /// <param name="client">As <see cref="UseQuery{TQueryFnData, TData}"/>'s.</param>
+        /// <returns>Each query's result, in the order of <paramref name="queries"/>.</returns>
+        public static IReadOnlyList<QueryResult<TData>> UseQueries<TQueryFnData, TData>(
+            IReadOnlyList<QueryOptions<TQueryFnData, TData>> queries, QueryClient? client = null)
+            => UseQueriesCore(ItemsOf(queries), null, ListOf<TData>, client, suspense: false, nameof(UseQueries));
+
+        /// <summary>
+        /// TanStack Query's <c>useQueries({ queries, combine })</c>: <see cref="UseQueries{TQueryFnData, TData}"/>
+        /// returning what <paramref name="combine"/> makes of the results. It runs again only when a result changed,
+        /// the queries' keys changed or it is another instance, so pass a stable one, and what it returns keeps the
+        /// instance it returned before where the two are deeply equal. The component re-renders when what it returns
+        /// changes, the properties it reads from the results tracked as <see cref="UseQueries{TQueryFnData, TData}"/>
+        /// tracks them; while a suspending query has no data yet, combine is not run and the component re-renders.
+        /// </summary>
+        /// <typeparam name="TQueryFnData">As <see cref="UseQueries{TQueryFnData, TData}"/>'s.</typeparam>
+        /// <typeparam name="TData">As <see cref="UseQueries{TQueryFnData, TData}"/>'s.</typeparam>
+        /// <typeparam name="TCombined">What the results combine to.</typeparam>
+        /// <param name="queries">As <see cref="UseQueries{TQueryFnData, TData}"/>'s.</param>
+        /// <param name="combine">Turns the results, in the order of <paramref name="queries"/>, into one value.</param>
+        /// <param name="client">As <see cref="UseQuery{TQueryFnData, TData}"/>'s.</param>
+        /// <returns>What <paramref name="combine"/> made of the results.</returns>
+        public static TCombined UseQueries<TQueryFnData, TData, TCombined>(
+            IReadOnlyList<QueryOptions<TQueryFnData, TData>> queries,
+            Func<IReadOnlyList<QueryResult<TData>>, TCombined> combine,
+            QueryClient? client = null)
+        {
+            if (combine == null) throw new ArgumentNullException(nameof(combine));
+            return UseQueriesCore(ItemsOf(queries), combine, results => combine(ListOf<TData>(results)), client, suspense: false, nameof(UseQueries));
+        }
+
+        /// <summary>
+        /// TanStack Query's <c>useSuspenseQueries({ queries })</c>: <see cref="UseQueries{TQueryFnData, TData}"/> with
+        /// each query as <see cref="UseSuspenseQuery{TQueryFnData, TData}"/> takes it. While any result is
+        /// <see cref="QueryStatus.Pending"/> the component suspends to the nearest <c>V.Suspense</c>, its render
+        /// starting the request of each pending query, and renders again once every one of them holds data or has
+        /// settled; the first query whose request failed with no data throws its error.
+        /// </summary>
+        /// <typeparam name="TQueryFnData">As <see cref="UseQueries{TQueryFnData, TData}"/>'s.</typeparam>
+        /// <typeparam name="TData">As <see cref="UseQueries{TQueryFnData, TData}"/>'s.</typeparam>
+        /// <param name="queries">As <see cref="UseQueries{TQueryFnData, TData}"/>'s.</param>
+        /// <param name="client">As <see cref="UseQuery{TQueryFnData, TData}"/>'s.</param>
+        /// <returns>Each query's result once all hold data or an error.</returns>
+        public static IReadOnlyList<QueryResult<TData>> UseSuspenseQueries<TQueryFnData, TData>(
+            IReadOnlyList<QueryOptions<TQueryFnData, TData>> queries, QueryClient? client = null)
+            => UseQueriesCore(ItemsOf(queries), null, ListOf<TData>, client, suspense: true, nameof(UseSuspenseQueries));
+
+        /// <summary>
+        /// TanStack Query's <c>useSuspenseQueries({ queries, combine })</c>: <see cref="UseSuspenseQueries{TQueryFnData, TData}"/>
+        /// returning what <paramref name="combine"/> makes of the results, on the terms of
+        /// <see cref="UseQueries{TQueryFnData, TData, TCombined}"/>.
+        /// </summary>
+        /// <typeparam name="TQueryFnData">As <see cref="UseQueries{TQueryFnData, TData}"/>'s.</typeparam>
+        /// <typeparam name="TData">As <see cref="UseQueries{TQueryFnData, TData}"/>'s.</typeparam>
+        /// <typeparam name="TCombined">What the results combine to.</typeparam>
+        /// <param name="queries">As <see cref="UseQueries{TQueryFnData, TData}"/>'s.</param>
+        /// <param name="combine">As <see cref="UseQueries{TQueryFnData, TData, TCombined}"/>'s.</param>
+        /// <param name="client">As <see cref="UseQuery{TQueryFnData, TData}"/>'s.</param>
+        /// <returns>What <paramref name="combine"/> made of the results.</returns>
+        public static TCombined UseSuspenseQueries<TQueryFnData, TData, TCombined>(
+            IReadOnlyList<QueryOptions<TQueryFnData, TData>> queries,
+            Func<IReadOnlyList<QueryResult<TData>>, TCombined> combine,
+            QueryClient? client = null)
+        {
+            if (combine == null) throw new ArgumentNullException(nameof(combine));
+            return UseQueriesCore(ItemsOf(queries), combine, results => combine(ListOf<TData>(results)), client, suspense: true, nameof(UseSuspenseQueries));
+        }
+
+        /// <summary>
+        /// <see cref="UseQueries{TQueryFnData, TData}"/> over 2 queries, each keeping its own data types, as TanStack
+        /// Query's <c>useQueries</c> types each query of its array.
+        /// </summary>
+        /// <typeparam name="TQueryFnData1">The entry data type of query 1.</typeparam>
+        /// <typeparam name="TData1">The result data type of query 1.</typeparam>
+        /// <typeparam name="TQueryFnData2">The entry data type of query 2.</typeparam>
+        /// <typeparam name="TData2">The result data type of query 2.</typeparam>
+        /// <param name="query1">Query 1, as <see cref="UseQuery{TQueryFnData, TData}"/> takes it.</param>
+        /// <param name="query2">Query 2, as <see cref="UseQuery{TQueryFnData, TData}"/> takes it.</param>
+        /// <param name="client">As <see cref="UseQuery{TQueryFnData, TData}"/>'s.</param>
+        /// <returns>Each query's result, in the order of the arguments.</returns>
+        public static (QueryResult<TData1>, QueryResult<TData2>) UseQueries<TQueryFnData1, TData1, TQueryFnData2, TData2>(
+            QueryOptions<TQueryFnData1, TData1> query1,
+            QueryOptions<TQueryFnData2, TData2> query2,
+            QueryClient? client = null)
+            => UseQueriesCore(new QueriesItem[] { Item(query1), Item(query2) }, null, results => ((QueryResult<TData1>)results[0], (QueryResult<TData2>)results[1]), client, suspense: false, nameof(UseQueries));
+
+        /// <summary>
+        /// <see cref="UseQueries{TQueryFnData, TData, TCombined}"/> over 2 queries, each keeping its own data types,
+        /// combine handed each result as its own argument.
+        /// </summary>
+        /// <typeparam name="TQueryFnData1">The entry data type of query 1.</typeparam>
+        /// <typeparam name="TData1">The result data type of query 1.</typeparam>
+        /// <typeparam name="TQueryFnData2">The entry data type of query 2.</typeparam>
+        /// <typeparam name="TData2">The result data type of query 2.</typeparam>
+        /// <typeparam name="TCombined">What the results combine to.</typeparam>
+        /// <param name="query1">Query 1, as <see cref="UseQuery{TQueryFnData, TData}"/> takes it.</param>
+        /// <param name="query2">Query 2, as <see cref="UseQuery{TQueryFnData, TData}"/> takes it.</param>
+        /// <param name="combine">As <see cref="UseQueries{TQueryFnData, TData, TCombined}"/>'s, handed each result.</param>
+        /// <param name="client">As <see cref="UseQuery{TQueryFnData, TData}"/>'s.</param>
+        /// <returns>What <paramref name="combine"/> made of the results.</returns>
+        public static TCombined UseQueries<TQueryFnData1, TData1, TQueryFnData2, TData2, TCombined>(
+            QueryOptions<TQueryFnData1, TData1> query1,
+            QueryOptions<TQueryFnData2, TData2> query2,
+            Func<QueryResult<TData1>, QueryResult<TData2>, TCombined> combine,
+            QueryClient? client = null)
+        {
+            if (combine == null) throw new ArgumentNullException(nameof(combine));
+            return UseQueriesCore(new QueriesItem[] { Item(query1), Item(query2) }, combine, results => combine((QueryResult<TData1>)results[0], (QueryResult<TData2>)results[1]), client, suspense: false, nameof(UseQueries));
+        }
+
+        /// <summary>
+        /// <see cref="UseQueries{TQueryFnData, TData}"/> over 3 queries, each keeping its own data types, as TanStack
+        /// Query's <c>useQueries</c> types each query of its array.
+        /// </summary>
+        /// <typeparam name="TQueryFnData1">The entry data type of query 1.</typeparam>
+        /// <typeparam name="TData1">The result data type of query 1.</typeparam>
+        /// <typeparam name="TQueryFnData2">The entry data type of query 2.</typeparam>
+        /// <typeparam name="TData2">The result data type of query 2.</typeparam>
+        /// <typeparam name="TQueryFnData3">The entry data type of query 3.</typeparam>
+        /// <typeparam name="TData3">The result data type of query 3.</typeparam>
+        /// <param name="query1">Query 1, as <see cref="UseQuery{TQueryFnData, TData}"/> takes it.</param>
+        /// <param name="query2">Query 2, as <see cref="UseQuery{TQueryFnData, TData}"/> takes it.</param>
+        /// <param name="query3">Query 3, as <see cref="UseQuery{TQueryFnData, TData}"/> takes it.</param>
+        /// <param name="client">As <see cref="UseQuery{TQueryFnData, TData}"/>'s.</param>
+        /// <returns>Each query's result, in the order of the arguments.</returns>
+        public static (QueryResult<TData1>, QueryResult<TData2>, QueryResult<TData3>) UseQueries<TQueryFnData1, TData1, TQueryFnData2, TData2, TQueryFnData3, TData3>(
+            QueryOptions<TQueryFnData1, TData1> query1,
+            QueryOptions<TQueryFnData2, TData2> query2,
+            QueryOptions<TQueryFnData3, TData3> query3,
+            QueryClient? client = null)
+            => UseQueriesCore(new QueriesItem[] { Item(query1), Item(query2), Item(query3) }, null, results => ((QueryResult<TData1>)results[0], (QueryResult<TData2>)results[1], (QueryResult<TData3>)results[2]), client, suspense: false, nameof(UseQueries));
+
+        /// <summary>
+        /// <see cref="UseQueries{TQueryFnData, TData, TCombined}"/> over 3 queries, each keeping its own data types,
+        /// combine handed each result as its own argument.
+        /// </summary>
+        /// <typeparam name="TQueryFnData1">The entry data type of query 1.</typeparam>
+        /// <typeparam name="TData1">The result data type of query 1.</typeparam>
+        /// <typeparam name="TQueryFnData2">The entry data type of query 2.</typeparam>
+        /// <typeparam name="TData2">The result data type of query 2.</typeparam>
+        /// <typeparam name="TQueryFnData3">The entry data type of query 3.</typeparam>
+        /// <typeparam name="TData3">The result data type of query 3.</typeparam>
+        /// <typeparam name="TCombined">What the results combine to.</typeparam>
+        /// <param name="query1">Query 1, as <see cref="UseQuery{TQueryFnData, TData}"/> takes it.</param>
+        /// <param name="query2">Query 2, as <see cref="UseQuery{TQueryFnData, TData}"/> takes it.</param>
+        /// <param name="query3">Query 3, as <see cref="UseQuery{TQueryFnData, TData}"/> takes it.</param>
+        /// <param name="combine">As <see cref="UseQueries{TQueryFnData, TData, TCombined}"/>'s, handed each result.</param>
+        /// <param name="client">As <see cref="UseQuery{TQueryFnData, TData}"/>'s.</param>
+        /// <returns>What <paramref name="combine"/> made of the results.</returns>
+        public static TCombined UseQueries<TQueryFnData1, TData1, TQueryFnData2, TData2, TQueryFnData3, TData3, TCombined>(
+            QueryOptions<TQueryFnData1, TData1> query1,
+            QueryOptions<TQueryFnData2, TData2> query2,
+            QueryOptions<TQueryFnData3, TData3> query3,
+            Func<QueryResult<TData1>, QueryResult<TData2>, QueryResult<TData3>, TCombined> combine,
+            QueryClient? client = null)
+        {
+            if (combine == null) throw new ArgumentNullException(nameof(combine));
+            return UseQueriesCore(new QueriesItem[] { Item(query1), Item(query2), Item(query3) }, combine, results => combine((QueryResult<TData1>)results[0], (QueryResult<TData2>)results[1], (QueryResult<TData3>)results[2]), client, suspense: false, nameof(UseQueries));
+        }
+
+        /// <summary>
+        /// <see cref="UseQueries{TQueryFnData, TData}"/> over 4 queries, each keeping its own data types, as TanStack
+        /// Query's <c>useQueries</c> types each query of its array.
+        /// </summary>
+        /// <typeparam name="TQueryFnData1">The entry data type of query 1.</typeparam>
+        /// <typeparam name="TData1">The result data type of query 1.</typeparam>
+        /// <typeparam name="TQueryFnData2">The entry data type of query 2.</typeparam>
+        /// <typeparam name="TData2">The result data type of query 2.</typeparam>
+        /// <typeparam name="TQueryFnData3">The entry data type of query 3.</typeparam>
+        /// <typeparam name="TData3">The result data type of query 3.</typeparam>
+        /// <typeparam name="TQueryFnData4">The entry data type of query 4.</typeparam>
+        /// <typeparam name="TData4">The result data type of query 4.</typeparam>
+        /// <param name="query1">Query 1, as <see cref="UseQuery{TQueryFnData, TData}"/> takes it.</param>
+        /// <param name="query2">Query 2, as <see cref="UseQuery{TQueryFnData, TData}"/> takes it.</param>
+        /// <param name="query3">Query 3, as <see cref="UseQuery{TQueryFnData, TData}"/> takes it.</param>
+        /// <param name="query4">Query 4, as <see cref="UseQuery{TQueryFnData, TData}"/> takes it.</param>
+        /// <param name="client">As <see cref="UseQuery{TQueryFnData, TData}"/>'s.</param>
+        /// <returns>Each query's result, in the order of the arguments.</returns>
+        public static (QueryResult<TData1>, QueryResult<TData2>, QueryResult<TData3>, QueryResult<TData4>) UseQueries<TQueryFnData1, TData1, TQueryFnData2, TData2, TQueryFnData3, TData3, TQueryFnData4, TData4>(
+            QueryOptions<TQueryFnData1, TData1> query1,
+            QueryOptions<TQueryFnData2, TData2> query2,
+            QueryOptions<TQueryFnData3, TData3> query3,
+            QueryOptions<TQueryFnData4, TData4> query4,
+            QueryClient? client = null)
+            => UseQueriesCore(new QueriesItem[] { Item(query1), Item(query2), Item(query3), Item(query4) }, null, results => ((QueryResult<TData1>)results[0], (QueryResult<TData2>)results[1], (QueryResult<TData3>)results[2], (QueryResult<TData4>)results[3]), client, suspense: false, nameof(UseQueries));
+
+        /// <summary>
+        /// <see cref="UseQueries{TQueryFnData, TData, TCombined}"/> over 4 queries, each keeping its own data types,
+        /// combine handed each result as its own argument.
+        /// </summary>
+        /// <typeparam name="TQueryFnData1">The entry data type of query 1.</typeparam>
+        /// <typeparam name="TData1">The result data type of query 1.</typeparam>
+        /// <typeparam name="TQueryFnData2">The entry data type of query 2.</typeparam>
+        /// <typeparam name="TData2">The result data type of query 2.</typeparam>
+        /// <typeparam name="TQueryFnData3">The entry data type of query 3.</typeparam>
+        /// <typeparam name="TData3">The result data type of query 3.</typeparam>
+        /// <typeparam name="TQueryFnData4">The entry data type of query 4.</typeparam>
+        /// <typeparam name="TData4">The result data type of query 4.</typeparam>
+        /// <typeparam name="TCombined">What the results combine to.</typeparam>
+        /// <param name="query1">Query 1, as <see cref="UseQuery{TQueryFnData, TData}"/> takes it.</param>
+        /// <param name="query2">Query 2, as <see cref="UseQuery{TQueryFnData, TData}"/> takes it.</param>
+        /// <param name="query3">Query 3, as <see cref="UseQuery{TQueryFnData, TData}"/> takes it.</param>
+        /// <param name="query4">Query 4, as <see cref="UseQuery{TQueryFnData, TData}"/> takes it.</param>
+        /// <param name="combine">As <see cref="UseQueries{TQueryFnData, TData, TCombined}"/>'s, handed each result.</param>
+        /// <param name="client">As <see cref="UseQuery{TQueryFnData, TData}"/>'s.</param>
+        /// <returns>What <paramref name="combine"/> made of the results.</returns>
+        public static TCombined UseQueries<TQueryFnData1, TData1, TQueryFnData2, TData2, TQueryFnData3, TData3, TQueryFnData4, TData4, TCombined>(
+            QueryOptions<TQueryFnData1, TData1> query1,
+            QueryOptions<TQueryFnData2, TData2> query2,
+            QueryOptions<TQueryFnData3, TData3> query3,
+            QueryOptions<TQueryFnData4, TData4> query4,
+            Func<QueryResult<TData1>, QueryResult<TData2>, QueryResult<TData3>, QueryResult<TData4>, TCombined> combine,
+            QueryClient? client = null)
+        {
+            if (combine == null) throw new ArgumentNullException(nameof(combine));
+            return UseQueriesCore(new QueriesItem[] { Item(query1), Item(query2), Item(query3), Item(query4) }, combine, results => combine((QueryResult<TData1>)results[0], (QueryResult<TData2>)results[1], (QueryResult<TData3>)results[2], (QueryResult<TData4>)results[3]), client, suspense: false, nameof(UseQueries));
+        }
+
+        /// <summary>
+        /// <see cref="UseSuspenseQueries{TQueryFnData, TData}"/> over 2 queries, each keeping its own data types, as TanStack
+        /// Query's <c>useSuspenseQueries</c> types each query of its array.
+        /// </summary>
+        /// <typeparam name="TQueryFnData1">The entry data type of query 1.</typeparam>
+        /// <typeparam name="TData1">The result data type of query 1.</typeparam>
+        /// <typeparam name="TQueryFnData2">The entry data type of query 2.</typeparam>
+        /// <typeparam name="TData2">The result data type of query 2.</typeparam>
+        /// <param name="query1">Query 1, as <see cref="UseQuery{TQueryFnData, TData}"/> takes it.</param>
+        /// <param name="query2">Query 2, as <see cref="UseQuery{TQueryFnData, TData}"/> takes it.</param>
+        /// <param name="client">As <see cref="UseQuery{TQueryFnData, TData}"/>'s.</param>
+        /// <returns>Each query's result, in the order of the arguments.</returns>
+        public static (QueryResult<TData1>, QueryResult<TData2>) UseSuspenseQueries<TQueryFnData1, TData1, TQueryFnData2, TData2>(
+            QueryOptions<TQueryFnData1, TData1> query1,
+            QueryOptions<TQueryFnData2, TData2> query2,
+            QueryClient? client = null)
+            => UseQueriesCore(new QueriesItem[] { Item(query1), Item(query2) }, null, results => ((QueryResult<TData1>)results[0], (QueryResult<TData2>)results[1]), client, suspense: true, nameof(UseSuspenseQueries));
+
+        /// <summary>
+        /// <see cref="UseSuspenseQueries{TQueryFnData, TData, TCombined}"/> over 2 queries, each keeping its own data types,
+        /// combine handed each result as its own argument.
+        /// </summary>
+        /// <typeparam name="TQueryFnData1">The entry data type of query 1.</typeparam>
+        /// <typeparam name="TData1">The result data type of query 1.</typeparam>
+        /// <typeparam name="TQueryFnData2">The entry data type of query 2.</typeparam>
+        /// <typeparam name="TData2">The result data type of query 2.</typeparam>
+        /// <typeparam name="TCombined">What the results combine to.</typeparam>
+        /// <param name="query1">Query 1, as <see cref="UseQuery{TQueryFnData, TData}"/> takes it.</param>
+        /// <param name="query2">Query 2, as <see cref="UseQuery{TQueryFnData, TData}"/> takes it.</param>
+        /// <param name="combine">As <see cref="UseQueries{TQueryFnData, TData, TCombined}"/>'s, handed each result.</param>
+        /// <param name="client">As <see cref="UseQuery{TQueryFnData, TData}"/>'s.</param>
+        /// <returns>What <paramref name="combine"/> made of the results.</returns>
+        public static TCombined UseSuspenseQueries<TQueryFnData1, TData1, TQueryFnData2, TData2, TCombined>(
+            QueryOptions<TQueryFnData1, TData1> query1,
+            QueryOptions<TQueryFnData2, TData2> query2,
+            Func<QueryResult<TData1>, QueryResult<TData2>, TCombined> combine,
+            QueryClient? client = null)
+        {
+            if (combine == null) throw new ArgumentNullException(nameof(combine));
+            return UseQueriesCore(new QueriesItem[] { Item(query1), Item(query2) }, combine, results => combine((QueryResult<TData1>)results[0], (QueryResult<TData2>)results[1]), client, suspense: true, nameof(UseSuspenseQueries));
+        }
+
+        /// <summary>
+        /// <see cref="UseSuspenseQueries{TQueryFnData, TData}"/> over 3 queries, each keeping its own data types, as TanStack
+        /// Query's <c>useSuspenseQueries</c> types each query of its array.
+        /// </summary>
+        /// <typeparam name="TQueryFnData1">The entry data type of query 1.</typeparam>
+        /// <typeparam name="TData1">The result data type of query 1.</typeparam>
+        /// <typeparam name="TQueryFnData2">The entry data type of query 2.</typeparam>
+        /// <typeparam name="TData2">The result data type of query 2.</typeparam>
+        /// <typeparam name="TQueryFnData3">The entry data type of query 3.</typeparam>
+        /// <typeparam name="TData3">The result data type of query 3.</typeparam>
+        /// <param name="query1">Query 1, as <see cref="UseQuery{TQueryFnData, TData}"/> takes it.</param>
+        /// <param name="query2">Query 2, as <see cref="UseQuery{TQueryFnData, TData}"/> takes it.</param>
+        /// <param name="query3">Query 3, as <see cref="UseQuery{TQueryFnData, TData}"/> takes it.</param>
+        /// <param name="client">As <see cref="UseQuery{TQueryFnData, TData}"/>'s.</param>
+        /// <returns>Each query's result, in the order of the arguments.</returns>
+        public static (QueryResult<TData1>, QueryResult<TData2>, QueryResult<TData3>) UseSuspenseQueries<TQueryFnData1, TData1, TQueryFnData2, TData2, TQueryFnData3, TData3>(
+            QueryOptions<TQueryFnData1, TData1> query1,
+            QueryOptions<TQueryFnData2, TData2> query2,
+            QueryOptions<TQueryFnData3, TData3> query3,
+            QueryClient? client = null)
+            => UseQueriesCore(new QueriesItem[] { Item(query1), Item(query2), Item(query3) }, null, results => ((QueryResult<TData1>)results[0], (QueryResult<TData2>)results[1], (QueryResult<TData3>)results[2]), client, suspense: true, nameof(UseSuspenseQueries));
+
+        /// <summary>
+        /// <see cref="UseSuspenseQueries{TQueryFnData, TData, TCombined}"/> over 3 queries, each keeping its own data types,
+        /// combine handed each result as its own argument.
+        /// </summary>
+        /// <typeparam name="TQueryFnData1">The entry data type of query 1.</typeparam>
+        /// <typeparam name="TData1">The result data type of query 1.</typeparam>
+        /// <typeparam name="TQueryFnData2">The entry data type of query 2.</typeparam>
+        /// <typeparam name="TData2">The result data type of query 2.</typeparam>
+        /// <typeparam name="TQueryFnData3">The entry data type of query 3.</typeparam>
+        /// <typeparam name="TData3">The result data type of query 3.</typeparam>
+        /// <typeparam name="TCombined">What the results combine to.</typeparam>
+        /// <param name="query1">Query 1, as <see cref="UseQuery{TQueryFnData, TData}"/> takes it.</param>
+        /// <param name="query2">Query 2, as <see cref="UseQuery{TQueryFnData, TData}"/> takes it.</param>
+        /// <param name="query3">Query 3, as <see cref="UseQuery{TQueryFnData, TData}"/> takes it.</param>
+        /// <param name="combine">As <see cref="UseQueries{TQueryFnData, TData, TCombined}"/>'s, handed each result.</param>
+        /// <param name="client">As <see cref="UseQuery{TQueryFnData, TData}"/>'s.</param>
+        /// <returns>What <paramref name="combine"/> made of the results.</returns>
+        public static TCombined UseSuspenseQueries<TQueryFnData1, TData1, TQueryFnData2, TData2, TQueryFnData3, TData3, TCombined>(
+            QueryOptions<TQueryFnData1, TData1> query1,
+            QueryOptions<TQueryFnData2, TData2> query2,
+            QueryOptions<TQueryFnData3, TData3> query3,
+            Func<QueryResult<TData1>, QueryResult<TData2>, QueryResult<TData3>, TCombined> combine,
+            QueryClient? client = null)
+        {
+            if (combine == null) throw new ArgumentNullException(nameof(combine));
+            return UseQueriesCore(new QueriesItem[] { Item(query1), Item(query2), Item(query3) }, combine, results => combine((QueryResult<TData1>)results[0], (QueryResult<TData2>)results[1], (QueryResult<TData3>)results[2]), client, suspense: true, nameof(UseSuspenseQueries));
+        }
+
+        /// <summary>
+        /// <see cref="UseSuspenseQueries{TQueryFnData, TData}"/> over 4 queries, each keeping its own data types, as TanStack
+        /// Query's <c>useSuspenseQueries</c> types each query of its array.
+        /// </summary>
+        /// <typeparam name="TQueryFnData1">The entry data type of query 1.</typeparam>
+        /// <typeparam name="TData1">The result data type of query 1.</typeparam>
+        /// <typeparam name="TQueryFnData2">The entry data type of query 2.</typeparam>
+        /// <typeparam name="TData2">The result data type of query 2.</typeparam>
+        /// <typeparam name="TQueryFnData3">The entry data type of query 3.</typeparam>
+        /// <typeparam name="TData3">The result data type of query 3.</typeparam>
+        /// <typeparam name="TQueryFnData4">The entry data type of query 4.</typeparam>
+        /// <typeparam name="TData4">The result data type of query 4.</typeparam>
+        /// <param name="query1">Query 1, as <see cref="UseQuery{TQueryFnData, TData}"/> takes it.</param>
+        /// <param name="query2">Query 2, as <see cref="UseQuery{TQueryFnData, TData}"/> takes it.</param>
+        /// <param name="query3">Query 3, as <see cref="UseQuery{TQueryFnData, TData}"/> takes it.</param>
+        /// <param name="query4">Query 4, as <see cref="UseQuery{TQueryFnData, TData}"/> takes it.</param>
+        /// <param name="client">As <see cref="UseQuery{TQueryFnData, TData}"/>'s.</param>
+        /// <returns>Each query's result, in the order of the arguments.</returns>
+        public static (QueryResult<TData1>, QueryResult<TData2>, QueryResult<TData3>, QueryResult<TData4>) UseSuspenseQueries<TQueryFnData1, TData1, TQueryFnData2, TData2, TQueryFnData3, TData3, TQueryFnData4, TData4>(
+            QueryOptions<TQueryFnData1, TData1> query1,
+            QueryOptions<TQueryFnData2, TData2> query2,
+            QueryOptions<TQueryFnData3, TData3> query3,
+            QueryOptions<TQueryFnData4, TData4> query4,
+            QueryClient? client = null)
+            => UseQueriesCore(new QueriesItem[] { Item(query1), Item(query2), Item(query3), Item(query4) }, null, results => ((QueryResult<TData1>)results[0], (QueryResult<TData2>)results[1], (QueryResult<TData3>)results[2], (QueryResult<TData4>)results[3]), client, suspense: true, nameof(UseSuspenseQueries));
+
+        /// <summary>
+        /// <see cref="UseSuspenseQueries{TQueryFnData, TData, TCombined}"/> over 4 queries, each keeping its own data types,
+        /// combine handed each result as its own argument.
+        /// </summary>
+        /// <typeparam name="TQueryFnData1">The entry data type of query 1.</typeparam>
+        /// <typeparam name="TData1">The result data type of query 1.</typeparam>
+        /// <typeparam name="TQueryFnData2">The entry data type of query 2.</typeparam>
+        /// <typeparam name="TData2">The result data type of query 2.</typeparam>
+        /// <typeparam name="TQueryFnData3">The entry data type of query 3.</typeparam>
+        /// <typeparam name="TData3">The result data type of query 3.</typeparam>
+        /// <typeparam name="TQueryFnData4">The entry data type of query 4.</typeparam>
+        /// <typeparam name="TData4">The result data type of query 4.</typeparam>
+        /// <typeparam name="TCombined">What the results combine to.</typeparam>
+        /// <param name="query1">Query 1, as <see cref="UseQuery{TQueryFnData, TData}"/> takes it.</param>
+        /// <param name="query2">Query 2, as <see cref="UseQuery{TQueryFnData, TData}"/> takes it.</param>
+        /// <param name="query3">Query 3, as <see cref="UseQuery{TQueryFnData, TData}"/> takes it.</param>
+        /// <param name="query4">Query 4, as <see cref="UseQuery{TQueryFnData, TData}"/> takes it.</param>
+        /// <param name="combine">As <see cref="UseQueries{TQueryFnData, TData, TCombined}"/>'s, handed each result.</param>
+        /// <param name="client">As <see cref="UseQuery{TQueryFnData, TData}"/>'s.</param>
+        /// <returns>What <paramref name="combine"/> made of the results.</returns>
+        public static TCombined UseSuspenseQueries<TQueryFnData1, TData1, TQueryFnData2, TData2, TQueryFnData3, TData3, TQueryFnData4, TData4, TCombined>(
+            QueryOptions<TQueryFnData1, TData1> query1,
+            QueryOptions<TQueryFnData2, TData2> query2,
+            QueryOptions<TQueryFnData3, TData3> query3,
+            QueryOptions<TQueryFnData4, TData4> query4,
+            Func<QueryResult<TData1>, QueryResult<TData2>, QueryResult<TData3>, QueryResult<TData4>, TCombined> combine,
+            QueryClient? client = null)
+        {
+            if (combine == null) throw new ArgumentNullException(nameof(combine));
+            return UseQueriesCore(new QueriesItem[] { Item(query1), Item(query2), Item(query3), Item(query4) }, combine, results => combine((QueryResult<TData1>)results[0], (QueryResult<TData2>)results[1], (QueryResult<TData3>)results[2], (QueryResult<TData4>)results[3]), client, suspense: true, nameof(UseSuspenseQueries));
+        }
+
+        private static QueriesItem Item<TQueryFnData, TData>(QueryOptions<TQueryFnData, TData> options)
+        {
+            ValidateQueryOptions(options);
+            return new QueriesItem<TQueryFnData, TData>(options);
+        }
+
+        private static QueriesItem[] ItemsOf<TQueryFnData, TData>(IReadOnlyList<QueryOptions<TQueryFnData, TData>> queries)
+        {
+            if (queries == null) throw new ArgumentNullException(nameof(queries));
+            var items = new QueriesItem[queries.Count];
+            for (var i = 0; i < items.Length; i++)
+            {
+                items[i] = Item(queries[i]);
+            }
+            return items;
+        }
+
+        private static IReadOnlyList<QueryResult<TData>> ListOf<TData>(object[] results)
+        {
+            var list = new QueryResult<TData>[results.Length];
+            for (var i = 0; i < list.Length; i++)
+            {
+                list[i] = (QueryResult<TData>)results[i];
+            }
+            return list;
+        }
+
+        // project turns the results into what the hook returns without a combine, and into what combine is handed
+        // with one; combine is the caller's function, which the memo compares by instance.
+        private static TCombined UseQueriesCore<TCombined>(
+            QueriesItem[] items, Delegate? combine, Func<object[], TCombined> project, QueryClient? client, bool suspense, string hookName)
+        {
+            // Surface the hook's name in HookGuard's outside-of-render message instead of "UseContext".
+            _ = Resolve(hookName);
+            var provided = UseContext(QueryClientContext.Ref);
+            var queryClient = client ?? provided ?? throw new InvalidOperationException(
+                $"{hookName} found no QueryClient. Mount V.Provider(QueryClientContext.Ref, value: client, ...) " +
+                $"above the caller, or pass the client to {hookName}.");
+            var boundary = UseContext(QueryErrorResetBoundaryContext.Ref)!;
+            var (_, setVersion) = UseState(0);
+            // MUTANT_SURVIVES(equivalent, arithmetic): a step of one either way gives a value unequal to the one the slot holds, which is all the re-render asks.
+            var observer = UseMutableRef(() => new QueriesObserver<TCombined>(() => setVersion.Invoke(v => v + 1))).Current;
+            var read = observer.Read(queryClient, items, suspense, boundary);
+
+            // TanStack's useClearResetErrorBoundary.
+            UseEffect((Func<Action?>)(() =>
+            {
+                boundary.ClearReset();
+                return null;
+            }), new object?[] { boundary });
+            UseEffect(observer.UnmountEffect, Array.Empty<object?>());
+            UseEffect((Func<Action?>)(() =>
+            {
+                observer.Sync(queryClient, read, combine, combine == null ? null : project);
+                return null;
+            }));
+
+            // Called by both forms rather than under the suspense flag, so no hook sits in a branch; only a
+            // suspending query waits.
+            UseSuspendWhileAnyPending(read, queryClient, boundary);
+            read.ThrowFirstError(boundary);
+            return combine == null ? project(read.Results) : observer.Combine(read.Results, read.Keys, combine, project);
+        }
+
+        // UseSuspendWhilePending over every query whose result is pending: the render starts each one's request and
+        // waits for all of them, as v5's useQueries throws Promise.all of their fetchOptimistic.
+        private static void UseSuspendWhileAnyPending(QueriesRead read, QueryClient client, QueryErrorResetBoundary boundary)
+        {
+            List<Func<QueryErrorResetBoundary, CancellationToken, VelvetTask<Unit>>>? waits = null;
+            var requests = new List<object?>();
+            foreach (var item in read.Items)
+            {
+                var wait = item.Suspend(client, out var request);
+                if (wait == null) continue;
+                (waits ??= new List<Func<QueryErrorResetBoundary, CancellationToken, VelvetTask<Unit>>>()).Add(wait);
+                requests.Add(request);
+            }
+            UseCore(
+                waits == null ? s_settledSuspendedQuery : token => WaitForSuspendedQueries(waits, boundary, token),
+                waits == null ? s_settledSuspendedQueryKey : new QueryKey(requests.ToArray()),
+                resourceKeyExplicit: true,
+                nameof(UseSuspenseQueries));
+        }
+
+        private static async VelvetTask<Unit> WaitForSuspendedQueries(
+            List<Func<QueryErrorResetBoundary, CancellationToken, VelvetTask<Unit>>> waits, QueryErrorResetBoundary boundary,
+            CancellationToken token)
+        {
+            foreach (var wait in waits)
+            {
+                await wait(boundary, token);
+            }
+            return Unit.Default;
+        }
+
+        /// <summary>
+        /// TanStack Query's <c>useIsFetching(filters)</c>: how many of the entries <paramref name="filters"/> selects
+        /// have a request in flight and running, as <see cref="QueryClient.IsFetching"/> counts them, re-rendering the
+        /// component when the number changes. The filters' own <see cref="QueryFilters.FetchStatus"/> is replaced.
+        /// </summary>
+        /// <param name="filters">The entries to count; null counts every entry.</param>
+        /// <param name="client">The client to read; null reads the one <see cref="QueryClientContext.Ref"/>
+        /// provides, and throws when no Provider supplies one.</param>
+        /// <returns>The number of entries fetching.</returns>
+        public static int UseIsFetching(QueryFilters? filters = null, QueryClient? client = null)
+        {
+            // Surface "UseIsFetching" in HookGuard's outside-of-render message instead of "UseContext".
+            _ = Resolve(nameof(UseIsFetching));
+            var provided = UseContext(QueryClientContext.Ref);
+            var queryClient = client ?? provided ?? throw new InvalidOperationException(
+                "UseIsFetching found no QueryClient. Mount V.Provider(QueryClientContext.Ref, value: client, ...) " +
+                "above the caller, or pass the client to UseIsFetching.");
+            return UseSyncExternalStore(queryClient.GetQueryCache().StoreSubscribe, () => queryClient.IsFetching(filters));
+        }
+
+        /// <summary>
+        /// TanStack Query's <c>useQueryErrorResetBoundary</c>: the <see cref="QueryErrorResetBoundary"/>
+        /// <see cref="QueryErrorResetBoundaryContext.Ref"/> provides, or the one shared by every query without a
+        /// Provider above it.
+        /// </summary>
+        /// <returns>The boundary.</returns>
+        public static QueryErrorResetBoundary UseQueryErrorResetBoundary()
+            => UseContext(QueryErrorResetBoundaryContext.Ref)!;
+
+        private static readonly Func<CancellationToken, VelvetTask<Unit>> s_settledSuspendedQuery
+            = _ => VelvetTask.FromResult(Unit.Default);
+        private static readonly object s_settledSuspendedQueryKey = new();
+
+        // What a query hook's render read, and what its suspense and error rules read beside the result.
+        private readonly struct QueryRead<TQueryFnData, TData>
+        {
+            internal QueryRead(QueryObserver<TQueryFnData, TData> observer, QueryEntry<TQueryFnData> entry,
+                in QuerySettings<TQueryFnData, TData> settings, QueryClient client, QueryErrorResetBoundary boundary)
+            {
+                Observer = observer;
+                Entry = entry;
+                Settings = settings;
+                Client = client;
+                Boundary = boundary;
+                Result = observer.Read(entry, settings);
+            }
+
+            internal QueryResult<TData> Result { get; }
+            internal QueryObserver<TQueryFnData, TData> Observer { get; }
+            internal QueryEntry<TQueryFnData> Entry { get; }
+            internal QuerySettings<TQueryFnData, TData> Settings { get; }
+            internal QueryClient Client { get; }
+            internal QueryErrorResetBoundary Boundary { get; }
+
+            // TanStack's getHasError, whose error useBaseQuery throws.
+            internal void ThrowIfError()
+            {
+                var current = Observer.Current;
+                if (Settings.HasError(current, Entry, Boundary)) ExceptionDispatchInfo.Capture(current.Error!).Throw();
+            }
+        }
+
+        private static QueryRead<TQueryFnData, TData> UseQueryObserver<TQueryFnData, TData>(
+            QueryOptionsBase<TQueryFnData, TData> options, QueryClient? client, bool suspense, string hookName)
+        {
+            ValidateQueryOptions(options);
+            // Surface the hook's name in HookGuard's outside-of-render message instead of "UseContext".
+            _ = Resolve(hookName);
+            var provided = UseContext(QueryClientContext.Ref);
+            var queryClient = client ?? provided ?? throw new InvalidOperationException(
+                $"{hookName} found no QueryClient. Mount V.Provider(QueryClientContext.Ref, value: client, ...) " +
+                $"above the caller, or pass the client to {hookName}.");
+            var boundary = UseContext(QueryErrorResetBoundaryContext.Ref)!;
+            var (_, setVersion) = UseState(0);
+            // MUTANT_SURVIVES(equivalent, arithmetic): a step of one either way gives a value unequal to the one the slot holds, which is all the re-render asks.
+            var observer = UseMutableRef<QueryObserver<TQueryFnData, TData>>(() => new QueryObserver<TQueryFnData, TData>(() => setVersion.Invoke(v => v + 1))).Current;
+            var settings = new QuerySettings<TQueryFnData, TData>(options, queryClient, suspense);
+            var entry = settings.ReadEntry(queryClient);
+            settings = settings.PreventingErrorBoundaryRetry(entry, boundary);
+
+            // TanStack's useClearResetErrorBoundary.
+            UseEffect((Func<Action?>)(() =>
+            {
+                boundary.ClearReset();
+                return null;
+            }), new object?[] { boundary });
+            UseEffect(observer.UnmountEffect, Array.Empty<object?>());
+            UseEffect((Func<Action?>)(() =>
+            {
+                observer.Sync(queryClient, settings);
+                return null;
+            }));
+
+            return new QueryRead<TQueryFnData, TData>(observer, entry, settings, queryClient, boundary);
+        }
+
+        private static void ValidateQueryOptions<TQueryFnData, TData>(QueryOptionsBase<TQueryFnData, TData> options)
+        {
+            if (options == null) throw new ArgumentNullException(nameof(options));
+            if (options.QueryKey == null) throw new ArgumentException("QueryOptions.QueryKey must not be null.", nameof(options));
+            if (options is QueryOptions<TQueryFnData, TData> { QueryFn.HasValue: false })
+            {
+                throw new ArgumentException("QueryOptions.QueryFn must not be null.", nameof(options));
+            }
+            if (options.Select == null && typeof(TQueryFnData) != typeof(TData))
+            {
+                throw new ArgumentException(
+                    $"QueryOptions<{typeof(TQueryFnData).Name}, {typeof(TData).Name}> needs a Select to turn one into the other.",
+                    nameof(options));
+            }
+        }
+
+        // TanStack's shouldSuspend and fetchOptimistic: a pending result suspends on the entry's request, started
+        // here when none is in flight, until the entry holds data or the request settles; one that settles with
+        // no data clears the boundary's reset. The async slot is taken at every render, a settled one included, so
+        // that a Use called after this hook keeps the slot it had.
+        private static void UseSuspendWhilePending<TQueryFnData, TData>(in QueryRead<TQueryFnData, TData> query)
+        {
+            var pending = query.Observer.Current.Status == QueryStatus.Pending ? query.Entry : null;
+            pending?.Fetch(new QueryFetchOptions<TQueryFnData>().Assign(query.Settings.Options, query.Client), cancelRefetch: false);
+            var boundary = query.Boundary;
+            UseCore(
+                pending == null ? s_settledSuspendedQuery : token => WaitForSuspendedQuery(pending!, boundary, token),
+                pending == null ? s_settledSuspendedQueryKey : pending.Request ?? pending,
+                resourceKeyExplicit: true,
+                nameof(UseSuspenseQuery));
+        }
+
+        private static async VelvetTask<Unit> WaitForSuspendedQuery<T>(
+            QueryEntry<T> entry, QueryErrorResetBoundary boundary, CancellationToken token)
+        {
+            await entry.WhenSuspendedCanResume(token);
+            if (!entry.HasData) boundary.ClearReset();
+            return Unit.Default;
+        }
+
+        #endregion
+
+        #region UseDeferredValue
+
+        /// <summary>
+        /// Defers commits of <paramref name="value"/> changes
+        /// through the Transition lane and returns the previous value during urgent re-renders.
+        /// Use this to deprioritize heavy re-render inputs such as search queries.
+        /// </summary>
+        /// <remarks>
+        /// Change detection matches the default comparer of <see cref="UseStore{TStore,TSel}"/>. There is
+        /// no comparer argument.
+        /// </remarks>
+        /// <typeparam name="T">Type of the value being deferred.</typeparam>
+        /// <param name="value">Latest value (provided by the caller).</param>
+        /// <returns>
+        /// First render: returns <paramref name="value"/> as-is.
+        /// A later render that is not draining Transition-lane work and carries a changed value: returns the
+        /// previously committed value and queues the new value as pending on the Transition lane.
+        /// A render draining Transition-lane work: commits <paramref name="value"/> and returns it, whether or
+        /// not it is the value last queued.
+        /// </returns>
+        public static T UseDeferredValue<T>(T value)
+            => UseDeferredValueCore(value, default!, hasInitialValue: false);
+
+        /// <summary>
+        /// Overload taking an <paramref name="initialValue"/>. On the initial render the
+        /// hook returns <paramref name="initialValue"/> instead of <paramref name="value"/> and immediately
+        /// schedules a Transition-lane re-render that defers toward <paramref name="value"/>. Subsequent
+        /// renders behave exactly like <see cref="UseDeferredValue{T}(T)"/>.
+        /// </summary>
+        /// <typeparam name="T">Type of the value being deferred.</typeparam>
+        /// <param name="value">Latest value (provided by the caller).</param>
+        /// <param name="initialValue">Value returned on the initial render only.</param>
+        /// <returns>The initial render returns <paramref name="initialValue"/>; thereafter same as the single-arg overload.</returns>
+        public static T UseDeferredValue<T>(T value, T initialValue)
+            => UseDeferredValueCore(value, initialValue, hasInitialValue: true);
+
+        private static T UseDeferredValueCore<T>(T value, T initialValue, bool hasInitialValue)
+        {
+            var fiber = Resolve("UseDeferredValue");
+            fiber.DeferredValueSlots ??= new List<HookDeferredValueSlot>();
+            var index = fiber.Indices.DeferredValueHookIndex++;
+            HookCountSentinel.ThrowIfPastCommittedCount(fiber);
+
+            if (index >= fiber.DeferredValueSlots.Count)
+            {
+                if (hasInitialValue && !ObjectIs.AreEqual(initialValue, value))
+                {
+                    // The first render returns initialValue and schedules a Transition-lane render
+                    // that defers toward the real value. The current commit holds initialValue; the pending
+                    // value is the target.
+                    var seeded = new HookDeferredValueSlot<T> { Current = initialValue, Pending = value, HasPending = true };
+                    fiber.DeferredValueSlots.Add(seeded);
+                    FiberWorkLoop.RequestTransitionRerender(fiber);
+                    return initialValue;
+                }
+
+                // First render without an initialValue (or initialValue equals value): commit value as-is.
+                var slot = new HookDeferredValueSlot<T> { Current = value };
+                fiber.DeferredValueSlots.Add(slot);
+                return value;
+            }
+
+            if (fiber.DeferredValueSlots[index] is not HookDeferredValueSlot<T> typed)
+            {
+                throw HookSlotTypeMismatch(fiber, "UseDeferredValue", fiber.DeferredValueSlots[index].GetType(),
+                    $"HookDeferredValueSlot<{typeof(T).Name}>", index);
+            }
+
+            if (FiberWorkLoop.IsRenderingTransitionLane)
+            {
+                // A render draining transition-lane work commits the input it was handed, whether or not it is
+                // the value an urgent render queued: requiring the two to match left an input built afresh on
+                // every render never committing. Any other render falls through to the change branch, which
+                // re-queues the lane.
+                typed.Current = value;
+                typed.Pending = default;
+                typed.HasPending = false;
+                return typed.Current;
+            }
+
+            if (ObjectIs.AreEqual(typed.Current, value))
+            {
+                // No value change: return current as-is.
+                // If the input has reverted to Current, clear any ghost Pending (a stale deferred value)
+                // so that the next change can be deferred correctly. (Without this, an alpha->beta->alpha
+                // sequence would leave Pending=beta and would commit beta immediately the next time it arrives.)
+                if (typed.HasPending)
+                {
+                    typed.Pending = default;
+                    typed.HasPending = false;
+                }
+                return typed.Current;
+            }
+
+            // Value change detected: store the new value as pending and queue a Transition lane render.
+            // It will be committed on the next Transition flush.
+            typed.Pending = value;
+            typed.HasPending = true;
+            FiberWorkLoop.RequestTransitionRerender(fiber);
+            return typed.Current;
+        }
+
+        #endregion
+
+        #region UseOptimistic
+
+        /// <summary>
+        /// Returns the optimistic state and an <c>addOptimistic</c> action. With no optimistic update
+        /// outstanding the returned state is <paramref name="passthroughState"/>. Each
+        /// <c>addOptimistic(action)</c> records an entry and requests a render, and every render returns
+        /// <paramref name="passthroughState"/> folded through the outstanding entries by
+        /// <paramref name="applyOptimistic"/>, in the order they were added — so an entry lands on whatever
+        /// the authoritative state has become while it is outstanding. An entry added inside a
+        /// <c>startTransition</c> callback belongs to the innermost transition open there whose
+        /// <c>isPending</c> is lit, and is discarded when that transition settles (or, with an async action in
+        /// flight, when none is left), whether or not
+        /// <paramref name="passthroughState"/> changed and whether the action succeeded or faulted; one
+        /// transition settling leaves another's entries in place. An entry added where no such transition is
+        /// open, while an async action is in flight, belongs to the actions in flight together. As in React,
+        /// the actions in flight are entangled: a transition that settles while any is in flight hands its
+        /// entries to them, so they are discarded once none is left. An action counts from its start
+        /// until its task completes, whether or not the component that started it is still mounted, so one
+        /// awaiting a task that never completes holds every later entry. A component rendered by the
+        /// Transition-lane drain that lands the last work a transition queued leaves that transition's
+        /// entries out of that render, and a component holding them that the drain did not render that way is
+        /// rendered without them before that commit's layout effects run. An entry no
+        /// render has shown when its owner settles is shown once first. An entry nothing owns is discarded by
+        /// the component's next Transition-lane render.
+        /// </summary>
+        /// <typeparam name="TState">Optimistic state type.</typeparam>
+        /// <typeparam name="TAction">Action / payload type passed to <paramref name="applyOptimistic"/>.</typeparam>
+        /// <param name="passthroughState">The authoritative state. Shown when no optimistic update is outstanding.</param>
+        /// <param name="applyOptimistic">Pure reducer <c>(currentState, action) =&gt; optimisticState</c>, run during render. Must not be null.</param>
+        /// <returns>
+        /// 2-tuple:
+        /// - <c>optimisticState</c>: the pass-through state folded through the outstanding entries.
+        /// - <c>addOptimistic</c>: records an entry owned by the transition whose callback is running, or by the
+        ///   async actions in flight, if either.
+        /// </returns>
+        public static (TState optimisticState, Action<TAction> addOptimistic) UseOptimistic<TState, TAction>(
+            TState passthroughState, Func<TState, TAction, TState> applyOptimistic)
+        {
+            if (applyOptimistic == null) throw new ArgumentNullException(nameof(applyOptimistic));
+            var fiber = Resolve("UseOptimistic");
+            fiber.OptimisticSlots ??= new List<HookOptimisticSlot>();
+            var index = fiber.Indices.OptimisticHookIndex++;
+            HookCountSentinel.ThrowIfPastCommittedCount(fiber);
+
+            HookOptimisticSlot<TState, TAction> slot;
+            if (index >= fiber.OptimisticSlots.Count)
+            {
+                slot = new HookOptimisticSlot<TState, TAction> { Fiber = fiber };
+                slot.Add = CreateOptimisticAdd(slot, fiber);
+                fiber.OptimisticSlots.Add(slot);
+            }
+            else if (fiber.OptimisticSlots[index] is HookOptimisticSlot<TState, TAction> typed)
+            {
+                slot = typed;
+                if (FiberWorkLoop.IsRenderingTransitionLane)
+                {
+                    slot.DropUnownedEntries();
+                }
+            }
+            else
+            {
+                throw HookSlotTypeMismatch(fiber, "UseOptimistic", fiber.OptimisticSlots[index].GetType(),
+                    $"HookOptimisticSlot<{typeof(TState).Name}, {typeof(TAction).Name}>", index);
+            }
+
+            // Refreshed every render, since the fold below runs it and it may capture this render's scope.
+            slot.Apply = applyOptimistic;
+            var optimisticState = slot.Fold(passthroughState, FiberWorkLoop.TransitionDrainFiber);
+            // Asked again by every render that leaves an unowned entry standing, as UseDeferredValue asks for
+            // its lane: a parent's pass that subsumes this component keeps only the lanes its render asked
+            // for, so a request made once, when the entry was added, is dropped there.
+            if (slot.HasUnownedEntry)
+            {
+                FiberWorkLoop.RequestTransitionRerender(fiber);
+            }
+            return (optimisticState, slot.Add);
+        }
+
+        private static Action<TAction> CreateOptimisticAdd<TState, TAction>(
+            HookOptimisticSlot<TState, TAction> slot, ComponentFiber fiber)
+        {
+            return action =>
+            {
+                if (fiber.IsDisposed) return;
+                var owner = FiberWorkLoop.CurrentOptimisticOwner;
+                slot.Entries.Add(new OptimisticEntry<TAction> { Action = action, Owner = owner });
+                FiberWorkLoop.RequestOptimisticRender(fiber);
+                if (owner != null)
+                {
+                    owner.EnrolOptimisticDependent(slot);
+                    return;
+                }
+#if UNITY_EDITOR
+                // A callback a starter runs after its component unmounted is still a transition, owning
+                // nothing only because nothing is left to clear its isPending.
+                if (!FiberWorkLoop.IsInTransitionScope)
+                {
+                    FiberLogger.LogWarning("UseOptimistic",
+                        "An optimistic update was added outside every transition while no async action is in " +
+                        "flight, so it is discarded at the component's next Transition-lane render. Call " +
+                        "addOptimistic inside startTransition to keep it until that transition settles.");
+                }
+#endif
+            };
+        }
+
+        #endregion
+
+        #region Memoization (component-level)
+
+        /// <summary>
+        /// Memoization gate woven in by the build-time compiler transform for
+        /// <c>[Component(Compiler = true)]</c> (the default). Grants the rendering fiber's one slot in
+        /// Fiber.MemoSlots to the first call its own <c>[Component]</c> method makes during a render, and returns
+        /// the cached VNode when that slot's previous deps are equal. Any other call is granted no slot and reports
+        /// a miss, so the body making it runs uncached — a woven component called as a plain method from another
+        /// component's render or from a <c>V.Memoized</c> factory, or outside any render.
+        /// Do not call by hand.
+        /// When the return value is <c>false</c>, <paramref name="cached"/> is undefined.
+        /// </summary>
+        /// <param name="component">Handle of the method making the call.</param>
+        /// <param name="deps">Dependency values for this slot. Must not be null.</param>
+        /// <param name="slotIndex">Outputs the granted slot index, or <c>-1</c> where none was granted; must be passed back to <see cref="StoreMemoizedVNode"/>.</param>
+        /// <param name="cached">Outputs the cached VNode on a hit; undefined on a miss.</param>
+        /// <returns>True when the previous deps are equal and the cached VNode was returned.</returns>
+        [EditorBrowsable(EditorBrowsableState.Never)]
+        public static bool TryGetMemoizedVNode(RuntimeMethodHandle component, object?[]? deps, out int slotIndex, out VNode? cached)
+        {
+            if (deps == null) throw new ArgumentNullException(nameof(deps));
+            slotIndex = MemoScopeCache.Reserve(component, 1);
+            return MemoScopeCache.TryGet(slotIndex, 0, deps, out cached);
+        }
+
+        /// <summary>
+        /// Slot writer API woven in on the miss path of <see cref="TryGetMemoizedVNode"/>.
+        /// The <paramref name="slotIndex"/> argument must be the value returned by the immediately
+        /// preceding <see cref="TryGetMemoizedVNode"/> call; <c>-1</c>, the index of a call granted no slot,
+        /// stages nothing.
+        /// </summary>
+        /// <param name="slotIndex">Slot index obtained from the immediately preceding <see cref="TryGetMemoizedVNode"/> call.</param>
+        /// <param name="deps">Dependency values to record for this slot. Must not be null.</param>
+        /// <param name="result">VNode to cache for subsequent hits.</param>
+        [EditorBrowsable(EditorBrowsableState.Never)]
+        public static void StoreMemoizedVNode(int slotIndex, object?[]? deps, VNode result)
+            => MemoScopeCache.Store(slotIndex, 0, deps, result, nameof(StoreMemoizedVNode));
+
+        /// <summary>
+        /// Scope cache reservation woven in at the top of a <c>[Component]</c> method whose body the build-time
+        /// compiler transform cut into several memoization scopes. Grants the rendering fiber
+        /// <paramref name="scopeCount"/> consecutive slots in Fiber.MemoSlots, one per scope, to the first call its
+        /// own <c>[Component]</c> method makes during a render. Any other call is granted none and gets <c>-1</c>,
+        /// so every scope of the body making it runs uncached. Do not call by hand.
+        /// </summary>
+        /// <param name="component">Handle of the method making the call.</param>
+        /// <param name="scopeCount">Number of scopes the body declares; at least one.</param>
+        /// <returns>The index of the first granted slot, to pass to <see cref="TryGetScope"/> and <see cref="StoreScope"/>, or <c>-1</c>.</returns>
+        [EditorBrowsable(EditorBrowsableState.Never)]
+        public static int ReserveScopes(RuntimeMethodHandle component, int scopeCount)
+            => MemoScopeCache.Reserve(component, scopeCount);
+
+        /// <summary>
+        /// Gate of one memoization scope, woven in ahead of the code that builds the scope's VNode. Returns the
+        /// cached VNode when the scope's previous deps are equal. A call made with a <paramref name="firstSlot"/>
+        /// of <c>-1</c> reports a miss and stages nothing. Do not call by hand.
+        /// When the return value is <c>false</c>, <paramref name="cached"/> is undefined.
+        /// </summary>
+        /// <param name="firstSlot">The value <see cref="ReserveScopes"/> returned.</param>
+        /// <param name="scope">The scope's position among those <see cref="ReserveScopes"/> granted.</param>
+        /// <param name="deps">Dependency values of this scope. Must not be null.</param>
+        /// <param name="cached">Outputs the cached VNode on a hit; undefined on a miss.</param>
+        /// <returns>True when the previous deps are equal and the cached VNode was returned.</returns>
+        [EditorBrowsable(EditorBrowsableState.Never)]
+        public static bool TryGetScope(int firstSlot, int scope, object?[]? deps, out VNode? cached)
+            => MemoScopeCache.TryGet(firstSlot, scope, deps, out cached);
+
+        /// <summary>
+        /// Slot writer API woven in after the code that builds a scope's VNode on the miss path of
+        /// <see cref="TryGetScope"/>. A call made with a <paramref name="firstSlot"/> of <c>-1</c> stages nothing.
+        /// Do not call by hand.
+        /// </summary>
+        /// <param name="firstSlot">The value <see cref="ReserveScopes"/> returned.</param>
+        /// <param name="scope">The scope's position among those <see cref="ReserveScopes"/> granted.</param>
+        /// <param name="deps">Dependency values to record for this scope. Must not be null.</param>
+        /// <param name="result">VNode to cache for subsequent hits.</param>
+        [EditorBrowsable(EditorBrowsableState.Never)]
+        public static void StoreScope(int firstSlot, int scope, object?[]? deps, VNode result)
+            => MemoScopeCache.Store(firstSlot, scope, deps, result, nameof(StoreScope));
+
+        /// <summary>
+        /// Gate of one memoization scope that caches a computed value rather than a VNode, woven in ahead of the
+        /// code that computes it. Returns the cached value when the scope's previous deps are equal. A call made
+        /// with a <paramref name="firstSlot"/> of <c>-1</c> reports a miss and stages nothing. Do not call by hand.
+        /// When the return value is <c>false</c>, <paramref name="cached"/> is undefined.
+        /// </summary>
+        /// <param name="firstSlot">The value <see cref="ReserveScopes"/> returned.</param>
+        /// <param name="scope">The scope's position among those <see cref="ReserveScopes"/> granted.</param>
+        /// <param name="deps">Dependency values of this scope. Must not be null.</param>
+        /// <param name="cached">Outputs the cached value on a hit; undefined on a miss.</param>
+        /// <returns>True when the previous deps are equal and the cached value was returned.</returns>
+        [EditorBrowsable(EditorBrowsableState.Never)]
+        public static bool TryGetValueScope(int firstSlot, int scope, object?[]? deps, out object? cached)
+            => MemoScopeCache.TryGetValue(firstSlot, scope, deps, out cached);
+
+        /// <summary>
+        /// Slot writer API woven in after the code that computes a value scope's result on the miss path of
+        /// <see cref="TryGetValueScope"/>. A call made with a <paramref name="firstSlot"/> of <c>-1</c> stages
+        /// nothing. Do not call by hand.
+        /// </summary>
+        /// <param name="firstSlot">The value <see cref="ReserveScopes"/> returned.</param>
+        /// <param name="scope">The scope's position among those <see cref="ReserveScopes"/> granted.</param>
+        /// <param name="deps">Dependency values to record for this scope. Must not be null.</param>
+        /// <param name="result">Value to cache for subsequent hits.</param>
+        [EditorBrowsable(EditorBrowsableState.Never)]
+        public static void StoreValueScope(int firstSlot, int scope, object?[]? deps, object? result)
+            => MemoScopeCache.StoreValue(firstSlot, scope, deps, result, nameof(StoreValueScope));
+
+        #endregion
+
+        #region Internals
+
+        private static void RequestRender(ComponentFiber fiber)
+        {
+            FiberWorkLoop.RequestRenderFromHook(fiber);
+        }
+
+        private static Action? WrapDisposable(Func<IDisposable> factory)
+        {
+            var disposable = factory.Invoke();
+            return disposable == null ? null : disposable.Dispose;
+        }
+
+        // The node's identity before the body: a props overload's body is a closure over the [Component]
+        // method, and the identity is that method.
+        internal static string ComponentName(ComponentFiber? fiber)
+            => ComponentNameOrNull(fiber!.SourceNode?.Identity as MethodInfo ?? fiber.Body?.Method)
+               ?? "[Component]";
+
+        internal static string? ComponentNameOrNull(ComponentNode node)
+            => ComponentNameOrNull(node.Identity as MethodInfo ?? node.Body?.Method);
+
+        private static string? ComponentNameOrNull(MethodInfo? method)
+        {
+            if (method == null) return null;
+            var displayName = ComponentMethodRegistry.TryGetDisplayName(method);
+            if (displayName != null) return displayName;
+            var type = method.DeclaringType?.Name;
+            return type != null ? $"{type}.{method.Name}" : method.Name;
+        }
+
+        // Builds the Rules-of-Hooks violation raised when a hook slot's stored type does not match the type
+        // the current render expects (the slot order changed between renders). actual is the stored slot's
+        // runtime type; expectedDisplay is the human-readable name of the type this render wants. Shared by
+        // every position-based hook so the message stays identical across them.
+        private static InvalidOperationException HookSlotTypeMismatch(
+            ComponentFiber? fiber, string hookName, Type actual, string expectedDisplay, int index)
+            => new InvalidOperationException(
+                $"{ComponentName(fiber)}: {hookName} type changed between the previous render ({actual.Name})" +
+                $" and the current render ({expectedDisplay}) (slot #{index}). This violates the Rules of Hooks.");
+
+        #endregion
+    }
+
+}

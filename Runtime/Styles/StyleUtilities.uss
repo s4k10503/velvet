@@ -1,0 +1,34 @@
+/*
+ * StyleUtilities - Utility-First Style Aggregator
+ * All styles are imported from partials below.
+ *
+ * Utilities are single-class selectors, so two on one element tie on specificity and the later
+ * declaration wins — across the @import list and within each partial. The utilities are therefore declared
+ * in the order Tailwind emits them (property order, then the candidate names), so of two that write one
+ * property the one Tailwind emits later wins whichever is written first. StyleSheetTailwindOrderTests
+ * enforces that for every pair of ungated utilities that share a longhand, the animation presets apart.
+ * A utility is also declared before every narrower one its property set contains, or the narrower one
+ * can never win the properties they share; BundledStyleSheetOrderTests enforces this and names the
+ * exemptions.
+ */
+
+@import url("_preflight.uss");
+@import url("_tokens.uss");
+@import url("_palette.uss");
+@import url("_layout.uss");
+@import url("_spacing.uss");
+@import url("_sizing.uss");
+@import url("_typography.uss");
+@import url("_backgrounds.uss");
+@import url("_borders.uss");
+@import url("_radius_declared.uss");
+@import url("_effects.uss");
+@import url("_transforms.uss");
+@import url("_gap.uss");
+@import url("_states.uss");
+@import url("_state_variants.uss");
+@import url("_presets.uss");
+@import url("_animations.uss");
+@import url("_accessibility.uss");
+@import url("_text_input.uss");
+
