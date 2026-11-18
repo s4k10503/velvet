@@ -53,6 +53,7 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base watches each ancestor of the preflight's elements once.
+        // The watch's new optional parameter, called at its default, leaves that as it was.
         [Test]
         public void Given_AWatchedElement_When_ASiblingIsWatched_Then_NoAncestorIsWatchedTwice()
         {
@@ -73,6 +74,7 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base stops watching an ancestor that left its panel.
+        // The watch's new optional parameter, called at its default, leaves that as it was.
         [Test]
         public void Given_AWatchedAncestor_When_ItLeavesThePanelAndTheWatchTicks_Then_ItIsNoLongerWatched()
         {
