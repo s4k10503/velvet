@@ -26,6 +26,9 @@ namespace Velvet.Tests
             base.TearDown();
         }
 
+        // GREEN_ON_BASE(characterization): the base takes the label out as the callback reaches it and resets it
+        // after, so its detach is heard before the reset there too; what the case holds is that order once the removal
+        // is recorded behind the apply and the pool return is queued for after it.
         [Test]
         public void Given_ARemovalMadeWhileTheRecordedWritesApply_When_TheRemovedLabelLeavesThePanel_Then_ItHasNotBeenReset()
         {

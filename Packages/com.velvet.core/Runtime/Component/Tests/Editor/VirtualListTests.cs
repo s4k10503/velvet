@@ -62,8 +62,10 @@ namespace Velvet.Tests
     /// rendering of rows there, and leaves none of the rows that update built mounted.</item>
     /// <item>A row that is itself an error boundary, mounting in its host's pass, catches its child's render
     /// there without stopping the rest of that pass, and an enter its failed render queued completes nowhere
-    /// while one the host queued ahead of it still completes. A row that is not one leaves the abort of a
-    /// boundary above it that caught on its own pass, and nothing later in that pass renders.</item>
+    /// while one the host queued ahead of it still completes. Where its fallback cannot be created, a boundary
+    /// between the host and the list catches that failure, again without stopping the rest of the pass. A row
+    /// that is not one leaves the abort of a boundary above it that caught on its own pass, and nothing later
+    /// in that pass renders.</item>
     /// <item>An enter with nothing to play in a row rendered outside a pass completes before the range update
     /// returns.</item>
     /// </list>
@@ -1694,6 +1696,36 @@ namespace Velvet.Tests
                 Is.EqualTo("t1 | True"));
         }
 
+        // GREEN_ON_BASE(characterization): the base commits the rest of the host's pass as React does here.
+        // The row's failed fallback goes to the boundary above the list, and React commits the siblings of a boundary
+        // that caught.
+        [Test]
+        public void Given_ARowBoundaryWhoseFallbackCannotBeCreated_When_ItMountsUnderABoundaryInItsHostsPass_Then_ThatBoundaryCatchesAndTheRestOfThePassCommits()
+        {
+            // Arrange — the case above, with a boundary between the host and the list, and a row fallback that cannot be
+            // created.
+            s_throwingRowId = "fresh";
+            var root = new VisualElement();
+            using var mounted = V.Mount(root, V.Component(RowFailureCatcherHostRender, key: "host"), CaughtErrors.Unlogged);
+            typeof(FiberVirtualListController)
+                .GetField("_viewportHeight", BindingFlags.NonPublic | BindingFlags.Instance)!
+                .SetValue(mounted.Root.Reconciler.Context.VirtualListControllers[root.Q<ScrollView>()], 200f);
+            UnityEngine.TestTools.LogAssert.Expect(UnityEngine.LogType.Error,
+                new System.Text.RegularExpressions.Regex("reconciling the fallback UI threw"));
+            UnityEngine.TestTools.LogAssert.Expect(UnityEngine.LogType.Error,
+                new System.Text.RegularExpressions.Regex(@"\[ErrorBoundary\] An exception occurred"));
+            UnityEngine.TestTools.LogAssert.Expect(UnityEngine.LogType.Exception,
+                new System.Text.RegularExpressions.Regex("constructor refused"));
+
+            // Act
+            s_rowFailureCatcherHostSetTick.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert — the label is read only beside the boundary's fallback, which a pass where nothing caught does not
+            // show.
+            Assert.That(root.Q<Label>("catcher-fallback") != null ? root.Q<Label>("tick")?.text : null, Is.EqualTo("t1"));
+        }
+
         // GREEN_ON_BASE(characterization): the merge base completes this enter inside the walk of the row.
         // An enter now completes with the pass that rendered it, and a row rendered outside one is what this pins.
         [Test]
@@ -1874,6 +1906,40 @@ namespace Velvet.Tests
                     itemHeight: 50f,
                     renderer: item => V.Component(RowBoundaryRender, item.Id),
                     overscan: 0),
+                V.Label(name: "tick", text: "t" + tick),
+            });
+        }
+
+        private static Action<int> s_rowFailureCatcherHostSetTick;
+
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        private static VNode UncreatableFallbackRowRender(string id)
+        {
+            Hooks.UseFallback(_ => V.Custom<ConstructionRefusingElement>());
+            return V.Component(RowThrowerRender, id, key: "row");
+        }
+
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        private static VNode RowFailureCatcherRender(int tick)
+        {
+            Hooks.UseFallback(_ => V.Label(name: "catcher-fallback", text: "catcher-fallback"));
+            var items = tick == 0 ? CreateItems(1) : new[] { new TestItem { Id = "fresh", Name = "Fresh" } };
+            return V.VirtualList(
+                items: items,
+                keySelector: item => item.Id,
+                itemHeight: 50f,
+                renderer: item => V.Component(UncreatableFallbackRowRender, item.Id),
+                overscan: 0);
+        }
+
+        [Component(Compiler = false)]
+        private static VNode RowFailureCatcherHostRender()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_rowFailureCatcherHostSetTick = setTick;
+            return V.Div(children: new VNode[]
+            {
+                V.Component(RowFailureCatcherRender, tick, key: "catcher"),
                 V.Label(name: "tick", text: "t" + tick),
             });
         }

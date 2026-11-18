@@ -281,6 +281,7 @@ namespace Velvet
                 // (ReportCarriedCatch), as React reports it from the commit that shows it.
                 fiber.CaughtError = (exception, InfoFor(fiber, throwingFiber));
                 fiber.CatchUnreported = true;
+                // MUTANT_SURVIVES(equivalent, line removed): result is true when this catch ends, so the if (result) block below drops the same entries; nothing on the way there reads PendingCompletions, and SuspendPassOwner queues the renders it asks for rather than running them.
                 ctx.DropCompletions(failedCompletions);
                 DropTheSwapsErrors(fiber);
                 FiberRenderer.SuspendPassOwner(fiber, FiberWorkLoop.IsRenderingTransitionLane);
@@ -312,6 +313,12 @@ namespace Velvet
             var failure = TakeFallbackReconcileFailure(fiber);
             if (failure == null) return false;
             ComponentBoundarySearch.PropagateException(fiber, throwingFiber, failure, isRenderError);
+            // MUTANT_SURVIVES(unreachable, literal): this boundary is disposed by the time PropagateException returns here.
+            // A boundary above that takes the failure without throwing has taken down its rows, this one among them, to
+            // show its fallback, so PropagateFrom returns at its IsDisposed check whatever this returns. Two catches hold
+            // the error instead, and neither holds one from below a boundary still standing: a root being disposed holds
+            // errors only from fibers its disposal has marked deleted, and a boundary in its own swap only from the rows
+            // it is deleting, since the refs and effects of the content it mounts wait until the swap is over.
             return true;
         }
 
