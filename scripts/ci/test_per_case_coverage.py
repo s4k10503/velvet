@@ -117,8 +117,12 @@ class Editor:
         if self.blocked:
             (coverage.parent.parent / "per-case").mkdir(parents=True, exist_ok=True)
             (coverage.parent.parent / "per-case" / coverage.name).write_text("")
-        write(coverage / "project-opencov" / "EditMode", self.numbers[:1] if killed else self.numbers)
+        folder = coverage / "project-opencov" / "EditMode"
+        write(folder, self.numbers)
         if killed:
+            # The package was streaming its newest file when the editor died.
+            newest = folder / name(self.numbers[-1])
+            newest.write_bytes(newest.read_bytes()[:len(newest.read_bytes()) // 2])
             return -9
         results_file(results, chosen, self.ran)
         return self.status
@@ -489,6 +493,38 @@ class MeasureTests(unittest.TestCase):
         # Assert
         self.assertEqual(status, 2)
 
+    def test_Given_ALaunchTheContainerKilled_When_ItsFilesAreCompressed_Then_TheCutOffNewestIsNotAmongThem(self):
+        # Arrange — a lone case cannot be halved, so its launch's records are all there is to read.
+        editor = Editor(cases=CASES[:1], kill_over=0)
+
+        # Act
+        _, output = run_measure(self.holder(), editor, "--cases-per-launch", "1")
+
+        # Assert
+        self.assertEqual(sorted(path.name for path in (output / "per-case").rglob("*.gz")), [name(0) + ".gz"])
+
+    def test_Given_AFailedLaunch_When_Measured_Then_TheManifestNamesIt(self):
+        # Arrange
+        editor = Editor(status=2)
+
+        # Act
+        _, output = run_measure(self.holder(), editor)
+
+        # Assert
+        manifest = json.loads((output / "per-case" / "shard.json").read_text())
+        self.assertEqual(manifest["problems"], ["launch 0001: status 2"])
+
+    def test_Given_AShardOfTwo_When_Measured_Then_TheManifestHoldsTheWholeRostersLength(self):
+        # Arrange
+        editor = Editor()
+
+        # Act
+        _, output = run_measure(self.holder(), editor, "--shard", "2/2")
+
+        # Assert
+        manifest = json.loads((output / "per-case" / "shard.json").read_text())
+        self.assertEqual(manifest["roster"], len(CASES))
+
     def test_Given_ARun_When_ALaunchIsMade_Then_ItIsAskedForEachCasesReferences(self):
         # Arrange
         editor = Editor()
@@ -659,6 +695,37 @@ class WorkflowTests(unittest.TestCase):
 
         # Assert — the floor is on what was read, since a reader finding no entry reports no problem.
         self.assertEqual(problems or sorted(by_mode), ["EditMode", "PlayMode"])
+
+    def test_Given_TheWorkflow_When_ItsReportJobIsRead_Then_ItRunsWhateverTheSuiteJobsEndedWith(self):
+        # Arrange
+        block = job_block(WORKFLOW.read_text(), "report")
+
+        # Act
+        condition = [line for line in block if line.startswith("    if:")][0]
+
+        # Assert
+        self.assertIn("!cancelled()", condition)
+
+    def test_Given_TheWorkflow_When_ItsResultsUploadIsRead_Then_TheLaunchesLogsAreInIt(self):
+        # Arrange
+        block = "\n".join(job_block(WORKFLOW.read_text(), "suite"))
+        upload = block[block.index("name: per-case-results-"):block.index("name: per-case-records-")]
+
+        # Act
+        paths = re.findall(r"Logs/per-case-coverage/(\w+)", upload)
+
+        # Assert
+        self.assertEqual(paths, ["results", "launches"])
+
+    def test_Given_TheWorkflow_When_ItsReportStepIsRead_Then_ItChecksTheShardsManifests(self):
+        # Arrange
+        block = "\n".join(job_block(WORKFLOW.read_text(), "report"))
+
+        # Act
+        checked = "per_case_manifest.py Logs/per-case" in block
+
+        # Assert
+        self.assertTrue(checked)
 
     def test_Given_TheWorkflow_When_ItsSuiteStepIsRead_Then_ItIsGivenTheShardOfItsMatrixEntry(self):
         # Arrange

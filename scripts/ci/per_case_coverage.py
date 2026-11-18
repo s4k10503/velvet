@@ -10,8 +10,8 @@
 The editor is given `generateTestReferences` in `-coverageOptions`, under which Code Coverage writes an
 OpenCover file as each case finishes. One editor taking the whole suite, in a container limited to 12g
 of memory with swap at the same figure, was killed with SIGKILL after 223 of the EditMode suite's 17033
-cases and after 232 of the PlayMode suite's 500: at nearly the same count although a PlayMode file is over ten
-times the size of an EditMode one. Each launch below reports the most memory one of the watcher's samples read
+cases and after 232 of the PlayMode suite's 500: at nearly the same count although the files were 0.3 to
+0.5 MB uncompressed in one and 3.4 to 5.7 MB in the other. Each launch below reports the most memory one of the watcher's samples read
 while it ran, which is the reading that says whether a launch's size fits. This runs the suite in launches of at
 most `--cases-per-launch` cases each:
 
@@ -20,7 +20,10 @@ most `--cases-per-launch` cases each:
 2. `--shard I/N` takes the I-th of N contiguous blocks of those names, and each launch takes a slice of
    the block through a `-testFilter` of anchored names, with a coverage folder, results file and log of
    its own under `OUTPUT/coverage` and `OUTPUT/launches`. A launch killed with SIGKILL runs again as two
-   halves, since the files it finished stay; a launch of one case that is killed fails the run.
+   halves, since the files it finished stay, and its newest file, which the package may have been
+   writing, is not compressed; a launch of one case that is killed fails the run.
+3. `OUTPUT/per-case/shard.json` names the shard, the length of the roster it was cut from and the
+   launches that failed, which `per_case_manifest.py` checks the shards against one another with.
 
 Both are one licence's work: the licence is activated once around this script's own `--measure` run,
 and every editor above is launched from that.
@@ -261,12 +264,25 @@ def watched(launch, command, source, target, poll):
     finally:
         stop.set()
         watcher.join()
+    # A launch killed mid-write leaves its newest file cut short, and the halves it runs again as
+    # reach those cases anyway, so that file is left uncompressed.
     try:
-        compress_finished(source, target, final=True)
+        compress_finished(source, target, final=status not in KILLED)
     except Exception as error:
         print("::error::compressing the per-case coverage failed: {}".format(error), flush=True)
         return status, False, peak[0]
     return status, True, peak[0]
+
+
+MANIFEST = "shard.json"
+
+
+def write_manifest(per_case, platform, shard, roster, mine, problems, status):
+    """What the report checks the shards against each other with: which block this was, how long the
+    roster it was cut from, and which launches failed."""
+    (per_case / MANIFEST).write_text(json.dumps(
+        {"platform": platform, "shard": shard[0], "shards": shard[1], "roster": roster, "cases": mine,
+         "problems": problems, "status": status}, indent=1) + "\n")
 
 
 def measure(platform, project, output, shard, per_launch, assemblies, launch=subprocess.call, poll=POLL):
@@ -284,12 +300,14 @@ def measure(platform, project, output, shard, per_launch, assemblies, launch=sub
     if status or not names:
         print("::error::the plain {} run {}".format(
             platform, "ended with status {}".format(status) if status else "named no case"), flush=True)
+        write_manifest(per_case, platform, shard, len(names), 0,
+                       ["the plain run ended with status {}".format(status or 1)], status or 1)
         return status or 1
     mine = block_of(names, *shard)
     licensed_editor.say("{} case(s), {} of them this shard's, in launches of at most {}".format(
         len(names), len(mine), per_launch))
 
-    waiting, number, failed = collections.deque(slices_of(mine, per_launch)), 0, 0
+    waiting, number, failed, problems = collections.deque(slices_of(mine, per_launch)), 0, 0, []
     while waiting:
         chunk = waiting.popleft()
         number += 1
@@ -303,6 +321,7 @@ def measure(platform, project, output, shard, per_launch, assemblies, launch=sub
             number, len(chunk), files, peak if peak else "unread", status, len(waiting)))
         if not compressed:
             failed = failed or 1
+            problems.append("launch {}: its files could not be compressed".format(folder))
         if status in KILLED and len(chunk) > 1:
             half = len(chunk) // 2
             waiting.extendleft([chunk[half:], chunk[:half]])
@@ -311,12 +330,15 @@ def measure(platform, project, output, shard, per_launch, assemblies, launch=sub
             continue
         if status:
             failed = failed or status
+            problems.append("launch {}: status {}".format(folder, status))
             continue
         ran = selected_by(directory / "results.xml")
         if ran is None or ran < len(chunk):
             print("::error::launch {} was given {} case(s) and ran {}".format(
                 number, len(chunk), "none that it reported" if ran is None else ran), flush=True)
             failed = failed or 1
+            problems.append("launch {}: {} of {} case(s) ran".format(folder, ran, len(chunk)))
+    write_manifest(per_case, platform, shard, len(names), len(mine), problems, failed)
     licensed_editor.say("{} per-case files in {}".format(
         sum(1 for _ in per_case.rglob("*.xml.gz")), per_case))
     return failed
