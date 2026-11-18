@@ -1419,6 +1419,8 @@ namespace Velvet
         // against these keys).
         public Dictionary<VisualElement, FocusScopeBinding> FocusScopeBindings { get; } = new();
 
+        internal Dictionary<VisualElement, FocusScopeBinding> DeferredAutoFocus { get; } = new();
+
         // Chained-portal focus bookkeeping (PanelFocusOrder.Chained): the DECLARING-panel placeholder that
         // acts as the portal's proxy tab stop → the host record its focus forwards into, plus the reverse
         // index (host panel root → placeholder) the host-edge escape consults. Entries are added in

@@ -13,11 +13,13 @@ namespace Velvet.Tests
         private static StateUpdater<int> s_setBlocked;
         private static StateUpdater<bool> s_setPortal;
         private static VisualElement s_target;
+        private static VelvetTaskCompletionSource<int> s_source;
 
         public override void SetUp()
         {
             s_setBlocked = default;
             s_setPortal = default;
+            s_source = null;
             base.SetUp();
             s_target = new VisualElement { name = "target" };
             _window.rootVisualElement.Add(s_target);
@@ -68,11 +70,29 @@ namespace Velvet.Tests
             Assert.That(controller.focusedElement, Is.Null);
         }
 
+        [Test]
+        public void Given_APortalFocusScopeMountedUnderAHiddenBoundary_When_TheBoundaryReveals_Then_ItsButtonTakesFocusOnlyThen()
+        {
+            // Arrange
+            var controller = _window.rootVisualElement.panel.focusController;
+            Update(s_setBlocked, 1);
+            ShowPortal();
+            var whileHidden = controller.focusedElement == null ? "none" : "held";
+
+            // Act
+            s_source.TrySetResult(5);
+            _mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert
+            Assert.That(whileHidden + "/" + (ReferenceEquals(controller.focusedElement, s_target.Q<Button>("focusable")) ? "button" : "other"),
+                Is.EqualTo("none/button"));
+        }
+
         [Component]
         private static VNode ReaderRender(int blocked)
         {
             var value = Hooks.Use<int>(_ => blocked > 0
-                ? new VelvetTaskCompletionSource<int>().Task
+                ? (s_source = new VelvetTaskCompletionSource<int>()).Task
                 : VelvetTask.FromResult(0), blocked);
             return V.Label(text: "reader:" + value);
         }

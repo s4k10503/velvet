@@ -45,6 +45,7 @@ namespace Velvet
         // flip can ever fire it again.
         public bool AutoFocusFired;
         public EventCallback<AttachToPanelEvent>? OnAttach;
+        public ReconcilerContext? Context;
 
         // Creation order across every mounted tree. Of two contained scopes a landing crosses between, the
         // newer one keeps it; a strict order is what stops the two pulling focus back from each other.
@@ -1464,7 +1465,11 @@ namespace Velvet
     {
         public static FocusScopeBinding Attach(VisualElement element, FocusScopeSettings settings, ReconcilerContext ctx)
         {
-            var binding = new FocusScopeBinding(settings) { RestoreTarget = FiberFocusNavigator.FocusedElementAnywhere(ctx) };
+            var binding = new FocusScopeBinding(settings)
+            {
+                RestoreTarget = FiberFocusNavigator.FocusedElementAnywhere(ctx),
+                Context = ctx,
+            };
             if (element is FocusScopeStart start)
             {
                 start.Binding = binding;
@@ -1494,6 +1499,7 @@ namespace Velvet
 
         public static void Detach(VisualElement element, FocusScopeBinding binding)
         {
+            binding.Context?.DeferredAutoFocus.Remove(element);
             if (binding.OnAttach != null)
             {
                 element.UnregisterCallback(binding.OnAttach);
@@ -1505,6 +1511,25 @@ namespace Velvet
             {
                 start.Binding = null;
                 FocusScopeRange.Live--;
+            }
+        }
+
+        // The autoFocus of the scopes a Suspense kept hidden at their attach, for the commit that reveals them.
+        internal static void FireDeferredAutoFocus(ReconcilerContext ctx)
+        {
+            if (ctx.DeferredAutoFocus.Count == 0)
+            {
+                return;
+            }
+            var deferred = new List<KeyValuePair<VisualElement, FocusScopeBinding>>(ctx.DeferredAutoFocus);
+            foreach (var (scope, binding) in deferred)
+            {
+                if (scope.panel == null || SuspenseHiddenElements.IsAtOrUnderHidden(scope))
+                {
+                    continue;
+                }
+                ctx.DeferredAutoFocus.Remove(scope);
+                FireAutoFocusOnce(scope, binding);
             }
         }
 
@@ -1524,6 +1549,12 @@ namespace Velvet
         {
             if (binding.AutoFocusFired)
             {
+                return;
+            }
+            if (SuspenseHiddenElements.IsAtOrUnderHidden(scope)
+                || SuspenseHiddenElements.IsAtOrUnderHidden(binding.Context?.CurrentPortalPlaceholder))
+            {
+                binding.Context?.DeferredAutoFocus.TryAdd(scope, binding);
                 return;
             }
             binding.AutoFocusFired = true;
