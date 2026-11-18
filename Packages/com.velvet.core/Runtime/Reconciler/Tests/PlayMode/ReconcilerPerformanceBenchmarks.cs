@@ -115,6 +115,22 @@ namespace Velvet.Tests.Performance
             yield return RunThroughNextFrame(Floor(1000), 1000);
         }
 
+        // GREEN_ON_BASE(characterization): a benchmark asserts nothing about its numbers, so the base runs it green; its build checks hold behaviour the base already has.
+        [UnityTest, Performance]
+        public IEnumerator E2E_MountWithBorderPreflight_1000Elements_ThroughNextFrame()
+        {
+            BorderPreflightSwitch.RequireOn();
+            yield return RunThroughNextFrame(Mount(1000), 1000);
+        }
+
+        // GREEN_ON_BASE(characterization): a benchmark asserts nothing about its numbers, so the base runs it green; its build checks hold behaviour the base already has.
+        [UnityTest, Performance]
+        public IEnumerator E2E_MountWithoutBorderPreflight_1000Elements_ThroughNextFrame()
+        {
+            using var off = BorderPreflightSwitch.Off();
+            yield return RunThroughNextFrame(Mount(1000), 1000);
+        }
+
         private Build Mount(int count)
         {
             var nodes = BenchmarkHelpers.BuildLabelNodes(count, prefix: TextPrefix);
@@ -250,6 +266,37 @@ namespace Velvet.Tests.Performance
                     $"a built element is laid out at {_root[0].layout} and {_root[count - 1].layout} after the frame that followed the build");
             }
         }
+    }
+
+    // Takes BorderPreflight's extractor away, which makes OnClassesResolved return before it registers the attach
+    // callback on an element: the pair of cases that use it differ by that registration and what it runs on attach.
+    internal sealed class BorderPreflightSwitch : IDisposable
+    {
+        private static readonly System.Reflection.FieldInfo s_extractor =
+            typeof(V).Assembly.GetType("Velvet.BorderPreflight")!
+                .GetField("s_extractor", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!;
+
+        private readonly object _held;
+
+        private BorderPreflightSwitch(object held) => _held = held;
+
+        internal static void RequireOn()
+        {
+            if (s_extractor.GetValue(null) == null)
+            {
+                throw new InvalidOperationException("BorderPreflight has no extractor on this editor, so the case would measure no preflight");
+            }
+        }
+
+        internal static BorderPreflightSwitch Off()
+        {
+            RequireOn();
+            var held = s_extractor.GetValue(null)!;
+            s_extractor.SetValue(null, null);
+            return new BorderPreflightSwitch(held);
+        }
+
+        public void Dispose() => s_extractor.SetValue(null, _held);
     }
 
     [TestFixture]
