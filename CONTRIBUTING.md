@@ -1525,7 +1525,7 @@ held to none of this, so `refuse/stack_merge_by_hand.py` refuses it.
 
 **A pull request merges under a milestone**: for a change to `Packages/com.velvet.core/` onto
 `main` or a maintenance line, the next version that branch publishes, at least the bump
-[Releasing](#releasing) derives; otherwise `Infrastructure` or a version. `settle.py merge`,
+[Releasing](#releasing) derives; otherwise the Infrastructure milestone or a version. `settle.py merge`,
 `refuse/merge_off_milestone.py` and the `Source generators ▸ milestone` check refuse anything else,
 each naming its way out, and [`scripts/pr/milestone.py`](scripts/pr/milestone.py) owns the rule.
 

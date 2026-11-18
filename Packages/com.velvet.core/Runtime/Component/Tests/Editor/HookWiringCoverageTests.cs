@@ -501,9 +501,10 @@ namespace Velvet.Tests
         // A file name a hook builds a path from, rather than one a wiring names. The lookbehind is
         // what forces a whole name instead of its tail — `merged.py` out of `branch_from_unmerged.py`
         // — and it must not list `/`, or a name written inside a path stops matching at every
-        // position and the reference goes unread. Three of the five in the tree are path-qualified.
+        // position and the reference goes unread. The lookahead holds the extension whole, so `asked.sha` names
+        // no `asked.sh`. Three of the five in the tree are path-qualified.
         private static readonly Regex NamedScriptPattern =
-            new(@"(?<![.\w-])([A-Za-z0-9_][A-Za-z0-9_-]*\.(?:py|sh|bash|awk|ps1))", RegexOptions.Compiled);
+            new(@"(?<![.\w-])([A-Za-z0-9_][A-Za-z0-9_-]*\.(?:py|sh|bash|awk|ps1))(?![\w-])", RegexOptions.Compiled);
 
         // Where a hook's siblings live. A name resolving to neither is either a typo or a script
         // somewhere new, and both want the failure: adding the directory here is what says the
