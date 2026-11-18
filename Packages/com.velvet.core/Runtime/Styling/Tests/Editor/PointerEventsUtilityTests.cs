@@ -361,6 +361,9 @@ namespace Velvet.Tests
             });
         }
 
+        // GREEN_ON_BASE(characterization): the base rents the returned button in a later pass as well; what the case
+        // holds is that it takes the scope's picking mode across that boundary, now that pooling waits for the end of
+        // the pass.
         [Test]
         public void Given_AHeldButtonInsideANoneScope_When_ALaterRenderAddsAButtonAfterItsRemoval_Then_TheButtonThePoolHandsBackIgnoresPicking()
         {
