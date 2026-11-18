@@ -112,6 +112,9 @@ namespace Velvet
         internal static readonly EngineMember StyleComplexSelectorSpecificity =
             ReadProperty(UIElements, "UnityEngine.UIElements.StyleComplexSelector", "specificity", "System.Int32");
 
+        internal static readonly EngineMember StyleRuleCustomPropertiesCount =
+            Field(UIElements, "UnityEngine.UIElements.StyleRule", "customPropertiesCount", "System.Int32");
+
         internal static readonly EngineMember StyleSelectorPreviousRelationship = ReadProperty(UIElements,
             "UnityEngine.UIElements.StyleSelector", "previousRelationship", "enum:UnityEngine.UIElements.StyleSelectorRelationship");
 

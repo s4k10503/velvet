@@ -104,6 +104,9 @@ namespace Velvet
             // Whether the rules' radii are read from the cascade at each size change; set on a state a size change
             // attached rather than a class.
             public bool ReadsCascade;
+
+            // The matched rules' hash the last style event was read at.
+            public long? Rules;
         }
 
         private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<VisualElement, State> s_states = new();
@@ -261,7 +264,7 @@ namespace Velvet
             }
         }
 
-        private static readonly CustomStyleProperty<string> s_watchProperty = new(RadiusWatchSheets.Property);
+        private static readonly CustomStyleProperty<float> s_watchProperty = new(RadiusWatchSheets.Property);
 
         private static readonly EventCallback<CustomStyleResolvedEvent> s_onStyleResolved =
             evt => OnStyleResolved((VisualElement)evt.currentTarget);
@@ -288,6 +291,14 @@ namespace Velvet
             {
                 return;
             }
+            // The rules that matched the element are what the radii of its rules come from: a restyle that matched the same ones
+            // leaves what was read as it was.
+            var rules = StyleCascade.RulesHash(element);
+            if (rules != null && rules == state.Rules)
+            {
+                return;
+            }
+            state.Rules = rules;
             ReadSheet(element, state, element.customStyle);
             RefreshDeclared(element, state);
         }

@@ -17,10 +17,8 @@ namespace Velvet
     //
     // The sheet is rebuilt, in place, when the content hash of its source changes, and is no sheet an editor or a tool can
     // save: it is never the source, and the source is never edited. Left out are the bundled utilities, whose radius rules
-    // each have a restating rule of custom properties already (RadiusWatchSheetsPanelTests pins the pair), the sheets of
-    // Velvet's own, and what a sheet the engine marks as a default theme imports, since that is the engine's own theme; the
-    // rules of such a sheet itself are read. A rule that names a class or an id with the prefix `unity-` is left out in
-    // every sheet: it styles a built-in control, as the engine's themes do.
+    // each have a restating rule of custom properties already (RadiusWatchSheetsPanelTests pins the pair), and the sheets of
+    // Velvet's own.
     internal static class RadiusWatchSheets
     {
         internal const string Property = "--velvet-radius-watch";
@@ -35,9 +33,7 @@ namespace Velvet
         private static readonly PropertyInfo? s_specificity = EngineMember.StyleComplexSelectorSpecificity.ResolveProperty();
         private static readonly PropertyInfo? s_parts = EngineMember.StyleSelectorParts.ResolveProperty();
         private static readonly PropertyInfo? s_relationship = EngineMember.StyleSelectorPreviousRelationship.ResolveProperty();
-        private static readonly PropertyInfo? s_partValue = EngineMember.StyleSelectorPartValue.ResolveProperty();
-        private static readonly PropertyInfo? s_partType = EngineMember.StyleSelectorPartType.ResolveProperty();
-        private static readonly PropertyInfo? s_defaultSheet = EngineMember.StyleSheetIsDefault.ResolveProperty();
+        private static readonly FieldInfo? s_declaredVariables = EngineMember.StyleRuleCustomPropertiesCount.ResolveField();
 
         private static readonly Type? s_builderType = EngineMember.StyleSheetBuilderConstruct.ResolveType();
         private static readonly MethodInfo? s_beginProperty = EngineMember.StyleSheetBuilderBeginProperty.ResolveMethod();
@@ -52,9 +48,9 @@ namespace Velvet
 
         private static readonly bool s_ready = s_sheetRules != null && s_ruleProperties != null && s_propertyName != null
             && s_ruleSelectors != null && s_complex != null && s_specificity != null && s_parts != null
-            && s_relationship != null && s_partValue != null && s_partType != null && s_builderType != null && s_beginRule != null && s_beginSelector != null
+            && s_relationship != null && s_builderType != null && s_beginRule != null && s_beginSelector != null
             && s_addSelector != null && s_endSelector != null && s_beginProperty != null && s_addFloat != null
-            && s_endProperty != null && s_endRule != null && s_buildTo != null;
+            && s_endProperty != null && s_endRule != null && s_buildTo != null && s_declaredVariables != null;
 
         private sealed class Derived
         {
@@ -96,13 +92,12 @@ namespace Velvet
             {
                 return;
             }
-            var engine = s_defaultSheet != null && (bool)s_defaultSheet.GetValue(source);
             var watch = DerivedOf(source);
             if (watch != null && !element.styleSheets.Contains(watch))
             {
                 element.styleSheets.Add(watch);
             }
-            if (followImports && !engine)
+            if (followImports)
             {
                 foreach (var imported in VelvetStyleUtilities.ImportsOf(source))
                 {
@@ -141,43 +136,12 @@ namespace Velvet
                 {
                     if (IsRadius((string)s_propertyName!.GetValue(property)))
                     {
-                        if (!NamesEngineControl(rule))
-                        {
-                            found.Add(rule);
-                        }
+                        found.Add(rule);
                         break;
                     }
                 }
             }
             return found;
-        }
-
-        // Whether a selector of the rule names a class or an id of UI Toolkit's own controls, which the engine's themes style
-        // and the application's classes do not use; every built-in control carries one, so a rule of theirs would give every
-        // control the property.
-        private static bool NamesEngineControl(object rule)
-        {
-            var names = false;
-            foreach (var (kind, value) in PartsOf(rule))
-            {
-                // StyleSelectorType.Class and ID.
-                names |= (kind == 3 || kind == 6) && value.StartsWith("unity-", StringComparison.Ordinal);
-            }
-            return names;
-        }
-
-        private static System.Collections.Generic.IEnumerable<(int Kind, string Value)> PartsOf(object rule)
-        {
-            foreach (var complex in (Array)s_ruleSelectors!.GetValue(rule))
-            {
-                foreach (var simple in (Array)s_complex!.GetValue(complex))
-                {
-                    foreach (var part in (Array)s_parts!.GetValue(simple))
-                    {
-                        yield return (Convert.ToInt32(s_partType!.GetValue(part)), (string)s_partValue!.GetValue(part));
-                    }
-                }
-            }
         }
 
         private static bool IsRadius(string name)
@@ -215,6 +179,13 @@ namespace Velvet
                 s_endRule!.Invoke(builder, null);
             }
             s_buildTo!.Invoke(builder, new object[] { into });
+            // The property is only asked for in an element's computed style, never read as a variable, so the rules count none
+            // and the variable context the elements they match inherit stays as it was (RadiusWatchSheetsPanelTests pins the
+            // count and CornerRadiusFitPanelTests the event that comes anyway). Rebuilding the sheet would count it again.
+            foreach (var rule in (Array)s_sheetRules!.GetValue(into))
+            {
+                s_declaredVariables!.SetValue(rule, 0);
+            }
         }
     }
 }

@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Linq;
 using NUnit.Framework;
 using Unity.PerformanceTesting;
 using UnityEngine;
@@ -21,6 +22,11 @@ namespace Velvet.Tests.Performance
     /// in a restyle. A case throws when its Divs do not resolve the property as it says, or when a frame ran none of a
     /// phase. The sheet is an asset loaded through the editor's asset database, so the cases are editor-only and skip in a
     /// player.
+    /// </para>
+    /// <para>
+    /// Two more cases run 1,000 Buttons under the engine's own theme, which the watch sheets cover like any other: in the
+    /// first they carry the property, and in the second the watch sheets are taken off after the mount, so the pair is the
+    /// cost of the property on built-in controls. They skip where the panel has no engine theme.
     /// </para>
     /// </summary>
     [TestFixture]
@@ -74,6 +80,17 @@ namespace Velvet.Tests.Performance
         [UnityTest, Performance]
         public IEnumerator RestyleFrames_1000DivsUnderNoRadiusRule() => Run(watched: false);
 
+        // The buttons are matched by the engine theme's radius rules, which are watched like any other. In the second case
+        // the watch sheets are taken off the panel's root and the window's after the mount, which leaves the same elements
+        // and the same theme without the property.
+        // GREEN_ON_BASE(characterization): a benchmark asserts nothing about its numbers, so the base runs it green.
+        [UnityTest, Performance]
+        public IEnumerator RestyleFrames_1000ButtonsUnderTheEngineTheme() => Run(watched: true, buttons: true);
+
+        // GREEN_ON_BASE(characterization): a benchmark asserts nothing about its numbers, so the base runs it green.
+        [UnityTest, Performance]
+        public IEnumerator RestyleFrames_1000ButtonsUnderTheEngineThemeWithoutWatchSheets() => Run(watched: false, buttons: true);
+
         // The class the sheet below gives a 10px radius, which a 40px Div fits unscaled, and one of the same length that no
         // rule names.
         private const string RadiusClass = "layout-id-test-round";
@@ -89,18 +106,44 @@ namespace Velvet.Tests.Performance
             return V.Div("flex flex-col", children);
         }
 
-        private IEnumerator Run(bool watched)
+        private static VNode RenderButtons()
         {
+            var children = new VNode[Divs];
+            for (var i = 0; i < Divs; i++)
+            {
+                children[i] = V.Button(className: "w-[80px] h-[24px]", text: "b", key: "button-" + i);
+            }
+            return V.Div("flex flex-col", children);
+        }
+
+        private IEnumerator Run(bool watched, bool buttons = false)
+        {
+            if (buttons)
+            {
+                var theme = Resources.FindObjectsOfTypeAll<ThemeStyleSheet>().FirstOrDefault(t => t.name.Contains("Default"));
+                if (theme == null)
+                {
+                    Assert.Ignore("the panel has no engine theme to read");
+                }
+                _panelSettings.themeStyleSheet = theme;
+                yield return null;
+            }
 #if UNITY_EDITOR
             _root.styleSheets.Add(UnityEditor.AssetDatabase.LoadAssetAtPath<StyleSheet>(
                 "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/LayoutIdTestRules.uss"));
 #else
             Assert.Ignore("the radius rule is an asset the editor loads");
 #endif
-            _mounted = V.Mount(_root, RenderDivs(watched));
+            _mounted = V.Mount(_root, buttons ? RenderButtons() : RenderDivs(watched));
             _mounted.FlushStateForTest();
             for (var i = 0; i < SettleFrames; i++)
             {
+                yield return null;
+            }
+            if (buttons && !watched)
+            {
+                TakeOffWatchSheets(_root.panel.visualTree);
+                TakeOffWatchSheets(_root);
                 yield return null;
             }
             var top = _root[0];
@@ -143,6 +186,17 @@ namespace Velvet.Tests.Performance
             }
         }
 
+        private static void TakeOffWatchSheets(VisualElement element)
+        {
+            for (var i = element.styleSheets.count - 1; i >= 0; i--)
+            {
+                if (RadiusWatchSheets.IsWatch(element.styleSheets[i]))
+                {
+                    element.styleSheets.Remove(element.styleSheets[i]);
+                }
+            }
+        }
+
         private static void RequireArm(VisualElement top, bool watched)
         {
             if (top.childCount != Divs)
@@ -151,7 +205,7 @@ namespace Velvet.Tests.Performance
             }
             for (var i = 0; i < top.childCount; i++)
             {
-                var resolves = top[i].customStyle.TryGetValue(new CustomStyleProperty<string>("--velvet-radius-watch"), out _);
+                var resolves = top[i].customStyle.TryGetValue(new CustomStyleProperty<float>(RadiusWatchSheets.Property), out _);
                 if (resolves != watched)
                 {
                     throw new InvalidOperationException(

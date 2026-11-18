@@ -1,9 +1,0 @@
-/* Rules RadiusWatchSheetsPanelTests reads: one that declares a radius and names a class of a built-in control, which the
-   watch sheet leaves out, and one of the application's own, which it keeps. */
-.unity-radius-watch-probe {
-    border-radius: 5px;
-}
-
-.radius-watch-own {
-    border-radius: 5px;
-}

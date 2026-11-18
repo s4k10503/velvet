@@ -19,7 +19,6 @@ namespace Velvet.Tests
     {
         private const string Watch = "--velvet-radius-watch";
         private const string OwnSheet = "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/LayoutIdTestRules.uss";
-        private const string EngineRulesSheet = "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/RadiusWatchEngineRules.uss";
         private const string NoRadiusSheet = "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ThemeTokenSheet.uss";
         private const string StylesDirectory = "Packages/com.velvet.core/Runtime/Styles";
         private const BindingFlags Statics = BindingFlags.NonPublic | BindingFlags.Static;
@@ -120,13 +119,23 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ASheetWithARadiusRuleOfABuiltInControlAndOneOfItsOwn_When_ItsWatchSheetIsAsked_Then_OnlyTheRuleOfItsOwnIsKept()
+        public void Given_AUserSheetAboveAMount_When_TheTreeMounts_Then_NoRuleOfItsWatchSheetCountsAsDeclaringAVariable()
         {
-            // Act
-            var watch = RadiusWatchSheets.DerivedOf(Load(EngineRulesSheet));
+            // Arrange
+            var source = Load(OwnSheet);
+            _window.rootVisualElement.styleSheets.Add(source);
+            MountAndSettle();
+            var watch = RadiusWatchSheets.DerivedOf(source);
+            var count = EngineMember.StyleRuleCustomPropertiesCount.ResolveField()!;
 
-            // Assert — a missing sheet reads -1.
-            Assert.That(watch == null ? -1 : PropertyNamesPerRule(watch).Count(), Is.EqualTo(1));
+            // Act
+            var counted = watch == null
+                ? new List<int> { -1 }
+                : ((Array)EngineMember.StyleSheetRules.ResolveProperty()!.GetValue(watch)).Cast<object>()
+                    .Select(rule => (int)count.GetValue(rule)).ToList();
+
+            // Assert — a missing sheet reads -1, which no count of variables equals.
+            Assert.That(counted.Max(), Is.Zero);
         }
 
         // GREEN_ON_BASE(characterization): the base attaches no watch sheet to any root.
