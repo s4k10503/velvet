@@ -11,6 +11,7 @@ Packages/com.velvet.core/Runtime/Component/V.Mount.cs	1
 Packages/com.velvet.core/Runtime/Component/V.cs	1
 Packages/com.velvet.core/Runtime/EngineMember.cs	3
 Packages/com.velvet.core/Runtime/Hooks/FocusManager.cs	1
+Packages/com.velvet.core/Runtime/Hooks/HookQueries.cs	1
 Packages/com.velvet.core/Runtime/Hooks/HookQuery.cs	1
 Packages/com.velvet.core/Runtime/Hooks/Hooks.cs	4
 Packages/com.velvet.core/Runtime/Hooks/MutationCache.cs	5
