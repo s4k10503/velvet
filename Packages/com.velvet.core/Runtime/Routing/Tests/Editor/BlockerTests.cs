@@ -802,6 +802,66 @@ namespace Velvet.Tests
 
         #endregion
 
+        #region What a hook slot does with its registration
+
+        // GREEN_ON_BASE(characterization): the base detaches the state's callback before the disposal returns it to idle.
+        [Test]
+        public void Given_ASlotHoldingABlockedState_When_ItIsDisposed_Then_TheStatesCallbackIsNotRun()
+        {
+            // Arrange
+            var manager = new RouteBlockerManager();
+            var state = new RouteBlockerState();
+            var slot = new RouteBlockerSlot { State = state, Registration = manager.Register(_ => true, state) };
+            manager.Check(Attempt(), NoResume);
+            var announced = 0;
+            state.StateChanged = () => announced++;
+
+            // Act
+            slot.Dispose();
+
+            // Assert
+            Assert.That(announced, Is.Zero);
+        }
+
+        // GREEN_ON_BASE(characterization): the base lets go of the registration once it has disposed it.
+        [Test]
+        public void Given_ASlotHoldingARegistration_When_ItIsDisposed_Then_ItHoldsNone()
+        {
+            // Arrange
+            var manager = new RouteBlockerManager();
+            var state = new RouteBlockerState();
+            var slot = new RouteBlockerSlot { State = state, Registration = manager.Register(_ => false, state) };
+
+            // Act
+            slot.Dispose();
+
+            // Assert
+            Assert.That(slot.Registration, Is.Null);
+        }
+
+        // GREEN_ON_BASE(characterization): the base hands the staged predicate over once and holds none afterwards.
+        [Test]
+        public void Given_ASlotWithAStagedPredicate_When_ItCommits_Then_NoPredicateIsStaged()
+        {
+            // Arrange — no router on either side, so the registration it holds is swapped in place.
+            var manager = new RouteBlockerManager();
+            var state = new RouteBlockerState();
+            var slot = new RouteBlockerSlot
+            {
+                State = state,
+                Registration = manager.Register(_ => false, state),
+                NextPredicate = _ => true,
+            };
+
+            // Act
+            slot.Commit();
+
+            // Assert
+            Assert.That(slot.NextPredicate, Is.Null);
+        }
+
+        #endregion
+
         #region Blocker liveness during Check
 
         [Test]

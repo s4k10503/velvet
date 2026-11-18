@@ -1,7 +1,9 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using NUnit.Framework;
 using UnityEngine.UIElements;
+using Velvet.TestUtilities;
 
 namespace Velvet.Tests
 {
@@ -166,6 +168,229 @@ namespace Velvet.Tests
             Assert.That(
                 (bridgedWhileMounted, _reconciler.Context.EventManager.IsBridgeAnchor(container)),
                 Is.EqualTo((true, false)));
+        }
+
+        [Test]
+        public void Given_a_portal_of_three_rows_in_a_container_on_a_panel_When_it_unmounts_Then_the_rows_leave_the_panel_first_to_last()
+        {
+            // Arrange
+            using var host = new HeadlessEditorPanelHost();
+            var container = new VisualElement();
+            host.Root.Add(container);
+            var tree = new VNode[]
+            {
+                V.Portal(container, children: new VNode?[] { V.Div(name: "a"), V.Div(name: "b"), V.Div(name: "c") }),
+            };
+            _reconciler.Reconcile(_root, Array.Empty<VNode>(), tree);
+            var left = new List<string>();
+            foreach (var row in container.Children())
+            {
+                row.RegisterCallback<DetachFromPanelEvent>(_ => left.Add(row.name));
+            }
+
+            // Act
+            _reconciler.Reconcile(_root, tree, Array.Empty<VNode>());
+
+            // Assert
+            Assert.That(string.Join("|", left), Is.EqualTo("a|b|c"));
+        }
+
+        private enum NestedAt
+        {
+            LastRow,
+            FirstRow,
+            InsideLastRow,
+            InsideRelocatedLastRow,
+        }
+
+        private static VisualElement s_container;
+        private static NestedAt s_nestedAt;
+        private static StateUpdater<bool> s_setOuterShown;
+        private static StateUpdater<int> s_setCount;
+
+        [Component(Compiler = false)]
+        private static VNode Counter()
+        {
+            var (count, setCount) = Hooks.UseState(0);
+            s_setCount = setCount;
+            return V.Label(text: "count " + count);
+        }
+
+        [Component(Compiler = false)]
+        private static VNode NestedPortalBesideACounter()
+        {
+            var (outerShown, setOuterShown) = Hooks.UseState(true);
+            s_setOuterShown = setOuterShown;
+            var inner = V.Portal(s_container, children: new VNode?[] { V.Div(name: "b") }, key: "inner");
+            var rows = s_nestedAt switch
+            {
+                NestedAt.FirstRow => new VNode?[] { inner, V.Div(name: "a1"), V.Div(name: "a2") },
+                NestedAt.InsideLastRow => new VNode?[]
+                {
+                    V.Div(name: "a1"), V.Div(name: "a2"), V.Div(name: "holder", children: new VNode?[] { inner }),
+                },
+                NestedAt.InsideRelocatedLastRow => new VNode?[]
+                {
+                    V.Div(name: "a1"),
+                    V.Div(name: "a2"),
+                    V.Div(name: "holder", className: "absolute z-10", children: new VNode?[] { inner }),
+                },
+                _ => new VNode?[] { V.Div(name: "a1"), V.Div(name: "a2"), inner },
+            };
+            return V.Fragment(
+                outerShown ? V.Portal(s_container, children: rows, key: "outer") : null,
+                V.Portal(s_container, children: new VNode?[] { V.Component(Counter, key: "counter") }, key: "beside"));
+        }
+
+        private static MountedTree MountThenUnmountTheOuter(NestedAt nestedAt)
+        {
+            s_container = new VisualElement();
+            s_nestedAt = nestedAt;
+            var mounted = V.Mount(new VisualElement(), V.Component(NestedPortalBesideACounter, key: "root"));
+            s_setOuterShown.Invoke(false);
+            mounted.FlushStateForTest();
+            return mounted;
+        }
+
+        private static string RowsOf(VisualElement container)
+            => string.Join("|", container.Children().Select(row => row is Label label ? label.text : row.name));
+
+        // GREEN_ON_BASE(characterization): the base takes the row holding the nested Portal out before the rows ahead of it.
+        // The Component beside them then keeps addressing its own row.
+        [Test]
+        public void Given_a_portal_whose_last_row_holds_a_portal_into_the_same_container_When_it_unmounts_and_a_component_beside_it_renders_again_Then_the_component_patches_its_own_row()
+        {
+            // Arrange
+            using var mounted = MountThenUnmountTheOuter(NestedAt.InsideLastRow);
+
+            // Act
+            s_setCount.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(RowsOf(s_container), Is.EqualTo("count 1"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base takes the relocated row out before the rows ahead of it, and the nested Portal in its real element with it.
+        // The Component beside them then keeps addressing its own row.
+        [Test]
+        public void Given_a_portal_whose_last_row_is_relocated_and_holds_a_portal_into_the_same_container_When_it_unmounts_and_a_component_beside_it_renders_again_Then_the_component_patches_its_own_row()
+        {
+            // Arrange
+            using var mounted = MountThenUnmountTheOuter(NestedAt.InsideRelocatedLastRow);
+
+            // Act
+            s_setCount.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(RowsOf(s_container), Is.EqualTo("count 1"));
+        }
+
+        // A Portal whose Component mounts inline on the container, ahead of a Portal of one row into it.
+        [Component(Compiler = false)]
+        private static VNode CounterAheadOfAPortal()
+        {
+            var (outerShown, setOuterShown) = Hooks.UseState(true);
+            s_setOuterShown = setOuterShown;
+            return V.Fragment(
+                V.Portal(s_container, children: new VNode?[] { V.Component(Counter, key: "counter") }, key: "ahead"),
+                outerShown ? V.Portal(s_container, children: new VNode?[] { V.Div(name: "a1") }, key: "outer") : null);
+        }
+
+        // GREEN_ON_BASE(characterization): the base shifts only what lies behind the rows that left.
+        // The container's own child puts both ranges past slot 0, so a shift measured from slot 0 would move the
+        // Component ahead of the departing row as well.
+        [Test]
+        public void Given_a_portal_behind_a_portal_holding_a_component_in_a_container_with_a_child_of_its_own_When_it_unmounts_and_the_component_renders_again_Then_the_component_patches_its_own_row()
+        {
+            // Arrange
+            s_container = new VisualElement();
+            s_container.Add(new VisualElement { name = "own" });
+            using var mounted = V.Mount(new VisualElement(), V.Component(CounterAheadOfAPortal, key: "root"));
+            s_setOuterShown.Invoke(false);
+            mounted.FlushStateForTest();
+
+            // Act
+            s_setCount.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(RowsOf(s_container), Is.EqualTo("own|count 1"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base takes the nested Portal out before the outer's rows ahead of it.
+        // The Component beside them then keeps addressing its own row.
+        [Test]
+        public void Given_a_portal_whose_last_row_is_a_portal_into_the_same_container_When_it_unmounts_and_a_component_beside_it_renders_again_Then_the_component_patches_its_own_row()
+        {
+            // Arrange
+            using var mounted = MountThenUnmountTheOuter(NestedAt.LastRow);
+
+            // Act
+            s_setCount.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(RowsOf(s_container), Is.EqualTo("count 1"));
+        }
+
+        [Test]
+        public void Given_a_portal_whose_first_row_is_a_portal_into_the_same_container_When_it_unmounts_and_a_component_beside_it_renders_again_Then_the_component_patches_its_own_row()
+        {
+            // Arrange
+            using var mounted = MountThenUnmountTheOuter(NestedAt.FirstRow);
+
+            // Act
+            s_setCount.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(RowsOf(s_container), Is.EqualTo("count 1"));
+        }
+
+        private enum EmptyPortalStep
+        {
+            Mounted,
+            AheadUnmounted,
+            Filled,
+            Unmounted,
+        }
+
+        private static StateUpdater<EmptyPortalStep> s_setStep;
+
+        [Component(Compiler = false)]
+        private static VNode EmptyPortalBehindAPortal()
+        {
+            var (step, setStep) = Hooks.UseState(EmptyPortalStep.Mounted);
+            s_setStep = setStep;
+            var rows = step == EmptyPortalStep.Filled ? new VNode?[] { V.Div(name: "e") } : Array.Empty<VNode?>();
+            return V.Fragment(
+                step == EmptyPortalStep.Mounted
+                    ? V.Portal(s_container, children: new VNode?[] { V.Div(name: "a") }, key: "ahead")
+                    : null,
+                step == EmptyPortalStep.Unmounted ? null : V.Portal(s_container, children: rows, key: "empty"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base moves an empty Portal's recorded start back by the row a Portal ahead of it took out.
+        [Test]
+        public void Given_an_empty_portal_that_rendered_a_row_after_the_portal_ahead_of_it_unmounted_When_it_unmounts_Then_its_row_leaves_the_container()
+        {
+            // Arrange
+            s_container = new VisualElement();
+            using var mounted = V.Mount(new VisualElement(), V.Component(EmptyPortalBehindAPortal, key: "root"));
+            s_setStep.Invoke(EmptyPortalStep.AheadUnmounted);
+            mounted.FlushStateForTest();
+            s_setStep.Invoke(EmptyPortalStep.Filled);
+            mounted.FlushStateForTest();
+            var filled = RowsOf(s_container) == "e";
+
+            // Act
+            s_setStep.Invoke(EmptyPortalStep.Unmounted);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(filled ? RowsOf(s_container) : "e never arrived", Is.Empty);
         }
     }
 }

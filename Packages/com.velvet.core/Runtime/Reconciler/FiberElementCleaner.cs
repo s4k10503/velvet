@@ -613,9 +613,7 @@ namespace Velvet
 
         // Removes only this Portal's slot range from the target's children
         // (slotStart .. slotStart + slotLength), preserving children placed by other
-        // Portals sharing the same target. After removal, downstream Portals on the same target
-        // have their slotStart shifted by -slotLength so subsequent patches stay
-        // correctly addressed. Entry removal happens before target mutation to prevent double
+        // Portals sharing the same target. Entry removal happens before target mutation to prevent double
         // processing via CleanupDescendants recursion.
         private void CleanupPortal(VisualElement element)
         {
@@ -659,9 +657,9 @@ namespace Velvet
             if (slotEnd > target.childCount) slotEnd = target.childCount;
             // Read before any is cleaned: a cleanup can take a child hosted before its element out of the target
             // (RemoveCleaned), which would move the indices still to be visited.
+            // MUTANT_SURVIVES(equivalent, arithmetic): the expression sizes only the list's initial capacity, which bounds nothing PhysicalRange appends, and with both ends at zero or more the sum is a valid capacity too.
             var range = new List<VisualElement>(Math.Max(slotEnd - physicalSlotStart, 0));
             ChildListWrites.PhysicalRange(target, physicalSlotStart, slotEnd, range);
-            range.Reverse();
             foreach (var child in range)
             {
                 // An invisible child inside the range belongs to whichever paint owns it, not to the portal.
@@ -671,7 +669,16 @@ namespace Velvet
                 }
                 var poolable = PoolableOccupantOf(child);
                 CleanupElement(child);
+                var left = new PortalSlotInfo(
+                    target, LogicalChildSlots.ToLogical(target, ChildListWrites.PhysicalIndexOf(target, child)), 1);
                 RemoveCleaned(target, child);
+                // The starts behind each row move as it leaves, not once for the whole range: a Portal that is one of
+                // the rows, or sits in one, reads its own range from its rows when CleanupElement reaches it and moves
+                // the starts behind that range, so by then those starts have to count every row already taken out.
+                // Shifting only ahead of a row holding a Portal misses a relocated row, whose Portal sits in its real
+                // element.
+                PortalSlotTracker.ShiftRangesBehind(_ctx.PortalState.Stored, target, element, left, -1);
+                FiberCommitWork.ShiftTenantsAfterPortalRange(_ctx.ComponentRegistry, target, element, left, -1);
                 ReturnOccupantToPool(child, poolable);
             }
 
@@ -680,12 +687,6 @@ namespace Velvet
             {
                 _ctx.PortalTargetsToRestyle.Add(target);
             }
-
-            // Surviving Portals on the same target whose slot starts after the removed range
-            // collapse left by SlotLength so their next patch addresses the right DOM positions.
-            PortalSlotTracker.ShiftRangesBehind(_ctx.PortalState.Stored, target, element, portalInfo, -portalInfo.SlotLength);
-            FiberCommitWork.ShiftTenantsAfterPortalRange(
-                _ctx.ComponentRegistry, target, element, portalInfo, -portalInfo.SlotLength);
         }
 
         // Empties a Portal's slot range on the element it is mounted into and leaves it in exactly the
