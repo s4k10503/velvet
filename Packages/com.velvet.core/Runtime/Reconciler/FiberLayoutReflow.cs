@@ -32,6 +32,36 @@ namespace Velvet
             // MUTANT_SURVIVES(unreachable): the flag is read only in LayOut's catch, which no panel the suite mounts reaches.
             => LayOut(ctx, element.panel, owner, ownerIsLifecycle: false);
 
+        // Applies the styles of element's panel, and lays it out, as a ref callback attached to element would read it, and
+        // says whether it did: false where element is on no panel, the panel's engine members are not shaped as this class
+        // reads them, or the panel is inside its own style traversal or layout phase, where a second pass would restart
+        // the first.
+        internal static bool TryLayOut(VisualElement element)
+        {
+            try
+            {
+                return EnsureLaidOut(element.panel);
+            }
+            catch (TargetInvocationException)
+            {
+                // MUTANT_SURVIVES(unreachable): no panel the suite mounts on holds a measure callback that throws.
+                return false;
+            }
+        }
+
+        // Whether element's panel is as the last pass left it, and a later write by the caller, which the pass need not run
+        // again for, is taken as part of that pass.
+        internal static bool IsCurrent(IPanel? panel)
+            => panel != null && s_panels.TryGetValue(panel, out var layout) && layout != null && layout.IsCurrent();
+
+        internal static void Accept(IPanel? panel)
+        {
+            if (panel != null && s_panels.TryGetValue(panel, out var layout))
+            {
+                layout?.Accept();
+            }
+        }
+
         internal static bool ReadsLayout(ComponentFiber fiber)
         {
             if (fiber.PendingLayoutEffects is { Count: > 0 }) return true;
@@ -83,9 +113,9 @@ namespace Velvet
 
         // A panel whose members are not shaped as this class reads them is left alone, and commits on it read the
         // layout it last computed.
-        private static void EnsureLaidOut(IPanel? panel)
+        private static bool EnsureLaidOut(IPanel? panel)
         {
-            if (panel == null) return;
+            if (panel == null) return false;
             if (!s_panels.TryGetValue(panel, out var layout))
             {
                 layout = PanelLayout.Resolve(panel);
@@ -93,7 +123,7 @@ namespace Velvet
                 // A fresh resolution has no version recorded, so that read only runs the computation again.
                 s_panels.Add(panel, layout);
             }
-            layout?.EnsureLaidOut();
+            return layout != null && layout.EnsureLaidOut();
         }
 
         // The engine members a computation reads, the same for every panel. Each is an EngineMember, which a player
@@ -205,21 +235,25 @@ namespace Velvet
                 };
             }
 
+            internal bool IsCurrent() => _laidOut && _version() == _laidOutVersion;
+
+            internal void Accept() => _laidOutVersion = _version();
+
             // An unchanged panel version is taken as a layout this class has already brought up to date: the panel
             // moves it on every version change of an element on it, and the update case of
             // UseLayoutEffectLayoutReadTests fails when a layout-dirtying one stops moving it.
-            internal void EnsureLaidOut()
+            internal bool EnsureLaidOut()
             {
                 // MUTANT_SURVIVES(equivalent): a computation over a panel nothing changed on changes nothing.
                 // This only spares the reflection calls.
-                if (_laidOut && _version() == _laidOutVersion) return;
+                if (_laidOut && _version() == _laidOutVersion) return true;
                 // A commit made from a measure callback runs inside the panel's own computation, which a second one
                 // would restart under it.
                 // MUTANT_SURVIVES(unreachable): no suite case commits from inside a measure callback.
-                if (_duringLayout()) return;
+                if (_duringLayout()) return false;
                 // A CustomStyleResolvedEvent is dispatched from inside the style updater's traversal, which a
                 // second traversal would restart under it.
-                if ((bool)_applyingStyles.GetValue(_styleUpdater)) return;
+                if ((bool)_applyingStyles.GetValue(_styleUpdater)) return false;
                 _styles();
                 var node = _members.LayoutNode.GetValue(_root);
                 if ((bool)_members.Dirty.GetValue(node) && !OnlyLeftDirty(node))
@@ -241,6 +275,7 @@ namespace Velvet
                 // MUTANT_SURVIVES(equivalent): an unrecorded computation only sends each later read past that check.
                 // There it computes nothing where the version has not moved, for the reason the one above gives.
                 _laidOut = true;
+                return true;
             }
 
             // Whether a dirty root can be read as the mark the last computation left: the root node's new-layout flag,

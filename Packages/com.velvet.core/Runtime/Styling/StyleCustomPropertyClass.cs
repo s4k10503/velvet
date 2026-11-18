@@ -56,9 +56,16 @@ namespace Velvet
         // has stripped the important bang and ruled out a variant.
         public static bool IsCustomPropertyToken(string core)
             => !string.IsNullOrEmpty(core)
-                && (((core[0] == '[' || core.IndexOf('(') >= 0 || core.IndexOf('_') >= 0)
+                && (((core[0] == '[' || core.IndexOf('(') >= 0 || core.IndexOf('_') >= 0 || core.IndexOf("]/", StringComparison.Ordinal) >= 0)
                     && (IsArbitraryProperty(core, out _, out _) || Consumer(core) != null))
                 || StyleThemeClass.Normalize(core) != null || StyleThemeClass.IsClearedBundled(core));
+
+        // Whether core, with its important bang removed, is a token Consumer reads. A reader names its custom property as
+        // `var(` or as the parenthesised shorthand's `--`, so a token holding neither is none and costs no normalizing.
+        internal static bool IsConsumer(string core)
+            => (core.IndexOf("var(", StringComparison.OrdinalIgnoreCase) >= 0
+                    || core.IndexOf("--", StringComparison.Ordinal) >= 0)
+                && Consumer(core) != null;
 
         // `[--name:value]`: the name as written and the value as Tailwind writes it into the declaration, with `_`
         // read as a space outside a var() name and a url().
@@ -93,7 +100,7 @@ namespace Velvet
             {
                 return null;
             }
-            if (core[0] != '[' && core.IndexOf('(') < 0 && core.IndexOf('_') < 0)
+            if (core[0] != '[' && core.IndexOf('(') < 0 && core.IndexOf('_') < 0 && core.IndexOf("]/", StringComparison.Ordinal) < 0)
             {
                 return StyleThemeClass.Normalize(core);
             }
@@ -127,16 +134,80 @@ namespace Velvet
                 return null;
             }
             var open = expanded.IndexOf('[');
-            if (open < 2 || (expanded[open - 1] != '-' && expanded[open - 1] != '/') || expanded[expanded.Length - 1] != ']')
+            if (open < 2 || (expanded[open - 1] != '-' && expanded[open - 1] != '/') || !EndsInBracketOrNumericModifier(expanded))
             {
                 return null;
             }
             var shape = UtilityShape.Of(expanded);
-            return expanded.IndexOf("var(", open, StringComparison.OrdinalIgnoreCase) > open
+            return expanded.IndexOf("var(", open, StringComparison.OrdinalIgnoreCase) > open || UnsetsLiteralStop(expanded)
                 || (SidesOf(expanded, shape) != null && HoldsSeveralValues(expanded, shape))
                 ? expanded
                 : null;
         }
+
+        // Whether utility closes with a bracket, or with the bracket and a numeric opacity modifier after it
+        // (`shadow-[var(--x)]/50`), which only a utility Tailwind writes a rule for with one is read as having
+        // (TakesOpacityModifier). The same class of any other utility is no class there and does nothing.
+        private static bool EndsInBracketOrNumericModifier(string utility)
+            => utility[utility.Length - 1] == ']'
+                || (TryReadNumericModifier(utility, out var root, out var hint) && TakesOpacityModifier(root, hint));
+
+        // The root and type hint of utility, a bracket closed by a numeric modifier.
+        private static bool TryReadNumericModifier(string utility, out string root, out string? hint)
+        {
+            root = string.Empty;
+            hint = null;
+            var slash = utility.LastIndexOf('/');
+            var open = utility.IndexOf('[');
+            if (open < 2 || slash <= open + 1 || utility[slash - 1] != ']' || utility[open - 1] != '-')
+            {
+                return false;
+            }
+            var number = utility.AsSpan(slash + 1);
+            if (number.IsEmpty || !number.TrimStart("0123456789.".AsSpan()).IsEmpty)
+            {
+                return false;
+            }
+            root = utility.Substring(0, open - 1);
+            StyleArbitraryValueResolver.TrySplitTypeHint(utility.AsSpan(open + 1, slash - open - 2), out hint, out _);
+            return true;
+        }
+
+        // The roots Tailwind 4.3.3 writes a rule for an opacity modifier on that Velvet reads: those of a shadow under any
+        // type hint, and those of a colour under a hint that is not a width's or a size's.
+        private static readonly HashSet<string> s_shadowModifierRoots = new(StringComparer.Ordinal)
+        {
+            "shadow", "inset-shadow", "drop-shadow",
+        };
+
+        private static bool IsColourRoot(string root)
+            => root is "caret" or "divide" || StyleColorValueParser.DefaultsToColour(root);
+
+        private static bool TakesOpacityModifier(string root, string? hint)
+            => s_shadowModifierRoots.Contains(root)
+                || (IsColourRoot(root)
+                    && !StyleColorValueParser.HintSelectsNonColour(StyleBorderSideColor.IsSideRoot(root) ? "border" : root, hint));
+
+        // Whether utility is a colour utility's bracket reading a var() with an opacity modifier, typed as something other
+        // than a colour or the utility's own width or size. Tailwind passes the var() through untyped, so whether it is a
+        // colour is the value's to say, and the reader is read as a colour (a ring's, which discards the box-shadow where it
+        // is none, are read as they are: StyleRingClass.ReadBoxShadowPart).
+        internal static bool RetypesColour(string utility)
+            => utility.IndexOf("var(", StringComparison.OrdinalIgnoreCase) >= 0
+                && TryReadNumericModifier(utility, out var root, out var hint) && hint != null && hint != "color"
+                && !(root is "ring" or "ring-offset" or "inset-ring") && !s_shadowModifierRoots.Contains(root)
+                && TakesOpacityModifier(root, hint);
+
+        // Whether utility is a gradient stop's bracket typed as something else, with an opacity modifier, holding no
+        // colour: a stop colour is a registered custom property, which a value that is no colour leaves at its initial
+        // value, where a background, a border, an outline, a text colour, a caret and a divider drop the declaration with its class.
+        internal static bool UnsetsLiteralStop(string utility)
+            => TryReadNumericModifier(utility, out var root, out var hint) && root is "from" or "via" or "to"
+                && hint != null && hint != "color" && !StyleColorValueParser.HintSelectsNonColour(root, hint)
+                && utility.IndexOf("var(", StringComparison.OrdinalIgnoreCase) < 0
+                && StyleColorValueParser.RejectsAsColour(StyleArbitraryValueResolver.WithoutTypeHint(utility) is { } plain
+                    ? plain.Substring(plain.IndexOf('[') + 1, plain.LastIndexOf('/') - plain.IndexOf('[') - 2)
+                    : string.Empty);
 
         // `prefix-(--x)`, `prefix-(hint:--x)` and a modifier's `/(--x)`, each written as the bracket Tailwind reads
         // it as (`[var(--x)]`, `[hint:var(--x)]`). The token as it is when it holds none; null when a parenthesised

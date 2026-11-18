@@ -205,7 +205,7 @@ namespace Velvet
         }
 
         // The family and importance of a variantless token, as the index of its group; -1 for any other.
-        private static int SlotOf(string token)
+        internal static int SlotOf(string token)
         {
             var core = StyleArbitraryValueResolver.StripImportant(token, out var important);
             if (string.IsNullOrEmpty(core) || StyleSpacingPrecedence.VariantsLength(core) != 0)

@@ -306,11 +306,11 @@ namespace Velvet
             var insetShadowAlpha = default(StyleShadowClass.AlphaSlot);
             foreach (var cls in classNames)
             {
-                if (!OpensWithBoxShadowRoot(cls))
+                var core = BoxShadowCoreOf(cls, out var important);
+                if (core == null)
                 {
                     continue;
                 }
-                var core = StyleArbitraryValueResolver.StripImportant(cls, out var important);
                 if (core == "ring")
                 {
                     ring.Width.Offer(important, false);
@@ -347,6 +347,20 @@ namespace Velvet
                 || StyleShadowClass.Discards(insetShadow, insetShadowColour, insetShadowAlpha)));
         }
 
+        // The class past its important bang where ReadBoxShadow reads it, null where it does not. A token reading a custom
+        // property is read through the payload its reader resolves it to, which the composed array holds beside it: its
+        // own text would offer the slot a value before the var() in it resolves.
+        private static string? BoxShadowCoreOf(string cls, out bool important)
+        {
+            important = false;
+            if (!OpensWithBoxShadowRoot(cls))
+            {
+                return null;
+            }
+            var core = StyleArbitraryValueResolver.StripImportant(cls, out important);
+            return StyleCustomPropertyClass.IsConsumer(core) ? null : core;
+        }
+
         // Whether cls, past a leading bang, opens with a root ReadBoxShadow reads, so that an important class opening with
         // none of them is passed over before StripImportant copies its core. A root ReadBoxShadow comes to read is added
         // here too.
@@ -381,6 +395,11 @@ namespace Velvet
                 slots.Width.Offer(important, false);
                 return;
             }
+            if (MixesNonColour(suffix, root))
+            {
+                slots.Colour.Offer(important, true);
+                return;
+            }
             // A bracketed modifier closes a bracket of its own, which is not the value's.
             if (StyleColorValueParser.ColorModifierSlashIndex(suffix, 0) != -1
                 || !StyleArbitraryValueResolver.TryStripBrackets(suffix, 0, out var inner))
@@ -409,7 +428,26 @@ namespace Velvet
                     && !(root == "inset-ring" && StyleCompositeRejection.IsZero(value)));
                 return;
             }
-            slots.Colour.Offer(important, StyleColorValueParser.RejectsAsColour(value));
+            // An inset ring reads its colour inside the box-shadow's own layer, where inset is no colour.
+            slots.Colour.Offer(important, StyleColorValueParser.RejectsAsColour(value,
+                keywordsPass: !(root == "inset-ring" && value.Equals("inset", System.StringComparison.OrdinalIgnoreCase))));
+        }
+
+        // Whether suffix is a bracket holding a value that is no colour, behind an opacity modifier that reads no variable
+        // and under no type hint or one that is not root's width's: Tailwind mixes it into a colour, a custom property the
+        // box-shadow reads, which the browser then finds invalid there. A colour under such a hint is valid, and read as a
+        // colour; a keyword is none, and so is a hinted value Velvet's grammar rejects. A width's hint, or a modifier that reads a
+        // variable, leaves it as it was.
+        private static bool MixesNonColour(string suffix, string root)
+        {
+            var slash = StyleColorValueParser.ColorModifierSlashIndex(suffix, 0);
+            var modifier = slash < 0 ? ReadOnlySpan<char>.Empty : suffix.AsSpan(slash + 1);
+            return slash > 2 && suffix[0] == '[' && suffix[slash - 1] == ']'
+                && !modifier.IsEmpty && modifier[0] != '(' && modifier.IndexOf("var(".AsSpan()) < 0
+                && StyleArbitraryValueResolver.TrySplitTypeHint(suffix.AsSpan(1, slash - 2), out var hint, out var value)
+                && (hint == null || !StyleColorValueParser.HintSelectsNonColour(root, hint))
+                && (StyleColorValueParser.IsKeyword(value.ToString())
+                    || (hint != null && StyleColorValueParser.RejectsAsColour(value.ToString())));
         }
 
         // Tailwind's isPositiveInteger: String(Number(suffix)) === suffix, so digits without a leading zero, naming
