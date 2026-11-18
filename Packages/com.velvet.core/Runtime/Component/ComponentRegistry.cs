@@ -346,7 +346,7 @@ namespace Velvet
                 {
                     if (!_tenancies.TryGetValue(site.MountPoint, out var tenancy))
                     {
-                        tenancy = new InlineTenancy();
+                        tenancy = new InlineTenancy(_ctx.Pass.Journal);
                         _tenancies[site.MountPoint] = tenancy;
                     }
                     tenancy.Fibers.Add(fiber);
@@ -849,6 +849,20 @@ namespace Velvet
     internal sealed class InlineTenancy
     {
         internal readonly HashSet<ComponentFiber> Fibers = new();
-        internal int ShiftedRows;
+
+        private readonly FiberPassJournal _journal;
+        private int _shiftedRows;
+
+        internal InlineTenancy(FiberPassJournal journal) => _journal = journal;
+
+        internal int ShiftedRows
+        {
+            get => _shiftedRows;
+            set
+            {
+                _journal.RecordShiftedRows(this);
+                _shiftedRows = value;
+            }
+        }
     }
 }
