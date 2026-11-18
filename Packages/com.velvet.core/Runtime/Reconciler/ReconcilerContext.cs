@@ -1949,8 +1949,8 @@ namespace Velvet
         internal void RecordSuspenseRender(SuspenseRender render)
             => (_suspensePrimaries[^1].Renders ??= new List<SuspenseRender>()).Add(render);
 
-        // The renders of the pass on the stack, which a suspend nothing catches takes back.
-        internal FiberPassJournal PassJournal { get; } = new();
+        // What this context's pass owns while it runs: the child-list writes it has recorded and the journal of its renders.
+        internal ReconcilePass Pass { get; } = new();
 
         // The Suspense that walked a primary says whether it shows the renders the primary made. One that shows
         // its children commits them, unless a retaining primary around it is still open to decide for them, or the
@@ -1965,9 +1965,9 @@ namespace Velvet
                 return;
             }
             // Shown by this Suspense, but the pass is still open to being abandoned by a suspend nothing catches.
-            if (!discard && PassJournal.IsOpen)
+            if (!discard && Pass.Journal.IsOpen)
             {
-                PassJournal.RecordHooks(renders);
+                Pass.Journal.RecordHooks(renders);
                 return;
             }
             foreach (var render in renders)

@@ -24,7 +24,7 @@ namespace Velvet.Tests.Performance
         [TearDown]
         public void TearDown()
         {
-            ChildListWrites.EndRecording();
+            ChildListWrites.EndRecording(_reconciler.Context.Pass);
             _reconciler.Dispose();
         }
 
@@ -127,12 +127,12 @@ namespace Velvet.Tests.Performance
             var pending = new PendingPatch(patcher, label, new TextNode { Text = "a" }, new TextNode { Text = "b" }, 0);
             // Cleaned since it was recorded, so the op's body is skipped and the case measures the queue alone.
             _reconciler.Context.CleanedElements[label] = 1;
-            ChildListWrites.BeginRecording();
-            Action reset = () => ChildListWrites.ApplyRecorded();
+            ChildListWrites.BeginRecording(_reconciler.Context.Pass);
+            Action reset = () => ChildListWrites.ApplyPendingPatches();
             Action recordAndApply = () =>
             {
                 ChildListWrites.RecordPatchPre(pending);
-                ChildListWrites.ApplyRecorded();
+                ChildListWrites.ApplyPendingPatches();
             };
             recordAndApply();
 

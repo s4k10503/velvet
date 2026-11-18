@@ -252,8 +252,8 @@ namespace Velvet
             {
                 profilerScope = s_reconcileMarker.Auto();
                 ChildListWrites.BeginPass();
-                ChildListWrites.BeginRecording();
                 _ctx.RelationalTreeWatch.Watch(parent?.panel);
+                ChildListWrites.BeginRecording(_ctx.Pass);
             }
 
             // Put back rather than cleared, and held across FinishTopLevelPass below: that boundary runs
@@ -535,7 +535,7 @@ namespace Velvet
             // the probe a discrete event dispatched synchronously inside a slice would re-enter the
             // reconciler on the stack.
             var isTopLevel = _ctx.SharedReconcileDepth == 0;
-            if (isTopLevel) ChildListWrites.BeginRecording();
+            if (isTopLevel) ChildListWrites.BeginRecording(_ctx.Pass);
 
             // A resume continues the pass an earlier slice suspended, so a setup it queues carries that
             // pass — see Reconcile's own bracket for why the stamp is put back rather than cleared.
