@@ -649,8 +649,7 @@ namespace Velvet.Tests
             Assert.That(drawn, Is.True);
         }
 
-        // Chromium draws these rings: a keyword under the width's hint is a width Tailwind writes no colour rule for, and a
-        // modifier that reads a variable is not a number.
+        // GREEN_ON_BASE(characterization): the base draws these rings as Chromium does, and the keyword gate must keep them.
         [TestCase("ring-2 ring-[length:unset]/50")]
         [TestCase("ring-2 ring-[unset]/(--a)")]
         public void Given_AKeywordBehindAModifierThatIsNoColourMix_When_Extracted_Then_TheRingIsDrawn(string classes)
