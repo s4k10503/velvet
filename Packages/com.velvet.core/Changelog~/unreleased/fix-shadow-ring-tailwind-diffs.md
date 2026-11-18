@@ -40,7 +40,7 @@
   browser does where the box-shadow reads it, where the class was ignored; a colour under that hint is drawn as before.
 - A `bg-`, `border-`, `outline-`, `text-`, `caret-` or `divide-` bracket reading a `var()`, typed as something else, with an
   opacity modifier (`bg-[number:var(--x)]/50`) is read as the colour the variable holds, at that opacity, as the browser
-  reads it. Where the variable is undeclared, or holds a length, a number, a word that names no colour, or the colour at a
+  reads it. Where the variable is undeclared, or holds a length, a number, a word that names no colour (a named or a system colour names one), or the colour at a
   modifier past 100%, the property takes its unset: the parent's colour for a caret and a text colour, currentcolor for a
   border, an outline and a divider, transparent for a background, and for a `from-`, `via-` or `to-` stop, which also takes
   it for a literal bracket of that kind holding no colour. A divider and a stop take a modifier on a bracket and on a

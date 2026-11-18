@@ -92,9 +92,11 @@ namespace Velvet
         };
 
         // Whether the browser rejects value where it is written as a <color>: a value TryParseColor does not read, unless it
-        // is a function, which this does not judge (var(), oklch()), or a word naming a colour (a named colour, currentcolor,
-        // transparent or a system colour: TailwindDataTypes.IsNamedColor), which TryParseColor may not know.
-        internal static bool RejectsAsColour(string value)
+        // is a function, which this does not judge (var(), oklch()), or a word naming a colour: a named colour,
+        // currentcolor, transparent or a system colour, current or deprecated, which TryParseColor may not know.
+        // keywordsPass leaves the CSS-wide keywords and inset undecided, as a caller does whose value reaches a custom
+        // property the box-shadow reads, where the browser takes them as the keyword it is.
+        internal static bool RejectsAsColour(string value, bool keywordsPass = false)
         {
             if (value.IndexOf('(') >= 0 || TryParseColor(value.AsSpan(), out _))
             {
@@ -102,7 +104,8 @@ namespace Velvet
             }
             if (value.Length > 0 && Array.TrueForAll(value.ToCharArray(), char.IsLetter))
             {
-                return !TailwindDataTypes.IsNamedColor(value);
+                return !(TailwindDataTypes.IsNamedColor(value) || s_deprecatedSystemColours.Contains(value)
+                    || (keywordsPass && s_keywords.Contains(value)));
             }
             foreach (var c in value)
             {
@@ -113,6 +116,20 @@ namespace Velvet
             }
             return false;
         }
+
+        private static readonly HashSet<string> s_keywords = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "inherit", "unset", "initial", "revert", "inset",
+        };
+
+        // CSS Color 4's deprecated system colours, which Tailwind's own list lacks.
+        private static readonly HashSet<string> s_deprecatedSystemColours = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "activeborder", "activecaption", "appworkspace", "background", "buttonhighlight", "buttonshadow",
+            "captiontext", "inactiveborder", "inactivecaption", "inactivecaptiontext", "infobackground", "infotext", "menu",
+            "menutext", "scrollbar", "threeddarkshadow", "threedface", "threedhighlight", "threedlightshadow",
+            "threedshadow", "window", "windowframe", "windowtext",
+        };
 
         // Internal so the shadow, ring, divide, gradient and filter grammars share the one colour grammar, which
         // TryParseCssColor owns.

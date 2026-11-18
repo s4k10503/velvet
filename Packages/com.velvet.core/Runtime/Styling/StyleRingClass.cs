@@ -428,7 +428,7 @@ namespace Velvet
                     && !(root == "inset-ring" && StyleCompositeRejection.IsZero(value)));
                 return;
             }
-            slots.Colour.Offer(important, StyleColorValueParser.RejectsAsColour(value));
+            slots.Colour.Offer(important, StyleColorValueParser.RejectsAsColour(value, keywordsPass: true));
         }
 
         // Whether suffix is a bracket with an opacity modifier holding a value that is no colour, under a type hint that is

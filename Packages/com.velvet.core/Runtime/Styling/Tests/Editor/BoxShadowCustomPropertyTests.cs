@@ -596,5 +596,29 @@ namespace Velvet.Tests
             Assert.That(spec.Stops != null && spec.Stops.Length > 0 ? ColorUtility.ToHtmlStringRGBA(spec.Stops[0].Color) : "no stop",
                 Is.EqualTo(Palette("red-500").Substring(0, 6) + "80"));
         }
+
+        // GREEN_ON_BASE(characterization): the base draws these rings, at currentcolor for a keyword and in the system colour's
+        // place for a system colour, which is what Chromium computes for each.
+        [TestCase("ring-2 ring-[unset]")]
+        [TestCase("ring-2 ring-[window]")]
+        public void Given_ARingBracketHoldingAKeywordOrASystemColour_When_Extracted_Then_TheRingIsDrawn(string classes)
+        {
+            // Act
+            var drawn = StyleRingClass.TryExtract(StyleSpacingPrecedence.Normalize(classes.Split(' ')), out _);
+
+            // Assert
+            Assert.That(drawn, Is.True);
+        }
+
+        // GREEN_ON_BASE(characterization): the base draws the inset ring, at currentcolor, as Chromium does.
+        [Test]
+        public void Given_AnInsetRingBracketHoldingAKeyword_When_Extracted_Then_TheInsetRingIsDrawn()
+        {
+            // Act
+            var drawn = StyleShadowClass.TryExtract(new[] { "inset-ring", "inset-ring-[inherit]" }, out _);
+
+            // Assert
+            Assert.That(drawn, Is.True);
+        }
     }
 }
