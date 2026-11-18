@@ -574,8 +574,8 @@ namespace Velvet
             }
             var built = s_built.ToString();
             var shape = UtilityShape.Of(built);
-            return StyleColorValueParser.TryParseColor(
-                built.AsSpan(shape.BodyStart, shape.MainClose - shape.BodyStart).ToString().Replace('_', ' ').AsSpan(), out _);
+            return !StyleColorValueParser.RejectsAsColour(
+                built.Substring(shape.BodyStart, shape.MainClose - shape.BodyStart).Replace('_', ' '));
         }
 
         // Whether the panel is as its last pass left it where consumer is about to write the unset that discards a

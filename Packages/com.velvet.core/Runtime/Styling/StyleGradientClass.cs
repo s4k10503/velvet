@@ -815,7 +815,7 @@ namespace Velvet
         // as a colour and the browser rejects leaves the stop transparent rather than unset.
         private static StopToken ColourStopToken(string suffix)
         {
-            if (VelvetPalette.TryResolveColorToken(suffix, out var c))
+            if (StyleColorValueParser.TryResolveColorWithModifier(suffix, out var c))
             {
                 return new StopToken { IsColor = true, Color = c };
             }

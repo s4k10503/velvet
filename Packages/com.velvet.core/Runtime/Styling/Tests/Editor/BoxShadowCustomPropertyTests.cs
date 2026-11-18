@@ -378,7 +378,7 @@ namespace Velvet.Tests
         }
 
         // A stop colour is a registered custom property, so Chromium leaves it at its initial value for a literal that is no
-        // colour, where the other colour utilities drop the class.
+        // colour, where a background, a border, an outline, a text colour, a caret and a divider drop the class.
         [TestCase("from-[number:5]/50")]
         [TestCase("via-[number:5]/50")]
         [TestCase("to-[number:5]/50")]
@@ -399,7 +399,7 @@ namespace Velvet.Tests
             return scope.Reconciler.Context.VariantGateClasses[scope.Root[0]].Resolved ?? Array.Empty<string>();
         }
 
-        // Chromium keeps the earlier colour's place for a caret reading --x: red, and takes the parent's caret for --x: 5px.
+        // Chromium computes a 50% red caret for a bracket reading --x: red, in place of the earlier colour, and the parent's caret for --x: 5px.
         [Test]
         public void Given_ACaretBracketOfAnotherTypeReadingAColour_When_ItsReaderIsRead_Then_ItIsTheColourAtTheModifiersAlpha()
         {
@@ -440,6 +440,67 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(drawn, Is.True);
+        }
+
+        // Chromium draws a divider at 50% red for `divide-[number:#f00]/50` and for the same reading --c: red, over an
+        // earlier blue one.
+        [Test]
+        public void Given_ADivideBracketOfAnotherTypeHoldingAColourWithAModifier_When_Extracted_Then_ItIsThatColourAtThatOpacity()
+        {
+            // Act
+            StyleDivideClass.TryExtract(new[] { "divide-x-2", "divide-[#0000ff]", "divide-[number:#ff0000]/50" }, out var spec);
+
+            // Assert
+            Assert.That(ColorUtility.ToHtmlStringRGBA(spec.Color), Is.EqualTo("FF000080"));
+        }
+
+        [Test]
+        public void Given_ADivideBracketOfAnotherTypeReadingAColour_When_ItsReaderIsRead_Then_ItIsThatColourAtThatOpacity()
+        {
+            // Act
+            StyleDivideClass.TryExtract(ComposedFor("[--c:#ff0000] divide-x-2 divide-[#0000ff] divide-[number:var(--c)]/50"), out var spec);
+
+            // Assert
+            Assert.That(ColorUtility.ToHtmlStringRGBA(spec.Color), Is.EqualTo("FF000080"));
+        }
+
+        // Chromium draws a 50% red stop for `from-[number:#f00]/50` and for the same reading --c: red.
+        [Test]
+        public void Given_AStopBracketOfAnotherTypeHoldingAColourWithAModifier_When_Extracted_Then_ItIsThatColourAtThatOpacity()
+        {
+            // Act
+            StyleGradientClass.TryExtract(
+                new[] { "bg-linear-to-r", "from-[#0000ff]", "from-[number:#ff0000]/50", "to-[#00ff00]" }, out var spec);
+
+            // Assert
+            Assert.That(spec.Stops != null && spec.Stops.Length > 0 ? ColorUtility.ToHtmlStringRGBA(spec.Stops[0].Color) : "no stop",
+                Is.EqualTo("FF000080"));
+        }
+
+        [Test]
+        public void Given_AStopBracketOfAnotherTypeReadingAColour_When_ItsReaderIsRead_Then_ItIsThatColourAtThatOpacity()
+        {
+            // Act
+            StyleGradientClass.TryExtract(
+                ComposedFor("[--c:#ff0000] bg-linear-to-r from-[#0000ff] from-[number:var(--c)]/50 to-[#00ff00]"), out var spec);
+
+            // Assert
+            Assert.That(spec.Stops != null && spec.Stops.Length > 0 ? ColorUtility.ToHtmlStringRGBA(spec.Stops[0].Color) : "no stop",
+                Is.EqualTo("FF000080"));
+        }
+
+        // A colour Velvet's grammar does not read is no colour for the unset to answer: Chromium draws it at 50%, and Velvet
+        // leaves the earlier colour where it cannot.
+        [TestCase("oklch(60%_0.2_30)")]
+        [TestCase("rebeccapurple")]
+        public void Given_ACaretBracketOfAnotherTypeReadingAColourVelvetDoesNotRead_When_ItsReaderIsRead_Then_ItIsNotTheUnset(
+            string colour)
+        {
+            // Act
+            var tokens = ComposedFor("[--c:" + colour + "] caret-[#00ff00] caret-[number:var(--c)]/50");
+
+            // Assert
+            Assert.That(tokens[tokens.Length - 1], Is.Not.EqualTo("caret-inherit"));
         }
     }
 }

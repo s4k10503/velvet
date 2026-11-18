@@ -200,7 +200,7 @@ namespace Velvet
 
         // Whether utility is a gradient stop's bracket typed as something else, with an opacity modifier, holding no
         // colour: a stop colour is a registered custom property, which a value that is no colour leaves at its initial
-        // value, where the other colour utilities drop such a declaration with the rest of the class.
+        // value, where a background, a border, an outline, a text colour, a caret and a divider drop the declaration with its class.
         internal static bool UnsetsLiteralStop(string utility)
             => TryReadNumericModifier(utility, out var root, out var hint) && root is "from" or "via" or "to"
                 && hint != null && hint != "color" && !StyleColorValueParser.HintSelectsNonColour(root, hint)

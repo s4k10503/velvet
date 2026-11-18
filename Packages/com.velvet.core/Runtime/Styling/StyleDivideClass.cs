@@ -321,7 +321,7 @@ namespace Velvet
             {
                 return true;
             }
-            var found = VelvetPalette.TryResolveColorToken(cls.Substring("divide-".Length), out var palette);
+            var found = StyleColorValueParser.TryResolveColorWithModifier(cls.Substring("divide-".Length), out var palette);
             color = found ? palette : null;
             return found;
         }

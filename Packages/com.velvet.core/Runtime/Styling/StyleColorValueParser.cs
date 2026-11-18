@@ -390,6 +390,25 @@ namespace Velvet
             return percent < 0f || percent > 100f ? ColourVerdict.Rejected : ColourVerdict.Valid;
         }
 
+        // The colour of a palette name or a bracket, either followed by an opacity modifier (`red-500/50`, `[#f00]/50`),
+        // at that opacity. False where the token is no colour or the modifier is none Tailwind generates.
+        internal static bool TryResolveColorWithModifier(string token, out Color colour)
+        {
+            var slash = ColorModifierSlashIndex(token, 0);
+            if (slash < 0)
+            {
+                return VelvetPalette.TryResolveColorToken(token, out colour);
+            }
+            colour = default;
+            if (!TryParseAlphaModifier(token.AsSpan(slash + 1), out var alpha)
+                || !VelvetPalette.TryResolveColorToken(token.Substring(0, slash), out colour))
+            {
+                return false;
+            }
+            colour.a *= alpha;
+            return true;
+        }
+
         // Parses the alpha portion of a color opacity modifier, a percent from 0 to 100 as TryParseModifierPercent reads
         // it (50 -> 0.5). Returns false for any other form, and for a percent outside that range, which makes the
         // color-mix() Tailwind writes invalid.
