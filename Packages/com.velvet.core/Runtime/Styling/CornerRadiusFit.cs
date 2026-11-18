@@ -229,6 +229,7 @@ namespace Velvet
         {
             s_states.Remove(element);
             s_holds.Remove(element);
+            s_chainsRead.Remove(element);
         }
 
         /// <summary>
@@ -361,6 +362,11 @@ namespace Velvet
         // change (BorderPreflight's tick over the panel's ancestors).
         private static void ReadSheetsAbove(VisualElement element)
         {
+            if (element.styleSheets.count > 0)
+            {
+                RadiusWatchSheets.EnsureOn(element);
+                BorderPreflight.WatchSheets(element, self: true);
+            }
             var parent = element.hierarchy.parent;
             if (parent == null || s_chainsRead.TryGetValue(parent, out _))
             {
@@ -402,8 +408,17 @@ namespace Velvet
 
         // The style pass of an element nothing tracks is read only where a rule declaring a radius matches it, which
         // RadiusWatchSheets gives the property this asks for.
+        // The bundled radius classes are watched through the custom properties that restate them (_radius_declared.uss).
         private static State? AttachIfWatched(VisualElement element)
-            => element.customStyle.TryGetValue(s_watchProperty, out _) ? AttachWhereRadiusResolves(element) : null;
+        {
+            var custom = element.customStyle;
+            var watched = custom.TryGetValue(s_watchProperty, out _);
+            for (var i = 0; i < CornerCount && !watched; i++)
+            {
+                watched = custom.TryGetValue(s_declaredProperties[i], out _);
+            }
+            return watched ? AttachWhereRadiusResolves(element) : null;
+        }
 
         // The state of an element observed without a class or arbitrary value, once a radius resolves on it; null
         // while none does.

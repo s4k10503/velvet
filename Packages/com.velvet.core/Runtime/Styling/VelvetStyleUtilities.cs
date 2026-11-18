@@ -391,6 +391,7 @@ namespace Velvet
 
         internal static int SheetStamp(int stamp, StyleSheet sheet)
         {
+            if (RadiusWatchSheets.IsWatch(sheet)) return stamp;
             stamp = HashCode.Combine(stamp, sheet, sheet.contentHash);
             foreach (var imported in Facts(sheet).Imports) stamp = SheetStamp(stamp, imported);
             return stamp;

@@ -462,8 +462,7 @@ namespace Velvet
             }
         }
 
-        // Starts listening on an attached element when a stylesheet reaching it has a rule setting a border width that
-        // selects it by a class, its name, its type or every element.
+        // How often a panel's watch compares the stylesheets of the ancestors it was asked to watch (WatchSheets).
         private const long SheetTickMs = 16;
 
         // An ancestor of an attached element, and the stylesheets it had when last looked at.
@@ -489,7 +488,7 @@ namespace Velvet
         // asks the elements under an ancestor again once its stylesheets change. It runs only while such an ancestor
         // is alive on the panel. It also has RadiusWatchSheets attach the watch sheets of an ancestor again once its stylesheets
         // change, for CornerRadiusFit.
-        internal static void WatchSheets(VisualElement element)
+        internal static void WatchSheets(VisualElement element, bool self = false)
         {
             var panel = element.panel;
             if (panel == null)
@@ -503,7 +502,7 @@ namespace Velvet
                 created.Item = panel.visualTree.schedule.Execute(() => TickSheets(panel, created)).Every(SheetTickMs);
                 s_sheetWatches.Add(panel, created);
             }
-            for (var ancestor = element.hierarchy.parent; ancestor != null && !watch.Known.TryGetValue(ancestor, out _);
+            for (var ancestor = self ? element : element.hierarchy.parent; ancestor != null && !watch.Known.TryGetValue(ancestor, out _);
                  ancestor = ancestor.hierarchy.parent)
             {
                 var entry = new Ancestor(ancestor, SheetsOf(ancestor));
@@ -525,7 +524,8 @@ namespace Velvet
                 var sheet = element.styleSheets[i];
                 if (!SnappedBorderSheets.IsSnapped(sheet) && !RadiusWatchSheets.IsWatch(sheet))
                 {
-                    hash = unchecked((hash * 31) + sheet.GetHashCode());
+                    // The content hash too, which an edit of the sheet in place moves.
+                    hash = unchecked((hash * 31) + sheet.GetHashCode() + sheet.contentHash);
                 }
             }
             return hash;

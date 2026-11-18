@@ -108,7 +108,8 @@ namespace Velvet
             ReadProperty(UIElements, "UnityEngine.UIElements.StyleProperty", "values", "UnityEngine.UIElements.StyleValueHandle[]");
 
         // RadiusWatchSheets' copy of a radius rule's selectors: their specificity and the relationship each simple selector
-        // has to the one before it, and the builder's float value.
+        // has to the one before it, the builder's float value, and the count of variables a rule declares, which its sheet
+        // sets to none.
         internal static readonly EngineMember StyleComplexSelectorSpecificity =
             ReadProperty(UIElements, "UnityEngine.UIElements.StyleComplexSelector", "specificity", "System.Int32");
 

@@ -575,6 +575,21 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ALaidOutBoxWithNoRadius_When_CodeAddsABundledRadiusClassDirectly_Then_ItsCornersAreScaledWithNoSizeChange()
+        {
+            // Arrange — the bundled radius classes are watched through the custom properties that restate them, and the class
+            // reaches the element through no funnel of Velvet's.
+            var box = MountBox(WideBox);
+
+            // Act
+            box.AddToClassList("rounded-full");
+            ForcePanelUpdate(box.panel);
+
+            // Assert
+            Assert.That(Radii(box), Is.EqualTo(new[] { 17f, 17f, 17f, 17f }).Within(1e-3f));
+        }
+
+        [Test]
         public void Given_ALaidOutBoxFittedFromAClassOfItsOwn_When_CodeRemovesThatClassDirectly_Then_TheFittedSlotsAreGivenBack()
         {
             // Arrange

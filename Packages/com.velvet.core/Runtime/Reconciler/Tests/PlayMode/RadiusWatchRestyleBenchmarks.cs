@@ -28,6 +28,10 @@ namespace Velvet.Tests.Performance
     /// first they carry the property, and in the second the watch sheets are taken off after the mount, so the pair is the
     /// cost of the property on built-in controls. They skip where the panel has no engine theme.
     /// </para>
+    /// <para>
+    /// Two <c>IdleFrames</c> cases run frames in which nothing changes, with the watch over the stylesheets of the panel's
+    /// ancestors, which the radius fit registers its parents with, running and paused.
+    /// </para>
     /// </summary>
     [TestFixture]
     internal sealed class RadiusWatchRestyleBenchmarks
@@ -45,7 +49,7 @@ namespace Velvet.Tests.Performance
         private PanelSettings _panelSettings = null!;
         private VisualElement _root = null!;
         private MountedTree _mounted = null!;
-    
+
         [UnitySetUp]
         public IEnumerator SetUp()
         {
@@ -91,6 +95,16 @@ namespace Velvet.Tests.Performance
         [UnityTest, Performance]
         public IEnumerator RestyleFrames_1000ButtonsUnderTheEngineThemeWithoutWatchSheets() => Run(watched: false, buttons: true);
 
+        // Frames in which nothing changes, over the same Divs, with the panel's watch over the stylesheets of its ancestors
+        // running as it does and with its scheduled item paused: the idle cost of the watch the radius fit asks for.
+        // GREEN_ON_BASE(characterization): a benchmark asserts nothing about its numbers, so the base runs it green.
+        [UnityTest, Performance]
+        public IEnumerator IdleFrames_1000DivsWithTheSheetWatch() => Run(watched: false, idle: true);
+
+        // GREEN_ON_BASE(characterization): a benchmark asserts nothing about its numbers, so the base runs it green.
+        [UnityTest, Performance]
+        public IEnumerator IdleFrames_1000DivsWithTheSheetWatchPaused() => Run(watched: false, idle: true, pauseWatch: true);
+
         // The class the sheet below gives a 10px radius, which a 40px Div fits unscaled, and one of the same length that no
         // rule names.
         private const string RadiusClass = "layout-id-test-round";
@@ -116,7 +130,7 @@ namespace Velvet.Tests.Performance
             return V.Div("flex flex-col", children);
         }
 
-        private IEnumerator Run(bool watched, bool buttons = false)
+        private IEnumerator Run(bool watched, bool buttons = false, bool idle = false, bool pauseWatch = false)
         {
             if (buttons)
             {
@@ -146,6 +160,10 @@ namespace Velvet.Tests.Performance
                 TakeOffWatchSheets(_root);
                 yield return null;
             }
+            if (pauseWatch)
+            {
+                PauseSheetWatch(_root.panel);
+            }
             var top = _root[0];
             RequireArm(top, watched);
 
@@ -164,7 +182,10 @@ namespace Velvet.Tests.Performance
                 yield return null;
                 for (var i = 0; i < WarmupFrames + MeasuredFrames; i++)
                 {
-                    top.ToggleInClassList(Toggled);
+                    if (!idle)
+                    {
+                        top.ToggleInClassList(Toggled);
+                    }
                     yield return null;
                     frame.Capture();
                     if (!frame.RanEveryPhase)
@@ -184,6 +205,20 @@ namespace Velvet.Tests.Performance
                 }
                 frame.Stop();
             }
+        }
+
+        // Pauses the scheduled item of the panel's watch, which BorderPreflight keeps.
+        private static void PauseSheetWatch(IPanel panel)
+        {
+            var statics = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static;
+            var table = typeof(BorderPreflight).GetField("s_sheetWatches", statics)!.GetValue(null)!;
+            var args = new object[] { panel, null! };
+            if (!(bool)table.GetType().GetMethod("TryGetValue")!.Invoke(table, args)!)
+            {
+                throw new InvalidOperationException("the panel has no sheet watch: nothing asked for one");
+            }
+            var item = args[1].GetType().GetField("Item")!.GetValue(args[1]) as IVisualElementScheduledItem;
+            item!.Pause();
         }
 
         private static void TakeOffWatchSheets(VisualElement element)

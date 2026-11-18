@@ -23,6 +23,26 @@ namespace Velvet.Tests
         private const string StylesDirectory = "Packages/com.velvet.core/Runtime/Styles";
         private const BindingFlags Statics = BindingFlags.NonPublic | BindingFlags.Static;
 
+        private readonly List<UnityEngine.Object> _clones = new();
+
+        public override void TearDown()
+        {
+            base.TearDown();
+            foreach (var clone in _clones)
+            {
+                UnityEngine.Object.DestroyImmediate(clone);
+            }
+            _clones.Clear();
+        }
+
+        // A copy of the sheet no other test shares, which a case may edit.
+        private StyleSheet Clone(string path)
+        {
+            var clone = UnityEngine.Object.Instantiate(Load(path));
+            _clones.Add(clone);
+            return clone;
+        }
+
         protected override void LoadStyleSheets() => VelvetStyleUtilities.AttachTo(_window.rootVisualElement);
 
         private static StyleSheet Load(string path) => UnityEditor.AssetDatabase.LoadAssetAtPath<StyleSheet>(path);
@@ -191,6 +211,109 @@ namespace Velvet.Tests
             Assert.That(watch != null && inner.styleSheets.Contains(watch), Is.True);
         }
 
+        [Test]
+        public void Given_AnAttachedSourceEditedInPlace_When_ThePanelsWatchTicks_Then_ItsNewWatchSheetReplacesTheOld()
+        {
+            // Arrange — a copy, whose content hash moves as an edit of the sheet in place moves it.
+            var source = Clone(OwnSheet);
+            _window.rootVisualElement.styleSheets.Add(source);
+            MountAndSettle();
+            var before = RadiusWatchSheets.DerivedOf(source);
+
+            // Act
+            source.contentHash += 1;
+            TickSheetWatch(_window.rootVisualElement.panel);
+
+            // Assert
+            var after = RadiusWatchSheets.DerivedOf(source);
+            Assert.That(after != null && !ReferenceEquals(after, before) && _window.rootVisualElement.styleSheets.Contains(after)
+                && !_window.rootVisualElement.styleSheets.Contains(before), Is.True);
+        }
+
+        [Test]
+        public void Given_AnAttachedSourceEditedInPlace_When_ItsWatchSheetIsDerivedAgain_Then_NoRuleOfTheNewOneCountsAsDeclaringAVariable()
+        {
+            // Arrange
+            var source = Clone(OwnSheet);
+            _window.rootVisualElement.styleSheets.Add(source);
+            MountAndSettle();
+            source.contentHash += 1;
+
+            // Act
+            var watch = RadiusWatchSheets.DerivedOf(source);
+
+            // Assert — a missing sheet reads -1, which no count of variables equals.
+            var count = EngineMember.StyleRuleCustomPropertiesCount.ResolveField()!;
+            var counted = watch == null
+                ? new List<int> { -1 }
+                : ((Array)EngineMember.StyleSheetRules.ResolveProperty()!.GetValue(watch)).Cast<object>()
+                    .Select(rule => (int)count.GetValue(rule)).ToList();
+            Assert.That(counted.Max(), Is.Zero);
+        }
+
+        [Test]
+        public void Given_AnAttachedSource_When_ItIsRemovedFromTheRootAndThePanelsWatchTicks_Then_ItsWatchSheetIsTakenOff()
+        {
+            // Arrange
+            var source = Clone(OwnSheet);
+            _window.rootVisualElement.styleSheets.Add(source);
+            MountAndSettle();
+            var watch = RadiusWatchSheets.DerivedOf(source);
+
+            // Act
+            _window.rootVisualElement.styleSheets.Remove(source);
+            TickSheetWatch(_window.rootVisualElement.panel);
+
+            // Assert
+            Assert.That(watch != null && !_window.rootVisualElement.styleSheets.Contains(watch), Is.True);
+        }
+
+        [Test]
+        public void Given_ALeafHoldingASheetOfItsOwn_When_ItLaysOut_Then_ItHoldsTheWatchSheet()
+        {
+            // Arrange — the leaf has no children, so only a read of its own sheets can find the rule.
+            _mounted = V.Mount(_window.rootVisualElement, V.Div(name: "leaf", className: "w-[100px] h-[40px]"));
+            var leaf = _window.rootVisualElement.Q<VisualElement>("leaf");
+            var source = Load(OwnSheet);
+            leaf.styleSheets.Add(source);
+
+            // Act
+            ForcePanelUpdate(leaf.panel);
+
+            // Assert
+            var watch = RadiusWatchSheets.DerivedOf(source);
+            Assert.That(watch != null && leaf.styleSheets.Contains(watch), Is.True);
+        }
+
+        [Test]
+        public void Given_AContainerWhoseChildLaidOutBeforeItWasReleased_When_ItHoldsASheetAndAChildLaysOutAgain_Then_ItHoldsTheWatchSheet()
+        {
+            // Arrange — a container the fit read once, then released as a pooled element is, which another chain then adopts.
+            var container = new VisualElement();
+            _window.rootVisualElement.Add(container);
+            var first = new VisualElement();
+            first.style.width = 50f;
+            first.style.height = 20f;
+            CornerRadiusFit.Observe(first);
+            container.Add(first);
+            ForcePanelUpdate(_window.rootVisualElement.panel);
+            CornerRadiusFit.Release(container);
+            var source = Load(OwnSheet);
+            container.styleSheets.Add(source);
+            var second = new VisualElement();
+            second.style.width = 60f;
+            second.style.height = 20f;
+            CornerRadiusFit.Observe(second);
+
+            // Act
+            container.Add(second);
+            ForcePanelUpdate(_window.rootVisualElement.panel);
+
+            // Assert
+            var watch = RadiusWatchSheets.DerivedOf(source);
+            Assert.That(watch != null && container.styleSheets.Contains(watch), Is.True);
+        }
+
         // GREEN_ON_BASE(construction): both sides are the repository's own sheets. Delete `.rounded-full` from
         // `_radius_declared.uss` and this reddens.
         [Test]
@@ -200,7 +323,8 @@ namespace Velvet.Tests
             var comment = new Regex(@"/\*.*?\*/", RegexOptions.Singleline);
             var rule = new Regex(@"([^{}]+)\{([^{}]*)\}");
             var radius = new Regex(@"(?:^|[;\s])border(?:-(?:top|bottom)-(?:left|right))?-radius\s*:");
-            var cls = new Regex(@"\.([A-Za-z_][A-Za-z0-9_-]*)");
+            // A selector with an escaped character, as a variant class has, is read whole on both sides.
+            var cls = new Regex(@"\.((?:\\.|[A-Za-z0-9_-])+)");
             var declaring = new SortedSet<string>(StringComparer.Ordinal);
             foreach (var path in Directory.GetFiles(StylesDirectory, "*.uss").Where(p => !p.EndsWith("_radius_declared.uss")))
             {
