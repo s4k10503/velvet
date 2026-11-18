@@ -1,0 +1,52 @@
+name: Milestone
+
+# Runs the Milestone job of Source generators again when what it decides from changes without a push:
+# a pull request's milestone or base, or a milestone of the repository. Only that job runs again,
+# and the required aggregate that needs it, so a milestone change re-runs no suite.
+# scripts/pr/milestone.py owns which run and job are asked, and CONTRIBUTING.md's merging section
+# the rule the job holds.
+#
+# pull_request_target rather than pull_request, so a fork's pull request gets a token that can ask
+# for the re-run. No job checks out the pull request: the only code this runs is the default
+# branch's, as automerge.yml does.
+on:
+  pull_request_target:
+    types: [milestoned, demilestoned, edited]
+  milestone:
+    types: [created, opened, closed, edited, deleted]
+
+permissions: {}
+
+# Same reason test.yml gives.
+env:
+  PYTHONDONTWRITEBYTECODE: "1"
+
+jobs:
+  rerun:
+    name: Run the milestone check again
+    # An edit is read only where it moved the base: a title or body edit changes nothing decided.
+    if: >-
+      github.event_name == 'milestone'
+      || github.event.action != 'edited'
+      || github.event.changes.base != null
+    runs-on: ubuntu-latest
+    # Above the wait for a run still going, which milestone.py bounds at twenty minutes.
+    timeout-minutes: 30
+    permissions:
+      actions: write
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          if [ -n "$NUMBER" ]; then
+            python3 scripts/pr/milestone.py rerun --number "$NUMBER"
+          else
+            python3 scripts/pr/milestone.py rerun --open
+          fi

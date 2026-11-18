@@ -191,6 +191,16 @@
       {
         "hooks": [
           {
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/refuse/merge_off_milestone.py\"",
+            "timeout": 60.0,
+            "type": "command"
+          }
+        ],
+        "matcher": "Bash"
+      },
+      {
+        "hooks": [
+          {
             "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/refuse/pr_body_of_another_branch.py\"",
             "timeout": 15.0,
             "type": "command"

@@ -1230,6 +1230,7 @@ on every platform.
 |----------|---------|---------------|-------------------|
 | `Source generators ▸ source-generators` | push (filtered) / every PR / merge group | not required | no |
 | `Source generators ▸ repository-settings` | push (filtered) / every PR / merge group; skipped when the workflow runs in a fork | not required | no |
+| `Source generators ▸ milestone` | every PR | not required | no |
 | `Source generators ▸ Required checks (generators)` | push (filtered) / every PR / merge group | not required | **yes** |
 | `Test ▸ license-check` | push (filtered) / every PR / merge group | not required | no |
 | `Test ▸ unity-tests` (EditMode / PlayMode) | push (filtered) / every PR / merge group | **required** (skipped if absent) | no |
@@ -1522,6 +1523,25 @@ outcome unknown: settle leaves the branch where it is and exits 0, so read the p
 asking again. `gh stack merge` typed by hand merges every member up to the one it is given and is
 held to none of this, so `refuse/stack_merge_by_hand.py` refuses it.
 
+**A pull request merges under a milestone.** Every one carries one. One that changes
+`Packages/com.velvet.core/` carries a version, `vMAJOR.MINOR.PATCH`, and merges onto `main` or a
+maintenance line only under the next version that branch publishes: the lowest open version
+milestone, by semver, among the versions it publishes — `main` every major from the one it builds
+up, as `maintenance_line.main_state` reads it, and a line its own major. So a `v3.1.0` pull request
+waits until `v3.0.2` is published and its milestone closed, and a `v4.0.0` one until every open v3
+milestone is. One that changes nothing under the package carries `Infrastructure` or a version, and
+merges at any time. The milestone has to suit what the pull request ships as well: an entry added to
+`## [Unreleased — breaking]` wants a major's, an `### Added` entry or a `feat` title at least a
+minor's, and a release pull request carries the milestone of the version it closes. A change to the
+package does not merge onto a branch whose next version is published already, which `upm.yml`
+prevents by closing it after the release, or does not follow the newest release below it.
+`settle.py merge`, `refuse/merge_off_milestone.py` and the `Source generators ▸ milestone` check
+hold all of it, `scripts/pr/milestone.py` owns the reading, and each refusal names its way out:
+`gh pr edit <n> --milestone <title>`, or the `gh api` command that opens or closes a milestone. A
+milestone change, a base change and a change to the repository's milestones push nothing, so the
+`Milestone` workflow runs that one job of the pull request's newest `Source generators` run again
+on each, once the run has finished.
+
 No merge waits on a mutation campaign. A campaign dispatched onto a pull request's
 branch runs on its head like any other workflow, and `settle.py merge`, the automerge runs through it, and
 `refuse/merge_unproven_head.py` leave its runs and its checks out of what they read, so one that failed
@@ -1701,6 +1721,16 @@ directory.
 2. Merge to `main` (the `upm` branch is updated automatically).
 3. Run the **UPM** workflow via *Actions ▸ UPM ▸ Run workflow*, entering the same version.
    This tags `vX.Y.Z` on the `upm` (package-at-root) commit and publishes a GitHub release.
+
+**A release publishes the next version and skips none.** `published_check.py` refuses a change
+closing a version that is not a patch, a minor or a major over the newest version published below
+it, and the dispatch refuses such a version too, and one that is not the lowest open version
+milestone of the branch publishing it — [Merging a pull request](#merging-a-pull-request) says which
+versions each branch publishes. Ask it before closing the version, with
+`python3 scripts/pr/milestone.py release --version X.Y.Z`. Once the release is published, `upm.yml`
+closes that milestone, which makes the next one the version pull requests merge under. A line cut
+before this existed, as `2.x` was, runs its own `upm.yml` and carries neither check until both are
+picked onto it.
 
 **A release is gated on the mutation record and on `main`'s CI.** The dispatch promotes the commit it
 runs on, which CI has already measured, the way
