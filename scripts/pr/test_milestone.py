@@ -416,14 +416,14 @@ class CheckOutputTests(unittest.TestCase):
             milestone.main(["check", "--number", "7"])
         return printed.getvalue()
 
-    def test_Given_ARefusalInAWorkflowRun_When_Printed_Then_ItsReRunIsNamed(self):
-        # Act / Assert — the verdict stands until a push or this, whatever the milestone does.
-        self.assertIn("run it again with `gh run rerun 99 --failed`, or push to the branch",
+    def test_Given_ARefusalInAWorkflowRun_When_Printed_Then_APushIsNamed(self):
+        # Act / Assert — the verdict stands until a push, whatever the milestone does.
+        self.assertIn("a push to the branch starts a run that reads them again",
                       self.checked(["a reason"]))
 
-    def test_Given_ARefusalOutsideAWorkflowRun_When_Printed_Then_NoReRunIsNamed(self):
+    def test_Given_ARefusalOutsideAWorkflowRun_When_Printed_Then_NoPushIsNamed(self):
         # Act / Assert
-        self.assertNotIn("gh run rerun", self.checked(["a reason"], run=None))
+        self.assertNotIn("a push to the branch", self.checked(["a reason"], run=None))
 
 
 def git(directory, *args):

@@ -1523,27 +1523,11 @@ outcome unknown: settle leaves the branch where it is and exits 0, so read the p
 asking again. `gh stack merge` typed by hand merges every member up to the one it is given and is
 held to none of this, so `refuse/stack_merge_by_hand.py` refuses it.
 
-**A pull request merges under a milestone.** Every one carries one. One that changes
-`Packages/com.velvet.core/` carries a version, `vMAJOR.MINOR.PATCH`, and merges onto `main` or a
-maintenance line only under the next version that branch publishes: the lowest open version
-milestone, by semver, among the versions it publishes — `main` every major from the one it builds
-up, as `maintenance_line.main_state` reads it, and a line its own major. So a `v3.1.0` pull request
-waits until `v3.0.2` is published and its milestone closed, and a `v4.0.0` one until no v3
-milestone is open. One that changes nothing under the package carries `Infrastructure` or an open
-version, and merges at any time. A version milestone is also at least the bump
-[Releasing](#releasing) derives from what the pull request adds, read from where it branched, and a
-release pull request carries the milestone of the version it closes. A change to the package does
-not merge onto a branch whose next version is published already, which `upm.yml` prevents by
-closing it after the release, or does not follow the newest release below it.
-`settle.py merge`, `refuse/merge_off_milestone.py` and the `Source generators ▸ milestone` check
-hold all of it, `scripts/pr/milestone.py` owns the reading, and each refusal names its way out:
-`gh pr edit <n> --milestone <title>`, the `gh api` command that opens, reopens or closes a
-milestone, or the re-run to take once a reading works. `settle.py` and the hook read the milestone
-at every merge. The check reads it when its run reaches it, after the run's other jobs but
-`Required checks (generators)`, which needs it, and nothing runs it again when the milestone, the
-base or a milestone of the repository changes later — a release closing one included. Its verdict
-then stands until the next push, or until the check is run again with
-`gh run rerun <run id> --failed`, which its failure names.
+**A pull request merges under a milestone**: for a change to `Packages/com.velvet.core/` onto
+`main` or a maintenance line, the next version that branch publishes, at least the bump
+[Releasing](#releasing) derives; otherwise `Infrastructure` or a version. `settle.py merge`,
+`refuse/merge_off_milestone.py` and the `Source generators ▸ milestone` check refuse anything else,
+each naming its way out, and [`scripts/pr/milestone.py`](scripts/pr/milestone.py) owns the rule.
 
 No merge waits on a mutation campaign. A campaign dispatched onto a pull request's
 branch runs on its head like any other workflow, and `settle.py merge`, the automerge runs through it, and
@@ -1725,15 +1709,10 @@ directory.
 3. Run the **UPM** workflow via *Actions ▸ UPM ▸ Run workflow*, entering the same version.
    This tags `vX.Y.Z` on the `upm` (package-at-root) commit and publishes a GitHub release.
 
-**A release publishes the next version and skips none.** `published_check.py` refuses a change
-closing a version that is not a patch, a minor or a major over the newest version published below
-it, and the dispatch refuses such a version too, and one that is not the lowest open version
-milestone of the branch publishing it — [Merging a pull request](#merging-a-pull-request) says which
-versions each branch publishes. Ask it before closing the version, with
-`python3 scripts/pr/milestone.py release --version X.Y.Z`. Once the release is published, `upm.yml`
-closes that milestone, which makes the next one the version pull requests merge under. A line cut
-before this existed, as `2.x` was, runs its own `upm.yml` and carries neither check until both are
-picked onto it.
+**A release publishes the next version and skips none**: one following the newest release below
+it, and the lowest open version milestone of its branch, which the dispatch closes once the release
+is published. [`scripts/pr/milestone.py`](scripts/pr/milestone.py) owns the rule; ask it before
+closing the version with `python3 scripts/pr/milestone.py release --version X.Y.Z`.
 
 **A release is gated on the mutation record and on `main`'s CI.** The dispatch promotes the commit it
 runs on, which CI has already measured, the way

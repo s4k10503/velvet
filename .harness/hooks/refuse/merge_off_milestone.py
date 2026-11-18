@@ -125,8 +125,11 @@ def main():
             "Name the pull request, or see every merge precondition at once:\n"
             "  python3 scripts/pr/settle.py merge <pr> --dry-run\n")
         return 2
-    # One pull request named twice is one merge to judge.
-    targets = list(dict.fromkeys(targets))
+    # A pull request named twice by number is one merge to judge. A merge naming none lands the
+    # branch checked out when it runs, which the command can change between two of them, so each
+    # counts.
+    targets = list(dict.fromkeys(target for target in targets if target)) + [
+        target for target in targets if not target]
     if len(targets) > 1:
         sys.stderr.write(
             f"Refusing `gh pr merge`: this command merges {len(targets)} pull requests, and this "

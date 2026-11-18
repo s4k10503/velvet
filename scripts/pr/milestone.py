@@ -1,12 +1,31 @@
 #!/usr/bin/env python3
 """Which milestone a pull request merges under, and which version a release publishes.
 
-CONTRIBUTING.md's merging section owns the rule a merge is held to, and its releasing section the
-rule a release is held to; this is their reading. `settle.py`, `refuse/merge_off_milestone.py`, the
-`Source generators ▸ milestone` job and `upm.yml` ask it.
+CONTRIBUTING.md's merging and releasing sections state the two rules in a line each and link here.
 
-Main publishes every major from the one `maintenance_line.main_state` says it builds, and a line its
-own major.
+**A merge.** Every pull request carries an open milestone: `Infrastructure` or a version
+(`vMAJOR.MINOR.PATCH`) where it changes nothing under `Packages/com.velvet.core/`, a version where
+it does. A change to the package lands on `main` or a maintenance line only under the next version
+that branch publishes, which is the lowest open version milestone among the versions it publishes:
+main every major from the one `maintenance_line.main_state` says it builds, and a line its own
+major. So a v3.1.0 pull request waits until v3.0.2 is published and its milestone closed, and a
+v4.0.0 one until no v3 milestone is open. Onto any other branch the milestone's kind, its bump and
+the version it closes are asked, and nothing about a next version. A version milestone is also at least the bump `next_version.derive` reads off what the
+pull request adds from where it branched, which is the bump the release it ships in is derived as;
+and a pull request closing a version in the CHANGELOG carries that version's milestone. A branch's
+next version takes no change to the package while it is published already, or while it does not
+follow the newest release below it. Every refusal names its way out: `gh pr edit <n> --milestone
+<title>`, or the `gh api` command that opens, reopens or closes a milestone.
+
+`settle.py` (its `merge`, and `watch`'s readiness) and `refuse/merge_off_milestone.py` read the
+milestone each time they are asked. The `Source generators ▸ milestone` job, in that workflow's required aggregate, reads it when
+its run reaches the job, and nothing runs it again when the milestone, the base or a milestone of
+the repository changes later, a release closing one included: its verdict stands until a push.
+
+**A release.** The version a release publishes follows the newest release below it — a patch, a
+minor or a major over it — and is the lowest open version milestone of the branch publishing it.
+`published_check.py` refuses a change closing a version that skips one, and `upm.yml` asks `release`
+here before tagging and `close` once the release is published.
 
 Run: python3 scripts/pr/milestone.py check --number <n> [--base <rev>] [--head <rev>]
      python3 scripts/pr/milestone.py release --version X.Y.Z
@@ -426,24 +445,25 @@ def main(argv=None):
                  if args.command == "check"
                  else release_reasons(args.version, repository(project, api, args.timeout)))
     except Unread as failure:
+        run = os.environ.get("GITHUB_RUN_ID")
+        retry = (f": `gh run rerun {run} --failed` runs this job again" if args.command == "check"
+                 and run else "")
         print(f"could not be read, so nothing was decided: {failure}. Ask again once the reading "
-              f"works{rerun_hint(args.command)}", file=sys.stderr)
+              f"works{retry}.", file=sys.stderr)
         return 1
     for reason in found:
         print(reason, file=sys.stderr)
-    if found and rerun_hint(args.command) != ".":
-        print(f"This check reads the milestone when its run reaches it, and nothing runs it again "
-              f"when the milestone changes later{rerun_hint(args.command)}", file=sys.stderr)
+    if found and args.command == "check" and os.environ.get("GITHUB_RUN_ID"):
+        print(STALE, file=sys.stderr)
     if not found:
         print("the milestone holds")
     return 1 if found else 0
 
 
-def rerun_hint(command):
-    """The way to ask the Milestone check again in a workflow run, where this is one."""
-    run = os.environ.get("GITHUB_RUN_ID")
-    return (f": run it again with `gh run rerun {run} --failed`, or push to the branch"
-            if command == "check" and run else ".")
+# What the check's refusal adds in a workflow run, where its verdict outlives the readings it took.
+STALE = ("This check read the pull request when its run reached this job, and nothing runs it again "
+         "when its milestone, its base or a milestone of the repository changes later: a push to "
+         "the branch starts a run that reads them again.")
 
 
 if __name__ == "__main__":
