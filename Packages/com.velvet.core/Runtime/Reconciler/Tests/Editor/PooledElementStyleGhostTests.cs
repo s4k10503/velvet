@@ -12,8 +12,8 @@ namespace Velvet.Tests
     /// <summary>
     /// Regression coverage for pooled-element state ghosting: a primitive returned to <see cref="VNodePool"/>
     /// must be reset so it cannot carry state its previous node set onto its next consumer. The inline-style
-    /// cases pin <c>FiberElementPoolReset.ResetInlineStyle</c>, which must null EVERY inline property Velvet
-    /// may set, including <c>letterSpacing</c> (written by the <c>tracking-[Npx]</c> arbitrary) — omitting it
+    /// cases pin the inline-style clear in <c>FiberElementPoolReset.ResetCommonState</c>, which must remove EVERY
+    /// inline property Velvet may set, including <c>letterSpacing</c> (written by the <c>tracking-[Npx]</c> arbitrary) — omitting it
     /// would let a recycled label keep its previous letter spacing and ghost it onto the next consumer whose
     /// node declares no <c>tracking-*</c> (the fresh node's empty oldClasses diff never clears it). The widget
     /// cases pin the per-widget reset helpers (<see cref="FiberTogglePoolHelper"/>,
@@ -24,9 +24,8 @@ namespace Velvet.Tests
     /// the previous consumer's state (TextField additionally carries a PII security contract: a recycled
     /// field must not surface a prior password / value). All three are the same pooled-reuse ghosting class
     /// as the Button-children bug. GWT, one assert per case.
-    /// The structural cases pin the FULL reset surface: every inline style property the reset scrubs is compared
-    /// against a freshly constructed element, in both directions, so dropping a scrubbed property from the helper
-    /// (reintroducing a ghost) or scrubbing a new one without extending the pinned contract list fails a test.
+    /// The structural case pins the FULL reset surface: every settable inline style property is written and then
+    /// compared against a freshly constructed element, so a property the reset leaves behind fails a test.
     /// One case additionally resets an element that is still ATTACHED to a panel: clearing an inline filter goes
     /// through the transition system, so the scrub must not turn itself into a running animation that keeps
     /// painting what it just removed. Today's callers detach before resetting, which suppresses that path on its
@@ -226,117 +225,28 @@ namespace Velvet.Tests
                 Is.EqualTo((StyleKeyword.Undefined, 12, true, StyleKeyword.Null)));
         }
 
-        // Structural: the full inline-style scrub surface, compared against a fresh element
+        // Structural: every inline style property, compared against a fresh element
 
-        // Every inline style property FiberElementPoolReset.ResetInlineStyle scrubs. This list is the
-        // pinned reset contract: the structural test below fails when the helper stops scrubbing a
-        // listed property (a pool-reuse ghost) AND when it starts scrubbing an unlisted one (the new
-        // property would otherwise have no regression coverage), so the two cannot drift silently.
-        private static readonly string[] ScrubbedInlineStyleProperties =
-        {
-            nameof(IStyle.color),
-            nameof(IStyle.backgroundColor),
-            nameof(IStyle.backgroundImage),
-            nameof(IStyle.backgroundSize),
-            nameof(IStyle.backgroundPositionX),
-            nameof(IStyle.backgroundPositionY),
-            nameof(IStyle.backgroundRepeat),
-            nameof(IStyle.unitySliceTop),
-            nameof(IStyle.unitySliceRight),
-            nameof(IStyle.unitySliceBottom),
-            nameof(IStyle.unitySliceLeft),
-            nameof(IStyle.unitySliceScale),
-            nameof(IStyle.unitySliceType),
-            nameof(IStyle.opacity),
-            nameof(IStyle.display),
-            nameof(IStyle.visibility),
-            nameof(IStyle.overflow),
-            nameof(IStyle.width),
-            nameof(IStyle.height),
-            nameof(IStyle.minWidth),
-            nameof(IStyle.minHeight),
-            nameof(IStyle.maxWidth),
-            nameof(IStyle.maxHeight),
-            nameof(IStyle.marginLeft),
-            nameof(IStyle.marginRight),
-            nameof(IStyle.marginTop),
-            nameof(IStyle.marginBottom),
-            nameof(IStyle.paddingLeft),
-            nameof(IStyle.paddingRight),
-            nameof(IStyle.paddingTop),
-            nameof(IStyle.paddingBottom),
-            nameof(IStyle.borderLeftWidth),
-            nameof(IStyle.borderRightWidth),
-            nameof(IStyle.borderTopWidth),
-            nameof(IStyle.borderBottomWidth),
-            nameof(IStyle.borderLeftColor),
-            nameof(IStyle.borderRightColor),
-            nameof(IStyle.borderTopColor),
-            nameof(IStyle.borderBottomColor),
-            nameof(IStyle.borderTopLeftRadius),
-            nameof(IStyle.borderTopRightRadius),
-            nameof(IStyle.borderBottomLeftRadius),
-            nameof(IStyle.borderBottomRightRadius),
-            nameof(IStyle.flexGrow),
-            nameof(IStyle.flexShrink),
-            nameof(IStyle.flexBasis),
-            nameof(IStyle.flexDirection),
-            nameof(IStyle.flexWrap),
-            nameof(IStyle.alignSelf),
-            nameof(IStyle.alignItems),
-            nameof(IStyle.alignContent),
-            nameof(IStyle.justifyContent),
-            nameof(IStyle.position),
-            nameof(IStyle.left),
-            nameof(IStyle.right),
-            nameof(IStyle.top),
-            nameof(IStyle.bottom),
-            nameof(IStyle.fontSize),
-            nameof(IStyle.letterSpacing),
-            nameof(IStyle.unityFontDefinition),
-            nameof(IStyle.unityFontStyleAndWeight),
-            nameof(IStyle.unityTextAlign),
-            nameof(IStyle.whiteSpace),
-            nameof(IStyle.translate),
-            nameof(IStyle.rotate),
-            nameof(IStyle.scale),
-            nameof(IStyle.aspectRatio),
-            nameof(IStyle.filter),
-            nameof(IStyle.transformOrigin),
-            nameof(IStyle.transitionDuration),
-            nameof(IStyle.transitionDelay),
-            nameof(IStyle.transitionProperty),
-            nameof(IStyle.transitionTimingFunction),
-        };
-
-        // GREEN_ON_BASE(refactor): the arrangement moved into helpers the Clear measurements below share, and the
-        // reset it pins is unchanged. The reset drops an in-place list clear this editor's setter makes dead;
-        // should a Null assignment ever leave the inline filter list readable again, filter reddens here.
         [Test]
-        public void Given_EveryInlineStylePropertyWritten_When_ResetForReuse_Then_ScrubbedPropertiesMatchTheContractList()
+        public void Given_EveryInlineStylePropertyWritten_When_ResetForReuse_Then_EveryPropertyReadsAsFresh()
         {
-            // Arrange — every settable IStyle property written as a real inline entry.
+            // Arrange — every settable IStyle property written as a real inline entry, the ones the reset once
+            // named and the ones it never did.
             var element = new VisualElement();
             var fresh = new VisualElement();
             var properties = WritableInlineProperties();
             var unsettable = WriteEveryInlineProperty(element, properties);
-            Assume.That(unsettable, Is.Empty, "Precondition: every IStyle property type accepts a StyleKeyword value");
 
             // Act — the shared pool reset runs.
             FiberElementPoolReset.ResetCommonState(element);
 
-            // Assert — the set of properties that read back indistinguishable from a fresh element equals the
-            // pinned contract list, in both directions.
-            var observedScrubbed = properties
-                .Where(p => Equals(p.GetValue(element.style), p.GetValue(fresh.style)))
-                .Select(p => p.Name)
-                .ToArray();
-            var mismatches = ScrubbedInlineStyleProperties.Except(observedScrubbed)
-                .Select(name => $"not scrubbed by the reset (pool-reuse ghost): {name}")
-                .Concat(observedScrubbed.Except(ScrubbedInlineStyleProperties)
-                    .Select(name => $"scrubbed by the reset but missing from the contract list: {name}"))
+            // Assert — a property no sentinel could be written for is a gap in the case, so it reports too.
+            var ghosts = properties
+                .Where(p => !Equals(p.GetValue(element.style), p.GetValue(fresh.style)))
+                .Select(p => $"not scrubbed by the reset (pool-reuse ghost): {p.Name}")
+                .Concat(unsettable.Select(name => $"no value to write, unmeasured: {name}"))
                 .ToList();
-            Assert.That(mismatches, Is.Empty);
+            Assert.That(ghosts, Is.Empty);
         }
 
         // Structural: a plain VisualElement through ResetCommonState. Every field probed below is also a
@@ -382,46 +292,16 @@ namespace Velvet.Tests
             Assert.That(mismatches, Is.Empty);
         }
 
-        // IStyle.Clear measurements. Each case decides one condition for replacing the enumeration in
-        // ResetInlineStyle with Clear().
-
         private const string FadeSheet = "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/LayoutIdTestRules.uss";
 
-        // GREEN_ON_BASE(characterization): measurement (i) of replacing the enumeration with Clear(); it runs
-        // against the enumeration unchanged, so it reports what Clear would cover.
+        // GREEN_ON_BASE(characterization): the enumeration nulls the opacity ahead of the transition longhands, so
+        // the zero duration the reset writes first already stops the fade on the base; the case holds that the
+        // switch to Clear() keeps it, where the rule that restores the opacity is a stylesheet's.
         [Test]
-        public void Given_EveryInlineStylePropertyWrittenOnAPanel_When_TheStyleIsCleared_Then_EveryScrubbedPropertyReadsAsFresh()
+        public void Given_AnElementUnderASheetsOpacityTransition_When_ResetForReuse_Then_NoTransitionStarts()
         {
-            // Arrange
-            using var host = new HeadlessEditorPanelHost();
-            var element = new VisualElement();
-            var fresh = new VisualElement();
-            host.Root.Add(element);
-            EditorPanelTestHelpers.ForcePanelUpdate(host.Panel);
-            var properties = WritableInlineProperties();
-            var unsettable = WriteEveryInlineProperty(element, properties);
-
-            // Act
-            element.style.Clear();
-
-            // Assert — a property no sentinel could be written for is a gap in the measurement, so it reports too.
-            var cleared = properties
-                .Where(p => Equals(p.GetValue(element.style), p.GetValue(fresh.style)))
-                .Select(p => p.Name)
-                .ToArray();
-            var gaps = ScrubbedInlineStyleProperties.Except(cleared)
-                .Select(name => $"named by the enumeration, not cleared by Clear: {name}")
-                .Concat(unsettable.Select(name => $"no value to write, unmeasured: {name}"))
-                .ToList();
-            Assert.That(gaps, Is.Empty);
-        }
-
-        // The zero duration the reset writes before its scrub, then the opacity the scrub restores through the
-        // transition system. The sheet's rule fades opacity over a second, so a clear that starts a transition
-        // leaves the opacity part-way after half of it. The element carries an inline duration of its own, written
-        // before the opacity, when durationFirst is set.
-        private float OpacityHalfASecondAfterAClearThatFollowsTheZeroDuration(bool durationFirst)
-        {
+            // Arrange — the rule fades opacity over a second, so a clear that starts a transition leaves the
+            // opacity part-way after half of it.
             using var host = new HeadlessEditorPanelHost();
             var now = 100.0;
             EditorPanelTestHelpers.SetPanelTimeFunction(host.Panel, () => now);
@@ -430,71 +310,58 @@ namespace Velvet.Tests
             element.AddToClassList("layout-id-test-fade");
             host.Root.Add(element);
             EditorPanelTestHelpers.ForcePanelUpdate(host.Panel);
-            if (durationFirst)
-            {
-                element.style.transitionDuration = new StyleList<TimeValue>(new List<TimeValue> { new TimeValue(1f) });
-            }
             element.style.opacity = 0.2f;
             now += 2.0;
             EditorPanelTestHelpers.DriveAnimationsOnce(host.Panel);
             var settled = element.resolvedStyle.opacity;
 
-            element.style.transitionDuration = new StyleList<TimeValue>(new List<TimeValue> { new TimeValue(0f) });
-            element.style.Clear();
+            // Act
+            FiberElementPoolReset.ResetCommonState(element);
             now += 0.5;
             EditorPanelTestHelpers.DriveAnimationsOnce(host.Panel);
 
-            // NaN where the opacity never settled at the inline value, which no expected opacity equals.
-            return Mathf.Approximately(settled, 0.2f) ? element.resolvedStyle.opacity : float.NaN;
-        }
-
-        // GREEN_ON_BASE(characterization): measurement (ii), the inline duration absent when the guard writes its zero.
-        [Test]
-        public void Given_AZeroDurationWrittenAfterTheInlineOpacity_When_TheStyleIsCleared_Then_NoTransitionStarts()
-        {
-            // Arrange / Act
-            var opacity = OpacityHalfASecondAfterAClearThatFollowsTheZeroDuration(durationFirst: false);
-
-            // Assert — fully back to the rule's value, not part-way through fading back to it.
+            // Assert — NaN where the opacity never settled at the inline value, which the expected one never equals.
+            var opacity = Mathf.Approximately(settled, 0.2f) ? element.resolvedStyle.opacity : float.NaN;
             Assert.That(opacity, Is.EqualTo(1f).Within(1e-3f));
         }
 
-        [Test]
-        public void Given_AZeroDurationWrittenOverAnInlineDurationThatPrecededTheInlineOpacity_When_TheStyleIsCleared_Then_NoTransitionStarts()
+        // The inline rule a source asset gives an element; no element Velvet builds from C# has one, which is why
+        // Clear's source-asset flag changes nothing for the pool. Built by hand here because only a UXML-made
+        // element carries one.
+        private static bool CarriesSourceAsset(VisualElement element)
         {
-            // Arrange / Act
-            var opacity = OpacityHalfASecondAfterAClearThatFollowsTheZeroDuration(durationFirst: true);
-
-            // Assert
-            Assert.That(opacity, Is.EqualTo(1f).Within(1e-3f));
+            var access = typeof(VisualElement).GetField(
+                "inlineStyleAccess", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(element);
+            if (access == null)
+            {
+                return false;
+            }
+            var rule = access.GetType().GetProperty("inlineRule")!.GetValue(access);
+            return rule.GetType().GetField("sheet")!.GetValue(rule) != null;
         }
 
-        // GREEN_ON_BASE(characterization): measurement (iii), which compares two Clear calls and never reads the enumeration.
+        // GREEN_ON_BASE(characterization): the positive control of the case below; it reads the probe and no production code.
         [Test]
-        public void Given_EveryInlineStylePropertyWritten_When_ClearedWithAndWithoutTheSourceAssetFlag_Then_NoPropertyDiffers()
+        public void Given_AnElementWithAnInlineRuleFromASheet_When_TheProbeReadsIt_Then_ItCarriesASourceAsset()
         {
             // Arrange
-            var kept = new VisualElement();
-            var dropped = new VisualElement();
-            var properties = WritableInlineProperties();
-            WriteEveryInlineProperty(kept, properties);
-            WriteEveryInlineProperty(dropped, properties);
+            var element = new VisualElement();
+            var sheet = ScriptableObject.CreateInstance<StyleSheet>();
+            var ruleType = typeof(VisualElement).Assembly.GetType("UnityEngine.UIElements.StyleRule")!;
+            typeof(VisualElement).GetMethod("SetInlineRule", BindingFlags.Instance | BindingFlags.NonPublic)!
+                .Invoke(element, new[] { sheet, Activator.CreateInstance(ruleType, true) });
 
             // Act
-            kept.style.Clear(false);
-            dropped.style.Clear(true);
+            var carries = CarriesSourceAsset(element);
 
             // Assert
-            var differing = properties
-                .Where(p => !Equals(p.GetValue(kept.style), p.GetValue(dropped.style)))
-                .Select(p => p.Name)
-                .ToList();
-            Assert.That(differing, Is.Empty);
+            Assert.That(carries, Is.True);
+            UnityEngine.Object.DestroyImmediate(sheet);
         }
 
-        // GREEN_ON_BASE(characterization): measurement (iii), the other half: what the flag would act on.
+        // GREEN_ON_BASE(characterization): what Clear's source-asset flag would act on is absent from a tree the reconciler builds.
         [Test]
-        public void Given_AMountedTreeOfPrimitives_When_EachElementsInlineRuleIsRead_Then_NoneCarriesASourceAsset()
+        public void Given_AMountedTreeOfPrimitives_When_EachElementIsProbedForASourceAsset_Then_NoneCarriesOne()
         {
             // Arrange — a tree the reconciler builds from C#, not from an asset.
             using var mounted = V.Mount(_root, V.Div(name: "tree", className: "w-[10px]", children: new VNode[]
@@ -506,24 +373,12 @@ namespace Velvet.Tests
                 V.Slider(name: "slider"),
                 V.ScrollView(name: "scroll"),
             }));
-            var inlineStyleAccess = typeof(VisualElement).GetField(
-                "inlineStyleAccess", BindingFlags.Instance | BindingFlags.NonPublic)!;
 
             // Act
-            var carrying = new List<string>();
-            foreach (var element in _root.Query<VisualElement>().Build().ToList())
-            {
-                var access = inlineStyleAccess.GetValue(element);
-                if (access == null)
-                {
-                    continue;
-                }
-                var rule = access.GetType().GetProperty("inlineRule")!.GetValue(access);
-                if (rule.GetType().GetField("sheet")!.GetValue(rule) != null)
-                {
-                    carrying.Add(element.name);
-                }
-            }
+            var carrying = _root.Query<VisualElement>().Build().ToList()
+                .Where(CarriesSourceAsset)
+                .Select(element => element.name)
+                .ToList();
 
             // Assert
             Assert.That(carrying, Is.Empty);

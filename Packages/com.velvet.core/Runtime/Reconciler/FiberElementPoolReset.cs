@@ -128,16 +128,13 @@ namespace Velvet
 
             // Clearing ANY inline property restores the matched-rules value THROUGH the transition system, so
             // while the element is still on a panel every clear below can become a running animation instead —
-            // one that keeps painting what the reset just removed, and that the transition-longhand nulls at
-            // the end of the scrub cannot stop (nulling restores the matched-rules value rather than disabling
-            // the transition). Writing a transition longhand recomputes that data, and a zero total time
-            // contributes no transition at all, so the clears cancel instead of animating. Must precede the
-            // scrub to cover all of it. Scoped to that INLINE scrub: the name / enabled-state resets after it
-            // change which rules match, and whatever the next styles pass transitions from that is its own.
+            // one that keeps painting what the reset just removed. Writing a transition longhand recomputes that
+            // data, and a zero total time contributes no transition at all, so the clears cancel instead of
+            // animating. Must precede the Clear below to cover all of it; PooledElementStyleGhostTests holds it
+            // against a stylesheet's transition. Scoped to that INLINE clear: the name / enabled-state resets after
+            // it change which rules match, and whatever the next styles pass transitions from that is its own.
             // A detached element is not style-initialized, which already takes every clear down the cancel
             // path — which is why no shipped caller can reach the defect, since they all detach first.
-            // Skipping the write there also keeps the pool return free of the managed entry it would otherwise
-            // create for the trailing null to tear down again.
             if (element.panel != null)
             {
                 element.style.transitionDuration = new StyleList<TimeValue>(s_zeroDuration);
@@ -151,7 +148,7 @@ namespace Velvet
             MotionClock.Forget(element);
             // A skew composed into the rotate and scale would otherwise outlive the element's last use.
             AuthoredTransform.Release(element);
-            ResetInlineStyle(element.style);
+            element.style.Clear();
             SuspenseHiddenElements.Release(element);
 
             element.userData = null;
@@ -224,97 +221,5 @@ namespace Velvet
         // copies a list value into its own storage instead of aliasing the one handed to it, and this runs
         // once per recycled element on the reconciler's steady-state hot path.
         private static readonly List<TimeValue> s_zeroDuration = new() { new TimeValue(0f) };
-
-        private static void ResetInlineStyle(IStyle style)
-        {
-            // Common inline style properties that Velvet's ApplyStyles / StyleArbitraryValueResolver may set.
-            // Listed exhaustively so the next consumer cannot inherit ghosting.
-            style.color = StyleKeyword.Null;
-            style.backgroundColor = StyleKeyword.Null;
-            style.backgroundImage = StyleKeyword.Null;
-            // GradientBackground sets backgroundSize (stretch-to-fill) alongside backgroundImage; scrub it
-            // too so a pooled element cannot ghost a 100%/100% size onto its next consumer's image.
-            style.backgroundSize = StyleKeyword.Null;
-            // animate-gradient / animate-shimmer pan the background-position (and disable repeat) each frame;
-            // scrub them so a pooled element does not ghost a panned offset / no-repeat onto its next consumer.
-            style.backgroundPositionX = StyleKeyword.Null;
-            style.backgroundPositionY = StyleKeyword.Null;
-            style.backgroundRepeat = StyleKeyword.Null;
-            style.unitySliceTop = StyleKeyword.Null;
-            style.unitySliceRight = StyleKeyword.Null;
-            style.unitySliceBottom = StyleKeyword.Null;
-            style.unitySliceLeft = StyleKeyword.Null;
-            style.unitySliceScale = StyleKeyword.Null;
-            style.unitySliceType = StyleKeyword.Null;
-            // animate-pulse drives opacity each frame; scrubbing it here keeps a pooled element from ghosting a
-            // mid-pulse opacity onto its next consumer (also covers opacity-* arbitrary values).
-            style.opacity = StyleKeyword.Null;
-            style.display = StyleKeyword.Null;
-            style.visibility = StyleKeyword.Null;
-            style.overflow = StyleKeyword.Null;
-            style.width = StyleKeyword.Null;
-            style.height = StyleKeyword.Null;
-            style.minWidth = StyleKeyword.Null;
-            style.minHeight = StyleKeyword.Null;
-            style.maxWidth = StyleKeyword.Null;
-            style.maxHeight = StyleKeyword.Null;
-            style.marginLeft = StyleKeyword.Null;
-            style.marginRight = StyleKeyword.Null;
-            style.marginTop = StyleKeyword.Null;
-            style.marginBottom = StyleKeyword.Null;
-            style.paddingLeft = StyleKeyword.Null;
-            style.paddingRight = StyleKeyword.Null;
-            style.paddingTop = StyleKeyword.Null;
-            style.paddingBottom = StyleKeyword.Null;
-            style.borderLeftWidth = StyleKeyword.Null;
-            style.borderRightWidth = StyleKeyword.Null;
-            style.borderTopWidth = StyleKeyword.Null;
-            style.borderBottomWidth = StyleKeyword.Null;
-            style.borderLeftColor = StyleKeyword.Null;
-            style.borderRightColor = StyleKeyword.Null;
-            style.borderTopColor = StyleKeyword.Null;
-            style.borderBottomColor = StyleKeyword.Null;
-            style.borderTopLeftRadius = StyleKeyword.Null;
-            style.borderTopRightRadius = StyleKeyword.Null;
-            style.borderBottomLeftRadius = StyleKeyword.Null;
-            style.borderBottomRightRadius = StyleKeyword.Null;
-            style.flexGrow = StyleKeyword.Null;
-            style.flexShrink = StyleKeyword.Null;
-            style.flexBasis = StyleKeyword.Null;
-            style.flexDirection = StyleKeyword.Null;
-            style.flexWrap = StyleKeyword.Null;
-            style.alignSelf = StyleKeyword.Null;
-            style.alignItems = StyleKeyword.Null;
-            style.alignContent = StyleKeyword.Null;
-            style.justifyContent = StyleKeyword.Null;
-            style.position = StyleKeyword.Null;
-            style.left = StyleKeyword.Null;
-            style.right = StyleKeyword.Null;
-            style.top = StyleKeyword.Null;
-            style.bottom = StyleKeyword.Null;
-            style.fontSize = StyleKeyword.Null;
-            // tracking-[Npx] writes inline letterSpacing (StyleArbitraryValueResolver). Without nulling it
-            // here a pooled element keeps its old letter spacing and ghosts it onto the next consumer whose
-            // node declares no tracking-* (the new node's empty oldClasses diff never clears it) — the same
-            // pooled-reuse ghosting class as the Button-children bug.
-            style.letterSpacing = StyleKeyword.Null;
-            style.unityFontDefinition = StyleKeyword.Null;
-            style.unityFontStyleAndWeight = StyleKeyword.Null;
-            style.unityTextAlign = StyleKeyword.Null;
-            style.whiteSpace = StyleKeyword.Null;
-            style.translate = StyleKeyword.Null;
-            style.rotate = StyleKeyword.Null;
-            style.scale = StyleKeyword.Null;
-            // aspect-[w/h] writes inline aspectRatio (StyleArbitraryValueResolver); null it so a pooled element
-            // does not ghost a prior aspect ratio onto the next consumer whose node declares no aspect-* class.
-            style.aspectRatio = StyleKeyword.Null;
-            // blur-/grayscale-/etc. write inline filter (StyleArbitraryValueResolver); same pool-ghost reason.
-            style.filter = StyleKeyword.Null;
-            style.transformOrigin = StyleKeyword.Null;
-            style.transitionDuration = StyleKeyword.Null;
-            style.transitionDelay = StyleKeyword.Null;
-            style.transitionProperty = StyleKeyword.Null;
-            style.transitionTimingFunction = StyleKeyword.Null;
-        }
     }
 }
