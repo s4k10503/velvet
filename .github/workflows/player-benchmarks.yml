@@ -1,0 +1,106 @@
+name: Player benchmarks
+
+# The keyed PlayMode benchmarks on an IL2CPP StandaloneLinux64 player, which is the backend players ship
+# on and the one every other benchmark run here (benchmarks.yml) does not use. CONTRIBUTING.md's
+# benchmarks section owns when to run it and how to read the numbers.
+#
+# Dispatched by hand, never by an event, and no branch-protection rule requires it. Dispatch it once
+# with `ref` naming the commit before a change and once with the commit after it, and read the two job
+# summaries side by side.
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "The branch or commit whose player is built and measured"
+        required: true
+        default: main
+      filter:
+        description: "The -testFilter value: a regex over case, suite and assembly names"
+        required: true
+        default: Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks
+
+permissions:
+  contents: read
+
+# PYTHONDONTWRITEBYTECODE for the reason test.yml gives. EDITOR_MEMORY is the editor launch's memory and
+# swap, which RunnerLimitTests holds as it holds every suite launch's.
+env:
+  PYTHONDONTWRITEBYTECODE: "1"
+  EDITOR_MEMORY: "12g"
+
+jobs:
+  # Same reading as test.yml's job of this name.
+  license-check:
+    name: Check Unity license secret
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      has_license: ${{ steps.check.outputs.has_license }}
+    steps:
+      - id: check
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+        run: |
+          if [ -n "$UNITY_LICENSE" ]; then
+            echo "has_license=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_license=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::UNITY_LICENSE secret is not set — nothing is measured."
+          fi
+
+  player:
+    name: Player benchmarks (IL2CPP, StandaloneLinux64)
+    needs: license-check
+    if: needs.license-check.outputs.has_license == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref }}
+          lfs: true
+
+      # No Library cache, for the reason newest-editor-compile in test.yml gives.
+      - name: Build and run the player
+        timeout-minutes: 100
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+          TEST_FILTER: ${{ inputs.filter }}
+        run: |
+          version=$(sed -n 's/^m_EditorVersion: //p' ProjectSettings/ProjectVersion.txt)
+          docker run --rm --init --workdir /github/workspace \
+            --memory "$EDITOR_MEMORY" --memory-swap "$EDITOR_MEMORY" --pids-limit 4096 \
+            --volume "$GITHUB_WORKSPACE:/github/workspace" \
+            --env UNITY_LICENSE --env UNITY_EMAIL --env UNITY_PASSWORD --env TEST_FILTER \
+            --env VELVET_PLAYER_BENCHMARKS=1 \
+            --env PYTHONDONTWRITEBYTECODE=1 \
+            "unityci/editor:ubuntu-$version-linux-il2cpp-3" \
+            sh -c 'python3 -u scripts/ci/player_benchmarks.py --filter "$TEST_FILTER" --output Logs/player-benchmarks'
+
+      - name: Print the medians
+        if: always()
+        env:
+          MEASURED_REF: ${{ inputs.ref }}
+        run: |
+          python3 scripts/ci/benchmark_results.py Logs/player-benchmarks \
+            --json Logs/player-benchmarks/benchmark.json --summary Logs/player-benchmarks/benchmark-summary.md
+          { echo "### Player benchmark medians (IL2CPP, $MEASURED_REF)"; echo; \
+            cat Logs/player-benchmarks/benchmark-summary.md; } > Logs/player-benchmarks/summary-section.md
+          python3 scripts/ci/step_summary.py plain Logs/player-benchmarks/summary-section.md >> "$GITHUB_STEP_SUMMARY"
+
+      # The two readings test.yml's unity-tests job takes of its results, for the reasons it gives there.
+      - name: Assert no inconclusive results
+        if: always()
+        run: python3 scripts/test_quality/assert_no_inconclusive.py Logs/player-benchmarks
+
+      - name: Assert the results are this checkout's
+        if: always()
+        run: python3 scripts/test_quality/assert_results_from_this_tree.py Logs/player-benchmarks --log Logs/player-benchmarks/run.log
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: Player benchmark results
+          path: Logs/player-benchmarks

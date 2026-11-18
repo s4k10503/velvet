@@ -580,7 +580,7 @@ stopped at its own run's baseline times `TIMEOUT_FACTOR` plus `TIMEOUT_CONSTANT`
 of the baseline it charges.
 
 Each `docker run` of the editor image that a workflow spells out to run a suite (`mutation.yml`'s two
-measuring steps, `kill-set.yml`'s and `per-case-coverage.yml`'s) is given a memory limit, with swap at
+measuring steps, `kill-set.yml`'s, `per-case-coverage.yml`'s and `player-benchmarks.yml`'s) is given a memory limit, with swap at
 the same figure, and a process limit, so that an editor outgrowing the limit loses a process inside the
 container. `mutation_check.py` records a campaign's launch that does as `killed (the editor crashed)` ([`Generators~/README.md`](Packages/com.velvet.core/Generators~/README.md) owns the reading), and
 `RunnerLimitTests` holds the limits on every such launch and the memory below a hosted runner's.
@@ -1411,6 +1411,12 @@ benchmark that throws fails the run like any other test. No job fails on a numbe
   because `gh issue list --label` reads them through search.
 - `trend-pull-request` compares a labelled head with the latest entry on `main` in the job summary and
   writes nothing.
+
+`.github/workflows/player-benchmarks.yml`, dispatched by hand with a `ref` and a `filter` (the keyed benchmarks
+by default), builds those fixtures into an IL2CPP StandaloneLinux64 player with the full counts and prints each
+benchmark's median to the job summary, so a change to what IL2CPP compiles differently from Mono is read from
+two dispatches, one on the commit before and one on the commit after. The backend and the counts are set by
+`BenchmarkPlayerBuild` for that build alone, where the workflow gives the editor `VELVET_PLAYER_BENCHMARKS=1`.
 
 The numbers are for comparing runs with each other, not absolute ones: the editor runs them with
 `-debugCodeOptimization` and the code-coverage recorder on, because game-ci passes both whatever the
