@@ -363,9 +363,9 @@ namespace Velvet.Editor
             return text.Length;
         }
 
-        // A comment becomes comment, which is a space unless the caller says otherwise, and a line break or a form feed
-        // becomes a space; a string, an escape and an unquoted URL path are kept whole, so what reads as one inside them stays. badUrl says whether the importer's lexer
-        // raises an error on a URL path, which fails the sheet.
+        // A comment becomes the text the caller passes as comment, a space by default, and a line break or a form feed
+        // becomes a space; a string, an escape and an unquoted URL path are kept whole, so what reads as one inside them
+        // stays. badUrl says whether the importer's lexer raises an error on a URL path, which fails the sheet.
         private static string Flatten(string value, out bool badUrl, string comment = " ")
         {
             badUrl = false;
