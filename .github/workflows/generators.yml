@@ -160,6 +160,11 @@ jobs:
     if: github.repository == 's4k10503/velvet'
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    # issues and pull-requests read for the milestone step at the end.
+    permissions:
+      contents: read
+      issues: read
+      pull-requests: read
     steps:
       - name: Assert repository settings
         env:
@@ -249,33 +254,23 @@ jobs:
 
           exit "$failed"
 
-  # ---------------------------------------------------------------------------
-  # The milestone a pull request merges under, which scripts/pr/milestone.py decides and
-  # CONTRIBUTING.md's merging section owns. It runs after the jobs above, so a milestone set before
-  # it starts is read here; nothing runs it again when the milestone changes later, and its failure
-  # names the re-run that does. The pull request is read live rather than off the event, for the
-  # reason test.yml's publication job gives for its body.
-  # ---------------------------------------------------------------------------
-  milestone:
-    name: Milestone
-    needs: [source-generators, repository-settings]
-    if: always() && github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: read
-      issues: read
-      pull-requests: read
-    steps:
-      # fetch-depth 0 for origin/main, the tags and the base the change is read against.
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # The milestone a pull request merges under, which scripts/pr/milestone.py decides and
+      # CONTRIBUTING.md's merging section states. A step of this job rather than a job of its own,
+      # so it takes no runner slot of its own. The pull request is read live rather than off the
+      # event, for the reason test.yml's publication job gives for its body. fetch-depth 0 for
+      # origin/main, the tags and the base the change is read against.
+      - if: github.event_name == 'pull_request'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
       - id: base
+        if: github.event_name == 'pull_request'
         run: python3 scripts/ci/change_base.py >> "$GITHUB_OUTPUT"
 
-      - env:
+      - name: Milestone
+        if: github.event_name == 'pull_request'
+        env:
           GH_TOKEN: ${{ github.token }}
           NUMBER: ${{ github.event.pull_request.number }}
           BASE: ${{ steps.base.outputs.sha }}
@@ -288,7 +283,7 @@ jobs:
   required-checks:
     name: Required checks (generators)
     if: always()
-    needs: [source-generators, repository-settings, milestone]
+    needs: [source-generators, repository-settings]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     # actions: write for a superseded run to ask for its own cancellation; pull-requests: read for
@@ -301,7 +296,7 @@ jobs:
       # Decided here without a checkout, so a run whose every result passed cannot be reddened by one.
       - id: results
         env:
-          RESULTS: ${{ needs.source-generators.result }} ${{ needs.repository-settings.result }} ${{ needs.milestone.result }}
+          RESULTS: ${{ needs.source-generators.result }} ${{ needs.repository-settings.result }}
         run: |
           passed=true
           [ -n "$RESULTS" ] || passed=false
@@ -320,7 +315,7 @@ jobs:
 
       - if: steps.results.outputs.passed != 'true'
         env:
-          RESULTS: ${{ needs.source-generators.result }} ${{ needs.repository-settings.result }} ${{ needs.milestone.result }}
+          RESULTS: ${{ needs.source-generators.result }} ${{ needs.repository-settings.result }}
           HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
           NUMBER: ${{ github.event.pull_request.number }}
           GH_TOKEN: ${{ github.token }}

@@ -1230,7 +1230,6 @@ on every platform.
 |----------|---------|---------------|-------------------|
 | `Source generators ▸ source-generators` | push (filtered) / every PR / merge group | not required | no |
 | `Source generators ▸ repository-settings` | push (filtered) / every PR / merge group; skipped when the workflow runs in a fork | not required | no |
-| `Source generators ▸ milestone` | every PR | not required | no |
 | `Source generators ▸ Required checks (generators)` | push (filtered) / every PR / merge group | not required | **yes** |
 | `Test ▸ license-check` | push (filtered) / every PR / merge group | not required | no |
 | `Test ▸ unity-tests` (EditMode / PlayMode) | push (filtered) / every PR / merge group | **required** (skipped if absent) | no |
@@ -1525,9 +1524,10 @@ held to none of this, so `refuse/stack_merge_by_hand.py` refuses it.
 
 **A pull request merges under a milestone**: for a change to `Packages/com.velvet.core/` onto
 `main` or a maintenance line, the next version that branch publishes, at least the bump
-[Releasing](#releasing) derives; otherwise the Infrastructure milestone or a version. `settle.py merge`,
-`refuse/merge_off_milestone.py` and the `Source generators ▸ milestone` check refuse anything else,
-each naming its way out, and [`scripts/pr/milestone.py`](scripts/pr/milestone.py) owns the rule.
+[Releasing](#releasing) derives; otherwise the Infrastructure milestone or a version.
+`settle.py merge`, `refuse/merge_off_milestone.py` and the milestone step of
+`Source generators ▸ repository-settings` refuse anything else, each naming its way out, and
+[`scripts/pr/milestone.py`](scripts/pr/milestone.py) owns the rule.
 
 No merge waits on a mutation campaign. A campaign dispatched onto a pull request's
 branch runs on its head like any other workflow, and `settle.py merge`, the automerge runs through it, and

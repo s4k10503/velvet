@@ -10,17 +10,19 @@ that branch publishes, which is the lowest open version milestone among the vers
 main every major from the one `maintenance_line.main_state` says it builds, and a line its own
 major. So a v3.1.0 pull request waits until v3.0.2 is published and its milestone closed, and a
 v4.0.0 one until no v3 milestone is open. Onto any other branch the milestone's kind, its bump and
-the version it closes are asked, and nothing about a next version. A version milestone is also at least the bump `next_version.derive` reads off what the
-pull request adds from where it branched, which is the bump the release it ships in is derived as;
-and a pull request closing a version in the CHANGELOG carries that version's milestone. A branch's
+the version it closes are asked, and nothing about a next version. A version milestone is also at
+least the bump `next_version.derive` reads off what the pull request adds from where it branched,
+which is the bump the release it ships in is derived as; and a pull request closing a version in
+the CHANGELOG carries that version's milestone. A branch's
 next version takes no change to the package while it is published already, or while it does not
 follow the newest release below it. Every refusal names its way out: `gh pr edit <n> --milestone
 <title>`, or the `gh api` command that opens, reopens or closes a milestone.
 
 `settle.py` (its `merge`, and `watch`'s readiness) and `refuse/merge_off_milestone.py` read the
-milestone each time they are asked. The `Source generators ▸ milestone` job, in that workflow's required aggregate, reads it when
-its run reaches the job, and nothing runs it again when the milestone, the base or a milestone of
-the repository changes later, a release closing one included: its verdict stands until a push.
+milestone each time they are asked. The milestone step that ends `Source generators ▸
+repository-settings`, a job of that workflow's required aggregate, reads it when its run reaches
+the step, and nothing runs it again when the milestone, the base or a milestone of the repository
+changes later, a release closing one included: its verdict stands until a push.
 
 **A release.** The version a release publishes follows the newest release below it — a patch, a
 minor or a major over it — and is the lowest open version milestone of the branch publishing it.
@@ -461,7 +463,7 @@ def main(argv=None):
 
 
 # What the check's refusal adds in a workflow run, where its verdict outlives the readings it took.
-STALE = ("This check read the pull request when its run reached this job, and nothing runs it again "
+STALE = ("This check read the pull request when its run reached this step, and nothing runs it again "
          "when its milestone, its base or a milestone of the repository changes later: a push to "
          "the branch starts a run that reads them again.")
 
