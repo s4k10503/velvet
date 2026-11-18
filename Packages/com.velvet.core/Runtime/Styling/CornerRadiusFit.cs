@@ -61,8 +61,9 @@ namespace Velvet
     /// style pass that finds a radius resolved on it attaches the fit, which then reads the rules' radius through
     /// <see cref="StyleCascade.Radius"/> and a length its code writes as it does for any other element. A style pass
     /// reaches the fit through the custom property <c>_preflight.uss</c> gives <see cref="WatchClass"/>, which goes on
-    /// an element once Velvet adds or removes a class of the application's own on it (one Velvet resolves nothing for), so
-    /// it needs the bundled stylesheet attached and sees no change made to the class list from outside Velvet.
+    /// an element once Velvet adds or removes a class of the application's own on it (one Velvet does not resolve
+    /// itself), so it needs the bundled stylesheet attached and sees no change made to the class list from outside
+    /// Velvet.
     /// </remarks>
     internal static class CornerRadiusFit
     {
@@ -149,25 +150,40 @@ namespace Velvet
             }
         }
 
-        // A class Velvet resolves something for: a bundled utility, a family it realises in C#, an arbitrary value, a
-        // theme token, or the marker of a group or a peer. Whatever is left is the application's own.
-        private static bool ResolvedByVelvet(string cls)
-        {
-            var core = StyleArbitraryValueResolver.StripImportant(cls, out _);
-            return StyleUtilityProperties.TryGet(core, out _)
+        // The classes Velvet resolves itself beyond what the bundled table names. CornerRadiusFitPanelTests sweeps the
+        // bundled sheets' class names and a token of each family, and fails where one marks an element.
+        private static bool IsRelationalSource(string core)
+            => core == StyleRelationalVariantManipulator.GroupClass || core == StyleRelationalVariantManipulator.PeerClass
+                || core.StartsWith(StyleRelationalVariantManipulator.GroupClass + "/", StringComparison.Ordinal)
+                || core.StartsWith(StyleRelationalVariantManipulator.PeerClass + "/", StringComparison.Ordinal);
+
+        private static bool ResolvedBeyondTheTable(string core)
+            => core.StartsWith("velvet-", StringComparison.Ordinal)
+                || core.StartsWith("unity-", StringComparison.Ordinal)
+                || core.StartsWith("@container", StringComparison.Ordinal)
+                || IsRelationalSource(core)
+                || core == VelvetStyleUtilities.DarkThemeClass
+                || core == "is-selected"
+                || core == "is-active"
                 || StyleClassFamilies.Feeds(core)
+                || StyleTextEffectClass.IsTextEffectToken(core)
+                || StyleFontClass.IsFontToken(core)
+                || StyleGradientClass.IsGradientClass(core)
+                || StyleClipPathClass.IsClipPathClass(core)
                 || StyleArbitraryValueResolver.IsInlineResolved(core)
-                || StyleArbitraryValueResolver.IsFilterFamilyToken(core)
-                || StyleThemeClass.OwnsPlainToken(core)
-                || core == StyleRelationalVariantManipulator.GroupClass
-                || core == StyleRelationalVariantManipulator.PeerClass;
-        }
+                || StyleThemeClass.OwnsPlainToken(core);
 
         // Only a class of the application's own can bring a radius with it that nothing here tracks, and only a change
         // made after the element is on a panel is one the size change that lays it out does not reach.
         private static void WatchForRule(VisualElement element, string cls)
         {
-            if (element.panel == null || element.ClassListContains(WatchClass) || ResolvedByVelvet(cls))
+            if (element.panel == null)
+            {
+                return;
+            }
+            var core = StyleArbitraryValueResolver.StripImportant(cls, out _);
+            if (StyleUtilityProperties.TryGet(core, out _) || element.ClassListContains(WatchClass)
+                || ResolvedBeyondTheTable(core))
             {
                 return;
             }

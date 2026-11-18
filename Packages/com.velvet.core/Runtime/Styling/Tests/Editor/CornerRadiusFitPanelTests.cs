@@ -23,6 +23,8 @@ namespace Velvet.Tests
 
         private const string WideBox = "w-[330px] h-[34px]";
 
+        private const string StylesDirectory = "Packages/com.velvet.core/Runtime/Styles";
+
         private const string OwnRadiusSheet = "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/LayoutIdTestRules.uss";
 
         private static StateUpdater<string> s_setClass;
@@ -557,22 +559,101 @@ namespace Velvet.Tests
             Assert.That(Radii(box), Is.EqualTo(s_unevenRadiiFittedToWideBox).Within(1e-3f));
         }
 
-        // Each token is one Velvet resolves something for, a family it realises in C# or a bundled utility written with its
-        // important marker, so none of them is the application's own and none can bring a radius the fit lacks.
+        // A token of each family Velvet resolves itself, beside the ones the bundled table does not name. The fit is asked
+        // directly, so a token the patcher routes elsewhere cannot make a row pass for want of reaching it.
         [TestCase("ring-2")]
         [TestCase("gap-4")]
+        [TestCase("space-x-2")]
         [TestCase("shadow-md")]
-        [TestCase("blur-md")]
+        [TestCase("animate-spin")]
+        [TestCase("skew-x-3")]
+        [TestCase("border-dashed")]
+        [TestCase("backdrop-blur-md")]
+        [TestCase("grid-cols-3")]
+        [TestCase("divide-x")]
+        [TestCase("pointer-events-none")]
+        [TestCase("z-10")]
+        [TestCase("order-2")]
+        [TestCase("uppercase")]
+        [TestCase("underline")]
+        [TestCase("font-sans")]
+        [TestCase("from-red-500")]
+        [TestCase("via-red-500")]
+        [TestCase("to-red-500")]
+        [TestCase("clip-path-none")]
+        [TestCase("@container")]
+        [TestCase("@container/main")]
+        [TestCase("velvet-viewport")]
+        [TestCase("velvet-label")]
+        [TestCase("unity-button")]
         [TestCase("group")]
+        [TestCase("group/sidebar")]
+        [TestCase("peer")]
+        [TestCase("peer/email")]
+        [TestCase("dark")]
+        [TestCase("is-selected")]
+        [TestCase("is-active")]
         [TestCase("p-4!")]
         [TestCase("!p-4")]
-        public void Given_ALaidOutBox_When_AClassVelvetResolvesArrives_Then_TheBoxIsNotMarkedForTheFit(string token)
+        public void Given_ALaidOutBox_When_AClassVelvetResolvesItselfIsTracked_Then_TheBoxIsNotMarkedForTheFit(string token)
         {
             // Arrange
-            var box = MountSwitchable(WideBox);
+            var box = MountBox(WideBox);
 
             // Act
-            SwitchClass($"{WideBox} {token}");
+            CornerRadiusFit.TrackClass(box, token);
+
+            // Assert
+            Assert.That(box.ClassListContains(CornerRadiusFit.WatchClass), Is.False);
+        }
+
+        [Test]
+        public void Given_ALaidOutBox_When_EveryClassTheBundledSheetsNameIsTracked_Then_NoneMarksTheBox()
+        {
+            // Arrange — the class names are read off the selectors of every sheet in the styles directory, so a class a
+            // sheet adds is held to the same test without a row being written for it.
+            var comment = new System.Text.RegularExpressions.Regex(@"/\*.*?\*/", System.Text.RegularExpressions.RegexOptions.Singleline);
+            var head = new System.Text.RegularExpressions.Regex(@"([^{}]+)\{");
+            var name = new System.Text.RegularExpressions.Regex(@"\.([A-Za-z_][A-Za-z0-9_-]*)");
+            var names = new SortedSet<string>(System.StringComparer.Ordinal);
+            foreach (var path in System.IO.Directory.GetFiles(StylesDirectory, "*.uss"))
+            {
+                var text = comment.Replace(System.IO.File.ReadAllText(path), " ");
+                foreach (System.Text.RegularExpressions.Match rule in head.Matches(text))
+                {
+                    foreach (System.Text.RegularExpressions.Match match in name.Matches(rule.Groups[1].Value))
+                    {
+                        names.Add(match.Groups[1].Value);
+                    }
+                }
+            }
+            var box = MountBox(WideBox);
+            var marked = new List<string>();
+
+            // Act
+            foreach (var cls in names)
+            {
+                CornerRadiusFit.TrackClass(box, cls);
+                if (box.ClassListContains(CornerRadiusFit.WatchClass))
+                {
+                    marked.Add(cls);
+                    box.RemoveFromClassList(CornerRadiusFit.WatchClass);
+                }
+            }
+
+            // Assert
+            Assert.That(marked, Is.Empty);
+        }
+
+        [Test]
+        public void Given_ALaidOutBox_When_ABundledClassWrittenWithTheImportantMarkerArrivesThroughAnAnimationChannel_Then_TheBoxIsNotMarkedForTheFit()
+        {
+            // Arrange — the one path that hands the fit the token as written, with its marker.
+            var box = MountBox(WideBox);
+
+            // Act
+            StyleAnimationClassUtils.AddClasses(box, new[] { "p-4!" });
+            ForcePanelUpdate(box.panel);
 
             // Assert
             Assert.That(box.ClassListContains(CornerRadiusFit.WatchClass), Is.False);
@@ -589,6 +670,39 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(box.ClassListContains(CornerRadiusFit.WatchClass), Is.True);
+        }
+
+        private static StateUpdater<string> s_setSecondClass;
+
+        [Component]
+        private static VNode RenderTwoBoxes()
+        {
+            var (first, setFirst) = Hooks.UseState(WideBox);
+            var (second, setSecond) = Hooks.UseState(WideBox);
+            s_setClass = setFirst;
+            s_setSecondClass = setSecond;
+            return V.Div("flex flex-col", V.Div(name: "box", className: first), V.Div(name: "box2", className: second));
+        }
+
+        [Test]
+        public void Given_TwoLaidOutBoxesWhoseFirstTookAClassOfItsOwn_When_TheSecondTakesTheSameClass_Then_TheSecondIsFittedToo()
+        {
+            // Arrange — the first swap marks the first box; the second box is a separate element with its own mark.
+            AttachOwnRadiusSheet();
+            _mounted = V.Mount(_window.rootVisualElement, V.Component(RenderTwoBoxes));
+            ForcePanelUpdate(Box.panel);
+            s_setClass.Invoke($"{WideBox} layout-id-test-uneven");
+            _mounted.Root.Reconciler.Context.BatchScheduler.DrainImmediateForTest();
+            ForcePanelUpdate(Box.panel);
+
+            // Act
+            s_setSecondClass.Invoke($"{WideBox} layout-id-test-uneven");
+            _mounted.Root.Reconciler.Context.BatchScheduler.DrainImmediateForTest();
+            ForcePanelUpdate(Box.panel);
+
+            // Assert
+            Assert.That(Radii(_window.rootVisualElement.Q<VisualElement>("box2")),
+                Is.EqualTo(s_unevenRadiiFittedToWideBox).Within(1e-3f));
         }
 
         [Test]
