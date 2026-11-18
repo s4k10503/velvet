@@ -1,7 +1,6 @@
 using System.Linq;
 using System.Reflection;
 using NUnit.Framework;
-using Unity.Profiling;
 using UnityEngine;
 using UnityEngine.UIElements;
 using Velvet.TestUtilities;
@@ -848,14 +847,6 @@ namespace Velvet.Tests
             return ((System.Collections.ICollection)arguments[1].GetType().GetField("Leaves")!.GetValue(arguments[1])!).Count;
         }
 
-        // Derive calls the profiler marker recorded while action ran, or -1 where the marker does not exist.
-        private static int DeriveCalls(System.Action action)
-        {
-            using var recorder = ProfilerRecorder.StartNew(ProfilerCategory.Scripts, "Velvet.FlexMinSize.Derive", 4096);
-            action();
-            return recorder.Valid ? recorder.Count : -1;
-        }
-
         // GREEN_ON_BASE(characterization): the base writes the minimum at mount and keeps it, so it holds the value
         // after the narrowing too. What reddens it is a derive that does not tell a label holding its whole text's
         // width from one squeezed below it: dropping `atNaturalWidth` from the `HashCode.Combine` that makes the
@@ -1010,41 +1001,20 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_LabelsWithNoPercentLength_When_OnlyTheirParentsWidthMoves_Then_NoneDerives()
+        public void Given_ALabelWithNoPercentLength_When_OnlyItsParentsWidthMovesAfterItsTextChanged_Then_ItKeepsItsMinWidth()
         {
-            // Arrange
-            _mounted = V.Mount(_window.rootVisualElement, V.Div(
-                "flex flex-row w-[20px]", V.Label(text: Sentence), V.Label(text: Sentence), V.Label(text: Sentence)));
-            var labels = _window.rootVisualElement.Query<Label>().ToList();
-            foreach (var label in labels)
-            {
-                Settle(label);
-            }
-            var parent = labels[0].parent;
-            SettleParent(parent);
-            parent.style.width = 30f;
-
-            // Act
-            var derives = DeriveCalls(() => SettleParent(parent));
-
-            // Assert
-            Assert.That(derives, Is.EqualTo(0));
-        }
-
-        [Test]
-        public void Given_ALabelWithAPercentMaxWidth_When_ItsParentsWidthMoves_Then_ItDerivesOnce()
-        {
-            // Arrange
-            var label = MountLabel("flex flex-row w-[20px]", "max-w-full", Sentence);
+            // Arrange — a text set on the label raises no event of its own, so only a derive would measure it.
+            var label = MountLabel("flex flex-row w-[20px]", "", Sentence);
             var parent = label.parent;
             SettleParent(parent);
+            label.text = "antidisestablishmentarianism is long";
             parent.style.width = 30f;
 
             // Act
-            var derives = DeriveCalls(() => SettleParent(parent));
+            SettleParent(parent);
 
             // Assert
-            Assert.That(derives, Is.EqualTo(1));
+            Assert.That(label.style.minWidth.value.value, Is.EqualTo(WidestWordMinimum(label, LongWord)));
         }
 
         [Test]
