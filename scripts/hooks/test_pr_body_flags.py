@@ -36,8 +36,10 @@ from unittest import mock
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 # `-x, ` is optional, the long name always present, and a metavar between the name and the two
-# spaces before the description is what marks an option as taking a value.
-OPTION = re.compile(r"^\s{2,}(?:-(\w), )?--([a-z][\w-]*)(\s+\S+)?(\s\s|$)")
+# spaces before the description is what marks an option as taking a value. A `[=true|false]` right
+# after the name is how a boolean is printed by gh builds carrying pflag 1.1.0 or later; older builds
+# print the bare name, and a boolean is read the same either way.
+OPTION = re.compile(r"^\s{2,}(?:-(\w), )?--([a-z][\w-]*)(?:\[=true\|false\])?(\s+\S+)?(\s\s|$)")
 BLOCK = re.compile(r"^(?:INHERITED )?FLAGS\n(.*?)\n\n", re.S | re.M)
 
 # The subcommands the guard claims. `new` is create under another name and prints create's help, so
