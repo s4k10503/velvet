@@ -6180,7 +6180,7 @@ namespace Velvet.Tests
 
             // Act — the opacity tail held back while the look tail steps, so that it steps after the narrowing has taken
             // opacity out of the swap's list rather than before; "b" takes its second pose, which gives opacity 0.25 in
-            // place of the class's, and ten frames on.
+            // place of the class's.
             opacityTail?.Pause();
             (s_bPose, s_bClasses) = ("second", "layout-id-test-turn-fade rotate-90");
             RenderShared(mounted);
@@ -6189,7 +6189,7 @@ namespace Velvet.Tests
             for (var i = 0; i < 4; i++) Tick();
 
             // Assert — as far from where it stood towards 0.25 as the 0.4 s of the swap, from the frames the tail was held
-            // back for on, takes it, rather than at 0.25, or as far as the second its rules give.
+            // back for on, takes it, rather than at 0.25.
             var own = WrittenOpacity(b);
             Assert.That(own, Is.EqualTo(bothRunOn ? Mathf.Lerp(from, 0.25f, 0.28f) : float.NaN).Within(0.12f));
         }
