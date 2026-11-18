@@ -17,12 +17,12 @@ namespace Velvet
 
         public void RemoveElement(VisualElement parent, int index)
         {
-            if (index < 0 || index >= parent.childCount)
+            var element = ChildListWrites.ElementAtPhysical(parent, index);
+            if (element == null)
             {
                 return;
             }
 
-            var element = parent.ElementAt(index);
             var poolable = PoolableOccupantOf(element);
             CleanupElement(element, element.panel, IsDiscardedAfterCleanup(element, poolable) ? element : null);
             RemoveCleaned(parent, element);
@@ -644,7 +644,8 @@ namespace Velvet
             // invisible child sits anywhere inside the portal's range.
             var physicalSlotStart = LogicalChildSlots.ToPhysical(target, portalInfo.SlotStart);
             var slotEnd = LogicalChildSlots.ToPhysical(target, portalInfo.SlotStart + portalInfo.SlotLength);
-            if (slotEnd > target.childCount) slotEnd = target.childCount;
+            var targetCount = ChildListWrites.ChildCount(target);
+            if (slotEnd > targetCount) slotEnd = targetCount;
             // Read before any is cleaned: a cleanup can take a child hosted before its element out of the target
             // (RemoveCleaned), which would move the indices still to be visited.
             // MUTANT_SURVIVES(equivalent, arithmetic): the expression sizes only the list's initial capacity, which bounds nothing PhysicalRange appends, and with both ends at zero or more the sum is a valid capacity too.
@@ -787,9 +788,10 @@ namespace Velvet
         // all children are processed.
         private void CleanupDescendants(VisualElement element, VisualElement? excluded = null)
         {
-            for (var i = 0; i < element.childCount; i++)
+            var content = element.contentContainer;
+            for (var i = 0; i < ChildListWrites.HierarchyCount(content); i++)
             {
-                var child = element.ElementAt(i);
+                var child = ChildListWrites.HierarchyChild(content, i);
                 if (child == excluded)
                 {
                     continue;

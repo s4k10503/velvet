@@ -79,9 +79,9 @@ namespace Velvet
             if (field == null) return;
 
             var container = FiberNodePatcher.GetChildContainer(field);
-            for (var i = container.childCount - 1; i >= 0; i--)
+            for (var i = ChildListWrites.ChildCount(container) - 1; i >= 0; i--)
             {
-                var child = container.ElementAt(i);
+                var child = ChildListWrites.ElementAtPhysical(container, i)!;
                 if (child.ClassListContains(inputUssClass) || child.ClassListContains(labelUssClass))
                 {
                     continue;

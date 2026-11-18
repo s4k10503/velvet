@@ -150,10 +150,10 @@ namespace Velvet
         internal bool HasTargetBelow(VisualElement root)
         {
             if (_rangesOn.Count == 0) return false;
-            var hierarchy = root.hierarchy;
-            for (var i = 0; i < hierarchy.childCount; i++)
+            var count = ChildListWrites.HierarchyCount(root);
+            for (var i = 0; i < count; i++)
             {
-                var child = hierarchy[i];
+                var child = ChildListWrites.HierarchyChild(root, i);
                 if (_rangesOn.ContainsKey(child) || HasTargetBelow(child)) return true;
             }
             return false;
@@ -470,23 +470,23 @@ namespace Velvet
             var b = second;
             var depthA = Depth(a);
             var depthB = Depth(b);
-            for (; depthA > depthB; depthA--) a = a.hierarchy.parent;
-            for (; depthB > depthA; depthB--) b = b.hierarchy.parent;
-            while (!ReferenceEquals(a.hierarchy.parent, b.hierarchy.parent))
+            for (; depthA > depthB; depthA--) a = ChildListWrites.ParentOf(a);
+            for (; depthB > depthA; depthB--) b = ChildListWrites.ParentOf(b);
+            while (!ReferenceEquals(ChildListWrites.ParentOf(a), ChildListWrites.ParentOf(b)))
             {
-                a = a.hierarchy.parent;
-                b = b.hierarchy.parent;
+                a = ChildListWrites.ParentOf(a);
+                b = ChildListWrites.ParentOf(b);
             }
-            var parent = a.hierarchy.parent;
+            var parent = ChildListWrites.ParentOf(a);
             // MUTANT_SURVIVES(unreachable): every caller passes two placeholders that differ, and neither holds
             // the other, so a and b are distinct children of parent here and their indices differ.
-            return parent != null && parent.hierarchy.IndexOf(a) < parent.hierarchy.IndexOf(b);
+            return parent != null && ChildListWrites.PhysicalIndexOf(parent, a) < ChildListWrites.PhysicalIndexOf(parent, b);
         }
 
         private static int Depth(VisualElement element)
         {
             var depth = 0;
-            for (var ancestor = element.hierarchy.parent; ancestor != null; ancestor = ancestor.hierarchy.parent) depth++;
+            for (var ancestor = ChildListWrites.ParentOf(element); ancestor != null; ancestor = ChildListWrites.ParentOf(ancestor)) depth++;
             return depth;
         }
     }
@@ -1351,8 +1351,8 @@ namespace Velvet
             {
                 return true;
             }
-            var owner = parent.hierarchy.parent;
-            for (var level = 0; owner != null && level < 4; level++, owner = owner.hierarchy.parent)
+            var owner = ChildListWrites.ParentOf(parent);
+            for (var level = 0; owner != null && level < 4; level++, owner = ChildListWrites.ParentOf(owner))
             {
                 if (ChildVariantManipulators.ContainsKey(owner)
                     && ReferenceEquals(FiberNodePatcher.GetChildContainer(owner), parent))
@@ -1941,7 +1941,7 @@ namespace Velvet
         internal VisualElement? PortalHoldingRow(VisualElement row, VisualElement parent)
         {
             if (PortalState.Count == 0) return null;
-            var index = LogicalChildSlots.ToLogical(parent, parent.IndexOf(row));
+            var index = LogicalChildSlots.ToLogical(parent, ChildListWrites.PhysicalIndexOf(parent, row));
             VisualElement? holder = null;
             var holderStart = -1;
             foreach (var entry in PortalState)
@@ -1961,10 +1961,10 @@ namespace Velvet
         // The ancestor whose contentContainer container is, or null where container is its own.
         private static VisualElement? ContentOwnerOf(VisualElement container)
         {
-            var ancestor = container.hierarchy.parent;
+            var ancestor = ChildListWrites.ParentOf(container);
             while (ancestor != null && !ReferenceEquals(ancestor.contentContainer, container))
             {
-                ancestor = ancestor.hierarchy.parent;
+                ancestor = ChildListWrites.ParentOf(ancestor);
             }
             return ancestor;
         }
@@ -2447,7 +2447,7 @@ namespace Velvet
         internal void DetachRefsWhileHidden(VisualElement element)
         {
             DetachRefWhileHidden(element);
-            foreach (var child in element.hierarchy.Children()) DetachRefsWhileHidden(child);
+            for (var i = 0; i < ChildListWrites.HierarchyCount(element); i++) DetachRefsWhileHidden(ChildListWrites.HierarchyChild(element, i));
         }
 
         // A setup still queued is taken back with the installed one. A render of the Suspense hiding an element
@@ -2473,8 +2473,9 @@ namespace Velvet
             {
                 SyncRefCallback(element, callback);
             }
-            foreach (var child in element.hierarchy.Children())
+            for (var i = 0; i < ChildListWrites.HierarchyCount(element); i++)
             {
+                var child = ChildListWrites.HierarchyChild(element, i);
                 if (!SuspenseHiddenElements.IsHidden(child)) AttachRefsHiddenUnder(child);
             }
         }
@@ -2809,7 +2810,7 @@ namespace Velvet
                 // MUTANT_SURVIVES(equivalent): each boundary in these fixtures records one fallback row per position key.
                 if (entry.Key.Position != positionKey || !ReferenceEquals(entry.Key.PortalScope, portalScope)
                     || !ReferenceEquals(entry.Value.Node, node)) continue;
-                for (var current = container; current != null; current = current.parent)
+                for (var current = container; current != null; current = ChildListWrites.ParentOf(current))
                     if (ReferenceEquals(current, entry.Key.Container)) return true;
             }
             return false;
@@ -3116,7 +3117,7 @@ namespace Velvet
         // presence expanding in a deferred mount (no emission around it) takes as its enclosing child.
         internal PresenceChildContext? PresenceChildOf(VisualElement element)
         {
-            for (var ancestor = element; ancestor != null; ancestor = ancestor.parent)
+            for (var ancestor = element; ancestor != null; ancestor = ChildListWrites.ParentOf(ancestor))
             {
                 if (PresenceChildRoots.TryGetValue(ancestor, out var owner))
                 {
@@ -3511,6 +3512,10 @@ namespace Velvet
         // (see Reconciler), so this set spans the canonical
         // cross-fiber case. Automatic batching is always on; there is no opt-out.
         internal FiberBatchScheduler BatchScheduler { get; } = new();
+
+        internal IHostScheduler HostScheduler => BatchScheduler.Host;
+
+        internal IFrameClock FrameClock { get; } = PanelFrameClock.Instance;
 
         // Tearing guard for Hooks.UseStore<TStore,TSel>. Holds the store snapshot pinned for the current
         // batch-scheduler drain pass (a wave), keyed by the Store reference (the value is the store's TState

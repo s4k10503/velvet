@@ -157,7 +157,8 @@ namespace Velvet
             }
             var newElement = _factory.CreateElement(newNode);
             // ToPhysical clamps by construction — a slot past the last rendered child resolves to the
-            // position just after it — so the caller no longer chooses between two index formulas.
+            // position after it and the nodes hosted after it — so the caller no longer chooses between two index
+            // formulas.
             _host.InsertAtSlot(parent, logicalIndex, newElement);
             return _ctx.IsAborted;
         }
@@ -347,7 +348,7 @@ namespace Velvet
                 // the rollback), and an ErrorBoundary abort mid-drain reaches the later entries
                 // with the pass already dead. Mounting would create — or populate — a host for a
                 // subtree that no longer exists, so skip without touching any host.
-                if (_ctx.IsAborted || placeholder.parent == null)
+                if (_ctx.IsAborted || ChildListWrites.ParentOf(placeholder) == null)
                 {
                     continue;
                 }
@@ -1867,7 +1868,7 @@ namespace Velvet
         {
             foreach (var (element, isExisting) in elements)
             {
-                if (isExisting || element!.parent != null) continue;
+                if (isExisting || ChildListWrites.ParentOf(element!) != null) continue;
                 ReleaseUnplacedElement(element);
             }
         }
@@ -1986,7 +1987,7 @@ namespace Velvet
                     var duplicateElement = _factory.CreateElement(newNode);
                     newElements.Add((duplicateElement, false));
                     if (_ctx.IsAborted) return true;
-                    UnityEngine.Debug.Assert(duplicateElement.parent == null,
+                    UnityEngine.Debug.Assert(ChildListWrites.ParentOf(duplicateElement) == null,
                         "[ChildReconciler] _factory.CreateElement must return an orphaned VisualElement (no parent).");
                     return false;
                 }
@@ -2011,7 +2012,7 @@ namespace Velvet
                     var newElement = _factory.CreateElement(newNode);
                     newElements.Add((newElement, false));
                     if (_ctx.IsAborted) return true;
-                    UnityEngine.Debug.Assert(newElement.parent == null,
+                    UnityEngine.Debug.Assert(ChildListWrites.ParentOf(newElement) == null,
                         "[ChildReconciler] _factory.CreateElement must return an orphaned VisualElement (no parent).");
                 }
             }
@@ -2020,7 +2021,7 @@ namespace Velvet
                 var newElement = _factory.CreateElement(newNode);
                 newElements.Add((newElement, false));
                 if (_ctx.IsAborted) return true;
-                UnityEngine.Debug.Assert(newElement.parent == null,
+                UnityEngine.Debug.Assert(ChildListWrites.ParentOf(newElement) == null,
                     "[ChildReconciler] _factory.CreateElement must return an orphaned VisualElement (no parent).");
             }
 

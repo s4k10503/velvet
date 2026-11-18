@@ -471,7 +471,10 @@ namespace Velvet
         // Kept out of ParkOldTreeIfPending, whose every call would otherwise build this closure
         // (RenderCommitAllocationTests).
         private static void ScheduleParkedPassResume(ComponentFiber fiber)
-            => fiber.MountPoint?.schedule.Execute(
-                () => PanelSchedulerCallback.Run(fiber.MountPoint, fiber, FiberWorkLoop.ContinueReconcile));
+        {
+            if (fiber.MountPoint == null) return;
+            var host = HostSchedulers.For(fiber);
+            host.Schedule(fiber.MountPoint, () => host.Run(fiber.MountPoint, fiber, FiberWorkLoop.ContinueReconcile));
+        }
     }
 }

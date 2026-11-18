@@ -171,6 +171,7 @@ namespace Velvet
                 BuildClipPathWrapper(element, spec, correction);
                 return;
             }
+            ChildListWrites.SyncLive(parent);
             var index = parent.IndexOf(element);
             var wrapper = BuildClipPathWrapper(element, spec, correction); // removes element from parent
             ChildListWrites.Insert(parent, index, wrapper);

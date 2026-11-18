@@ -146,10 +146,10 @@ namespace Velvet
             {
                 return;
             }
-            if (host.IndexOf(binding.Overlay) != host.IndexOf(element) + 1)
+            if (ChildListWrites.PhysicalIndexOf(host, binding.Overlay) != ChildListWrites.PhysicalIndexOf(host, element) + 1)
             {
                 ChildListWrites.RemoveFromHierarchy(binding.Overlay);
-                ChildListWrites.Insert(host, host.IndexOf(element) + 1, binding.Overlay);
+                ChildListWrites.Insert(host, ChildListWrites.PhysicalIndexOf(host, element) + 1, binding.Overlay);
                 RingOverlay.Replace(element);
             }
             var style = binding.Overlay.style;

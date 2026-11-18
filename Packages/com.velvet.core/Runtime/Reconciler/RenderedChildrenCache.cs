@@ -13,6 +13,7 @@ namespace Velvet
         private readonly Dictionary<VisualElement, List<VisualElement>> _of = new();
         private readonly Dictionary<(VisualElement Container, VisualElement Child), (int Index, int Slot)> _positionOf = new();
         private readonly Stack<List<VisualElement>> _spare = new();
+        private readonly List<VisualElement> _read = new();
 
         internal void Clear()
         {
@@ -30,10 +31,12 @@ namespace Velvet
         {
             if (_of.TryGetValue(container, out var rendered)) return rendered;
             rendered = _spare.Count > 0 ? _spare.Pop() : new List<VisualElement>();
-            var count = container.childCount;
-            for (var i = 0; i < count; i++)
+            var count = ChildListWrites.ChildCount(container);
+            _read.Clear();
+            ChildListWrites.PhysicalRange(container, 0, count, _read);
+            for (var i = 0; i < _read.Count; i++)
             {
-                var child = container[i];
+                var child = _read[i];
                 _positionOf[(container, child)] = (i, rendered.Count);
                 if (!LogicalChildSlots.IsInvisible(child)) rendered.Add(child);
             }

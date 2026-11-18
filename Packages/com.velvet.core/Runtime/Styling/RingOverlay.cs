@@ -450,12 +450,12 @@ namespace Velvet
             // siblings shifts the element without notifying this binding.
             // A face border overlay (FaceBorderOverlay) sits between the element and its band.
             var after = FaceBorderOverlay.Has(element) ? 2 : 1;
-            if (host.IndexOf(binding.Overlay) != host.IndexOf(element) + after)
+            if (ChildListWrites.PhysicalIndexOf(host, binding.Overlay) != ChildListWrites.PhysicalIndexOf(host, element) + after)
             {
                 // Re-read the element's index AFTER the removal — an overlay currently sitting before it
                 // shifts the element down one when it leaves.
                 ChildListWrites.RemoveFromHierarchy(binding.Overlay);
-                ChildListWrites.Insert(host, Mathf.Min(host.IndexOf(element) + after, host.childCount), binding.Overlay);
+                ChildListWrites.Insert(host, Mathf.Min(ChildListWrites.PhysicalIndexOf(host, element) + after, ChildListWrites.ChildCount(host)), binding.Overlay);
             }
 
             SyncGeometry(element, binding, host);

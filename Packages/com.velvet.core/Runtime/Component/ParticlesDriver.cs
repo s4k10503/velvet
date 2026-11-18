@@ -796,7 +796,7 @@ namespace Velvet
                     binding.LayerBlends[i] = blend;
                 }
                 // MUTANT_SURVIVES(equivalent, equality): flipping the parent clause re-inserts a layer at the index it already holds, and a layer that is not a child of the element still fails the index clause; the layer registers no callback but its paint, so the re-insert costs a hierarchy change and nothing a caller can see.
-                if (layers[i].parent != element || element.IndexOf(layers[i]) != i)
+                if (layers[i].parent != element || ChildListWrites.PhysicalIndexOf(element, layers[i]) != i)
                 {
                     ChildListWrites.Insert(element, i, layers[i]);
                 }
