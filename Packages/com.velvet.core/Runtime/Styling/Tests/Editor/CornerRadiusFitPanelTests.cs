@@ -84,6 +84,7 @@ namespace Velvet.Tests
                 "button" => V.Button(name: "box", className: className),
                 "textfield" => V.TextField(name: "box", className: className),
                 "toggle" => V.Toggle(name: "box", className: className),
+                "motion" => V.Motion(name: "box", className: className),
                 "custom" => V.Custom<RadiusWatchProbeBox>(name: "box", className: className),
                 _ => V.ScrollView(name: "box", className: className),
             };
@@ -488,12 +489,13 @@ namespace Velvet.Tests
         }
 
         // Each kind is a type the factory builds a different way: a Label and a Button are hosts of the fit, a TextField and a
-        // Toggle are pooled, a ScrollView is built directly, and RadiusWatchProbeBox reaches the factory's Activator fallback.
+        // Toggle are pooled, a ScrollView is built directly, a Motion goes through the factory's other entry point, and RadiusWatchProbeBox reaches the factory's Activator fallback.
         [TestCase("label")]
         [TestCase("button")]
         [TestCase("textfield")]
         [TestCase("toggle")]
         [TestCase("scroll")]
+        [TestCase("motion")]
         [TestCase("custom")]
         public void Given_ALaidOutElementWithNoRadius_When_ItsClassBecomesOneWhoseOwnRuleOverflowsItsHeight_Then_ItsCornersAreScaledWithNoSizeChange(string kind)
         {

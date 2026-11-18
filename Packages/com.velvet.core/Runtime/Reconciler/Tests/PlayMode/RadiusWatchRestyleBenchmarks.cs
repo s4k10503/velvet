@@ -83,6 +83,7 @@ namespace Velvet.Tests.Performance
             var top = _root[0];
             if (!watched)
             {
+                top.RemoveFromClassList(CornerRadiusFit.WatchClass);
                 for (var i = 0; i < top.childCount; i++)
                 {
                     top[i].RemoveFromClassList(CornerRadiusFit.WatchClass);
@@ -137,13 +138,22 @@ namespace Velvet.Tests.Performance
             {
                 throw new InvalidOperationException($"expected {Divs} mounted Divs, the root holds {top.childCount}");
             }
+            RequireWatch(top, watched, "the top Div");
             for (var i = 0; i < top.childCount; i++)
             {
-                if (top[i].ClassListContains(CornerRadiusFit.WatchClass) != watched)
-                {
-                    throw new InvalidOperationException(
-                        $"Div {i} {(watched ? "lacks" : "carries")} {CornerRadiusFit.WatchClass}, which this arm says it {(watched ? "holds" : "lacks")}");
-                }
+                RequireWatch(top[i], watched, $"Div {i}");
+            }
+        }
+
+        // The class and the property it brings, so a sheet without the rule leaves the two arms alike and fails the run.
+        private static void RequireWatch(VisualElement element, bool watched, string label)
+        {
+            var resolves = element.customStyle.TryGetValue(new CustomStyleProperty<float>("--velvet-radius-watch"), out _);
+            if (element.ClassListContains(CornerRadiusFit.WatchClass) != watched || resolves != watched)
+            {
+                throw new InvalidOperationException(
+                    $"{label} has the class {element.ClassListContains(CornerRadiusFit.WatchClass)} and resolves the property {resolves}, "
+                    + $"where this arm says {watched} for both");
             }
         }
     }
