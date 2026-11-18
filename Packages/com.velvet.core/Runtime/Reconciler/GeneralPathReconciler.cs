@@ -509,7 +509,7 @@ namespace Velvet
             VisualElement mountPoint,
             HashSet<VisualElement> orphanContainers)
         {
-            for (var ve = mountPoint; ve != null; ve = ve.parent)
+            for (var ve = mountPoint; ve != null; ve = ChildListWrites.ParentOf(ve))
             {
                 if (orphanContainers.Contains(ve)) return true;
             }
@@ -1849,7 +1849,7 @@ namespace Velvet
         // The walk up meets one of roots: the only caller passes rows CollectWrapperFibersUnder found under them.
         private static bool HiddenByANestedSuspense(InlineWalk walk, VisualElement mount, HashSet<VisualElement> roots)
         {
-            for (var ve = mount; ; ve = ve.parent)
+            for (var ve = mount; ; ve = ChildListWrites.ParentOf(ve))
             {
                 if (roots.Contains(ve)) return walk.HiddenPrimaryElements.Contains(ve);
                 if (SuspenseHiddenElements.IsHidden(ve)) return true;
@@ -1969,7 +1969,7 @@ namespace Velvet
 
         private static VisualElement? HolderOf(VisualElement? element, HashSet<VisualElement> roots)
         {
-            for (var ve = element; ve != null; ve = ve.parent)
+            for (var ve = element; ve != null; ve = ChildListWrites.ParentOf(ve))
             {
                 if (roots.Contains(ve)) return ve;
             }
@@ -2552,9 +2552,9 @@ namespace Velvet
             if (owner != null && !ReferenceEquals(owner, roots)) return false;
             if (_ctx.PortalState.TryGetValue(element, out var portal)) return HoldsAMotionInPortal(portal, roots);
             if (_ctx.MotionNodes.ContainsKey(element)) return true;
-            for (var i = 0; i < element.hierarchy.childCount; i++)
+            for (var i = 0; i < ChildListWrites.HierarchyCount(element); i++)
             {
-                var child = element.hierarchy[i];
+                var child = ChildListWrites.HierarchyChild(element, i);
                 if (!FiberZLayerCoordinator.IsRelocatedReal(child) && HoldsAMotionUnder(child, roots)) return true;
             }
             return false;
@@ -2738,10 +2738,10 @@ namespace Velvet
             {
                 count += CollectOwnExit(element, motion, ref inheritedExit, ref frame, in walk, out own);
             }
-            for (var i = 0; i < element.hierarchy.childCount; i++)
+            for (var i = 0; i < ChildListWrites.HierarchyCount(element); i++)
             {
                 // A relocated element is reached through its placeholder, which the walk follows already.
-                var child = element.hierarchy[i];
+                var child = ChildListWrites.HierarchyChild(element, i);
                 if (FiberZLayerCoordinator.IsRelocatedReal(child)) continue;
                 count += CollectDescendantExitsUnder(child, inheritedExit, frame, in walk);
             }

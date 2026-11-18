@@ -89,6 +89,8 @@ namespace Velvet
         private void ReconcileChildrenOfNewElement(VisualElement element, VisualElement childContainer, VNode?[] children,
             string[]? classNames = null)
         {
+            ChildListWrites.MarkCreated(childContainer);
+            ChildListWrites.MarkCreated(element);
             using var host = _ctx.OpenChildVariantHost(
                 classNames != null && StyleChildVariantClass.HasChildVariantClass(classNames));
             try

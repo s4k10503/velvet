@@ -144,8 +144,7 @@ namespace Velvet
             try
             {
                 // Copied first: a cleanup can change the children.
-                var hierarchy = element.hierarchy;
-                for (var i = 0; i < hierarchy.childCount; i++) children.Add(hierarchy[i]);
+                for (var i = 0; i < ChildListWrites.HierarchyCount(element); i++) children.Add(ChildListWrites.HierarchyChild(element, i));
                 foreach (var child in children)
                 {
                     // Reached where it is declared instead: a relocated element at its placeholder, and a Portal's row,

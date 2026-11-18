@@ -172,10 +172,11 @@ namespace Velvet
         // True when any descendant (excluding the element itself) is an INotifyValueChanged<bool> that is on.
         private static bool AnyDescendantChecked(VisualElement root)
         {
-            var count = root.childCount;
+            var content = root.contentContainer;
+            var count = ChildListWrites.HierarchyCount(content);
             for (var i = 0; i < count; i++)
             {
-                var child = root.ElementAt(i);
+                var child = ChildListWrites.HierarchyChild(content, i);
                 if (child is INotifyValueChanged<bool> boolField && boolField.value)
                 {
                     return true;

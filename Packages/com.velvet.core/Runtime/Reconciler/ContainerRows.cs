@@ -5,14 +5,17 @@ using UnityEngine.UIElements;
 
 namespace Velvet
 {
-    // What a physical child of a container is to slot counting. Mirrors LogicalChildSlots.IsInvisible and StaysFirst:
+    // What a physical child of a container is to slot counting. Mirrors LogicalChildSlots.IsInvisible, StaysFirst and
+    // IsHostedAfterItsRow:
     // a child is Rendered when it holds a logical slot, LeadingInvisible when it holds none and an append steps over
-    // it, and Invisible when it holds none and an append stops before it.
+    // it, Hosted when it holds none and stands after the rendered child it decorates, so an append steps over it
+    // there, and Invisible when it holds none and an append stops before it.
     internal enum RowKind : byte
     {
         Rendered,
         LeadingInvisible,
         Invisible,
+        Hosted,
     }
 
     // The physical children of one container in order, each with its RowKind, so that the counts and conversions
@@ -111,6 +114,9 @@ namespace Velvet
 
         // Set when a change to the live list is announced that no ChildListWrites op made; the next sync rebuilds.
         internal bool Stale;
+
+        // The recorded writes that have changed this model and not the live list (ChildListWrites.ApplyRecorded).
+        internal int Pending;
 
         private int BlockCount => _blocks?.Count ?? 1;
 

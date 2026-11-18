@@ -33,9 +33,9 @@ namespace Velvet
             // the control's own structure rather than a previous tenant's content. They reach the same
             // outcome by exclusion instead (FiberElementPoolReset.DetachForeignChildren).
             // PoolableWidgetChildBaselineTests pins which types those are.
-            // MUTANT_SURVIVES(equivalent, boundary): a childless button has nothing for ChildListWrites.Clear to take out.
-            // The same test in ResetLabelForReuse says what that call does for a label without children.
-            if (button.childCount > 0) ChildListWrites.Clear(button);
+            // MUTANT_SURVIVES(equivalent, boundary): a button whose model holds no row loses nothing to ChildListWrites.Clear,
+            // for the reason the same test in ResetLabelForReuse gives for a label.
+            if (ChildListWrites.ChildCount(button) > 0) ChildListWrites.Clear(button);
 
             FiberElementPoolReset.ResetClassListAndCommon(button, TextElement.ussClassName, Button.ussClassName);
             FiberElementPoolReset.ResetTextElementState(button);
@@ -81,9 +81,10 @@ namespace Velvet
             // Same detach rule, and the same duplicate-on-reuse failure, as FiberButtonPoolHelper. A Label
             // reaches it through V.Custom<Label>(children: ...), which mounts an exact pooled Label and
             // expands the children into it.
-            // MUTANT_SURVIVES(equivalent, boundary): a label without children has nothing for ChildListWrites.Clear to take out,
-            // and for a container without children it forwards straight to Clear and leaves its row model alone.
-            if (label.childCount > 0) ChildListWrites.Clear(label);
+            // MUTANT_SURVIVES(equivalent, boundary): a label whose model holds no row has no recorded write either, since
+            // a move within it records its two halves in one Reorder call, so ChildListWrites.Clear applies nothing
+            // early and forwards to a Clear of an empty list.
+            if (ChildListWrites.ChildCount(label) > 0) ChildListWrites.Clear(label);
 
             FiberElementPoolReset.ResetClassListAndCommon(label, TextElement.ussClassName, Label.ussClassName);
             FiberElementPoolReset.ResetTextElementState(label);
