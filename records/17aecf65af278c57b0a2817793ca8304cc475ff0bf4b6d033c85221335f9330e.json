@@ -1,0 +1,43 @@
+{
+ "detail": "EditMode: 3 failed among the 1178 case(s) that ran the site: Given_RapidRekey_When_SettledOnKnownTab_Then_AllCardsPresent_NoneDisappeared, Given_StaggeredChildren_When_AllTransitionsComplete_Then_LastChildEnterToClassIsRemoved, Given_StaggeredChildren_When_AllTransitionsComplete_Then_LastChildInlineStylesAreCleared",
+ "file": "81d600b6917634d4a226e67ffd03024a8dd1068b5666149293f3b098f55ae077",
+ "killers": [
+  {
+   "case": "Velvet.Tests.AnimatePresenceAnimationTests.Given_RapidRekey_When_SettledOnKnownTab_Then_AllCardsPresent_NoneDisappeared",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/AnimatePresenceAnimationTests.cs": "a7ff95ec31fa180d58adaecff71bbaaaf3f7e0961ca58e218d0a694974b935a8",
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/SimulatedPanelTestBase.cs": "a06149cf212c91277fd1442580aee292a959fef6bf985e77628aabdbb0acacc8"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AnimatePresenceAnimationTests.Given_StaggeredChildren_When_AllTransitionsComplete_Then_LastChildEnterToClassIsRemoved",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/AnimatePresenceAnimationTests.cs": "a7ff95ec31fa180d58adaecff71bbaaaf3f7e0961ca58e218d0a694974b935a8",
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/SimulatedPanelTestBase.cs": "a06149cf212c91277fd1442580aee292a959fef6bf985e77628aabdbb0acacc8"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AnimatePresenceAnimationTests.Given_StaggeredChildren_When_AllTransitionsComplete_Then_LastChildInlineStylesAreCleared",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/AnimatePresenceAnimationTests.cs": "a7ff95ec31fa180d58adaecff71bbaaaf3f7e0961ca58e218d0a694974b935a8",
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/SimulatedPanelTestBase.cs": "a06149cf212c91277fd1442580aee292a959fef6bf985e77628aabdbb0acacc8"
+   }
+  }
+ ],
+ "measured_by": "44245775120",
+ "mutant": {
+  "after": ";",
+  "before": "ChildListWrites.Insert(parent, ChildListWrites.PhysicalIndexOf(parent, nextSibling), element);",
+  "column": 20,
+  "line": 135,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/HostCommitQueue.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "299a5fa564965fed4c51ec90d330a92976c1974b488c628bd74f7b6be8bc072a",
+ "verdict": "killed"
+}

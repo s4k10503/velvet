@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed: Given_ChildAddedToChildVariantContainer_When_Reconciled_Then_NewChildAlsoGetsPayload",
+ "file": "e90531909152d2d48d96fcad5cf7495d1ecde4284e99fceb936a035bc4d69752",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ChildVariantClassParityTests.Given_ChildAddedToChildVariantContainer_When_Reconciled_Then_NewChildAlsoGetsPayload",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ChildVariantClassParityTests.cs": "4f0c75033a6643aa4e894d8c533d467bfbfe196739cab361c6f4864650e8b586",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  }
+ ],
+ "measured_by": "44245775120",
+ "mutant": {
+  "after": ";",
+  "before": "ChildListWrites.SyncLive(element);",
+  "column": 12,
+  "line": 500,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberNodePatcher.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "299a5fa564965fed4c51ec90d330a92976c1974b488c628bd74f7b6be8bc072a",
+ "verdict": "killed"
+}

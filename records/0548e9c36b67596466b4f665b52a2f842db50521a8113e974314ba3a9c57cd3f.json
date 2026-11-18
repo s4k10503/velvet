@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed among the 42 case(s) that ran the site: Given_ProviderBoundaryDisappearsBetweenRenders_When_Patch_Then_ConsumerRemountsAtOuterContext",
+ "file": "cf3e81988a5f84463b957d04b1281811b3f8dc282942c7bc261df1c79627ac9a",
+ "killers": [
+  {
+   "case": "Velvet.Tests.AnimatePresenceProviderTests.Given_ProviderBoundaryDisappearsBetweenRenders_When_Patch_Then_ConsumerRemountsAtOuterContext",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/AnimatePresenceProviderTests.cs": "d966c5c6670734690a79d2e0161441bb95c66f5054b1327c96ef7decac55ef5a",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  }
+ ],
+ "measured_by": "44245775120",
+ "mutant": {
+  "after": "<=",
+  "before": "<",
+  "column": 29,
+  "line": 2525,
+  "operator": "boundary",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/GeneralPathReconciler.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "299a5fa564965fed4c51ec90d330a92976c1974b488c628bd74f7b6be8bc072a",
+ "verdict": "killed"
+}

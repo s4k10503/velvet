@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed among the 5 case(s) that ran the site: Given_AComponentInAPortalMountedWhileItsPrimaryIsHidden_When_TheBoundaryReveals_Then_ItsLayoutEffectRunsOnlyThen",
+ "file": "2e732a33431e518ae7c1a2e6b6eeeed18e07eb023a394ba02bb1cbd44049e74e",
+ "killers": [
+  {
+   "case": "Velvet.Tests.SuspenseHiddenPortalRefTests.Given_AComponentInAPortalMountedWhileItsPrimaryIsHidden_When_TheBoundaryReveals_Then_ItsLayoutEffectRunsOnlyThen",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/SuspenseHiddenPortalRefTests.cs": "44c888edbba9557e7c2c84fe302cd251c979f0ecff39e9a41b701e617ff5fe5b",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  }
+ ],
+ "measured_by": "44245775120",
+ "mutant": {
+  "after": "==",
+  "before": "!=",
+  "column": 37,
+  "line": 51,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/SuspenseHiddenElements.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "299a5fa564965fed4c51ec90d330a92976c1974b488c628bd74f7b6be8bc072a",
+ "verdict": "killed"
+}

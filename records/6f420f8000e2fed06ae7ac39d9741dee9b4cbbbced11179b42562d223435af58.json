@@ -1,0 +1,28 @@
+{
+ "detail": "EditMode: 1 failed among the 2821 case(s) that ran the site: Given_ASuspendedMountBesideAFiberOutsideTheReadersChain_When_TheMountIsDiscarded_Then_ThatFiberIsDisposed",
+ "file": "85b4d271b6a67617188f71747c9bfbe18a12b314b69539568675ba7f622c2d43",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ComponentRegistryTableTests.Given_ASuspendedMountBesideAFiberOutsideTheReadersChain_When_TheMountIsDiscarded_Then_ThatFiberIsDisposed",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/ComponentRegistryTableTests.cs": "1c249a34f98230c532ecac241d95ea9f5bb1e6036233e9945d0fb39d4accf11f"
+   }
+  }
+ ],
+ "measured_by": "44245775120",
+ "mutant": {
+  "after": ";",
+  "before": "CollectFibersInSubtree(ChildListWrites.HierarchyChild(element, i), ref into);",
+  "column": 16,
+  "line": 721,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Component/ComponentRegistry.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "299a5fa564965fed4c51ec90d330a92976c1974b488c628bd74f7b6be8bc072a",
+ "verdict": "killed"
+}

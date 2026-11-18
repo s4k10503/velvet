@@ -1,0 +1,34 @@
+{
+ "detail": "EditMode: 2 failed: Given_ASliceThatParkedAfterOneRow_When_TheResumedSliceCreatesTheRest_Then_EachSeesTheRowsTheParkedSliceApplied, Given_RowsInsertedBeforeALaterRow_When_ThatRowIsCreated_Then_TheLiveListStillHoldsTheOldRows",
+ "file": "81d600b6917634d4a226e67ffd03024a8dd1068b5666149293f3b098f55ae077",
+ "killers": [
+  {
+   "case": "Velvet.Tests.RecordedChildListWriteTests.Given_ASliceThatParkedAfterOneRow_When_TheResumedSliceCreatesTheRest_Then_EachSeesTheRowsTheParkedSliceApplied",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/RecordedChildListWriteTests.cs": "3d3b8969ed465478e4792bab5e3e4d522697ed34c4687121c22e800dc921c6b3"
+   }
+  },
+  {
+   "case": "Velvet.Tests.RecordedChildListWriteTests.Given_RowsInsertedBeforeALaterRow_When_ThatRowIsCreated_Then_TheLiveListStillHoldsTheOldRows",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/RecordedChildListWriteTests.cs": "3d3b8969ed465478e4792bab5e3e4d522697ed34c4687121c22e800dc921c6b3"
+   }
+  }
+ ],
+ "measured_by": "44245775120",
+ "mutant": {
+  "after": ";",
+  "before": "ChildListWrites.ViaQueue++;",
+  "column": 12,
+  "line": 26,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/HostCommitQueue.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "299a5fa564965fed4c51ec90d330a92976c1974b488c628bd74f7b6be8bc072a",
+ "verdict": "killed"
+}

@@ -1,0 +1,40 @@
+{
+ "detail": "EditMode: 3 failed among the 7 case(s) that ran the site: Given_AKeyRepeatedByARenderAddingASiblingBefore_When_Rendered_Then_TheFirstRepeatTakesTheOldElement, Given_ARepeatTheMapPassResolves_When_Rendered_Then_TheRepeatIsReportedOnce, Given_TwoSiblingsSharingAKeyAfterAnother_When_ThatOneIsDropped_Then_TheFirstTakesTheLastElementForTheKey",
+ "file": "2d4261574556913063bd2b76112b019a8c3e37bec2f406a7bbbb7665eaed7a94",
+ "killers": [
+  {
+   "case": "Velvet.Tests.FlatPathDuplicateKeyTests.Given_AKeyRepeatedByARenderAddingASiblingBefore_When_Rendered_Then_TheFirstRepeatTakesTheOldElement",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/FlatPathDuplicateKeyTests.cs": "6b1c5cd755c426654cc5d9355b61b4671ff02a9621d924a5fa9700692767179d"
+   }
+  },
+  {
+   "case": "Velvet.Tests.FlatPathDuplicateKeyTests.Given_ARepeatTheMapPassResolves_When_Rendered_Then_TheRepeatIsReportedOnce",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/FlatPathDuplicateKeyTests.cs": "6b1c5cd755c426654cc5d9355b61b4671ff02a9621d924a5fa9700692767179d"
+   }
+  },
+  {
+   "case": "Velvet.Tests.FlatPathDuplicateKeyTests.Given_TwoSiblingsSharingAKeyAfterAnother_When_ThatOneIsDropped_Then_TheFirstTakesTheLastElementForTheKey",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/FlatPathDuplicateKeyTests.cs": "6b1c5cd755c426654cc5d9355b61b4671ff02a9621d924a5fa9700692767179d"
+   }
+  }
+ ],
+ "measured_by": "44245775120",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 87,
+  "line": 2001,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ChildReconciler.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "299a5fa564965fed4c51ec90d330a92976c1974b488c628bd74f7b6be8bc072a",
+ "verdict": "killed"
+}

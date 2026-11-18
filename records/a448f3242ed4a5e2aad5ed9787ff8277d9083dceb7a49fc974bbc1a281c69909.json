@@ -1,0 +1,29 @@
+{
+ "detail": "EditMode: 1 failed: Given_ABoldLabelInAFamilyContainer_When_MountedIntoARootNoPanelHolds_Then_ItResolvesThatFamilyAndLeavesNothingQueued",
+ "file": "79b9a98c7839c8ee1357f9245ab185364acc679d68954b3445e08cfadaac674a",
+ "killers": [
+  {
+   "case": "Velvet.Tests.InheritedFontFamilyPanelTests.Given_ABoldLabelInAFamilyContainer_When_MountedIntoARootNoPanelHolds_Then_ItResolvesThatFamilyAndLeavesNothingQueued",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/InheritedFontFamilyPanelTests.cs": "c93acb782eb66d83a2d89eca64d00e419a0dfa7740d4ddadd022725395003ddf",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397"
+   }
+  }
+ ],
+ "measured_by": "44245775120",
+ "mutant": {
+  "after": "==",
+  "before": "!=",
+  "column": 59,
+  "line": 309,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberFontScope.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "299a5fa564965fed4c51ec90d330a92976c1974b488c628bd74f7b6be8bc072a",
+ "verdict": "killed"
+}

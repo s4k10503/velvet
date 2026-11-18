@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed among the 72 case(s) that ran the site: Given_AMemoizedChildThatOnceHeldTransitionWork_When_ItSuspendsWithAnUpdateQueuedAndItsResourceResolves_Then_ItRendersOnce",
+ "file": "091d73ae7222af622eb826afdc1afc162df9f01bc9ebaa2fe765d3ea2eb94867",
+ "killers": [
+  {
+   "case": "Velvet.Tests.AsyncResourceCompletionSettleTests.Given_AMemoizedChildThatOnceHeldTransitionWork_When_ItSuspendsWithAnUpdateQueuedAndItsResourceResolves_Then_ItRendersOnce",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/AsyncResourceCompletionSettleTests.cs": "b482ab3c738c3a1aec2a794eec6aa8ae5e6569a89a1440d53809e260a898b5de",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  }
+ ],
+ "measured_by": "44245775120",
+ "mutant": {
+  "after": "<=",
+  "before": "<",
+  "column": 29,
+  "line": 2323,
+  "operator": "boundary",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ReconcilerContext.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "299a5fa564965fed4c51ec90d330a92976c1974b488c628bd74f7b6be8bc072a",
+ "verdict": "killed"
+}

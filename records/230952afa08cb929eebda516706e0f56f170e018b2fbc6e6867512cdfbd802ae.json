@@ -1,0 +1,29 @@
+{
+ "detail": "EditMode: 1 failed among the 84 case(s) that ran the site: Given_KeyedChildren_When_OrderReversed_Then_ElementsAreReordered",
+ "file": "b6b0ff0cb2f4fd47a83312d24894f481fdd99bc3a1cbaa69dfd5be0a1c17b844",
+ "killers": [
+  {
+   "case": "Velvet.Tests.AnimatePresenceTests.Given_KeyedChildren_When_OrderReversed_Then_ElementsAreReordered",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/AnimatePresenceTests.cs": "d68149d8e0f54e7a243f0b25f02b8add378a811d56dc3e6d820bd9b1a3cd8c2a",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  }
+ ],
+ "measured_by": "44245775120",
+ "mutant": {
+  "after": ";",
+  "before": "Mark(container);",
+  "column": 12,
+  "line": 579,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ChildListWrites.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "299a5fa564965fed4c51ec90d330a92976c1974b488c628bd74f7b6be8bc072a",
+ "verdict": "killed"
+}

@@ -1,0 +1,34 @@
+{
+ "detail": "EditMode: 1 failed among the 565 case(s) that ran the site: Given_AnOverlayPortaledOutOfAnEditorPanelMount_When_Mounted_Then_ItsChildrenStayInThePortal",
+ "file": "2d4261574556913063bd2b76112b019a8c3e37bec2f406a7bbbb7665eaed7a94",
+ "killers": [
+  {
+   "case": "Velvet.Tests.DragOverlayHostTests.Given_AnOverlayPortaledOutOfAnEditorPanelMount_When_Mounted_Then_ItsChildrenStayInThePortal",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/DragOverlayHostTests.cs": "d6b379db19247d5cf977c0ad5961d7f7c6bb91424d9b4f7c23dd761ca6856436",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  }
+ ],
+ "measured_by": "44245775120",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 75,
+  "line": 352,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ChildReconciler.cs",
+  "shadowed": [
+   "clause removed",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "299a5fa564965fed4c51ec90d330a92976c1974b488c628bd74f7b6be8bc072a",
+ "verdict": "killed"
+}

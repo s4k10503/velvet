@@ -1,0 +1,62 @@
+{
+ "detail": "EditMode: 5 failed among the 308 case(s) that ran the site: Given_AProviderValueChangedAfterMount_When_TheConsumerReRendersOnItsOwnSetState_Then_ItReadsTheChangedValue, Given_DeepProvider_When_ConsumerReRendersOnOwnSetState_Then_ReadsAncestorValueAcrossElementScopes, Given_DirectProvider_When_ConsumerReRendersOnOwnSetState_Then_StillReadsProvidedValue",
+ "file": "8701e85eea454704d2dd239c8db1db1d0a16f7899263ed28b688e7b5f71a1a3a",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ContextReRenderTests.Given_AProviderValueChangedAfterMount_When_TheConsumerReRendersOnItsOwnSetState_Then_ItReadsTheChangedValue",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/ContextReRenderTests.cs": "a8e592ad368aae851d9506384c141645bb3f1afd9cea8306375c0638cb055c8b",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ContextReRenderTests.Given_DeepProvider_When_ConsumerReRendersOnOwnSetState_Then_ReadsAncestorValueAcrossElementScopes",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/ContextReRenderTests.cs": "a8e592ad368aae851d9506384c141645bb3f1afd9cea8306375c0638cb055c8b",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ContextReRenderTests.Given_DirectProvider_When_ConsumerReRendersOnOwnSetState_Then_StillReadsProvidedValue",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/ContextReRenderTests.cs": "a8e592ad368aae851d9506384c141645bb3f1afd9cea8306375c0638cb055c8b",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ContextReRenderTests.Given_MaskingProviders_When_ConsumerReRendersOnOwnSetState_Then_ReadsNearestValue",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/ContextReRenderTests.cs": "a8e592ad368aae851d9506384c141645bb3f1afd9cea8306375c0638cb055c8b",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ContextReRenderTests.Given_StackedDistinctContexts_When_ConsumerReRendersOnOwnSetState_Then_ReadsBothLiveValues",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/ContextReRenderTests.cs": "a8e592ad368aae851d9506384c141645bb3f1afd9cea8306375c0638cb055c8b",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  }
+ ],
+ "measured_by": "44245775120",
+ "mutant": {
+  "after": "true",
+  "before": "false",
+  "column": 31,
+  "line": 269,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberContextSpine.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "299a5fa564965fed4c51ec90d330a92976c1974b488c628bd74f7b6be8bc072a",
+ "verdict": "killed"
+}

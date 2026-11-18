@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "b6b0ff0cb2f4fd47a83312d24894f481fdd99bc3a1cbaa69dfd5be0a1c17b844",
+ "killers": [],
+ "measured_by": "44245775120",
+ "mutant": {
+  "after": ";",
+  "before": "FlushIfPending(parent, null);",
+  "column": 12,
+  "line": 677,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ChildListWrites.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "299a5fa564965fed4c51ec90d330a92976c1974b488c628bd74f7b6be8bc072a",
+ "verdict": "survived"
+}

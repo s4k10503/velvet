@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "2d96316571cbdb5e56225446ad6cea63e01882220cc9832a3ff5fae1e727b8be",
+ "killers": [],
+ "measured_by": "44245775120",
+ "mutant": {
+  "after": ";",
+  "before": "ChildListWrites.MarkCreated(element);",
+  "column": 12,
+  "line": 93,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberNodeFactory.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "299a5fa564965fed4c51ec90d330a92976c1974b488c628bd74f7b6be8bc072a",
+ "verdict": "survived"
+}

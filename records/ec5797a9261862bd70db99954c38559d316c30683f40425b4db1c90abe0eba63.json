@@ -1,0 +1,33 @@
+{
+ "detail": "EditMode: 1 failed among the 55 case(s) that ran the site: Given_AConsumerBesideAnErrorBoundary_When_TheHostsRenderIsCaughtAndTheConsumerThenReRendersAlone_Then_ItReadsTheProviderThatRenderCommitted",
+ "file": "8701e85eea454704d2dd239c8db1db1d0a16f7899263ed28b688e7b5f71a1a3a",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ProviderErrorBoundaryNestedConsumerTests.Given_AConsumerBesideAnErrorBoundary_When_TheHostsRenderIsCaughtAndTheConsumerThenReRendersAlone_Then_ItReadsTheProviderThatRenderCommitted",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/ProviderErrorBoundaryNestedConsumerTests.cs": "594e759fe13189b5ce6f30179ae7a43202dcee2428a4e59a5774049c3f3effaa",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  }
+ ],
+ "measured_by": "44245775120",
+ "mutant": {
+  "after": "true",
+  "before": "false",
+  "column": 69,
+  "line": 274,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberContextSpine.cs",
+  "shadowed": [
+   "guard removed"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "299a5fa564965fed4c51ec90d330a92976c1974b488c628bd74f7b6be8bc072a",
+ "verdict": "killed"
+}

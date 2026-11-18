@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode: the editor was killed at 1011s, 1.5 times the baseline's 670s plus 5s, with no readable result",
+ "file": "091d73ae7222af622eb826afdc1afc162df9f01bc9ebaa2fe765d3ea2eb94867",
+ "killers": [],
+ "measured_by": "44245775120",
+ "mutant": {
+  "after": ";",
+  "before": "ancestor = ChildListWrites.ParentOf(ancestor);",
+  "column": 16,
+  "line": 1814,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ReconcilerContext.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "299a5fa564965fed4c51ec90d330a92976c1974b488c628bd74f7b6be8bc072a",
+ "verdict": "killed (timed out)"
+}
