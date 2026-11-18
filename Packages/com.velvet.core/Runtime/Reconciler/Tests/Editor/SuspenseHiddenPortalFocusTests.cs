@@ -34,7 +34,6 @@ namespace Velvet.Tests
             s_target = new VisualElement { name = "target" };
             _host.Root.Add(s_target);
             _mounted = V.Mount(_host.Root, V.Component(HostRender, key: "host"));
-            EditorPanelTestHelpers.ForcePanelUpdate(_host.Panel);
         }
 
         [TearDown]
