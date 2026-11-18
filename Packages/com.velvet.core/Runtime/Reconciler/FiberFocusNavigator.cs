@@ -47,11 +47,6 @@ namespace Velvet
         public EventCallback<AttachToPanelEvent>? OnAttach;
         public ReconcilerContext? Context;
         public VisualElement? PortalPlaceholder;
-        public IVisualElementScheduledItem? Retry;
-        public List<VisualElement> StaleRows = new();
-        public VisualElement? Probe;
-        public uint? RepaintStamp;
-        public int RepaintAdvances;
 
         // Creation order across every mounted tree. Of two contained scopes a landing crosses between, the
         // newer one keeps it; a strict order is what stops the two pulling focus back from each other.
@@ -1510,7 +1505,6 @@ namespace Velvet
         public static void Detach(VisualElement element, FocusScopeBinding binding)
         {
             binding.Context?.DeferredAutoFocus.RemoveAll(entry => ReferenceEquals(entry.Scope, element));
-            StopRetry(binding);
             if (binding.OnAttach != null)
             {
                 element.UnregisterCallback(binding.OnAttach);
@@ -1541,7 +1535,7 @@ namespace Velvet
                     continue;
                 }
                 ctx.DeferredAutoFocus.Remove(entry);
-                TakeAutoFocus(entry.Scope, entry.Binding, retryAfterStyle: true);
+                TakeAutoFocus(entry.Scope, entry.Binding, afterStyles: true);
             }
         }
 
@@ -1572,96 +1566,35 @@ namespace Velvet
                 }
                 return;
             }
-            TakeAutoFocus(scope, binding, retryAfterStyle: false);
+            TakeAutoFocus(scope, binding, afterStyles: false);
         }
 
-        // A deferred scope's elements keep the computed display none their hide gave them until the panel's next style
-        // pass, and none of them can take focus before it, so the take is retried on the next ticks
-        // (SuspenseHiddenPortalFocusTests pins it).
-        private static void TakeAutoFocus(VisualElement scope, FocusScopeBinding binding, bool retryAfterStyle)
+        // A deferred scope's rows keep the computed display none their hide gave them until the panel's next style
+        // pass, and none of them can take focus before it. The release applies the panel's styles first
+        // (FiberLayoutReflow), which leaves them as they are where it cannot run, and then one attempt waits for the next
+        // tick there. SuspenseHiddenPortalFocusTests pins both.
+        private static void TakeAutoFocus(VisualElement scope, FocusScopeBinding binding, bool afterStyles)
         {
             binding.AutoFocusFired = true;
-            if (!binding.Settings.AutoFocus || AutoFocusFirst(scope) || !retryAfterStyle)
+            if (!binding.Settings.AutoFocus)
             {
                 return;
             }
-            binding.StaleRows = RowsStillComputedHidden(scope);
-            binding.RepaintStamp = ReadRepaintStamp(scope);
-            binding.RepaintAdvances = 0;
-            if (scope is FocusScopeStart marker)
+            if (afterStyles && binding.Context is { } ctx)
             {
-                marker.style.opacity = ProbeOpacity;
-                binding.Probe = marker;
+                FiberLayoutReflow.LayOutFor(ctx, scope, null);
             }
-            binding.Retry = scope.schedule.Execute(() => Retry(scope, binding)).Every(0);
-        }
-
-        private static void StopRetry(FocusScopeBinding binding)
-        {
-            binding.Retry?.Pause();
-            binding.Retry = null;
-            if (binding.Probe != null)
+            if (AutoFocusFirst(scope) || !afterStyles)
             {
-                binding.Probe.style.opacity = StyleKeyword.Null;
-                binding.Probe = null;
+                return;
             }
-        }
-
-        // Takes the focus only while it is still unset or inside the scope, and stops with the first attempt after a
-        // style pass.
-        private static void Retry(VisualElement scope, FocusScopeBinding binding)
-        {
-            var focused = scope.panel?.focusController?.focusedElement as VisualElement;
-            if (!binding.Settings.AutoFocus || scope.panel == null
-                || SuspenseHiddenElements.IsAtOrUnderHidden(scope) || SuspenseHiddenElements.IsAtOrUnderHidden(binding.PortalPlaceholder)
-                || (focused != null && !FiberFocusNavigator.ScopeContains(scope, focused))
-                || AutoFocusFirst(scope)
-                || StylePassRan(binding)
-                || RepaintedTwice(scope, binding))
+            scope.schedule.Execute(() =>
             {
-                StopRetry(binding);
-            }
-        }
-
-        // A range's start is display: none by design, so an inline opacity the next style pass computes shows the pass
-        // has run whatever the content's own display; an element scope falls back to the rows its hide left hidden.
-        private const float ProbeOpacity = 0.5f;
-
-        private static readonly System.Reflection.PropertyInfo? s_repaintVersion = EngineMember.PanelRepaintVersion.ResolveProperty();
-
-        private static uint? ReadRepaintStamp(VisualElement scope)
-            => scope.panel is { } panel && s_repaintVersion?.GetValue(panel) is uint stamp ? stamp : null;
-
-        // The stamp is written as a repaint begins, ahead of that repaint's own style pass, so two advances mean one
-        // whole repaint has run since the retry started. A panel whose stamp does not resolve never reaches this stop.
-        private static bool RepaintedTwice(VisualElement scope, FocusScopeBinding binding)
-        {
-            if (ReadRepaintStamp(scope) is { } stamp && binding.RepaintStamp != stamp)
-            {
-                binding.RepaintStamp = stamp;
-                binding.RepaintAdvances++;
-            }
-            return binding.RepaintAdvances >= 2;
-        }
-
-        private static bool StylePassRan(FocusScopeBinding binding)
-            => binding.Probe != null
-                ? binding.Probe.resolvedStyle.opacity == ProbeOpacity
-                : binding.StaleRows.Count == 0 || binding.StaleRows.Exists(row => row.resolvedStyle.display != DisplayStyle.None);
-
-        private static List<VisualElement> RowsStillComputedHidden(VisualElement scope)
-        {
-            var rows = new List<VisualElement>();
-            if (scope is FocusScopeStart start)
-            {
-                FocusScopeRange.AppendContent(start, rows);
-            }
-            else
-            {
-                rows.AddRange(scope.Children());
-            }
-            rows.RemoveAll(row => row.resolvedStyle.display != DisplayStyle.None || row.style.display == DisplayStyle.None);
-            return rows;
+                if (binding.OnAttach != null && scope.panel != null && !SuspenseHiddenElements.IsAtOrUnderHidden(scope))
+                {
+                    AutoFocusFirst(scope);
+                }
+            });
         }
 
         // Focuses the scope's first focusable descendant (document order), skipped when focus already sits

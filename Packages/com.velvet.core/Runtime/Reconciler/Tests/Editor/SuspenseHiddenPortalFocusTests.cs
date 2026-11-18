@@ -22,7 +22,6 @@ namespace Velvet.Tests
         private static VelvetTaskCompletionSource<int> s_sourceOther;
         private static StateUpdater<bool> s_setPlain;
         private static StateUpdater<string> s_setButtonClass;
-        private static bool s_elementScope;
 
         [SetUp]
         public void SetUp()
@@ -36,7 +35,6 @@ namespace Velvet.Tests
             s_sourceOther = null;
             s_setPlain = default;
             s_setButtonClass = default;
-            s_elementScope = false;
             s_target = new VisualElement { name = "target" };
             _host.Root.Add(s_target);
             _mounted = V.Mount(_host.Root, V.Component(HostRender, key: "host"));
@@ -161,7 +159,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AHiddenPortalFocusScopeAfterAStylePass_When_TheBoundaryRevealsAndTheNextStyleAndTickRun_Then_ItsButtonHoldsFocus()
+        public void Given_AHiddenPortalFocusScopeAfterAStylePass_When_TheBoundaryReveals_Then_ItsButtonHoldsFocusWithNoTickBetween()
         {
             // Arrange
             Update(s_setBlocked, 1);
@@ -171,35 +169,30 @@ namespace Velvet.Tests
 
             // Act
             Resolve(s_source);
-            EditorPanelTestHelpers.ForcePanelUpdate(_host.Panel);
-            EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
 
             // Assert
             Assert.That(Focused, Is.SameAs(s_target.Q<Button>("focusable")));
         }
 
         [Test]
-        public void Given_ARevealedPortalFocusScopeWaitingOnAStylePass_When_FocusMovesElsewhere_Then_TheRetryLeavesItThere()
+        public void Given_FocusOnAnOutsideButton_When_TheBoundaryRevealsAHiddenPortalFocusScope_Then_TheScopeTakesFocus()
         {
             // Arrange
             Update(s_setBlocked, 1);
             Update(s_setPortal, true);
             Update(s_setScoped, true);
             EditorPanelTestHelpers.ForcePanelUpdate(_host.Panel);
-            Resolve(s_source);
-            var beside = _host.Root.Q<Button>("beside");
-            beside.Focus();
+            _host.Root.Q<Button>("beside").Focus();
 
             // Act
-            EditorPanelTestHelpers.ForcePanelUpdate(_host.Panel);
-            EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
+            Resolve(s_source);
 
             // Assert
-            Assert.That(Focused, Is.SameAs(beside));
+            Assert.That(Focused, Is.SameAs(s_target.Q<Button>("focusable")));
         }
 
         [Test]
-        public void Given_AStylesheetHiddenCandidateAtTheReveal_When_AClassChangeShowsItAfterTheStylePass_Then_TheRetryHasStoppedAndFocusesNothing()
+        public void Given_AStylesheetHiddenCandidateAtTheReveal_When_AClassChangeShowsItAfterTheTick_Then_NothingHoldsFocus()
         {
             // Arrange
             var sheet = UnityEditor.AssetDatabase.LoadAssetAtPath<StyleSheet>(
@@ -211,59 +204,11 @@ namespace Velvet.Tests
             Update(s_setScoped, true);
             EditorPanelTestHelpers.ForcePanelUpdate(_host.Panel);
             Resolve(s_source);
-            EditorPanelTestHelpers.ForcePanelUpdate(_host.Panel);
             EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
 
             // Act
             Update(s_setButtonClass, "");
             EditorPanelTestHelpers.ForcePanelUpdate(_host.Panel);
-            EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
-
-            // Assert
-            Assert.That(Focused, Is.Null);
-        }
-
-        [Test]
-        public void Given_AnElementScopeWhoseContentIsStylesheetHidden_When_TwoRepaintsRunAndAClassChangeShowsIt_Then_TheRetryHasStoppedAndFocusesNothing()
-        {
-            // Arrange
-            s_elementScope = true;
-            var sheet = UnityEditor.AssetDatabase.LoadAssetAtPath<StyleSheet>(
-                "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/SuspenseHiddenPortalFocus.uss");
-            _host.Root.styleSheets.Add(sheet);
-            Update(s_setBlocked, 1);
-            Update(s_setPortal, true);
-            Update(s_setButtonClass, "portal-focus-stylesheet-hidden");
-            Update(s_setScoped, true);
-            EditorPanelTestHelpers.ForcePanelUpdate(_host.Panel);
-            Resolve(s_source);
-            EditorPanelTestHelpers.RepaintOnce(_host.Panel);
-            EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
-            EditorPanelTestHelpers.RepaintOnce(_host.Panel);
-            EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
-
-            // Act
-            Update(s_setButtonClass, "");
-            EditorPanelTestHelpers.ForcePanelUpdate(_host.Panel);
-            EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
-
-            // Assert
-            Assert.That(Focused, Is.Null);
-        }
-
-        [Test]
-        public void Given_ARevealedPortalFocusScopeWaitingOnAStylePass_When_TheBoundaryHidesItAgain_Then_TheRetryFocusesNothing()
-        {
-            // Arrange
-            Update(s_setBlocked, 1);
-            Update(s_setPortal, true);
-            Update(s_setScoped, true);
-            EditorPanelTestHelpers.ForcePanelUpdate(_host.Panel);
-            Resolve(s_source);
-            EditorPanelTestHelpers.ForcePanelUpdate(_host.Panel);
-            Update(s_setBlocked, 2);
-
-            // Act
             EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
 
             // Assert
@@ -344,12 +289,7 @@ namespace Velvet.Tests
                             ? V.Portal(s_target, children: new VNode[]
                             {
                                 V.Div(name: "plain"),
-                                scoped && s_elementScope
-                                    ? FocusScopeElement.Div(autoFocus: true, children: new VNode[]
-                                    {
-                                        V.Button(name: "focusable", className: buttonClass),
-                                    })
-                                    : scoped
+                                scoped
                                     ? V.FocusScope(autoFocus: true, children: new VNode[]
                                     {
                                         V.Button(name: "focusable", className: buttonClass),

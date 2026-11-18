@@ -262,10 +262,6 @@ namespace Velvet
             "UnityEngine.UIElements.BaseVisualElementPanel", "styleAnimationSystem",
             "UnityEngine.UIElements.IStylePropertyAnimationSystem");
 
-        // FocusScopeDriver's count of the repaints a panel has begun since a retry started.
-        internal static readonly EngineMember PanelRepaintVersion =
-            ReadProperty(UIElements, "UnityEngine.UIElements.BaseVisualElementPanel", "repaintVersion", "System.UInt32");
-
         internal static readonly EngineMember AnimationSystemValues = Field(UIElements, AnimationSystemType,
             "m_PropertyToValues", "System.Collections.Generic.Dictionary`2[" + StylePropertyIdShape + ","
             + AnimationSystemType + "+Values]");
