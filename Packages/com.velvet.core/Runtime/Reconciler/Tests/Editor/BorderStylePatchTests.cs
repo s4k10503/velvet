@@ -178,6 +178,39 @@ namespace Velvet.Tests
             Assert.That(scope.Reconciler.Context.BorderStyleBindings.Count, Is.EqualTo(0));
         }
 
+        // GREEN_ON_BASE(characterization): a patch that leaves a dashed border's classes as they were repaints nothing.
+        // Turn the `&&` that sets `has` in ApplyBorderStyleOnPatch into `||` and the winner stays null, so the patch
+        // writes the spec back and marks the element for repaint.
+        [Test]
+        public void Given_ADashedBorderOnAPanel_When_APatchLeavesItsClassesAsTheyWere_Then_TheElementIsNotRepainted()
+        {
+            // Arrange — both trees parse one class string, which hands the patch the array the mount read.
+            TestGraphics.IgnoreIfHeadless("a repaint");
+            using var host = new HeadlessEditorPanelHost();
+            using var scope = new ReconcilerScope();
+            host.Root.Add(scope.Root);
+            var before = new VNode[] { V.Div(className: "w-[40px] h-[20px] border-dashed", name: "card") };
+            var after = new VNode[] { V.Div(className: "w-[40px] h-[20px] border-dashed", name: "card") };
+            Mount(scope, before);
+            var card = scope.Root.Q<VisualElement>("card");
+            var repaints = 0;
+            card.generateVisualContent += _ => repaints++;
+            EditorPanelTestHelpers.ForcePanelUpdate(host.Panel);
+            EditorPanelTestHelpers.ForcePanelUpdate(host.Panel);
+            repaints = 0;
+            card.MarkDirtyRepaint();
+            EditorPanelTestHelpers.ForcePanelUpdate(host.Panel);
+            var counted = repaints;
+            repaints = 0;
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, before, after);
+            EditorPanelTestHelpers.ForcePanelUpdate(host.Panel);
+
+            // Assert — read as -1 where a repaint asked for by hand never reached the counter.
+            Assert.That(counted > 0 ? repaints : -1, Is.Zero);
+        }
+
         [Test]
         public void Given_ABorderDashedElement_When_TheTreeUnmounts_Then_NoBindingRemains()
         {
