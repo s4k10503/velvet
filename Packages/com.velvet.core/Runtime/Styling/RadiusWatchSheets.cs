@@ -71,10 +71,12 @@ namespace Velvet
         private static bool s_reported;
 
         // Every sheet made here, by reference, so that one destroyed since is still known for what it was: the engine's null
-        // check of a destroyed object answers true, and its name cannot be read.
+        // check of a destroyed object answers true, and its name cannot be read. A sheet that outlived a domain reload is
+        // known by its name, which is only asked while it is not destroyed.
         private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<StyleSheet, object> s_known = new();
 
-        internal static bool IsWatch(StyleSheet sheet) => (object)sheet != null && s_known.TryGetValue(sheet, out _);
+        internal static bool IsWatch(StyleSheet sheet)
+            => (object)sheet != null && (s_known.TryGetValue(sheet, out _) || (sheet != null && sheet.name == SheetName));
 
         // Attaches the derived sheets of the stylesheets of element and of every element above it.
         internal static void EnsureAbove(VisualElement element)
@@ -100,13 +102,36 @@ namespace Velvet
             {
                 Attach(element, element.styleSheets[i]);
             }
-            for (var i = element.styleSheets.count - 1; i >= 0; i--)
+            DropStale(element);
+        }
+
+        // Takes off element the watch sheets it no longer wants, and any sheet destroyed since it was added. The engine
+        // refuses a destroyed sheet where one is removed, so the others are put back in their order instead.
+        private static void DropStale(VisualElement element)
+        {
+            var stale = false;
+            for (var i = element.styleSheets.count - 1; i >= 0 && !stale; i--)
             {
                 var held = element.styleSheets[i];
-                if (IsWatch(held) && !s_wanted.Contains(held))
+                stale = held == null || (IsWatch(held) && !s_wanted.Contains(held));
+            }
+            if (!stale)
+            {
+                return;
+            }
+            var keep = new System.Collections.Generic.List<StyleSheet>();
+            for (var i = 0; i < element.styleSheets.count; i++)
+            {
+                var held = element.styleSheets[i];
+                if (held != null && !(IsWatch(held) && !s_wanted.Contains(held)))
                 {
-                    element.styleSheets.Remove(held);
+                    keep.Add(held);
                 }
+            }
+            element.styleSheets.Clear();
+            foreach (var held in keep)
+            {
+                element.styleSheets.Add(held);
             }
         }
 

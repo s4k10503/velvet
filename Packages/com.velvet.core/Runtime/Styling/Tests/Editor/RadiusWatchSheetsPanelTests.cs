@@ -283,6 +283,29 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ASourceDestroyedWhileItsWatchSheetIsAttached_When_TheRootIsReadAndThePanelsWatchTicks_Then_NoWatchSheetRemainsOnIt()
+        {
+            // Arrange
+            var source = Clone(OwnSheet);
+            _window.rootVisualElement.styleSheets.Add(source);
+            MountAndSettle();
+            UnityEngine.Object.DestroyImmediate(source);
+
+            // Act
+            RadiusWatchSheets.EnsureOn(_window.rootVisualElement);
+            TickSheetWatch(_window.rootVisualElement.panel);
+
+            // Assert
+            var left = 0;
+            for (var i = 0; i < _window.rootVisualElement.styleSheets.count; i++)
+            {
+                var held = _window.rootVisualElement.styleSheets[i];
+                left += RadiusWatchSheets.IsWatch(held) ? 1 : 0;
+            }
+            Assert.That(left, Is.Zero);
+        }
+
+        [Test]
         public void Given_ALeafHoldingASheetOfItsOwn_When_ItLaysOut_Then_ItHoldsTheWatchSheet()
         {
             // Arrange — the leaf has no children, so only a read of its own sheets can find the rule.

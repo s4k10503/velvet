@@ -561,7 +561,15 @@ namespace Velvet
             {
                 foreach (var element in changed)
                 {
-                    RadiusWatchSheets.EnsureOn(element);
+                    // One ancestor failing leaves the others to be read.
+                    try
+                    {
+                        RadiusWatchSheets.EnsureOn(element);
+                    }
+                    catch (System.Exception exception)
+                    {
+                        UnityEngine.Debug.LogException(exception);
+                    }
                     AskAgain(element);
                 }
             }

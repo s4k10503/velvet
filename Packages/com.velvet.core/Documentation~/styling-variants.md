@@ -444,7 +444,7 @@ tree once it lays out. For each sheet with such a rule it attaches a second shee
 same selectors and one custom property, which is what makes UI Toolkit report the match; your own sheet is never
 edited. `VelvetStyleUtilities.AttachTo` reads the root's sheets at once. A sheet attached later to an ancestor of an element Velvet
 built is read within a tick of the panel's sheet watch (16 ms), and one attached to the mount's ancestors within 100 ms. A
-sheet attached later to a leaf that held none when it last changed size is read when the leaf next changes size: UI
+sheet attached later to a leaf that held none at its last geometry change is read at its next one: UI
 Toolkit raises no event for a sheet attached to an element. The sheets on the panel's own root are read too, whatever imports they bring; the bundled
 utilities are covered by the rules that restate their radii. The elements a radius rule matches get a style event for
 each restyle, and the fit does nothing for it while the rules that match are the same ones; one that no such rule matches
