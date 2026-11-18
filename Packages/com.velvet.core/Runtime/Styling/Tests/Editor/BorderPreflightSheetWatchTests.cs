@@ -15,7 +15,7 @@ namespace Velvet.Tests
         private const BindingFlags Statics = BindingFlags.NonPublic | BindingFlags.Static;
 
         private static void WatchSheets(VisualElement element)
-            => typeof(BorderPreflight).GetMethod("WatchSheets", Statics).Invoke(null, new object[] { element });
+            => typeof(BorderPreflight).GetMethod("WatchSheets", Statics).Invoke(null, new object[] { element, false });
 
         private static object WatchOf(IPanel panel)
         {
