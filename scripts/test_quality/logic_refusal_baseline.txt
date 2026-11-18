@@ -23,6 +23,7 @@ Packages/com.velvet.core/Runtime/Hooks/StateUpdater.cs	1
 Packages/com.velvet.core/Runtime/Hooks/TransitionStarter.cs	1
 Packages/com.velvet.core/Runtime/Reconciler/ChildElementPlacement.cs	1
 Packages/com.velvet.core/Runtime/Reconciler/ChildListWrites.cs	8
+Packages/com.velvet.core/Runtime/Reconciler/ChildReconciler.cs	1
 Packages/com.velvet.core/Runtime/Reconciler/FiberAnimateMotionApplier.cs	1
 Packages/com.velvet.core/Runtime/Reconciler/FiberBackdropApplier.cs	1
 Packages/com.velvet.core/Runtime/Reconciler/FiberBorderStyleApplier.cs	1
@@ -42,7 +43,7 @@ Packages/com.velvet.core/Runtime/Reconciler/FiberRefPlacement.cs	1
 Packages/com.velvet.core/Runtime/Reconciler/FiberSliderKeyboard.cs	5
 Packages/com.velvet.core/Runtime/Reconciler/FiberTextFieldLength.cs	7
 Packages/com.velvet.core/Runtime/Reconciler/FiberWrapperElementAppliers.cs	1
-Packages/com.velvet.core/Runtime/Reconciler/FiberZLayerCoordinator.cs	18
+Packages/com.velvet.core/Runtime/Reconciler/FiberZLayerCoordinator.cs	20
 Packages/com.velvet.core/Runtime/Reconciler/GeneralPathReconciler.cs	6
 Packages/com.velvet.core/Runtime/Reconciler/PanelFocusMemory.cs	5
 Packages/com.velvet.core/Runtime/Reconciler/PanelHostFactory.cs	1

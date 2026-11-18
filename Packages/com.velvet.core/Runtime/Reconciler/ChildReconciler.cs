@@ -549,6 +549,10 @@ namespace Velvet
                 }
             }
             _general.HideFibersMountedUnder(placeholder, declaringFiber);
+            if (target.focusController?.focusedElement is VisualElement focused && SuspenseHiddenElements.IsAtOrUnderHidden(focused))
+            {
+                focused.Blur();
+            }
         }
 
         // An unkeyed flat run of host children inserts each row as it creates it, so the ones ahead of the child that
