@@ -668,7 +668,8 @@ namespace Velvet.Tests
             return field == null ? -1 : ((ICollection)field.GetValue(_mounted.Root.Reconciler.Context)).Count;
         }
 
-        // GREEN_ON_BASE(characterization): the base keeps the row's layout effect across the bound's drop the same way.
+        // GREEN_ON_BASE(characterization): the update limit, not the follow-up bound, now stops the chain, and the base
+        // keeps the row's layout effect across that drop the same way.
         // The chain starts from an effect the boundary's child stages by its own commit after the pass parks, since
         // one the mount left pending now runs, and reaches the bound, before the transition renders at all.
         [Test]
