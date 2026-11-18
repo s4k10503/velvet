@@ -105,6 +105,24 @@ namespace Velvet.Tests
             Assert.That(pending, Is.True);
         }
 
+        // GREEN_ON_BASE(characterization): the base takes an overlay out of its host when it is removed.
+        [Test]
+        public void Given_AnOverlaidElement_When_ItsOverlayIsRemoved_Then_TheHostHoldsNoOverlay()
+        {
+            // Arrange
+            var host = new VisualElement();
+            _window.rootVisualElement.Add(host);
+            var element = Mount(host, 40f);
+            Overlay(element, (_, _, _) => { });
+            var overlay = OverlayIn(host);
+
+            // Act
+            FaceBorderOverlay.Remove(element);
+
+            // Assert — an overlay never hosted would throw here rather than read as gone.
+            Assert.That(overlay.parent, Is.Null);
+        }
+
         // GREEN_ON_BASE(characterization): the base reads the element's index after taking its overlay out.
         [Test]
         public void Given_AnOverlaidElement_When_ItMovesPastItsOverlay_Then_TheOverlayIsPutDirectlyAfterIt()

@@ -207,15 +207,11 @@ namespace Velvet
                 residualBold = (int)weight >= 600;
                 residualItalic = intent.Italic;
             }
-            else if (foreign && !intent.HasFamily)
-            {
-                asset = null;
-                residualBold = false;
-                residualItalic = false;
-            }
             else
             {
-                var resolved = VelvetFonts.Resolve(family, weight, intent.Italic, intent.HasStretch ? intent.Stretch : 100f);
+                var resolved = foreign && !intent.HasFamily
+                    ? default
+                    : VelvetFonts.Resolve(family, weight, intent.Italic, intent.HasStretch ? intent.Stretch : 100f);
                 asset = resolved.Asset;
                 residualBold = resolved.ResidualBold;
                 residualItalic = resolved.ResidualItalic;

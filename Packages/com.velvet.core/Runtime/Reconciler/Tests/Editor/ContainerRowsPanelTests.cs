@@ -93,6 +93,24 @@ namespace Velvet.Tests
             Assert.That(RowModelAccess.Peek(container)!.ElementAt(0), Is.SameAs(container[0]));
         }
 
+        // GREEN_ON_BASE(characterization): the base watches the panel a pass reconciles onto. Drop
+        // `_ctx.RelationalTreeWatch.Watch(parent?.panel);` and no pass registers the watch.
+        [Test]
+        public void Given_APassOnAPanel_When_ItBegins_Then_TheContextWatchesThatPanel()
+        {
+            // Arrange
+            var panel = _window.rootVisualElement.panel;
+
+            // Act
+            using var mounted = V.Mount(_window.rootVisualElement, V.Div(name: "card"));
+
+            // Assert
+            var watched = (System.Collections.IDictionary)typeof(RelationalTreeWatch)
+                .GetField("_watched", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+                .GetValue(mounted.Root.Reconciler.Context.RelationalTreeWatch);
+            Assert.That(watched.Contains(panel), Is.True);
+        }
+
         // The row count the model of container holds at the moment child leaves the panel, which is inside the call of
         // the write that detaches it; -2 where the model is gone and -1 where child never left.
         private static Func<int> RowsSeenOnDetach(VisualElement container, VisualElement child)
@@ -128,6 +146,35 @@ namespace Velvet.Tests
             var child = new VisualElement();
             ChildListWrites.Add(source, child);
             child.RegisterCallback<DetachFromPanelEvent>(_ => ChildListWrites.NoteHierarchyChange(bystander));
+
+            // Act
+            ChildListWrites.Add(destination, child);
+
+            // Assert
+            Assert.That(RowModelAccess.Peek(bystander)!.TotalCount, Is.EqualTo(3));
+        }
+
+        // GREEN_ON_BASE(characterization): a change announced inside a write for a child marks that child's parent.
+        // The write does not touch that parent, so the mark is what has it compared when the write ends. Drop
+        // `NoteDuringOp(element.hierarchy.parent);` in NoteHierarchyChange and its model keeps the two rows it held.
+        [Test]
+        public void Given_AChildAddedBehindItsParentsModelOutsideTheWrite_When_ItsArrivalIsAnnouncedFromTheWritesDetach_Then_ThatParentsModelIsRebuilt()
+        {
+            // Arrange — the case above, with the announcement naming the child that arrived rather than the parent it
+            // arrived in.
+            var root = _window.rootVisualElement;
+            var source = new VisualElement();
+            var destination = new VisualElement();
+            var bystander = new VisualElement();
+            ChildListWrites.Add(root, source);
+            ChildListWrites.Add(root, destination);
+            ChildListWrites.Add(bystander, new VisualElement());
+            ChildListWrites.Add(bystander, new VisualElement());
+            var arrival = new VisualElement();
+            bystander.Add(arrival);
+            var child = new VisualElement();
+            ChildListWrites.Add(source, child);
+            child.RegisterCallback<DetachFromPanelEvent>(_ => ChildListWrites.NoteHierarchyChange(arrival));
 
             // Act
             ChildListWrites.Add(destination, child);
@@ -198,6 +245,60 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(seen(), Is.EqualTo(0));
+        }
+
+        // GREEN_ON_BASE(characterization): the base compares a write's own container child for child once a write
+        // nested in it has run. Delete `Settle(container, nestedRan);` from ChildListWrites.Exit and the model keeps
+        // the inserted child a slot early.
+        [Test]
+        public void Given_AHandlerThatMovesTheFirstChildOutFromTheInsertedChildsDetach_When_TheChildIsInsertedMidList_Then_TheModelHoldsTheLiveOrder()
+        {
+            // Arrange — the nested write takes the first child out after the model has placed the inserted one, which
+            // leaves the model holding it a slot early with its count, first child and last child agreeing with the
+            // live list.
+            var root = _window.rootVisualElement;
+            var source = new VisualElement();
+            var destination = new VisualElement();
+            ChildListWrites.Add(root, source);
+            ChildListWrites.Add(root, destination);
+            var leaving = new VisualElement();
+            ChildListWrites.Add(destination, leaving);
+            for (var i = 0; i < 4; i++) ChildListWrites.Add(destination, new VisualElement());
+            var child = new VisualElement();
+            ChildListWrites.Add(source, child);
+            child.RegisterCallback<DetachFromPanelEvent>(_ => ChildListWrites.Add(new VisualElement(), leaving));
+
+            // Act
+            ChildListWrites.Insert(destination, 2, child);
+
+            // Assert
+            Assert.That(ContainerRowsTests.CompareOrder(destination, RowModelAccess.Peek(destination)!), Is.Null);
+        }
+
+        // GREEN_ON_BASE(characterization): the base empties a model before it fills it from the sorted list. Delete
+        // `rows.Clear();` from ChildListWrites.HierarchySort and a sort nested in another write leaves the model
+        // holding each child twice until the outer write ends.
+        [Test]
+        public void Given_AHandlerThatSortsAContainerFromAChildsDetach_When_TheChildIsRemoved_Then_AReadInTheHandlerCountsEachSortedChildOnce()
+        {
+            // Arrange
+            var sorted = new VisualElement();
+            ChildListWrites.Add(sorted, new VisualElement { name = "b" });
+            ChildListWrites.Add(sorted, new VisualElement { name = "a" });
+            var child = new VisualElement();
+            var container = Attached(new VisualElement(), child);
+            var counted = -1;
+            child.RegisterCallback<DetachFromPanelEvent>(_ =>
+            {
+                ChildListWrites.HierarchySort(sorted, (x, y) => string.CompareOrdinal(x.name, y.name));
+                counted = ChildListWrites.RenderedCount(sorted);
+            });
+
+            // Act
+            ChildListWrites.Remove(container, child);
+
+            // Assert
+            Assert.That(counted, Is.EqualTo(2));
         }
     }
 }

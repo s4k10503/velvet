@@ -249,6 +249,60 @@ namespace Velvet.Tests
 
         #endregion
 
+        #region Resume from the panel scheduler
+
+        // GREEN_ON_BASE(characterization): the base resumes a parked pass from the panel scheduler. Drop
+        // `ScheduleParkedPassResume(fiber);` and the tick has nothing to run.
+        [Test]
+        public void Given_AParkedTransitionPassOnAPanel_When_ThePanelSchedulerTicks_Then_TheResumeCommitsMoreOfTheList()
+        {
+            // Arrange
+            using var host = new HeadlessEditorPanelHost();
+            s_flatListCount = 1;
+            using var mounted = V.Mount(host.Root, V.Component(FlatListRender, key: "list"));
+            var fiber = s_flatListFiber;
+            // One mounted row, so the flush patches it and the resume has no further row to patch and reaches the
+            // phase that creates the rest.
+            s_flatListCount = 400;
+            fiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
+            fiber.FlushStateWithTinyBudgetForTest();
+            var committedWhenParked = host.Root.childCount;
+
+            // Act
+            EditorPanelTestHelpers.DriveSchedulerOnce(host.Panel);
+
+            // Assert
+            Assert.That(host.Root.childCount, Is.GreaterThan(committedWhenParked));
+        }
+
+        // GREEN_ON_BASE(characterization): the base schedules the next slice when a resume leaves work pending. Drop
+        // `ScheduleNextSlice(mountPoint, fiber);` and the tick finds nothing registered by the slices before it. A
+        // slice run by hand stands in for the one the parked pass's own registration would have run, so the case
+        // does not also depend on that registration.
+        [Test]
+        public void Given_ResumeSlicesThatLeftWorkPending_When_ThePanelSchedulerTicks_Then_TheNextSliceCommitsMoreOfTheList()
+        {
+            // Arrange
+            using var host = new HeadlessEditorPanelHost();
+            s_flatListCount = 3;
+            using var mounted = V.Mount(host.Root, V.Component(FlatListRender, key: "list"));
+            var fiber = s_flatListFiber;
+            s_flatListCount = 400;
+            fiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
+            fiber.FlushStateWithTinyBudgetForTest();
+            EditorPanelTestHelpers.DriveSchedulerOnce(host.Panel);
+            FiberWorkLoop.ContinueReconcile(fiber);
+            var committedBeforeTheTick = host.Root.childCount;
+
+            // Act
+            EditorPanelTestHelpers.DriveSchedulerOnce(host.Panel);
+
+            // Assert
+            Assert.That(host.Root.childCount, Is.GreaterThan(committedBeforeTheTick));
+        }
+
+        #endregion
+
         #region Inherited font family across a parked pass
 
         private static int s_fontRowCount;

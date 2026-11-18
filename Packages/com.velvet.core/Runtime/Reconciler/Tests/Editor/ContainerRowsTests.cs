@@ -427,6 +427,45 @@ namespace Velvet.Tests
             Assert.That(CompareOrder(parent, RowModelAccess.Peek(parent)!), Is.Null);
         }
 
+        // GREEN_ON_BASE(characterization): the base takes the stale mark off with the rows it rebuilds. Have
+        // ContainerRows.Clear set `Stale` to true and the model stays marked, so the next read outside a write
+        // rebuilds it again.
+        [Test]
+        public void Given_AModelMarkedStaleByAnAnnouncedChange_When_AReadRebuildsIt_Then_ItIsNoLongerMarkedStale()
+        {
+            // Arrange
+            var parent = new VisualElement();
+            ChildListWrites.Add(parent, new VisualElement());
+            ChildListWrites.Add(parent, new VisualElement());
+            ChildListWrites.NoteHierarchyChange(parent[0]);
+            var marked = RowModelAccess.Peek(parent)!.Stale;
+
+            // Act
+            _ = ChildListWrites.RenderedCount(parent);
+
+            // Assert — read as null where the announcement marked nothing for the read to rebuild.
+            Assert.That(marked ? RowModelAccess.Peek(parent)!.Stale : (bool?)null, Is.False);
+        }
+
+        // GREEN_ON_BASE(characterization): the base empties a stale model before a pass's start fills it again. Delete
+        // `rows.Clear();` from the stale branch of ChildListWrites.Verify and the fill lands on the rows already held.
+        [Test]
+        public void Given_AModelMarkedStaleByAnAnnouncedChange_When_APassBegins_Then_TheModelHoldsEachChildOnce()
+        {
+            // Arrange
+            var parent = new VisualElement();
+            ChildListWrites.Add(parent, new VisualElement());
+            ChildListWrites.Add(parent, new VisualElement());
+            ChildListWrites.NoteHierarchyChange(parent[0]);
+            var marked = RowModelAccess.Peek(parent)!.Stale;
+
+            // Act
+            ChildListWrites.BeginPass();
+
+            // Assert — read as -1 where the announcement marked nothing for the pass to rebuild.
+            Assert.That(marked ? RowModelAccess.Peek(parent)!.TotalCount : -1, Is.EqualTo(parent.childCount));
+        }
+
         // GREEN_ON_BASE(refactor): reads the model through the surface step 1 added, which this change leaves as it was.
         [Test]
         public void Given_AChildAddedBehindTheModelsBack_When_TheNextWriteArrives_Then_TheModelHoldsEveryChild()
@@ -495,6 +534,26 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(RowModelAccess.Peek(parent)!.ElementAt(0), Is.SameAs(parent[0]));
+        }
+
+        // GREEN_ON_BASE(characterization): the base drops the model of an element whose side tables it clears. Drop
+        // `ChildListWrites.Drop(element);` and a removed container keeps the model of the children it held.
+        [Test]
+        public void Given_AMountedContainerWithChildren_When_ItIsUnmounted_Then_ItsRowModelIsGone()
+        {
+            // Arrange
+            using var scope = new Velvet.TestUtilities.ReconcilerScope();
+            var tree = new VNode[] { V.Div(name: "card", children: new VNode[] { V.Label(text: "a"), V.Label(text: "b") }) };
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+            var card = scope.Root.Q<VisualElement>("card");
+            var modeledWhileMounted = RowModelAccess.Peek(card) != null;
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, tree, System.Array.Empty<VNode>());
+
+            // Assert — a container that never had a model has none to drop, so the value read is one that is not
+            // null for it.
+            Assert.That(modeledWhileMounted ? RowModelAccess.Peek(card) : new object(), Is.Null);
         }
 
         // An element whose child-list calls land on another one, as a ScrollView's do on its content container.
