@@ -21,8 +21,11 @@ namespace Velvet.Tests
             return card;
         }
 
-        private ShadowSpec Layer(VisualElement card)
-            => _mounted.Root.Reconciler.Context.ShadowBindings[card].Layers[0].MeasuredOn(card);
+        // The first layer of the card's box-shadow as it measures it, or NaN spread and alpha where it paints none.
+        private (float Spread, float Alpha) Layer(VisualElement card)
+            => _mounted.Root.Reconciler.Context.ShadowBindings.TryGetValue(card, out var binding)
+                ? (binding.Layers[0].MeasuredOn(card).Spread, binding.Layers[0].MeasuredOn(card).Color.a)
+                : (float.NaN, float.NaN);
 
         [TestCase("cqw")]
         [TestCase("cqi")]
@@ -43,7 +46,7 @@ namespace Velvet.Tests
                 "w-[10px] h-[10px] shadow-[0_0_4px_1cqw_#000]/50");
 
             // Assert
-            Assert.That(Layer(card).Color.a, Is.EqualTo(0.5f).Within(0.01f));
+            Assert.That(Layer(card).Alpha, Is.EqualTo(0.5f).Within(0.01f));
         }
 
         [TestCase("cqw")]

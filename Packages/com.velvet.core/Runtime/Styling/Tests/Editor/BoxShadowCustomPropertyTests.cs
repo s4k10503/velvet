@@ -409,7 +409,9 @@ namespace Velvet.Tests
         {
             using var scope = new ReconcilerScope();
             scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), new VNode[] { V.Div(className: classes) });
-            return scope.Reconciler.Context.VariantGateClasses[scope.Root[0]].Resolved ?? Array.Empty<string>();
+            return scope.Reconciler.Context.VariantGateClasses.TryGetValue(scope.Root[0], out var state)
+                ? state.Resolved ?? Array.Empty<string>()
+                : Array.Empty<string>();
         }
 
         // Chromium computes a 50% red caret for a bracket reading --x: red, in place of the earlier colour, and the parent's caret for --x: 5px.
@@ -437,10 +439,10 @@ namespace Velvet.Tests
         public void Given_ADivideBracketOfAnotherTypeReadingNoColour_When_ItsReaderIsRead_Then_TheDividerHasNoColour()
         {
             // Act
-            StyleDivideClass.TryExtract(ComposedFor("[--x:5px] divide-x-2 divide-[#ff0000] divide-[number:var(--x)]/50"), out var spec);
+            var found = StyleDivideClass.TryExtract(ComposedFor("[--x:5px] divide-x-2 divide-[#ff0000] divide-[number:var(--x)]/50"), out var spec);
 
             // Assert
-            Assert.That(spec.HasColor, Is.False);
+            Assert.That(found && !spec.HasColor, Is.True);
         }
 
         // GREEN_ON_BASE(characterization): the base draws a ring whose bracket is typed as another type but holds a colour.
@@ -502,6 +504,8 @@ namespace Velvet.Tests
                 Is.EqualTo("FF000080"));
         }
 
+        // GREEN_ON_BASE(characterization): the base reads no such caret, so it writes no unset; the case holds that the reader
+        // this branch adds does not write one for a colour Velvet's grammar leaves.
         // A colour Velvet's grammar does not read is no colour for the unset to answer: Chromium draws it at 50%, and Velvet
         // leaves the earlier colour where it cannot.
         [TestCase("oklch(60%_0.2_30)")]
@@ -534,10 +538,10 @@ namespace Velvet.Tests
         public void Given_ADivideBracketOfAnotherTypeReadingAWordNamingNoColour_When_ItsReaderIsRead_Then_TheDividerHasNoColour()
         {
             // Act
-            StyleDivideClass.TryExtract(ComposedFor("[--w:auto] divide-x-2 divide-[#0000ff] divide-[number:var(--w)]/50"), out var spec);
+            var found = StyleDivideClass.TryExtract(ComposedFor("[--w:auto] divide-x-2 divide-[#0000ff] divide-[number:var(--w)]/50"), out var spec);
 
             // Assert
-            Assert.That(spec.HasColor, Is.False);
+            Assert.That(found && !spec.HasColor, Is.True);
         }
 
         [Test]
@@ -570,10 +574,10 @@ namespace Velvet.Tests
         public void Given_ADivideBracketOfAnotherTypeReadingAColourWithAModifierPast100_When_ItsReaderIsRead_Then_TheDividerHasNoColour()
         {
             // Act
-            StyleDivideClass.TryExtract(ComposedFor("[--c:#ff0000] divide-x-2 divide-[#0000ff] divide-[number:var(--c)]/150"), out var spec);
+            var found = StyleDivideClass.TryExtract(ComposedFor("[--c:#ff0000] divide-x-2 divide-[#0000ff] divide-[number:var(--c)]/150"), out var spec);
 
             // Assert
-            Assert.That(spec.HasColor, Is.False);
+            Assert.That(found && !spec.HasColor, Is.True);
         }
 
         [Test]

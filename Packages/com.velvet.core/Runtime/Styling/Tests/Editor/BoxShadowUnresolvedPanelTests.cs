@@ -145,6 +145,8 @@ namespace Velvet.Tests
             return card;
         }
 
+        // GREEN_ON_BASE(characterization): the base reads both stylesheet variables once the card is under the declaring host; the case
+        // holds that the unset this branch adds to an unresolved reader does not take the ring or the shadow with it.
         [Test]
         public void Given_AnElementWithTwoReadersOfStylesheetVariables_When_ItIsMovedUnderTheHostDeclaringThem_Then_ItsRingIsDrawn()
         {
@@ -155,6 +157,8 @@ namespace Velvet.Tests
             Assert.That(Ring(card), Is.EqualTo(3f));
         }
 
+        // GREEN_ON_BASE(characterization): the base reads both stylesheet variables once the card is under the declaring host; the case
+        // holds that the unset this branch adds to an unresolved reader does not take the ring or the shadow with it.
         [Test]
         public void Given_AnElementWithTwoReadersOfStylesheetVariables_When_ItIsMovedUnderTheHostDeclaringThem_Then_ItsShadowIsDrawn()
         {
