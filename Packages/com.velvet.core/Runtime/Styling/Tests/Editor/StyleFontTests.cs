@@ -225,6 +225,60 @@ namespace Velvet.Tests
 
         #endregion
 
+        #region StyleFontResolver — resolution against the registry
+
+        // GREEN_ON_BASE(characterization): the base resolves a weight with no family class against the default family when no scope is given.
+        [Test]
+        public void Given_ADefaultFamily_When_AWeightWithNoFamilyClassIsApplied_Then_TheElementTakesTheDefaultFamilysFont()
+        {
+            // Arrange
+            var asset = ScriptableObject.CreateInstance<FontAsset>();
+            try
+            {
+                VelvetFonts.Register(new VelvetFontFamily("sans",
+                    new VelvetFontWeightEntry { weight = VelvetFontWeight.Normal, upright = asset }));
+                VelvetFonts.DefaultFamily = "sans";
+                var element = new Label();
+
+                // Act
+                StyleFontResolver.Apply(element, new[] { "font-bold" });
+
+                // Assert
+                Assert.That(element.style.unityFontDefinition.value.fontAsset, Is.SameAs(asset));
+            }
+            finally
+            {
+                Object.DestroyImmediate(asset);
+            }
+        }
+
+        // GREEN_ON_BASE(characterization): the base resolves a family the request names even where the inherited font is foreign to every family.
+        [Test]
+        public void Given_AnInheritedFontForeignToEveryFamily_When_ARequestNamesAFamily_Then_TheElementTakesThatFamilysFont()
+        {
+            // Arrange
+            var asset = ScriptableObject.CreateInstance<FontAsset>();
+            try
+            {
+                VelvetFonts.Register(new VelvetFontFamily("sans",
+                    new VelvetFontWeightEntry { weight = VelvetFontWeight.Normal, upright = asset }));
+                StyleFontClass.TryExtract(new[] { "font-sans" }, out var intent);
+                var element = new Label();
+
+                // Act
+                StyleFontResolver.ApplyResolved(element, intent, inherited: null, foreign: true);
+
+                // Assert
+                Assert.That(element.style.unityFontDefinition.value.fontAsset, Is.SameAs(asset));
+            }
+            finally
+            {
+                Object.DestroyImmediate(asset);
+            }
+        }
+
+        #endregion
+
         #region StyleFontResolver — style composition
 
         [TestCase(false, false, FontStyle.Normal, TestName = "Given_NoFlags_When_Composed_Then_Normal")]

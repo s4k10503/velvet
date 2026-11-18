@@ -64,6 +64,7 @@ namespace Velvet
             {
                 return false;
             }
+            // MUTANT_SURVIVES(equivalent, boundary): at readAt 0 the comparison is the first-child one made above, so skipping it changes no answer.
             return readAt < 0 || readAt >= count || ReferenceEquals(rows.ElementAt(readAt), container.hierarchy[readAt]);
         }
 
@@ -223,6 +224,29 @@ namespace Velvet
             Synced(content, -1).Rows(slotStart, end, into);
         }
 
+        // The rendered child holding the slot, or null where none does: what TryGetPhysical finds, read as the element.
+        internal static VisualElement? RowAt(VisualElement container, int logical)
+        {
+            var content = ContentOf(container);
+            if (content.hierarchy.childCount == 0) return null;
+            var rows = Synced(content, -1);
+            var row = rows.RowAt(logical);
+            if (!AgreesAt(rows, content, rows.ToPhysical(logical)))
+            {
+                row = Rebuilt(rows, content).RowAt(logical);
+            }
+            return row;
+        }
+
+        // Appends the children at physical indices [start, end) to into, in order.
+        internal static void PhysicalRange(VisualElement container, int start, int end, List<VisualElement> into)
+        {
+            var content = ContentOf(container);
+            if (content.hierarchy.childCount == 0) return;
+            // MUTANT_SURVIVES(equivalent, arithmetic): readAt reaches only the probe in Agrees, and past the last child that probe repeats the last-child comparison made before it.
+            Synced(content, Math.Min(start, content.hierarchy.childCount - 1)).PhysicalRange(start, end, into);
+        }
+
         // Inserts a rendered child where LogicalChildSlots.ToPhysical puts a child at the slot.
         internal static void InsertAtSlot(VisualElement parent, int slot, VisualElement child)
             => Insert(parent, ToPhysical(parent, slot), child);
@@ -270,6 +294,7 @@ namespace Velvet
             VisualElement caller)
         {
             var left = child.hierarchy.parent;
+            // MUTANT_SURVIVES(equivalent, arithmetic): readAt reaches only the probe in Agrees, and past the last child that probe repeats the last-child comparison made before it.
             var rows = Enter(container, Math.Min(index, container.hierarchy.childCount - 1));
             try
             {
@@ -344,6 +369,7 @@ namespace Velvet
             var parent = child.hierarchy.parent;
             if (parent == null)
             {
+                // MUTANT_SURVIVES(equivalent, line removed): this branch runs only where child.hierarchy.parent is null, and RemoveFromHierarchy does nothing without one.
                 child.RemoveFromHierarchy();
                 return;
             }

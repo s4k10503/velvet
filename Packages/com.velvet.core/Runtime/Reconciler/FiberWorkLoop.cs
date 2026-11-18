@@ -319,8 +319,7 @@ namespace Velvet
             var scheduler = fiber.Reconciler?.Context.BatchScheduler;
             if (scheduler == null)
             {
-                // No live Reconciler (disposed mid-flight): fall back to the per-fiber schedule so the
-                // request is not silently dropped while the fiber is still mounted.
+                // MUTANT_SURVIVES(unreachable, line removed): a fiber reaches ScheduleFlush only while mounted, and a mounted fiber holds a Reconciler (SetupMount assigns it before IsMounted; Unmount clears IsMounted and its lanes first), so the scheduler is never null here.
                 ScheduleStandaloneFlush(fiber);
                 return;
             }

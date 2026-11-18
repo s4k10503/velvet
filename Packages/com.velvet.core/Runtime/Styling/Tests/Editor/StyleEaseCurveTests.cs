@@ -219,6 +219,21 @@ namespace Velvet.Tests
             Assert.That(curve, Is.Not.Null);
         }
 
+        // GREEN_ON_BASE(characterization): the base notes no timing class for a class holding neither of the words one needs.
+        [Test]
+        public void Given_AClassNamingNoTimingKeyword_When_ItsCurveIsAskedFor_Then_ItHasNone()
+        {
+            // Arrange
+            var element = new VisualElement();
+            StyleEaseCurve.NoteClasses(element, new[] { "flex" });
+
+            // Act
+            var curve = StyleEaseCurve.CurveFor(element, EasingMode.EaseIn);
+
+            // Assert
+            Assert.That(curve, Is.Null);
+        }
+
         // GREEN_ON_BASE(characterization): the base forgets an ease curve once its class is removed.
         [Test]
         public void Given_AnElementWhoseEaseClassIsRemoved_When_ItsCurveIsAskedFor_Then_ItHasNone()

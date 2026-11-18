@@ -80,8 +80,8 @@ namespace Velvet
             VisualElement? last = null;
             if (info.Target != null && info.SlotLength > 0)
             {
-                first = RowAt(info.Target, info.SlotStart);
-                last = RowAt(info.Target, info.SlotStart + info.SlotLength - 1);
+                first = ChildListWrites.RowAt(info.Target, info.SlotStart);
+                last = ChildListWrites.RowAt(info.Target, info.SlotStart + info.SlotLength - 1);
             }
             _stored[placeholder] = info with { First = first, Last = last };
         }
@@ -95,9 +95,6 @@ namespace Velvet
                 _stored[placeholder] = Resolve(info) with { First = null, Last = null };
             }
         }
-
-        private static VisualElement? RowAt(VisualElement target, int slot)
-            => LogicalChildSlots.TryGetPhysical(target, slot, out var physical) ? target[physical] : null;
 
         private static PortalSlotInfo Resolve(PortalSlotInfo info)
         {
@@ -1734,6 +1731,7 @@ namespace Velvet
         private readonly Dictionary<VisualElement, System.IDisposable> _portalRowFamilies = new();
         private readonly HashSet<VisualElement> _portalRows = new();
         private readonly List<VisualElement> _portalRowsLeft = new();
+        private readonly List<VisualElement?> _portalRowRange = new();
 
         // Brings the held rows in line with the rows the portals hold now. Called where a pass has placed every row.
         internal void SyncPortalRowFamilies()
@@ -1746,16 +1744,16 @@ namespace Velvet
                 var target = info.Target;
                 if (target == null || !SamePanelPortalBridges.ContainsKey(target)) continue;
 
-                for (var slot = info.SlotStart; slot < info.SlotStart + info.SlotLength; slot++)
+                _portalRowRange.Clear();
+                ChildListWrites.Rows(target, info.SlotStart, info.SlotStart + info.SlotLength, _portalRowRange);
+                foreach (var occupant in _portalRowRange)
                 {
-                    if (LogicalChildSlots.TryGetPhysical(target, slot, out var physical))
-                    {
-                        // A row FiberZLayerCoordinator relocates keeps only a placeholder in its slot.
-                        var occupant = target[physical];
-                        _portalRows.Add(ZLayerPlaceholders.TryGetValue(occupant, out var real) ? real : occupant);
-                    }
+                    // A row FiberZLayerCoordinator relocates keeps only a placeholder in its slot.
+                    _portalRows.Add(ZLayerPlaceholders.TryGetValue(occupant!, out var real) ? real : occupant!);
                 }
             }
+
+            _portalRowRange.Clear();
 
             _portalRowsLeft.Clear();
             foreach (var row in _portalRowFamilies.Keys)
@@ -2398,20 +2396,23 @@ namespace Velvet
             }
         }
 
-        // Runs the cleanup of each ref a queued setup replaces, bar those of a parked pass, ahead of the setups of
-        // a layout commit: the commit calls it first, and a cleanup already run leaves nothing for a second call.
-        // scope is the one the commit's TakeRefAttaches reads, so a commit detaches the refs it goes on to attach.
-        internal void DetachReplacedRefs(ComponentFiber? scope)
+        // Detaches the ref the queued setup of element replaces, where the commit's walk reaches the element
+        // (FiberRefPlacement): a detach already run leaves nothing for a second call. The commit calls it for the
+        // elements its TakeRefAttaches took, so it detaches the refs it goes on to attach.
+        internal void DetachReplacedRef(VisualElement element)
         {
-            if (!CanRunRefSetups) return;
+            if (!_pendingRefAttachIndex.TryGetValue(element, out var queued)) return;
+            var (_, callback, owner, pass) = _pendingRefAttaches[queued];
+            if (callback == null || pass is { HasPendingWork: true }) return;
+            var enclosing = _drainingRefAttaches;
             _drainingRefAttaches = true;
             try
             {
-                RunReplacedRefCleanups(0, _pendingRefAttaches.Count, scope);
+                RunReplacedRefCleanup(element, callback, owner);
             }
             finally
             {
-                _drainingRefAttaches = false;
+                _drainingRefAttaches = enclosing;
             }
         }
 
@@ -2548,21 +2549,27 @@ namespace Velvet
                 // The batch's own setup loop skips this entry too, so its old ref stays as it is.
                 if (pass is { HasPendingWork: true }) continue;
                 if (!IsInRefScope(owner, scope)) continue;
-                if (!RefCallbacks.TryGetValue(element, out var installed)) continue;
-                var replaced = installed.Cleanup;
-                if (replaced == null) continue;
-                // Ahead of the cleanup: a boundary catching its failure can take the element out, and
-                // finding the replaced entry there, FiberElementCleaner would run the cleanup a second time.
-                RefCallbacks[element] = (callback, null);
-                // Its failure goes where a setup's does, and the setup still runs.
-                try
-                {
-                    InOwnersFrame(owner, _ => { replaced(); return null; }, element);
-                }
-                catch (System.Exception exception)
-                {
-                    ContainUserCallbackFailure(owner, exception);
-                }
+                RunReplacedRefCleanup(element, callback, owner);
+            }
+        }
+
+        private void RunReplacedRefCleanup(
+            VisualElement element, System.Func<VisualElement, System.Action> callback, ComponentFiber? owner)
+        {
+            if (!RefCallbacks.TryGetValue(element, out var installed)) return;
+            var replaced = installed.Cleanup;
+            if (replaced == null) return;
+            // Ahead of the cleanup: a boundary catching its failure can take the element out, and
+            // finding the replaced entry there, FiberElementCleaner would run the cleanup a second time.
+            RefCallbacks[element] = (callback, null);
+            // Its failure goes where a setup's does, and the setup still runs.
+            try
+            {
+                InOwnersFrame(owner, _ => { replaced(); return null; }, element);
+            }
+            catch (System.Exception exception)
+            {
+                ContainUserCallbackFailure(owner, exception);
             }
         }
 

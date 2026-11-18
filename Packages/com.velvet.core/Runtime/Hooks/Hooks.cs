@@ -1946,6 +1946,7 @@ namespace Velvet
                     NextFactory = factory,
                     NextDeps = null,
                     NextNeedsRecompute = true,
+                    LayoutEffectsBefore = fiber.Indices.LayoutEffectHookIndex,
                 });
                 return;
             }
@@ -1988,6 +1989,7 @@ namespace Velvet
                     NextFactory = factory,
                     NextDeps = deps,
                     NextNeedsRecompute = true,
+                    LayoutEffectsBefore = fiber.Indices.LayoutEffectHookIndex,
                 });
                 return;
             }
