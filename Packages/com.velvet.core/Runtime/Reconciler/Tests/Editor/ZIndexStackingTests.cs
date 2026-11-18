@@ -2697,6 +2697,35 @@ namespace Velvet.Tests
             Assert.That(!heldWhileStacked || IsHeld(placeholder), Is.False);
         }
 
+        // GREEN_ON_BASE(characterization): the base forgets a placeholder its arrangement retires and removes. Drop
+        // `Release(retired);` in DrainTeardownsUnder and the placeholder keeps the record that marks it retired.
+        [Test]
+        public void Given_AZ0ElementLiftedAboveALaterUnpositionedSibling_When_ThatSiblingIsRemoved_Then_ItsRetiredPlaceholderIsNoLongerHeld()
+        {
+            // Arrange — the case above, with the element's own classes left alone: the sibling it is lifted above is
+            // what the second pass takes away, so the arrangement rather than a patch returns it to its slot.
+            using var scope = new ReconcilerScope();
+            var lifted = new VNode[] { V.Div(name: "parent", className: "relative", children: new VNode[]
+            {
+                V.Div(name: "zero", className: "absolute z-0"),
+                V.Div(name: "plain"),
+            }) };
+            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), lifted);
+            var zero = scope.Root.Q<VisualElement>("zero");
+            var placeholder = FiberZLayerCoordinator.PlaceholderOf(scope.Reconciler.Context, zero);
+            var heldWhileLifted = placeholder != null && IsHeld(placeholder);
+            var alone = new VNode[] { V.Div(name: "parent", className: "relative", children: new VNode[]
+            {
+                V.Div(name: "zero", className: "absolute z-0"),
+            }) };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, lifted, alone);
+
+            // Assert — a placeholder that was never held has nothing to forget, so the value read is true for it.
+            Assert.That(!heldWhileLifted || IsHeld(placeholder), Is.False);
+        }
+
         // GREEN_ON_BASE(characterization): the base adds the box a relocated in-flow element with a flex order lays
         // out by to its parent. Drop `ChildListWrites.HierarchyAdd(parent, anchor);` and no child of the parent holds it.
         [Test]

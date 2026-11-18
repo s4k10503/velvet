@@ -659,6 +659,11 @@ namespace Velvet
             if (context == null)
             {
                 // No shared context (defensive): fall back to the standalone single-fiber drain.
+                // MUTANT_SURVIVES(equivalent, line removed): only an unmounted fiber reaches here, and none is mounted again.
+                // A fiber that has rendered loses its Reconciler only once Unmount has cleared IsMounted, and the runtime
+                // mounts a fiber only from the call that created it, so the RunEffects scheduled here returns at its
+                // IsMounted check; the flag the removal leaves set is read only above, and whichever way it reads,
+                // nothing it gates runs an effect of an unmounted fiber.
                 ScheduleStandaloneEffectRun(fiber.MountPoint, fiber);
                 return;
             }

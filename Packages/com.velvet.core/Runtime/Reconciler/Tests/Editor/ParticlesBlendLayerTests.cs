@@ -155,7 +155,7 @@ namespace Velvet.Tests
             return V.Particles(removed ? null : s_effect, name: "px-layered", className: "w-[128px] h-[128px]");
         }
 
-        // GREEN_ON_BASE(characterization): the layers an effect drew over the element leave with it, as before.
+        // GREEN_ON_BASE(refactor): the layers an effect drew over the element still leave with it; the mount's layer is now a sentinel.
         [Test]
         public void Given_AnEffectWithABlendLayer_When_RepatchedToNull_Then_TheLayerLeavesTheElement()
         {
@@ -169,11 +169,11 @@ namespace Velvet.Tests
             s_setFlag.Invoke(true);
             FlushAndLayout();
 
-            // Assert
-            Assert.That((before, LayerChildren(element)), Is.EqualTo((1, 0)));
+            // Assert — read as -1 where the mount put no layer on the element for the repatch to take off.
+            Assert.That(before == 1 ? LayerChildren(element) : -1, Is.Zero);
         }
 
-        // GREEN_ON_BASE(characterization): a layer whose run is gone takes its recorded blend with it, as before.
+        // GREEN_ON_BASE(refactor): a layer whose run is gone still takes its blend with it; the mount's layer is now a sentinel.
         [Test]
         public void Given_ABlendLayerWhoseSystemWasDestroyed_When_TheTickArranges_Then_TheLayersBlendIsDropped()
         {
@@ -185,8 +185,27 @@ namespace Velvet.Tests
             // Act
             AdvanceTicks(1);
 
-            // Assert
-            Assert.That((layers, binding.LayerBlends.Count), Is.EqualTo((1, 0)));
+            // Assert — read as -1 where the mount arranged no layer for the tick to drop.
+            Assert.That(layers == 1 ? binding.LayerBlends.Count : -1, Is.Zero);
+        }
+
+        // GREEN_ON_BASE(characterization): a layer whose run is gone leaves the element, as before. Delete
+        // `ChildListWrites.RemoveFromHierarchy(layers[^1]);` from SyncLayers and the binding forgets the layer while
+        // the element still holds it.
+        [Test]
+        public void Given_ABlendLayerWhoseSystemWasDestroyed_When_TheTickArranges_Then_TheLayerLeavesTheElement()
+        {
+            // Arrange
+            var binding = MountAlphaRootOverAdditiveChild("fx-shrink-leaves");
+            var element = _host.Root.Q<VisualElement>("fx-shrink-leaves");
+            var before = LayerChildren(element);
+            Object.DestroyImmediate(binding.Systems[1].System.gameObject);
+
+            // Act
+            AdvanceTicks(1);
+
+            // Assert — read as -1 where the mount put no layer on the element for the tick to take off.
+            Assert.That(before == 1 ? LayerChildren(element) : -1, Is.Zero);
         }
 
         // The extents of two paint targets, the element's and its layer's, set by hand so the tick's own arrangement is
@@ -295,7 +314,7 @@ namespace Velvet.Tests
                 Is.EqualTo(painted));
         }
 
-        // GREEN_ON_BASE(characterization): a live element's Stop ends the simulation's logical play, as before.
+        // GREEN_ON_BASE(refactor): a live element's Stop still ends the logical play; the play before it is now a sentinel.
         [Test]
         public void Given_ALiveHostOutsidePlayMode_When_StopIsCalledOnTheElement_Then_ItIsNoLongerLogicallyPlaying()
         {
@@ -307,8 +326,8 @@ namespace Velvet.Tests
             // Act
             _host.Root.Q<ParticlesElement>("px-stop-element").Stop();
 
-            // Assert
-            Assert.That((playing, binding.LogicallyPlaying), Is.EqualTo((true, false)));
+            // Assert — read as null where the mount left the host not playing for Stop to end.
+            Assert.That(playing ? binding.LogicallyPlaying : (bool?)null, Is.False);
         }
 
         // GREEN_ON_BASE(characterization): a blend layer is positioned absolutely, as before.
