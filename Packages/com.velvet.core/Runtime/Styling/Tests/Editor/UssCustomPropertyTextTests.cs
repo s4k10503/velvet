@@ -786,6 +786,24 @@ namespace Velvet.Tests
             Assert.That(rewritten, Is.EqualTo(uss));
         }
 
+        [TestCase(":root { --x: \"a\"b /* c */; }", ":root { --x: \"\\\"a\\\"b\"; }")]
+        [TestCase(":root { --x: /* c */ \"a\"b; }", ":root { --x: \"\\\"a\\\"b\"; }")]
+        [TestCase(":root { --x: \"a\"b !important /* why */; }", ":root { --x: \"\\\"a\\\"b\" !important; }")]
+        [TestCase(":root { --x: \"a\"b !/**/important; }", ":root { --x: \"\\\"a\\\"b\" !important; }")]
+        [TestCase(":root { --x: a/**/b /* c */; }", ":root { --x: \"a b\"; }")]
+        [TestCase(":root { --x: a/**/b !/**/important; }", ":root { --x: \"a b\" !important; }")]
+        [TestCase(":root { --x: /**/ /**/ a/**/b /**/ /**/; }", ":root { --x: \"a b\"; }")]
+        public void Given_GluedTokensWithACommentOrAnImportantAtAnEdge_When_TheSheetIsRewritten_Then_ItsValueIsQuoted(
+            string uss, string expected)
+        {
+            // Arrange
+            // Act
+            var rewritten = RewriteWithin(uss);
+
+            // Assert
+            Assert.That(rewritten, Is.EqualTo(expected));
+        }
+
         private static readonly TimeSpan RewriteBound = TimeSpan.FromSeconds(10);
 
         // On a thread of its own, so a rewrite that never returns fails its case rather than holding the suite; it then

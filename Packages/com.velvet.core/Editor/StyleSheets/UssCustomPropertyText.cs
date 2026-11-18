@@ -363,8 +363,8 @@ namespace Velvet.Editor
             return text.Length;
         }
 
-        // A comment becomes comment, a space unless the caller says otherwise, and so does a line break or a form feed, while a string, an escape and an unquoted
-        // URL path are kept whole, so what reads as one inside them stays. badUrl says whether the importer's lexer
+        // A comment becomes comment, which is a space unless the caller says otherwise, and a line break or a form feed
+        // becomes a space; a string, an escape and an unquoted URL path are kept whole, so what reads as one inside them stays. badUrl says whether the importer's lexer
         // raises an error on a URL path, which fails the sheet.
         private static string Flatten(string value, out bool badUrl, string comment = " ")
         {
@@ -428,11 +428,10 @@ namespace Velvet.Editor
             return slashes % 2 == 1;
         }
 
-        // Whether the importer would fail, drop or misread value: a token HasUnheldToken finds, or a comment
-        // HasCommentInArguments finds in written, the value before its comments are taken out, which
-        // HoldsAdjacentStrings also reads, through WithoutComments. A value holding a
-        // backslash outside a string is left as written unless its URL is one UrlEnd refuses, so such a token in it
-        // still fails the importer.
+        // Whether the importer would fail, drop or misread value: a token HasUnheldToken finds, tokens
+        // HoldsAdjacentStrings finds in written without its comments, or a comment HasCommentInArguments finds in
+        // written. A value holding a backslash outside a string is left as written unless its URL is one UrlEnd refuses,
+        // so such a token in it still fails the importer.
         internal static bool NeedsQuoting(string value, string written, out bool commentInResource)
         {
             commentInResource = false;
@@ -443,13 +442,34 @@ namespace Velvet.Editor
 
         private const string CommentMark = "\u0001";
 
-        // written as the importer's value builder keeps it: a comment among the top-level tokens is no whitespace between
-        // them, and CommentMark stands where it was so the tokens on its two sides stay two.
+        // written with each top-level comment as CommentMark, the way the importer's value builder joins the tokens either
+        // side of one, and without the whitespace, comments and `!important` that edge the value.
         private static string WithoutComments(string written)
         {
-            var bare = Flatten(written, out _, CommentMark);
-            SplitImportant(ref bare, out _);
-            return bare.Trim();
+            var bare = TrimEdges(Flatten(written, out _, CommentMark));
+            var bang = bare.LastIndexOf('!');
+            if (bang >= 0 && !IsEscaped(bare, bang)
+                && string.Equals(bare.Substring(bang + 1).Replace(CommentMark, string.Empty).Trim(), "important",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                bare = TrimEdges(bare.Substring(0, bang));
+            }
+            return bare;
+        }
+
+        private static string TrimEdges(string text)
+        {
+            var start = 0;
+            var end = text.Length;
+            while (start < end && (char.IsWhiteSpace(text[start]) || text[start] == CommentMark[0]))
+            {
+                start++;
+            }
+            while (end > start && (char.IsWhiteSpace(text[end - 1]) || text[end - 1] == CommentMark[0]))
+            {
+                end--;
+            }
+            return text.Substring(start, end - start);
         }
 
         // Whether value is one string beside identifiers or strings with nothing between them, which the importer joins
