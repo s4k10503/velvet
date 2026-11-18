@@ -35,7 +35,7 @@ namespace Velvet
     }
 
     // An element type that hands its own events to CornerRadiusFit.OnHostEvent while RadiusFitWatches is set, in place
-    // of the callback the fit registers on any other element it watches.
+    // of the callbacks the fit registers on any other element it watches.
     internal interface IRadiusFitHost
     {
         bool RadiusFitWatches { get; set; }
@@ -57,9 +57,11 @@ namespace Velvet
     /// declared change, and a <c>transition-all</c> element would otherwise animate from the unfitted radius
     /// when it is first laid out.
     ///
-    /// An element none of that reaches is observed from its creation (<see cref="Observe"/>): the first size change
-    /// that finds a radius resolved on it attaches the fit, which then reads the rules' radius through
-    /// <see cref="StyleCascade.Radius"/> and a length its code writes as it does for any other element.
+    /// An element none of that reaches is observed from its creation (<see cref="Observe"/>): the first size change or
+    /// style pass that finds a radius resolved on it attaches the fit, which then reads the rules' radius through
+    /// <see cref="StyleCascade.Radius"/> and a length its code writes as it does for any other element. A style
+    /// pass reaches the fit through the custom property <c>_preflight.uss</c> gives the types Velvet builds, so it
+    /// needs the bundled stylesheet attached.
     /// </remarks>
     internal static class CornerRadiusFit
     {
@@ -106,12 +108,12 @@ namespace Velvet
         private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<VisualElement, State> s_states = new();
 
         // Watches element for a radius its rules or its code give it, which no class or arbitrary value declared.
-        public static void Observe(VisualElement element) => WatchGeometry(element);
+        public static void Observe(VisualElement element) => Watch(element);
 
-        // Watching a host sets its flag, and its type hands it its size changes, so watching one allocates nothing
-        // (CornerRadiusFitObserveAllocationTests). Neither kind is ever unwatched: nothing unregisters the callback, and
-        // a host's flag outlives the pool, so a pooled host is still watched when it is rented again.
-        private static void WatchGeometry(VisualElement element)
+        // Watching a host sets its flag, and its type hands it its size changes and style passes, so watching one allocates
+        // nothing (CornerRadiusFitObserveAllocationTests). Neither kind is ever unwatched: nothing unregisters a callback,
+        // and a host's flag outlives the pool, so a pooled host is still watched when it is rented again.
+        private static void Watch(VisualElement element)
         {
             if (element is IRadiusFitHost host)
             {
@@ -119,6 +121,7 @@ namespace Velvet
                 return;
             }
             element.RegisterCallback(s_onGeometryChanged);
+            element.RegisterCallback(s_onStyleResolved);
         }
 
         public static void TrackClass(VisualElement element, string cls)
@@ -223,7 +226,8 @@ namespace Velvet
             }
         }
 
-        private static readonly EventCallback<CustomStyleResolvedEvent> s_onStyleResolved = OnStyleResolved;
+        private static readonly EventCallback<CustomStyleResolvedEvent> s_onStyleResolved =
+            evt => OnStyleResolved((VisualElement)evt.currentTarget);
         private static readonly EventCallback<GeometryChangedEvent> s_onGeometryChanged =
             evt => OnGeometryChanged((VisualElement)evt.currentTarget, evt);
 
@@ -234,20 +238,20 @@ namespace Velvet
                 return state;
             }
             state = new State();
-            element.RegisterCallback(s_onStyleResolved);
-            WatchGeometry(element);
+            Watch(element);
             s_states.Add(element, state);
             return state;
         }
 
-        private static void OnStyleResolved(CustomStyleResolvedEvent evt)
+        // The handler of an element's style pass, and a watched host's.
+        internal static void OnStyleResolved(VisualElement element)
         {
-            var element = (VisualElement)evt.currentTarget;
-            if (!s_states.TryGetValue(element, out var state))
+            var state = s_states.TryGetValue(element, out var tracked) ? tracked : AttachWhereRadiusResolves(element);
+            if (state == null)
             {
                 return;
             }
-            ReadSheet(element, state, evt.customStyle);
+            ReadSheet(element, state, element.customStyle);
             RefreshDeclared(element, state);
         }
 
@@ -288,12 +292,16 @@ namespace Velvet
             return StyleArbitraryValueResolver.TryParseValue(text.AsSpan(), out var value, out var unit) ? new Length(value, unit) : null;
         }
 
-        // An event a watched host's type was handed, of which the fit reads its size changes.
+        // An event a watched host's type was handed, of which the fit reads its size changes and style passes.
         internal static void OnHostEvent(VisualElement host, EventBase evt)
         {
             if (evt is GeometryChangedEvent geometry)
             {
                 OnGeometryChanged(host, geometry);
+            }
+            else if (evt is CustomStyleResolvedEvent)
+            {
+                OnStyleResolved(host);
             }
         }
 
@@ -330,7 +338,7 @@ namespace Velvet
         private static State? AttachWhereRadiusResolves(VisualElement element)
         {
             // The inline slots and the rules' radii are read as well as the resolved ones, which a style pass that
-            // follows the layout this fires in has not yet brought up to date.
+            // follows a layout has not yet brought up to date.
             var style = element.resolvedStyle;
             var resolves = false;
             for (var i = 0; i < CornerCount; i++)

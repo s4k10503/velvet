@@ -435,9 +435,10 @@ declared radius, and a radius your code writes to `style` is scaled with the oth
 no longer needs the fit. A keyword written there (`initial`) is left alone. A change of class under
 `transition-all` animates between the fitted radii rather than the declared ones. An element with no such class and
 no arbitrary radius is fitted all the same, from a radius your own stylesheet gives it or your code writes to `style`
-(`border-radius: 400px` on a `.pill` rule). It is checked each time its size changes, first layout included, so a
-radius that appears with no size change, a class swap or a write to `style` after layout, is fitted when the size next
-changes.
+(`border-radius: 400px` on a `.pill` rule). It is checked each time its size changes, first layout included, and
+each time the element's style is resolved, so a class swap that brings a radius in after layout is fitted in the same
+update, with no size change. A write to `style` after layout is fitted at
+the element's next size change or style pass. The style pass needs the bundled stylesheet attached.
 
 **The wrapper-less paints under a hidden overflow.** UI Toolkit applies an element's own overflow clip to the
 element's own painted content, and cuts it at the **padding** box, while CSS clips neither a box-shadow nor a border

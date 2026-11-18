@@ -65,6 +65,35 @@ namespace Velvet.Tests
             return V.Div(name: "box", className: className);
         }
 
+        private static string s_kind;
+
+        // The box of RenderSwitchable as the element type s_kind names.
+        [Component]
+        private static VNode RenderSwitchableOfKind()
+        {
+            var (className, setClass) = Hooks.UseState(s_initialClass);
+            s_setClass = setClass;
+            return s_kind switch
+            {
+                "label" => V.Label(name: "box", className: className),
+                "button" => V.Button(name: "box", className: className),
+                _ => V.ScrollView(name: "box", className: className),
+            };
+        }
+
+        // Mounts the box RenderSwitchableOfKind builds as kind, laid out at WideBox before any class brings a radius in.
+        private VisualElement MountSwitchableOfKind(string kind)
+        {
+            s_kind = kind;
+            s_initialClass = WideBox;
+            _mounted = V.Mount(_window.rootVisualElement, V.Component(RenderSwitchableOfKind));
+            ForcePanelUpdate(Box.panel);
+            return Box;
+        }
+
+        private void AttachOwnRadiusSheet() => _window.rootVisualElement.styleSheets.Add(
+            UnityEditor.AssetDatabase.LoadAssetAtPath<StyleSheet>(OwnRadiusSheet));
+
         private static float[] Radii(VisualElement element)
         {
             var style = element.resolvedStyle;
@@ -431,6 +460,82 @@ namespace Velvet.Tests
 
             // Assert — 90 down a 34px side scales every corner by 34/90.
             Assert.That(Radii(box), Is.EqualTo(new[] { 34f, 30f * 34f / 90f, 0f, 0f }).Within(1e-3f));
+        }
+
+        // The rule gives the top-left corner 90 and the top-right 30; 90 down a 34px side scales every corner by 34/90.
+        private static readonly float[] s_unevenRadiiFittedToWideBox = { 34f, 30f * 34f / 90f, 0f, 0f };
+
+        [Test]
+        public void Given_ALaidOutBoxWithNoRadius_When_ItsClassBecomesOneWhoseOwnRuleOverflowsItsHeight_Then_ItsCornersAreScaledWithNoSizeChange()
+        {
+            // Arrange — the box keeps its 330 x 34 through the swap, so no size change reaches the fit.
+            AttachOwnRadiusSheet();
+            var box = MountSwitchable(WideBox);
+
+            // Act
+            SwitchClass($"{WideBox} layout-id-test-uneven");
+
+            // Assert
+            Assert.That(Radii(box), Is.EqualTo(s_unevenRadiiFittedToWideBox).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_ALaidOutLabelWithNoRadius_When_ItsClassBecomesOneWhoseOwnRuleOverflowsItsHeight_Then_ItsCornersAreScaledWithNoSizeChange()
+        {
+            // Arrange — a Label is a host of the fit, whose own event handling the style pass reaches.
+            AttachOwnRadiusSheet();
+            var box = MountSwitchableOfKind("label");
+
+            // Act
+            SwitchClass($"{WideBox} layout-id-test-uneven");
+
+            // Assert
+            Assert.That(Radii(box), Is.EqualTo(s_unevenRadiiFittedToWideBox).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_ALaidOutButtonWithNoRadius_When_ItsClassBecomesOneWhoseOwnRuleOverflowsItsHeight_Then_ItsCornersAreScaledWithNoSizeChange()
+        {
+            // Arrange
+            AttachOwnRadiusSheet();
+            var box = MountSwitchableOfKind("button");
+
+            // Act
+            SwitchClass($"{WideBox} layout-id-test-uneven");
+
+            // Assert
+            Assert.That(Radii(box), Is.EqualTo(s_unevenRadiiFittedToWideBox).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_ALaidOutScrollViewWithNoRadius_When_ItsClassBecomesOneWhoseOwnRuleOverflowsItsHeight_Then_ItsCornersAreScaledWithNoSizeChange()
+        {
+            // Arrange — a ScrollView is no host: the fit registers a callback on it.
+            AttachOwnRadiusSheet();
+            var box = MountSwitchableOfKind("scroll");
+
+            // Act
+            SwitchClass($"{WideBox} layout-id-test-uneven");
+
+            // Assert
+            Assert.That(Radii(box), Is.EqualTo(s_unevenRadiiFittedToWideBox).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_ALaidOutBoxWhoseCodeWroteARadiusBeyondItsHeight_When_ItsClassChangesWithNoSizeChange_Then_ItsCornersAreScaled()
+        {
+            // Arrange — the write itself raises neither a size change nor a style pass.
+            var box = MountSwitchable(WideBox);
+            box.style.borderTopLeftRadius = 400f;
+            box.style.borderTopRightRadius = 400f;
+            box.style.borderBottomRightRadius = 400f;
+            box.style.borderBottomLeftRadius = 400f;
+
+            // Act — a style pass of its own, with the box still 330 x 34.
+            SwitchClass($"{WideBox} opacity-90");
+
+            // Assert
+            Assert.That(Radii(box), Is.EqualTo(new[] { 17f, 17f, 17f, 17f }).Within(1e-3f));
         }
 
         [Test]
