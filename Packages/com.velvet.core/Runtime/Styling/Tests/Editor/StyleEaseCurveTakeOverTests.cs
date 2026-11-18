@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using NUnit.Framework;
+using UnityEditor;
 using UnityEngine;
 using UnityEngine.UIElements;
 using Velvet.TestUtilities;
@@ -20,18 +21,17 @@ namespace Velvet.Tests
 
         private static readonly BezierCurve s_tailwindEaseInOut = new(0.4f, 0f, 0.2f, 1f);
 
-        // A second-long transition of property, on the keyword given, that has run three tenths of a second by the panel's
-        // clock at 100 s, from the value from writes to the one to writes, and whose run event has not been dispatched. The
-        // classes are noted before the transition starts where listenFirst, and after it where not.
-        private VisualElement Started(string property, Action<VisualElement> from, Action<VisualElement> to, bool listenFirst = true,
-            EasingMode mode = EasingMode.EaseInOut)
+        private const string Sheet = "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/TakeOverTestSheet.uss";
+
+        // A transition the class's rule gives a second, three tenths of it already run by the panel's clock at 100 s, from
+        // the value from writes to the one to writes, whose run event has not been dispatched. The classes are noted
+        // before the transition starts where listenFirst, and after it where not.
+        private VisualElement Started(string rule, Action<VisualElement> from, Action<VisualElement> to, bool listenFirst = true)
         {
+            _window.rootVisualElement.styleSheets.Add(AssetDatabase.LoadAssetAtPath<StyleSheet>(Sheet));
             var element = new VisualElement();
             _window.rootVisualElement.Add(element);
-            element.style.transitionProperty = new List<StylePropertyName> { new(property) };
-            element.style.transitionDuration = new List<TimeValue> { new(1f) };
-            element.style.transitionDelay = new List<TimeValue> { new(-0.3f) };
-            element.style.transitionTimingFunction = new List<EasingFunction> { new(mode) };
+            element.AddToClassList(rule);
             element.RegisterCallback<TransitionRunEvent>(_ => _ran = true);
             from(element);
             ForcePanelUpdate(element.panel);
@@ -68,7 +68,7 @@ namespace Velvet.Tests
         public void Given_AnOpacityTransitionOnEaseInOutClasses_When_ACarryTakesItOverBeforeItsRunEvent_Then_ItCarriesTailwindsEaseInOut()
         {
             // Arrange
-            var element = Started("opacity", e => e.style.opacity = 0f, e => e.style.opacity = 1f);
+            var element = Started("take-over-ease-in-out", e => e.style.opacity = 0f, e => e.style.opacity = 1f);
             var carry = new LayoutIdCarry();
 
             // Act
@@ -83,7 +83,7 @@ namespace Velvet.Tests
         public void Given_ARotateTransitionOnEaseInOutClasses_When_ACarryTakesItOverBeforeItsRunEvent_Then_ItCarriesTailwindsEaseInOut()
         {
             // Arrange
-            var element = Started("rotate", e => e.style.rotate = new Rotate(0f), e => e.style.rotate = new Rotate(90f));
+            var element = Started("take-over-ease-in-out", e => e.style.rotate = new Rotate(0f), e => e.style.rotate = new Rotate(90f));
             var carry = new LayoutIdCarry();
 
             // Act
@@ -98,7 +98,7 @@ namespace Velvet.Tests
         public void Given_ATranslateTransitionOnEaseInOutClasses_When_ACarryTakesItOverBeforeItsRunEvent_Then_ItCarriesTailwindsEaseInOut()
         {
             // Arrange
-            var element = Started("translate", e => e.style.translate = new Translate(0f, 0f), e => e.style.translate = new Translate(0f, 20f));
+            var element = Started("take-over-ease-in-out", e => e.style.translate = new Translate(0f, 0f), e => e.style.translate = new Translate(0f, 20f));
             var axes = new[] { new LayoutIdCarry(), new LayoutIdCarry() };
 
             // Act
@@ -113,7 +113,7 @@ namespace Velvet.Tests
         public void Given_AScaleTransitionOnEaseInOutClasses_When_ACarryTakesItOverBeforeItsRunEvent_Then_ItCarriesTailwindsEaseInOut()
         {
             // Arrange
-            var element = Started("scale", e => e.style.scale = new Scale(new Vector2(1f, 1f)),
+            var element = Started("take-over-ease-in-out", e => e.style.scale = new Scale(new Vector2(1f, 1f)),
                 e => e.style.scale = new Scale(new Vector2(2f, 2f)));
             var axes = new[] { new LayoutIdCarry(), new LayoutIdCarry() };
 
@@ -129,7 +129,7 @@ namespace Velvet.Tests
         public void Given_ARadiusTransitionOnEaseInOutClasses_When_ACarryTakesItOverBeforeItsRunEvent_Then_ItCarriesTailwindsEaseInOut()
         {
             // Arrange
-            var element = Started("border-top-left-radius", e => e.style.borderTopLeftRadius = 0f, e => e.style.borderTopLeftRadius = 20f);
+            var element = Started("take-over-ease-in-out", e => e.style.borderTopLeftRadius = 0f, e => e.style.borderTopLeftRadius = 20f);
             var carry = new LayoutIdCarry();
 
             // Act
@@ -146,7 +146,7 @@ namespace Velvet.Tests
         public void Given_AnOpacityTransitionThatStartedBeforeTheElementWasListenedTo_When_ACarryTakesItOver_Then_ItKeepsUIToolkitsCurve()
         {
             // Arrange
-            var element = Started("opacity", e => e.style.opacity = 0f, e => e.style.opacity = 1f, listenFirst: false);
+            var element = Started("take-over-ease-in-out", e => e.style.opacity = 0f, e => e.style.opacity = 1f, listenFirst: false);
             var carry = new LayoutIdCarry();
 
             // Act
@@ -163,7 +163,7 @@ namespace Velvet.Tests
         public void Given_AnOpacityTransitionWhoseRunEventLeftItOnALinearCurve_When_ALayerGivesLinearAFunctionAndACarryTakesItOver_Then_ItKeepsTheLinearCurve()
         {
             // Arrange — Tailwind gives linear no curve, so the run event leaves the transition as the engine runs it.
-            var element = Started("opacity", e => e.style.opacity = 0f, e => e.style.opacity = 1f, mode: EasingMode.Linear);
+            var element = Started("take-over-linear", e => e.style.opacity = 0f, e => e.style.opacity = 1f);
             EditorPanelTestHelpers.DriveAnimationsOnce(element.panel);
             StyleEaseCurve.SetLayer(element, new BezierCurve(0.9f, 0f, 0.1f, 1f), EasingMode.Linear);
             var carry = new LayoutIdCarry();
