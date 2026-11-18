@@ -264,6 +264,10 @@ namespace Velvet
             // The name and start of each transition a carry can take over that ran as that tween began
             // (RunningStyleTransition.Running).
             public List<(string Name, double StartSec)>? RunningAtTween;
+            // The transitions a carry can take over that ran as the element began to be listened to, and the id and start of
+            // each OnRun has seen the run event of.
+            public List<(string Name, double StartSec)>? RunningAtListen;
+            public List<(object Id, double StartSec)>? Run;
             public bool Registered;
 
             public bool HasEntryFor(string property)
@@ -371,16 +375,23 @@ namespace Velvet
         // The curve a transition UI Toolkit runs for the element, which started at startSec, eases by once a carry takes it
         // over, which can be before its run event reaches OnRun
         // (Given_ATweenEnterEasingInCircThreeTenthsOfASecondIn_When_ACarryTakesItsOpacityOverBeforeItsRunEvent_Then_ItCarriesFramersWebAnimationsCircIn):
-        // under a Motion's tween, the one OnRun retimes it to. One that was running as the tween began keeps its own, as
-        // OnRun, which sees only transitions that start, leaves it.
-        internal static Func<float, float> TakenOver(VisualElement element, string property, double startSec,
+        // the one OnRun retimes it to. One OnRun leaves keeps its own: one that was running as the tween began or as the
+        // element began to be listened to, since OnRun sees only transitions that start, and one it has already seen.
+        internal static Func<float, float> TakenOver(VisualElement element, string property, object id, double startSec,
             Func<float, float> curve)
         {
-            if (!MotionTweenTiming.PlaysCurve(element) || RanAtTween(element, property, startSec))
+            if (MotionTweenTiming.PlaysCurve(element))
+            {
+                return RanAtTween(element, property, startSec) ? curve
+                    : MotionEasing.InPlaceOfEngineCurve(curve, OnWebAnimations(element, property)) ?? curve;
+            }
+            if (!s_bindings.TryGetValue(element, out var binding) || !binding.Registered
+                || binding.RunningAtListen?.Contains((property, startSec)) == true
+                || binding.Run?.Contains((id, startSec)) == true)
             {
                 return curve;
             }
-            return MotionEasing.InPlaceOfEngineCurve(curve, OnWebAnimations(element, property)) ?? curve;
+            return ToShaped(element, binding)(curve) ?? curve;
         }
 
         private static bool RanAtTween(VisualElement element, string property, double startSec)
@@ -428,6 +439,8 @@ namespace Velvet
                 return;
             }
             binding.Registered = wanted;
+            binding.RunningAtListen = wanted ? RunningStyleTransition.Running(element) : null;
+            binding.Run = null;
             if (wanted)
             {
                 element.RegisterCallback(s_onRun);
@@ -450,9 +463,22 @@ namespace Velvet
             // on, as a CSS transition keeps its timing function.
             foreach (var name in evt.stylePropertyNames)
             {
-                RunningStyleTransition.Retime(element, name,
-                    classes ?? (OnWebAnimations(element, name.ToString()) ? s_engineToAcceleratedMotion : s_engineToMotion));
+                if (RunningStyleTransition.Retime(element, name,
+                        classes ?? (OnWebAnimations(element, name.ToString()) ? s_engineToAcceleratedMotion : s_engineToMotion))
+                    is { } run)
+                {
+                    NoteRun(binding.Run ??= new(), run);
+                }
             }
+        }
+
+        private static void NoteRun(List<(object Id, double StartSec)> runs, (object Id, double StartSec) run)
+        {
+            for (var i = runs.Count - 1; i >= 0; i--)
+            {
+                if (runs[i].Id.Equals(run.Id)) runs.RemoveAt(i);
+            }
+            runs.Add(run);
         }
 
         // Replaces the curve UI Toolkit runs a keyword by with the classes' or the layer's function for that keyword, and
