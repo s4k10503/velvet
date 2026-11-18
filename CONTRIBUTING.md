@@ -1522,6 +1522,13 @@ outcome unknown: settle leaves the branch where it is and exits 0, so read the p
 asking again. `gh stack merge` typed by hand merges every member up to the one it is given and is
 held to none of this, so `refuse/stack_merge_by_hand.py` refuses it.
 
+**A pull request merges under a milestone**: for a change to `Packages/com.velvet.core/` onto
+`main` or a maintenance line, the next version that branch publishes, at least the bump
+[Releasing](#releasing) derives; otherwise the Infrastructure milestone or a version.
+`settle.py merge`, `refuse/merge_off_milestone.py` and the milestone step of
+`Source generators ▸ repository-settings` refuse anything else, each naming its way out, and
+[`scripts/pr/milestone.py`](scripts/pr/milestone.py) owns the rule.
+
 No merge waits on a mutation campaign. A campaign dispatched onto a pull request's
 branch runs on its head like any other workflow, and `settle.py merge`, the automerge runs through it, and
 `refuse/merge_unproven_head.py` leave its runs and its checks out of what they read, so one that failed
@@ -1701,6 +1708,11 @@ directory.
 2. Merge to `main` (the `upm` branch is updated automatically).
 3. Run the **UPM** workflow via *Actions ▸ UPM ▸ Run workflow*, entering the same version.
    This tags `vX.Y.Z` on the `upm` (package-at-root) commit and publishes a GitHub release.
+
+**A release publishes the next version and skips none**: one following the newest release below
+it, and the lowest open version milestone of its branch, which the dispatch closes once the release
+is published. [`scripts/pr/milestone.py`](scripts/pr/milestone.py) owns the rule; ask it before
+closing the version with `python3 scripts/pr/milestone.py release --version X.Y.Z`.
 
 **A release is gated on the mutation record and on `main`'s CI.** The dispatch promotes the commit it
 runs on, which CI has already measured, the way

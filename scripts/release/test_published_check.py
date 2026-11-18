@@ -322,6 +322,31 @@ class LeftOpenDecisionTests(unittest.TestCase):
         self.assertIsNone(reason)
 
 
+class SkippedDecisionTests(unittest.TestCase):
+    """Whether a version a change closes follows the newest release below it."""
+
+    def test_Given_AMinorClosedTwoAboveTheNewestRelease_When_Decided_Then_ItIsNamed(self):
+        # Arrange
+        result = PUBLISHED.replace("## [Unreleased]", "## [2.2.0] - 2026-08-09")
+
+        # Act
+        reason = published_check.skipped_reason(PUBLISHED, result, TAGS)
+
+        # Assert
+        self.assertIn("2.2.0 does not follow 2.0.1, the newest release below it", reason or "")
+
+    def test_Given_TheNextMinorClosed_When_Decided_Then_ThereIsNoReason(self):
+        # Act / Assert
+        self.assertIsNone(published_check.skipped_reason(PUBLISHED, AHEAD, TAGS))
+
+    def test_Given_APatchClosedBelowANewerPublishedMajor_When_Decided_Then_ThereIsNoReason(self):
+        # Arrange — a line's patch, published from the line after main released the next major.
+        result = PUBLISHED.replace("## [Unreleased]", "## [2.0.2] - 2026-08-09")
+
+        # Act / Assert
+        self.assertIsNone(published_check.skipped_reason(PUBLISHED, result, TAGS | {"v3.0.0"}))
+
+
 class TagListingBound(unittest.TestCase):
     """The bound is the hook's, where a person waits. The workflow raises it and nothing waits there.
 
