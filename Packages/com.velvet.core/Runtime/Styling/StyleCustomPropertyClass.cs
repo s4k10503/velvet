@@ -60,6 +60,13 @@ namespace Velvet
                     && (IsArbitraryProperty(core, out _, out _) || Consumer(core) != null))
                 || StyleThemeClass.Normalize(core) != null || StyleThemeClass.IsClearedBundled(core));
 
+        // Whether core, with its important bang removed, is a token Consumer reads. A reader names its custom property as
+        // `var(` or as the parenthesised shorthand's `--`, so a token holding neither is none and costs no normalizing.
+        internal static bool IsConsumer(string core)
+            => (core.IndexOf("var(", StringComparison.OrdinalIgnoreCase) >= 0
+                    || core.IndexOf("--", StringComparison.Ordinal) >= 0)
+                && Consumer(core) != null;
+
         // `[--name:value]`: the name as written and the value as Tailwind writes it into the declaration, with `_`
         // read as a space outside a var() name and a url().
         public static bool TryDeclaration(string core, out string name, out string value)
@@ -127,7 +134,7 @@ namespace Velvet
                 return null;
             }
             var open = expanded.IndexOf('[');
-            if (open < 2 || (expanded[open - 1] != '-' && expanded[open - 1] != '/') || expanded[expanded.Length - 1] != ']')
+            if (open < 2 || (expanded[open - 1] != '-' && expanded[open - 1] != '/') || !EndsInBracketOrNumericModifier(expanded))
             {
                 return null;
             }
@@ -136,6 +143,16 @@ namespace Velvet
                 || (SidesOf(expanded, shape) != null && HoldsSeveralValues(expanded, shape))
                 ? expanded
                 : null;
+        }
+
+        // Whether utility closes with a bracket, or with the bracket and a numeric opacity modifier after it
+        // (`shadow-[var(--x)]/50`).
+        private static bool EndsInBracketOrNumericModifier(string utility)
+        {
+            var slash = utility.LastIndexOf('/');
+            var number = utility.AsSpan(slash + 1);
+            return utility[utility.Length - 1] == ']'
+                || (slash > 1 && utility[slash - 1] == ']' && !number.IsEmpty && number.TrimStart("0123456789.".AsSpan()).IsEmpty);
         }
 
         // `prefix-(--x)`, `prefix-(hint:--x)` and a modifier's `/(--x)`, each written as the bracket Tailwind reads

@@ -8,24 +8,37 @@ namespace Velvet
     internal static partial class StyleCustomProperties
     {
         // What an unresolvable var() computes to, as a utility, for the painted utilities where that is not
-        // nothing. A gradient stop's colour and position, a box shadow, a ring's shadow and its offset are custom
-        // properties Tailwind registers with an initial value: transparent; 0%, 50% and 100%; one that draws none;
-        // the same; 0px. A ring's colour is one it registers without one, which its shadow reads with a
-        // currentcolor fallback; an outline colour's initial value is currentcolor and its width's is medium (3px).
-        // Gap's initial value is no gap. A font's weight and family and a line height inherit. A skew axis is a
-        // custom property Tailwind registers without one, which the transform reads with an empty fallback: no
-        // shear on that axis, as a skew of 0 draws.
+        // nothing. A gradient stop's colour and position, and a ring offset's width, are custom properties Tailwind
+        // registers with an initial value: transparent; 0%, 50% and 100%; 0px. A ring's colour is one it registers
+        // without one, which its shadow reads with a currentcolor fallback; an outline colour's initial value is
+        // currentcolor and its width's is medium (3px). Gap's initial value is no gap. A font's weight and family and a
+        // line height inherit. A skew axis is a custom property Tailwind registers without one, which the transform
+        // reads with an empty fallback: no shear on that axis, as a skew of 0 draws.
+        //
+        // A box-shadow layer, a ring's width and an inset ring's width draw no box-shadow at all, the ring and every
+        // other layer beside them with it: the utility standing for that is one the box-shadow readers reject
+        // (StyleRingClass.DiscardsBoxShadow).
         private static string? PaintedUnset(string prefix, string? hint)
         {
             if (!s_paintedUnset.TryGetValue(prefix, out var unset))
             {
                 return null;
             }
+            // A ring's bracket is its width under the length hint and its colour under any other.
+            if (hint != null && hint != "length" && s_ringBrackets.Contains(prefix))
+            {
+                hint = "color";
+            }
             return hint == null ? unset.Untyped
                 : hint == "color" ? unset.Colour
                 : hint is "family-name" or "generic-name" ? unset.Family
                 : unset.Typed;
         }
+
+        private static readonly HashSet<string> s_ringBrackets = new(StringComparer.Ordinal)
+        {
+            "ring-", "ring-offset-", "inset-ring-",
+        };
 
         // Per painted utility: what an unresolvable var() stands for when the value is untyped, a colour, a family
         // name, and any other type. An untyped shadow is a box shadow, as Tailwind writes one it does not test.
@@ -35,9 +48,11 @@ namespace Velvet
                 ["from-"] = ("from-transparent", "from-transparent", "from-transparent", "from-0%"),
                 ["via-"] = ("via-transparent", "via-transparent", "via-transparent", "via-50%"),
                 ["to-"] = ("to-transparent", "to-transparent", "to-transparent", "to-100%"),
-                ["shadow-"] = ("shadow-none", null, "shadow-none", "shadow-none"),
-                ["ring-"] = ("ring-current", "ring-current", "ring-current", "ring-0"),
+                ["shadow-"] = ("shadow-[0]", null, "shadow-[0]", "shadow-[0]"),
+                ["inset-shadow-"] = ("inset-shadow-[0]", null, "inset-shadow-[0]", "inset-shadow-[0]"),
+                ["ring-"] = ("ring-current", "ring-current", "ring-current", "ring-[length:0]"),
                 ["ring-offset-"] = (null, null, null, "ring-offset-0"),
+                ["inset-ring-"] = ("inset-ring-current", "inset-ring-current", "inset-ring-current", "inset-ring-[length:2]"),
                 ["outline-"] = ("outline-current", "outline-current", "outline-current", "outline-[length:3px]"),
                 ["gap-"] = ("gap-0", "gap-0", "gap-0", "gap-0"),
                 ["gap-x-"] = ("gap-x-0", "gap-x-0", "gap-x-0", "gap-x-0"),

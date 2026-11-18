@@ -18,7 +18,67 @@ namespace Velvet
                 into.Append(consumer.AddedHint).Append(':');
             }
             s_resolving.Clear();
-            return TryAppendSubstituted(element, utility, from, utility.Length, encoded: true, into);
+            return consumer.ShadowLayers
+                ? TryAppendShadowLayers(element, consumer, from, into)
+                : TryAppendSubstituted(element, utility, from, utility.Length, encoded: true, into);
+        }
+
+        // TryAppendSubstituted for a box-shadow utility, each layer of its bracket resolved on its own. Which layers a
+        // colour class reaches is Tailwind's reading of them as written (StyleShadowClass.LayerReadsShadowColour), and a
+        // var() replaced by text would change it, so a layer it leaves alone is marked (StyleShadowClass.FixedLayerMark),
+        // as is each layer a var() in it expands to.
+        private static bool TryAppendShadowLayers(VisualElement element, Consumer consumer, int from, StringBuilder into)
+        {
+            var utility = consumer.Utility;
+            var shape = consumer.Shape;
+            into.Append(utility, from, shape.BodyStart - from);
+            var start = shape.BodyStart;
+            var depth = 0;
+            for (var i = shape.BodyStart; i <= shape.MainClose; i++)
+            {
+                if (i < shape.MainClose)
+                {
+                    depth += utility[i] == '(' ? 1 : utility[i] == ')' ? -1 : 0;
+                    if (depth != 0 || utility[i] != ',')
+                    {
+                        continue;
+                    }
+                }
+                var fixedLayer = !StyleShadowClass.LayerReadsShadowColour(utility.Substring(start, i - start).Replace('_', ' '));
+                if (fixedLayer)
+                {
+                    into.Append(StyleShadowClass.FixedLayerMark);
+                }
+                var layerFrom = into.Length;
+                if (!TryAppendSubstituted(element, utility, start, i, encoded: true, into))
+                {
+                    return false;
+                }
+                if (fixedLayer)
+                {
+                    MarkExpandedLayers(into, layerFrom);
+                }
+                if (i < shape.MainClose)
+                {
+                    into.Append(',');
+                }
+                start = i + 1;
+            }
+            return TryAppendSubstituted(element, utility, shape.MainClose, utility.Length, encoded: true, into);
+        }
+
+        private static void MarkExpandedLayers(StringBuilder into, int from)
+        {
+            var depth = 0;
+            for (var i = from; i < into.Length; i++)
+            {
+                var c = into[i];
+                depth += c == '(' ? 1 : c == ')' ? -1 : 0;
+                if (c == ',' && depth == 0)
+                {
+                    into.Insert(++i, StyleShadowClass.FixedLayerMark);
+                }
+            }
         }
 
         // Appends text[start, end) with each var() in it substituted. encoded text is a class bracket, whose

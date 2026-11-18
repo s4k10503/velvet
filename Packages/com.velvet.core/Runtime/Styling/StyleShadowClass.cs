@@ -23,6 +23,8 @@ namespace Velvet
         // The family whose colour the layer takes from its parent (shadow-inherit, inset-shadow-inherit,
         // inset-ring-inherit); Color is what it is drawn in where the parent declares none.
         public readonly ShadowColourFamily InheritFrom;
+        // A layer Tailwind writes no colour variable into: a colour class, a /N or an -inherit beside it leaves it as it is.
+        public readonly bool FixedColour;
 
         // The colour of a layer drawn in the element's text colour, currentcolor; its alpha scales that colour's.
         public static readonly Color CurrentColor = new(float.NaN, 0f, 0f, 1f);
@@ -37,7 +39,8 @@ namespace Velvet
         public readonly StyleLengthExpression?[]? Measured;
 
         public ShadowSpec(Color color, float blur, float offsetY, float spread, float offsetX, bool inset = false,
-            ShadowColourFamily inheritFrom = ShadowColourFamily.None, StyleLengthExpression?[]? measured = null)
+            ShadowColourFamily inheritFrom = ShadowColourFamily.None, StyleLengthExpression?[]? measured = null,
+            bool fixedColour = false)
         {
             Color = color;
             Blur = blur;
@@ -47,6 +50,7 @@ namespace Velvet
             Inset = inset;
             InheritFrom = inheritFrom;
             Measured = measured;
+            FixedColour = fixedColour;
         }
 
         // This spec with the lengths element measures in pixels; this spec while it is on no panel.
@@ -58,7 +62,8 @@ namespace Velvet
             }
             var measured = Measured;
             float At(int i, float written) => measured[i] is { } e ? e.Evaluate(basis) : written;
-            return new ShadowSpec(Color, At(2, Blur), At(1, OffsetY), At(3, Spread), At(0, OffsetX), Inset, InheritFrom);
+            return new ShadowSpec(Color, At(2, Blur), At(1, OffsetY), At(3, Spread), At(0, OffsetX), Inset, InheritFrom,
+                fixedColour: FixedColour);
         }
     }
 
@@ -135,9 +140,6 @@ namespace Velvet
     internal static class StyleShadowClass
     {
         private static Color Black(float alpha) => new(0f, 0f, 0f, alpha);
-
-        // The colour an arbitrary layer without one takes.
-        private static readonly Color ArbitraryDefaultColor = new(4f / 255f, 12f / 255f, 24f / 255f, 0.20f);
 
         // suffix → layers, first on top, as theme.css declares --shadow-* (and --shadow for the bare `shadow`).
         private static readonly Dictionary<string, ShadowSpec[]> Presets = new()
@@ -257,6 +259,11 @@ namespace Velvet
                 for (var i = 0; i < Layers.Length; i++)
                 {
                     var layer = Layers[i];
+                    if (layer.FixedColour)
+                    {
+                        resolved[i] = layer;
+                        continue;
+                    }
                     var colour = Colour ?? layer.Color;
                     colour.a = Colour != null ? colour.a * SizeScale : SizeAlpha ?? colour.a;
                     resolved[i] = new ShadowSpec(colour, layer.Blur, layer.OffsetY, layer.Spread, layer.OffsetX, layer.Inset,
@@ -803,8 +810,9 @@ namespace Velvet
         // colour (StyleColorValueParser.RejectsAsColour).
         private static bool RejectsAsBoxShadow(string value, bool inset)
         {
-            foreach (var layer in StyleGradientClass.SplitTopLevel(value.Replace('_', ' '), ','))
+            foreach (var written in StyleGradientClass.SplitTopLevel(value.Replace('_', ' '), ','))
             {
+                var layer = WithoutMark(written, out _);
                 if (layer.IndexOf("var(", StringComparison.OrdinalIgnoreCase) < 0
                     && RejectsAsLayer(inset ? "inset " + layer : layer))
                 {
@@ -814,39 +822,30 @@ namespace Velvet
             return false;
         }
 
-        // Whether a bracket's layers read the family's colour variable, as Tailwind writes it into a layer holding no
-        // var() (replace-shadow-colors.ts as 4.3.3 has it). A layer does where one of its space-separated parts is a
-        // colour: a part opening with #, a named colour or a colour function. Otherwise it does where two parts are
-        // lengths, a part opening as one does (a digit, or a point and a digit, after an optional -, whatever follows)
-        // or calc(), clamp(), min(), max() or --spacing(), and at most one part is anything else, which it takes for the
-        // colour or appends one beside. A keyword (inset and the CSS-wide ones) is no part.
+        // What a resolved payload puts ahead of a layer whose source Tailwind writes no colour variable into
+        // (StyleCustomProperties.TryBuild): the resolved text alone no longer says it, since a var() has been replaced.
+        // A semicolon has no place in a box-shadow layer, so no layer is read as holding one by accident.
+        internal const char FixedLayerMark = ';';
+
+        private static string WithoutMark(string layer, out bool marked)
+        {
+            var text = layer.TrimStart();
+            marked = text.Length > 0 && text[0] == FixedLayerMark;
+            return marked ? text.Substring(1) : layer;
+        }
+
+        // Whether a bracket's layers read the family's colour variable, as Tailwind writes it into a layer
+        // (replace-shadow-colors.ts as 4.3.3 has it; LayerReadsShadowColour).
         private static bool ReadsShadowColour(string value)
         {
             foreach (var layer in StyleGradientClass.SplitTopLevel(value.Replace('_', ' '), ','))
             {
-                if (layer.Contains("var(", StringComparison.OrdinalIgnoreCase)
-                        ? OpensAsLengthTwice(layer)
-                        : LayerReadsShadowColour(layer))
+                if (LayerReadsShadowColour(layer))
                 {
                     return true;
                 }
             }
             return false;
-        }
-
-        // A layer holding a var() is not walked: two parts opening as a length read the colour there, which keeps a
-        // rejected colour beside 0_0_var(--a)_var(--b) discarding the box-shadow.
-        private static bool OpensAsLengthTwice(string layer)
-        {
-            var lengths = 0;
-            foreach (var part in StyleGradientClass.SplitTopLevel(layer.Trim(), ' '))
-            {
-                if (OpensAsLength(part))
-                {
-                    lengths++;
-                }
-            }
-            return lengths >= 2;
         }
 
         private static readonly HashSet<string> s_shadowKeywords = new(StringComparer.Ordinal)
@@ -865,8 +864,20 @@ namespace Velvet
             "oklab", "oklch", "rgb", "rgba", "--alpha",
         };
 
-        private static bool LayerReadsShadowColour(string layer)
+        // Whether Tailwind writes the colour variable into layer, which it does where one of its space-separated
+        // parts is a colour: a part opening with #, a named colour or a colour function. Otherwise it does where two
+        // parts are lengths, a part opening as one does (a digit, or a point and a digit, after an optional -, whatever
+        // follows) or calc(), clamp(), min(), max() or --spacing(), and at most one part is anything else, which it
+        // takes for the colour or appends one beside. A keyword (inset and the CSS-wide ones) is no part. A var() is one
+        // of those other parts, as is any function named nowhere above, and a layer is judged as written, before a
+        // var() in it resolves.
+        internal static bool LayerReadsShadowColour(string layer)
         {
+            WithoutMark(layer, out var marked);
+            if (marked)
+            {
+                return false;
+            }
             var lengths = 0;
             var others = 0;
             foreach (var part in StyleGradientClass.SplitTopLevel(layer.Trim(), ' '))
@@ -970,7 +981,8 @@ namespace Velvet
             var parsed = new ShadowSpec[layers.Count];
             for (var i = 0; i < layers.Count; i++)
             {
-                if (!TryParseArbitrary(inset ? "inset " + layers[i] : layers[i], out parsed[i]))
+                var layer = WithoutMark(layers[i], out var marked);
+                if (!TryParseArbitrary(inset ? "inset " + layer : layer, marked, out parsed[i]))
                 {
                     return false;
                 }
@@ -982,9 +994,10 @@ namespace Velvet
         // Parses one layer. Tokens are whitespace-separated (the className uses '_' for spaces); each is
         // classified as a length (CSS box-shadow offset/blur/spread, assigned positionally as x, y, blur, spread)
         // or a color (the shared StyleColorValueParser grammar). At least the x+y offsets are required (matching
-        // CSS); blur/spread default to 0 and the color defaults to ArbitraryDefaultColor. Percent lengths are
-        // rejected, as CSS rejects them in a box-shadow.
-        private static bool TryParseArbitrary(string body, out ShadowSpec spec)
+        // CSS); blur/spread default to 0 and the color to currentcolor, which is the colour CSS gives a layer naming none
+        // and the fallback Tailwind writes beside it. Percent lengths are rejected, as CSS rejects them in a box-shadow.
+        // marked says a resolved payload wrote the layer's source as one Tailwind writes no colour variable into.
+        private static bool TryParseArbitrary(string body, bool marked, out ShadowSpec spec)
         {
             spec = default;
             if (string.IsNullOrEmpty(body))
@@ -998,7 +1011,7 @@ namespace Velvet
             var lengths = new float[4]; // x, y, blur, spread
             StyleLengthExpression?[]? measured = null;
             var lengthCount = 0;
-            var color = ArbitraryDefaultColor;
+            var color = ShadowSpec.CurrentColor;
             var hasColor = false;
             var inset = false;
 
@@ -1051,7 +1064,8 @@ namespace Velvet
             {
                 return false; // CSS rejects a negative blur radius
             }
-            spec = new ShadowSpec(color, lengths[2], lengths[1], lengths[3], lengths[0], inset, measured: measured);
+            spec = new ShadowSpec(color, lengths[2], lengths[1], lengths[3], lengths[0], inset, measured: measured,
+                fixedColour: marked || !LayerReadsShadowColour(body.Replace('_', ' ')));
             return true;
         }
 

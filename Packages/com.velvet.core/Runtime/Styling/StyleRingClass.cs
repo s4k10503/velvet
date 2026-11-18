@@ -306,11 +306,11 @@ namespace Velvet
             var insetShadowAlpha = default(StyleShadowClass.AlphaSlot);
             foreach (var cls in classNames)
             {
-                if (!OpensWithBoxShadowRoot(cls))
+                var core = BoxShadowCoreOf(cls, out var important);
+                if (core == null)
                 {
                     continue;
                 }
-                var core = StyleArbitraryValueResolver.StripImportant(cls, out var important);
                 if (core == "ring")
                 {
                     ring.Width.Offer(important, false);
@@ -345,6 +345,20 @@ namespace Velvet
             return new BoxShadowReading(declared, declared && (ring.Discards || insetRing.Discards
                 || (offset.Width.Set && offset.Colour.Rejected) || StyleShadowClass.Discards(shadow, shadowColour, shadowAlpha)
                 || StyleShadowClass.Discards(insetShadow, insetShadowColour, insetShadowAlpha)));
+        }
+
+        // The class past its important bang where ReadBoxShadow reads it, null where it does not. A token reading a custom
+        // property is read through the payload its reader resolves it to, which the composed array holds beside it: its
+        // own text would offer the slot a value before the var() in it resolves.
+        private static string? BoxShadowCoreOf(string cls, out bool important)
+        {
+            important = false;
+            if (!OpensWithBoxShadowRoot(cls))
+            {
+                return null;
+            }
+            var core = StyleArbitraryValueResolver.StripImportant(cls, out important);
+            return StyleCustomPropertyClass.IsConsumer(core) ? null : core;
         }
 
         // Whether cls, past a leading bang, opens with a root ReadBoxShadow reads, so that an important class opening with
