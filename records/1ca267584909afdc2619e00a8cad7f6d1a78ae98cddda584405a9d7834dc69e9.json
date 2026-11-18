@@ -1,0 +1,29 @@
+{
+ "detail": "EditMode: 1 failed: Given_AMotionWithExit_When_Removed_Then_ItAnimatesToTheExitVariant",
+ "file": "3b6a2b57f870ddc76b3d10310746a685d0c2b19e808cf4057fecfdda1bacc910",
+ "killers": [
+  {
+   "case": "Velvet.Tests.AnimatePresenceAnimationTests.Given_AMotionWithExit_When_Removed_Then_ItAnimatesToTheExitVariant",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/AnimatePresenceAnimationTests.cs": "a7ff95ec31fa180d58adaecff71bbaaaf3f7e0961ca58e218d0a694974b935a8",
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/SimulatedPanelTestBase.cs": "a06149cf212c91277fd1442580aee292a959fef6bf985e77628aabdbb0acacc8"
+   }
+  }
+ ],
+ "measured_by": "44236587104",
+ "mutant": {
+  "after": ";",
+  "before": "Host.Schedule(_anchor, _runImmediateCallback);",
+  "column": 12,
+  "line": 222,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberBatchScheduler.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "89cc95d9c8738cab81ac770226734be6e83f0342e85ae603cfeae2ec18ed3d7b",
+ "verdict": "killed"
+}
