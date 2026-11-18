@@ -219,7 +219,8 @@ def head_reasons(number, title, package, change, base, repository, name=""):
 
 
 def merge_reasons(number, pull_request, package, change, repository):
-    """Every reason pull request `number` does not merge under its milestone."""
+    """Why pull request `number` does not merge under its milestone: what is wrong with the
+    milestone itself, and where nothing is, what is wrong with it for what the head changes."""
     suggestion = suggested(package, pull_request.landing, repository)
     found = pull_request_reasons(number, pull_request.title, pull_request.state, suggestion)
     return found or head_reasons(number, pull_request.title, package, change, pull_request.landing,
@@ -227,7 +228,7 @@ def merge_reasons(number, pull_request, package, change, repository):
 
 
 def release_reasons(version, repository):
-    """Every reason a release may not publish `version`, each naming the way out."""
+    """The reasons a release may not publish `version`, each naming the way out."""
     found = []
     previous = next_version.skipped_from(repository.published, version)
     if previous:

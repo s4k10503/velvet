@@ -22,11 +22,13 @@ env:
 jobs:
   rerun:
     name: Run the milestone check again
-    # An edit is read only where it moved the base: a title or body edit changes nothing decided.
+    # An edit is read only where it moved the base or retitled the pull request, the two the decision
+    # reads; a feat title asks a minor of the milestone.
     if: >-
       github.event_name == 'milestone'
       || github.event.action != 'edited'
       || github.event.changes.base != null
+      || github.event.changes.title != null
     runs-on: ubuntu-latest
     # Above the wait for a run still going, which milestone.py bounds at twenty minutes.
     timeout-minutes: 30

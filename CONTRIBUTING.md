@@ -1538,9 +1538,9 @@ prevents by closing it after the release, or does not follow the newest release 
 `settle.py merge`, `refuse/merge_off_milestone.py` and the `Source generators ▸ milestone` check
 hold all of it, `scripts/pr/milestone.py` owns the reading, and each refusal names its way out:
 `gh pr edit <n> --milestone <title>`, or the `gh api` command that opens or closes a milestone. A
-milestone change, a base change and a change to the repository's milestones push nothing, so the
-`Milestone` workflow runs that one job of the pull request's newest `Source generators` run again
-on each, once the run has finished.
+milestone change, a base change, a retitle and a change to the repository's milestones push
+nothing, so the `Milestone` workflow runs that one job of the pull request's newest
+`Source generators` run again on each, once the run has finished.
 
 No merge waits on a mutation campaign. A campaign dispatched onto a pull request's
 branch runs on its head like any other workflow, and `settle.py merge`, the automerge runs through it, and
