@@ -1,5 +1,7 @@
 using System.Linq;
+using System.Reflection;
 using NUnit.Framework;
+using Unity.Profiling;
 using UnityEngine;
 using UnityEngine.UIElements;
 using Velvet.TestUtilities;
@@ -821,6 +823,254 @@ namespace Velvet.Tests
             Assert.That(
                 label.resolvedStyle.minWidth.value,
                 Is.EqualTo(WidestWordMinimum(label, "antidisestablishmentarianism")));
+        }
+
+        private const string WideRow = "flex flex-row w-[2000px]";
+
+        private static void SettleParent(VisualElement parent)
+        {
+            ForcePanelUpdate(parent.panel);
+            using var evt = EventBase<GeometryChangedEvent>.GetPooled();
+            parent.SimulateEvent(evt);
+            ForcePanelUpdate(parent.panel);
+        }
+
+        // How many text leaves the parent's hub holds, read off the hub table the base class keeps.
+        private static int LeafCount(VisualElement parent)
+        {
+            var table = typeof(StyleTextItemManipulator)
+                .GetField("s_hubs", BindingFlags.NonPublic | BindingFlags.Static)!.GetValue(null);
+            var arguments = new object[] { parent, null };
+            if (!(bool)table.GetType().GetMethod("TryGetValue")!.Invoke(table, arguments)!)
+            {
+                return 0;
+            }
+            return ((System.Collections.ICollection)arguments[1].GetType().GetField("Leaves")!.GetValue(arguments[1])!).Count;
+        }
+
+        // Derive calls the profiler marker recorded while action ran, or -1 where the marker does not exist.
+        private static int DeriveCalls(System.Action action)
+        {
+            using var recorder = ProfilerRecorder.StartNew(ProfilerCategory.Scripts, "Velvet.FlexMinSize.Derive", 4096);
+            action();
+            return recorder.Valid ? recorder.Count : -1;
+        }
+
+        // GREEN_ON_BASE(characterization): the base writes the minimum at mount and keeps it, so it holds the value
+        // after the narrowing too. What reddens it is a derive that does not tell a label holding its whole text's
+        // width from one squeezed below it: dropping `atNaturalWidth` from the `HashCode.Combine` that makes the
+        // signature leaves the narrowed label's signature equal to the mount's.
+        [Test]
+        public void Given_ALabelInARowWideEnoughForItsText_When_TheContainerNarrowsBelowItsWidestWord_Then_ItsMinWidthIsItsWidestWord()
+        {
+            // Arrange
+            var label = MountLabel(WideRow, "", Sentence);
+            var parent = label.parent;
+
+            // Act
+            parent.style.width = 20f;
+            Settle(label);
+
+            // Assert
+            Assert.That(label.style.minWidth.value.value, Is.EqualTo(WidestWordMinimum(label, LongWord)));
+        }
+
+        [Test]
+        public void Given_ALabelInARowWideEnoughForItsText_When_Resolved_Then_NoMinWidthIsWritten()
+        {
+            // Arrange / Act
+            var label = MountLabel(WideRow, "", Sentence);
+
+            // Assert
+            Assert.That(label.style.minWidth.keyword, Is.EqualTo(StyleKeyword.Null));
+        }
+
+        // GREEN_ON_BASE(characterization): the base writes the whole line as the minimum of a nowrap label wherever
+        // it sits. What reddens it is the room test applying to a nowrap label: removing the
+        // `resolved.whiteSpace == WhiteSpace.NoWrap` term from `IsAtNaturalWidth` leaves a roomy one unwritten.
+        [Test]
+        public void Given_ANoWrapLabelInARowWideEnoughForItsText_When_Resolved_Then_ItsMinWidthIsTheWholeLine()
+        {
+            // Arrange / Act
+            var label = MountLabel(WideRow, "whitespace-nowrap", Sentence);
+
+            // Assert
+            Assert.That(
+                label.style.minWidth.value.value,
+                Is.EqualTo(Mathf.Ceil(MeasuredWidth(label, Sentence)) + HorizontalFrame(label)));
+        }
+
+        // GREEN_ON_BASE(characterization): the base writes a minimum for a label that cannot shrink. What reddens
+        // it is the room test applying to one: removing the `resolved.flexShrink <= 0f` term from
+        // `IsAtNaturalWidth` leaves it unwritten wherever the engine gives it the width of its text.
+        [Test]
+        public void Given_AShrink0LabelInARowWideEnoughForItsText_When_Resolved_Then_ItsMinWidthIsItsWidestWord()
+        {
+            // Arrange / Act
+            var label = MountLabel(WideRow, "shrink-0", Sentence);
+
+            // Assert
+            Assert.That(label.style.minWidth.value.value, Is.EqualTo(WidestWordMinimum(label, LongWord)));
+        }
+
+        // GREEN_ON_BASE(characterization): the base measures a column item whatever room it has. What reddens it
+        // is the room test applying to a column: removing the `!horizontal` term from `IsAtNaturalWidth` leaves a
+        // label with room to spare unwritten.
+        [Test]
+        public void Given_ALabelInAColumnWithRoomForItsText_When_Resolved_Then_ItsMinHeightIsWritten()
+        {
+            // Arrange / Act
+            var label = MountLabel("flex flex-col w-[2000px]", "", Sentence);
+
+            // Assert
+            Assert.That(label.style.minHeight.keyword, Is.Not.EqualTo(StyleKeyword.Null));
+        }
+
+        // GREEN_ON_BASE(characterization): the base derives on every event of the parent, so it caps the minimum at
+        // a percentage of the parent's new box. What reddens it is a hub that forwards no event to a label reading
+        // the parent's box: `protected override bool ReadsParentBox` returning `false` leaves the cap at the old 20.
+        [Test]
+        public void Given_ALabelWithAPercentMaxWidth_When_OnlyItsParentsGeometryEventFiresAfterTheParentWidens_Then_ItsMinWidthFollowsTheParent()
+        {
+            // Arrange
+            var label = MountLabel("flex flex-row w-[20px]", "max-w-full", Sentence);
+            var parent = label.parent;
+            SettleParent(parent);
+
+            // Act
+            parent.style.width = 50f;
+            SettleParent(parent);
+
+            // Assert
+            Assert.That(label.style.minWidth.value.value, Is.EqualTo(50f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base derives on every event of the parent, so it releases the row
+        // minimum once the parent is a column. What reddens it is a hub that ignores a flip of the direction:
+        // removing the `directionMoved ||` term from `OnParentGeometryChanged` leaves the label's row minimum.
+        [Test]
+        public void Given_ALabelWhoseParentFlipsToAColumn_When_OnlyItsParentsGeometryEventFires_Then_TheRowMinimumIsReleased()
+        {
+            // Arrange
+            var label = MountLabel("flex flex-row w-[60px]", "", ManyShortWords);
+            var parent = label.parent;
+            SettleParent(parent);
+            var wrote = label.style.minWidth.keyword != StyleKeyword.Null;
+
+            // Act
+            parent.style.flexDirection = FlexDirection.Column;
+            SettleParent(parent);
+
+            // Assert — the earlier write is carried by the value: a label that never wrote leaves the slot null as
+            // well, and then the value is one the expected keyword cannot equal.
+            Assert.That(wrote ? label.style.minWidth.keyword : StyleKeyword.Auto, Is.EqualTo(StyleKeyword.Null));
+        }
+
+        // GREEN_ON_BASE(characterization): the base derives on every patch of a label, so a patch that changes only
+        // its text measures the new text. What reddens it is a skip that ignores the text: removing the
+        // `DisplayedText(textElement) == _settledText` term from `Refresh` leaves the old minimum.
+        [Test]
+        public void Given_AClasslessLabel_When_ItsTextChangesToOneWithALongerWord_Then_ItsMinWidthIsTheNewWord()
+        {
+            // Arrange
+            const string Longer = "antidisestablishmentarianism is long";
+            using var scope = new ReconcilerScope();
+            _window.rootVisualElement.Add(scope.Root);
+            VNode[] Tree(string text) => new VNode[] { V.Div("flex flex-row w-[20px]", V.Label(text: text)) };
+            var before = Tree(Sentence);
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), before);
+            var label = scope.Root.Q<Label>();
+            Settle(label);
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, before, Tree(Longer));
+            ForcePanelUpdate(label.panel);
+
+            // Assert
+            Assert.That(label.style.minWidth.value.value, Is.EqualTo(WidestWordMinimum(label, "antidisestablishmentarianism")));
+        }
+
+        [Test]
+        public void Given_LabelsWithNoPercentLength_When_OnlyTheirParentsWidthMoves_Then_NoneDerives()
+        {
+            // Arrange
+            _mounted = V.Mount(_window.rootVisualElement, V.Div(
+                "flex flex-row w-[20px]", V.Label(text: Sentence), V.Label(text: Sentence), V.Label(text: Sentence)));
+            var labels = _window.rootVisualElement.Query<Label>().ToList();
+            foreach (var label in labels)
+            {
+                Settle(label);
+            }
+            var parent = labels[0].parent;
+            SettleParent(parent);
+            parent.style.width = 30f;
+
+            // Act
+            var derives = DeriveCalls(() => SettleParent(parent));
+
+            // Assert
+            Assert.That(derives, Is.EqualTo(0));
+        }
+
+        [Test]
+        public void Given_ALabelWithAPercentMaxWidth_When_ItsParentsWidthMoves_Then_ItDerivesOnce()
+        {
+            // Arrange
+            var label = MountLabel("flex flex-row w-[20px]", "max-w-full", Sentence);
+            var parent = label.parent;
+            SettleParent(parent);
+            parent.style.width = 30f;
+
+            // Act
+            var derives = DeriveCalls(() => SettleParent(parent));
+
+            // Assert
+            Assert.That(derives, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_ALabelRemovedFromItsParent_When_TheParentStays_Then_TheParentsHubHoldsNoLeaf()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            _window.rootVisualElement.Add(scope.Root);
+            VNode[] Tree(bool withLabel) => new VNode[]
+            {
+                withLabel ? V.Div("flex flex-row w-[20px]", V.Label(text: Sentence)) : V.Div("flex flex-row w-[20px]"),
+            };
+            var before = Tree(true);
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), before);
+            var label = scope.Root.Q<Label>();
+            var parent = label.parent;
+            Settle(label);
+            var joined = LeafCount(parent) == 1;
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, before, Tree(false));
+
+            // Assert — the join is carried by the value: where the label never joined, the count read is one the
+            // expected zero cannot equal.
+            Assert.That(joined ? LeafCount(parent) : -1, Is.EqualTo(0));
+        }
+
+        [Test]
+        public void Given_ALabelBelowADiscardedRoot_When_TheRootIsRemoved_Then_TheParentsHubHoldsNoLeaf()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            _window.rootVisualElement.Add(scope.Root);
+            var before = new VNode[] { V.Div("flex flex-row w-[20px]", V.Div("flex", V.Label(text: Sentence))) };
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), before);
+            var label = scope.Root.Q<Label>();
+            var parent = label.parent;
+            Settle(label);
+            var joined = LeafCount(parent) == 1;
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, before, System.Array.Empty<VNode>());
+
+            // Assert — the join is carried by the value, as in the case above.
+            Assert.That(joined ? LeafCount(parent) : -1, Is.EqualTo(0));
         }
     }
 }

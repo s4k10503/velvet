@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Unity.Profiling;
 using UnityEngine;
 using UnityEngine.TextCore.Text;
 using UnityEngine.UIElements;
@@ -23,11 +24,19 @@ namespace Velvet
     // style; the resolved style is not consulted.
     // TextItemBaselinePanelTests pins that a declaring class patched away is read at once.
     //
+    // A shrinkable row item that wraps is measured while the parent's main axis is squeezing it below its whole
+    // text's width; at that width its automatic minimum holds it no higher, and the minimum is written from the
+    // event that carries it below. A column item, a nowrap or pre item and one that cannot shrink are measured
+    // whenever their signature moves.
+    //
     // Ownership of the inline slot lasts only while a value this wrote sits in it: a bracket layer that
     // arrives for the same slot has already overwritten it and is never cleared by this.
     internal sealed class StyleFlexMinSizeManipulator : StyleTextItemManipulator
     {
         private const int MaxMeasuredRuns = 64;
+
+        // One sample per Derive entry, which the PlayMode resize benchmark counts per frame.
+        private static readonly ProfilerMarker s_deriveMarker = new("Velvet.FlexMinSize.Derive");
 
         private const string MinWidthPrefix = "min-w-";
         private const string MinHeightPrefix = "min-h-";
@@ -75,6 +84,20 @@ namespace Velvet
 
         private string[]? _lastClassNames;
 
+        // The text the last settled derive read, which a patch that changes neither it nor the classes leaves be.
+        private string? _settledText;
+
+        // The width of the whole text on one line, kept for the text and font size it was measured at.
+        private bool _hasNatural;
+        private int _naturalKey;
+        private float _natural;
+
+        // Whether the last derive used a percentage of the parent's content box, the one thing a parent
+        // resize that leaves its direction alone changes for this item.
+        private bool _readsParentBox = true;
+
+        protected override bool ReadsParentBox => _readsParentBox;
+
         // What the live class list declares, rebuilt by Scan when _scanStale.
         private bool _scanStale = true;
         private Dim? _declaredMinWidth;
@@ -95,12 +118,18 @@ namespace Velvet
         // payload that lights one of the scanned classes outside a patch is read at the next patch.
         public void Refresh(string[] classNames)
         {
-            if (_lastClassNames == null || !System.MemoryExtensions.SequenceEqual(
-                    new System.ReadOnlySpan<string>(classNames), new System.ReadOnlySpan<string>(_lastClassNames)))
+            var sameClasses = _lastClassNames != null && System.MemoryExtensions.SequenceEqual(
+                new System.ReadOnlySpan<string>(classNames), new System.ReadOnlySpan<string>(_lastClassNames));
+            if (!sameClasses)
             {
                 _scanStale = true;
             }
             _lastClassNames = classNames;
+            if (sameClasses && _hasSignature && !_scanStale
+                && target is TextElement textElement && DisplayedText(textElement) == _settledText)
+            {
+                return;
+            }
             Apply();
         }
 
@@ -119,6 +148,14 @@ namespace Velvet
         }
 
         protected override void Derive(TextElement textElement, VisualElement parent)
+        {
+            using (s_deriveMarker.Auto())
+            {
+                DeriveCore(textElement, parent);
+            }
+        }
+
+        private void DeriveCore(TextElement textElement, VisualElement parent)
         {
             if (_scanStale)
             {
@@ -159,9 +196,12 @@ namespace Velvet
             var parentContent = horizontal ? parent.contentRect.width : parent.contentRect.height;
             var specified = SpecifiedLength(textElement, horizontal, parentContent);
             var maximum = MaximumLength(textElement, horizontal, parentContent);
+            _readsParentBox = ReadsPercent(textElement, horizontal);
             var clipped = IsClipped(textElement);
+            var atNaturalWidth = IsAtNaturalWidth(textElement, horizontal, text, resolved, frame);
             var signature = System.HashCode.Combine(
-                ComputeSignature(horizontal, text, resolved, crossContent, specified, maximum), clipped);
+                ComputeSignature(horizontal, text, resolved, crossContent, specified, maximum), clipped,
+                atNaturalWidth);
             if (_hasSignature && signature == _lastSignature)
             {
                 return;
@@ -169,9 +209,9 @@ namespace Velvet
 
             if (StandsDown(textElement, parent, horizontal, clipped))
             {
+                _readsParentBox = _readsParentBox || IsSizedByGridParent(parent);
                 Release(textElement);
-                _lastSignature = signature;
-                _hasSignature = true;
+                Settle(signature, text);
                 return;
             }
 
@@ -184,6 +224,13 @@ namespace Velvet
                 return;
             }
 
+            if (atNaturalWidth)
+            {
+                Release(textElement);
+                Settle(signature, text);
+                return;
+            }
+
             var contentMinimum = MeasureContentMinimum(textElement, horizontal, text, resolved.whiteSpace, crossContent);
             if (contentMinimum <= 0f || float.IsNaN(contentMinimum))
             {
@@ -193,9 +240,53 @@ namespace Velvet
             }
 
             Write(textElement, horizontal, CapMinimum(Mathf.Ceil(contentMinimum) + frame, specified, maximum));
+            Settle(signature, text);
+        }
+
+        private void Settle(int signature, string text)
+        {
             _lastSignature = signature;
             _hasSignature = true;
+            _settledText = text;
         }
+
+        // A shrinkable item in a row that has the width of its whole text on one line, which is at least its
+        // widest run, so the minimum would hold it to no more than the width it has. A nowrap or pre item's
+        // minimum is that width itself, and an item that cannot shrink is left as it was: both are measured.
+        private bool IsAtNaturalWidth(
+            TextElement textElement, bool horizontal, string text, IResolvedStyle resolved, float frame)
+        {
+            if (!horizontal || resolved.flexShrink <= 0f
+                || resolved.whiteSpace == WhiteSpace.NoWrap || resolved.whiteSpace == WhiteSpace.Pre)
+            {
+                return false;
+            }
+            var key = System.HashCode.Combine(text, resolved.fontSize);
+            if (!_hasNatural || key != _naturalKey)
+            {
+                var width = MeasureWidth(textElement, text);
+                if (!(width > 0f))
+                {
+                    return false;
+                }
+                _natural = width;
+                _naturalKey = key;
+                _hasNatural = true;
+            }
+            return resolved.width >= Mathf.Ceil(_natural) + frame - 0.01f;
+        }
+
+        private bool ReadsPercent(TextElement textElement, bool horizontal)
+            => IsPercent(horizontal ? textElement.style.width : textElement.style.height,
+                    horizontal ? _specifiedWidth : _specifiedHeight)
+                || IsPercent(horizontal ? textElement.style.maxWidth : textElement.style.maxHeight,
+                    horizontal ? _maxWidth : _maxHeight);
+
+        // Where ResolveLength takes the parent's content box into the length.
+        private static bool IsPercent(StyleLength inline, Dim? fromClass)
+            => inline.keyword == StyleKeyword.Undefined
+                ? inline.value.unit == LengthUnit.Percent
+                : inline.keyword == StyleKeyword.Null && fromClass.HasValue && fromClass.Value.Percent;
 
         // A value another writer has put over this one's is theirs; the slot is then no longer owned, so a
         // later release does not clear it and a later write is not skipped as unchanged.
@@ -541,6 +632,9 @@ namespace Velvet
             {
                 Release(textElement);
             }
+            _settledText = null;
+            _hasNatural = false;
+            _readsParentBox = true;
         }
 
         // The text in full rather than its length, which would miss a same-length swap. The white-space is a
