@@ -150,14 +150,15 @@ namespace Velvet
             }
         }
 
-        // The classes Velvet resolves itself beyond what the bundled table names. CornerRadiusFitPanelTests sweeps the
-        // bundled sheets' class names and a token of each family, and fails where one marks an element.
         private static bool IsRelationalSource(string core)
             => core == StyleRelationalVariantManipulator.GroupClass || core == StyleRelationalVariantManipulator.PeerClass
                 || core.StartsWith(StyleRelationalVariantManipulator.GroupClass + "/", StringComparison.Ordinal)
                 || core.StartsWith(StyleRelationalVariantManipulator.PeerClass + "/", StringComparison.Ordinal);
 
-        private static bool ResolvedBeyondTheTable(string core)
+        // The classes Velvet resolves itself beyond what the bundled table names. CornerRadiusFitPanelTests holds to this the
+        // bundled sheets' class names, a token of each family StyleClassFamilies reads, the text effect, font, gradient,
+        // clip-path, container, group, peer and state kinds, a theme variable's utility and the inline-resolved kinds.
+        private static bool ResolvedBeyondTheTable(VisualElement element, string core)
             => core.StartsWith("velvet-", StringComparison.Ordinal)
                 || core.StartsWith("unity-", StringComparison.Ordinal)
                 || core.StartsWith("@container", StringComparison.Ordinal)
@@ -171,7 +172,15 @@ namespace Velvet
                 || StyleGradientClass.IsGradientClass(core)
                 || StyleClipPathClass.IsClipPathClass(core)
                 || StyleArbitraryValueResolver.IsInlineResolved(core)
-                || StyleThemeClass.OwnsPlainToken(core);
+                || OwnedByTheme(element, core);
+
+        // A utility a theme variable makes is read under the scope of the element's own mount, which a class diff and an
+        // animation channel do not hold.
+        private static bool OwnedByTheme(VisualElement element, string core)
+        {
+            using var scope = StyleThemeTokens.Use(null, element);
+            return StyleThemeClass.OwnsPlainToken(core);
+        }
 
         // Only a class of the application's own can bring a radius with it that nothing here tracks, and only a change
         // made after the element is on a panel is one the size change that lays it out does not reach.
@@ -183,7 +192,7 @@ namespace Velvet
             }
             var core = StyleArbitraryValueResolver.StripImportant(cls, out _);
             if (StyleUtilityProperties.TryGet(core, out _) || element.ClassListContains(WatchClass)
-                || ResolvedBeyondTheTable(core))
+                || ResolvedBeyondTheTable(element, core))
             {
                 return;
             }

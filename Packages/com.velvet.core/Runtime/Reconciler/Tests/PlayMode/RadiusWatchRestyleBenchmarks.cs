@@ -10,7 +10,7 @@ using Velvet.TestUtilities;
 namespace Velvet.Tests.Performance
 {
     /// <summary>
-    /// Frames in which a class change at the root restyles a mounted tree of 1,000 Divs, on a live runtime panel carrying
+    /// Frames in which a class is toggled at the root of a mounted tree of 1,000 Divs, on a live runtime panel carrying
     /// Velvet's utility stylesheet. Each sample is one such frame: the time the panel recorded under the markers
     /// <see cref="PanelFrameRecorder"/> reads, and the GC.Alloc blocks every thread charged in it.
     /// <para>

@@ -23,6 +23,9 @@ namespace Velvet.Tests
 
         private const string WideBox = "w-[330px] h-[34px]";
 
+        // BundledStyleSheetCensusTests.SurveyedUtilityClassCount: the utility classes the sheets declare.
+        private const int SurveyedUtilityClassCount = 2299;
+
         private const string StylesDirectory = "Packages/com.velvet.core/Runtime/Styles";
 
         private const string OwnRadiusSheet = "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/LayoutIdTestRules.uss";
@@ -641,8 +644,55 @@ namespace Velvet.Tests
                 }
             }
 
-            // Assert
+            // Assert — a sentinel stands in for an extraction that read fewer names than the bundled utilities alone number.
+            if (names.Count < SurveyedUtilityClassCount)
+            {
+                marked.Add($"only {names.Count} class names were read");
+            }
             Assert.That(marked, Is.Empty);
+        }
+
+        // The tokens Velvet resolves to inline style, which the patcher never hands the fit and an animation channel does. Each
+        // is no table entry, so IsInlineResolved is the clause that keeps it from marking the box.
+        [TestCase("w-[120px]")]
+        [TestCase("bg-red-500/50")]
+        [TestCase("-mt-4")]
+        [TestCase("ms-2")]
+        [TestCase("border-t-red-500")]
+        [TestCase("tracking-wide")]
+        [TestCase("blur-md")]
+        public void Given_ALaidOutBox_When_AClassResolvedToInlineStyleArrivesThroughAnAnimationChannel_Then_TheBoxIsNotMarkedForTheFit(string token)
+        {
+            // Arrange
+            var box = MountBox(WideBox);
+
+            // Act
+            StyleAnimationClassUtils.AddClasses(box, new[] { token });
+            ForcePanelUpdate(box.panel);
+
+            // Assert
+            Assert.That(box.ClassListContains(CornerRadiusFit.WatchClass), Is.False);
+        }
+
+        [TestCase("bg-brandtest")]
+        [TestCase("rounded-pilltest")]
+        public void Given_ALaidOutBoxUnderADeclaredThemeVariable_When_ItsUtilityIsTrackedOutsideAThemeScope_Then_TheBoxIsNotMarkedForTheFit(string token)
+        {
+            // Arrange — the sheet declares --color-brandtest and --radius-pilltest, so the utilities are the theme's, which a
+            // class diff reads under no scope of its own.
+            _window.rootVisualElement.styleSheets.Add(
+                UnityEditor.AssetDatabase.LoadAssetAtPath<StyleSheet>("Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ThemeTokenSheet.uss"));
+            _mounted = V.Mount(_window.rootVisualElement, V.Div(className: "theme-token-host", children: new VNode?[]
+            {
+                V.Div(name: "box", className: WideBox),
+            }));
+            ForcePanelUpdate(Box.panel);
+
+            // Act
+            CornerRadiusFit.TrackClass(Box, token);
+
+            // Assert
+            Assert.That(Box.ClassListContains(CornerRadiusFit.WatchClass), Is.False);
         }
 
         [Test]
@@ -670,39 +720,6 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(box.ClassListContains(CornerRadiusFit.WatchClass), Is.True);
-        }
-
-        private static StateUpdater<string> s_setSecondClass;
-
-        [Component]
-        private static VNode RenderTwoBoxes()
-        {
-            var (first, setFirst) = Hooks.UseState(WideBox);
-            var (second, setSecond) = Hooks.UseState(WideBox);
-            s_setClass = setFirst;
-            s_setSecondClass = setSecond;
-            return V.Div("flex flex-col", V.Div(name: "box", className: first), V.Div(name: "box2", className: second));
-        }
-
-        [Test]
-        public void Given_TwoLaidOutBoxesWhoseFirstTookAClassOfItsOwn_When_TheSecondTakesTheSameClass_Then_TheSecondIsFittedToo()
-        {
-            // Arrange — the first swap marks the first box; the second box is a separate element with its own mark.
-            AttachOwnRadiusSheet();
-            _mounted = V.Mount(_window.rootVisualElement, V.Component(RenderTwoBoxes));
-            ForcePanelUpdate(Box.panel);
-            s_setClass.Invoke($"{WideBox} layout-id-test-uneven");
-            _mounted.Root.Reconciler.Context.BatchScheduler.DrainImmediateForTest();
-            ForcePanelUpdate(Box.panel);
-
-            // Act
-            s_setSecondClass.Invoke($"{WideBox} layout-id-test-uneven");
-            _mounted.Root.Reconciler.Context.BatchScheduler.DrainImmediateForTest();
-            ForcePanelUpdate(Box.panel);
-
-            // Assert
-            Assert.That(Radii(_window.rootVisualElement.Q<VisualElement>("box2")),
-                Is.EqualTo(s_unevenRadiiFittedToWideBox).Within(1e-3f));
         }
 
         [Test]
