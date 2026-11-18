@@ -473,9 +473,10 @@ namespace Velvet
         // ---- Recorded writes ----
         //
         // Inside a pass, an insert, a move or a removal the walk makes through HostCommitQueue into a container the pass
-        // did not create updates the model and is recorded; the live list takes it no later than where FinishPass starts
-        // (EndRecording), in the order recorded. A node's patch halves are recorded in the same list (PatchPre and
-        // PatchPost, the children's ops between them), and so is the post-children tail of an element patched at once
+        // did not create updates the model and is recorded; the live list takes it where the pass's FinishPass starts
+        // (EndRecording), in the order recorded; a wave records several renders into one pass (FiberWave). A node's
+        // patch halves are recorded in the same list (PatchPre and PatchPost, the children's ops between them), and so
+        // is the post-children tail of an element patched at once
         // (PatchTail). The readers the walk has moved to the model (ParentOf, ChildCount, ElementAtPhysical and the reads
         // above) answer from it meanwhile, and a container with a recorded write is skipped by the checks that compare the
         // model with the live list. Insert, Remove, RemoveAt, RemoveFromHierarchy, HierarchyRemove and Clear made into such
@@ -600,6 +601,7 @@ namespace Velvet
             }
             Mark(pass, container);
             if (held) pass.PendingParent[child] = container;
+            RecordBehindApplyingRoot(pass);
             pass.Ops.Add(new ReconcilePass.Op
             {
                 Container = container, Caller = caller, Child = child, Index = index, Kind = ReconcilePass.OpKind.Insert,
@@ -643,6 +645,7 @@ namespace Velvet
                 pass.PendingParent[element] = null;
             }
             Mark(pass, container);
+            RecordBehindApplyingRoot(pass);
             pass.Ops.Add(new ReconcilePass.Op
             {
                 Container = container, Caller = caller, Index = index, Kind = ReconcilePass.OpKind.RemoveAt,
@@ -674,7 +677,17 @@ namespace Velvet
                 Touch(container);
             }
             pass.PendingParent[child] = null;
+            RecordBehindApplyingRoot(pass);
             pass.Ops.Add(new ReconcilePass.Op { Container = container, Child = child, Kind = ReconcilePass.OpKind.RemoveChild });
+        }
+
+        // An op recorded while the ops of a wave's pass apply belongs to the root whose op is applying.
+        private static void RecordBehindApplyingRoot(ReconcilePass pass)
+        {
+            if (pass.Applying && pass.ApplyingRoot != null && !ReferenceEquals(pass.Segments[^1].Root, pass.ApplyingRoot))
+            {
+                pass.BeginSegment(pass.ApplyingRoot);
+            }
         }
 
         // Whether a pass is recording writes it has not applied yet.
@@ -719,28 +732,42 @@ namespace Velvet
 
         // Puts the recorded writes on the live lists in the order they were made and ends recording. An op that throws
         // does not stop the ones behind it: the walk has moved on from each of them, so the live tree has to take every
-        // one, and the first exception is rethrown once they have.
+        // one. The first exception is rethrown once they have, except where a wave recorded the ops: there each is kept
+        // for the wave to route (ReconcilePass.Failures), filed under the component that rendered the element an insert
+        // adds, or else under the root whose render recorded the op.
         private static void Apply(ReconcilePass pass)
         {
             pass.Applying = true;
             System.Runtime.ExceptionServices.ExceptionDispatchInfo? first = null;
+            var segment = -1;
             try
             {
                 for (var i = 0; i < pass.Ops.Count; i++)
                 {
+                    while (segment + 1 < pass.Segments.Count && pass.Segments[segment + 1].FirstOp <= i) segment++;
+                    pass.ApplyingRoot = segment >= 0 ? pass.Segments[segment].Root : null;
                     try
                     {
                         ApplyOp(pass, pass.Ops[i]);
                     }
                     catch (Exception exception)
                     {
-                        first ??= System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(exception);
+                        var added = pass.Ops[i].Kind == ReconcilePass.OpKind.Insert ? pass.Ops[i].Child : null;
+                        if (!FileFailure(pass, added, exception))
+                        {
+                            first ??= System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(exception);
+                        }
                     }
                 }
             }
             finally
             {
                 pass.Applying = false;
+                // MUTANT_SURVIVES(equivalent, line removed): ApplyingRoot is read only while Applying is set, and Apply
+                // writes it ahead of each op; the reset lets go of the fiber.
+                pass.ApplyingRoot = null;
+                pass.Segments.Clear();
+                pass.Owners.Clear();
                 pass.Ops.Clear();
                 pass.Patches.Clear();
                 pass.PendingParent.Clear();
@@ -758,6 +785,25 @@ namespace Velvet
                 s_nested.Clear();
             }
             first?.Throw();
+        }
+
+        // Files an insert of an element the wave created under the component that rendered it, its search starting where
+        // React's commit starts a placement's (ComponentBoundarySearch.PlacementSearchStart), and any other op under the
+        // root of its run. False where the pass is no wave's.
+        private static bool FileFailure(ReconcilePass pass, VisualElement? added, Exception exception)
+        {
+            if (added != null)
+            {
+                if (pass.Owners.TryGetValue(added, out var rendered))
+                {
+                    pass.Fail(ComponentBoundarySearch.PlacementSearchStart(rendered.Owner, rendered.Portal), rendered.Owner,
+                        exception, added);
+                    return true;
+                }
+            }
+            if (pass.ApplyingRoot == null) return false;
+            pass.Fail(pass.ApplyingRoot, pass.ApplyingRoot, exception, added);
+            return true;
         }
 
         // Records where a turn begins and where it ends among the ops, for the teardowns attached to the anchor to run at

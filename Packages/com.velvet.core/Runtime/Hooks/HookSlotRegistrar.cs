@@ -10,7 +10,8 @@ namespace Velvet
     {
         // The current render's deps are staged on HookEffectSlot.NextDeps and compared against the
         // committed HookEffectSlot.LastDeps; HookEffectSlot.LastDeps is promoted only
-        // once the render-phase loop settles (FiberRenderer calls HookEffectExecutor.CommitEffectDeps). A
+        // once the render-phase loop settles (FiberBeginWork.CommitSettledEffects), and for a render the pass's
+        // journal holds, once the journal closes (FiberPassJournal), which a wave leaves until its pass applies. A
         // render-phase state-update re-run discards intermediate attempts, so leaving the baseline at the committed
         // render is what lets the settled attempt's deps be compared against the committed render rather than a
         // discarded attempt.

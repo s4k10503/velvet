@@ -735,9 +735,9 @@ namespace Velvet
             }
             finally
             {
-                // _onDrainEnd flushes the drain's deferred layout effects. Run it while _draining is still
-                // true so a re-entrant FlushImmediate raised from one of those effects still no-ops (defers)
-                // rather than re-entering the reconciler. The inner finally guarantees _draining is cleared even
+                // _onDrainEnd applies the pass the drain's renders recorded into and flushes their deferred layout
+                // effects (FiberWave). Run it while _draining is still true so a re-entrant FlushImmediate raised from
+                // one of those effects still no-ops (defers) rather than re-entering the reconciler. The inner finally guarantees _draining is cleared even
                 // if a deferred effect throws — otherwise a single user exception would wedge the scheduler.
                 try
                 {

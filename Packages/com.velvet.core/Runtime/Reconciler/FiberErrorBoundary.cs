@@ -192,7 +192,9 @@ namespace Velvet
             {
                 fiber.IsShowingFallback = false;
             }
-            if (fiber.IsDisposed) return;
+            // A farther boundary that took the failed fallback's error has replaced this one, as where
+            // ComponentBoundarySearch.PropagateFrom stops.
+            if (fiber.IsDisposed || fiber.IsBeingDeleted) return;
             if (shown) RecordCatch(fiber.Reconciler!.Context, fiber, caught.Error, caught.Info);
             else PassOnTheCaughtError(fiber, caught);
         }
