@@ -634,9 +634,6 @@ namespace Velvet.Tests
             Assert.That(act, Throws.Nothing);
         }
 
-        private static int s_hostRendered;
-        private static int s_hostEffect;
-        private static StateUpdater<int> s_setHost;
         private static ComponentFiber s_counterReaderFiber = null!;
 
         [Component]
@@ -649,37 +646,31 @@ namespace Velvet.Tests
 
         [Component]
         private static VNode HostsACounterReader()
-        {
-            var (n, setN) = Hooks.UseState(0);
-            s_setHost = setN;
-            s_hostRendered = n;
-            Hooks.UseEffect(() =>
-            {
-                s_hostEffect = n;
-                return (Action)null!;
-            }, new object[] { n });
-            return V.Div(children: new VNode[] { V.Component(ReadsTheCounter, key: "reader") });
-        }
+            => V.Div(children: new VNode[] { V.Component(ReadsTheCounter, key: "reader") });
 
-        // The counter's change raises the root's sync-lane flag beside its reader's update, and the unmount takes that
-        // update out of the tier without a drain, which leaves the flag raised over an empty tier: nothing is owed.
+        // GREEN_ON_BASE(characterization): the base delisted the root where the unmount's entry ended as well.
+        // Have FiberExecutionContext.IndexOfOwing step past a scheduler that owes nothing rather than delist it, and this
+        // reddens. The counter's change raises the root's sync-lane flag beside its reader's update, and the unmount
+        // takes that update out of the tier without a drain, which leaves the flag raised over an empty tier: nothing
+        // is owed.
         [Test]
-        public void Given_ARootWhoseOnlySyncLaneUpdateIsUnmountedUndrained_When_TheUnmountEnds_Then_ItsPendingEffectHasNotRun()
+        public void Given_ARootWhoseOnlySyncLaneUpdateIsUnmountedUndrained_When_TheUnmountEnds_Then_ItIsNoLongerListedAsOwingTheSyncLane()
         {
-            // Arrange — the host's second render commits with its effect left pending
+            // Arrange — nothing is left pending, since the unmount's entry would run it, and that flush ends by
+            // draining the update
             s_counter = new Counter();
             var host = V.Mount(new VisualElement(), V.Component(HostsACounterReader));
             _roots.Add(host);
             host.FlushEffectsForTest();
-            s_setHost.Invoke(1);
-            host.FlushStateForTest();
+            var scheduler = host.GetSchedulerForTest();
             s_counter.Set(1);
+            var listedBefore = OwingTheSyncLane().Contains(scheduler);
 
             // Act
             FiberRenderer.Unmount(s_counterReaderFiber);
 
-            // Assert — 0 where the release ran that effect
-            Assert.That(s_hostRendered - s_hostEffect, Is.EqualTo(1));
+            // Assert — null where the counter's change left the root unlisted
+            Assert.That(listedBefore ? OwingTheSyncLane().Contains(scheduler) : (bool?)null, Is.False);
         }
 
         private static readonly Ref<string> s_throwingHandle = new();

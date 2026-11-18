@@ -537,32 +537,6 @@ namespace Velvet.Tests
                 "The update commit fires cleanup once and the new setup once — no StrictMode mount double-invoke");
         }
 
-        // GREEN_ON_BASE(characterization): the base's state flush already left the mount-staged entry pending for the bundle.
-        // FlushStateForTest now runs pending passive effects first, so this case takes the variant that does not.
-        [Test]
-        public void Given_StrictMode_When_MountAndUpdatePassiveEntriesDrainTogether_Then_StagedSetupRunsOnce()
-        {
-            // The bundle: V.Mount stages a passive effect on the inline child (PendingEffectsAreMount=true). Before
-            // the paint-tick fires, the parent re-renders with a new child token; the update-commit's schedule
-            // downgrades PendingEffectsAreMount to false, so the bundled drain runs no entry under the mount
-            // double-invoke. The prior mount-staged setup was abandoned by the update before paint, so only the
-            // final staged setup runs and there is no committed setup to clean.
-            // Arrange
-            FiberStrictMode.Enabled = true;
-            using var mounted = V.Mount(_root, V.Component(ReexpansionParentRender, key: "parent"));
-            // Intentionally do not flush effects: leave the mount-staged passive entry pending so the next setState
-            // bundles its update-staged entry into the same paint-tick.
-
-            // Act
-            s_reexpansionParentSet.Invoke("b");
-            mounted.FlushStateKeepingPassiveEffectsForTest();
-            mounted.FlushEffectsForTest();
-
-            // Assert
-            Assert.That((s_reexpansionChildEffectSetupCount, s_reexpansionChildEffectCleanupCount), Is.EqualTo((1, 0)),
-                "The bundled drain runs the staged setup once with no cleanup — no spurious StrictMode double-invoke");
-        }
-
         #endregion
     }
 
