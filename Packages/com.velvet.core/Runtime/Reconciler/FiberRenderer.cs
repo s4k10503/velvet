@@ -426,7 +426,6 @@ namespace Velvet
             // A mark left from work that has since rendered would keep every identity skip of this reconcile off.
             FiberPendingWork.Below(fiber);
             var caught = FiberCommitWork.ReconcileIntoSlotRange(fiber, oldTree, newTree, frameBudgetMs, deferReconcile);
-            if (!deferReconcile) fiber.PortalRetargetOwed = false;
             if (caught != null) FiberErrorBoundary.ShowCaughtFallback(fiber, caught);
             if (!deferReconcile && fiber.FallbackReplacedPreviousTree) passContext!.IsAborted = false;
         }

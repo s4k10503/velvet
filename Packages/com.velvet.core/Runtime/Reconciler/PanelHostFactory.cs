@@ -159,16 +159,18 @@ namespace Velvet
             }
         }
 
-        // The children of a portal into the replaced root stand on that dead root. The portal's declaring component
-        // renders again, as ReconcilerContext.OnPortalTargetRegistered asks for a registered element, and the render
-        // patches the portal onto the host's current root whatever the component returns: PortalRetargetOwed keeps
-        // the identity skip off, and ChildrenPending makes the patch mount the children from nothing.
+        // The children of a layer or world-space portal into the replaced root stand on that dead root. Its declaring
+        // component renders again, as ReconcilerContext.OnPortalTargetRegistered asks for a registered element, and
+        // where the render returns the portal, the patch puts it onto the host's current root: PortalRetargetOwed
+        // keeps the identity skip off, and ChildrenPending makes the patch mount the children from nothing. A portal
+        // naming a registry id is left out.
         private static void RenderPortalsInto(VisualElement previousRoot, ReconcilerContext ctx)
         {
             List<VisualElement>? placeholders = null;
             foreach (var entry in ctx.PortalState.Stored)
             {
-                if (ReferenceEquals(entry.Value.Target, previousRoot) && entry.Value.DeclaringFiber != null)
+                if (ReferenceEquals(entry.Value.Target, previousRoot) && entry.Value.TargetId == null
+                    && entry.Value.DeclaringFiber != null)
                 {
                     (placeholders ??= new List<VisualElement>()).Add(entry.Key);
                 }
