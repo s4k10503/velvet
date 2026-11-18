@@ -1,11 +1,11 @@
 {
- "detail": "EditMode: 1 failed among the 838 case(s) that ran the site: Given_AFollowerWhoseOwnRotateTurnsOnATransition_When_TheLeadLeaves_Then_ItsOwnRunsAsTheEngineRunsIt",
+ "detail": "EditMode: 1 failed among the 842 case(s) that ran the site: Given_AFollowerWhoseOwnRotateTurnsOnATransition_When_TheLeadLeaves_Then_ItsOwnRunsAsTheEngineRunsIt",
  "file": "e90531909152d2d48d96fcad5cf7495d1ecde4284e99fceb936a035bc4d69752",
  "killers": [
   {
    "case": "Velvet.Tests.MotionScheduledMechanicsTests.Given_AFollowerWhoseOwnRotateTurnsOnATransition_When_TheLeadLeaves_Then_ItsOwnRunsAsTheEngineRunsIt",
    "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionScheduledMechanicsTests.cs": "255a1020b1e2d25245f3b68ce4c478dd12b26d0edbc2a66646567e2c5a6c4b1d",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionScheduledMechanicsTests.cs": "0eb200d8ad7a00fa125d68e44bfecee883562e2071a7a7c7dc0e2efb8e9ec2e6",
     "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionSimulatedPanelTestsBase.cs": "319b26852fbe6c4376e12d0d0c9e76d0ced9d71ce1cae10efb9b3d4871118db3",
     "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
     "Packages/com.velvet.core/TestUtilities/GCAllocationProbe.cs": "492823c099cf4f4de89da0da69c98d45cfc042070d93e2d0c0b95773310ebc2c",
@@ -14,7 +14,7 @@
    }
   }
  ],
- "measured_by": "44245775120",
+ "measured_by": "44320767855",
  "mutant": {
   "after": "",
   "before": " && MotionLayoutIdDriver.HasLayoutIdAncestor(ChildListWrites.ParentOf(element), _ctx)",
@@ -30,6 +30,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "299a5fa564965fed4c51ec90d330a92976c1974b488c628bd74f7b6be8bc072a",
+ "tests": "ef41634d48c09787bf870d2434d8c43063f0ee140990dd6f4d08dea2351b52ef",
  "verdict": "killed"
 }

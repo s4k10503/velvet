@@ -1,0 +1,85 @@
+{
+ "detail": "EditMode: 6 failed among the 23 case(s) that ran the site: Given_AnOpacityTransitionOnEaseInOutClasses_When_ACarryTakesItOverBeforeItsRunEvent_Then_ItCarriesTailwindsEaseInOut, Given_AnOpacityTransitionWhoseRunEventLeftItOnALinearCurve_When_ALayerGivesLinearAFunctionAndACarryTakesItOver_Then_ItKeepsTheLinearCurve, Given_ARadiusTransitionOnEaseInOutClasses_When_ACarryTakesItOverBeforeItsRunEvent_Then_ItCarriesTailwindsEaseInOut",
+ "file": "2b64f0d24258d913debc67d5541aa38c06f773f8cdd9da1f5a3e86da927d399f",
+ "killers": [
+  {
+   "case": "Velvet.Tests.StyleEaseCurveTakeOverTests.Given_ARadiusTransitionOnEaseInOutClasses_When_ACarryTakesItOverBeforeItsRunEvent_Then_ItCarriesTailwindsEaseInOut",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/StyleEaseCurveTakeOverTests.cs": "15ee7ee216a8bebcb8ad371ee93f9049da3ecc0def723851dc58d75df8b6cfde",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  },
+  {
+   "case": "Velvet.Tests.StyleEaseCurveTakeOverTests.Given_ARotateTransitionOnEaseInOutClasses_When_ACarryTakesItOverBeforeItsRunEvent_Then_ItCarriesTailwindsEaseInOut",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/StyleEaseCurveTakeOverTests.cs": "15ee7ee216a8bebcb8ad371ee93f9049da3ecc0def723851dc58d75df8b6cfde",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  },
+  {
+   "case": "Velvet.Tests.StyleEaseCurveTakeOverTests.Given_AScaleTransitionOnEaseInOutClasses_When_ACarryTakesItOverBeforeItsRunEvent_Then_ItCarriesTailwindsEaseInOut",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/StyleEaseCurveTakeOverTests.cs": "15ee7ee216a8bebcb8ad371ee93f9049da3ecc0def723851dc58d75df8b6cfde",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  },
+  {
+   "case": "Velvet.Tests.StyleEaseCurveTakeOverTests.Given_ATranslateTransitionOnEaseInOutClasses_When_ACarryTakesItOverBeforeItsRunEvent_Then_ItCarriesTailwindsEaseInOut",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/StyleEaseCurveTakeOverTests.cs": "15ee7ee216a8bebcb8ad371ee93f9049da3ecc0def723851dc58d75df8b6cfde",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  },
+  {
+   "case": "Velvet.Tests.StyleEaseCurveTakeOverTests.Given_AnOpacityTransitionOnEaseInOutClasses_When_ACarryTakesItOverBeforeItsRunEvent_Then_ItCarriesTailwindsEaseInOut",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/StyleEaseCurveTakeOverTests.cs": "15ee7ee216a8bebcb8ad371ee93f9049da3ecc0def723851dc58d75df8b6cfde",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  },
+  {
+   "case": "Velvet.Tests.StyleEaseCurveTakeOverTests.Given_AnOpacityTransitionWhoseRunEventLeftItOnALinearCurve_When_ALayerGivesLinearAFunctionAndACarryTakesItOver_Then_ItKeepsTheLinearCurve",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/StyleEaseCurveTakeOverTests.cs": "15ee7ee216a8bebcb8ad371ee93f9049da3ecc0def723851dc58d75df8b6cfde",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  }
+ ],
+ "measured_by": "44320767855",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 56,
+  "line": 390,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleEaseCurve.cs",
+  "shadowed": [
+   "literal",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "ef41634d48c09787bf870d2434d8c43063f0ee140990dd6f4d08dea2351b52ef",
+ "verdict": "killed"
+}

@@ -1,0 +1,82 @@
+{
+ "detail": "EditMode: 25 failed among the 104 case(s) that ran the site: Given_ACustomPropertyTheImporterHolds_When_TheSheetIsRewritten_Then_ItIsUnchanged(\":root { --spacing-2: var(--spacing-1); --font: \\\"Inter\\\"; }\"), png); }\"), 5); }\")",
+ "file": "0ddf8435b9549e32944ffd3067a89354248bdf3e2a39711af11f156c647a8b1e",
+ "killers": [
+  {
+   "case": "Velvet.Tests.UssCustomPropertyTextTests.Given_ACustomPropertyTheImporterHolds_When_TheSheetIsRewritten_Then_ItIsUnchanged(\":root { --a: +1; --b: -.5; --c: rgba(0, 0, 0, .5); }\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/UssCustomPropertyTextTests.cs": "49ea454c41452aae32344501df61a1a076a37b1b016e76742ba52795e74f237a"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UssCustomPropertyTextTests.Given_ACustomPropertyTheImporterHolds_When_TheSheetIsRewritten_Then_ItIsUnchanged(\":root { --bg: resource(a/b.png); --img: url(a/b.png); }\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/UssCustomPropertyTextTests.cs": "49ea454c41452aae32344501df61a1a076a37b1b016e76742ba52795e74f237a"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UssCustomPropertyTextTests.Given_ACustomPropertyTheImporterHolds_When_TheSheetIsRewritten_Then_ItIsUnchanged(\":root { --f: blur(4px) var(--a) linear-gradient(to right, #fff, #000); }\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/UssCustomPropertyTextTests.cs": "49ea454c41452aae32344501df61a1a076a37b1b016e76742ba52795e74f237a"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UssCustomPropertyTextTests.Given_ACustomPropertyTheImporterHolds_When_TheSheetIsRewritten_Then_ItIsUnchanged(\":root { --spacing-2: var(--spacing-1); --font: \\\"Inter\\\"; }\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/UssCustomPropertyTextTests.cs": "49ea454c41452aae32344501df61a1a076a37b1b016e76742ba52795e74f237a"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UssCustomPropertyTextTests.Given_ACustomPropertyTheImporterHolds_When_TheSheetIsRewritten_Then_ItIsUnchanged(\":root { --u: URL-prefix(a/b) domain(a.b); }\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/UssCustomPropertyTextTests.cs": "49ea454c41452aae32344501df61a1a076a37b1b016e76742ba52795e74f237a"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UssCustomPropertyTextTests.Given_ACustomPropertyTheImporterHolds_When_TheSheetIsRewritten_Then_ItIsUnchanged(\":root { --x: Var(--b); --y: BLUR(4px) Linear-Gradient(red, blue); }\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/UssCustomPropertyTextTests.cs": "49ea454c41452aae32344501df61a1a076a37b1b016e76742ba52795e74f237a"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UssCustomPropertyTextTests.Given_ACustomPropertyTheImporterHolds_When_TheSheetIsRewritten_Then_ItIsUnchanged(\":root { --x: blur(4px) /* c */; }\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/UssCustomPropertyTextTests.cs": "49ea454c41452aae32344501df61a1a076a37b1b016e76742ba52795e74f237a"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UssCustomPropertyTextTests.Given_ACustomPropertyTheImporterHolds_When_TheSheetIsRewritten_Then_ItIsUnchanged(\":root { --x: filter(url(a/*c*/)); }\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/UssCustomPropertyTextTests.cs": "49ea454c41452aae32344501df61a1a076a37b1b016e76742ba52795e74f237a"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UssCustomPropertyTextTests.Given_ACustomPropertyTheImporterHolds_When_TheSheetIsRewritten_Then_ItIsUnchanged(\":root { --x: none() filter() url() URL(); }\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/UssCustomPropertyTextTests.cs": "49ea454c41452aae32344501df61a1a076a37b1b016e76742ba52795e74f237a"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UssCustomPropertyTextTests.Given_ACustomPropertyTheImporterHolds_When_TheSheetIsRewritten_Then_ItIsUnchanged(\":root { --x: rgb(0 0 0) rgba(0, 0, 0, .5); }\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/UssCustomPropertyTextTests.cs": "49ea454c41452aae32344501df61a1a076a37b1b016e76742ba52795e74f237a"
+   }
+  }
+ ],
+ "measured_by": "44320767855",
+ "mutant": {
+  "after": ";",
+  "before": "text.Append(')');",
+  "column": 20,
+  "line": 268,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Editor/StyleSheets/UssCustomPropertyText.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "ef41634d48c09787bf870d2434d8c43063f0ee140990dd6f4d08dea2351b52ef",
+ "verdict": "killed"
+}

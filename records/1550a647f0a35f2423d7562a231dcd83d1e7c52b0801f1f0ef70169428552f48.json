@@ -1,0 +1,52 @@
+{
+ "detail": "EditMode: 5 failed among the 44 case(s) that ran the site: Given_ACommentAmongAFunctionsArguments_When_TheSheetIsRewritten_Then_ItsValueIsQuotedWithoutIt(\":root { --x: blur(/* x */ 4px); }\",\":root { --x: \\\"blur(  4px)\\\"; }\"), Given_ACommentAmongAFunctionsArguments_When_TheSheetIsRewritten_Then_ItsValueIsQuotedWithoutIt(\":root { --x: var(--a /* c */); }\",\":root { --x: \\\"var(--a  )\\\"; }\"), Given_ACommentAmongAFunctionsArguments_When_TheSheetIsRewritten_Then_ItsValueIsQuotedWithoutIt(\":root { --x: linear-gradient(red /* a */, blue); }\",\":root { --x: \\\"linear-gradient(red  , blue)\\\"; }\")",
+ "file": "0ddf8435b9549e32944ffd3067a89354248bdf3e2a39711af11f156c647a8b1e",
+ "killers": [
+  {
+   "case": "Velvet.Tests.UssCustomPropertyTextTests.Given_ACommentAmongAFunctionsArguments_When_TheSheetIsRewritten_Then_ItsValueIsQuotedWithoutIt(\":root { --x: blur(/* x */ 4px); }\",\":root { --x: \\\"blur(  4px)\\\"; }\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/UssCustomPropertyTextTests.cs": "49ea454c41452aae32344501df61a1a076a37b1b016e76742ba52795e74f237a"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UssCustomPropertyTextTests.Given_ACommentAmongAFunctionsArguments_When_TheSheetIsRewritten_Then_ItsValueIsQuotedWithoutIt(\":root { --x: filter(/* c */ a); }\",\":root { --x: \\\"filter(  a)\\\"; }\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/UssCustomPropertyTextTests.cs": "49ea454c41452aae32344501df61a1a076a37b1b016e76742ba52795e74f237a"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UssCustomPropertyTextTests.Given_ACommentAmongAFunctionsArguments_When_TheSheetIsRewritten_Then_ItsValueIsQuotedWithoutIt(\":root { --x: linear-gradient(red /* a */, blue); }\",\":root { --x: \\\"linear-gradient(red  , blue)\\\"; }\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/UssCustomPropertyTextTests.cs": "49ea454c41452aae32344501df61a1a076a37b1b016e76742ba52795e74f237a"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UssCustomPropertyTextTests.Given_ACommentAmongAFunctionsArguments_When_TheSheetIsRewritten_Then_ItsValueIsQuotedWithoutIt(\":root { --x: resource(/* c */); }\",\":root { --x: \\\"resource( )\\\"; }\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/UssCustomPropertyTextTests.cs": "49ea454c41452aae32344501df61a1a076a37b1b016e76742ba52795e74f237a"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UssCustomPropertyTextTests.Given_ACommentAmongAFunctionsArguments_When_TheSheetIsRewritten_Then_ItsValueIsQuotedWithoutIt(\":root { --x: var(--a /* c */); }\",\":root { --x: \\\"var(--a  )\\\"; }\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/UssCustomPropertyTextTests.cs": "49ea454c41452aae32344501df61a1a076a37b1b016e76742ba52795e74f237a"
+   }
+  }
+ ],
+ "measured_by": "44320767855",
+ "mutant": {
+  "after": ";",
+  "before": "text.Append(comment);",
+  "column": 20,
+  "line": 393,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Editor/StyleSheets/UssCustomPropertyText.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "ef41634d48c09787bf870d2434d8c43063f0ee140990dd6f4d08dea2351b52ef",
+ "verdict": "killed"
+}

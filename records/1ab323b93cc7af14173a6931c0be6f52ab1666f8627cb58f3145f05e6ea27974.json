@@ -1,0 +1,58 @@
+{
+ "detail": "EditMode: 4 failed among the 44 case(s) that ran the site: Given_ACombine_When_TheComponentRendersAgainAfterItsMount_Then_TheCombineDoesNotRunAgain, Given_ACombine_When_TheComponentRendersWithNoResultChanged_Then_ItDoesNotRunAgain, Given_AQueryListingOnlyError_When_ItsDataAndThenAnothersChange_Then_TheCombineSeesItsNotifiedDataFirst",
+ "file": "f2cef2ee4b8ef8dcd79032202d9141aec25292c5bf707c35a5ec8dfe206722ea",
+ "killers": [
+  {
+   "case": "Velvet.Tests.UseQueriesTests.Given_ACombine_When_TheComponentRendersAgainAfterItsMount_Then_TheCombineDoesNotRunAgain",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseQueriesTests.cs": "d76f600f2ea006c8efa2fb515454333314945c07af0192345b936e1307a6b878",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UseQueriesTests.Given_ACombine_When_TheComponentRendersWithNoResultChanged_Then_ItDoesNotRunAgain",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseQueriesTests.cs": "d76f600f2ea006c8efa2fb515454333314945c07af0192345b936e1307a6b878",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UseQueriesTests.Given_AQueryListingOnlyError_When_ItsDataAndThenAnothersChange_Then_TheCombineSeesItsNotifiedDataFirst",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseQueriesTests.cs": "d76f600f2ea006c8efa2fb515454333314945c07af0192345b936e1307a6b878",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UseQueriesTests.Given_StrictModeAndACombine_When_TheComponentRendersAgainAfterTheMountsEffectsReplay_Then_TheCombineDoesNotRunAgain",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseQueriesTests.cs": "d76f600f2ea006c8efa2fb515454333314945c07af0192345b936e1307a6b878",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  }
+ ],
+ "measured_by": "44320767855",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 26,
+  "line": 3657,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Hooks/Hooks.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "ef41634d48c09787bf870d2434d8c43063f0ee140990dd6f4d08dea2351b52ef",
+ "verdict": "killed"
+}

@@ -1,0 +1,104 @@
+{
+ "detail": "EditMode: 13 failed among the 113 case(s) that ran the site: Given_AMountedRingedElement_When_TheReconcilerIsDisposed_Then_TheBandLeaves, Given_APlainElement_When_RingClassAddedByPatch_Then_TheOverlayIsHosted, Given_ARingedElement_When_Reconciled_Then_TheOverlayIsNotCountedAsARenderedChild",
+ "file": "3155c0e2a8c7fcef3a2253bd54bf30abc4a83d13ef32556fc4f3997e03eb6679",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ClipPathWrapTests.Given_AMountedRingedElement_When_TheReconcilerIsDisposed_Then_TheBandLeaves",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ClipPathWrapTests.cs": "b1b543cdcb38ff9e33949c162b926278bfb78dd8e8968824081eeed8740f1c93",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/ZBandProbe.cs": "89b5305bd9e43f72156f5a3d8c6f121f5ebcbee121486fdbb8e4b04b315feaaa"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ClipPathWrapTests.Given_APlainElement_When_RingClassAddedByPatch_Then_TheOverlayIsHosted",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ClipPathWrapTests.cs": "b1b543cdcb38ff9e33949c162b926278bfb78dd8e8968824081eeed8740f1c93",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/ZBandProbe.cs": "89b5305bd9e43f72156f5a3d8c6f121f5ebcbee121486fdbb8e4b04b315feaaa"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ClipPathWrapTests.Given_ARingedElement_When_Reconciled_Then_TheOverlayIsNotCountedAsARenderedChild",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ClipPathWrapTests.cs": "b1b543cdcb38ff9e33949c162b926278bfb78dd8e8968824081eeed8740f1c93",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/ZBandProbe.cs": "89b5305bd9e43f72156f5a3d8c6f121f5ebcbee121486fdbb8e4b04b315feaaa"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ClipPathWrapTests.Given_ARingedElement_When_RingClassRemovedByPatch_Then_TheOverlayLeavesTheParent",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ClipPathWrapTests.cs": "b1b543cdcb38ff9e33949c162b926278bfb78dd8e8968824081eeed8740f1c93",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/ZBandProbe.cs": "89b5305bd9e43f72156f5a3d8c6f121f5ebcbee121486fdbb8e4b04b315feaaa"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ClipPathWrapTests.Given_ARingedElement_When_ShadowClassAddedByPatch_Then_TheRingOverlayIsKept",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ClipPathWrapTests.cs": "b1b543cdcb38ff9e33949c162b926278bfb78dd8e8968824081eeed8740f1c93",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/ZBandProbe.cs": "89b5305bd9e43f72156f5a3d8c6f121f5ebcbee121486fdbb8e4b04b315feaaa"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ClipPathWrapTests.Given_ARingedElement_When_Unmounted_Then_TheOverlayLeavesTheParent",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ClipPathWrapTests.cs": "b1b543cdcb38ff9e33949c162b926278bfb78dd8e8968824081eeed8740f1c93",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/ZBandProbe.cs": "89b5305bd9e43f72156f5a3d8c6f121f5ebcbee121486fdbb8e4b04b315feaaa"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ClipPathWrapTests.Given_AZManagedRingedElement_When_Reconciled_Then_TheBandFollowsItIntoItsFrontBand",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ClipPathWrapTests.cs": "b1b543cdcb38ff9e33949c162b926278bfb78dd8e8968824081eeed8740f1c93",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/ZBandProbe.cs": "89b5305bd9e43f72156f5a3d8c6f121f5ebcbee121486fdbb8e4b04b315feaaa"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ClipPathWrapTests.Given_Ring2_When_Reconciled_Then_TheElementItselfStillOccupiesItsSlot",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ClipPathWrapTests.cs": "b1b543cdcb38ff9e33949c162b926278bfb78dd8e8968824081eeed8740f1c93",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/ZBandProbe.cs": "89b5305bd9e43f72156f5a3d8c6f121f5ebcbee121486fdbb8e4b04b315feaaa"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ClipPathWrapTests.Given_Ring2_When_Reconciled_Then_TheOverlayIsHostedBesideTheElement",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ClipPathWrapTests.cs": "b1b543cdcb38ff9e33949c162b926278bfb78dd8e8968824081eeed8740f1c93",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/ZBandProbe.cs": "89b5305bd9e43f72156f5a3d8c6f121f5ebcbee121486fdbb8e4b04b315feaaa"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ClipPathWrapTests.Given_ShadowAndRingTogether_When_Reconciled_Then_BothLayersAttach",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ClipPathWrapTests.cs": "b1b543cdcb38ff9e33949c162b926278bfb78dd8e8968824081eeed8740f1c93",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/ZBandProbe.cs": "89b5305bd9e43f72156f5a3d8c6f121f5ebcbee121486fdbb8e4b04b315feaaa"
+   }
+  }
+ ],
+ "measured_by": "44320767855",
+ "mutant": {
+  "after": "==",
+  "before": "!=",
+  "column": 70,
+  "line": 453,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Styling/RingOverlay.cs",
+  "shadowed": [
+   "arithmetic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "ef41634d48c09787bf870d2434d8c43063f0ee140990dd6f4d08dea2351b52ef",
+ "verdict": "killed"
+}

@@ -1,0 +1,33 @@
+{
+ "detail": "EditMode: 1 failed among the 44 case(s) that ran the site: Given_DataSetBetweenTheMountsRenderAndItsCommit_When_TheCommitRuns_Then_TheComponentRendersWhatTheCombineMakesOfIt",
+ "file": "7e48f3be12dd11bff9b16d5b0f97c4ea13a337486357f2eba4c49fdf91fb42d8",
+ "killers": [
+  {
+   "case": "Velvet.Tests.UseQueriesTests.Given_DataSetBetweenTheMountsRenderAndItsCommit_When_TheCommitRuns_Then_TheComponentRendersWhatTheCombineMakesOfIt",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseQueriesTests.cs": "d76f600f2ea006c8efa2fb515454333314945c07af0192345b936e1307a6b878",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  }
+ ],
+ "measured_by": "44320767855",
+ "mutant": {
+  "after": "",
+  "before": " || _changedWhileSyncing",
+  "column": 25,
+  "line": 380,
+  "operator": "clause removed",
+  "path": "Packages/com.velvet.core/Runtime/Hooks/HookQueries.cs",
+  "shadowed": [
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "ef41634d48c09787bf870d2434d8c43063f0ee140990dd6f4d08dea2351b52ef",
+ "verdict": "killed"
+}

@@ -1,0 +1,35 @@
+{
+ "detail": "EditMode: 1 failed among the 62 case(s) that ran the site: Given_ABorderOverlayUp_When_ADividerIsPaintedOnTheClippingElement_Then_TheDividerQueuesItsOwnSettle",
+ "file": "7b4566953561ae6dd61112987cb6081f0b81dbc690564b4e25c5a2f7565418c6",
+ "killers": [
+  {
+   "case": "Velvet.Tests.FaceBorderOverlayDividerSharingTests.Given_ABorderOverlayUp_When_ADividerIsPaintedOnTheClippingElement_Then_TheDividerQueuesItsOwnSettle",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/FaceBorderOverlayDividerSharingTests.cs": "eb06949085160a3b9d0c4acb2fb7768feade6e8e4f07a09ce8a4e639cc066fd7",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  }
+ ],
+ "measured_by": "44320767855",
+ "mutant": {
+  "after": "==",
+  "before": "!=",
+  "column": 21,
+  "line": 117,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Styling/FaceBorderOverlay.cs",
+  "shadowed": [
+   "clause removed",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "ef41634d48c09787bf870d2434d8c43063f0ee140990dd6f4d08dea2351b52ef",
+ "verdict": "killed"
+}

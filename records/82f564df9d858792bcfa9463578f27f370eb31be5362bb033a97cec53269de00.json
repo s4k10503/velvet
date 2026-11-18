@@ -1,0 +1,42 @@
+{
+ "detail": "EditMode: 3 failed among the 30 case(s) that ran the site: Given_AnRgbChannelOrAlphaBeyondItsRange_When_TheSheetIsRewritten_Then_ItIsWrittenClamped(\":root { --x: rgba(1, 2, 3, 2); }\",\":root { --x: rgba(1, 2, 3, 1); }\"), 5); }\",\":root { --x: rgba(1 2 3 / 1); }\"), Given_AnRgbChannelOrAlphaBeyondItsRange_When_TheSheetIsRewritten_Then_ItIsWrittenClamped(\":root { --x: blur(4px) rgb(300, 0, 0) rgba(1, 2, 3, 2); }\",\":root { --x: blur(4px) rgb(255, 0, 0) rgba(1, 2, 3, 1); }\")",
+ "file": "0ddf8435b9549e32944ffd3067a89354248bdf3e2a39711af11f156c647a8b1e",
+ "killers": [
+  {
+   "case": "Velvet.Tests.UssCustomPropertyTextTests.Given_AnRgbChannelOrAlphaBeyondItsRange_When_TheSheetIsRewritten_Then_ItIsWrittenClamped(\":root { --x: blur(4px) rgb(300, 0, 0) rgba(1, 2, 3, 2); }\",\":root { --x: blur(4px) rgb(255, 0, 0) rgba(1, 2, 3, 1); }\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/UssCustomPropertyTextTests.cs": "49ea454c41452aae32344501df61a1a076a37b1b016e76742ba52795e74f237a"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UssCustomPropertyTextTests.Given_AnRgbChannelOrAlphaBeyondItsRange_When_TheSheetIsRewritten_Then_ItIsWrittenClamped(\":root { --x: rgba(1 2 3 / 1.5); }\",\":root { --x: rgba(1 2 3 / 1); }\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/UssCustomPropertyTextTests.cs": "49ea454c41452aae32344501df61a1a076a37b1b016e76742ba52795e74f237a"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UssCustomPropertyTextTests.Given_AnRgbChannelOrAlphaBeyondItsRange_When_TheSheetIsRewritten_Then_ItIsWrittenClamped(\":root { --x: rgba(1, 2, 3, 2); }\",\":root { --x: rgba(1, 2, 3, 1); }\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/UssCustomPropertyTextTests.cs": "49ea454c41452aae32344501df61a1a076a37b1b016e76742ba52795e74f237a"
+   }
+  }
+ ],
+ "measured_by": "44320767855",
+ "mutant": {
+  "after": "<=",
+  "before": "<",
+  "column": 77,
+  "line": 281,
+  "operator": "boundary",
+  "path": "Packages/com.velvet.core/Editor/StyleSheets/UssCustomPropertyText.cs",
+  "shadowed": [
+   "line removed"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "ef41634d48c09787bf870d2434d8c43063f0ee140990dd6f4d08dea2351b52ef",
+ "verdict": "killed"
+}

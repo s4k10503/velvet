@@ -1,0 +1,33 @@
+{
+ "detail": "EditMode: 1 failed among the 342 case(s) that ran the site: Given_ACardGivenTransitionClassesAsTheModalItFollowsStartsItsExit_When_ItsMoveRuns_Then_ItIsDrawnWhereItIsWritten",
+ "file": "58f42ce9cca89ee7c2f7d9d6f03a62da4f126c305d7c35abba05e50efce52674",
+ "killers": [
+  {
+   "case": "Velvet.Tests.MotionScheduledMechanicsTests.Given_ACardGivenTransitionClassesAsTheModalItFollowsStartsItsExit_When_ItsMoveRuns_Then_ItIsDrawnWhereItIsWritten",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionScheduledMechanicsTests.cs": "0eb200d8ad7a00fa125d68e44bfecee883562e2071a7a7c7dc0e2efb8e9ec2e6",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionSimulatedPanelTestsBase.cs": "319b26852fbe6c4376e12d0d0c9e76d0ced9d71ce1cae10efb9b3d4871118db3",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/GCAllocationProbe.cs": "492823c099cf4f4de89da0da69c98d45cfc042070d93e2d0c0b95773310ebc2c",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  }
+ ],
+ "measured_by": "44320767855",
+ "mutant": {
+  "after": ";",
+  "before": "MotionNativeTransitionGuard.Refresh(element);",
+  "column": 12,
+  "line": 374,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/MotionLayoutIdDriver.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "ef41634d48c09787bf870d2434d8c43063f0ee140990dd6f4d08dea2351b52ef",
+ "verdict": "killed"
+}

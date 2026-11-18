@@ -1,0 +1,23 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "da70f475c60d052a725f2db38ccdbf6f4edf7a97ef8fd74a131c257162925cac",
+ "killers": [],
+ "measured_by": "44320767855",
+ "mutant": {
+  "after": ">",
+  "before": ">=",
+  "column": 37,
+  "line": 317,
+  "operator": "boundary",
+  "path": "Packages/com.velvet.core/Runtime/Styling/OutlineHosting.cs",
+  "shadowed": [
+   "arithmetic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "ef41634d48c09787bf870d2434d8c43063f0ee140990dd6f4d08dea2351b52ef",
+ "verdict": "survived"
+}
