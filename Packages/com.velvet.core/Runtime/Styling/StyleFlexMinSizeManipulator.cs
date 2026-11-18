@@ -198,10 +198,10 @@ namespace Velvet
             var maximum = MaximumLength(textElement, horizontal, parentContent);
             _readsParentBox = ReadsPercent(textElement, horizontal);
             var clipped = IsClipped(textElement);
-            var atNaturalWidth = IsAtNaturalWidth(textElement, horizontal, text, resolved, frame);
-            var signature = System.HashCode.Combine(
-                ComputeSignature(horizontal, text, resolved, crossContent, specified, maximum), clipped,
-                atNaturalWidth);
+            var baseSignature = System.HashCode.Combine(
+                ComputeSignature(horizontal, text, resolved, crossContent, specified, maximum), clipped);
+            var atNaturalWidth = IsAtNaturalWidth(textElement, horizontal, text, resolved, frame, measure: false);
+            var signature = System.HashCode.Combine(baseSignature, atNaturalWidth);
             if (_hasSignature && signature == _lastSignature)
             {
                 return;
@@ -224,6 +224,9 @@ namespace Velvet
                 return;
             }
 
+            atNaturalWidth = atNaturalWidth
+                || IsAtNaturalWidth(textElement, horizontal, text, resolved, frame, measure: true);
+            signature = System.HashCode.Combine(baseSignature, atNaturalWidth);
             if (atNaturalWidth)
             {
                 Release(textElement);
@@ -251,10 +254,13 @@ namespace Velvet
         }
 
         // A shrinkable item in a row that has the width of its whole text on one line, which is at least its
-        // widest run, so the minimum would hold it to no more than the width it has. A nowrap or pre item's
-        // minimum is that width itself, and an item that cannot shrink is left as it was: both are measured.
+        // widest run, so the minimum would hold it to no more than the width it has. A text of one run has a
+        // minimum equal to that width, which the item's own minimum can then produce, so it is never one. A nowrap
+        // or pre item's minimum is that width itself, and an item that cannot shrink is left as it was: both are
+        // measured. Measures the text, once per text and font size, only where measure is set; without it a text
+        // not measured yet is not at its natural width.
         private bool IsAtNaturalWidth(
-            TextElement textElement, bool horizontal, string text, IResolvedStyle resolved, float frame)
+            TextElement textElement, bool horizontal, string text, IResolvedStyle resolved, float frame, bool measure)
         {
             if (!horizontal || resolved.flexShrink <= 0f
                 || resolved.whiteSpace == WhiteSpace.NoWrap || resolved.whiteSpace == WhiteSpace.Pre)
@@ -264,12 +270,18 @@ namespace Velvet
             var key = System.HashCode.Combine(text, resolved.fontSize);
             if (!_hasNatural || key != _naturalKey)
             {
+                if (!measure)
+                {
+                    return false;
+                }
                 var width = MeasureWidth(textElement, text);
                 if (!(width > 0f))
                 {
                     return false;
                 }
-                _natural = width;
+                s_runs.Clear();
+                TextBreakOpportunities.CollectRuns(text, s_runs);
+                _natural = s_runs.Count == 1 ? float.NaN : width;
                 _naturalKey = key;
                 _hasNatural = true;
             }

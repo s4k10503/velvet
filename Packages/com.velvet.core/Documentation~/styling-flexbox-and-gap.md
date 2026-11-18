@@ -422,9 +422,9 @@ that axis, then by its maximum size. Velvet writes that value inline, as `min-wi
 - a column's min-content height is the height the text takes at the width the item was given;
 - the item's own padding and border on that axis is added to either.
 
-A row item that can shrink and holds the width of its whole text on one line carries no minimum, since the
-minimum is never below that width; the value is written once the row squeezes the item below it. A column item,
-a `whitespace-nowrap` or `whitespace-pre` item and one with `flex-shrink: 0` carry theirs whatever room they have.
+A row item that can shrink, wraps, has more than one run of text and holds the width of its whole text on one
+line carries no minimum, since the minimum is never above that width; the value is written once the row squeezes
+the item below it. A column item and the other row items are measured as before.
 
 A declared `w-*` / `h-*` / `size-*` (class, bracket or inline) caps the minimum at that size, and a
 `max-w-*` / `max-h-*` caps it at the maximum; `w-fit`, `w-min`, `w-max` and `w-auto` declare no definite
