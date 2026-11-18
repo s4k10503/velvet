@@ -529,7 +529,8 @@ namespace Velvet
 
         private void DrainImmediatePassesUpTo(ref int totalPasses, ref bool renderedSyncLane)
         {
-            while (_immediateOrder.Count > 0)
+            // A pass that held this root's disposal stood it down (Drain says why no later pass renders).
+            while (_immediateOrder.Count > 0 && !FiberExecutionContext.Threw(this))
             {
                 if (totalPasses > NestedUpdateLimit)
                 {
@@ -691,7 +692,9 @@ namespace Velvet
             // presence completions run before this pass renders. Ahead of the copy below, so on the immediate tier
             // an update one of them schedules joins this pass.
             FlushPendingPassiveEffectsWork();
-            if (order.Count == 0) return;
+            // An effect of that flush that disposed this root stood it down (MountedTree.Dispose): React's unmount render
+            // drops the root's pending updates, so this pass renders none of them.
+            if (order.Count == 0 || FiberExecutionContext.Threw(this)) return;
             // Activate UseStore snapshot pinning for the span of this drain. Bracketed only on the outer drain
             // (a re-entrant call is blocked by _draining before reaching here) so a nested entry cannot reset
             // the wave mid-flush.

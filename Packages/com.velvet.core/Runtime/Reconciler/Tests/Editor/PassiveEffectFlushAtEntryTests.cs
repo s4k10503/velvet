@@ -15,8 +15,8 @@ namespace Velvet.Tests
     /// opens with): another root's update drain, the unmount of a root whose mount effect has not run, an error
     /// boundary's swap for a <c>UseFrame</c> callback's error, and the render a resolved read retries. What one root's
     /// flush throws is logged, and stands that root down rather than the entry whose start ran it. A root disposed
-    /// renders nothing its pending effects force, nor, where its disposal is held inside an entry, a render held for it
-    /// ahead of the unmount.
+    /// renders nothing its pending effects force, nor, where its disposal is held inside an entry, a flush held for it
+    /// ahead of the unmount or a later pass of a drain of it.
     /// </summary>
     [TestFixture]
     internal sealed class PassiveEffectFlushAtEntryTests
@@ -296,6 +296,53 @@ namespace Velvet.Tests
 
             // Assert — null where the tree was not disposed
             Assert.That(target.Root.IsDisposed ? s_secondTreeRenders : (int?)null, Is.EqualTo(0));
+        }
+
+        private static MountedTree s_ownTree;
+        private static StateUpdater<int> s_setInput;
+        private static int s_updateRenders;
+
+        // Its layout effect asks for a follow-up pass whenever its input changes, and its passive effect, which the
+        // drain runs ahead of that pass, sets state on its own tree and then disposes the tree.
+        [Component(Compiler = false)]
+        private static VNode SetsStateAndDisposesItsTree()
+        {
+            var (input, setInput) = Hooks.UseState(0);
+            var (measured, setMeasured) = Hooks.UseState(0);
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setInput = setInput;
+            if (tick > 0) s_updateRenders++;
+            Hooks.UseLayoutEffect(() =>
+            {
+                setMeasured.Invoke(input);
+                return (Action)null;
+            }, new object[] { input });
+            Hooks.UseEffect(() =>
+            {
+                if (input == 0) return (Action)null;
+                setTick.Invoke(1);
+                s_ownTree.Dispose();
+                return (Action)null;
+            }, new object[] { input });
+            return V.Label(text: "measured" + measured);
+        }
+
+        // React's unmount render drops the deleted component's pending update, so it never renders.
+        [Test]
+        public void Given_AnEffectThatSetsStateOnItsOwnTreeAndThenDisposesIt_When_TheDrainRunsIt_Then_TheUpdateNeverRenders()
+        {
+            // Arrange
+            s_updateRenders = 0;
+            using var tree = V.Mount(new VisualElement(), V.Component(SetsStateAndDisposesItsTree, key: "c"));
+            s_ownTree = tree;
+            tree.FlushEffectsForTest();
+            s_setInput.Invoke(1);
+
+            // Act — the first pass renders the input, and the effect runs ahead of the follow-up pass its layout effect asks for
+            tree.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert — null where the tree was not disposed
+            Assert.That(tree.Root.IsDisposed ? s_updateRenders : (int?)null, Is.EqualTo(0));
         }
 
         [Test]
