@@ -35,8 +35,16 @@ HOOK_SCOPE = "session"
 # The decision is `milestone.py`'s, and its suite has no reason to spell this hook.
 DECISION_TESTS = ("scripts/pr/test_milestone.py",)
 
+# What one merge reads at worst, each at its bound: the pull request, `MILESTONE_PAGES` pages of
+# milestones and the tag listing at `READ_TIMEOUT`, one fetch at `GIT_TIMEOUT`, and `LOCAL_READS` git
+# reads of the fetched trees at `LOCAL_TIMEOUT`, published_check's own bound.
+# test_merge_off_milestone.py holds the sum under the timeout `.harness/hooks.json` registers, and
+# the git reads one merge takes under the count.
 READ_TIMEOUT = 8
+MILESTONE_PAGES = 2
 GIT_TIMEOUT = 20
+LOCAL_READS = 17
+LOCAL_TIMEOUT = 5
 
 UNREADABLE_REFUSAL = (
     "Refusing `gh pr merge`: the milestone {} merges under could not be judged.\n\n"
@@ -80,18 +88,17 @@ def refuse_one(cwd, pr):
     try:
         number = number_of(cwd, pr)
         asked = milestone.pull_request(ask, number)
-        package = milestone.changes_package(milestone.changed_paths(ask, number, asked.changed))
-        refs = list(dict.fromkeys([milestone.maintenance_line.MAIN, asked.base]
-                                  + ([] if asked.fork else [asked.head])))
+        # A fork's head is not a branch of origin, which carries it as the pull request's ref.
+        refs = list(dict.fromkeys([milestone.maintenance_line.MAIN, asked.base,
+                                   f"pull/{number}/head" if asked.fork else asked.head]))
         fetched = git_answer(["fetch", "-q", "origin", *refs], cwd=cwd, timeout=GIT_TIMEOUT)
         if fetched.code != 0:
             return UNREADABLE_REFUSAL.format(label, f"origin/{' '.join(refs)} could not be fetched")
-        state = milestone.repository(cwd, ask, READ_TIMEOUT)
-        change = (milestone.NOTHING if asked.fork else
-                  milestone.change(cwd, f"origin/{asked.base}", asked.sha, state.published))
+        state = milestone.repository(cwd, ask, READ_TIMEOUT, pages=MILESTONE_PAGES)
+        change = milestone.change(cwd, f"origin/{asked.base}", asked.sha, state.published)
     except milestone.Unread as failure:
         return UNREADABLE_REFUSAL.format(label, failure)
-    found = milestone.merge_reasons(number, asked, package, change, state)
+    found = milestone.merge_reasons(number, asked, change, state)
     if not found:
         return None
     lines = "".join(f"  - {reason}\n" for reason in found)

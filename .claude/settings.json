@@ -192,7 +192,7 @@
         "hooks": [
           {
             "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/refuse/merge_off_milestone.py\"",
-            "timeout": 60.0,
+            "timeout": 150.0,
             "type": "command"
           }
         ],

@@ -21,15 +21,21 @@ PUBLISHED = {"2.1.4", "3.0.0", "3.0.1"}
 TODAY = milestone.Repository(OPEN, PUBLISHED, 3)
 
 
-def pull(title="v3.0.2", state="open", base="main", landing=None, name="fix(velvet): a fix"):
-    return milestone.PullRequest(title, state, base, landing or base, "topic", "a" * 40, 1, False,
-                                 name)
+def pull(title="v3.0.2", state="open", base="main", landing=None):
+    return milestone.PullRequest(title, state, base, landing or base, "topic", "a" * 40, 1, False)
 
 
-def decided(title="v3.0.2", package=True, change=milestone.NOTHING, repository=TODAY, base="main",
-            state="open", name="fix(velvet): a fix", number=7):
-    return milestone.merge_reasons(number, pull(title, state, base, name=name), package, change,
-                                   repository)
+def adds(bump="patch", closes=()):
+    """A change to the package whose derivation is `bump`, closing `closes`."""
+    derived = {"major": (["- A break."], [], []), "minor": ([], ["method Velvet.V.New()"], []),
+               "patch": ([], [], [])}[bump]
+    return milestone.Change(True, tuple(closes), milestone.next_version.derive("0.0.0", *derived))
+
+
+def decided(title="v3.0.2", package=True, change=None, repository=TODAY, base="main",
+            state="open", number=7):
+    change = change or (adds() if package else milestone.NOTHING)
+    return milestone.merge_reasons(number, pull(title, state, base), change, repository)
 
 
 class PullRequestReasonTests(unittest.TestCase):
@@ -128,7 +134,20 @@ class HeadReasonTests(unittest.TestCase):
 
         # Assert
         self.assertIn("does not follow v3.0.1, the newest release below it, so publishing it skips "
-                      "a version: open the milestone of whichever of v3.0.2, v3.1.0, v4.0.0",
+                      "a version: open v3.0.2 with "
+                      "`gh api repos/{owner}/{repo}/milestones -f title=v3.0.2` or v3.1.0 with",
+                      reasons[0] if reasons else "")
+
+    def test_Given_TheSkippedVersionsMilestoneClosed_When_Decided_Then_ReopeningItIsNamed(self):
+        # Arrange — v3.0.2 closed unpublished, so its title is held: creating it again is refused.
+        repository = TODAY._replace(open=[M(4, "v3.2.0")], closed=[M(5, "v3.0.2")])
+
+        # Act
+        reasons = decided(title="v3.2.0", repository=repository)
+
+        # Assert
+        self.assertIn("open v3.0.2 with "
+                      "`gh api -X PATCH repos/{owner}/{repo}/milestones/5 -f state=open`",
                       reasons[0] if reasons else "")
 
     def test_Given_ALineWithNoOpenVersionMilestone_When_Decided_Then_OpeningOneIsTheWayOut(self):
@@ -136,10 +155,10 @@ class HeadReasonTests(unittest.TestCase):
         reasons = decided(title="v3.0.2", base="2.x")
 
         # Assert
-        self.assertIn("no open milestone names the next version 2.x publishes: open it with "
-                      "`gh api repos/{owner}/{repo}/milestones -f title=v<version>`, the version "
-                      "`python3 scripts/release/next_version.py --rev origin/2.x` prints",
-                      reasons[0] if reasons else "")
+        self.assertIn("no open milestone names the next version 2.x publishes, the one "
+                      "`python3 scripts/release/next_version.py --rev origin/2.x` prints: open "
+                      "v2.1.5 with `gh api repos/{owner}/{repo}/milestones -f title=v2.1.5` or "
+                      "v2.2.0 with", reasons[0] if reasons else "")
 
     def test_Given_ALinesOwnNextVersion_When_ItsPullRequestIsDecided_Then_NothingBlocks(self):
         # Arrange
@@ -155,6 +174,14 @@ class HeadReasonTests(unittest.TestCase):
         # Act / Assert
         self.assertEqual(decided(repository=repository), [])
 
+    def test_Given_NoOpenMilestoneOfMainsOwnMajor_When_Decided_Then_TheNextMajorIsMains(self):
+        # Arrange — main builds 3 and every v3 milestone is closed, so the v4.0.0 pull request that
+        # starts main building 4 merges under main's next version.
+        repository = TODAY._replace(open=[M(3, "v4.0.0")])
+
+        # Act / Assert
+        self.assertEqual(decided(title="v4.0.0", change=adds("major"), repository=repository), [])
+
     def test_Given_MainBuildingTheNextMajor_When_Decided_Then_ItsNextVersionIsThatMajor(self):
         # Arrange — a breaking entry on main makes it build 4, and the v3 milestones a line's.
         repository = TODAY._replace(series=4)
@@ -166,57 +193,68 @@ class HeadReasonTests(unittest.TestCase):
 class BumpReasonTests(unittest.TestCase):
     """Onto a branch no release is cut from, so the milestone is asked about nothing but its bump."""
 
-    def bumped(self, title, change=milestone.NOTHING, name="fix(velvet): a fix"):
-        return decided(title=title, change=change, base="refactor/below", name=name)
+    def bumped(self, title, bump):
+        return decided(title=title, change=adds(bump), base="refactor/below")
 
-    def test_Given_ABreakingEntryUnderAPatchMilestone_When_Decided_Then_TheMajorIsNamed(self):
+    def test_Given_ABreakingAdditionUnderAPatchMilestone_When_Decided_Then_TheMajorIsNamed(self):
         # Act
-        reasons = self.bumped("v3.0.2", milestone.Change((), "A break.", None))
+        reasons = self.bumped("v3.0.2", "major")
 
         # Assert
-        self.assertIn("adds the breaking entry `A break.`, which ships in a major at least, and "
-                      "carries v3.0.2, a patch: carry v4.0.0 with `gh pr edit 7 --milestone v4.0.0`",
+        self.assertIn("ships in a major", reasons[0] if reasons else "")
+
+    def test_Given_ABreakingAdditionUnderAPatchMilestone_When_Decided_Then_TheEditToTheMajorIsNamed(self):
+        # Act
+        reasons = self.bumped("v3.0.2", "major")
+
+        # Assert
+        self.assertIn("carry v4.0.0 with `gh pr edit 7 --milestone v4.0.0`",
                       reasons[0] if reasons else "")
 
-    def test_Given_ABreakingEntryUnderAMinorMilestone_When_Decided_Then_ItIsRefused(self):
+    def test_Given_ABreakingAdditionUnderAMinorMilestone_When_Decided_Then_ItIsRefused(self):
         # Act
-        reasons = self.bumped("v3.1.0", milestone.Change((), "A break.", None))
+        reasons = self.bumped("v3.1.0", "major")
 
         # Assert
         self.assertIn("carries v3.1.0, a minor", reasons[0] if reasons else "")
 
-    def test_Given_ABreakingEntryUnderAMajorMilestone_When_Decided_Then_NothingBlocks(self):
+    def test_Given_ABreakingAdditionUnderAMajorMilestone_When_Decided_Then_NothingBlocks(self):
         # Act / Assert
-        self.assertEqual(self.bumped("v4.0.0", milestone.Change((), "A break.", None)), [])
+        self.assertEqual(self.bumped("v4.0.0", "major"), [])
 
-    def test_Given_AnAddedEntryUnderAPatchMilestone_When_Decided_Then_TheMinorIsNamed(self):
+    def test_Given_AGainedPublicMemberUnderAPatchMilestone_When_Decided_Then_TheMinorIsNamed(self):
         # Act
-        reasons = self.bumped("v3.0.2", milestone.Change((), None, "A utility."))
+        reasons = self.bumped("v3.0.2", "minor")
 
         # Assert
         self.assertIn("carry v3.1.0 with `gh pr edit 7 --milestone v3.1.0`",
                       reasons[0] if reasons else "")
 
-    def test_Given_AnAddedEntryUnderAMinorMilestone_When_Decided_Then_NothingBlocks(self):
+    def test_Given_AGainedPublicMemberUnderAMinorMilestone_When_Decided_Then_NothingBlocks(self):
         # Act / Assert
-        self.assertEqual(self.bumped("v3.1.0", milestone.Change((), None, "A utility.")), [])
+        self.assertEqual(self.bumped("v3.1.0", "minor"), [])
 
-    def test_Given_AFeatureTitleUnderAPatchMilestone_When_Decided_Then_TheMinorIsNamed(self):
+    def test_Given_APatchUnderAPatchMilestone_When_Decided_Then_NothingBlocks(self):
+        # Act / Assert
+        self.assertEqual(self.bumped("v3.0.2", "patch"), [])
+
+    def test_Given_TheMinorAskedForWithNoMilestoneOpen_When_Decided_Then_OpeningItIsNamed(self):
+        # Arrange
+        repository = TODAY._replace(open=[M(5, "v3.0.2")])
+
         # Act
-        reasons = self.bumped("v3.0.2", name="feat(velvet): a utility")
+        reasons = decided(title="v3.0.2", change=adds("minor"), base="refactor/below",
+                          repository=repository)
 
         # Assert
-        self.assertIn("is titled as a feature", reasons[0] if reasons else "")
-
-    def test_Given_AFixTitleUnderAPatchMilestone_When_Decided_Then_NothingBlocks(self):
-        # Act / Assert
-        self.assertEqual(self.bumped("v3.0.2"), [])
+        self.assertIn("opening it with `gh api repos/{owner}/{repo}/milestones -f title=v3.1.0`",
+                      reasons[0] if reasons else "")
 
 
 class ClosingReasonTests(unittest.TestCase):
     def test_Given_AReleaseClosingAnotherVersionThanItsMilestone_When_Decided_Then_ItIsRefused(self):
         # Act
-        reasons = decided(title="v3.0.2", change=milestone.Change(("3.1.0",), None, None))
+        reasons = decided(title="v3.0.2", change=adds(closes=("3.1.0",)))
 
         # Assert
         self.assertIn("it closes 3.1.0 in the CHANGELOG under the milestone v3.0.2",
@@ -224,7 +262,7 @@ class ClosingReasonTests(unittest.TestCase):
 
     def test_Given_AReleaseClosingItsMilestonesVersion_When_Decided_Then_NothingBlocks(self):
         # Act / Assert
-        self.assertEqual(decided(change=milestone.Change(("3.0.2",), None, None)), [])
+        self.assertEqual(decided(change=adds(closes=("3.0.2",))), [])
 
 
 class ReleaseReasonTests(unittest.TestCase):
@@ -276,6 +314,28 @@ class ReleaseReasonTests(unittest.TestCase):
                       "`gh api -X PATCH repos/{owner}/{repo}/milestones/8 -f state=closed`",
                       reasons[0] if reasons else "")
 
+    def test_Given_AClosedMilestoneHoldingTheTitle_When_ReleaseIsAsked_Then_ReopeningItIsNamed(self):
+        # Arrange — a release published again once its tag went, whose milestone closed with it.
+        repository = TODAY._replace(open=[M(5, "v3.0.2")], closed=[M(8, "v3.0.1")],
+                                    published={"2.1.4", "3.0.0"})
+
+        # Act
+        reasons = milestone.release_reasons("3.0.1", repository)
+
+        # Assert
+        self.assertIn("`gh api -X PATCH repos/{owner}/{repo}/milestones/8 -f state=open`",
+                      reasons[0] if reasons else "")
+
+    def test_Given_AMajorAboveMainsSeries_When_ReleaseIsAskedWithoutItsMilestone_Then_MainIsNamed(self):
+        # Arrange — main builds 3; a 4.0.0 is main's to publish, and no line's.
+        repository = TODAY._replace(open=[M(5, "v3.0.2")])
+
+        # Act
+        reasons = milestone.release_reasons("4.0.0", repository)
+
+        # Assert
+        self.assertIn("where v4.0.0 is the next version main publishes", reasons[0] if reasons else "")
+
     def test_Given_ALinesPatchBesideMainsOpenMilestones_When_ReleaseIsAsked_Then_NothingBlocks(self):
         # Arrange
         repository = TODAY._replace(open=OPEN + [M(9, "v2.1.5")])
@@ -288,9 +348,9 @@ def pages(*sizes):
     """An API answering each listing page with the next of `sizes` entries, recording each path."""
     asked = []
 
-    def api(path, method="GET"):
+    def api(path, method="GET", fields=()):
         asked.append((method, path))
-        return [{"number": len(asked) * 1000 + entry, "title": "Infrastructure",
+        return [{"number": len(asked) * 1000 + entry, "title": "Infrastructure", "state": "open",
                  "filename": f"scripts/{entry}.py"} for entry in range(sizes[len(asked) - 1])]
     return api, asked
 
@@ -301,11 +361,21 @@ class ReadingTests(unittest.TestCase):
         api, _ = pages(milestone.PAGE, 3)
 
         # Act / Assert
-        self.assertEqual(len(milestone.listed(api, "milestones?state=open")), milestone.PAGE + 3)
+        self.assertEqual(len(milestone.listed(api, "milestones?state=all")), milestone.PAGE + 3)
+
+    def test_Given_AListingWhoseCountIsKnown_When_ItsLastPageIsFull_Then_NoFurtherPageIsAsked(self):
+        # Arrange — a full last page otherwise reads as one with more behind it.
+        api, asked = pages(milestone.PAGE, milestone.PAGE)
+
+        # Act
+        milestone.listed(api, "pulls/7/files", expected=milestone.PAGE)
+
+        # Assert
+        self.assertEqual(len(asked), 1)
 
     def test_Given_AFileMovedOutOfThePackage_When_ItsPathsAreRead_Then_ThePackageIsChanged(self):
         # Arrange
-        def api(path, method="GET"):
+        def api(path, method="GET", fields=()):
             return [{"filename": "scripts/moved.py",
                      "previous_filename": "Packages/com.velvet.core/Runtime/Moved.cs"}]
 
@@ -320,9 +390,17 @@ class ReadingTests(unittest.TestCase):
         with self.assertRaises(milestone.Unread):
             milestone.changed_paths(api, 7, 5)
 
+    def test_Given_MoreFilesThanGitHubLists_When_Read_Then_SplittingIsNamed(self):
+        # Arrange
+        api, _ = pages(milestone.PAGE)
+
+        # Act / Assert
+        with self.assertRaisesRegex(milestone.Unread, "split it"):
+            milestone.changed_paths(api, 7, milestone.LISTED_FILES + 1)
+
     def test_Given_AStackMember_When_ItsPullRequestIsRead_Then_ItLandsOnTheStacksBase(self):
         # Arrange
-        def api(path, method="GET"):
+        def api(path, method="GET", fields=()):
             return {"head": {"ref": "upper", "sha": "a" * 40, "repo": {"full_name": "o/r"}},
                     "base": {"ref": "lower", "repo": {"full_name": "o/r"}},
                     "stack": {"number": 3, "base": {"ref": "main"}}, "changed_files": 1}
@@ -330,13 +408,23 @@ class ReadingTests(unittest.TestCase):
         # Act / Assert
         self.assertEqual(milestone.pull_request(api, 7).landing, "main")
 
+    def test_Given_OpenAndClosedMilestones_When_Listed_Then_TheClosedAreKeptApart(self):
+        # Arrange
+        def api(path, method="GET", fields=()):
+            return [{"number": 5, "title": "v3.0.2", "state": "open"},
+                    {"number": 8, "title": "v3.0.1", "state": "closed"}]
+
+        # Act / Assert
+        self.assertEqual(milestone.milestones(api)[1], [M(8, "v3.0.1")])
+
     def test_Given_APublishedVersionsMilestone_When_Closed_Then_ItsNumberIsPatched(self):
         # Arrange
         asked = []
 
         def api(path, method="GET", fields=()):
             asked.append(" ".join((method, path, *fields)))
-            return [{"number": 5, "title": "v3.0.2"}, {"number": 2, "title": "v3.1.0"}]
+            return [{"number": 5, "title": "v3.0.2", "state": "open"},
+                    {"number": 2, "title": "v3.1.0", "state": "open"}]
 
         # Act
         milestone.close(api, "3.0.2")
@@ -348,14 +436,17 @@ class ReadingTests(unittest.TestCase):
 class RerunTests(unittest.TestCase):
     HEAD = "a" * 40
 
-    def api(self, status="completed", heads=None, runs=True):
-        """An API over one pull request at HEAD whose generators run is in `status`; `heads` is
-        what each reading of the pull request answers, in turn."""
+    def api(self, status="completed", job="completed", heads=None, runs=True, refuse=None):
+        """An API over one pull request at HEAD whose generators run is in `status` and whose
+        Milestone job is in `job`; `heads` is what each reading of the pull request answers, in turn,
+        and `refuse` the run status read after a refused re-run, None for a re-run that is taken."""
         heads = list(heads or [self.HEAD, self.HEAD])
         posted = []
 
         def ask(path, method="GET", fields=()):
             if method == "POST":
+                if refuse is not None:
+                    raise milestone.Unread("refused")
                 posted.append(path)
                 return None
             if path.startswith("pulls/"):
@@ -364,8 +455,10 @@ class RerunTests(unittest.TestCase):
             if path.startswith("actions/workflows/"):
                 return {"workflow_runs": [{"id": 11, "run_number": 4, "status": status}]
                         if runs else []}
-            return {"jobs": [{"id": 21, "name": "Source generators (dotnet)"},
-                             {"id": 22, "name": milestone.JOB}]}
+            if path.endswith("/jobs?per_page=100"):
+                return {"jobs": [{"id": 21, "name": "Source generators (dotnet)"},
+                                 {"id": 22, "name": milestone.JOB, "status": job}]}
+            return {"status": refuse}
         return ask, posted
 
     def test_Given_AFinishedRun_When_RerunIsAsked_Then_OnlyTheMilestoneJobRunsAgain(self):
@@ -373,25 +466,34 @@ class RerunTests(unittest.TestCase):
         api, posted = self.api()
 
         # Act
-        milestone.rerun(api, 7, deadline=0, now=lambda: 0)
+        milestone.rerun(api, 7)
 
         # Assert
         self.assertEqual(posted, ["actions/jobs/22/rerun"])
 
-    def test_Given_ARunStillGoingAtTheDeadline_When_RerunIsAsked_Then_TheRerunCommandIsNamed(self):
+    def test_Given_ARunStillGoingBeforeItsMilestoneJob_When_RerunIsAsked_Then_NothingRunsAgain(self):
+        # Arrange
+        api, posted = self.api(status="in_progress", job="queued")
+
+        # Act
+        milestone.rerun(api, 7)
+
+        # Assert
+        self.assertEqual(posted, [])
+
+    def test_Given_ARunStillGoingAfterItsMilestoneJob_When_RerunIsAsked_Then_TheJobsRerunIsNamed(self):
         # Arrange
         api, _ = self.api(status="in_progress")
 
         # Act / Assert
-        with self.assertRaisesRegex(milestone.Unread, r"gh run rerun 11"):
-            milestone.rerun(api, 7, deadline=0, now=lambda: 0, sleep=lambda _: None)
+        self.assertIn("`gh run rerun 11 --job 22`", milestone.rerun(api, 7))
 
-    def test_Given_AHeadThatMovedWhileItWaited_When_RerunIsAsked_Then_NothingRunsAgain(self):
+    def test_Given_AHeadThatMoved_When_RerunIsAsked_Then_NothingRunsAgain(self):
         # Arrange
         api, posted = self.api(heads=[self.HEAD, "b" * 40])
 
         # Act
-        milestone.rerun(api, 7, deadline=0, now=lambda: 0)
+        milestone.rerun(api, 7)
 
         # Assert
         self.assertEqual(posted, [])
@@ -401,10 +503,25 @@ class RerunTests(unittest.TestCase):
         api, posted = self.api(runs=False)
 
         # Act
-        milestone.rerun(api, 7, deadline=0, now=lambda: 0)
+        milestone.rerun(api, 7)
 
         # Assert
         self.assertEqual(posted, [])
+
+    def test_Given_AReRunRefusedBecauseOneIsGoing_When_RerunIsAsked_Then_ItIsNotAFailure(self):
+        # Arrange — another event's re-run reached the run first.
+        api, _ = self.api(refuse="queued")
+
+        # Act / Assert
+        self.assertIn("running again already", milestone.rerun(api, 7))
+
+    def test_Given_AReRunRefusedOfAFinishedRun_When_RerunIsAsked_Then_ItIsUnread(self):
+        # Arrange
+        api, _ = self.api(refuse="completed")
+
+        # Act / Assert
+        with self.assertRaises(milestone.Unread):
+            milestone.rerun(api, 7)
 
 
 def git(directory, *args):
@@ -425,54 +542,88 @@ CHANGELOG = """# Changelog
 - A fix.
 """
 
+API = "Packages/com.velvet.core/PublicAPI.txt"
+
 
 class ChangeReadingTests(unittest.TestCase):
-    """What a head's fragments add, read off a repository of its own."""
+    """What a head changes, read off a repository of its own from where it branched."""
 
     def setUp(self):
         self.directory = Path(tempfile.mkdtemp(prefix="velvet-milestone-"))
         git(self.directory, "init", "-q", "-b", "main")
-        changelog = self.directory / "Packages/com.velvet.core/CHANGELOG.md"
-        changelog.parent.mkdir(parents=True)
-        changelog.write_text(CHANGELOG, encoding="utf-8")
+        self.write("Packages/com.velvet.core/CHANGELOG.md", CHANGELOG)
+        self.write(API, "method Velvet.V.Old()\n")
         self.commit()
         self.base = git(self.directory, "rev-parse", "HEAD")
 
     def tearDown(self):
         subprocess.run(["rm", "-rf", str(self.directory)], check=False)
 
+    def write(self, path, text):
+        target = self.directory / path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(text, encoding="utf-8")
+
     def commit(self):
         git(self.directory, "add", "-A")
         git(self.directory, "-c", "user.email=t@velvet", "-c", "user.name=t", "-c",
             "commit.gpgsign=false", "commit", "-q", "-m", "change")
+        return git(self.directory, "rev-parse", "HEAD")
 
     def fragment(self, kind, text):
-        path = self.directory / f"Packages/com.velvet.core/Changelog~/{kind}/topic.md"
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(text, encoding="utf-8")
+        self.write(f"Packages/com.velvet.core/Changelog~/{kind}/topic.md", text)
+        head = self.commit()
+        return milestone.change(self.directory, self.base, head, {"3.0.1"})
+
+    def test_Given_ABreakingFragment_When_TheChangeIsRead_Then_ItDerivesAMajor(self):
+        # Act / Assert
+        self.assertEqual(self.fragment("breaking", "### Changed\n\n- A break.\n")
+                         .derivation.bump, "major")
+
+    def test_Given_AnAddedFragment_When_TheChangeIsRead_Then_ItDerivesAMinor(self):
+        # Act / Assert
+        self.assertEqual(self.fragment("unreleased", "### Added\n\n- A utility.\n")
+                         .derivation.bump, "minor")
+
+    def test_Given_AFixedFragment_When_TheChangeIsRead_Then_ItDerivesAPatch(self):
+        # Act / Assert — a reading that took nothing would derive nothing, which is no patch.
+        self.assertEqual(self.fragment("unreleased", "### Fixed\n\n- A fix.\n")
+                         .derivation.bump, "patch")
+
+    def test_Given_AGainedPublicMember_When_TheChangeIsRead_Then_ItDerivesAMinor(self):
+        # Arrange
+        self.write(API, "method Velvet.V.Old()\nmethod Velvet.V.New()\n")
+        head = self.commit()
+
+        # Act / Assert
+        self.assertEqual(milestone.change(self.directory, self.base, head, {"3.0.1"})
+                         .derivation.bump, "minor")
+
+    def test_Given_AFileOutsideThePackage_When_TheChangeIsRead_Then_ThePackageIsUnchanged(self):
+        # Arrange
+        self.write("scripts/tool.py", "print()\n")
+        head = self.commit()
+
+        # Act / Assert
+        self.assertFalse(milestone.change(self.directory, self.base, head, {"3.0.1"}).package)
+
+    def test_Given_AHeadBehindABaseThatDrainedABreak_When_Read_Then_TheBreakIsNotItsOwn(self):
+        # Arrange — the head branched while a break waited; the base has since released it.
+        self.write("Packages/com.velvet.core/Changelog~/breaking/old.md",
+                   "### Changed\n\n- An old break.\n")
         self.commit()
-        return milestone.change(self.directory, self.base, "HEAD", {"3.0.1"})
+        git(self.directory, "branch", "topic")
+        (self.directory / "Packages/com.velvet.core/Changelog~/breaking/old.md").unlink()
+        base = self.commit()
+        git(self.directory, "checkout", "-q", "topic")
+        self.write("Packages/com.velvet.core/Runtime/Fix.cs", "class Fix {}\n")
+        head = self.commit()
 
-    def test_Given_ABreakingFragment_When_TheChangeIsRead_Then_ItsEntryIsTheBreakingOne(self):
-        # Act
-        read = self.fragment("breaking", "### Changed\n\n- A break.\n")
-
-        # Assert
-        self.assertEqual(read.breaking, "A break.")
-
-    def test_Given_AnAddedFragment_When_TheChangeIsRead_Then_ItsEntryIsTheAddedOne(self):
-        # Act
-        read = self.fragment("unreleased", "### Added\n\n- A utility.\n")
+        # Act — from where the head branched it adds a fix and nothing breaking.
+        read = milestone.change(self.directory, base, head, {"3.0.1"})
 
         # Assert
-        self.assertEqual(read.added, "A utility.")
-
-    def test_Given_AFixedFragment_When_TheChangeIsRead_Then_NothingAsksForABump(self):
-        # Act
-        read = self.fragment("unreleased", "### Fixed\n\n- A fix.\n")
-
-        # Assert
-        self.assertIsNone(milestone.needed_bump(read, "fix(velvet): a fix"))
+        self.assertEqual(read.derivation.bump, "patch")
 
 
 if __name__ == "__main__":

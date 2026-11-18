@@ -1,9 +1,10 @@
 name: Milestone
 
 # Runs the Milestone job of Source generators again when what it decides from changes without a push:
-# a pull request's milestone or base, or a milestone of the repository. That job alone is asked to
-# run again, so a milestone change re-runs no suite. scripts/pr/milestone.py owns which run and job
-# are asked, and CONTRIBUTING.md's merging section the rule the job holds.
+# a pull request's milestone or base, or a milestone of the repository opening, closing, going or
+# being retitled. That job alone is asked to run again, so a milestone change re-runs no suite, and a
+# run still going is left alone; scripts/pr/milestone.py owns which run and job are asked and says
+# what a run left alone means, and CONTRIBUTING.md's merging section the rule the job holds.
 #
 # No job checks out the pull request: the only code this runs is the default branch's, as in
 # automerge.yml.
@@ -15,6 +16,11 @@ on:
 
 permissions: {}
 
+# One run per pull request at a time, so two events at once do not both ask for the same re-run.
+concurrency:
+  group: milestone-${{ github.event.pull_request.number || 'repository' }}
+  cancel-in-progress: false
+
 # Same reason test.yml gives.
 env:
   PYTHONDONTWRITEBYTECODE: "1"
@@ -22,16 +28,14 @@ env:
 jobs:
   rerun:
     name: Run the milestone check again
-    # An edit is read only where it moved the base or retitled the pull request, the two the decision
-    # reads; a feat title asks a minor of the milestone.
+    # A pull request's edit is read only where it moved the base, and a milestone's only where it
+    # retitled it: the rest change nothing decided.
     if: >-
-      github.event_name == 'milestone'
-      || github.event.action != 'edited'
-      || github.event.changes.base != null
-      || github.event.changes.title != null
+      github.event.action != 'edited'
+      || (github.event_name == 'pull_request_target' && github.event.changes.base != null)
+      || (github.event_name == 'milestone' && github.event.changes.title != null)
     runs-on: ubuntu-latest
-    # Above the wait for a run still going, which milestone.py bounds at twenty minutes.
-    timeout-minutes: 30
+    timeout-minutes: 10
     permissions:
       actions: write
       contents: read

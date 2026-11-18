@@ -8,6 +8,8 @@ milestones. `scripts/pr/test_milestone.py` owns the decision; these hold the hoo
 Run: python3 scripts/hooks/test_merge_off_milestone.py
 """
 
+import importlib.util
+import inspect
 import json
 import os
 import shutil
@@ -20,10 +22,12 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import pull_request_base_check as worlds  # noqa: E402
 
-HOOK = Path(__file__).resolve().parents[2] / ".claude/hooks/refuse/merge_off_milestone.py"
+REPO_ROOT = Path(__file__).resolve().parents[2]
+HOOK = REPO_ROOT / ".claude/hooks/refuse/merge_off_milestone.py"
 REFUSED, ALLOWED = 2, 0
 
-PACKAGE_FILE = {"filename": "Packages/com.velvet.core/Runtime/Fix.cs"}
+# A head off 2.x changing a file of the package, which the hook reads off git.
+PACKAGE_HEAD = "package-topic"
 # What the 2.x line of the world publishes next, and one past it.
 LINE_MILESTONES = [{"number": 11, "title": "v2.0.0", "state": "open"},
                    {"number": 12, "title": "v2.1.0", "state": "open"},
@@ -37,21 +41,35 @@ class MergeOffMilestoneTests(unittest.TestCase):
         cls.home = cls.root / "home"
         cls.home.mkdir()
         cls.project = worlds.build_world(cls.root / "world", unpublished_on_maintenance=False)
+        worlds.git(cls.project, "branch", PACKAGE_HEAD, "origin/2.x")
+
+        def change_the_package(work):
+            fix = work / "Packages/com.velvet.core/Runtime/Fix.cs"
+            fix.parent.mkdir(parents=True, exist_ok=True)
+            fix.write_text("class Fix {}\n", encoding="utf-8")
+            worlds.commit(work, "a fix to the package")
+
+        worlds.in_worktree(cls.project, cls.root, PACKAGE_HEAD, change_the_package)
+        worlds.git(cls.project, "push", "-q", "origin", PACKAGE_HEAD)
         cls.bin = cls.root / "bin"
         cls.bin.mkdir()
         (cls.bin / "gh").write_text(worlds.STUB_GH, encoding="utf-8")
         (cls.bin / "gh").chmod(0o755)
+        # Every git the hook runs, logged and then run: the count of reads is what the budget holds.
+        cls.git_log = cls.root / "git.log"
+        (cls.bin / "git").write_text(f'#!/bin/sh\necho "$*" >> "{cls.git_log}"\n'
+                                     f'exec "{shutil.which("git")}" "$@"\n', encoding="utf-8")
+        (cls.bin / "git").chmod(0o755)
 
     @classmethod
     def tearDownClass(cls):
         shutil.rmtree(cls.root, ignore_errors=True)
 
-    def merge(self, title="Infrastructure", files=(), milestones=LINE_MILESTONES,
+    def merge(self, title="Infrastructure", head="topic", milestones=LINE_MILESTONES,
               command=worlds.COMMAND, gh_fails=False):
-        """(exit code, stderr) of the hook posed a merge onto 2.x of `topic` under `title`."""
-        pull = worlds.at(self.project, "topic", "2.x")
+        """(exit code, stderr) of the hook posed a merge onto 2.x of `head` under `title`."""
+        pull = worlds.at(self.project, head, "2.x")
         pull["milestone"] = {"number": 7, "title": title, "state": "open"} if title else None
-        pull["files"], pull["changed_files"] = list(files), len(files)
         environment = dict(os.environ, HOME=str(self.home),
                            PATH=str(self.bin) + os.pathsep + os.environ.get("PATH", ""),
                            VELVET_BASE_CHECK_PULLS=json.dumps({"1": pull}),
@@ -79,17 +97,16 @@ class MergeOffMilestoneTests(unittest.TestCase):
 
     def test_Given_APackageChangeUnderInfrastructure_When_Merged_Then_TheLinesNextVersionIsNamed(self):
         # Act / Assert
-        self.assertIn("`gh pr edit 1 --milestone v2.0.0`",
-                      self.refusal(files=[PACKAGE_FILE]))
+        self.assertIn("`gh pr edit 1 --milestone v2.0.0`", self.refusal(head=PACKAGE_HEAD))
 
     def test_Given_APackageChangeUnderALaterVersion_When_Merged_Then_ItWaitsForTheNextOne(self):
         # Act / Assert
         self.assertIn("the next version 2.x publishes is v2.0.0",
-                      self.refusal(title="v2.1.0", files=[PACKAGE_FILE]))
+                      self.refusal(title="v2.1.0", head=PACKAGE_HEAD))
 
     def test_Given_APackageChangeUnderTheNextVersion_When_Merged_Then_ItAllows(self):
         # Act
-        code, _ = self.merge(title="v2.0.0", files=[PACKAGE_FILE])
+        code, _ = self.merge(title="v2.0.0", head=PACKAGE_HEAD)
 
         # Assert
         self.assertEqual(code, ALLOWED)
@@ -116,6 +133,64 @@ class MergeOffMilestoneTests(unittest.TestCase):
 
         # Assert
         self.assertEqual(code, ALLOWED)
+
+    def test_Given_APackageMerge_When_ItsGitReadsAreCounted_Then_TheyStayWithinTheBudget(self):
+        # Arrange
+        self.git_log.write_text("", encoding="utf-8")
+        self.merge(title="v2.0.0", head=PACKAGE_HEAD)
+
+        # Act — the fetch and the tag listing are budgeted apart, as network reads.
+        local = [line for line in self.git_log.read_text(encoding="utf-8").splitlines()
+                 if subcommand(line) not in ("fetch", "ls-remote")]
+
+        # Assert
+        self.assertLessEqual(len(local), guard().LOCAL_READS)
+
+
+def subcommand(line):
+    """The git subcommand a logged invocation ran, past any `-C <directory>`."""
+    words = line.split()
+    while words[:1] == ["-C"]:
+        words = words[2:]
+    return words[0] if words else ""
+
+
+def guard():
+    spec = importlib.util.spec_from_file_location("merge_off_milestone", HOOK)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+class BudgetTests(unittest.TestCase):
+    """The hook's worst case against the timeout it is registered with, past which the harness
+    abandons it and the merge goes ahead unguarded."""
+
+    def test_Given_EveryReadingAtItsBound_When_Added_Then_TheyFitTheRegisteredTimeout(self):
+        # Arrange
+        hook = guard()
+        registered = next(entry["timeout"] for entry in json.loads(
+            (REPO_ROOT / ".harness/hooks.json").read_text(encoding="utf-8"))
+            if entry["script"] == "refuse/merge_off_milestone.py")
+
+        # Act
+        spent = ((2 + hook.MILESTONE_PAGES) * hook.READ_TIMEOUT + hook.GIT_TIMEOUT
+                 + hook.LOCAL_READS * hook.LOCAL_TIMEOUT)
+
+        # Assert
+        self.assertLessEqual(spent, registered)
+
+    def test_Given_TheTreeReadings_When_TheirBoundsAreRead_Then_NoneExceedsTheLocalTimeout(self):
+        # Arrange
+        hook = guard()
+        release = hook.milestone.published_check
+
+        # Act
+        longest = max(inspect.signature(read).parameters["timeout"].default
+                      for read in (release.git, hook.milestone.release_notes.fragments_at))
+
+        # Assert
+        self.assertLessEqual(longest, hook.LOCAL_TIMEOUT)
 
 
 if __name__ == "__main__":

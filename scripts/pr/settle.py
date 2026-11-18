@@ -722,10 +722,10 @@ Blocking = collections.namedtuple(
 
 # The readings that answer for something wider than one pull request: the publication state of a
 # base, its newest release commit, its required workflows' last push verdicts, the contexts its
-# rulesets require, and the branches this
-# checkout's worktrees hold, which is the repository's. Taken once per base and handed down, so a watcher poll over N pull
-# requests costs one fetch, one `git ls-remote --tags`, one rules listing and one runs listing per
-# workflow per base rather than N of each.
+# rulesets require, the branches this checkout's worktrees hold, which is the repository's, and its
+# milestones. Taken once per base and handed down, so a watcher poll over N pull requests costs one
+# fetch, two `git ls-remote --tags`, one rules listing, one milestones listing and one runs listing
+# per workflow per base rather than N of each.
 ProjectState = collections.namedtuple("ProjectState",
                                       "held unpublished_release red release required milestones")
 
@@ -845,8 +845,6 @@ def blocking_reasons(project, number, base=None, states=None, previous=()):
     if unpublished:
         unpublished = published_check.unpublished_reason(
             project, f"origin/{target}", fetch=False, result=before.sha)
-    # Inside the two head readings, so the paths are the ones `before` changes.
-    package = milestone.changes_package(changed_paths(project, number, before.changed))
     runs = campaign_runs(project, before.sha)
     now = time.time()
     others = campaign.others(runs)
@@ -867,14 +865,15 @@ def blocking_reasons(project, number, base=None, states=None, previous=()):
     line_squash = (maintenance_line.squash_reasons(landing,
                                                    line_carried(project, landing, before.sha))
                    if not before.fork and not long_lived_head else [])
+    # A fork's head is not fetched here, so only its paths are read, off the API.
+    change = (milestone.NOTHING._replace(package=milestone.changes_package(
+                  changed_paths(project, number, before.changed))) if before.fork
+              else milestone_change(project, before.base, before.sha, state.milestones.published))
     milestone_pull_request = milestone.pull_request_reasons(
         number, before.milestone, before.milestone_state,
-        milestone.suggested(package, landing, state.milestones))
+        milestone.suggested(change.package, landing, state.milestones))
     milestone_head = [] if milestone_pull_request else milestone.head_reasons(
-        number, before.milestone, package,
-        milestone.NOTHING if before.fork
-        else milestone_change(project, before.base, before.sha, state.milestones.published),
-        landing, state.milestones, before.title)
+        number, before.milestone, change, landing, state.milestones)
     holders = state.held.get(before.branch) or ()
     held = tuple((tree.path, holder_state(project, tree, after)) for tree in holders)
     runs_failed = expected_checks.failed(others, jobs, now)

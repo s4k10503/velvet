@@ -14,8 +14,8 @@ from next_version import (
     added_entries,
     derive,
     newest_reachable_release,
-    skipped_from,
 )
+import next_version
 
 ENTRY = "- An entry."
 
@@ -251,31 +251,31 @@ class SkippedFromTests(unittest.TestCase):
 
     def test_Given_APatchTwoAboveTheNewestRelease_When_Asked_Then_ThatReleaseIsNamed(self):
         # Act / Assert
-        self.assertEqual(skipped_from(self.PUBLISHED, "3.0.3"), "3.0.1")
+        self.assertEqual(next_version.skipped_from(self.PUBLISHED, "3.0.3"), "3.0.1")
 
     def test_Given_AMinorTwoAboveTheNewestRelease_When_Asked_Then_ThatReleaseIsNamed(self):
         # Act / Assert
-        self.assertEqual(skipped_from(self.PUBLISHED, "3.2.0"), "3.0.1")
+        self.assertEqual(next_version.skipped_from(self.PUBLISHED, "3.2.0"), "3.0.1")
 
     def test_Given_EachSuccessorOfTheNewestRelease_When_Asked_Then_NoneSkips(self):
         # Act — the first successor read as a skip, which none should be.
         skipping = next((version for version in ("3.0.2", "3.1.0", "4.0.0")
-                         if skipped_from(self.PUBLISHED, version)), None)
+                         if next_version.skipped_from(self.PUBLISHED, version)), None)
 
         # Assert
         self.assertIsNone(skipping)
 
     def test_Given_ALinesPatchBelowANewerMajor_When_Asked_Then_ItFollowsItsOwnRelease(self):
         # Act / Assert
-        self.assertIsNone(skipped_from(self.PUBLISHED, "2.1.5"))
+        self.assertIsNone(next_version.skipped_from(self.PUBLISHED, "2.1.5"))
 
     def test_Given_TwoDigitParts_When_Asked_Then_TheNewestIsReadNumerically(self):
         # Act / Assert
-        self.assertIsNone(skipped_from({"2.1.9", "2.1.10"}, "2.1.11"))
+        self.assertIsNone(next_version.skipped_from({"2.1.9", "2.1.10"}, "2.1.11"))
 
     def test_Given_NothingPublished_When_TheFirstReleaseIsAsked_Then_NothingSkips(self):
         # Act / Assert
-        self.assertIsNone(skipped_from(set(), "1.0.0"))
+        self.assertIsNone(next_version.skipped_from(set(), "1.0.0"))
 
 
 if __name__ == "__main__":

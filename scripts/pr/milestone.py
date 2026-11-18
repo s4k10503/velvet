@@ -17,10 +17,10 @@ Run: python3 scripts/pr/milestone.py check --number <n> [--base <rev>] [--head <
 import argparse
 import collections
 import json
+import os
 import re
 import subprocess
 import sys
-import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -33,33 +33,33 @@ import release_notes  # noqa: E402
 INFRASTRUCTURE = "Infrastructure"
 PACKAGE = "Packages/com.velvet.core/"
 VERSION = re.compile(r"v([0-9]+\.[0-9]+\.[0-9]+)")
-FEATURE_TITLE = re.compile(r"feat(?:\([^)]*\))?!?:", re.IGNORECASE)
 
 SECTION = "CONTRIBUTING.md's merging section"
 RELEASE_SECTION = "CONTRIBUTING.md's releasing section"
 
 # gh fills the braces from the checkout's remote, so a command printed here runs as it stands.
 CREATE = "gh api repos/{{owner}}/{{repo}}/milestones -f title={}"
+REOPEN = "gh api -X PATCH repos/{{owner}}/{{repo}}/milestones/{} -f state=open"
 CLOSE = "gh api -X PATCH repos/{{owner}}/{{repo}}/milestones/{} -f state=closed"
 
-# An open milestone, by the number its API path takes and its title.
+# A milestone, by the number its API path takes and its title.
 Milestone = collections.namedtuple("Milestone", "number title")
 
-# What the repository answers: its open milestones, the versions its tags publish, and the major main
-# builds.
-Repository = collections.namedtuple("Repository", "open published series")
+# What the repository answers: its open milestones, the versions its tags publish, the major main
+# builds, and its closed milestones.
+Repository = collections.namedtuple("Repository", "open published series closed", defaults=((),))
 
-# What a pull request is judged on: its milestone's title and state, each None where it carries none,
-# its base, the branch the merge lands on, its head, how many files GitHub says it changes, and its
-# title.
+# The pull request's own fields the decision reads: `landing` is the branch its merge lands on, its
+# stack's base for a stack member.
 PullRequest = collections.namedtuple("PullRequest",
-                                     "title state base landing head sha changed fork name")
+                                     "title state base landing head sha changed fork")
 
-# What a head's tree adds against its base: the versions it closes, and the first breaking entry and
-# the first `### Added` entry it adds to the open sections, each None where it adds none.
-Change = collections.namedtuple("Change", "closes breaking added")
+# What a head's tree changes against where it branched: whether it touches the package, the versions
+# it closes, and `next_version.derive`'s reading of the entries and members it adds, None where its
+# tree was not read.
+Change = collections.namedtuple("Change", "package closes derivation")
 
-NOTHING = Change((), None, None)
+NOTHING = Change(False, (), None)
 
 
 class Unread(RuntimeError):
@@ -96,6 +96,21 @@ def owned(repository, base):
                   key=lambda milestone: next_version.parse_version(version_of(milestone.title)))
 
 
+def opening(title, repository):
+    """The command that opens milestone `title`: reopening a closed one that holds the title, and
+    creating it otherwise."""
+    closed = {milestone.title: milestone.number for milestone in repository.closed}
+    return f"`{REOPEN.format(closed[title])}`" if title in closed else f"`{CREATE.format(title)}`"
+
+
+def newest_published(repository, base):
+    """The newest release `base` published, or for a branch that has published none yet, the newest
+    release there is."""
+    found = [version for version in repository.published
+             if publishes(base, version, repository.series)] or repository.published
+    return max(found, key=next_version.parse_version, default=None)
+
+
 def changes_package(paths):
     return any(path.startswith(PACKAGE) for path in paths)
 
@@ -123,13 +138,23 @@ def pull_request_reasons(number, title, state, suggestion):
     return []
 
 
+def candidates(previous, base, repository):
+    """The commands opening each version that may follow `previous` on `base`."""
+    following = [f"v{version}" for version in next_version.successors(previous)
+                 if publishes(base, version, repository.series)]
+    return " or ".join(f"{title} with {opening(title, repository)}" for title in following)
+
+
 def series_reasons(base, repository):
     """What stops `base`'s lowest open version milestone being its next version."""
     found = owned(repository, base)
     if not found:
-        return [f"no open milestone names the next version {base} publishes: open it with "
-                f"`{CREATE.format('v<version>')}`, the version "
-                f"`python3 scripts/release/next_version.py --rev origin/{base}` prints ({SECTION})"]
+        previous = newest_published(repository, base)
+        ways = (candidates(previous, base, repository) if previous
+                else f"it with {opening('v<version>', repository)}")
+        return [f"no open milestone names the next version {base} publishes, the one "
+                f"`python3 scripts/release/next_version.py --rev origin/{base}` prints: open "
+                f"{ways} ({SECTION})"]
     lowest = found[0]
     version = version_of(lowest.title)
     if version in repository.published:
@@ -139,14 +164,9 @@ def series_reasons(base, repository):
     if previous:
         return [f"{lowest.title}, the lowest open version milestone {base} publishes, does not "
                 f"follow v{previous}, the newest release below it, so publishing it skips a version: "
-                f"open the milestone of whichever of {spelled(next_version.successors(previous))} "
-                f"comes next with `{CREATE.format('v<version>')}`, or retitle {lowest.title} "
-                f"({SECTION})"]
+                f"open {candidates(previous, base, repository)}, whichever comes next, or retitle "
+                f"{lowest.title} ({SECTION})"]
     return []
-
-
-def spelled(versions):
-    return ", ".join("v" + version for version in versions)
 
 
 def bump_of(version, published):
@@ -160,46 +180,36 @@ def bump_of(version, published):
     return dict(zip(next_version.successors(previous), next_version.BUMPS)).get(version)
 
 
-def needed_bump(change, name):
-    """The least bump what the head adds ships in, with the entry or title that asks it, or None."""
-    if change.breaking:
-        return "major", f"adds the breaking entry `{change.breaking}`"
-    if change.added:
-        return "minor", f"adds the `### Added` entry `{change.added}`"
-    if FEATURE_TITLE.match((name or "").strip()):
-        return "minor", f"is titled as a feature, `{name}`"
-    return None
-
-
-def bump_reasons(number, title, change, name, published):
+def bump_reasons(number, title, derivation, repository):
+    """Why milestone `title` is a smaller bump than the one `next_version.derive` reads off what the
+    head adds, which is the bump the release it ships in will be derived as."""
     version = version_of(title)
-    asked = needed_bump(change, name)
-    bump = bump_of(version, published) if version else None
-    if not asked or bump is None:
+    bump = bump_of(version, repository.published) if version and derivation else None
+    if bump is None or (next_version.BUMPS.index(bump)
+                        >= next_version.BUMPS.index(derivation.bump)):
         return []
-    need, why = asked
-    if next_version.BUMPS.index(bump) >= next_version.BUMPS.index(need):
-        return []
-    previous = max((named for named in published
+    previous = max((named for named in repository.published
                     if next_version.parse_version(named) < next_version.parse_version(version)),
                    key=next_version.parse_version)
-    wanted = next_version.bumped(previous, need)
-    return [f"it {why}, which ships in a {need} at least, and carries {title}, a {bump}: carry "
-            f"v{wanted} with `gh pr edit {number} --milestone v{wanted}`, which merges once that is "
-            f"the next version its base publishes, or take the entry out where the API is "
-            f"unchanged ({RELEASE_SECTION})"]
+    wanted = f"v{next_version.bumped(previous, derivation.bump)}"
+    opened = "" if wanted in {milestone.title for milestone in repository.open} else (
+        f", opening it with {opening(wanted, repository)}")
+    return [f"what it adds ships in a {derivation.bump} — {derivation.reason} — and it carries "
+            f"{title}, a {bump}: carry {wanted} with `gh pr edit {number} --milestone {wanted}`"
+            f"{opened}, which merges once that is the next version its base publishes "
+            f"({RELEASE_SECTION})"]
 
 
-def head_reasons(number, title, package, change, base, repository, name=""):
+def head_reasons(number, title, change, base, repository):
     """What is wrong with milestone `title` for what pull request `number`'s head changes onto
     `base`."""
     version = version_of(title)
     found = []
-    if package and version is None:
+    if change.package and version is None:
         found.append(f"it changes {PACKAGE} and carries {INFRASTRUCTURE}, which is for a change "
                      f"outside it: set the version it ships in with `gh pr edit {number} --milestone "
-                     f"{suggested(package, base, repository)}` ({SECTION})")
-    elif package and judged(base):
+                     f"{suggested(True, base, repository)}` ({SECTION})")
+    elif change.package and judged(base):
         problems = series_reasons(base, repository)
         found.extend(problems)
         following = owned(repository, base)[0].title if not problems else None
@@ -209,7 +219,7 @@ def head_reasons(number, title, package, change, base, repository, name=""):
                          f"closed, or ship it in {following} with `gh pr edit {number} --milestone "
                          f"{following}` ({SECTION})")
     if version is not None:
-        found.extend(bump_reasons(number, title, change, name, repository.published))
+        found.extend(bump_reasons(number, title, change.derivation, repository))
         found.extend(f"it closes {closed} in the CHANGELOG under the milestone {title}, and a "
                      f"release closes the version its milestone names: close {version} instead, or "
                      f"carry v{closed} with `gh pr edit {number} --milestone v{closed}` where that "
@@ -218,13 +228,13 @@ def head_reasons(number, title, package, change, base, repository, name=""):
     return found
 
 
-def merge_reasons(number, pull_request, package, change, repository):
+def merge_reasons(number, pull_request, change, repository):
     """Why pull request `number` does not merge under its milestone: what is wrong with the
     milestone itself, and where nothing is, what is wrong with it for what the head changes."""
-    suggestion = suggested(package, pull_request.landing, repository)
+    suggestion = suggested(change.package, pull_request.landing, repository)
     found = pull_request_reasons(number, pull_request.title, pull_request.state, suggestion)
-    return found or head_reasons(number, pull_request.title, package, change, pull_request.landing,
-                                 repository, pull_request.name)
+    return found or head_reasons(number, pull_request.title, change, pull_request.landing,
+                                 repository)
 
 
 def release_reasons(version, repository):
@@ -234,13 +244,14 @@ def release_reasons(version, repository):
     if previous:
         found.append(f"v{version} does not follow v{previous}, the newest release below it, so "
                      f"publishing it skips a version: release whichever of "
-                     f"{spelled(next_version.successors(previous))} comes next ({RELEASE_SECTION})")
+                     f"{', '.join('v' + named for named in next_version.successors(previous))} "
+                     f"comes next ({RELEASE_SECTION})")
     base = publisher(version, repository.series)
     title = f"v{version}"
     if title not in {milestone.title for milestone in repository.open}:
         found.append(f"no open milestone is titled {title}, and a release publishes the version "
-                     f"its milestone names: open it with `{CREATE.format(title)}` where {title} is "
-                     f"the next version {base} publishes ({RELEASE_SECTION})")
+                     f"its milestone names: open it with {opening(title, repository)} where "
+                     f"{title} is the next version {base} publishes ({RELEASE_SECTION})")
         return found
     below = [milestone for milestone in owned(repository, base)
              if next_version.parse_version(version_of(milestone.title))
@@ -261,29 +272,39 @@ PAGE = 100
 PAGES = 30
 
 
-def listed(api, path):
-    """Every entry of a REST listing, or Unread past `PAGES` pages."""
+def listed(api, path, pages=PAGES, expected=None):
+    """Every entry of a REST listing, or Unread past `pages` pages. `expected`, where the count is
+    known beforehand, ends the listing once that many have come back."""
     joiner = "&" if "?" in path else "?"
     found = []
-    for page in range(1, PAGES + 1):
+    for page in range(1, pages + 1):
         answer = api(f"{path}{joiner}per_page={PAGE}&page={page}")
         if not isinstance(answer, list):
             raise Unread(f"{path} did not answer with a list")
         found.extend(answer)
-        if len(answer) < PAGE:
+        if len(answer) < PAGE or (expected is not None and len(found) >= expected):
             return found
-    raise Unread(f"{path} lists more than {PAGE * PAGES}")
+    raise Unread(f"{path} lists more than {PAGE * pages}")
 
 
-def open_milestones(api):
-    return [Milestone(entry["number"], entry["title"])
-            for entry in listed(api, "milestones?state=open")]
+def milestones(api, pages=PAGES):
+    """(open, closed) milestones, from one listing of both."""
+    entries = listed(api, "milestones?state=all", pages)
+    return tuple([Milestone(entry["number"], entry["title"]) for entry in entries
+                  if entry.get("state") == state] for state in ("open", "closed"))
+
+
+# The most files GitHub lists for a pull request.
+LISTED_FILES = PAGE * PAGES
 
 
 def changed_paths(api, number, expected):
-    """Every path pull request `number` changes, a rename's old path included, or Unread where
-    fewer files come back than the `expected` count the pull request reports."""
-    entries = listed(api, f"pulls/{number}/files")
+    """Every path pull request `number` changes, a rename's old path included, read off the API for
+    a head this checkout has not got."""
+    if expected > LISTED_FILES:
+        raise Unread(f"pull request #{number} changes {expected} files and GitHub lists "
+                     f"{LISTED_FILES}: split it, or fetch its head so the change is read from git")
+    entries = listed(api, f"pulls/{number}/files", expected=expected)
     if len(entries) < expected:
         raise Unread(f"pull request #{number} reports {expected} changed files and its listing "
                      f"holds {len(entries)}")
@@ -302,11 +323,10 @@ def pull_request(api, number):
                        stack["base"]["ref"] if stack else base["ref"], head["ref"], head["sha"],
                        payload.get("changed_files") or 0,
                        ((head.get("repo") or {}).get("full_name") or "")
-                       != ((base.get("repo") or {}).get("full_name") or ""),
-                       payload.get("title") or "")
+                       != ((base.get("repo") or {}).get("full_name") or ""))
 
 
-def repository(project, api, timeout, main=f"origin/{maintenance_line.MAIN}"):
+def repository(project, api, timeout, main=f"origin/{maintenance_line.MAIN}", pages=PAGES):
     """`Repository` read off the API, origin's tags and the fetched `main`."""
     try:
         series = maintenance_line.main_state(project, main).series
@@ -315,32 +335,46 @@ def repository(project, api, timeout, main=f"origin/{maintenance_line.MAIN}"):
     except maintenance_line.UNREAD as failure:
         raise Unread(f"which series {main} builds, or which versions origin publishes, could not "
                      f"be read: {failure}") from failure
-    return Repository(open_milestones(api), versions, series)
+    opened, closed = milestones(api, pages)
+    return Repository(opened, versions, series, closed)
 
 
-def first_new(entries, before):
-    new = published_check.entries_missing_from(entries, before)
-    return next_version.first_line(new[0]).removeprefix("- ") if new else None
+def text_at(project, rev, path):
+    """The file at `rev`, or "" where the tree holds none."""
+    present = subprocess.run(["git", "-C", str(project), "cat-file", "-e", f"{rev}:{path}"],
+                             capture_output=True, timeout=5)
+    return published_check.read_at(project, rev, path) if present.returncode == 0 else ""
 
 
 def change(project, base, head, versions):
-    """`Change` for the tree at `head` against the tree at `base`."""
+    """`Change` for the tree at `head` against where it branched from `base`.
+
+    Read from the merge base rather than from `base` itself: a head behind a release would otherwise
+    read the released section's entries as ones it adds.
+    """
     try:
-        before = published_check.changelog_at(project, base)
+        fork = published_check.git(project, "merge-base", base, head).strip()
+        paths = published_check.git(project, "diff", "--name-only", "--no-renames", fork,
+                                    head).split()
+        before = published_check.changelog_at(project, fork)
         after = published_check.changelog_at(project, head)
+        gained = next_version.api_gained(text_at(project, fork, next_version.PUBLIC_API_PATH),
+                                         text_at(project, head, next_version.PUBLIC_API_PATH))
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError,
             release_notes.ReleaseNotesError) as failure:
-        raise Unread(f"what {head} changes in the CHANGELOG against {base} could not be read: "
-                     f"{failure}") from failure
-    breaking = release_notes.BREAKING_SECTION
-    opened = release_notes.OPEN_SECTION
+        raise Unread(f"what {head} changes against {base} could not be read: {failure}") from failure
+    breaking, opened = release_notes.BREAKING_SECTION, release_notes.OPEN_SECTION
     return Change(
+        changes_package(paths),
         tuple(published_check.closing_versions(before, after,
                                                {f"v{version}" for version in versions})),
-        first_new(published_check.section_entries(after, breaking),
-                  published_check.section_entries(before, breaking)),
-        first_new(next_version.added_entries(after, opened),
-                  next_version.added_entries(before, opened)))
+        next_version.derive(
+            "0.0.0",
+            published_check.entries_missing_from(published_check.section_entries(after, breaking),
+                                                 published_check.section_entries(before, breaking)),
+            gained,
+            published_check.entries_missing_from(next_version.added_entries(after, opened),
+                                                 next_version.added_entries(before, opened))))
 
 
 GH_TIMEOUT = 30
@@ -368,16 +402,15 @@ def gh_api(project, timeout=GH_TIMEOUT):
 def check(project, api, number, base, head, timeout):
     """`merge_reasons` for pull request `number`, read off the API and the checkout."""
     asked = pull_request(api, number)
-    package = changes_package(changed_paths(api, number, asked.changed))
     state = repository(project, api, timeout)
-    added = change(project, base or f"origin/{asked.base}", head or asked.sha, state.published)
-    return merge_reasons(number, asked, package, added, state)
+    read = change(project, base or f"origin/{asked.base}", head or asked.sha, state.published)
+    return merge_reasons(number, asked, read, state)
 
 
 def close(api, version):
     """Closes the open milestone titled after `version`, answering what it did."""
     title = f"v{version}"
-    found = [milestone for milestone in open_milestones(api) if milestone.title == title]
+    found = [milestone for milestone in milestones(api)[0] if milestone.title == title]
     for milestone in found:
         api(f"milestones/{milestone.number}", "PATCH", ("state=closed",))
     return f"closed {title}" if found else f"no open milestone is titled {title}; nothing to close"
@@ -386,42 +419,52 @@ def close(api, version):
 # The job the Milestone workflow runs again, by the name generators.yml gives it.
 WORKFLOW = "generators.yml"
 JOB = "Milestone"
-POLL_SECONDS = 20
-RERUN_SECONDS = 1200
 
 
-def rerun(api, number, deadline, now=time.time, sleep=time.sleep):
-    """Runs the milestone job of pull request `number`'s newest generators.yml run again once that
-    run has finished, answering what it did. Raises Unread where the run is still going at
-    `deadline`.
-
-    A run still going is waited for, since its job may have read the milestone before the change
-    that brought this here.
-    """
+def rerun(api, number):
+    """Runs the milestone job of pull request `number`'s newest generators.yml run again where that
+    run has finished, answering what it did."""
     head = pull_request(api, number).sha
-    while True:
-        runs = (api(f"actions/workflows/{WORKFLOW}/runs?event=pull_request&head_sha={head}")
-                or {}).get("workflow_runs") or []
-        if not runs:
-            return (f"#{number}: no {WORKFLOW} run at {head[:7]} yet, and the one to come reads the "
-                    f"milestone itself")
-        run = max(runs, key=lambda entry: entry["run_number"])
-        if run.get("status") == "completed":
-            break
-        if now() >= deadline:
-            raise Unread(f"#{number}: run {run['id']} at {head[:7]} is still going; once it "
-                         f"finishes, run its {JOB} job again with `gh run rerun {run['id']}`")
-        sleep(POLL_SECONDS)
+    runs = (api(f"actions/workflows/{WORKFLOW}/runs?event=pull_request&head_sha={head}")
+            or {}).get("workflow_runs") or []
+    if not runs:
+        return (f"#{number}: no {WORKFLOW} run at {head[:7]} yet, and the one to come reads the "
+                f"milestone itself")
+    run = max(runs, key=lambda entry: entry["run_number"])
     jobs = (api(f"actions/runs/{run['id']}/jobs?per_page=100") or {}).get("jobs") or []
     job = next((entry for entry in jobs if entry.get("name") == JOB), None)
     if job is None:
         return f"#{number}: run {run['id']} has no {JOB} job to run again"
+    if run.get("status") != "completed":
+        if job.get("status") != "completed":
+            return f"#{number}: run {run['id']} has yet to reach its {JOB} job, which reads it then"
+        return (f"#{number}: run {run['id']} is still going after its {JOB} job read the "
+                f"milestone; once the run finishes, run that job again with "
+                f"`gh run rerun {run['id']} --job {job['id']}`")
     # Asked again last: a push landing meanwhile starts a run of its own, which reads the milestone
     # itself.
     if pull_request(api, number).sha != head:
         return f"#{number}: its head moved past {head[:7]}, whose run is no longer the one to ask"
-    api(f"actions/jobs/{job['id']}/rerun", "POST")
+    try:
+        api(f"actions/jobs/{job['id']}/rerun", "POST")
+    except Unread:
+        again = (api(f"actions/runs/{run['id']}") or {}).get("status")
+        if again == "completed":
+            raise
+        return f"#{number}: run {run['id']} is running again already"
     return f"#{number}: ran {JOB} again in run {run['id']} at {head[:7]}"
+
+
+def rerun_all(api, numbers):
+    failed = 0
+    for number in numbers:
+        try:
+            print(rerun(api, number))
+        except Unread as failure:
+            failed += 1
+            print(f"{failure}; run this again with `gh run rerun {os.environ.get('GITHUB_RUN_ID')}`"
+                  if os.environ.get("GITHUB_RUN_ID") else failure, file=sys.stderr)
+    return 1 if failed else 0
 
 
 def main(argv=None):
@@ -458,24 +501,16 @@ def main(argv=None):
                  if args.command == "check"
                  else release_reasons(args.version, repository(project, api, args.timeout)))
     except Unread as failure:
-        print(f"could not be read, so nothing was decided: {failure}", file=sys.stderr)
+        retry = (f"run this job again with `gh run rerun {os.environ['GITHUB_RUN_ID']} --failed` "
+                 f"once the reading works" if os.environ.get("GITHUB_RUN_ID")
+                 else "run this again once the reading works")
+        print(f"could not be read, so nothing was decided: {failure}. {retry}", file=sys.stderr)
         return 1
     for reason in found:
         print(reason, file=sys.stderr)
     if not found:
         print("the milestone holds")
     return 1 if found else 0
-
-
-def rerun_all(api, numbers):
-    deadline, failed = time.time() + RERUN_SECONDS, 0
-    for number in numbers:
-        try:
-            print(rerun(api, number, deadline))
-        except Unread as failure:
-            failed += 1
-            print(failure, file=sys.stderr)
-    return 1 if failed else 0
 
 
 if __name__ == "__main__":

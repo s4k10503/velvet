@@ -106,7 +106,7 @@
       },
       {
         "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/harness/adapter.py\" cursor PreToolUse refuse/merge_off_milestone.py",
-        "timeout": 60.0,
+        "timeout": 150.0,
         "matcher": "Shell",
         "failClosed": true
       },

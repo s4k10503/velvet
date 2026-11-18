@@ -1530,17 +1530,21 @@ milestone, by semver, among the versions it publishes — `main` every major fro
 up, as `maintenance_line.main_state` reads it, and a line its own major. So a `v3.1.0` pull request
 waits until `v3.0.2` is published and its milestone closed, and a `v4.0.0` one until no v3
 milestone is open. One that changes nothing under the package carries `Infrastructure` or an open
-version, and merges at any time. The milestone has to suit what the pull request ships as well: an entry added to
-`## [Unreleased — breaking]` wants a major's, an `### Added` entry or a `feat` title at least a
-minor's, and a release pull request carries the milestone of the version it closes. A change to the
-package does not merge onto a branch whose next version is published already, which `upm.yml`
-prevents by closing it after the release, or does not follow the newest release below it.
+version, and merges at any time. A version milestone is also at least the bump
+[Releasing](#releasing) derives from what the pull request adds, read from where it branched, and a
+release pull request carries the milestone of the version it closes. A change to the package does
+not merge onto a branch whose next version is published already, which `upm.yml` prevents by
+closing it after the release, or does not follow the newest release below it.
 `settle.py merge`, `refuse/merge_off_milestone.py` and the `Source generators ▸ milestone` check
 hold all of it, `scripts/pr/milestone.py` owns the reading, and each refusal names its way out:
-`gh pr edit <n> --milestone <title>`, or the `gh api` command that opens or closes a milestone. A
-milestone change, a base change, a retitle and a change to the repository's milestones push
-nothing, so the `Milestone` workflow runs that one job of the pull request's newest
-`Source generators` run again on each, once the run has finished.
+`gh pr edit <n> --milestone <title>`, the `gh api` command that opens, reopens or closes a
+milestone, or the re-run to take once a reading works. The check runs after the run's other jobs,
+so a milestone set while the run is going is read. Once the run has finished, the `Milestone`
+workflow runs that one job again when the pull request's milestone or base changes, or a milestone
+of the repository opens, closes, goes or is retitled, and the release's `close-milestone` job runs
+it again for every open pull request after closing the published version's milestone. A milestone
+change landing after the check read it and before the run finished is not read again until the
+next push or a hand re-run, which the `Milestone` workflow's log names.
 
 No merge waits on a mutation campaign. A campaign dispatched onto a pull request's
 branch runs on its head like any other workflow, and `settle.py merge`, the automerge runs through it, and

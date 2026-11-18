@@ -284,7 +284,7 @@ MILESTONES = types.SimpleNamespace(
     open=[types.SimpleNamespace(number=5, title="v3.0.2"),
           types.SimpleNamespace(number=2, title="v3.1.0"),
           types.SimpleNamespace(number=7, title=INFRASTRUCTURE)],
-    published={"3.0.0", "3.0.1"}, series=3)
+    published={"3.0.0", "3.0.1"}, series=3, closed=[])
 
 
 def fabricate(number, results=PASSING, draft=False, merge_state="clean", holds=(),
@@ -294,8 +294,10 @@ def fabricate(number, results=PASSING, draft=False, merge_state="clean", holds=(
     """`line` is what `settle.line_reading` answers for the head, a line taking all of it unless a
     case says otherwise, and `carried` what `settle.line_carried` answers, no line's commits unless a
     case says otherwise. `milestone` is the title the pull request carries, open, and `paths` and
-    `change` what `settle.changed_paths` and `settle.milestone_change` answer: Infrastructure over
-    no file, which every base in the tables below takes, unless a case says otherwise."""
+    `change` what `settle.changed_paths` and `settle.milestone_change` answer, None for no change:
+    Infrastructure over no change, which every base in the tables below takes, unless a case says
+    otherwise. The change is resolved where it is read rather than here, so a table built at class
+    definition does not reach settle's milestone reading."""
     sha = str(number).rjust(40, "0")
     return Fabricated(sha=sha, after=MOVED if moved else sha, branch=branch or f"topic-{number}",
                       base=base,
@@ -304,7 +306,7 @@ def fabricate(number, results=PASSING, draft=False, merge_state="clean", holds=(
                       jobs=jobs or {}, stack=stack, tangled=tangled, title=title,
                       line=line or settle.maintenance_line.Reading([], [], []),
                       carried=list(carried), milestone=milestone, paths=tuple(paths),
-                      change=change or settle.milestone.NOTHING)
+                      change=change)
 
 
 def base_state(held, base, red=(RED,), releasing=(RELEASING,), required=None):
@@ -401,7 +403,8 @@ def fabricated_readings(states, red=(RED,), releasing=(RELEASING,), required=Non
                 milestone_state="open" if states[number].milestone else None,
                 changed=len(states[number].paths))),
             ("changed_paths", lambda _project, number, _expected: list(states[number].paths)),
-            ("milestone_change", lambda _project, _base, sha, _versions: by_sha[sha].change),
+            ("milestone_change", lambda _project, _base, sha, _versions:
+                by_sha[sha].change or settle.milestone.NOTHING),
             ("line_reading", lambda _project, _line, sha: by_sha[sha].line),
             ("line_carried", lambda _project, _base, sha: by_sha[sha].carried),
             ("line_main_state", lambda _project: maintained),
@@ -2207,7 +2210,12 @@ def project_readings(release_commit):
 class MilestoneMergeTests(unittest.TestCase):
     """The milestone a merge is held to, read through `milestone.py` against `MILESTONES`."""
 
-    PACKAGE = ("Packages/com.velvet.core/Runtime/Fix.cs",)
+    @staticmethod
+    def package(bump="patch"):
+        """A change to the package whose additions `next_version.derive` reads as `bump`."""
+        breaking = ["- A break."] if bump == "major" else []
+        return settle.milestone.Change(True, (), settle.milestone.next_version.derive(
+            "0.0.0", breaking, [], []))
 
     def decided(self, **fields):
         with fabricated_readings({1: fabricate(1, **fields)}):
@@ -2223,23 +2231,30 @@ class MilestoneMergeTests(unittest.TestCase):
 
     def test_Given_APackageChangeUnderALaterVersion_When_TheMergeIsDecided_Then_TheNextIsNamed(self):
         # Act
-        decided = self.decided(milestone="v3.1.0", paths=self.PACKAGE)
+        decided = self.decided(milestone="v3.1.0", change=self.package())
 
         # Assert
         self.assertIn("the next version main publishes is v3.0.2", decided[0] if decided else "")
 
     def test_Given_APackageChangeUnderTheNextVersion_When_TheMergeIsDecided_Then_NothingBlocks(self):
         # Act / Assert
-        self.assertEqual(self.decided(milestone="v3.0.2", paths=self.PACKAGE), [])
+        self.assertEqual(self.decided(milestone="v3.0.2", change=self.package()), [])
 
-    def test_Given_ABreakingEntryUnderAPatchMilestone_When_TheMergeIsDecided_Then_TheMajorIsNamed(self):
+    def test_Given_ABreakingChangeUnderAPatchMilestone_When_TheMergeIsDecided_Then_TheMajorIsNamed(self):
         # Act
-        decided = self.decided(milestone="v3.0.2", paths=self.PACKAGE,
-                               change=settle.milestone.Change((), "A break.", None))
+        decided = self.decided(milestone="v3.0.2", change=self.package("major"))
 
         # Assert
         self.assertIn("carry v4.0.0 with `gh pr edit 1 --milestone v4.0.0`",
                       decided[0] if decided else "")
+
+    def test_Given_AForksPackageChange_When_TheMergeIsDecided_Then_ItsPathsAreReadOffTheApi(self):
+        # Arrange — its head is not fetched here, so the paths the API lists are all there is.
+        decided = self.decided(milestone=INFRASTRUCTURE, fork=True,
+                               paths=("Packages/com.velvet.core/Runtime/Fix.cs",))
+
+        # Act / Assert
+        self.assertIn("carries Infrastructure, which is for a change outside it", "\n".join(decided))
 
     def test_Given_APullRequestCarryingNoMilestone_When_Polled_Then_ItIsNotRecordedReady(self):
         # Act / Assert — every other reading is green, so the milestone is what keeps it out.
@@ -2253,7 +2268,7 @@ class MilestoneMergeTests(unittest.TestCase):
         self.assertIn("no milestone", decided)
 
     def test_Given_AMilestoneReasonAboutTheHeadOnAHeadThatMoved_When_Decided_Then_ItIsLeftOut(self):
-        # Arrange — read off the head's files, which may not be the moved head's.
+        # Arrange — read off the head's tree, which may not be the moved head's.
         decided = reasons(after=MOVED, milestone_head=["not the next version"])
 
         # Act / Assert
