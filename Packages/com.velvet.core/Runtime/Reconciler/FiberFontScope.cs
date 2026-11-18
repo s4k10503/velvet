@@ -95,7 +95,8 @@ namespace Velvet
             foreach (var element in new List<VisualElement>(Families.Keys))
             {
                 // MUTANT_SURVIVES(equivalent, literal): Families holds only intents that name a family (Apply stores one under
-                // intent.HasFamily), and ApplyResolved reads foreign only for an intent that names none.
+                // intent.HasFamily), and ApplyResolved tests foreign only in a conjunction with !intent.HasFamily, which such
+                // an intent makes false.
                 StyleFontResolver.ApplyResolved(element, Families[element].Intent, null, foreign: false);
             }
 
@@ -168,6 +169,7 @@ namespace Velvet
         {
             if (intent.HasFamily)
             {
+                // MUTANT_SURVIVES(equivalent, literal): this branch runs only for an intent that names a family, and ApplyResolved tests foreign only in a conjunction with !intent.HasFamily, which such an intent makes false.
                 StyleFontResolver.ApplyResolved(element, intent, null, foreign: false);
                 Inheritors.Remove(element);
                 var changed = !Families.TryGetValue(element, out var previous) || previous.Family != intent.Family;
@@ -243,7 +245,7 @@ namespace Velvet
                 }
 
                 unnamed = true;
-                if (entry.Wait > 0 || ParentFont(pair.Key) != entry.Seen)
+                if (entry.Wait != 0 || ParentFont(pair.Key) != entry.Seen)
                 {
                     _buffer.Add(pair.Key);
                 }
@@ -261,11 +263,27 @@ namespace Velvet
                 var entry = Inheritors[element];
                 if (entry.Wait == 1 || ParentFont(element) != entry.Seen)
                 {
-                    Resolve(element, entry.Intent);
+                    ResolveDown(element, entry.Intent);
                 }
-                else
+                else if (entry.Wait != 0)
                 {
                     Inheritors[element] = new Inheritor(entry.Intent, null, entry.Seen, entry.Wait - 1);
+                }
+            }
+        }
+
+        // A child reads its font off its parent, so each unnamed inheritor directly under one resolved here is read again
+        // straight after it, in this Tick rather than the next.
+        private void ResolveDown(VisualElement element, in FontIntent intent)
+        {
+            Resolve(element, intent);
+            var count = element.hierarchy.childCount;
+            for (var i = 0; i < count; i++)
+            {
+                var child = element.hierarchy[i];
+                if (Inheritors.TryGetValue(child, out var entry) && entry.Named == null && ParentFont(child) != entry.Seen)
+                {
+                    ResolveDown(child, entry.Intent);
                 }
             }
         }
