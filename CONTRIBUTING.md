@@ -1538,14 +1538,12 @@ closing it after the release, or does not follow the newest release below it.
 `settle.py merge`, `refuse/merge_off_milestone.py` and the `Source generators ▸ milestone` check
 hold all of it, `scripts/pr/milestone.py` owns the reading, and each refusal names its way out:
 `gh pr edit <n> --milestone <title>`, the `gh api` command that opens, reopens or closes a
-milestone, or the re-run to take once a reading works. The check runs after the run's other jobs
-but `Required checks (generators)`, which needs it. The `Milestone` workflow keeps it in step with
-the milestone: when the pull request's milestone or base changes, or a milestone of the repository
-opens, closes, goes or is retitled, it runs the check again in the pull request's finished run, and
-when a run finishes it compares the check's verdict with a reading taken then and runs the check
-again where the two differ. The release's `close-milestone` job asks the same of every open pull
-request after closing the published version's milestone. A re-run GitHub refuses is reported as a
-warning rather than a failure, and the pull request's way out is then a push to its branch.
+milestone, or the re-run to take once a reading works. `settle.py` and the hook read the milestone
+at every merge. The check reads it when its run reaches it, after the run's other jobs but
+`Required checks (generators)`, which needs it, and nothing runs it again when the milestone, the
+base or a milestone of the repository changes later — a release closing one included. Its verdict
+then stands until the next push, or until the check is run again with
+`gh run rerun <run id> --failed`, which its failure names.
 
 No merge waits on a mutation campaign. A campaign dispatched onto a pull request's
 branch runs on its head like any other workflow, and `settle.py merge`, the automerge runs through it, and

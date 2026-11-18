@@ -162,6 +162,13 @@ class MergeOffMilestoneTests(unittest.TestCase):
                       self.refusal(command=worlds.COMMAND + " && gh pr merge 2 --squash "
                                                             "--delete-branch"))
 
+    def test_Given_OnePullRequestNamedTwice_When_Posed_Then_ItIsJudgedOnce(self):
+        # Act
+        code, _ = self.merge(command=worlds.COMMAND + " || gh pr merge 1 --merge --delete-branch")
+
+        # Assert
+        self.assertEqual(code, ALLOWED)
+
     def test_Given_APackageMergeReadingEveryTree_When_ItsGitReadsAreCounted_Then_TheyAreTheBudgets(self):
         # Arrange — the world holds a fragment on every tree read and an API file on the line.
         self.git_log.write_text("", encoding="utf-8")

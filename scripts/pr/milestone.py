@@ -11,7 +11,6 @@ own major.
 Run: python3 scripts/pr/milestone.py check --number <n> [--base <rev>] [--head <rev>]
      python3 scripts/pr/milestone.py release --version X.Y.Z
      python3 scripts/pr/milestone.py close --version X.Y.Z
-     python3 scripts/pr/milestone.py rerun (--number <n> | --open)
 """
 
 import argparse
@@ -400,104 +399,6 @@ def close(api, version):
     return f"closed {title}" if found else f"no open milestone is titled {title}; nothing to close"
 
 
-# The job the Milestone workflow runs again, by the name generators.yml gives it.
-WORKFLOW = "generators.yml"
-JOB = "Milestone"
-
-
-# The exit a pull request has wherever its run is not run again from here.
-PUSH = "a push to its branch starts a run whose Milestone job reads the milestone"
-
-
-def rerun(api, number):
-    """Runs the milestone job of pull request `number`'s newest generators.yml run again where that
-    run has finished, answering what it did. A run still going is left to `reconcile`, which its
-    completion starts."""
-    head = pull_request(api, number).sha
-    runs = (api(f"actions/workflows/{WORKFLOW}/runs?event=pull_request&head_sha={head}")
-            or {}).get("workflow_runs") or []
-    if not runs:
-        return (f"#{number}: no {WORKFLOW} run at {head[:7]} yet, and the one to come reads the "
-                f"milestone itself")
-    run = max(runs, key=lambda entry: entry["run_number"])
-    jobs = (api(f"actions/runs/{run['id']}/jobs?per_page=100") or {}).get("jobs") or []
-    job = next((entry for entry in jobs if entry.get("name") == JOB), None)
-    if job is None:
-        return f"#{number}: run {run['id']} has no {JOB} job to run again"
-    if run.get("status") != "completed":
-        if job.get("status") in ("in_progress", "completed"):
-            return (f"#{number}: run {run['id']} is still going and its {JOB} job has read the "
-                    f"milestone, so the run's completion compares that reading with the milestone")
-        return f"#{number}: run {run['id']} has yet to start its {JOB} job, which reads it then"
-    # Asked again last: a push landing meanwhile starts a run of its own, which reads the milestone
-    # itself.
-    if pull_request(api, number).sha != head:
-        return f"#{number}: its head moved past {head[:7]}, whose run is no longer the one to ask"
-    return run_again(api, number, run, job)
-
-
-def run_again(api, number, run, job):
-    """Asks for `job` of `run` again, answering what came of it. A refusal is answered rather than
-    raised: nothing here can act on one, and a raise would fail the job asking."""
-    try:
-        api(f"actions/jobs/{job['id']}/rerun", "POST")
-    except Unread as failure:
-        if (api(f"actions/runs/{run['id']}") or {}).get("status") != "completed":
-            return f"#{number}: run {run['id']} is running again already"
-        return (f"::warning::#{number}: GitHub would not run {JOB} again in run {run['id']} "
-                f"({failure}); {PUSH}")
-    return f"#{number}: ran {JOB} again in run {run['id']} at {run['head_sha'][:7]}"
-
-
-def reconcile(project, api, run_id, timeout):
-    """Compares the verdict generators.yml run `run_id`'s Milestone job reached with a reading taken
-    now, for each open pull request at its head, and runs the job again where the two differ,
-    answering what it did."""
-    run = api(f"actions/runs/{run_id}") or {}
-    if run.get("event") != "pull_request":
-        return [f"run {run_id} is not a pull request's"]
-    head = run["head_sha"]
-    numbers = [entry["number"] for entry in run.get("pull_requests") or []] or [
-        entry["number"] for entry in listed(api, "pulls?state=open")
-        if (entry.get("head") or {}).get("sha") == head]
-    jobs = (api(f"actions/runs/{run_id}/jobs?per_page=100") or {}).get("jobs") or []
-    job = next((entry for entry in jobs if entry.get("name") == JOB), None)
-    if job is None or job.get("conclusion") not in ("success", "failure"):
-        return [f"run {run_id} has no {JOB} verdict to compare"]
-    state = repository(project, api, timeout)
-    said = []
-    for number in numbers:
-        asked = pull_request(api, number)
-        if asked.sha != head:
-            said.append(f"#{number}: its head moved past {head[:7]}")
-            continue
-        try:
-            published_check.git(project, "fetch", "--quiet", "origin", f"pull/{number}/head",
-                                timeout=timeout)
-            found = merge_reasons(number, asked, change(project, f"origin/{asked.base}", head,
-                                                        state.published), state)
-        except (Unread, subprocess.CalledProcessError, subprocess.TimeoutExpired) as failure:
-            said.append(f"::warning::#{number}: the milestone could not be read now ({failure}); "
-                        f"{PUSH}")
-            continue
-        now = "failure" if found else "success"
-        said.append(f"#{number}: run {run_id}'s {JOB} job read {job['conclusion']} and the milestone "
-                    f"reads {now}" if now == job["conclusion"]
-                    else run_again(api, number, {**run, "id": run_id}, job))
-    return said
-
-
-def rerun_all(api, numbers):
-    """`rerun` for each of `numbers`. Every outcome is printed, and none fails the job asking: what
-    is left to do about one is the push `PUSH` names."""
-    for number in numbers:
-        try:
-            print(rerun(api, number))
-        except Unread as failure:
-            print(f"::warning::#{number}: {failure}; {PUSH}")
-    return 0
-
-
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -513,13 +414,6 @@ def main(argv=None):
     for command, summary in (("release", "judge a version a release would publish"),
                              ("close", "close a published version's milestone")):
         commands.add_parser(command, help=summary).add_argument("--version", required=True)
-    running = commands.add_parser("rerun", help="run the milestone job again")
-    which = running.add_mutually_exclusive_group(required=True)
-    which.add_argument("--number", type=int)
-    which.add_argument("--open", action="store_true", help="every open pull request")
-    comparing = commands.add_parser("reconcile",
-                                    help="compare a finished run's milestone verdict with now")
-    comparing.add_argument("--run", type=int, required=True)
     args = parser.parse_args(argv)
 
     project = Path(args.project).resolve()
@@ -528,30 +422,28 @@ def main(argv=None):
         if args.command == "close":
             print(close(api, args.version))
             return 0
-        if args.command == "rerun":
-            return rerun_all(api, [args.number] if args.number else
-                             [entry["number"] for entry in listed(api, "pulls?state=open")])
-        if args.command == "reconcile":
-            for line in reconcile(project, api, args.run, args.timeout):
-                print(line)
-            return 0
         found = (check(project, api, args.number, args.base, args.head, args.timeout)
                  if args.command == "check"
                  else release_reasons(args.version, repository(project, api, args.timeout)))
     except Unread as failure:
-        if args.command in ("rerun", "reconcile"):
-            print(f"::warning::{failure}; {PUSH}")
-            return 0
-        retry = (f"run this job again with `gh run rerun {os.environ['GITHUB_RUN_ID']} --failed` "
-                 f"once the reading works" if args.command == "check"
-                 and os.environ.get("GITHUB_RUN_ID") else "ask again once the reading works")
-        print(f"could not be read, so nothing was decided: {failure}. {retry}", file=sys.stderr)
+        print(f"could not be read, so nothing was decided: {failure}. Ask again once the reading "
+              f"works{rerun_hint(args.command)}", file=sys.stderr)
         return 1
     for reason in found:
         print(reason, file=sys.stderr)
+    if found and rerun_hint(args.command) != ".":
+        print(f"This check reads the milestone when its run reaches it, and nothing runs it again "
+              f"when the milestone changes later{rerun_hint(args.command)}", file=sys.stderr)
     if not found:
         print("the milestone holds")
     return 1 if found else 0
+
+
+def rerun_hint(command):
+    """The way to ask the Milestone check again in a workflow run, where this is one."""
+    run = os.environ.get("GITHUB_RUN_ID")
+    return (f": run it again with `gh run rerun {run} --failed`, or push to the branch"
+            if command == "check" and run else ".")
 
 
 if __name__ == "__main__":

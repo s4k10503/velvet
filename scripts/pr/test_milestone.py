@@ -4,6 +4,9 @@
 Run: python3 scripts/test_quality/run_suite.py scripts/pr/test_milestone.py
 """
 
+import contextlib
+import io
+import os
 import subprocess
 import sys
 import tempfile
@@ -399,177 +402,28 @@ class ReadingTests(unittest.TestCase):
         self.assertEqual(asked[-1], "PATCH milestones/5 state=closed")
 
 
-HEAD = "a" * 40
+class CheckOutputTests(unittest.TestCase):
+    """What the check prints for a workflow run, read through `main`."""
 
+    def checked(self, found, run="99"):
+        printed = io.StringIO()
+        environment = {"GITHUB_RUN_ID": run} if run else {}
+        with mock.patch.object(milestone, "check", lambda *_: found), \
+                mock.patch.dict(os.environ, environment, clear=False), \
+                contextlib.redirect_stderr(printed), contextlib.redirect_stdout(io.StringIO()):
+            if not run:
+                os.environ.pop("GITHUB_RUN_ID", None)
+            milestone.main(["check", "--number", "7"])
+        return printed.getvalue()
 
-def actions(status="completed", job="completed", heads=None, runs=True, refuse=None,
-            conclusion="failure", event="pull_request", linked=True):
-    """An API over pull request 7 at HEAD whose newest generators run is in `status`, its Milestone
-    job in `job` with `conclusion`. `heads` is what each reading of the pull request answers in turn;
-    `refuse` is the run status read after a refused re-run, None for a re-run that is taken; `linked`
-    is whether the run names its pull request, which a fork's does not."""
-    heads = list(heads or [HEAD, HEAD])
-    posted = []
+    def test_Given_ARefusalInAWorkflowRun_When_Printed_Then_ItsReRunIsNamed(self):
+        # Act / Assert — the verdict stands until a push or this, whatever the milestone does.
+        self.assertIn("run it again with `gh run rerun 99 --failed`, or push to the branch",
+                      self.checked(["a reason"]))
 
-    def ask(path, method="GET", fields=()):
-        if method == "POST":
-            if refuse is not None:
-                raise milestone.Unread("HTTP 403")
-            posted.append(path)
-            return None
-        if path.startswith("pulls/7"):
-            sha = heads.pop(0) if len(heads) > 1 else heads[0]
-            return {"head": {"ref": "topic", "sha": sha, "repo": {"full_name": "o/r"}},
-                    "base": {"ref": "main", "repo": {"full_name": "o/r"}}}
-        if path.startswith("pulls?state=open"):
-            return [{"number": 7, "head": {"sha": HEAD}}]
-        if path.startswith("actions/workflows/"):
-            return {"workflow_runs": [{"id": 11, "run_number": 4, "status": status,
-                                       "head_sha": HEAD}] if runs else []}
-        if path.endswith("/jobs?per_page=100"):
-            return {"jobs": [{"id": 21, "name": "Source generators (dotnet)"},
-                             {"id": 22, "name": milestone.JOB, "status": job,
-                              "conclusion": conclusion}]}
-        if path == "actions/runs/11":
-            return {"id": 11, "status": refuse or status, "event": event, "head_sha": HEAD,
-                    "pull_requests": [{"number": 7}] if linked else []}
-        raise AssertionError(path)
-    return ask, posted
-
-
-class RerunTests(unittest.TestCase):
-    def test_Given_AFinishedRun_When_RerunIsAsked_Then_OnlyTheMilestoneJobRunsAgain(self):
-        # Arrange
-        api, posted = actions()
-
-        # Act
-        milestone.rerun(api, 7)
-
-        # Assert
-        self.assertEqual(posted, ["actions/jobs/22/rerun"])
-
-    def test_Given_ARunStillGoingBeforeItsMilestoneJob_When_RerunIsAsked_Then_TheJobIsLeftToRead(self):
-        # Arrange
-        api, _ = actions(status="in_progress", job="queued")
-
+    def test_Given_ARefusalOutsideAWorkflowRun_When_Printed_Then_NoReRunIsNamed(self):
         # Act / Assert
-        self.assertIn("has yet to start its Milestone job", milestone.rerun(api, 7))
-
-    def test_Given_AMilestoneJobStillRunning_When_RerunIsAsked_Then_ItCountsAsHavingRead(self):
-        # Arrange — the job reads the pull request first, so one under way has read it.
-        api, _ = actions(status="in_progress", job="in_progress")
-
-        # Act / Assert
-        self.assertIn("its Milestone job has read the milestone", milestone.rerun(api, 7))
-
-    def test_Given_ARunStillGoingAfterItsMilestoneJob_When_RerunIsAsked_Then_NothingRunsAgain(self):
-        # Arrange
-        api, posted = actions(status="in_progress")
-
-        # Act
-        milestone.rerun(api, 7)
-
-        # Assert
-        self.assertEqual(posted, [])
-
-    def test_Given_AHeadThatMoved_When_RerunIsAsked_Then_NothingRunsAgain(self):
-        # Arrange
-        api, posted = actions(heads=[HEAD, "b" * 40])
-
-        # Act
-        milestone.rerun(api, 7)
-
-        # Assert
-        self.assertEqual(posted, [])
-
-    def test_Given_NoRunAtTheHeadYet_When_RerunIsAsked_Then_NothingRunsAgain(self):
-        # Arrange
-        api, posted = actions(runs=False)
-
-        # Act
-        milestone.rerun(api, 7)
-
-        # Assert
-        self.assertEqual(posted, [])
-
-    def test_Given_AReRunRefusedBecauseOneIsGoing_When_RerunIsAsked_Then_ItIsNotAFailure(self):
-        # Arrange — another event's re-run reached the run first.
-        api, _ = actions(refuse="queued")
-
-        # Act / Assert
-        self.assertIn("running again already", milestone.rerun(api, 7))
-
-    def test_Given_AReRunGitHubRefusesOfAFinishedRun_When_RerunIsAsked_Then_APushIsNamed(self):
-        # Arrange — a run past the age GitHub runs again, say.
-        api, _ = actions(refuse="completed")
-
-        # Act / Assert
-        self.assertIn("a push to its branch starts a run", milestone.rerun(api, 7))
-
-    def test_Given_AReadingThatFails_When_EveryOpenPullRequestIsAsked_Then_TheJobStillSucceeds(self):
-        # Arrange
-        def api(path, method="GET", fields=()):
-            raise milestone.Unread("HTTP 502")
-
-        # Act / Assert
-        self.assertEqual(milestone.rerun_all(api, [7]), 0)
-
-
-class ReconcileTests(unittest.TestCase):
-    """A finished run's Milestone verdict against a reading taken now, with `holds` what that
-    reading finds."""
-
-    def reconciled(self, holds, **arranged):
-        api, posted = actions(**arranged)
-        found = [] if holds else ["a reason"]
-        with mock.patch.object(milestone, "repository", lambda *_: TODAY), \
-                mock.patch.object(milestone, "change", lambda *_: adds()), \
-                mock.patch.object(milestone, "merge_reasons", lambda *_: found), \
-                mock.patch.object(milestone.published_check, "git", lambda *_, **__: ""):
-            said = milestone.reconcile(Path("."), api, 11, 30)
-        return posted, said
-
-    def test_Given_AFailedVerdictAndAMilestoneThatNowHolds_When_Reconciled_Then_TheJobRunsAgain(self):
-        # Act
-        posted, _ = self.reconciled(holds=True, conclusion="failure")
-
-        # Assert
-        self.assertEqual(posted, ["actions/jobs/22/rerun"])
-
-    def test_Given_APassingVerdictAndAMilestoneThatNowFails_When_Reconciled_Then_TheJobRunsAgain(self):
-        # Act
-        posted, _ = self.reconciled(holds=False, conclusion="success")
-
-        # Assert
-        self.assertEqual(posted, ["actions/jobs/22/rerun"])
-
-    def test_Given_AVerdictTheMilestoneStillAgreesWith_When_Reconciled_Then_NothingRunsAgain(self):
-        # Act
-        posted, _ = self.reconciled(holds=True, conclusion="success")
-
-        # Assert
-        self.assertEqual(posted, [])
-
-    def test_Given_AForksRunNamingNoPullRequest_When_Reconciled_Then_TheOpenOneAtItsHeadIsAsked(self):
-        # Act
-        posted, _ = self.reconciled(holds=True, conclusion="failure", linked=False)
-
-        # Assert
-        self.assertEqual(posted, ["actions/jobs/22/rerun"])
-
-    def test_Given_AHeadThatMovedPastTheRun_When_Reconciled_Then_NothingRunsAgain(self):
-        # Act
-        posted, _ = self.reconciled(holds=True, conclusion="failure", heads=["b" * 40])
-
-        # Assert
-        self.assertEqual(posted, [])
-
-    def test_Given_ARunOfAPush_When_Reconciled_Then_NothingRunsAgain(self):
-        # Act
-        posted, _ = self.reconciled(holds=True, conclusion="failure", event="push")
-
-        # Assert
-        self.assertEqual(posted, [])
+        self.assertNotIn("gh run rerun", self.checked(["a reason"], run=None))
 
 
 def git(directory, *args):
