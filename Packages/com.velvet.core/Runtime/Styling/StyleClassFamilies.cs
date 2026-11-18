@@ -71,7 +71,15 @@ namespace Velvet
         private static readonly StyleClassFamily[] s_families = new StyleClassFamily[SlotCount];
 
         // Whether the token feeds a family Velvet realises in C#.
-        internal static bool Feeds(string cls) => Array.Exists(s_predicates, predicate => predicate.Feeds(cls));
+        internal static bool Feeds(string cls)
+        {
+            var feeds = false;
+            for (var i = 0; i < s_predicates.Length && !feeds; i++)
+            {
+                feeds = s_predicates[i].Feeds(cls);
+            }
+            return feeds;
+        }
 
         internal static bool Has(string[]? classNames, StyleClassFamily family) => (Of(classNames) & family) != 0;
 

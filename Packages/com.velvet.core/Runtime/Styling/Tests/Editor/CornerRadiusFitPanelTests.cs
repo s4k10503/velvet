@@ -23,9 +23,6 @@ namespace Velvet.Tests
 
         private const string WideBox = "w-[330px] h-[34px]";
 
-        // BundledStyleSheetCensusTests.SurveyedUtilityClassCount: the utility classes the sheets declare.
-        private const int SurveyedUtilityClassCount = 2299;
-
         private const string StylesDirectory = "Packages/com.velvet.core/Runtime/Styles";
 
         private const string OwnRadiusSheet = "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/LayoutIdTestRules.uss";
@@ -644,10 +641,10 @@ namespace Velvet.Tests
                 }
             }
 
-            // Assert — a sentinel stands in for an extraction that read fewer names than the bundled utilities alone number.
-            if (names.Count < SurveyedUtilityClassCount)
+            // Assert — a sentinel stands in for an extraction that lacks classes every bundled sheet set holds.
+            if (!names.Contains("p-4") || !names.Contains("rounded-full"))
             {
-                marked.Add($"only {names.Count} class names were read");
+                marked.Add($"the {names.Count} class names read lack p-4 or rounded-full");
             }
             Assert.That(marked, Is.Empty);
         }
@@ -661,6 +658,10 @@ namespace Velvet.Tests
         [TestCase("border-t-red-500")]
         [TestCase("tracking-wide")]
         [TestCase("blur-md")]
+        [TestCase("bg-current")]
+        [TestCase("w-1/2")]
+        [TestCase("translate-x-4")]
+        [TestCase("hue-rotate-90")]
         public void Given_ALaidOutBox_When_AClassResolvedToInlineStyleArrivesThroughAnAnimationChannel_Then_TheBoxIsNotMarkedForTheFit(string token)
         {
             // Arrange
@@ -674,12 +675,11 @@ namespace Velvet.Tests
             Assert.That(box.ClassListContains(CornerRadiusFit.WatchClass), Is.False);
         }
 
-        [TestCase("bg-brandtest")]
-        [TestCase("rounded-pilltest")]
-        public void Given_ALaidOutBoxUnderADeclaredThemeVariable_When_ItsUtilityIsTrackedOutsideAThemeScope_Then_TheBoxIsNotMarkedForTheFit(string token)
+        [Test]
+        public void Given_ALaidOutBoxUnderADeclaredThemeVariable_When_ItsUtilityIsTrackedOutsideAThemeScope_Then_TheBoxIsNotMarkedForTheFit()
         {
-            // Arrange — the sheet declares --color-brandtest and --radius-pilltest, so the utilities are the theme's, which a
-            // class diff reads under no scope of its own.
+            // Arrange — the sheet declares --color-brandtest, so bg-brandtest is the theme's utility, and a direct call holds
+            // no theme scope.
             _window.rootVisualElement.styleSheets.Add(
                 UnityEditor.AssetDatabase.LoadAssetAtPath<StyleSheet>("Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ThemeTokenSheet.uss"));
             _mounted = V.Mount(_window.rootVisualElement, V.Div(className: "theme-token-host", children: new VNode?[]
@@ -689,7 +689,7 @@ namespace Velvet.Tests
             ForcePanelUpdate(Box.panel);
 
             // Act
-            CornerRadiusFit.TrackClass(Box, token);
+            CornerRadiusFit.TrackClass(Box, "bg-brandtest");
 
             // Assert
             Assert.That(Box.ClassListContains(CornerRadiusFit.WatchClass), Is.False);

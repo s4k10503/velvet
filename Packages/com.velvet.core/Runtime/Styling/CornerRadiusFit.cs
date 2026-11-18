@@ -157,7 +157,9 @@ namespace Velvet
 
         // The classes Velvet resolves itself beyond what the bundled table names. CornerRadiusFitPanelTests holds to this the
         // bundled sheets' class names, a token of each family StyleClassFamilies reads, the text effect, font, gradient,
-        // clip-path, container, group, peer and state kinds, a theme variable's utility and the inline-resolved kinds.
+        // clip-path, container, group, peer and state kinds, a theme variable's utility, and the inline-resolved kinds the
+        // rows name: arbitrary values, colour keywords and opacities, fractions, static scales, logical sides, side border
+        // colours, letter spacing, translates and filters.
         private static bool ResolvedBeyondTheTable(VisualElement element, string core)
             => core.StartsWith("velvet-", StringComparison.Ordinal)
                 || core.StartsWith("unity-", StringComparison.Ordinal)
@@ -174,8 +176,8 @@ namespace Velvet
                 || StyleArbitraryValueResolver.IsInlineResolved(core)
                 || OwnedByTheme(element, core);
 
-        // A utility a theme variable makes is read under the scope of the element's own mount, which a class diff and an
-        // animation channel do not hold.
+        // A utility a theme variable makes is read under a theme scope. The reconciler's render pass holds one, and
+        // StyleAnimationClassUtils.AddClasses and a direct call do not, so the element's own mount supplies it here.
         private static bool OwnedByTheme(VisualElement element, string core)
         {
             using var scope = StyleThemeTokens.Use(null, element);
