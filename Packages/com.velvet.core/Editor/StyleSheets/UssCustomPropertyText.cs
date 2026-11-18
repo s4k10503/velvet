@@ -375,13 +375,13 @@ namespace Velvet.Editor
         // Reads value token by token as UI Toolkit's lexer does, and answers whether one is a token the importer fails
         // the sheet on, drops or reads otherwise than CSS: a delimiter, a bracket no function name opens, a colon, a
         // function it does not know (a CSS math function, cubic-bezier(), steps()), one it fails the sheet on with
-        // nothing in it or, for var(), with arguments ValidateVarFunction refuses, an rgb() or rgba() in another shape
-        // than ReadsHeldChannels holds, a hex colour it cannot parse or CSS reads further, a range, a number it
-        // misreads, or a full stop no digit follows, which it drops after an integer and fails the sheet on elsewhere.
-        // A value of identifiers and delimiters alone, which the importer keeps as one string instead, is quoted all
-        // the same. What a resource() with something in it encloses is left unread, as the importer takes it as a path
-        // whatever it holds. UssValueImportTests holds each of those. What the URL functions enclose is left to
-        // UrlEnd.
+        // nothing in it, resource() with whitespace alone in it as well, or, for var(), with arguments
+        // ValidateVarFunction refuses, an rgb() or rgba() in another shape than ReadsHeldChannels holds, a hex colour
+        // it cannot parse or CSS reads further, a range, a number it misreads, or a full stop no digit follows, which
+        // it drops after an integer and fails the sheet on elsewhere. A value of identifiers and delimiters alone,
+        // which the importer keeps as one string instead, is quoted all the same. What a resource() with more than
+        // whitespace in it encloses is left unread, as the importer takes it as a path whatever it holds.
+        // UssValueImportTests holds each of those. What the URL functions enclose is left to UrlEnd.
         private static bool HasUnheldToken(string value)
         {
             var functions = 0;
@@ -461,8 +461,9 @@ namespace Velvet.Editor
             }
             if (name == "resource")
             {
+                var held = At(value, UrlSpaceEnd(value, i + 1)) != ')';
                 i = CloseOf(value, i) + 1;
-                return true;
+                return held;
             }
             if (name is "rgb" or "rgba")
             {

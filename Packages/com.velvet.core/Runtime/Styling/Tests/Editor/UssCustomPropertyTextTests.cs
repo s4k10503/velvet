@@ -247,6 +247,7 @@ namespace Velvet.Tests
         [TestCase(":root { --x: blur(); }", ":root { --x: \"blur()\"; }")]
         [TestCase(":root { --x: var(); }", ":root { --x: \"var()\"; }")]
         [TestCase(":root { --x: resource(); }", ":root { --x: \"resource()\"; }")]
+        [TestCase(":root { --x: resource( ); }", ":root { --x: \"resource( )\"; }")]
         [TestCase(":root { --x: rgb(); }", ":root { --x: \"rgb()\"; }")]
         [TestCase(":root { --x: NONE(); }", ":root { --x: \"NONE()\"; }")]
         [TestCase(":root { --x: rgb(255 0 0 / 0.5); }", ":root { --x: \"rgb(255 0 0 / 0.5)\"; }")]
@@ -321,6 +322,7 @@ namespace Velvet.Tests
         [TestCase(":root { --x: var(--a /* c */); }", ":root { --x: \"var(--a  )\"; }")]
         [TestCase(":root { --x: linear-gradient(red /* a */, blue); }", ":root { --x: \"linear-gradient(red  , blue)\"; }")]
         [TestCase(":root { --x: filter(/* c */ a); }", ":root { --x: \"filter(  a)\"; }")]
+        [TestCase(":root { --x: resource(/* c */); }", ":root { --x: \"resource( )\"; }")]
         public void Given_ACommentAmongAFunctionsArguments_When_TheSheetIsRewritten_Then_ItsValueIsQuotedWithoutIt(
             string uss, string expected)
         {
