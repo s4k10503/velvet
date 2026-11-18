@@ -442,8 +442,10 @@ of yours keys on changes, or when a pseudo-class such as `:hover` begins to matc
 stylesheets of the element a tree is mounted on and of its ancestors, with what they import, and of an element inside the
 tree once it lays out. For each sheet with such a rule it attaches a second sheet that exists only at runtime, with the
 same selectors and one custom property, which is what makes UI Toolkit report the match; your own sheet is never
-edited. A sheet attached later is read within a tick of the panel's sheet watch (16 ms), and `VelvetStyleUtilities.AttachTo`
-reads the root's sheets at once. The sheets on the panel's own root are read too, whatever imports they bring; the bundled
+edited. `VelvetStyleUtilities.AttachTo` reads the root's sheets at once. A sheet attached later to an ancestor of an element Velvet
+built is read within a tick of the panel's sheet watch (16 ms), and one attached to the mount's ancestors within 100 ms. A
+sheet attached later to a leaf that held none when it last changed size is read when the leaf next changes size: UI
+Toolkit raises no event for a sheet attached to an element. The sheets on the panel's own root are read too, whatever imports they bring; the bundled
 utilities are covered by the rules that restate their radii. The elements a radius rule matches get a style event for
 each restyle, and the fit does nothing for it while the rules that match are the same ones; one that no such rule matches
 is restyled as before. A write to `style` after layout is the exception: UI Toolkit reports it to nobody, so it is fitted

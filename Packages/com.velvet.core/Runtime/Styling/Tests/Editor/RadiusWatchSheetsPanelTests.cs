@@ -269,6 +269,20 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AWatchSheetDestroyedSinceItWasMade_When_ItIsAskedWhetherItIsOne_Then_ItIsOne()
+        {
+            // Arrange
+            var watch = RadiusWatchSheets.DerivedOf(Clone(OwnSheet));
+            UnityEngine.Object.DestroyImmediate(watch);
+
+            // Act
+            var known = (object)watch != null && RadiusWatchSheets.IsWatch(watch);
+
+            // Assert — the engine's null check holds a destroyed sheet to be none, so the reference is what is asked.
+            Assert.That(known, Is.True);
+        }
+
+        [Test]
         public void Given_ALeafHoldingASheetOfItsOwn_When_ItLaysOut_Then_ItHoldsTheWatchSheet()
         {
             // Arrange — the leaf has no children, so only a read of its own sheets can find the rule.

@@ -70,7 +70,11 @@ namespace Velvet
 
         private static bool s_reported;
 
-        internal static bool IsWatch(StyleSheet sheet) => sheet != null && sheet.name == SheetName;
+        // Every sheet made here, by reference, so that one destroyed since is still known for what it was: the engine's null
+        // check of a destroyed object answers true, and its name cannot be read.
+        private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<StyleSheet, object> s_known = new();
+
+        internal static bool IsWatch(StyleSheet sheet) => (object)sheet != null && s_known.TryGetValue(sheet, out _);
 
         // Attaches the derived sheets of the stylesheets of element and of every element above it.
         internal static void EnsureAbove(VisualElement element)
@@ -139,20 +143,26 @@ namespace Velvet
             {
                 s_derived.Add(source, derived);
             }
+            StyleSheet? made = null;
             try
             {
                 var rules = RadiusRules(source);
                 derived.Sheet = null;
                 if (rules.Count > 0)
                 {
-                    derived.Sheet = NewSheet();
-                    Build(rules, derived.Sheet);
-                    s_made.Add((new WeakReference<StyleSheet>(source), derived.Sheet));
+                    made = NewSheet();
+                    Build(rules, made);
+                    derived.Sheet = made;
+                    s_made.Add((new WeakReference<StyleSheet>(source), made));
                 }
             }
             catch (Exception exception)
             {
                 derived.Sheet = null;
+                if (made != null)
+                {
+                    Destroy(made);
+                }
                 if (!s_reported)
                 {
                     s_reported = true;
@@ -173,15 +183,20 @@ namespace Velvet
                 }
                 var orphan = s_made[i].Watch;
                 s_made.RemoveAt(i);
-#if UNITY_EDITOR
-                if (!Application.isPlaying)
-                {
-                    UnityEngine.Object.DestroyImmediate(orphan);
-                    continue;
-                }
-#endif
-                UnityEngine.Object.Destroy(orphan);
+                Destroy(orphan);
             }
+        }
+
+        private static void Destroy(StyleSheet sheet)
+        {
+#if UNITY_EDITOR
+            if (!Application.isPlaying)
+            {
+                UnityEngine.Object.DestroyImmediate(sheet);
+                return;
+            }
+#endif
+            UnityEngine.Object.Destroy(sheet);
         }
 
         private static WatchRules RadiusRules(StyleSheet source)
@@ -211,6 +226,7 @@ namespace Velvet
             var sheet = ScriptableObject.CreateInstance<StyleSheet>();
             sheet.name = SheetName;
             sheet.hideFlags = HideFlags.HideAndDontSave;
+            s_known.Add(sheet, s_known);
             return sheet;
         }
 
