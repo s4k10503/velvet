@@ -12457,12 +12457,13 @@ class ConcurrentJobBudgetTests(unittest.TestCase):
     @staticmethod
     def pull_request_jobs_beyond_seconds():
         """How many jobs of the two workflows a pull request runs hold a slot for minutes. The aggregates
-        wait for every other job, so they start as slots free and never add to the count."""
+        wait for every other job, and the milestone job for its workflow's long one, so they start as slots
+        free and never add to the count."""
         count = 0
         for name in ("test.yml", "generators.yml"):
             jobs = yaml.safe_load((REPO_ROOT / ".github/workflows" / name).read_text())["jobs"]
             for job_name, job in jobs.items():
-                if job_name == "required-checks" or job_name in ConcurrentJobBudgetTests.SECONDS_LONG:
+                if job_name in ("required-checks", "milestone") or job_name in ConcurrentJobBudgetTests.SECONDS_LONG:
                     continue
                 matrix = (job.get("strategy") or {}).get("matrix") or {}
                 count += math.prod(len(values) for values in matrix.values() if isinstance(values, list))
