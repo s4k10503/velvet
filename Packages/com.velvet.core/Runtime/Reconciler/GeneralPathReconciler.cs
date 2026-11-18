@@ -1811,10 +1811,10 @@ namespace Velvet
                     _met.Add(element);
                     if (slots.Target != null) (under ??= new List<VisualElement>()).Add(element);
                 }
-                var hierarchy = element.hierarchy;
-                for (var i = 0; i < hierarchy.childCount; i++)
+                var count = ChildListWrites.HierarchyCount(element);
+                for (var i = 0; i < count; i++)
                 {
-                    Meet(hierarchy[i], ref under);
+                    Meet(ChildListWrites.HierarchyChild(element, i), ref under);
                 }
             }
         }
