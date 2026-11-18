@@ -60,21 +60,22 @@ namespace Velvet
                 return Wire(target, tree, rootFiber, root);
             }
             // The handle is made inside the entry, so what is held while the root renders runs once it exists.
-            return FiberExecutionContext.Enter(rootFiber.Reconciler!.Context.BatchScheduler,
-                (Target: target, Tree: tree, Fiber: rootFiber, Root: root), static mount =>
-                {
-                    try
+            try
+            {
+                return FiberExecutionContext.Enter(rootFiber.Reconciler!.Context.BatchScheduler,
+                    (Target: target, Tree: tree, Fiber: rootFiber, Root: root), static mount =>
                     {
                         FiberRenderer.RenderMountedWork(mount.Fiber, opensWave: true);
-                    }
-                    catch
-                    {
-                        // No handle reaches the caller to dispose, so the clock the mount took is released here.
-                        mount.Fiber.Reconciler?.Context.StyleAnimationScheduler.ReleaseClock();
-                        throw;
-                    }
-                    return Wire(mount.Target, mount.Tree, mount.Fiber, mount.Root);
-                });
+                        return Wire(mount.Target, mount.Tree, mount.Fiber, mount.Root);
+                    });
+            }
+            catch
+            {
+                // No handle reaches the caller to dispose, so the clock the mount took is released here, whether the
+                // render threw or the flush the entry starts with did.
+                rootFiber.Reconciler?.Context.StyleAnimationScheduler.ReleaseClock();
+                throw;
+            }
         }
 
         private static MountedTree Wire(VisualElement target, VNode tree, ComponentFiber rootFiber, RootTree root)

@@ -852,8 +852,9 @@ namespace Velvet
         // those run inside an entry. It runs in the entry's own host pass rather than in a bracket of each context's
         // anchor, which placed a transition a forced re-render asks for one pass early (TransitionFrameSchedulingTests).
         // A context comes off the list before its work runs, and what that work stages puts it back behind the others.
-        // What one context's work throws is logged and stands its scheduler down for the release, as an exception
-        // leaving its own entry does, so the other contexts' work and the entry's own body still run.
+        // What one context's work throws stands its scheduler down for the release, as an exception leaving its own entry
+        // does, and leaves the entry before its body runs, as what React's flush of pending effects throws leaves the
+        // work that ran it: the nested-update error among it.
         internal static void FlushEveryContextsPendingPassiveWork()
         {
             UnityEngine.Debug.Assert(!ChildListWrites.PassIsOpen, "Passive effects ran inside an open pass.");
@@ -865,10 +866,10 @@ namespace Velvet
                 {
                     FlushPendingPassiveEffectsWork(context);
                 }
-                catch (Exception thrown)
+                catch
                 {
                     FiberExecutionContext.StandDown(context.BatchScheduler);
-                    UnityEngine.Debug.LogException(thrown);
+                    throw;
                 }
             }
         }

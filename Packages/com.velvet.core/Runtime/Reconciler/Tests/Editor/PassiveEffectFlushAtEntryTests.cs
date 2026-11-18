@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using System.Reflection;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.TestTools;
@@ -14,7 +15,7 @@ namespace Velvet.Tests
     /// anything (<c>performWorkOnRootViaSchedulerTask</c>, <c>performSyncWorkOnRoot</c>, and the loop <c>commitRoot</c>
     /// opens with): another root's update drain, the unmount of a root whose mount effect has not run, an error
     /// boundary's swap for a <c>UseFrame</c> callback's error, and the render a resolved read retries. What one root's
-    /// flush throws is logged, and stands that root down rather than the entry whose start ran it. A root disposed
+    /// flush throws stands that root down and reaches the caller of the entry whose start ran it. A root disposed
     /// renders nothing its pending effects force, nor, where its disposal is held inside an entry, a flush held for it
     /// ahead of the unmount or a later pass of a drain of it.
     /// </summary>
@@ -226,20 +227,56 @@ namespace Velvet.Tests
             return V.Label(text: "thrower" + tick);
         }
 
+        // React's flush of pending effects throws to the caller of the work that ran it.
         [Test]
-        public void Given_ARootWhosePendingEffectForcesARenderThatThrows_When_AnotherRootMounts_Then_ThatRootRendersOnceAndTheMountReturns()
+        public void Given_ARootWhosePendingEffectForcesARenderThatThrows_When_AnotherRootMounts_Then_TheMountThrowsItAndThatRootRendersOnce()
         {
             // Arrange — the root's mount effect is still pending
             using var thrower = V.Mount(new VisualElement(), V.Component(ThrowsOnItsForcedRender, key: "thrower"));
             s_handleThrows = true;
-            LogAssert.Expect(LogType.Exception, "InvalidOperationException: handle failed");
 
             // Act — the throwing render asks for another, which the mount's release would render again
-            using var other = V.Mount(new VisualElement(), V.Label(text: "other"));
+            string thrown = null;
+            try
+            {
+                V.Mount(new VisualElement(), V.Label(text: "other"));
+            }
+            catch (InvalidOperationException exception)
+            {
+                thrown = exception.Message;
+            }
             s_handleThrows = false;
 
-            // Assert — 2 where the release rendered it again, and the mount throws where nothing caught the first
-            Assert.That(s_forcedRenders, Is.EqualTo(1));
+            // Assert — 2 where the release rendered it again; null where the mount did not throw the render's error
+            Assert.That(thrown == "handle failed" ? s_forcedRenders : (int?)null, Is.EqualTo(1));
+        }
+
+        private static int LiveClockMounts()
+            => (int)(typeof(MotionClock).GetField("s_liveMounts", BindingFlags.NonPublic | BindingFlags.Static)
+                ?? throw new MissingFieldException(typeof(MotionClock).FullName, "s_liveMounts")).GetValue(null);
+
+        [Test]
+        public void Given_ARootWhosePendingEffectForcesARenderThatThrows_When_AnotherRootMountsOnAHeldClock_Then_TheMountReleasesTheClock()
+        {
+            // Arrange — the root's mount effect is still pending
+            using var thrower = V.Mount(new VisualElement(), V.Component(ThrowsOnItsForcedRender, key: "thrower"));
+            s_handleThrows = true;
+            var liveMounts = LiveClockMounts();
+
+            // Act
+            var threw = false;
+            try
+            {
+                V.Mount(new VisualElement(), V.Label(text: "other"), new MountOptions { MotionClock = new HeldMotionClock() });
+            }
+            catch (InvalidOperationException)
+            {
+                threw = true;
+            }
+            s_handleThrows = false;
+
+            // Assert — null where the mount did not throw
+            Assert.That(threw ? LiveClockMounts() - liveMounts : (int?)null, Is.EqualTo(0));
         }
 
         // React's root.unmount() flushes the root's pending passive effects and then renders the unmount together

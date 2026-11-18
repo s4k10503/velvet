@@ -5,7 +5,8 @@
   runs the `UseEffect`s the roots left pending, whichever root they belong to, and the `AnimatePresence` exit
   completions pending beside them, as React flushes its pending passive effects before it renders or commits anything.
   A tree disposed before its mount's `UseEffect`s ran now runs them and then their cleanups, as React's
-  `root.unmount()` does. An exception one root's flush throws there is logged, and the rest of that work still runs.
+  `root.unmount()` does. What one root's flush throws there, the nested-update limit's error among it, is thrown to the
+  caller, as what React's flush of pending effects throws is.
 - A root disposed with `MountedTree.Dispose` while another root's render, commit or `UseEffect` flush ran, after a
   click on it there had asked for a render, rendered that update before it unmounted. It now unmounts without
   rendering it, as React folds `root.unmount()` into the same sync render.
