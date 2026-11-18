@@ -279,13 +279,23 @@ namespace Velvet
                 {
                     return false;
                 }
-                s_runs.Clear();
-                TextBreakOpportunities.CollectRuns(text, s_runs);
-                _natural = s_runs.Count == 1 ? float.NaN : width;
+                _natural = MinimumCanReach(textElement, text, resolved.whiteSpace, width) ? float.NaN : width;
                 _naturalKey = key;
                 _hasNatural = true;
             }
             return resolved.width >= Mathf.Ceil(_natural) + frame - 0.01f;
+        }
+
+        // Whether the widest run is as wide as the whole text, so the item's own minimum produces that width. A text
+        // of one run is; a text with a line break in it can be, since a run holds the break and measures as its
+        // widest line, and is measured to see.
+        private static bool MinimumCanReach(TextElement textElement, string text, WhiteSpace whiteSpace, float whole)
+        {
+            s_runs.Clear();
+            TextBreakOpportunities.CollectRuns(text, s_runs);
+            return s_runs.Count == 1
+                || (text.IndexOf('\n') >= 0
+                    && Mathf.Ceil(MeasureMinContentWidth(textElement, text, whiteSpace)) >= Mathf.Ceil(whole));
         }
 
         private bool ReadsPercent(TextElement textElement, bool horizontal)

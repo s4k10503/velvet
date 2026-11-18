@@ -877,19 +877,21 @@ namespace Velvet.Tests
 
         // GREEN_ON_BASE(characterization): the base writes the minimum of a one-word label and keeps it. What
         // reddens it is the room test counting the width the label's own minimum produces as its natural one:
-        // `_natural = s_runs.Count == 1 ? float.NaN : width` in `IsAtNaturalWidth` replaced by `_natural = width`.
-        [Test]
-        public void Given_AOneWordLabelInARowNarrowerThanIt_When_ItIsSettledAgainAtItsMinimum_Then_ItsMinWidthIsItsWord()
+        // `MinimumCanReach(...) ? float.NaN : width` in `IsAtNaturalWidth` replaced by `width`.
+        [TestCase(LongWord, LongWord)]
+        [TestCase("ab\n" + LongWord, LongWord)]
+        public void Given_ALabelInARowNarrowerThanItsWidestRun_When_ItIsSettledAgainAtItsMinimum_Then_ItsMinWidthIsItsWidestRun(
+            string text, string widest)
         {
             // Arrange
-            var label = MountLabel("flex flex-row w-[20px]", "", LongWord);
+            var label = MountLabel("flex flex-row w-[20px]", "", text);
             Settle(label);
 
             // Act
             Settle(label);
 
             // Assert
-            Assert.That(label.style.minWidth.value.value, Is.EqualTo(WidestWordMinimum(label, LongWord)));
+            Assert.That(label.style.minWidth.value.value, Is.EqualTo(WidestWordMinimum(label, widest)));
         }
 
         [Test]
