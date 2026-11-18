@@ -11,9 +11,9 @@
   A layer coming from a `var()` is judged by its source: `shadow-[var(--x)] shadow-blue-500` keeps the colour `--x`
   holds, and `[--a:5px] [--b:red] ring shadow-[#ggg] shadow-[0_0_var(--a)_var(--b)]` draws the ring and the shadow
   rather than discarding both.
-- `shadow-[var(--x)]/50`, and the same on `inset-shadow-`, `text-shadow-`, `drop-shadow-`, `bg-`, `text-`, `border-`,
-  `ring-`, `ring-offset-`, `inset-ring-`, `outline-`, `from-`, `via-`, `to-`, a border side's (`border-t-`), `fill-`,
-  `stroke-`, `accent-`, `caret-`, `decoration-` and `divide-` brackets, the families
+- `shadow-[var(--x)]/50`, and the same on `inset-shadow-`, `drop-shadow-`, `bg-`, `text-`, `border-`,
+  `ring-`, `ring-offset-`, `inset-ring-`, `outline-`, `from-`, `via-`, `to-`, a border side's (`border-t-`), `caret-` and
+  `divide-` brackets, the families
   Tailwind writes a rule for with an opacity modifier, is read as a reader: it was ignored. A utility Tailwind writes
   no rule for with one (`gap-[var(--g)]/50`) is still ignored.
 - An important shadow reader (`!shadow-[var(--x)]`) now ranks among the element's important shadow sizes by Tailwind's
@@ -37,6 +37,7 @@
   element's styles are applied and the property is read again.
 - A `ring-`, `ring-offset-` or `inset-ring-` bracket typed as anything but a length, with an opacity modifier
   (`ring-[number:5px]/50`), is a colour Tailwind mixes the value into, which the browser finds invalid: it now discards
-  the box-shadow, where the class was ignored. Chromium does the same for `ring-2 ring-[number:5px]/50`. The inheriting
-  colour roots (`fill-`, `stroke-`, `accent-`, `caret-`) under a hint of another type, which the browser computes as the
-  parent's value, are still ignored.
+  the box-shadow, where the class was ignored. The same on a `bg-`, `border-`, `outline-`, `from-`, `via-`, `to-`,
+  `text-`, `caret-` or `divide-` bracket makes the property its unset, as the browser computes it: the parent's colour
+  for a caret and a text colour, the initial value (currentcolor, or transparent for a background) for the others,
+  where a colour class before it kept its colour.

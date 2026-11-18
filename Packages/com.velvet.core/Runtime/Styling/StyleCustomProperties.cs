@@ -91,6 +91,9 @@ namespace Velvet
             // (StyleVariantPayload.IsImportanceAware): its payloads carry it, and so rank among the element's important
             // literals by the consumer's own place.
             public readonly bool KeepsBang;
+            // A colour utility's bracket typed as something else, with an opacity modifier: invalid, so it takes the unset
+            // of its colour whatever it reads (StyleCustomPropertyClass.MixesMismatchedColour).
+            public readonly bool ForcesUnset;
             // Whether the unset the consumer writes discards the element's box-shadow, which an element off a panel does
             // not write: a variable a stylesheet declares is read only once the element is on one (Reresolve).
             public readonly bool DefersUnset;
@@ -114,8 +117,9 @@ namespace Velvet
                 Order = order;
                 Context = context;
                 Shape = UtilityShape.Of(utility);
-                AddedHint = DefaultHint(utility, Shape);
-                EffectiveHint = Shape.Hint ?? AddedHint;
+                ForcesUnset = StyleCustomPropertyClass.MixesMismatchedColour(utility);
+                AddedHint = ForcesUnset ? "color" : DefaultHint(utility, Shape);
+                EffectiveHint = ForcesUnset ? "color" : Shape.Hint ?? AddedHint;
                 Sides = StyleCustomPropertyClass.SidesOf(utility, Shape);
                 StacksZ = StyleZIndexClass.VariableUtility(utility) != null;
                 StacksOrder = StyleOrderClass.VariableUtility(utility) != null;
@@ -126,7 +130,7 @@ namespace Velvet
                 ReadsVariable = readsVariable;
                 ModifierReadsVariable = Shape.HasModifier
                     && utility.IndexOf("var(", Math.Max(Shape.MainClose, 0), StringComparison.OrdinalIgnoreCase) >= 0;
-                if (readsVariable)
+                if (readsVariable || ForcesUnset)
                 {
                     Property = WrittenProperty(utility, Shape, AddedHint, out _);
                     UnsetUtility = Property != null ? null
@@ -505,7 +509,7 @@ namespace Velvet
         {
             using var themeScope = StyleThemeTokens.Use(consumer.Context, target);
             s_built.Clear();
-            var resolved = TryBuild(target, consumer, s_built);
+            var resolved = !consumer.ForcesUnset && TryBuild(target, consumer, s_built);
             if (DefersUnset(target, consumer, ref resolved))
             {
                 return;

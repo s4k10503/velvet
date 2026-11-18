@@ -58,6 +58,8 @@ namespace Velvet
                 ["ring-"] = ("ring-current", "ring-current", "ring-current", "ring-[length:0]"),
                 ["ring-offset-"] = (null, null, null, "ring-offset-0"),
                 ["inset-ring-"] = ("inset-ring-current", "inset-ring-current", "inset-ring-current", "inset-ring-[length:2]"),
+                ["caret-"] = ("caret-inherit", "caret-inherit", "caret-inherit", "caret-inherit"),
+                ["divide-"] = ("divide-current", "divide-current", "divide-current", "divide-current"),
                 ["outline-"] = ("outline-current", "outline-current", "outline-current", "outline-[length:3px]"),
                 ["gap-"] = ("gap-0", "gap-0", "gap-0", "gap-0"),
                 ["gap-x-"] = ("gap-x-0", "gap-x-0", "gap-x-0", "gap-x-0"),

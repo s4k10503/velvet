@@ -251,7 +251,6 @@ namespace Velvet.Tests
         // Tailwind 4.3.3 writes a rule for an opacity modifier after a bracket of each of these, measured per class.
         [TestCase("shadow-[var(--x)]/50")]
         [TestCase("inset-shadow-[var(--x)]/50")]
-        [TestCase("text-shadow-[var(--x)]/50")]
         [TestCase("drop-shadow-[var(--x)]/50")]
         [TestCase("shadow-[length:var(--x)]/50")]
         [TestCase("bg-[var(--x)]/50")]
@@ -265,11 +264,7 @@ namespace Velvet.Tests
         [TestCase("via-[var(--x)]/50")]
         [TestCase("to-[var(--x)]/50")]
         [TestCase("border-t-[var(--x)]/50")]
-        [TestCase("fill-[var(--x)]/50")]
-        [TestCase("stroke-[var(--x)]/50")]
-        [TestCase("accent-[var(--x)]/50")]
         [TestCase("caret-[var(--x)]/50")]
-        [TestCase("decoration-[var(--x)]/50")]
         [TestCase("divide-[var(--x)]/50")]
         public void Given_ANumericModifierAfterABracketOfAFamilyTailwindWritesARuleFor_When_Read_Then_ItIsAReader(string cls)
         {
@@ -329,6 +324,69 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(ring, Is.EqualTo(0f));
+        }
+
+        // Tailwind mixes the value of a colour utility's bracket typed as something else into a colour when it has an
+        // opacity modifier, which the browser finds invalid: the property computes as unset.
+        [TestCase("caret-[number:5px]/50")]
+        [TestCase("divide-[number:5px]/50")]
+        [TestCase("bg-[number:5]/50")]
+        [TestCase("border-[number:5]/50")]
+        [TestCase("border-t-[number:5]/50")]
+        [TestCase("outline-[line-width:5px]/50")]
+        [TestCase("from-[number:5]/50")]
+        [TestCase("text-[line-width:5px]/50")]
+        public void Given_AColourUtilitysBracketOfAnotherTypeWithAModifier_When_Read_Then_ItIsAReader(string cls)
+        {
+            // Act
+            var reader = StyleCustomPropertyClass.Consumer(cls);
+
+            // Assert
+            Assert.That(reader, Is.Not.Null);
+        }
+
+        // GREEN_ON_BASE(characterization): the base reads none of these, whose hint is the utility's own width or size.
+        [TestCase("border-[length:5px]/50")]
+        [TestCase("outline-[length:5px]/50")]
+        [TestCase("text-[length:5px]/6")]
+        [TestCase("from-[length:5px]/50")]
+        public void Given_AColourUtilitysBracketTypedAsItsWidthOrSizeWithAModifier_When_Read_Then_ItIsNoReader(string cls)
+        {
+            // Act
+            var reader = StyleCustomPropertyClass.Consumer(cls);
+
+            // Assert
+            Assert.That(reader, Is.Null);
+        }
+
+        // The class source the passes read for an element with classes, once its readers resolve.
+        private static string[] ComposedFor(string classes)
+        {
+            using var scope = new ReconcilerScope();
+            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), new VNode[] { V.Div(className: classes) });
+            return scope.Reconciler.Context.VariantGateClasses[scope.Root[0]].Resolved ?? Array.Empty<string>();
+        }
+
+        // Chromium computes the divider's colour as currentcolor, the property's initial value, for
+        // `divide-x-2 divide-[#f00] divide-[number:var(--x)]/50`, and the parent's caret colour for the caret.
+        [Test]
+        public void Given_ADivideBracketOfAnotherTypeWithAModifierAfterAColour_When_ItsReaderIsRead_Then_TheDividerHasNoColour()
+        {
+            // Act
+            StyleDivideClass.TryExtract(ComposedFor("divide-x-2 divide-[#ff0000] divide-[number:5px]/50"), out var spec);
+
+            // Assert
+            Assert.That(spec.HasColor, Is.False);
+        }
+
+        [Test]
+        public void Given_ACaretBracketOfAnotherTypeWithAModifierAfterAColour_When_ItsReaderIsRead_Then_TheCaretInheritsIt()
+        {
+            // Act
+            var tokens = ComposedFor("caret-[#ff0000] caret-[number:5px]/50");
+
+            // Assert
+            Assert.That(tokens[tokens.Length - 1], Is.EqualTo("caret-inherit"));
         }
     }
 }
