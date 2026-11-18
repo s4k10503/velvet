@@ -77,5 +77,26 @@ namespace Velvet.Tests
             // Assert
             Assert.That(deferred.TryGetValue(element, out _), Is.True);
         }
+
+        [Test]
+        public void Given_AClassDeferredOnAnElementThatWasCleanedUp_When_TheElementAttaches_Then_OnlyTheOtherElementsClassIsProbed()
+        {
+            // Arrange — two elements defer a class each; the first is torn down as a pool return would, the second
+            // is the control that shows an attach does send a probe out.
+            using var reconciler = new Reconciler();
+            var pooled = new VisualElement();
+            var kept = new VisualElement();
+            StyleUserClassProperties.TryGet(pooled, "app-pooled", out _);
+            StyleUserClassProperties.TryGet(kept, "app-kept", out _);
+            new FiberElementCleaner(reconciler.Context).CleanupElement(pooled);
+
+            // Act — the first element is reused and both attach.
+            _window.rootVisualElement.Add(pooled);
+            _window.rootVisualElement.Add(kept);
+
+            // Assert
+            var probes = _window.rootVisualElement.Query<VisualElement>(className: StyleUserClassProperties.MarkerClass).ToList();
+            Assert.That(probes.Count, Is.EqualTo(1));
+        }
     }
 }
