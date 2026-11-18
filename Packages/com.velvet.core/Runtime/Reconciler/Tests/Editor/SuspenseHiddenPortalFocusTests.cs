@@ -317,7 +317,6 @@ namespace Velvet.Tests
                                 scoped
                                     ? V.FocusScope(autoFocus: true, children: new VNode[]
                                     {
-                                        V.Div(name: "inside"),
                                         V.Button(name: "focusable", className: buttonClass),
                                     })
                                     : null,

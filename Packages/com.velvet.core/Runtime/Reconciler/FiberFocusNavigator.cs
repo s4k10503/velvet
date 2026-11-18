@@ -49,6 +49,7 @@ namespace Velvet
         public VisualElement? PortalPlaceholder;
         public IVisualElementScheduledItem? Retry;
         public List<VisualElement> StaleRows = new();
+        public VisualElement? Probe;
 
         // Creation order across every mounted tree. Of two contained scopes a landing crosses between, the
         // newer one keeps it; a strict order is what stops the two pulling focus back from each other.
@@ -1583,6 +1584,11 @@ namespace Velvet
                 return;
             }
             binding.StaleRows = RowsStillComputedHidden(scope);
+            if (scope is FocusScopeStart marker)
+            {
+                marker.style.opacity = ProbeOpacity;
+                binding.Probe = marker;
+            }
             binding.Retry = scope.schedule.Execute(() => Retry(scope, binding)).Every(0);
         }
 
@@ -1590,11 +1596,15 @@ namespace Velvet
         {
             binding.Retry?.Pause();
             binding.Retry = null;
+            if (binding.Probe != null)
+            {
+                binding.Probe.style.opacity = StyleKeyword.Null;
+                binding.Probe = null;
+            }
         }
 
         // Takes the focus only while it is still unset or inside the scope, and stops with the first attempt after a
-        // style pass: a row whose hide left it a computed display of none shows the pass has run once that display
-        // changes.
+        // style pass.
         private static void Retry(VisualElement scope, FocusScopeBinding binding)
         {
             var focused = scope.panel?.focusController?.focusedElement as VisualElement;
@@ -1602,12 +1612,20 @@ namespace Velvet
                 || SuspenseHiddenElements.IsAtOrUnderHidden(scope) || SuspenseHiddenElements.IsAtOrUnderHidden(binding.PortalPlaceholder)
                 || (focused != null && !FiberFocusNavigator.ScopeContains(scope, focused))
                 || AutoFocusFirst(scope)
-                || binding.StaleRows.Count == 0
-                || binding.StaleRows.Exists(row => row.resolvedStyle.display != DisplayStyle.None))
+                || StylePassRan(binding))
             {
                 StopRetry(binding);
             }
         }
+
+        // A range's start is display: none by design, so an inline opacity the next style pass computes shows the pass
+        // has run whatever the content's own display; an element scope falls back to the rows its hide left hidden.
+        private const float ProbeOpacity = 0.5f;
+
+        private static bool StylePassRan(FocusScopeBinding binding)
+            => binding.Probe != null
+                ? binding.Probe.resolvedStyle.opacity == ProbeOpacity
+                : binding.StaleRows.Count == 0 || binding.StaleRows.Exists(row => row.resolvedStyle.display != DisplayStyle.None);
 
         private static List<VisualElement> RowsStillComputedHidden(VisualElement scope)
         {
