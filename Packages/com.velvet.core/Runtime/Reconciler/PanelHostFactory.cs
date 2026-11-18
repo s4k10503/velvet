@@ -99,6 +99,7 @@ namespace Velvet
             record.ReleaseBridge = FiberCrossPanelEventDispatcher.AttachBridge(record.Document.rootVisualElement, ctx);
             record.ReleaseBridge += DefaultFamilyRoots.Hold(record.Document.rootVisualElement).Dispose;
             FiberFocusNavigator.EnsureAttached(record.Document.rootVisualElement, ctx);
+            PanelHostRootWatch.Watch(record.Document, ctx);
             return record;
         }
 
@@ -131,6 +132,7 @@ namespace Velvet
             record.ReleaseBridge = FiberCrossPanelEventDispatcher.AttachBridge(record.Document.rootVisualElement, ctx);
             record.ReleaseBridge += DefaultFamilyRoots.Hold(record.Document.rootVisualElement).Dispose;
             FiberFocusNavigator.EnsureAttached(record.Document.rootVisualElement, ctx);
+            PanelHostRootWatch.Watch(record.Document, ctx);
             // The document derives its root sizing from (settings, size mode, size) but only
             // re-derives on a VALUE change, and the attach itself never re-runs it — so both size
             // settings are driven after the attach, with the mode round-tripped so the fixed

@@ -89,7 +89,7 @@ namespace Velvet
         // per call-site element would stack duplicate listeners whose relative order inverts the branch
         // priority. An element with no panel yet defers via a tracked self-removing attach hook (one per
         // element — repeat calls while detached dedup). Called from V.Mount (main panel), PanelHostFactory
-        // (each host panel it creates), ConfigurePortalFocusOrder (a chained portal's declaring panel, and the
+        // (each host panel it creates) and PanelHostRootWatch (each root a host builds after that), ConfigurePortalFocusOrder (a chained portal's declaring panel, and the
         // host panel of a chained or appended one, which can be a new panel since the host was created, as
         // FocusChainedPortalTests' case for a host document disabled and enabled again holds), and the
         // focus-scope attach hook (whatever panel the scope lands in).
