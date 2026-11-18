@@ -105,21 +105,15 @@ namespace Velvet
             ReadProperty(UIElements, "UnityEngine.UIElements.StyleProperty", "name", "System.String");
 
         internal static readonly EngineMember StylePropertyValues =
-            WrittenProperty(UIElements, "UnityEngine.UIElements.StyleProperty", "values", "UnityEngine.UIElements.StyleValueHandle[]");
+            ReadProperty(UIElements, "UnityEngine.UIElements.StyleProperty", "values", "UnityEngine.UIElements.StyleValueHandle[]");
 
-        // RadiusWatchSheets' property in a rule that declares a radius, with one keyword value of its own, and the take-back
-        // of it. The handle is built by its constructor, whose second argument is the kind of value.
-        internal static readonly EngineMember StyleRuleAddProperty = Method(UIElements, "UnityEngine.UIElements.StyleRule",
-            "AddProperty", "UnityEngine.UIElements.StyleProperty", "System.String");
+        // RadiusWatchSheets' copy of a radius rule's selectors: their specificity and the relationship each simple selector
+        // has to the one before it, and the builder's float value.
+        internal static readonly EngineMember StyleComplexSelectorSpecificity =
+            ReadProperty(UIElements, "UnityEngine.UIElements.StyleComplexSelector", "specificity", "System.Int32");
 
-        internal static readonly EngineMember StyleRuleRemoveProperty = Method(UIElements, "UnityEngine.UIElements.StyleRule",
-            "RemoveProperty", "System.Boolean", "UnityEngine.UIElements.StyleProperty");
-
-        internal static readonly EngineMember StyleValueTypeKeyword = Field(UIElements,
-            "UnityEngine.UIElements.StyleValueType", "Keyword", "enum:UnityEngine.UIElements.StyleValueType");
-
-        internal static readonly EngineMember StyleValueHandleConstruct = Constructor(UIElements,
-            "UnityEngine.UIElements.StyleValueHandle", "System.Int32", "enum:UnityEngine.UIElements.StyleValueType");
+        internal static readonly EngineMember StyleSelectorPreviousRelationship = ReadProperty(UIElements,
+            "UnityEngine.UIElements.StyleSelector", "previousRelationship", "enum:UnityEngine.UIElements.StyleSelectorRelationship");
 
         internal static readonly EngineMember StyleComplexSelectorSelectors = ReadProperty(UIElements,
             "UnityEngine.UIElements.StyleComplexSelector", "selectors", "UnityEngine.UIElements.StyleSelector[]");
@@ -593,6 +587,9 @@ namespace Velvet
 
         internal static readonly EngineMember StyleSheetBuilderAddDimension =
             Method(UIElements, StyleSheetBuilderType, "AddValue", "System.Void", DimensionType);
+
+        internal static readonly EngineMember StyleSheetBuilderAddFloat =
+            Method(UIElements, StyleSheetBuilderType, "AddValue", "System.Void", "System.Single");
 
         internal static readonly EngineMember StyleSheetBuilderEndProperty =
             Method(UIElements, StyleSheetBuilderType, "EndProperty", "System.Void");

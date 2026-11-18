@@ -60,9 +60,9 @@ namespace Velvet
     /// An element none of that reaches is observed from its creation (<see cref="Observe"/>): the first size change or
     /// style pass that finds a radius resolved on it attaches the fit, which then reads the rules' radius through
     /// <see cref="StyleCascade.Radius"/> and a length its code writes as it does for any other element. A style pass
-    /// reaches the fit through the custom property <see cref="RadiusWatchSheets"/> puts in each rule of the stylesheets
-    /// above a mount that declares a radius, so a class change, an ancestor's class, a pseudo-class and a rule that
-    /// stops matching all arrive in the pass that restyles the element.
+    /// reaches the fit through the custom property that <see cref="RadiusWatchSheets"/> gives the selectors of each rule
+    /// that declares a radius, so a rule of those starting or stopping to match the element, whether a class, an ancestor's
+    /// class or a pseudo-class changed it, arrives in the pass that restyles the element.
     /// </remarks>
     internal static class CornerRadiusFit
     {
@@ -308,6 +308,24 @@ namespace Velvet
             }
         }
 
+        // The parents whose stylesheets have been looked at for radius rules, so that the siblings of one do not look again.
+        private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<VisualElement, object> s_chainsRead = new();
+
+        // Looks, once for each parent, at the stylesheets above an element for rules that declare a radius, which
+        // RadiusWatchSheets gives their own property. A sheet an ancestor takes later is looked at when its stylesheets
+        // change (BorderPreflight's tick over the panel's ancestors).
+        private static void ReadSheetsAbove(VisualElement element)
+        {
+            var parent = element.hierarchy.parent;
+            if (parent == null || s_chainsRead.TryGetValue(parent, out _))
+            {
+                return;
+            }
+            s_chainsRead.Add(parent, s_chainsRead);
+            RadiusWatchSheets.EnsureAbove(parent);
+            BorderPreflight.WatchSheets(element);
+        }
+
         // A host's size change once its own geometry binding has run (FiberEventBindingManager.FitAfter).
         internal static void AfterHostHandler(VisualElement element, GeometryChangedEvent evt)
         {
@@ -320,6 +338,7 @@ namespace Velvet
         // The callback's handler, and a watched host's.
         internal static void OnGeometryChanged(VisualElement element, GeometryChangedEvent evt)
         {
+            ReadSheetsAbove(element);
             if (evt.oldRect.size == evt.newRect.size)
             {
                 return;

@@ -1,127 +1,149 @@
 #nullable enable
 using System;
 using System.Reflection;
+using UnityEngine;
 using UnityEngine.UIElements;
-using WrittenProperties = System.Collections.Generic.List<(System.WeakReference<object> Rule, object Property)>;
+using WatchRules = System.Collections.Generic.List<object>;
 
 namespace Velvet
 {
-    // Gives every rule of a stylesheet that declares a border radius the custom property CornerRadiusFit asks for. UI Toolkit
-    // sends an element CustomStyleResolvedEvent when custom properties exist on it before or after its style is resolved, so
-    // an element gets the event exactly when a rule declaring a radius starts or stops matching it, whatever changed the
-    // match: a class from any writer, an ancestor's class, a pseudo-class. An element no such rule matches pays nothing.
+    // Gives CornerRadiusFit the style events it needs without touching a stylesheet of the application's. UI Toolkit sends an
+    // element CustomStyleResolvedEvent when custom properties exist on it before or after its style is resolved, and a
+    // custom property exists on an element once a rule that declares it matches, wherever that rule sits in the cascade.
+    // So for each stylesheet with a rule that declares a border radius a second, runtime-only sheet redeclares the selectors of
+    // those rules with the one property Property and nothing else, and is attached to the elements that hold the first. A
+    // rule that starts or stops matching an element then reaches the fit, whatever changed the match: a class from any
+    // writer, an ancestor's class, a pseudo-class. An element none of those rules matches carries no property of its own.
     //
-    // The stylesheets read are those above a mount (StyleThemeTokens.Refresh, which reads them again when one is attached,
-    // removed or edited), with their imports, except the bundled utilities, whose radius rules each have a restating rule
-    // of custom properties already (RadiusWatchBundledSheetsTests pins the pair), and the engine's default sheets. The
-    // property is written into the sheet in memory with the engine's own edit calls, which rebuild the sheet and restyle
-    // the panels using it. A sheet reimported or edited later has a new content hash and is read again. In the editor the
-    // property is taken back before an assembly reload and when play mode ends, so a sheet opened in UI Builder afterwards
-    // does not carry it.
+    // The sheet is rebuilt, in place, when the content hash of its source changes, and is no sheet an editor or a tool can
+    // save: it is never the source, and the source is never edited. Left out are the bundled utilities, whose radius rules
+    // each have a restating rule of custom properties already (RadiusWatchSheetsPanelTests pins the pair), the sheets of
+    // Velvet's own, and what a sheet the engine marks as a default theme imports, since that is the engine's own theme; the
+    // rules of such a sheet itself are read.
     internal static class RadiusWatchSheets
     {
         internal const string Property = "--velvet-radius-watch";
 
+        private const string SheetName = "velvet-radius-watch";
+
         private static readonly PropertyInfo? s_sheetRules = EngineMember.StyleSheetRules.ResolveProperty();
         private static readonly PropertyInfo? s_ruleProperties = EngineMember.StyleRuleProperties.ResolveProperty();
         private static readonly PropertyInfo? s_propertyName = EngineMember.StylePropertyName.ResolveProperty();
-        private static readonly PropertyInfo? s_values = EngineMember.StylePropertyValues.ResolveProperty();
-        private static readonly MethodInfo? s_add = EngineMember.StyleRuleAddProperty.ResolveMethod();
-        private static readonly MethodInfo? s_remove = EngineMember.StyleRuleRemoveProperty.ResolveMethod();
-        private static readonly FieldInfo? s_keyword = EngineMember.StyleValueTypeKeyword.ResolveField();
-        private static readonly ConstructorInfo? s_handle = EngineMember.StyleValueHandleConstruct.ResolveConstructor();
+        private static readonly PropertyInfo? s_ruleSelectors = EngineMember.StyleRuleComplexSelectors.ResolveProperty();
+        private static readonly PropertyInfo? s_complex = EngineMember.StyleComplexSelectorSelectors.ResolveProperty();
+        private static readonly PropertyInfo? s_specificity = EngineMember.StyleComplexSelectorSpecificity.ResolveProperty();
+        private static readonly PropertyInfo? s_parts = EngineMember.StyleSelectorParts.ResolveProperty();
+        private static readonly PropertyInfo? s_relationship = EngineMember.StyleSelectorPreviousRelationship.ResolveProperty();
         private static readonly PropertyInfo? s_defaultSheet = EngineMember.StyleSheetIsDefault.ResolveProperty();
 
-        private static readonly bool s_ready = s_sheetRules != null && s_ruleProperties != null && s_propertyName != null && s_values != null
-            && s_add != null && s_remove != null && s_handle != null && s_keyword != null;
+        private static readonly Type? s_builderType = EngineMember.StyleSheetBuilderConstruct.ResolveType();
+        private static readonly MethodInfo? s_beginProperty = EngineMember.StyleSheetBuilderBeginProperty.ResolveMethod();
+        private static readonly MethodInfo? s_beginRule = EngineMember.StyleSheetBuilderBeginRule.ResolveMethod();
+        private static readonly MethodInfo? s_beginSelector = EngineMember.StyleSheetBuilderBeginComplexSelector.ResolveMethod();
+        private static readonly MethodInfo? s_addSelector = EngineMember.StyleSheetBuilderAddSimpleSelector.ResolveMethod();
+        private static readonly MethodInfo? s_endSelector = EngineMember.StyleSheetBuilderEndComplexSelector.ResolveMethod();
+        private static readonly MethodInfo? s_addFloat = EngineMember.StyleSheetBuilderAddFloat.ResolveMethod();
+        private static readonly MethodInfo? s_endProperty = EngineMember.StyleSheetBuilderEndProperty.ResolveMethod();
+        private static readonly MethodInfo? s_endRule = EngineMember.StyleSheetBuilderEndRule.ResolveMethod();
+        private static readonly MethodInfo? s_buildTo = EngineMember.StyleSheetBuilderBuildTo.ResolveMethod();
 
-        // The content hash each sheet had once its rules were read, which the property moves when it is written.
-        private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<StyleSheet, Read> s_read = new();
+        private static readonly bool s_ready = s_sheetRules != null && s_ruleProperties != null && s_propertyName != null
+            && s_ruleSelectors != null && s_complex != null && s_specificity != null && s_parts != null
+            && s_relationship != null && s_builderType != null && s_beginRule != null && s_beginSelector != null
+            && s_addSelector != null && s_endSelector != null && s_beginProperty != null && s_addFloat != null
+            && s_endProperty != null && s_endRule != null && s_buildTo != null;
 
-        private sealed class Read
+        private sealed class Derived
         {
             public int Hash;
+            public StyleSheet? Sheet;
         }
 
-        // What was written, kept for the take-back.
-        private static readonly WrittenProperties s_written = new();
+        // The sheet derived from each source, which a source of a new content hash builds again into the same object.
+        private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<StyleSheet, Derived> s_derived = new();
 
-        // Reads the stylesheets of root and of every element above it, and what they import. Returns whether a sheet
-        // changed, which moves its content hash.
-        internal static bool EnsureAbove(VisualElement root)
+        internal static bool IsWatch(StyleSheet sheet) => sheet != null && sheet.name == SheetName;
+
+        // Attaches the derived sheets of the stylesheets of element and of every element above it.
+        internal static void EnsureAbove(VisualElement element)
         {
-            var changed = false;
-            for (var element = root; element != null; element = element.hierarchy.parent)
+            for (; element != null; element = element.hierarchy.parent)
             {
-                for (var i = 0; i < element.styleSheets.count; i++)
+                EnsureOn(element);
+            }
+        }
+
+        // Attaches, to element, the derived sheet of each stylesheet it holds and of what they import.
+        internal static void EnsureOn(VisualElement element)
+        {
+            if (!s_ready)
+            {
+                return;
+            }
+            var count = element.styleSheets.count;
+            for (var i = 0; i < count; i++)
+            {
+                Attach(element, element.styleSheets[i], followImports: true);
+            }
+        }
+
+        private static void Attach(VisualElement element, StyleSheet? source, bool followImports)
+        {
+            if (source == null || VelvetStyleUtilities.IsUtilities(source) || SnappedBorderSheets.IsSnapped(source) || IsWatch(source))
+            {
+                return;
+            }
+            var engine = s_defaultSheet != null && (bool)s_defaultSheet.GetValue(source);
+            var watch = DerivedOf(source);
+            if (watch != null && !element.styleSheets.Contains(watch))
+            {
+                element.styleSheets.Add(watch);
+            }
+            if (followImports && !engine)
+            {
+                foreach (var imported in VelvetStyleUtilities.ImportsOf(source))
                 {
-                    changed |= Ensure(element.styleSheets[i]);
+                    Attach(element, imported, followImports: true);
                 }
             }
-            return changed;
         }
 
-        // The engine's default sheets and Velvet's own are not read.
-        private static bool IsLeftAlone(StyleSheet sheet)
-            => VelvetStyleUtilities.IsUtilities(sheet) || SnappedBorderSheets.IsSnapped(sheet) || IsDefault(sheet);
-
-        private static bool IsDefault(StyleSheet sheet) => s_defaultSheet != null && (bool)s_defaultSheet.GetValue(sheet);
-
-        private static bool Ensure(StyleSheet? sheet)
+        private static StyleSheet? DerivedOf(StyleSheet source)
         {
-            if (!s_ready || sheet == null || IsLeftAlone(sheet))
+            if (s_derived.TryGetValue(source, out var known) && known.Hash == source.contentHash)
             {
-                return false;
+                return known.Sheet;
             }
-            var changed = false;
-            foreach (var imported in VelvetStyleUtilities.ImportsOf(sheet))
+            var rules = RadiusRules(source);
+            var derived = known ?? new Derived();
+            if (rules.Count > 0 || derived.Sheet != null)
             {
-                changed |= Ensure(imported);
+                derived.Sheet ??= NewSheet();
+                Build(rules, derived.Sheet);
             }
-            if (s_read.TryGetValue(sheet, out var read) && read.Hash == sheet.contentHash)
+            derived.Hash = source.contentHash;
+            if (known == null)
             {
-                return changed;
+                s_derived.Add(source, derived);
             }
-            var wrote = Write(sheet);
-            s_read.Remove(sheet);
-            s_read.Add(sheet, new Read { Hash = sheet.contentHash });
-            return changed || wrote;
+            return derived.Sheet;
         }
 
-        private static bool Write(StyleSheet sheet)
+        private static WatchRules RadiusRules(StyleSheet source)
         {
-            var wrote = false;
-            try
+            var found = new WatchRules();
+            foreach (var rule in (Array)s_sheetRules!.GetValue(source))
             {
-                foreach (var rule in (Array)s_sheetRules!.GetValue(sheet))
+                foreach (var property in (Array)s_ruleProperties!.GetValue(rule))
                 {
-                    if (DeclaresRadius(rule, out var held) && !held)
+                    if (IsRadius((string)s_propertyName!.GetValue(property)))
                     {
-                        var property = s_add!.Invoke(rule, new object[] { Property })!;
-                        s_values!.SetValue(property, KeywordValue());
-                        s_written.Add((new WeakReference<object>(rule), property));
-                        wrote = true;
+                        found.Add(rule);
+                        break;
                     }
                 }
             }
-            catch (Exception)
-            {
-                // A sheet the engine's edit calls cannot take is left as it was.
-            }
-            return wrote;
-        }
-
-        private static bool DeclaresRadius(object rule, out bool held)
-        {
-            var declares = false;
-            held = false;
-            foreach (var property in (Array)s_ruleProperties!.GetValue(rule))
-            {
-                var name = (string)s_propertyName!.GetValue(property);
-                held |= name == Property;
-                declares |= IsRadius(name);
-            }
-            return declares;
+            return found;
         }
 
         private static bool IsRadius(string name)
@@ -129,44 +151,36 @@ namespace Velvet
                 || (name.StartsWith("border-", StringComparison.Ordinal) && name.EndsWith("-radius", StringComparison.Ordinal)
                     && name.Length > "border--radius".Length);
 
-        // A value no sheet array holds, so one handle does for every rule of every sheet.
-        private static Array KeywordValue()
+        private static StyleSheet NewSheet()
         {
-            var handle = s_handle!.Invoke(new[] { 0, s_keyword!.GetValue(null) });
-            var values = Array.CreateInstance(s_handle.DeclaringType!, 1);
-            values.SetValue(handle, 0);
-            return values;
+            var sheet = ScriptableObject.CreateInstance<StyleSheet>();
+            sheet.name = SheetName;
+            sheet.hideFlags = HideFlags.HideAndDontSave;
+            return sheet;
         }
 
-        // Takes the property back out of every rule it was written into.
-        internal static void TakeBack()
+        private static void Build(WatchRules rules, StyleSheet into)
         {
-            if (!s_ready)
+            var builder = Activator.CreateInstance(s_builderType!)!;
+            foreach (var rule in rules)
             {
-                return;
-            }
-            foreach (var (rule, property) in s_written)
-            {
-                if (rule.TryGetTarget(out var target))
+                s_beginRule!.Invoke(builder, new object[] { 0 });
+                foreach (var complex in (Array)s_ruleSelectors!.GetValue(rule))
                 {
-                    s_remove!.Invoke(target, new[] { property });
+                    s_beginSelector!.Invoke(builder, new[] { s_specificity!.GetValue(complex) });
+                    foreach (var simple in (Array)s_complex!.GetValue(complex))
+                    {
+                        var parts = (Array)((Array)s_parts!.GetValue(simple)).Clone();
+                        s_addSelector!.Invoke(builder, new[] { parts, s_relationship!.GetValue(simple) });
+                    }
+                    s_endSelector!.Invoke(builder, null);
                 }
+                s_beginProperty!.Invoke(builder, new object[] { Property, -1 });
+                s_addFloat!.Invoke(builder, new object[] { 1f });
+                s_endProperty!.Invoke(builder, null);
+                s_endRule!.Invoke(builder, null);
             }
-            s_written.Clear();
+            s_buildTo!.Invoke(builder, new object[] { into });
         }
-
-#if UNITY_EDITOR
-        static RadiusWatchSheets()
-        {
-            UnityEditor.AssemblyReloadEvents.beforeAssemblyReload += TakeBack;
-            UnityEditor.EditorApplication.playModeStateChanged += change =>
-            {
-                if (change == UnityEditor.PlayModeStateChange.ExitingPlayMode)
-                {
-                    TakeBack();
-                }
-            };
-        }
-#endif
     }
 }

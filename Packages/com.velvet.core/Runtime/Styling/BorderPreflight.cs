@@ -487,8 +487,9 @@ namespace Velvet
 
         // One scheduled item per panel compares the stylesheets of the ancestors of the elements that attached on it, and
         // asks the elements under an ancestor again once its stylesheets change. It runs only while such an ancestor
-        // is alive on the panel.
-        private static void WatchSheets(VisualElement element)
+        // is alive on the panel. It also has RadiusWatchSheets attach the watch sheets of an ancestor again once its stylesheets
+        // change, for CornerRadiusFit.
+        internal static void WatchSheets(VisualElement element)
         {
             var panel = element.panel;
             if (panel == null)
@@ -522,7 +523,7 @@ namespace Velvet
             for (var i = 0; i < element.styleSheets.count; i++)
             {
                 var sheet = element.styleSheets[i];
-                if (!SnappedBorderSheets.IsSnapped(sheet))
+                if (!SnappedBorderSheets.IsSnapped(sheet) && !RadiusWatchSheets.IsWatch(sheet))
                 {
                     hash = unchecked((hash * 31) + sheet.GetHashCode());
                 }
@@ -560,6 +561,7 @@ namespace Velvet
             {
                 foreach (var element in changed)
                 {
+                    RadiusWatchSheets.EnsureOn(element);
                     AskAgain(element);
                 }
             }
@@ -675,7 +677,7 @@ namespace Velvet
 
             private void Add(StyleSheet sheet)
             {
-                if (VelvetStyleUtilities.IsUtilities(sheet) || SnappedBorderSheets.IsSnapped(sheet)
+                if (VelvetStyleUtilities.IsUtilities(sheet) || SnappedBorderSheets.IsSnapped(sheet) || RadiusWatchSheets.IsWatch(sheet)
                     || (s_isDefault != null && (bool)s_isDefault.GetValue(sheet)) || s_rules == null
                     || s_ruleSelectors == null || s_simple == null || s_parts == null || s_partValue == null
                     || s_partType == null)

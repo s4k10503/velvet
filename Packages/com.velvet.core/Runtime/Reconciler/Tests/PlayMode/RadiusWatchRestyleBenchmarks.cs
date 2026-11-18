@@ -15,10 +15,12 @@ namespace Velvet.Tests.Performance
     /// such frame: the time the panel recorded under the markers <see cref="PanelFrameRecorder"/> reads, and the GC.Alloc
     /// blocks every thread charged in it.
     /// <para>
-    /// Two cases, each over a fresh tree of the same shape. In the first no Div matches the radius rule, which is what an
-    /// element costs without the radius fit's property. In the second every Div does, so each carries the property
-    /// (<c>RadiusWatchSheets</c>) and gets a style event in each restyle. A case throws when its Divs do not resolve the
-    /// property as it says, or when a frame ran none of a phase.
+    /// Two cases over a fresh tree of the same shape, which differ in one class token each Div carries: in the first it
+    /// names no rule, and in the second it names the rule that declares the radius. In the second every Div matches a rule
+    /// that has a derived counterpart with the radius watch property (<c>RadiusWatchSheets</c>), so each gets a style event
+    /// in a restyle. A case throws when its Divs do not resolve the property as it says, or when a frame ran none of a
+    /// phase. The sheet is an asset loaded through the editor's asset database, so the cases are editor-only and skip in a
+    /// player.
     /// </para>
     /// </summary>
     [TestFixture]
@@ -72,15 +74,17 @@ namespace Velvet.Tests.Performance
         [UnityTest, Performance]
         public IEnumerator RestyleFrames_1000DivsUnderNoRadiusRule() => Run(watched: false);
 
-        // The class the sheet below gives a 10px radius, which a 40px Div fits unscaled.
+        // The class the sheet below gives a 10px radius, which a 40px Div fits unscaled, and one of the same length that no
+        // rule names.
         private const string RadiusClass = "layout-id-test-round";
+        private const string NoRuleClass = "layout-id-test-rxxxx";
 
         private static VNode RenderDivs(bool watched)
         {
             var children = new VNode[Divs];
             for (var i = 0; i < Divs; i++)
             {
-                children[i] = V.Div(className: watched ? "w-[40px] h-[40px] " + RadiusClass : "w-[40px] h-[40px]", key: "div-" + i);
+                children[i] = V.Div(className: "w-[40px] h-[40px] " + (watched ? RadiusClass : NoRuleClass), key: "div-" + i);
             }
             return V.Div("flex flex-col", children);
         }
@@ -90,6 +94,8 @@ namespace Velvet.Tests.Performance
 #if UNITY_EDITOR
             _root.styleSheets.Add(UnityEditor.AssetDatabase.LoadAssetAtPath<StyleSheet>(
                 "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/LayoutIdTestRules.uss"));
+#else
+            Assert.Ignore("the radius rule is an asset the editor loads");
 #endif
             _mounted = V.Mount(_root, RenderDivs(watched));
             _mounted.FlushStateForTest();

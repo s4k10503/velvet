@@ -437,14 +437,18 @@ no longer needs the fit. A keyword written there (`initial`) is left alone. A ch
 no arbitrary radius is fitted all the same, from a radius your own stylesheet gives it or your code writes to `style`
 (`border-radius: 400px` on a `.pill` rule). It is checked each time its size changes, first layout included, and each
 time a rule that declares a radius starts or stops matching it, so a radius that arrives with no size change is fitted
-in the same update, whatever brought it: a class your code or Velvet adds or removes, a class on an ancestor that a rule
-of yours keys on, or a pseudo-class such as `:hover`. Velvet reads the stylesheets attached to the element a tree is
-mounted on or to one of its ancestors, and what they import, and gives each rule that declares a radius a custom
-property of its own in memory, which is what makes UI Toolkit report the match; a sheet attached to an element inside
-the tree, or the panel's theme sheet, is not read, and the bundled utilities are covered by the rules that restate their
-radii. An element no radius rule matches is restyled as before. A write to `style` after layout is the exception: UI
-Toolkit reports it to nobody, so it is fitted at the element's next size change or next style pass, and a style pass
-comes with the next change of a class that a radius rule matches.
+in the same update when a class changes, whether your code or Velvet changed it, when a class on an ancestor that a rule
+of yours keys on changes, or when a pseudo-class such as `:hover` begins to match. Velvet finds those rules by reading the
+stylesheets of the element a tree is mounted on and of its ancestors, with what they import, and of an element inside the
+tree once it lays out. For each sheet with such a rule it attaches a second sheet that exists only at runtime, with the
+same selectors and one custom property, which is what makes UI Toolkit report the match; your own sheet is never
+edited. A sheet attached later is read within a tick of the panel's sheet watch (16 ms), and `VelvetStyleUtilities.AttachTo`
+reads the root's sheets at once. A theme sheet the engine marks as a default is read for its own rules and not for what
+it imports, so a radius a theme your own theme imports declares is not watched; the bundled utilities are covered by the
+rules that restate their radii. The elements a radius rule matches get a style event for each restyle; one that no such
+rule matches is restyled as before, apart from the variable context it inherits from a matching ancestor. A write to
+`style` after layout is the exception: UI Toolkit reports it to nobody, so it is fitted at the element's next size change,
+or the next time a radius rule starts or stops matching it.
 
 **The wrapper-less paints under a hidden overflow.** UI Toolkit applies an element's own overflow clip to the
 element's own painted content, and cuts it at the **padding** box, while CSS clips neither a box-shadow nor a border
