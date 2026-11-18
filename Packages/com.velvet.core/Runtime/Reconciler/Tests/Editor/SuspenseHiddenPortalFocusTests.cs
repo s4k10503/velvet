@@ -21,6 +21,7 @@ namespace Velvet.Tests
         private static VelvetTaskCompletionSource<int> s_source;
         private static VelvetTaskCompletionSource<int> s_sourceOther;
         private static StateUpdater<bool> s_setPlain;
+        private static StateUpdater<string> s_setButtonClass;
 
         [SetUp]
         public void SetUp()
@@ -33,6 +34,7 @@ namespace Velvet.Tests
             s_source = null;
             s_sourceOther = null;
             s_setPlain = default;
+            s_setButtonClass = default;
             s_target = new VisualElement { name = "target" };
             _host.Root.Add(s_target);
             _mounted = V.Mount(_host.Root, V.Component(HostRender, key: "host"));
@@ -195,6 +197,31 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AStylesheetHiddenCandidateAtTheReveal_When_AClassChangeShowsItAfterTheStylePass_Then_TheRetryHasStoppedAndFocusesNothing()
+        {
+            // Arrange
+            var sheet = UnityEditor.AssetDatabase.LoadAssetAtPath<StyleSheet>(
+                "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/SuspenseHiddenPortalFocus.uss");
+            _host.Root.styleSheets.Add(sheet);
+            Update(s_setBlocked, 1);
+            Update(s_setPortal, true);
+            Update(s_setButtonClass, "portal-focus-stylesheet-hidden");
+            Update(s_setScoped, true);
+            EditorPanelTestHelpers.ForcePanelUpdate(_host.Panel);
+            Resolve(s_source);
+            EditorPanelTestHelpers.ForcePanelUpdate(_host.Panel);
+            EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
+
+            // Act
+            Update(s_setButtonClass, "");
+            EditorPanelTestHelpers.ForcePanelUpdate(_host.Panel);
+            EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
+
+            // Assert
+            Assert.That(Focused, Is.Null);
+        }
+
+        [Test]
         public void Given_ARevealedPortalFocusScopeWaitingOnAStylePass_When_TheBoundaryHidesItAgain_Then_TheRetryFocusesNothing()
         {
             // Arrange
@@ -269,6 +296,8 @@ namespace Velvet.Tests
             var (blockedOther, setBlockedOther) = Hooks.UseState(0);
             var (portal, setPortal) = Hooks.UseState(false);
             var (scoped, setScoped) = Hooks.UseState(false);
+            var (buttonClass, setButtonClass) = Hooks.UseState("");
+            s_setButtonClass = setButtonClass;
             s_setBlocked = setBlocked;
             s_setBlockedOther = setBlockedOther;
             s_setPortal = setPortal;
@@ -286,7 +315,11 @@ namespace Velvet.Tests
                             {
                                 V.Div(name: "plain"),
                                 scoped
-                                    ? V.FocusScope(autoFocus: true, children: new VNode[] { V.Button(name: "focusable") })
+                                    ? V.FocusScope(autoFocus: true, children: new VNode[]
+                                    {
+                                        V.Div(name: "inside"),
+                                        V.Button(name: "focusable", className: buttonClass),
+                                    })
                                     : null,
                             })
                             : null,

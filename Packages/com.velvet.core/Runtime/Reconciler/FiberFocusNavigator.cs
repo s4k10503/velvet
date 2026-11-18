@@ -48,6 +48,7 @@ namespace Velvet
         public ReconcilerContext? Context;
         public VisualElement? PortalPlaceholder;
         public IVisualElementScheduledItem? Retry;
+        public List<VisualElement> StaleRows = new();
 
         // Creation order across every mounted tree. Of two contained scopes a landing crosses between, the
         // newer one keeps it; a strict order is what stops the two pulling focus back from each other.
@@ -1581,6 +1582,7 @@ namespace Velvet
             {
                 return;
             }
+            binding.StaleRows = RowsStillComputedHidden(scope);
             binding.Retry = scope.schedule.Execute(() => Retry(scope, binding)).Every(0);
         }
 
@@ -1590,8 +1592,9 @@ namespace Velvet
             binding.Retry = null;
         }
 
-        // Takes the focus only while it is still unset or inside the scope, and waits only while a computed display
-        // that no inline display explains keeps a candidate from taking it.
+        // Takes the focus only while it is still unset or inside the scope, and stops with the first attempt after a
+        // style pass: a row whose hide left it a computed display of none shows the pass has run once that display
+        // changes.
         private static void Retry(VisualElement scope, FocusScopeBinding binding)
         {
             var focused = scope.panel?.focusController?.focusedElement as VisualElement;
@@ -1599,55 +1602,26 @@ namespace Velvet
                 || SuspenseHiddenElements.IsAtOrUnderHidden(scope) || SuspenseHiddenElements.IsAtOrUnderHidden(binding.PortalPlaceholder)
                 || (focused != null && !FiberFocusNavigator.ScopeContains(scope, focused))
                 || AutoFocusFirst(scope)
-                || !WaitsOnStaleDisplay(scope))
+                || binding.StaleRows.Count == 0
+                || binding.StaleRows.Exists(row => row.resolvedStyle.display != DisplayStyle.None))
             {
                 StopRetry(binding);
             }
         }
 
-        private static bool WaitsOnStaleDisplay(VisualElement scope)
+        private static List<VisualElement> RowsStillComputedHidden(VisualElement scope)
         {
-            var roots = new List<VisualElement>();
+            var rows = new List<VisualElement>();
             if (scope is FocusScopeStart start)
             {
-                FocusScopeRange.AppendContent(start, roots);
+                FocusScopeRange.AppendContent(start, rows);
             }
             else
             {
-                roots.AddRange(scope.Children());
+                rows.AddRange(scope.Children());
             }
-            return roots.Exists(HoldsStaleDisplayCandidate);
-        }
-
-        private static bool HoldsStaleDisplayCandidate(VisualElement element)
-        {
-            if (IsFirstFocusableIgnoringDisplay(element) && element.resolvedStyle.display == DisplayStyle.None && !HiddenInline(element))
-            {
-                return true;
-            }
-            foreach (var child in element.Children())
-            {
-                if (HoldsStaleDisplayCandidate(child))
-                {
-                    return true;
-                }
-            }
-            return false;
-        }
-
-        private static bool IsFirstFocusableIgnoringDisplay(VisualElement element)
-            => element.focusable && element.tabIndex >= 0 && !element.delegatesFocus && element.enabledInHierarchy;
-
-        private static bool HiddenInline(VisualElement element)
-        {
-            for (var current = element; current != null; current = current.hierarchy.parent)
-            {
-                if (current.style.display.keyword == StyleKeyword.Undefined && current.style.display.value == DisplayStyle.None)
-                {
-                    return true;
-                }
-            }
-            return false;
+            rows.RemoveAll(row => row.resolvedStyle.display != DisplayStyle.None || row.style.display == DisplayStyle.None);
+            return rows;
         }
 
         // Focuses the scope's first focusable descendant (document order), skipped when focus already sits
