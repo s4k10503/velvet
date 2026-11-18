@@ -186,7 +186,8 @@ jobs:
           GROUP: ${{ inputs.group }}
         run: |
           set +e
-          python3 scripts/ci/per_case_manifest.py Logs/per-case > manifest.txt 2>&1
+          python3 scripts/ci/per_case_manifest.py Logs/per-case --expect EditMode=6 --expect PlayMode=1 \
+            > manifest.txt 2>&1
           manifest=$?
           python3 scripts/test_quality/unique_coverage.py Logs/per-case \
             ${GROUP:+--group "$GROUP"} > coverage-report.txt 2>&1

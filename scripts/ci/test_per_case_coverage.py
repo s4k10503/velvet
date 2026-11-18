@@ -717,6 +717,19 @@ class WorkflowTests(unittest.TestCase):
         # Assert
         self.assertEqual(paths, ["results", "launches"])
 
+    def test_Given_TheWorkflow_When_ItsReportStepExpectsShards_Then_TheyAreTheMatrixsCounts(self):
+        # Arrange
+        text = WORKFLOW.read_text()
+        matrix = {mode: int(shards) for mode, shards in re.findall(
+            r"\{ testMode: (\w+), shard: 1, shards: (\d+) \}", "\n".join(job_block(text, "suite")))}
+
+        # Act
+        expected = {mode: int(count) for mode, count in re.findall(
+            r"--expect (\w+)=(\d+)", "\n".join(job_block(text, "report")))}
+
+        # Assert
+        self.assertEqual(expected, matrix)
+
     def test_Given_TheWorkflow_When_ItsReportStepIsRead_Then_ItChecksTheShardsManifests(self):
         # Arrange
         block = "\n".join(job_block(WORKFLOW.read_text(), "report"))

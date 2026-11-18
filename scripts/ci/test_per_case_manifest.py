@@ -29,14 +29,14 @@ def entry(shard, shards=2, roster=10, status=0, problems=(), platform="EditMode"
 
 class FaultsTests(unittest.TestCase):
 
-    def faults(self, *entries):
+    def faults(self, *entries, expected=None):
         holder = tempfile.TemporaryDirectory()
         self.addCleanup(holder.cleanup)
         for index, item in enumerate(entries):
             directory = Path(holder.name) / "records-{}".format(index)
             directory.mkdir()
             (directory / per_case_manifest.MANIFEST).write_text(json.dumps(item))
-        return per_case_manifest.faults(holder.name)
+        return per_case_manifest.faults(holder.name, expected)
 
     def test_Given_ShardsThatTileASuite_When_Read_Then_NoFaultIsReported(self):
         # Arrange
@@ -77,6 +77,26 @@ class FaultsTests(unittest.TestCase):
 
         # Assert
         self.assertEqual(lines, ["EditMode 2/2 failed with status 2: launch 0004: status 2"])
+
+    def test_Given_ASuiteExpectedAndNoManifestOfIt_When_Read_Then_ItIsNamedMissing(self):
+        # Arrange — six healthy EditMode manifests say nothing of a PlayMode suite that wrote none.
+        entries = [entry(shard, shards=6) for shard in range(1, 7)]
+
+        # Act
+        lines = self.faults(*entries, expected={"EditMode": 6, "PlayMode": 1})
+
+        # Assert
+        self.assertEqual(lines, ["PlayMode: no manifest, so none of its 1 shard(s) wrote records"])
+
+    def test_Given_ASuiteWhoseManifestsCountFewerShardsThanExpected_When_Read_Then_TheCountIsReported(self):
+        # Arrange
+        entries = (entry(1, shards=2), entry(2, shards=2))
+
+        # Act
+        lines = self.faults(*entries, expected={"EditMode": 6})
+
+        # Assert
+        self.assertEqual(lines, ["EditMode: expected 6 shard(s), manifests say [2]"])
 
     def test_Given_ADirectoryWithNoManifest_When_Read_Then_ARunWithNoRecordsIsReported(self):
         # Arrange

@@ -608,8 +608,8 @@ lines no other fixture's cases reach, with the tests `group` names taken out of 
 reported as one unit. One editor over a whole suite was killed with SIGKILL after 223 EditMode cases and
 232 PlayMode ones, under a 12g memory limit, so the EditMode suite runs as several shard jobs and every
 editor takes a bounded number of cases; `scripts/ci/per_case_coverage.py` owns how. A dispatch holds a job
-per shard for hours, which counts against the account's concurrent-job cap: do not dispatch it beside a mutation campaign, whose
-shards and this workflow's together ask for more jobs than the cap holds.
+per shard for hours, which counts against the account's concurrent-job cap: a dispatch beside a mutation campaign
+leaves one slot of the cap, so a pull request's CI queues behind both.
 Measure the tree that still holds the cases, the pull request's base, naming them
 in `group`:
 
