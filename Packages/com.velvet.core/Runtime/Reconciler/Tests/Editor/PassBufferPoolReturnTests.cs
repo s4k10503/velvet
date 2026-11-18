@@ -122,7 +122,7 @@ namespace Velvet.Tests
             var taken = OnTopInRentOrder(pool, 2)[1];
 
             // Act
-            FiberEffects.CommitSubtreeEffects(mounted.Root);
+            FiberExecutionContextTestAccess.RunAsEntryForTest(() => FiberEffects.CommitSubtreeEffects(mounted.Root));
 
             // Assert
             Assert.That(PoolHolds(pool, "_commitEntryListPool", taken), Is.True);
@@ -139,7 +139,7 @@ namespace Velvet.Tests
             var deduped = OnTopInRentOrder(pool, 3)[2];
 
             // Act
-            FiberEffects.CommitSubtreeEffects(mounted.Root);
+            FiberExecutionContextTestAccess.RunAsEntryForTest(() => FiberEffects.CommitSubtreeEffects(mounted.Root));
 
             // Assert
             Assert.That(PoolHolds(pool, "_commitEntryListPool", deduped), Is.True);
