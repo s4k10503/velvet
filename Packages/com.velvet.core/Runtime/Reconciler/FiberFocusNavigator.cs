@@ -145,12 +145,11 @@ namespace Velvet
             NavigatorPendingAttach pending = null!;
             EventCallback<AttachToPanelEvent> hook = _ =>
             {
-                element.UnregisterCallback(pending.Hook);
                 ctx.NavigatorPendingAttachHooks.Remove(pending);
                 AttachToRoot(element.panel?.visualTree, ctx);
             };
             pending = new NavigatorPendingAttach(element, hook);
-            element.RegisterCallback(hook);
+            element.RegisterCallback(hook, CallbackOptions.Once);
             ctx.NavigatorPendingAttachHooks.Add(pending);
             return pending;
         }

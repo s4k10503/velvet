@@ -83,7 +83,7 @@ namespace Velvet
             {
                 classes = new List<string>();
                 s_unattached.Add(element, classes);
-                element.RegisterCallback(s_onAttach);
+                element.RegisterCallback(s_onAttach, CallbackOptions.Once);
             }
             if (!classes.Contains(cls))
             {
@@ -94,7 +94,6 @@ namespace Velvet
         private static void OnAttach(AttachToPanelEvent evt)
         {
             var element = (VisualElement)evt.currentTarget;
-            element.UnregisterCallback(s_onAttach);
             if (!s_unattached.TryGetValue(element, out var classes))
             {
                 return;
