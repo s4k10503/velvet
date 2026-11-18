@@ -436,7 +436,7 @@ namespace Velvet
         // Whether suffix is a bracket holding a value that is no colour, behind an opacity modifier that reads no variable
         // and under no type hint or one that is not root's width's: Tailwind mixes it into a colour, a custom property the
         // box-shadow reads, which the browser then finds invalid there. A colour under such a hint is valid, and read as a
-        // colour; a keyword is none, and so is a value Velvet's grammar rejects. A width's hint, or a modifier that reads a
+        // colour; a keyword is none, and so is a hinted value Velvet's grammar rejects. A width's hint, or a modifier that reads a
         // variable, leaves it as it was.
         private static bool MixesNonColour(string suffix, string root)
         {

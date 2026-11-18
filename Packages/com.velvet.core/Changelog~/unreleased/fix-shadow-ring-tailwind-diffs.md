@@ -35,9 +35,10 @@
 - A `shadow-[var(--x)]`, `ring-[length:var(--w)]` or `inset-ring-[length:var(--w)]` whose property a stylesheet
   declares no longer drops the element's ring and shadow before the property is first read: the unset is written after the
   element's styles are applied and the property is read again.
-- A `ring-`, `ring-offset-` or `inset-ring-` bracket typed as anything but a length, with an opacity modifier, is a
-  colour Tailwind mixes the value into: a value that is none (`ring-[number:5px]/50`) now discards the box-shadow, as the
-  browser does where the box-shadow reads it, where the class was ignored; a colour under that hint is drawn as before.
+- A `ring-`, `ring-offset-` or `inset-ring-` bracket typed as anything but a length, or holding a CSS-wide keyword,
+  with an opacity modifier that reads no variable (`/50`, `/[50%]`), is a colour Tailwind mixes the value into: a
+  value that is none (`ring-[number:5px]/50`, `ring-[unset]/50`) now discards the box-shadow, as the browser does,
+  where the class was ignored; a colour under that hint is drawn as before.
 - A `bg-`, `border-`, `outline-`, `text-`, `caret-` or `divide-` bracket reading a `var()`, typed as something else, with an
   opacity modifier (`bg-[number:var(--x)]/50`) is read as the colour the variable holds, at that opacity, where Velvet's
   colour grammar reads it. Where the variable is undeclared, holds a length, a number, a word that names no colour, or the colour at
