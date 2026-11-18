@@ -176,9 +176,7 @@ namespace Velvet
                 return binding.Wrapper;
             }
             var parent = ChildListWrites.ParentOf(classElement);
-            // MUTANT_SURVIVES(unreachable, clause removed): WrapperToInnerMap holds a wrapper only for the element it was created around (FiberNodeFactory, FiberClipPathApplier), and every caller passes an element the reconciler created, so a wrapper's only such child is that inner.
-            return parent != null && ctx.WrapperToInnerMap.TryGetValue(parent, out var inner)
-                && ReferenceEquals(inner, classElement) ? parent : classElement;
+            return parent != null && ctx.WrapperToInnerMap.ContainsKey(parent) ? parent : classElement;
         }
 
         // SlotOf's inverse.

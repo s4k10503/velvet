@@ -35,7 +35,8 @@ its subtree the scope. Four independent knobs, mirroring React Aria's props:
   gone or can no longer take focus (an unmounted one is dropped rather than chased into pool reuse).
   Pair with `contain` for dialogs.
 - **`autoFocus`** — on mount, the scope's first focusable descendant takes focus (skipped when
-  focus already sits inside). Mount-once, like React's `autoFocus`: a reorder that moves the scope
+  focus already sits inside). A scope mounted inside a `V.Suspense` that is hiding its children takes
+  focus when the boundary reveals it. Mount-once, like React's `autoFocus`: a reorder that moves the scope
   physically re-attaches it and must not steal focus back, so a re-attach never re-fires it.
   A reorder that rebuilds the element is a fresh mount and does fire it, taking focus back from
   wherever the user had moved it — [react-migration.md, what a position is](react-migration.md#what-a-position-is)

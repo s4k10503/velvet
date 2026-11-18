@@ -1,6 +1,7 @@
 #nullable enable
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine.UIElements;
 
 namespace Velvet
@@ -1461,6 +1462,8 @@ namespace Velvet
     // AutoFocus hook and lazily ensures the navigator on whatever panel the scope lands in; Detach is the
     // pool-reuse scrub (RestoreFocus itself runs in FiberElementCleaner BEFORE the element leaves the tree,
     // since focus dies the moment an element detaches).
+    internal readonly record struct DeferredAutoFocus(VisualElement Scope, FocusScopeBinding Binding, VisualElement? Placeholder);
+
     internal static class FocusScopeDriver
     {
         public static FocusScopeBinding Attach(VisualElement element, FocusScopeSettings settings, ReconcilerContext ctx)
@@ -1499,7 +1502,7 @@ namespace Velvet
 
         public static void Detach(VisualElement element, FocusScopeBinding binding)
         {
-            binding.Context?.DeferredAutoFocus.Remove(element);
+            binding.Context?.DeferredAutoFocus.RemoveAll(entry => ReferenceEquals(entry.Scope, element));
             if (binding.OnAttach != null)
             {
                 element.UnregisterCallback(binding.OnAttach);
@@ -1521,15 +1524,16 @@ namespace Velvet
             {
                 return;
             }
-            var deferred = new List<KeyValuePair<VisualElement, FocusScopeBinding>>(ctx.DeferredAutoFocus);
-            foreach (var (scope, binding) in deferred)
+            var deferred = ctx.DeferredAutoFocus.ToArray();
+            foreach (var entry in deferred)
             {
-                if (scope.panel == null || SuspenseHiddenElements.IsAtOrUnderHidden(scope))
+                if (entry.Scope.panel == null || SuspenseHiddenElements.IsAtOrUnderHidden(entry.Scope)
+                    || SuspenseHiddenElements.IsAtOrUnderHidden(entry.Placeholder))
                 {
                     continue;
                 }
-                ctx.DeferredAutoFocus.Remove(scope);
-                FireAutoFocusOnce(scope, binding);
+                ctx.DeferredAutoFocus.Remove(entry);
+                TakeAutoFocus(entry.Scope, entry.Binding);
             }
         }
 
@@ -1551,12 +1555,20 @@ namespace Velvet
             {
                 return;
             }
-            if (SuspenseHiddenElements.IsAtOrUnderHidden(scope)
-                || SuspenseHiddenElements.IsAtOrUnderHidden(binding.Context?.CurrentPortalPlaceholder))
+            var placeholder = binding.Context?.CurrentPortalPlaceholder;
+            if (SuspenseHiddenElements.IsAtOrUnderHidden(scope) || SuspenseHiddenElements.IsAtOrUnderHidden(placeholder))
             {
-                binding.Context?.DeferredAutoFocus.TryAdd(scope, binding);
+                if (binding.Context is { } ctx && !ctx.DeferredAutoFocus.Exists(entry => ReferenceEquals(entry.Scope, scope)))
+                {
+                    ctx.DeferredAutoFocus.Add(new DeferredAutoFocus(scope, binding, placeholder));
+                }
                 return;
             }
+            TakeAutoFocus(scope, binding);
+        }
+
+        private static void TakeAutoFocus(VisualElement scope, FocusScopeBinding binding)
+        {
             binding.AutoFocusFired = true;
             if (binding.Settings.AutoFocus)
             {
