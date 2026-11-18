@@ -1,537 +1,8 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1795021903834,
+  "lastUpdate": 1795026321520,
   "repoUrl": "https://github.com/s4k10503/velvet",
   "entries": {
     "Velvet benchmarks": [
-      {
-        "commit": {
-          "author": {
-            "email": "50241623+s4k10503@users.noreply.github.com",
-            "name": "0y0",
-            "username": "s4k10503"
-          },
-          "committer": {
-            "email": "noreply@github.com",
-            "name": "GitHub",
-            "username": "web-flow"
-          },
-          "distinct": true,
-          "id": "9e4366d8342ebc03e6d1d6734ac640768a1a3c90",
-          "message": "fix(velvet)!: order same-property utilities as Tailwind emits them (#1386)\n\n## What & why\n\nWhen two utilities of the same property both resolve inline, or are folded from the class list by a C# resolver, the token written last won. Tailwind v4 instead picks the winner from the order it emits the rules in. `compile.ts` sorts by property order, then by declaration count, then by candidate name (`utils/compare.ts`). So the winner does not depend on where a class sits in the string. Examples:\n- `w-[2px] w-[1px]` gave 1px. Tailwind gives 2px.\n- `font-light font-bold` gave bold. Tailwind gives light in either order.\n- `shadow-lg drop-shadow-sm` gave only the box shadow. Tailwind applies the drop shadow, because `drop-shadow` comes later in `property-order.ts` (`filter` after `box-shadow`).\n\nThe removal half of the issue was already correct on the base: removing the winner re-applies the surviving token. The new cases pin that behaviour.\n\n**The change:**\n- **Inline against inline.** `StyleSpacingPrecedence` and `StyleInlineSheetOrder` now order two inline tokens of one property with `StyleRuleOrder`'s key, so the token Tailwind emits last wins.\n  - An inline border width that later tokens write in part keeps only the sides they leave.\n  - A stylesheet class written inline is ranked by the name it was written with.\n  - A slash size such as `text-[14px]/6` sorts as Tailwind's two-declaration form.\n- **C#-folded families.** The new `StyleFamilyOrder` gives each family a Tailwind sort key, and it covers the families a resolver folds from the whole class list:\n  - font facets, text effects and leading;\n  - `z-*`, gap/space, `grid-cols-*`, divide;\n  - shadow/drop-shadow and ring/outline;\n  - clip-path, skew;\n  - gradient shape and stops;\n  - pointer-events, the line styles, `animate-*`, `bg-[addr:…]`;\n  - the nine-slice insets.\n  - **Gradients** rank by lane: stops first, then a keyword or integer `bg-linear-*`, then every other shape. This matches the declaration counts that Tailwind's `@supports` blocks add.\n  - **Shared slots across properties:** `drop-shadow-*` ranks after `shadow-*`, and `outline-*` after `ring-*`, as `property-order.ts` orders `box-shadow`, `outline` and `filter`.\n- **Live class order.** After a reconcile diff, `StyleFamilyOrder.RestoreLiveOrder` puts the live class list of each family back in the order a fresh mount gives. Readers that fold the live list (clip-path, pointer-events, gap, grid, divide) then resolve the same after a re-render as on mount. For example, `clip-path-[inset(10%)]` with `clip-path-[circle(40%)]` added in a later render resolves to the inset clip, as it does on mount.\n\n**Breaking:** the winner of these pairs changes. The `breaking/` fragment lists them. The #1279 fragment's sentence is narrowed so the two fragments do not contradict each other.\n\n**Docs:**\n- Updated: `styling-arbitrary-lengths.md`, `styling-variants.md`, `styling-z-index.md`, `styling-gradients.md`, `styling-filters.md`, `styling-pointer-events.md`, `fonts.md` and `motion.md`.\n- Utilities that Tailwind does not have say so: `slice-*`, `clip-path-*`, `bg-[addr:…]`, `animate-gradient`, `animate-shimmer`, `animate-hue` and `bold-italic`.\n\n**Tests:**\n- **`InlineInlineOrderTests`:** pairs of each inline property in both orders, the `!` and variant forms, the border-width cut, the slash size, and taking away either token.\n- **`FamilyOrderTests`:**\n  - each folded family in both orders;\n  - the gradient lanes;\n  - the shadow/drop-shadow and ring/outline pairs;\n  - two-render rows comparing the live class order with a fresh mount;\n  - the clip reader after an added class.\n- **Existing fixtures:** `ArbitraryValueTests` slice cases now have an arrange-only helper. `StyleTextEffectPanelTests` gains an overline binding case, and `TextWrapModeTests` is updated.\n\nCloses #1294\n\n## Checklist\n\n- [ ] Tests pass locally (EditMode / PlayMode / generator tests as applicable) — Unity suites run in CI\n- [x] New regression tests were verified red without the change and green with it\n- [x] Docs are updated for every fact this change touches (guides, READMEs, CLAUDE.md) — or this PR has no doc impact\n- [x] CHANGELOG fragment added for behavior/perf changes, named for the branch with `/` as `-` — inline under `## [Unreleased]` on a maintenance line with no `scripts/release/compile_changelog.py` (pure refactors are omitted by convention)\n- [x] Known gaps or deliberate deferrals discovered here are filed as issues with acceptance criteria\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nhttps://claude.ai/code/session_01FoK7YxdRjMGmfmRkEEmS88\n\n---\n_Generated by [Claude Code](https://claude.ai/code/session_01FoK7YxdRjMGmfmRkEEmS88)_",
-          "timestamp": "2026-10-16T21:50:20Z",
-          "tree_id": "dcb79f601c27302bbafe36bf197c4242dc3a886d",
-          "url": "https://github.com/s4k10503/velvet/commit/9e4366d8342ebc03e6d1d6734ac640768a1a3c90"
-        },
-        "date": 1792189762339,
-        "tool": "customSmallerIsBetter",
-        "benches": [
-          {
-            "name": "Velvet.Tests.Performance.VNodePoolBenchmarks.RentReturnProps_Cycle / Time.GC()",
-            "value": 0,
-            "unit": ""
-          },
-          {
-            "name": "Velvet.Tests.Performance.VNodePoolBenchmarks.RentReturnProps_Cycle / Time",
-            "value": 0.015399999999772263,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.VNodePoolBenchmarks.VButton_Allocation / Time.GC()",
-            "value": 1,
-            "unit": ""
-          },
-          {
-            "name": "Velvet.Tests.Performance.VNodePoolBenchmarks.VButton_Allocation / Time",
-            "value": 0.02529999999978827,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.VNodePoolBenchmarks.VDiv_Allocation / Time.GC()",
-            "value": 1,
-            "unit": ""
-          },
-          {
-            "name": "Velvet.Tests.Performance.VNodePoolBenchmarks.VDiv_Allocation / Time",
-            "value": 0.015449999999873398,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.VNodePoolBenchmarks.VLabel_Allocation / Time.GC()",
-            "value": 1,
-            "unit": ""
-          },
-          {
-            "name": "Velvet.Tests.Performance.VNodePoolBenchmarks.VLabel_Allocation / Time",
-            "value": 0.024550000000090222,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.UseMutationPlayModeBenchmarks.UseMutation_OneMutateRoundTrip / Time.GC()",
-            "value": 40,
-            "unit": ""
-          },
-          {
-            "name": "Velvet.Tests.Performance.UseMutationPlayModeBenchmarks.UseMutation_OneMutateRoundTrip / Time",
-            "value": 0.3250500000001466,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.UseStateRerenderAllocBenchmarks.UseState_RerenderClosureAlloc / Time.GC()",
-            "value": 4706,
-            "unit": ""
-          },
-          {
-            "name": "Velvet.Tests.Performance.UseStateRerenderAllocBenchmarks.UseState_RerenderClosureAlloc / Time",
-            "value": 14.459349999999858,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Mount_1000Elements_WithLayoutAndPaint / E2E.Time",
-            "value": 401.9053,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Mount_1000Elements_WithLayoutAndPaint / E2E.GC",
-            "value": 1050624,
-            "unit": "b"
-          },
-          {
-            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Mount_1000Elements_WithLayoutAndPaint / E2E.Reconcile",
-            "value": 401.8963,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Mount_1000Elements_WithLayoutAndPaint / E2E.MarkDirty",
-            "value": 0.0045000000000000005,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Mount_100Elements_WithLayoutAndPaint / E2E.Time",
-            "value": 19.441950000000002,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Mount_100Elements_WithLayoutAndPaint / E2E.GC",
-            "value": 0,
-            "unit": "b"
-          },
-          {
-            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Mount_100Elements_WithLayoutAndPaint / E2E.Reconcile",
-            "value": 19.43755,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Mount_100Elements_WithLayoutAndPaint / E2E.MarkDirty",
-            "value": 0.00435,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Mount_10Elements_WithLayoutAndPaint / E2E.Time",
-            "value": 1.86795,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Mount_10Elements_WithLayoutAndPaint / E2E.GC",
-            "value": 0,
-            "unit": "b"
-          },
-          {
-            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Mount_10Elements_WithLayoutAndPaint / E2E.Reconcile",
-            "value": 1.8639000000000001,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Mount_10Elements_WithLayoutAndPaint / E2E.MarkDirty",
-            "value": 0.0041,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.FiberAsyncResourcePlayModeBenchmarks.HooksUse_SuspendResumeRoundTrip / HooksUse.SuspendResume.Time",
-            "value": 2.3121,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.FiberAsyncResourcePlayModeBenchmarks.HooksUse_SuspendResumeRoundTrip / HooksUse.SuspendResume.GC",
-            "value": 82,
-            "unit": ""
-          },
-          {
-            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_A_NewLabelAlone / Time.GC()",
-            "value": 11006,
-            "unit": ""
-          },
-          {
-            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_A_NewLabelAlone / Time",
-            "value": 9.143749999999955,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_B_NewLabelWithText / Time.GC()",
-            "value": 11007,
-            "unit": ""
-          },
-          {
-            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_B_NewLabelWithText / Time",
-            "value": 10.211599999999862,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_C_NewLabelAndSetText / Time.GC()",
-            "value": 11006,
-            "unit": ""
-          },
-          {
-            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_C_NewLabelAndSetText / Time",
-            "value": 10.605500000000006,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_D_NewLabelAndAddToRoot / Time.GC()",
-            "value": 11017,
-            "unit": ""
-          },
-          {
-            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_D_NewLabelAndAddToRoot / Time",
-            "value": 11.65319999999997,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_E_FullPipelineParity / Time.GC()",
-            "value": 11018,
-            "unit": ""
-          },
-          {
-            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_E_FullPipelineParity / Time",
-            "value": 12.003550000000018,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_F_VelvetReconcile / Time.GC()",
-            "value": 27320,
-            "unit": ""
-          },
-          {
-            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_F_VelvetReconcile / Time",
-            "value": 315.7963999999997,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_G_VelvetReconcileLongLived / Time.GC()",
-            "value": 24018,
-            "unit": ""
-          },
-          {
-            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_G_VelvetReconcileLongLived / Time",
-            "value": 278.77560000000017,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.InstrumentCanariesPlayModeBenchmarks.InstrumentCanary_AllocationBlocks / Time.GC()",
-            "value": 1,
-            "unit": ""
-          },
-          {
-            "name": "Velvet.Tests.Performance.InstrumentCanariesPlayModeBenchmarks.InstrumentCanary_AllocationBlocks / Time",
-            "value": 0.006199999999807915,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.InstrumentCanariesPlayModeBenchmarks.InstrumentCanary_TimingBaseline / Time",
-            "value": 0.13304999999999978,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.PaintPassReconcileBenchmarks.Reconcile_UnchangedClassList_100LiteralPaintRows / Time.GC()",
-            "value": 806,
-            "unit": ""
-          },
-          {
-            "name": "Velvet.Tests.Performance.PaintPassReconcileBenchmarks.Reconcile_UnchangedClassList_100LiteralPaintRows / Time",
-            "value": 24.181299999999965,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.PaintPassReconcileBenchmarks.Reconcile_UnchangedClassList_100VariantGatedPaintRows / Time.GC()",
-            "value": 12206,
-            "unit": ""
-          },
-          {
-            "name": "Velvet.Tests.Performance.PaintPassReconcileBenchmarks.Reconcile_UnchangedClassList_100VariantGatedPaintRows / Time",
-            "value": 35.80610000000024,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.InitialMount_1000Elements / Time.GC()",
-            "value": 22022,
-            "unit": ""
-          },
-          {
-            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.InitialMount_1000Elements / Time",
-            "value": 267.9222500000001,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.InitialMount_100Elements / Time.GC()",
-            "value": 2219,
-            "unit": ""
-          },
-          {
-            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.InitialMount_100Elements / Time",
-            "value": 9.677850000000035,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.InitialMount_10Elements / Time.GC()",
-            "value": 232,
-            "unit": ""
-          },
-          {
-            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.InitialMount_10Elements / Time",
-            "value": 0.9486000000000558,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.PooledWidgetRecycle_LabelsAndButtons_10Elements / Time.GC()",
-            "value": 336,
-            "unit": ""
-          },
-          {
-            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.PooledWidgetRecycle_LabelsAndButtons_10Elements / Time",
-            "value": 13.570149999999785,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_AllChange_100Elements / Time.GC()",
-            "value": 6,
-            "unit": ""
-          },
-          {
-            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_AllChange_100Elements / Time",
-            "value": 6.433800000000019,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_BudgetedIndexed_AllChange_200Elements / Time.GC()",
-            "value": 6,
-            "unit": ""
-          },
-          {
-            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_BudgetedIndexed_AllChange_200Elements / Time",
-            "value": 47.41910000000007,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_BudgetedIndexed_GrowShrink_100To200Elements / Time.GC()",
-            "value": 2226,
-            "unit": ""
-          },
-          {
-            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_BudgetedIndexed_GrowShrink_100To200Elements / Time",
-            "value": 92.86629999999991,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_BudgetedKeyed_AllChange_200Elements / Time.GC()",
-            "value": 8,
-            "unit": ""
-          },
-          {
-            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_BudgetedKeyed_AllChange_200Elements / Time",
-            "value": 33.91455000000042,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_Expansion_AllChange_100Nodes / Time.GC()",
-            "value": 6610,
-            "unit": ""
-          },
-          {
-            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_Expansion_AllChange_100Nodes / Time",
-            "value": 40.15874999999983,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_Expansion_NoChange_100Nodes / Time.GC()",
-            "value": 2416,
-            "unit": ""
-          },
-          {
-            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_Expansion_NoChange_100Nodes / Time",
-            "value": 17.559349999999995,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_Keyed_AllChange_100Elements / Time.GC()",
-            "value": 6,
-            "unit": ""
-          },
-          {
-            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_Keyed_AllChange_100Elements / Time",
-            "value": 9.988900000000172,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_Keyed_NoChange_100Elements / Time.GC()",
-            "value": 0,
-            "unit": ""
-          },
-          {
-            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_Keyed_NoChange_100Elements / Time",
-            "value": 0.18244999999933498,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_Keyed_Reverse_100Elements / Time.GC()",
-            "value": 1006,
-            "unit": ""
-          },
-          {
-            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_Keyed_Reverse_100Elements / Time",
-            "value": 20.14235000000008,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_NoChange_100Elements / Time.GC()",
-            "value": 0,
-            "unit": ""
-          },
-          {
-            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_NoChange_100Elements / Time",
-            "value": 0.06109999999989668,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.StyleManipulatorReconcileBenchmarks.Mount_100StyledRows / Time.GC()",
-            "value": 110103,
-            "unit": ""
-          },
-          {
-            "name": "Velvet.Tests.Performance.StyleManipulatorReconcileBenchmarks.Mount_100StyledRows / Time",
-            "value": 547.0563499999994,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.StyleManipulatorReconcileBenchmarks.Reconcile_ChangedClassList_100StyledRows / Time.GC()",
-            "value": 92106,
-            "unit": ""
-          },
-          {
-            "name": "Velvet.Tests.Performance.StyleManipulatorReconcileBenchmarks.Reconcile_ChangedClassList_100StyledRows / Time",
-            "value": 202.79185000000007,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.StyleManipulatorReconcileBenchmarks.Reconcile_StripAndRestoreClassList_100StyledRows / Time.GC()",
-            "value": 134498,
-            "unit": ""
-          },
-          {
-            "name": "Velvet.Tests.Performance.StyleManipulatorReconcileBenchmarks.Reconcile_StripAndRestoreClassList_100StyledRows / Time",
-            "value": 605.9631000000008,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.StyleManipulatorReconcileBenchmarks.Reconcile_UnchangedClassList_100StyledRows / Time.GC()",
-            "value": 6806,
-            "unit": ""
-          },
-          {
-            "name": "Velvet.Tests.Performance.StyleManipulatorReconcileBenchmarks.Reconcile_UnchangedClassList_100StyledRows / Time",
-            "value": 52.25195000000008,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.TextSizeEffectReconcileBenchmarks.Reconcile_RetextLabels_200LabelsUnderAnInertContainer / Time.GC()",
-            "value": 6,
-            "unit": ""
-          },
-          {
-            "name": "Velvet.Tests.Performance.TextSizeEffectReconcileBenchmarks.Reconcile_RetextLabels_200LabelsUnderAnInertContainer / Time",
-            "value": 40.39019999999982,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.TextSizeEffectReconcileBenchmarks.Reconcile_RetextLabels_200LabelsUnderATextSizeContainer / Time.GC()",
-            "value": 806,
-            "unit": ""
-          },
-          {
-            "name": "Velvet.Tests.Performance.TextSizeEffectReconcileBenchmarks.Reconcile_RetextLabels_200LabelsUnderATextSizeContainer / Time",
-            "value": 44.430399999999736,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.TextSizeEffectReconcileBenchmarks.Reconcile_RetextLabels_200LabelsWithAnInertClass / Time.GC()",
-            "value": 6,
-            "unit": ""
-          },
-          {
-            "name": "Velvet.Tests.Performance.TextSizeEffectReconcileBenchmarks.Reconcile_RetextLabels_200LabelsWithAnInertClass / Time",
-            "value": 52.92094999999995,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.TextSizeEffectReconcileBenchmarks.Reconcile_RetextLabels_200LabelsWithATextSize / Time.GC()",
-            "value": 406,
-            "unit": ""
-          },
-          {
-            "name": "Velvet.Tests.Performance.TextSizeEffectReconcileBenchmarks.Reconcile_RetextLabels_200LabelsWithATextSize / Time",
-            "value": 57.388400000000274,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.VisibleToggleProjectionBenchmarks.Reconcile_ToggleVisible_200Rows / Time.GC()",
-            "value": 1606,
-            "unit": ""
-          },
-          {
-            "name": "Velvet.Tests.Performance.VisibleToggleProjectionBenchmarks.Reconcile_ToggleVisible_200Rows / Time",
-            "value": 297.04560000000015,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.VisibleToggleProjectionBenchmarks.Reconcile_ToggleVisible_200RowsWithASuppressedClass / Time.GC()",
-            "value": 5606,
-            "unit": ""
-          },
-          {
-            "name": "Velvet.Tests.Performance.VisibleToggleProjectionBenchmarks.Reconcile_ToggleVisible_200RowsWithASuppressedClass / Time",
-            "value": 309.9507500000002,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.RouteLoaderRunnerPlayModeBenchmarks.RunLoadersSync_AwaitSyncCompleted / Time.GC()",
-            "value": 14,
-            "unit": ""
-          },
-          {
-            "name": "Velvet.Tests.Performance.RouteLoaderRunnerPlayModeBenchmarks.RunLoadersSync_AwaitSyncCompleted / Time",
-            "value": 0.044450000000097134,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.RouteLoaderRunnerPlayModeBenchmarks.RunLoadersSync_SuspendDeferredCompletion / RouteLoaderRunner.SuspendDeferred.Time",
-            "value": 0.3754,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.RouteLoaderRunnerPlayModeBenchmarks.RunLoadersSync_SuspendDeferredCompletion / RouteLoaderRunner.SuspendDeferred.GC",
-            "value": 9,
-            "unit": ""
-          },
-          {
-            "name": "Velvet.Tests.Performance.RouterNavigationPlayModeBenchmarks.NavigateAsync_LoaderAndBlocker / Time.GC()",
-            "value": 98,
-            "unit": ""
-          },
-          {
-            "name": "Velvet.Tests.Performance.RouterNavigationPlayModeBenchmarks.NavigateAsync_LoaderAndBlocker / Time",
-            "value": 0.2167500000000473,
-            "unit": "ms"
-          }
-        ]
-      },
       {
         "commit": {
           "author": {
@@ -132229,6 +131700,1080 @@ window.BENCHMARK_DATA = {
             "value": 0.23565000000007785,
             "unit": "ms",
             "extra": "processor: AMD EPYC 7763 64-Core Processor"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "50241623+s4k10503@users.noreply.github.com",
+            "name": "0y0",
+            "username": "s4k10503"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "2eb2224f9ceaa183870015e3812035d4c0bce59d",
+          "message": "fix(velvet): fit an overflowing corner radius a class swap brings in without a size change (#1775)\n\nCloses #1598.\n\nA corner radius that overflowed its box was fitted only when the box resized. A class change, an ancestor's class change or a pseudo-class that brought in an overflowing radius with no size change kept the unfitted value; CSS scales overlapping radii whenever they apply (Backgrounds 3 §5.5).\n\n## What changed\n\n- `RadiusWatchSheets` derives a runtime-only sheet from each stylesheet above a mount (the panel's, a mount ancestor's, an element's own, with their imports, the engine theme's included) and attaches it beside its source. For each rule that sets a radius it holds the same selectors with only `--velvet-radius-watch: 1`. The application's sheets are not edited. UI Toolkit then sends `CustomStyleResolvedEvent` whenever a radius rule starts or stops matching an element, and `CornerRadiusFit` fits from that event.\n- Cost: each derived rule's `customPropertiesCount` is zeroed (`EngineMember`), so a watched element does not copy the inherited variable context, while the engine still fills its `customProperties` and sends the event. `CornerRadiusFit.OnStyleResolved` returns while the element's matched-rules hash is unchanged.\n- The bundled utilities are not derived; each of their radius rules already restates `--velvet-radius-*`, which `CornerRadiusFit` now also accepts, so a bundled `rounded-*` class added by code is fitted too.\n- `BorderPreflight` reads the sheets of the ancestors of built elements every 16 ms by instance and `contentHash`: a sheet attached later gets its watch, one edited in place gets a new one, and a removed or destroyed source takes its watch with it. The mount's ancestors are also read on the 100 ms theme poll.\n- Velvet's class writes (`StyleClassProjection`, `StyleAnimationClassUtils.Settle`) call `CornerRadiusFit.NoteClassWrite`, so a radius your code wrote inline is fitted when Velvet changes a class.\n- Readers that enumerate sheets (`StyleThemeTokens`, `BundledClassTransform`, `VelvetStyleUtilities`) skip the derived ones.\n- `styling-variants.md` states what is fitted when.\n\n## Not reached, by the 6000.3.23f1 decompile\n\n- A write to `style.border*Radius` made outside Velvet: the inline setter raises `VersionChangeType.Styles`, which `VisualTreeStyleUpdater.OnVersionChanged` ignores, so no style pass or event follows. It is fitted at the next size change, rule-match change or Velvet class write.\n- A sheet attached to a leaf that held none at its last geometry change: `VisualElementStyleSheetSet.Insert` raises only the owner's `StyleSheet` version. The one per-element change hook, `panelChangeReceiver`, is a single debugging slot whose `PanelSettings` setter is `[Conditional(\"ENABLE_PROFILER\")]`. It is read at the leaf's next geometry change.\n\n## Evidence\n\n- `CornerRadiusFitPanelTests`: a laid-out box (and a label, button, text field, toggle, scroll view, `V.Custom<T>` element) fitted with no size change when its class, an ancestor's class, a `:hover` rule, a direct `AddToClassList`, a bundled `rounded-*` class or an animation channel brings the radius in or takes it out. The no-size-change cases are red on the base.\n- `RadiusWatchSheetsPanelTests`: the derived sheet holds one watch-only rule per radius rule and declares no variable; it follows a sheet attached later, to an inner element or a leaf, edited in place, removed or destroyed; a released container is read again; and every bundled radius class has its restating rule.\n- `RadiusWatchRestyleBenchmarks` (CI medians, `ValidateLayout` per frame, 1,000 Divs restyled each frame): 16.2 ms under a radius rule against 11.7 ms under none; the watch sheet's first form cost 24.8 ms. An idle frame ticks scheduled actions in 0.040 ms with the sheet watch and 0.028 ms with it paused. The Button arms need a default theme sheet and skip where none is found, as on the CI runner.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+          "timestamp": "2026-11-18T18:08:03Z",
+          "tree_id": "242cdebf529a5470a68ff95b2c2b3339c67aa2c3",
+          "url": "https://github.com/s4k10503/velvet/commit/2eb2224f9ceaa183870015e3812035d4c0bce59d"
+        },
+        "date": 1795026319032,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "Velvet.Tests.Performance.VNodePoolBenchmarks.VButton_Allocation / Time.GC()",
+            "value": 2,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.VNodePoolBenchmarks.VButton_Allocation / Time",
+            "value": 0.015350000000125874,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.VNodePoolBenchmarks.VDiv_Allocation / Time.GC()",
+            "value": 1,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.VNodePoolBenchmarks.VDiv_Allocation / Time",
+            "value": 0.01650000000017826,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.VNodePoolBenchmarks.VLabel_Allocation / Time.GC()",
+            "value": 2,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.VNodePoolBenchmarks.VLabel_Allocation / Time",
+            "value": 0.014499999999770807,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.EffectContextRerenderAllocBenchmarks.UseState_RerenderClosureAlloc_With4EffectsAnd2Contexts / Time.GC()",
+            "value": 3006,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.EffectContextRerenderAllocBenchmarks.UseState_RerenderClosureAlloc_With4EffectsAnd2Contexts / Time",
+            "value": 26.588050000000067,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.UseMutationPlayModeBenchmarks.UseMutation_OneMutateRoundTrip / Time.GC()",
+            "value": 32,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.UseMutationPlayModeBenchmarks.UseMutation_OneMutateRoundTrip / Time",
+            "value": 0.3942499999999427,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.UseStateRerenderAllocBenchmarks.UseState_RerenderClosureAlloc / Time.GC()",
+            "value": 1706,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.UseStateRerenderAllocBenchmarks.UseState_RerenderClosureAlloc / Time",
+            "value": 14.450399999999945,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Floor_1000Labels / Build.Time",
+            "value": 28.72405,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Floor_1000Labels / Build.GC",
+            "value": 9000.5,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Floor_1000Labels_ThroughNextFrame / Build.Time",
+            "value": 28.14265,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Floor_1000Labels_ThroughNextFrame / Frame.TickScheduledActions",
+            "value": 0.025637,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Floor_1000Labels_ThroughNextFrame / Frame.ValidateLayout",
+            "value": 93.22131949999999,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Floor_1000Labels_ThroughNextFrame / Frame.PrepareRepaint",
+            "value": 125.86292900000001,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Floor_1000Labels_ThroughNextFrame / Window.GC",
+            "value": 12009,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Mount_1000Elements / Build.Time",
+            "value": 148.13524999999998,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Mount_1000Elements / Build.GC",
+            "value": 39493,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Mount_1000Elements_ThroughNextFrame / Build.Time",
+            "value": 147.68225,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Mount_1000Elements_ThroughNextFrame / Frame.TickScheduledActions",
+            "value": 0.0450005,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Mount_1000Elements_ThroughNextFrame / Frame.ValidateLayout",
+            "value": 311.86771999999996,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Mount_1000Elements_ThroughNextFrame / Frame.PrepareRepaint",
+            "value": 115.9215845,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Mount_1000Elements_ThroughNextFrame / Window.GC",
+            "value": 49279,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Mount_100Elements / Build.Time",
+            "value": 14.849499999999999,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Mount_100Elements / Build.GC",
+            "value": 3438,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Mount_10Elements / Build.Time",
+            "value": 2.7535,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Mount_10Elements / Build.GC",
+            "value": 228,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.FiberAsyncResourcePlayModeBenchmarks.HooksUse_SuspendResumeRoundTrip / HooksUse.SuspendResume.Time",
+            "value": 1.68085,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.FiberAsyncResourcePlayModeBenchmarks.HooksUse_SuspendResumeRoundTrip / HooksUse.SuspendResume.GCAcrossFrame",
+            "value": 593,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.IdleFrameBenchmarks.IdleFrames_1000StyledElements / Frame.TickScheduledActions",
+            "value": 1.033253,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.IdleFrameBenchmarks.IdleFrames_1000StyledElements / Frame.ValidateLayout",
+            "value": 0.0081135,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.IdleFrameBenchmarks.IdleFrames_1000StyledElements / Frame.PrepareRepaint",
+            "value": 0.06425349999999999,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.IdleFrameBenchmarks.IdleFrames_1000StyledElements / Frame.GC",
+            "value": 6229,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.IdleFrameBenchmarks.IdleFrames_1000StyledElementsWithPolls / Frame.TickScheduledActions",
+            "value": 13.6239725,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.IdleFrameBenchmarks.IdleFrames_1000StyledElementsWithPolls / Frame.ValidateLayout",
+            "value": 0.006221,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.IdleFrameBenchmarks.IdleFrames_1000StyledElementsWithPolls / Frame.PrepareRepaint",
+            "value": 0.068927,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.IdleFrameBenchmarks.IdleFrames_1000StyledElementsWithPolls / Frame.GC",
+            "value": 4104,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_A_NewLabelAlone / Time.GC()",
+            "value": 11007,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_A_NewLabelAlone / Time",
+            "value": 9.99919999999986,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_B_NewLabelWithText / Time.GC()",
+            "value": 11007,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_B_NewLabelWithText / Time",
+            "value": 10.602249999999799,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_C_NewLabelAndSetText / Time.GC()",
+            "value": 11006,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_C_NewLabelAndSetText / Time",
+            "value": 10.186800000000062,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_D_NewLabelAndAddToRoot / Time.GC()",
+            "value": 11018,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_D_NewLabelAndAddToRoot / Time",
+            "value": 11.2106,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_E_FullPipelineParity / Time.GC()",
+            "value": 11018,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_E_FullPipelineParity / Time",
+            "value": 11.915699999999788,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_F_VelvetReconcile / Time.GC()",
+            "value": 26470,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_F_VelvetReconcile / Time",
+            "value": 137.3345999999999,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_G_VelvetReconcileLongLived / Time.GC()",
+            "value": 23086,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_G_VelvetReconcileLongLived / Time",
+            "value": 53.156499999999824,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.InstrumentCanariesPlayModeBenchmarks.InstrumentCanary_AllocationBlocks / Time.GC()",
+            "value": 1,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.InstrumentCanariesPlayModeBenchmarks.InstrumentCanary_AllocationBlocks / Time",
+            "value": 0.007849999999962165,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.InstrumentCanariesPlayModeBenchmarks.InstrumentCanary_TimingBaseline / Time",
+            "value": 0.37949999999999984,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.Append_1000RowsTo1000 / Op.Time",
+            "value": 484.5724,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.Append_1000RowsTo1000 / Op.GC",
+            "value": 179100,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.Clear_1000Rows / Op.Time",
+            "value": 64.07245,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.Clear_1000Rows / Op.GC",
+            "value": 27,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.Create_10000Rows / Op.Time",
+            "value": 3978.8828,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.Create_10000Rows / Op.GC",
+            "value": 1756901,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.Create_1000Rows / Op.Time",
+            "value": 344.2073,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.Create_1000Rows / Op.GC",
+            "value": 178165,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.PartialUpdate_EveryTenthOf1000Rows / Op.Time",
+            "value": 41.01535,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.PartialUpdate_EveryTenthOf1000Rows / Op.GC",
+            "value": 8948,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.Remove_OneOf1000Rows / Op.Time",
+            "value": 21.64275,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.Remove_OneOf1000Rows / Op.GC",
+            "value": 5045,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.Replace_AllOf1000Rows / Op.Time",
+            "value": 406.34344999999996,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.Replace_AllOf1000Rows / Op.GC",
+            "value": 178119,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.Select_OneOf1000Rows / Op.Time",
+            "value": 20.26875,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.Select_OneOf1000Rows / Op.GC",
+            "value": 5119,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.Swap_Rows2And999Of1000 / Op.Time",
+            "value": 23.04015,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.Swap_Rows2And999Of1000 / Op.GC",
+            "value": 5132,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.PaintPassReconcileBenchmarks.Reconcile_UnchangedClassList_100LiteralPaintRows / Time.GC()",
+            "value": 706,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.PaintPassReconcileBenchmarks.Reconcile_UnchangedClassList_100LiteralPaintRows / Time",
+            "value": 20.947999999999865,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.PaintPassReconcileBenchmarks.Reconcile_UnchangedClassList_100VariantGatedPaintRows / Time.GC()",
+            "value": 1729,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.PaintPassReconcileBenchmarks.Reconcile_UnchangedClassList_100VariantGatedPaintRows / Time",
+            "value": 37.26944999999978,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.PooledButtonRowBenchmarks.Clear_1000PooledButtonRows / Time",
+            "value": 61.32665,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.PooledButtonRowBenchmarks.Clear_1000PooledButtonRows / GC.Alloc",
+            "value": 3128,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.PooledButtonRowBenchmarks.Create_1000PooledButtonRows / Time",
+            "value": 71.38104999999999,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.PooledButtonRowBenchmarks.Create_1000PooledButtonRows / GC.Alloc",
+            "value": 48918,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.RadiusWatchRestyleBenchmarks.IdleFrames_1000DivsWithTheSheetWatch / Frame.TickScheduledActions",
+            "value": 0.06528,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.RadiusWatchRestyleBenchmarks.IdleFrames_1000DivsWithTheSheetWatch / Frame.ValidateLayout",
+            "value": 0.0066035,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.RadiusWatchRestyleBenchmarks.IdleFrames_1000DivsWithTheSheetWatch / Frame.PrepareRepaint",
+            "value": 0.057424,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.RadiusWatchRestyleBenchmarks.IdleFrames_1000DivsWithTheSheetWatch / Frame.GC",
+            "value": 5860.5,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.RadiusWatchRestyleBenchmarks.IdleFrames_1000DivsWithTheSheetWatchPaused / Frame.TickScheduledActions",
+            "value": 0.040934,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.RadiusWatchRestyleBenchmarks.IdleFrames_1000DivsWithTheSheetWatchPaused / Frame.ValidateLayout",
+            "value": 0.0073155,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.RadiusWatchRestyleBenchmarks.IdleFrames_1000DivsWithTheSheetWatchPaused / Frame.PrepareRepaint",
+            "value": 0.061173000000000005,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.RadiusWatchRestyleBenchmarks.IdleFrames_1000DivsWithTheSheetWatchPaused / Frame.GC",
+            "value": 4800,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.RadiusWatchRestyleBenchmarks.RestyleFrames_1000ButtonsUnderTheEngineTheme / Frame.TickScheduledActions",
+            "value": 0.067833,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.RadiusWatchRestyleBenchmarks.RestyleFrames_1000ButtonsUnderTheEngineTheme / Frame.ValidateLayout",
+            "value": 84.357399,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.RadiusWatchRestyleBenchmarks.RestyleFrames_1000ButtonsUnderTheEngineTheme / Frame.PrepareRepaint",
+            "value": 0.527018,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.RadiusWatchRestyleBenchmarks.RestyleFrames_1000ButtonsUnderTheEngineTheme / Frame.GC",
+            "value": 1232,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.RadiusWatchRestyleBenchmarks.RestyleFrames_1000ButtonsUnderTheEngineThemeWithoutWatchSheets / Frame.TickScheduledActions",
+            "value": 0.055281,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.RadiusWatchRestyleBenchmarks.RestyleFrames_1000ButtonsUnderTheEngineThemeWithoutWatchSheets / Frame.ValidateLayout",
+            "value": 52.194675000000004,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.RadiusWatchRestyleBenchmarks.RestyleFrames_1000ButtonsUnderTheEngineThemeWithoutWatchSheets / Frame.PrepareRepaint",
+            "value": 0.346016,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.RadiusWatchRestyleBenchmarks.RestyleFrames_1000ButtonsUnderTheEngineThemeWithoutWatchSheets / Frame.GC",
+            "value": 1230,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.RadiusWatchRestyleBenchmarks.RestyleFrames_1000DivsUnderARadiusRule / Frame.TickScheduledActions",
+            "value": 0.051865499999999995,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.RadiusWatchRestyleBenchmarks.RestyleFrames_1000DivsUnderARadiusRule / Frame.ValidateLayout",
+            "value": 26.203812499999998,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.RadiusWatchRestyleBenchmarks.RestyleFrames_1000DivsUnderARadiusRule / Frame.PrepareRepaint",
+            "value": 0.2955375,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.RadiusWatchRestyleBenchmarks.RestyleFrames_1000DivsUnderARadiusRule / Frame.GC",
+            "value": 1230,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.RadiusWatchRestyleBenchmarks.RestyleFrames_1000DivsUnderNoRadiusRule / Frame.TickScheduledActions",
+            "value": 0.0465085,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.RadiusWatchRestyleBenchmarks.RestyleFrames_1000DivsUnderNoRadiusRule / Frame.ValidateLayout",
+            "value": 16.4393775,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.RadiusWatchRestyleBenchmarks.RestyleFrames_1000DivsUnderNoRadiusRule / Frame.PrepareRepaint",
+            "value": 0.2638475,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.RadiusWatchRestyleBenchmarks.RestyleFrames_1000DivsUnderNoRadiusRule / Frame.GC",
+            "value": 3868,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.InitialMount_1000Elements / Time.GC()",
+            "value": 24088,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.InitialMount_1000Elements / Time",
+            "value": 54.42955000000029,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.InitialMount_100Elements / Time.GC()",
+            "value": 2170,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.InitialMount_100Elements / Time",
+            "value": 5.67795000000001,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.InitialMount_10Elements / Time.GC()",
+            "value": 224,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.InitialMount_10Elements / Time",
+            "value": 0.7767999999998665,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.PooledWidgetRecycle_LabelsAndButtons_10Elements / Time.GC()",
+            "value": 176,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.PooledWidgetRecycle_LabelsAndButtons_10Elements / Time",
+            "value": 12.172900000000027,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_AllChange_100Elements / Time.GC()",
+            "value": 6,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_AllChange_100Elements / Time",
+            "value": 3.795799999999872,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_BudgetedIndexed_AllChange_200Elements / Time.GC()",
+            "value": 6,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_BudgetedIndexed_AllChange_200Elements / Time",
+            "value": 22.594400000000064,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_BudgetedIndexed_GrowShrink_100To200Elements / Time.GC()",
+            "value": 2065,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_BudgetedIndexed_GrowShrink_100To200Elements / Time",
+            "value": 108.7414000000008,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_BudgetedKeyed_AllChange_200Elements / Time.GC()",
+            "value": 8,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_BudgetedKeyed_AllChange_200Elements / Time",
+            "value": 21.683600000000297,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_Expansion_AllChange_100Nodes / Time.GC()",
+            "value": 3626,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_Expansion_AllChange_100Nodes / Time",
+            "value": 34.33965000000012,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_Expansion_NoChange_100Nodes / Time.GC()",
+            "value": 16,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_Expansion_NoChange_100Nodes / Time",
+            "value": 2.0213999999996304,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_Keyed_AllChange_100Elements / Time.GC()",
+            "value": 6,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_Keyed_AllChange_100Elements / Time",
+            "value": 7.951850000000377,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_Keyed_NoChange_100Elements / Time.GC()",
+            "value": 6,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_Keyed_NoChange_100Elements / Time",
+            "value": 0.15875000000050932,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_Keyed_Reverse_100Elements / Time.GC()",
+            "value": 34,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_Keyed_Reverse_100Elements / Time",
+            "value": 3.8068499999999403,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_NoChange_100Elements / Time.GC()",
+            "value": 0,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_NoChange_100Elements / Time",
+            "value": 0.11210000000028231,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.RenderPathScalingBenchmarks.ParentRerender_1000InlineComponentRows / Op.Time",
+            "value": 84.45305,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.RenderPathScalingBenchmarks.ParentRerender_1000InlineComponentRows / Op.GC",
+            "value": 13034,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.RenderPathScalingBenchmarks.ParentRerender_250InlineComponentRows / Op.Time",
+            "value": 20.94755,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.RenderPathScalingBenchmarks.ParentRerender_250InlineComponentRows / Op.GC",
+            "value": 3278,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.RenderPathScalingBenchmarks.ParentRerender_500InlineComponentRows / Op.Time",
+            "value": 42.0503,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.RenderPathScalingBenchmarks.ParentRerender_500InlineComponentRows / Op.GC",
+            "value": 6531,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.RenderPathScalingBenchmarks.RowSetState_Under1000MemoizedRows / Op.Time",
+            "value": 0.13185000000000002,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.RenderPathScalingBenchmarks.RowSetState_Under1000MemoizedRows / Op.GC",
+            "value": 14,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.RenderPathScalingBenchmarks.RowSetState_Under2000MemoizedRows / Op.Time",
+            "value": 0.14175,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.RenderPathScalingBenchmarks.RowSetState_Under2000MemoizedRows / Op.GC",
+            "value": 14,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.RenderPathScalingBenchmarks.RowSetState_Under250MemoizedRows / Op.Time",
+            "value": 0.1273,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.RenderPathScalingBenchmarks.RowSetState_Under250MemoizedRows / Op.GC",
+            "value": 14,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.RenderPathScalingBenchmarks.RowSetState_Under500MemoizedRows / Op.Time",
+            "value": 0.12869999999999998,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.RenderPathScalingBenchmarks.RowSetState_Under500MemoizedRows / Op.GC",
+            "value": 14,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.StyleManipulatorReconcileBenchmarks.Mount_100StyledRows / Time.GC()",
+            "value": 78011,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.StyleManipulatorReconcileBenchmarks.Mount_100StyledRows / Time",
+            "value": 272.6473499999993,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.StyleManipulatorReconcileBenchmarks.Reconcile_ChangedClassList_100StyledRows / Time.GC()",
+            "value": 38906,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.StyleManipulatorReconcileBenchmarks.Reconcile_ChangedClassList_100StyledRows / Time",
+            "value": 166.92645000000016,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.StyleManipulatorReconcileBenchmarks.Reconcile_StripAndRestoreClassList_100StyledRows / Time.GC()",
+            "value": 78587,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.StyleManipulatorReconcileBenchmarks.Reconcile_StripAndRestoreClassList_100StyledRows / Time",
+            "value": 428.9749500000007,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.StyleManipulatorReconcileBenchmarks.Reconcile_UnchangedClassList_100StyledRows / Time.GC()",
+            "value": 2806,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.StyleManipulatorReconcileBenchmarks.Reconcile_UnchangedClassList_100StyledRows / Time",
+            "value": 51.84805000000006,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.TextSizeEffectReconcileBenchmarks.Reconcile_RetextLabels_200LabelsUnderAnInertContainer / Time.GC()",
+            "value": 6,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.TextSizeEffectReconcileBenchmarks.Reconcile_RetextLabels_200LabelsUnderAnInertContainer / Time",
+            "value": 16.65274999999974,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.TextSizeEffectReconcileBenchmarks.Reconcile_RetextLabels_200LabelsUnderATextSizeContainer / Time.GC()",
+            "value": 806,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.TextSizeEffectReconcileBenchmarks.Reconcile_RetextLabels_200LabelsUnderATextSizeContainer / Time",
+            "value": 22.26384999999982,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.TextSizeEffectReconcileBenchmarks.Reconcile_RetextLabels_200LabelsWithAnInertClass / Time.GC()",
+            "value": 6,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.TextSizeEffectReconcileBenchmarks.Reconcile_RetextLabels_200LabelsWithAnInertClass / Time",
+            "value": 19.045849999999973,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.TextSizeEffectReconcileBenchmarks.Reconcile_RetextLabels_200LabelsWithATextSize / Time.GC()",
+            "value": 406,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.TextSizeEffectReconcileBenchmarks.Reconcile_RetextLabels_200LabelsWithATextSize / Time",
+            "value": 23.983549999999696,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.VisibleToggleProjectionBenchmarks.Reconcile_ToggleVisible_200Rows / Time.GC()",
+            "value": 1208,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.VisibleToggleProjectionBenchmarks.Reconcile_ToggleVisible_200Rows / Time",
+            "value": 132.3782000000001,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.VisibleToggleProjectionBenchmarks.Reconcile_ToggleVisible_200RowsWithASuppressedClass / Time.GC()",
+            "value": 2808,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.VisibleToggleProjectionBenchmarks.Reconcile_ToggleVisible_200RowsWithASuppressedClass / Time",
+            "value": 144.14104999999927,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.RouteLoaderRunnerPlayModeBenchmarks.RunLoadersSync_AwaitSyncCompleted / Time.GC()",
+            "value": 14,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.RouteLoaderRunnerPlayModeBenchmarks.RunLoadersSync_AwaitSyncCompleted / Time",
+            "value": 0.04815000000007785,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.RouteLoaderRunnerPlayModeBenchmarks.RunLoadersSync_SuspendDeferredCompletion / RouteLoaderRunner.SuspendDeferred.Time",
+            "value": 0.3543,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.RouteLoaderRunnerPlayModeBenchmarks.RunLoadersSync_SuspendDeferredCompletion / RouteLoaderRunner.SuspendDeferred.GCAcrossFrame",
+            "value": 133,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.RouterNavigationPlayModeBenchmarks.NavigateAsync_LoaderAndBlocker / Time.GC()",
+            "value": 111,
+            "unit": "",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+          },
+          {
+            "name": "Velvet.Tests.Performance.RouterNavigationPlayModeBenchmarks.NavigateAsync_LoaderAndBlocker / Time",
+            "value": 0.22319999999967877,
+            "unit": "ms",
+            "extra": "processor: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
           }
         ]
       }
