@@ -443,6 +443,8 @@ namespace Velvet
         private void DropImmediateIntake()
         {
             var droppedFibers = _immediateOrder.ToArray();
+            // A capture waiting for a render was waiting on a lane just dropped, or on one a boundary held back keeps.
+            _onIntakeDropped?.Invoke();
             _immediateOrder.Clear();
             _immediateSet.Clear();
             for (var i = 0; i < droppedFibers.Length; i++)
@@ -658,6 +660,20 @@ namespace Velvet
             for (var p = fiber.Parent; p != null; p = p.Parent) depth++;
             return depth;
         }
+
+        // Whether a drain of the immediate tier can start from here: no drain of either tier and no reconcile pass is
+        // on the stack. FlushImmediate checks the first and the last of these; a drain of the immediate tier that
+        // is running renders what is queued itself.
+        internal bool CanFlushImmediate => !_draining && !_inImmediateDrain && !(_reconcileActiveProbe?.Invoke() ?? false);
+
+        // Marks the immediate tier's work as sync-lane work, which a drain that renders it follows with the passive
+        // flush and another round of passes (DrainImmediatePasses).
+        internal void OweSyncLane() => _syncLaneQueued = true;
+
+        // Called by the owning Reconciler: what to forget along with the intake DropImmediateIntake drops.
+        internal void SetIntakeDropCallback(Action onDropped) => _onIntakeDropped = onDropped;
+
+        private Action? _onIntakeDropped;
 
         // Synchronously drains the next-frame (Normal / Urgent) batch now instead of waiting for the scheduled
         // frame-boundary callback. Called at the end of a discrete user-input event handler so Urgent-lane
