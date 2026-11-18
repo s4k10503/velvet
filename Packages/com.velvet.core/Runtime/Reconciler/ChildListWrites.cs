@@ -754,6 +754,7 @@ namespace Velvet
             System.Runtime.ExceptionServices.ExceptionDispatchInfo? first = null;
             try
             {
+                RunLate(pass, ref first);
                 for (var i = 0; i < pass.Ops.Count; i++)
                 {
                     try
@@ -788,13 +789,84 @@ namespace Velvet
             first?.Throw();
         }
 
-        // Queues a deletion's teardown among the recorded writes, to run where the ones before it have applied. False
-        // where no pass is recording or its recorded writes are applying, which leaves the caller to run it.
-        internal static bool RecordTeardown(DeletionCommit deletion)
+        // Records where a turn begins and where it ends among the ops, for the teardowns attached to the anchor to run at
+        // (RecordTeardown). Null where no pass is recording, which needs none. They apply as nothing else.
+        internal static TurnAnchor? RecordTurnBegin()
+        {
+            if (s_current is not { Recording: true, Applying: false } pass) return null;
+            var anchor = pass.RentAnchor();
+            pass.Ops.Add(new ReconcilePass.Op { Anchor = anchor, Kind = ReconcilePass.OpKind.FiberBegin });
+            return anchor;
+        }
+
+        internal static void RecordTurnEnd(TurnAnchor? anchor)
+        {
+            if (anchor == null) return;
+            if (s_current is not { Recording: true, Applying: false } pass) return;
+            // MUTANT_SURVIVES(equivalent, line removed): no apply reads a FiberEnd.
+            pass.Ops.Add(new ReconcilePass.Op { Anchor = anchor, Kind = ReconcilePass.OpKind.FiberEnd });
+        }
+
+        // Queues a deletion's teardown to run at its turn: where the anchor's op applies, after the teardowns attached to it
+        // before. One whose anchor has applied already runs ahead of the ops left, since all of them were recorded after it,
+        // and one with no anchor runs behind the writes recorded so far. False where no pass is recording or its
+        // recorded writes are applying, which leaves the caller to run it.
+        internal static bool RecordTeardown(DeletionCommit deletion, TurnAnchor? anchor)
         {
             if (s_current is not { Recording: true, Applying: false } pass) return false;
-            pass.Ops.Add(new ReconcilePass.Op { Deletion = deletion, Kind = ReconcilePass.OpKind.Teardown });
+            if (anchor == null) pass.Ops.Add(new ReconcilePass.Op { Deletion = deletion, Kind = ReconcilePass.OpKind.Teardown });
+            else if (anchor.Applied) pass.Late.Add(new ReconcilePass.LateTeardown(anchor.Serial, pass.LateOrder++, deletion));
+            else anchor.Teardowns.Add(deletion);
             return true;
+        }
+
+        // The late teardowns, in the order their turns were recorded.
+        private static void RunLate(ReconcilePass pass, ref System.Runtime.ExceptionServices.ExceptionDispatchInfo? first)
+        {
+            var late = pass.Late;
+            for (var i = 1; i < late.Count; i++)
+            {
+                var item = late[i];
+                var at = i;
+                while (at > 0 && (late[at - 1].Serial > item.Serial
+                    || (late[at - 1].Serial == item.Serial && late[at - 1].Order > item.Order)))
+                {
+                    late[at] = late[at - 1];
+                    at--;
+                }
+                late[at] = item;
+            }
+            for (var i = 0; i < late.Count; i++)
+            {
+                try
+                {
+                    late[i].Deletion.Teardown();
+                }
+                catch (Exception exception)
+                {
+                    first ??= System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(exception);
+                }
+            }
+            late.Clear();
+        }
+
+        // Runs what was attached to the anchor, each of them whether the one before it threw.
+        private static void ApplyAnchor(TurnAnchor anchor)
+        {
+            anchor.Applied = true;
+            System.Runtime.ExceptionServices.ExceptionDispatchInfo? first = null;
+            for (var i = 0; i < anchor.Teardowns.Count; i++)
+            {
+                try
+                {
+                    anchor.Teardowns[i].Teardown();
+                }
+                catch (Exception exception)
+                {
+                    first ??= System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(exception);
+                }
+            }
+            first?.Throw();
         }
 
         private static void ApplyOp(ReconcilePass pass, ReconcilePass.Op op)
@@ -804,6 +876,12 @@ namespace Velvet
                 op.Deletion!.Teardown();
                 return;
             }
+            if (op.Kind == ReconcilePass.OpKind.FiberBegin)
+            {
+                ApplyAnchor(op.Anchor!);
+                return;
+            }
+            if (op.Kind >= ReconcilePass.OpKind.FiberEnd) return;
             if (op.Kind >= ReconcilePass.OpKind.PatchPre)
             {
                 var patch = pass.Patches[op.Index];
@@ -843,6 +921,7 @@ namespace Velvet
                 pass.Created.Clear();
                 if (--pass.Depth == 0)
                 {
+                    pass.ReleaseAnchors();
                     s_current = pass.Enclosing;
                     // MUTANT_SURVIVES(equivalent, line removed): BeginRecording assigns Enclosing before anything reads it.
                     pass.Enclosing = null;

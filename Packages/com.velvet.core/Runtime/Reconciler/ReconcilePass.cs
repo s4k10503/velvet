@@ -13,7 +13,7 @@ namespace Velvet
     // suspend that nothing in the pass catches abandons it.
     internal sealed class ReconcilePass
     {
-        internal enum OpKind : byte { Insert, RemoveAt, RemoveChild, PatchPre, PatchPost, Teardown }
+        internal enum OpKind : byte { Insert, RemoveAt, RemoveChild, PatchPre, PatchPost, Teardown, FiberBegin, FiberEnd }
 
         internal struct Op
         {
@@ -22,6 +22,9 @@ namespace Velvet
             internal VisualElement Child;
             // The deletion a Teardown runs.
             internal DeletionCommit? Deletion;
+            // The turn a FiberBegin or a FiberEnd marks, and where the teardowns of the deletions that run at it are
+            // attached.
+            internal TurnAnchor? Anchor;
             // The index into Patches of a PatchPre or a PatchPost.
             internal int Index;
             internal OpKind Kind;
@@ -39,6 +42,50 @@ namespace Velvet
 
         // The renders of the pass on the stack, which a suspend nothing catches takes back.
         internal FiberPassJournal Journal { get; } = new();
+
+        // The teardowns whose turn had applied before they were queued, which the next apply runs ahead of its ops, in
+        // the order their anchors were recorded and then the order they were queued.
+        internal readonly List<LateTeardown> Late = new();
+        private readonly Stack<TurnAnchor> _freeAnchors = new();
+        private readonly List<TurnAnchor> _anchorsInUse = new();
+        private int _anchorSerial;
+        internal int LateOrder;
+
+        internal readonly struct LateTeardown
+        {
+            internal readonly int Serial;
+            internal readonly int Order;
+            internal readonly DeletionCommit Deletion;
+
+            internal LateTeardown(int serial, int order, DeletionCommit deletion)
+            {
+                Serial = serial;
+                Order = order;
+                Deletion = deletion;
+            }
+        }
+
+        internal TurnAnchor RentAnchor()
+        {
+            var anchor = _freeAnchors.Count > 0 ? _freeAnchors.Pop() : new TurnAnchor();
+            anchor.Serial = ++_anchorSerial;
+            _anchorsInUse.Add(anchor);
+            return anchor;
+        }
+
+        // Where the pass ends: nothing holds an anchor any longer, since the walks that kept them in a table have returned.
+        internal void ReleaseAnchors()
+        {
+            foreach (var anchor in _anchorsInUse)
+            {
+                anchor.Reset();
+                _freeAnchors.Push(anchor);
+            }
+            _anchorsInUse.Clear();
+            _anchorSerial = 0;
+            Late.Clear();
+            LateOrder = 0;
+        }
 
         internal bool Recording;
         internal bool Applying;
