@@ -346,29 +346,36 @@ namespace Velvet.Tests
                 Is.EqualTo((PickingMode.Ignore, true, PickingMode.Ignore, PickingMode.Position)));
         }
 
-        [Component]
-        private static VNode SwappedButton()
+        private static StateUpdater<int> s_setStage;
+
+        [Component(Compiler = false)]
+        private static VNode StagedButton()
         {
-            var on = Hooks.UseStore(s_flag, s => s.On);
-            return V.Div(className: "pointer-events-none", children: on
-                ? new VNode[] { V.Div(name: "spacer"), V.Button(name: "second", text: "b") }
-                : new VNode[] { V.Button(name: "first", text: "a") });
+            var (stage, setStage) = Hooks.UseState(0);
+            s_setStage = setStage;
+            return V.Div(className: "pointer-events-none", children: stage switch
+            {
+                0 => new VNode[] { V.Button(name: "first", text: "a") },
+                1 => new VNode[] { V.Div(name: "spacer") },
+                _ => new VNode[] { V.Div(name: "spacer"), V.Button(name: "second", text: "b") },
+            });
         }
 
+        // GREEN_ON_BASE(characterization): the base rents the returned button in a later pass as well; what the case
+        // holds is that it takes the scope's picking mode across that boundary, now that pooling waits for the end of
+        // the pass.
         [Test]
-        public void Given_AHeldButtonInsideANoneScope_When_ARenderReplacesItInItsSlot_Then_TheButtonThePoolHandsBackIgnoresPicking()
+        public void Given_AHeldButtonInsideANoneScope_When_ALaterRenderAddsAButtonAfterItsRemoval_Then_TheButtonThePoolHandsBackIgnoresPicking()
         {
-            // Arrange — the children are unkeyed, so the indexed diff replaces the first slot's button with the
-            // spacer before it builds the second slot, and the second button is rented from the pool that removal
-            // just returned the first one to. A keyed swap would not do: the keyed diff builds the new key before it
-            // removes the old one, so the replacement is rented before the first button is back in the pool.
-            using var flag = new PointerEventsFlagStore(false);
-            s_flag = flag;
-            using var mounted = V.Mount(_root, V.Component(SwappedButton, key: "swap"));
+            // Arrange — the first render replaces the button with a spacer, which returns it to the pool when that
+            // pass ends, and the second renders a button after the spacer, which rents the pool's.
+            using var mounted = V.Mount(_root, V.Component(StagedButton, key: "swap"));
             var first = _root.Q<Button>("first");
+            s_setStage.Invoke(1);
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
 
             // Act
-            flag.Set(true);
+            s_setStage.Invoke(2);
             mounted.GetSchedulerForTest().DrainImmediateForTest();
             var second = _root.Q<Button>("second");
 

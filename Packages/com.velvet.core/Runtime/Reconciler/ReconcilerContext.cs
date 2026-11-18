@@ -728,6 +728,10 @@ namespace Velvet
         internal void ClearElementSideTables(VisualElement element)
         {
             ChildListWrites.Drop(element);
+            if (ChildListWrites.IsRecording)
+            {
+                CleanedElements[element] = ++CleanupSerial;
+            }
             foreach (var table in _pureElementSideTables)
             {
                 if (table.Count != 0)
@@ -1592,6 +1596,33 @@ namespace Velvet
         // any of them. A pure side-table, enrolled in _pureElementSideTables.
         public Dictionary<VisualElement, StackingFacts> StackingFacts { get; } = new();
 
+        // The elements a pass patched whose stacking FiberZLayerCoordinator.SettlePatched decides once the pass's
+        // recorded writes have applied, from the facts held for each then.
+        internal List<QueuedSettle> PendingSettles { get; } = new();
+
+        // The cleanup each element a recording pass has cleaned went through, by its place in the order of cleanups, so
+        // a patch op recorded before it can tell the element was cleaned since (PendingPatch.Serial).
+        internal Dictionary<VisualElement, int> CleanedElements { get; } = new();
+        internal int CleanupSerial;
+
+        internal readonly struct QueuedSettle
+        {
+            internal QueuedSettle(VisualElement real, FiberNodePatcher? patcher, string[]? declared, bool anchored, int serial)
+            {
+                Real = real;
+                Patcher = patcher;
+                Declared = declared;
+                Anchored = anchored;
+                Serial = serial;
+            }
+
+            internal VisualElement Real { get; }
+            internal FiberNodePatcher? Patcher { get; }
+            internal string[]? Declared { get; }
+            internal bool Anchored { get; }
+            internal int Serial { get; }
+        }
+
         // The elements given stacking facts or pinned since FiberZLayerCoordinator.ResortLayers last recorded the
         // parent each stands in (StackingParents). A pure side-table, enrolled in _pureElementSideTables.
         public Dictionary<VisualElement, bool> StackingArrivals { get; } = new();
@@ -1609,6 +1640,10 @@ namespace Velvet
         // element FiberElementCleaner returns to the pool for each; released at the end of the top-level pass for
         // the reason PendingZLayerRemovals waits.
         internal List<(VisualElement Real, VisualElement Poolable)> PendingZLayerDeadReals { get; } = new();
+
+        // Removed rows FiberElementCleaner has taken down and not yet reset: they go back to their pools once the pass's
+        // recorded removals have landed, in the order the rows were taken down.
+        internal Queue<(VisualElement Removed, VisualElement Poolable)> PendingPoolReturns { get; } = new();
 
         // The element FiberElementCleaner.RemoveElement is tearing down while nothing pools it afterwards: it and
         // everything below it are left to the collector. Null for every other teardown.
