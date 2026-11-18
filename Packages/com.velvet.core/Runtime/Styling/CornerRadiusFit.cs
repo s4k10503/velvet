@@ -61,9 +61,8 @@ namespace Velvet
     /// style pass that finds a radius resolved on it attaches the fit, which then reads the rules' radius through
     /// <see cref="StyleCascade.Radius"/> and a length its code writes as it does for any other element. A style pass
     /// reaches the fit through the custom property <c>_preflight.uss</c> gives <see cref="WatchClass"/>, which goes on
-    /// an element once Velvet adds or removes a class whose rule writes a radius (one <see cref="StyleUserClassProperties"/>
-    /// reads that from), so it needs the bundled stylesheet attached and sees no change made to the class list from
-    /// outside Velvet.
+    /// an element once Velvet adds or removes a class of the application's own on it (one Velvet resolves nothing for), so
+    /// it needs the bundled stylesheet attached and sees no change made to the class list from outside Velvet.
     /// </remarks>
     internal static class CornerRadiusFit
     {
@@ -113,7 +112,7 @@ namespace Velvet
         public static void Observe(VisualElement element) => Watch(element);
 
         // The class _preflight.uss keys the custom property on that makes UI Toolkit send an element its style passes. It
-        // goes on an element when a class whose rule writes a radius is added or removed on it, and a recycled element
+        // goes on an element when a class of the application's own is added or removed on it, and a recycled element
         // loses it with the rest of its class list.
         internal const string WatchClass = "velvet-radius-watch";
 
@@ -150,45 +149,28 @@ namespace Velvet
             }
         }
 
-        // A class that writes a radius is one a probe read it from (StyleUserClassProperties), which a class the bundled
-        // table names never asks. Only a change made after the element is on a panel is one the size change that lays it
-        // out does not reach.
+        // A class Velvet resolves something for: a bundled utility, a family it realises in C#, an arbitrary value, a
+        // theme token, or the marker of a group or a peer. Whatever is left is the application's own.
+        private static bool ResolvedByVelvet(string cls)
+        {
+            var core = StyleArbitraryValueResolver.StripImportant(cls, out _);
+            return StyleUtilityProperties.TryGet(core, out _)
+                || StyleClassFamilies.Feeds(core)
+                || StyleArbitraryValueResolver.IsInlineResolved(core)
+                || StyleArbitraryValueResolver.IsFilterFamilyToken(core)
+                || StyleThemeClass.OwnsPlainToken(core)
+                || core == StyleRelationalVariantManipulator.GroupClass
+                || core == StyleRelationalVariantManipulator.PeerClass;
+        }
+
+        // Only a class of the application's own can bring a radius with it that nothing here tracks, and only a change
+        // made after the element is on a panel is one the size change that lays it out does not reach.
         private static void WatchForRule(VisualElement element, string cls)
         {
-            if (element.panel == null)
+            if (element.panel == null || element.ClassListContains(WatchClass) || ResolvedByVelvet(cls))
             {
                 return;
             }
-            var core = StyleArbitraryValueResolver.StripImportant(cls, out _);
-            if (StyleUtilityProperties.TryGet(core, out _) || element.ClassListContains(WatchClass))
-            {
-                return;
-            }
-            // While the probe is out the class is read again in Learned, which its geometry change reaches in the update
-            // that asked.
-            if (StyleUserClassProperties.TryGet(element, core, out var written) && WritesRadius(written))
-            {
-                Mark(element);
-            }
-        }
-
-        // The probe of cls has been read for element, whose style the class already shaped in the update that asked.
-        public static void Learned(VisualElement element, StyleLonghandSet written)
-        {
-            if (!WritesRadius(written))
-            {
-                return;
-            }
-            Mark(element);
-            OnStyleResolved(element);
-        }
-
-        private static bool WritesRadius(StyleLonghandSet written)
-            => written.Contains(StyleLonghand.BorderTopLeftRadius) || written.Contains(StyleLonghand.BorderTopRightRadius)
-                || written.Contains(StyleLonghand.BorderBottomRightRadius) || written.Contains(StyleLonghand.BorderBottomLeftRadius);
-
-        private static void Mark(VisualElement element)
-        {
             Watch(element);
             element.AddToClassList(WatchClass);
         }

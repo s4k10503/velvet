@@ -70,6 +70,19 @@ namespace Velvet
         private static readonly string[]?[] s_arrays = new string[]?[SlotCount];
         private static readonly StyleClassFamily[] s_families = new StyleClassFamily[SlotCount];
 
+        // Whether the token feeds a family Velvet realises in C#.
+        internal static bool Feeds(string cls)
+        {
+            foreach (var (_, feeds) in s_predicates)
+            {
+                if (feeds(cls))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
         internal static bool Has(string[]? classNames, StyleClassFamily family) => (Of(classNames) & family) != 0;
 
         private static StyleClassFamily Of(string[]? classNames)
