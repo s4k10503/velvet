@@ -916,7 +916,11 @@ namespace Velvet
         /// Writes the narrowed lists again where the element's rules have changed since they were written, called on
         /// each pass a layoutId projection draws the element
         /// (Given_ANarrowedMotionWhoseTransitionClassesChangeMidMove_When_ItsBackgroundChanges_Then_ItRunsOnTheNewTiming)
-        /// and each step it runs its rotate on past its landing.
+        /// and each step it runs its rotate on past its landing. Where carries read the element's lists (LayoutIdCarry.Hold),
+        /// it is called once they have, since it takes what the narrowers write out of a variant swap's list
+        /// (Given_ALeadMixingARotateItsRulesTransition_When_ItsPoseTweensItsRotateMidMove_Then_ItMixesTowardsThePosesRotateOnThePoseTweensTiming,
+        /// Given_ALeadWhoseTurnRunsOnPastItsLanding_When_ItsPoseTweensAsItsClassesTurnItBack_Then_ItTurnsOnThePoseTweensTiming,
+        /// Given_ALeadCrossfadingInWhoseRulesTransitionItsOpacity_When_ItsPoseTweensItsOpacityToZero_Then_ItsOwnIsCarriedOnThePoseTweensTiming).
         /// </summary>
         internal static void Refresh(VisualElement element)
         {
