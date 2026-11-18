@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using System.Reflection;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.TestTools;
@@ -1641,6 +1642,26 @@ namespace Velvet.Tests
             s_setTick = setTick;
             if (s_throwOnNextRender) throw new InvalidOperationException("Nested generic boundary throw");
             return V.Label(text: "ok");
+        }
+
+        // GREEN_ON_BASE(characterization): the base clears the failure once the boundary above is handed it. Drop
+        // `boundary.FallbackReconcileFailure = null;` and the fiber keeps the failure for a later attempt to take.
+        [Test]
+        public void Given_AFiberHoldingAFallbackReconcileFailure_When_ItIsTaken_Then_NoFailureIsLeftOnTheFiber()
+        {
+            // Arrange
+            var boundary = new ComponentFiber
+            {
+                FallbackReconcileFailure = new InvalidOperationException("fallback could not be created"),
+            };
+            var take = typeof(FiberErrorBoundary).GetMethod(
+                "TakeFallbackReconcileFailure", BindingFlags.NonPublic | BindingFlags.Static);
+
+            // Act
+            take.Invoke(null, new object[] { boundary });
+
+            // Assert
+            Assert.That(boundary.FallbackReconcileFailure, Is.Null);
         }
     }
 }

@@ -29,6 +29,8 @@ namespace Velvet.Tests
     /// back-references consistent at every level; disposing the mounted tree unmounts the root, clearing the
     /// rendered DOM and detaching the child fiber. Each <c>V.Mount</c> creates a fresh root fiber, so there is
     /// no fiber-reuse-on-remount concept to verify.</item>
+    /// <item>Setting <c>CaughtError</c> to null clears the pending-report flags the catch set; setting it to a
+    /// value leaves them.</item>
     /// </list>
     /// </summary>
     [TestFixture]
@@ -560,6 +562,55 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(rootFiber.Child, Is.Null, "Disposing the mounted tree detaches the child fiber via the unmount path");
+        }
+
+        #endregion
+
+        #region Caught error
+
+        private static readonly (System.Exception Error, ErrorInfo Info) s_caught =
+            (new System.InvalidOperationException("caught"), new ErrorInfo(string.Empty));
+
+        // GREEN_ON_BASE(characterization): the base keeps an unreported catch while a new error is set over it.
+        [Test]
+        public void Given_AnUnreportedCatch_When_AnotherErrorIsCaught_Then_TheCatchIsStillUnreported()
+        {
+            // Arrange
+            var fiber = new ComponentFiber { CatchUnreported = true };
+
+            // Act
+            fiber.CaughtError = s_caught;
+
+            // Assert
+            Assert.That(fiber.CatchUnreported, Is.True);
+        }
+
+        // GREEN_ON_BASE(characterization): the base leaves a boundary with no unreported catch so when its error clears.
+        [Test]
+        public void Given_NoUnreportedCatch_When_TheCaughtErrorIsCleared_Then_TheCatchIsStillNotUnreported()
+        {
+            // Arrange
+            var fiber = new ComponentFiber { CaughtError = s_caught };
+
+            // Act
+            fiber.CaughtError = null;
+
+            // Assert
+            Assert.That(fiber.CatchUnreported, Is.False);
+        }
+
+        // GREEN_ON_BASE(characterization): the base leaves a boundary whose report was not carried so when its error clears.
+        [Test]
+        public void Given_NoReportFromTheCarry_When_TheCaughtErrorIsCleared_Then_ItIsStillNotReportedFromTheCarry()
+        {
+            // Arrange
+            var fiber = new ComponentFiber { CaughtError = s_caught };
+
+            // Act
+            fiber.CaughtError = null;
+
+            // Assert
+            Assert.That(fiber.CatchReportedFromCarry, Is.False);
         }
 
         #endregion

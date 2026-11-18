@@ -92,7 +92,12 @@ namespace Velvet
             // another walks.
             internal void Reset()
             {
+                // MUTANT_SURVIVES(equivalent, line removed): Claim is reached only from the walk inside Push, whose edge loop calls
+                // Claims.Clear() before each edge, so the counts Reset leaves are dropped before anything reads them, and no result differs; the
+                // clear here only decides when the identities those counts are keyed on are released.
                 _counts.Clear();
+                // MUTANT_SURVIVES(equivalent, line removed): PushScope has one caller, PushInFreshScope, whose finally pairs it with
+                // PopScope, so the stack is empty whenever Reset runs.
                 _scopes.Clear();
                 _scope = 0;
                 _nextScope = 1;

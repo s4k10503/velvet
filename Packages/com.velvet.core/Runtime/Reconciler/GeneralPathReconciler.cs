@@ -1696,6 +1696,7 @@ namespace Velvet
                 {
                     // The catch was made outside this walk, before the fallback suspended: React keeps it, and
                     // reports it from the commit that reveals the fallback.
+                    // MUTANT_SURVIVES(equivalent, literal): the flag is read only for a boundary holding a report from this walk, and RecordCatch, which queues every report, writes it false first; a true left here is overwritten before any read.
                     boundary.CatchReportedFromCarry = false;
                     boundary.CatchUnreported = true;
                 }

@@ -2614,5 +2614,135 @@ namespace Velvet.Tests
         }
 
         #endregion
+
+        #region What the coordinator keeps for the elements it stops holding
+
+        // The record FiberZLayerCoordinator keeps of an element it holds, read from the table that owns it.
+        private static bool IsHeld(VisualElement element)
+        {
+            var table = typeof(FiberZLayerCoordinator)
+                .GetField("s_held", BindingFlags.NonPublic | BindingFlags.Static)
+                .GetValue(null);
+            var arguments = new object[] { element, null };
+            return (bool)table.GetType().GetMethod("TryGetValue").Invoke(table, arguments);
+        }
+
+        // GREEN_ON_BASE(characterization): the base reads a bare negative z class as declaring stacking. Drop
+        // `|| core.StartsWith("-z-", System.StringComparison.Ordinal)` and nothing tracks an element that carries
+        // no other stacking class.
+        [Test]
+        public void Given_ANegativeZClassWithNoPositionClass_When_Mounted_Then_TheElementPaintsBehindItsEarlierSibling()
+        {
+            // Arrange / Act
+            var root = new VisualElement();
+            using var mounted = V.Mount(root, V.Div(name: "parent", children: new VNode[]
+            {
+                V.Div(name: "sibling"),
+                V.Div(name: "negz", className: "-z-10"),
+            }));
+
+            // Assert
+            Assert.That(ZBandProbe.PaintOrder(root.Q<VisualElement>("parent")), Is.EqualTo("negz,sibling"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base forgets the placeholder of a relocated element that unmounts.
+        // Drop `Release(placeholder);` in TakeReal and the placeholder keeps the record that has it standing
+        // for the element.
+        [Test]
+        public void Given_ARelocatedElement_When_ItUnmounts_Then_ItsPlaceholderIsNoLongerHeld()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { V.Div(name: "parent", className: "relative", children: new VNode[]
+            {
+                V.Div(name: "child", className: "absolute z-10"),
+            }) };
+            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), tree);
+            var child = scope.Root.Q<VisualElement>("child");
+            var placeholder = FiberZLayerCoordinator.PlaceholderOf(scope.Reconciler.Context, child);
+            var heldWhileMounted = placeholder != null && IsHeld(placeholder);
+            var unmounted = new VNode[] { V.Div(name: "parent", className: "relative") };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, tree, unmounted);
+
+            // Assert — a placeholder that was never held has nothing to forget, so the value read is true for it.
+            Assert.That(!heldWhileMounted || IsHeld(placeholder), Is.False);
+        }
+
+        // GREEN_ON_BASE(characterization): the base forgets a retired placeholder once the pass drains it. Drop
+        // `Release(retired);` in DrainTeardowns and the placeholder keeps the record that marks it retired.
+        [Test]
+        public void Given_ARelocatedElement_When_ItsZClassIsRemoved_Then_ItsRetiredPlaceholderIsNoLongerHeld()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var stacked = new VNode[] { V.Div(name: "parent", className: "relative", children: new VNode[]
+            {
+                V.Div(name: "child", className: "absolute z-10"),
+            }) };
+            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), stacked);
+            var child = scope.Root.Q<VisualElement>("child");
+            var placeholder = FiberZLayerCoordinator.PlaceholderOf(scope.Reconciler.Context, child);
+            var heldWhileStacked = placeholder != null && IsHeld(placeholder);
+            var plain = new VNode[] { V.Div(name: "parent", className: "relative", children: new VNode[]
+            {
+                V.Div(name: "child", className: "absolute"),
+            }) };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, stacked, plain);
+
+            // Assert — a placeholder that was never held has nothing to forget, so the value read is true for it.
+            Assert.That(!heldWhileStacked || IsHeld(placeholder), Is.False);
+        }
+
+        // GREEN_ON_BASE(characterization): the base forgets a placeholder its arrangement retires and removes. Drop
+        // `Release(retired);` in DrainTeardownsUnder and the placeholder keeps the record that marks it retired.
+        [Test]
+        public void Given_AZ0ElementLiftedAboveALaterUnpositionedSibling_When_ThatSiblingIsRemoved_Then_ItsRetiredPlaceholderIsNoLongerHeld()
+        {
+            // Arrange — the case above, with the element's own classes left alone: the sibling it is lifted above is
+            // what the second pass takes away, so the arrangement rather than a patch returns it to its slot.
+            using var scope = new ReconcilerScope();
+            var lifted = new VNode[] { V.Div(name: "parent", className: "relative", children: new VNode[]
+            {
+                V.Div(name: "zero", className: "absolute z-0"),
+                V.Div(name: "plain"),
+            }) };
+            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), lifted);
+            var zero = scope.Root.Q<VisualElement>("zero");
+            var placeholder = FiberZLayerCoordinator.PlaceholderOf(scope.Reconciler.Context, zero);
+            var heldWhileLifted = placeholder != null && IsHeld(placeholder);
+            var alone = new VNode[] { V.Div(name: "parent", className: "relative", children: new VNode[]
+            {
+                V.Div(name: "zero", className: "absolute z-0"),
+            }) };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, lifted, alone);
+
+            // Assert — a placeholder that was never held has nothing to forget, so the value read is true for it.
+            Assert.That(!heldWhileLifted || IsHeld(placeholder), Is.False);
+        }
+
+        // GREEN_ON_BASE(characterization): the base adds the box a relocated in-flow element with a flex order lays
+        // out by to its parent. Drop `ChildListWrites.HierarchyAdd(parent, anchor);` and no child of the parent holds it.
+        [Test]
+        public void Given_AnInFlowElementWithAZAndAFlexOrder_When_Mounted_Then_ItsLayoutBoxIsAChildOfTheParent()
+        {
+            // Arrange / Act
+            var root = new VisualElement();
+            using var mounted = V.Mount(root, V.Div(name: "parent", className: "flex flex-row", children: new VNode[]
+            {
+                V.Div(name: "a", className: "z-10 order-2"),
+                V.Div(name: "b"),
+            }));
+
+            // Assert
+            Assert.That(root.Q<VisualElement>("parent").hierarchy.Children().Count(FiberZLayerCoordinator.IsInternal), Is.EqualTo(1));
+        }
+
+        #endregion
     }
 }

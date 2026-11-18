@@ -112,6 +112,25 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ABoldLabelInABoldContainer_When_TheFontTheContainerInheritsChanges_Then_TheLabelFollowsInTheSameFrame()
+        {
+            // Arrange
+            var root = NewRootGivenFont(s_sans);
+            _mounted = V.Mount(root, V.Div(className: "font-bold", children: new[]
+            {
+                V.Label(className: "font-bold", text: "target", name: "target"),
+            }));
+            RunAFrame();
+
+            // Act
+            root.style.unityFontDefinition = FontDefinition.FromSDFFont(s_serif);
+            RunAFrame();
+
+            // Assert
+            Assert.That(Target(root).style.unityFontDefinition.value.fontAsset, Is.SameAs(s_serifBold));
+        }
+
+        [Test]
         public void Given_ABoldLabelOnTheDefaultFamily_When_TheDefaultFamilyChanges_Then_TheLabelResolvesTheNewFamilysBold()
         {
             // Arrange
