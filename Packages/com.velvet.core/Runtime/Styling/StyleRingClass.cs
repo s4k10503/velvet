@@ -428,7 +428,9 @@ namespace Velvet
                     && !(root == "inset-ring" && StyleCompositeRejection.IsZero(value)));
                 return;
             }
-            slots.Colour.Offer(important, StyleColorValueParser.RejectsAsColour(value, keywordsPass: true));
+            // An inset ring reads its colour inside the box-shadow's own layer, where inset is no colour.
+            slots.Colour.Offer(important, StyleColorValueParser.RejectsAsColour(value,
+                keywordsPass: !(root == "inset-ring" && value.Equals("inset", System.StringComparison.OrdinalIgnoreCase))));
         }
 
         // Whether suffix is a bracket with an opacity modifier holding a value that is no colour, under a type hint that is
@@ -439,8 +441,9 @@ namespace Velvet
             var slash = StyleColorValueParser.ColorModifierSlashIndex(suffix, 0);
             return slash > 2 && suffix[0] == '[' && suffix[slash - 1] == ']'
                 && StyleArbitraryValueResolver.TrySplitTypeHint(suffix.AsSpan(1, slash - 2), out var hint, out var value)
-                && hint != null && !StyleColorValueParser.HintSelectsNonColour(root, hint)
-                && StyleColorValueParser.RejectsAsColour(value.ToString());
+                && (StyleColorValueParser.IsKeyword(value.ToString())
+                    || (hint != null && !StyleColorValueParser.HintSelectsNonColour(root, hint)
+                        && StyleColorValueParser.RejectsAsColour(value.ToString())));
         }
 
         // Tailwind's isPositiveInteger: String(Number(suffix)) === suffix, so digits without a leading zero, naming

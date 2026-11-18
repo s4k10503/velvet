@@ -597,8 +597,8 @@ namespace Velvet.Tests
                 Is.EqualTo(Palette("red-500").Substring(0, 6) + "80"));
         }
 
-        // GREEN_ON_BASE(characterization): the base draws these rings, at currentcolor for a keyword and in the system colour's
-        // place for a system colour, which is what Chromium computes for each.
+        // GREEN_ON_BASE(characterization): the base draws these rings at currentcolor; Chromium draws the system colour's own
+        // colour for window, and the case holds that the ring is drawn.
         [TestCase("ring-2 ring-[unset]")]
         [TestCase("ring-2 ring-[window]")]
         public void Given_ARingBracketHoldingAKeywordOrASystemColour_When_Extracted_Then_TheRingIsDrawn(string classes)
@@ -616,6 +616,34 @@ namespace Velvet.Tests
         {
             // Act
             var drawn = StyleShadowClass.TryExtract(new[] { "inset-ring", "inset-ring-[inherit]" }, out _);
+
+            // Assert
+            Assert.That(drawn, Is.True);
+        }
+
+        // Chromium reads the colour variable of a shadow with no fallback, so a keyword there leaves the box-shadow invalid.
+        [TestCase("shadow-md shadow-[color:unset]")]
+        [TestCase("inset-shadow-sm inset-shadow-[color:inherit]")]
+        [TestCase("shadow-md shadow-[color:revert-layer]")]
+        [TestCase("inset-ring inset-ring-2 inset-ring-[inset]")]
+        [TestCase("ring-2 ring-[unset]/50")]
+        public void Given_AKeywordInAShadowColourOrAnInsetRingOrBehindARingModifier_When_Extracted_Then_TheBoxShadowIsDiscarded(
+            string classes)
+        {
+            // Act
+            var drawn = StyleShadowClass.TryExtract(StyleSpacingPrecedence.Normalize(classes.Split(' ')), out _)
+                || StyleRingClass.TryExtract(StyleSpacingPrecedence.Normalize(classes.Split(' ')), out _);
+
+            // Assert
+            Assert.That(drawn, Is.False);
+        }
+
+        [TestCase("ring-2 ring-[revert-layer]")]
+        [TestCase("ring ring-offset-2 ring-offset-[revert-layer]")]
+        public void Given_ARingBracketHoldingRevertLayer_When_Extracted_Then_TheRingIsDrawn(string classes)
+        {
+            // Act
+            var drawn = StyleRingClass.TryExtract(StyleSpacingPrecedence.Normalize(classes.Split(' ')), out _);
 
             // Assert
             Assert.That(drawn, Is.True);

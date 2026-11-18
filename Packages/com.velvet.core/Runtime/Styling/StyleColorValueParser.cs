@@ -94,18 +94,17 @@ namespace Velvet
         // Whether the browser rejects value where it is written as a <color>: a value TryParseColor does not read, unless it
         // is a function, which this does not judge (var(), oklch()), or a word naming a colour: a named colour,
         // currentcolor, transparent or a system colour, current or deprecated, which TryParseColor may not know.
-        // keywordsPass leaves the CSS-wide keywords and inset undecided, as a caller does whose value reaches a custom
-        // property the box-shadow reads, where the browser takes them as the keyword it is.
+        // keywordsPass leaves the CSS-wide keywords and inset undecided, for a ring's colour, which the box-shadow reads
+        // through a custom property with a fallback.
         internal static bool RejectsAsColour(string value, bool keywordsPass = false)
         {
-            if (value.IndexOf('(') >= 0 || TryParseColor(value.AsSpan(), out _))
+            if (value.IndexOf('(') >= 0 || TryParseColor(value.AsSpan(), out _) || (keywordsPass && IsKeyword(value)))
             {
                 return false;
             }
             if (value.Length > 0 && Array.TrueForAll(value.ToCharArray(), char.IsLetter))
             {
-                return !(TailwindDataTypes.IsNamedColor(value) || s_deprecatedSystemColours.Contains(value)
-                    || (keywordsPass && s_keywords.Contains(value)));
+                return !(TailwindDataTypes.IsNamedColor(value) || s_deprecatedSystemColours.Contains(value));
             }
             foreach (var c in value)
             {
@@ -117,9 +116,12 @@ namespace Velvet
             return false;
         }
 
+        // The CSS-wide keywords and inset, which a ring's colour takes as the keyword they are.
+        internal static bool IsKeyword(string value) => s_keywords.Contains(value);
+
         private static readonly HashSet<string> s_keywords = new(StringComparer.OrdinalIgnoreCase)
         {
-            "inherit", "unset", "initial", "revert", "inset",
+            "inherit", "unset", "initial", "revert", "revert-layer", "inset",
         };
 
         // CSS Color 4's deprecated system colours, which Tailwind's own list lacks.

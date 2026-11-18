@@ -758,7 +758,7 @@ namespace Velvet
             {
                 if (hint != null ? hint == "color" : TailwindDataTypes.IsColor(value.AsSpan()))
                 {
-                    colour.Offer(important, StyleColorValueParser.RejectsAsColour(value, keywordsPass: true) || ModifierOutside(core, 0),
+                    colour.Offer(important, StyleColorValueParser.RejectsAsColour(value) || ModifierOutside(core, 0),
                         mixesAlpha: true);
                 }
                 else
