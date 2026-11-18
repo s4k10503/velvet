@@ -25,8 +25,3 @@
 /* Gives an element whose colour is read off a live source (border-current, text-inherit, ...) the custom property
    that makes UI Toolkit send it CustomStyleResolvedEvent; see ColorReferenceWatch. */
 .velvet-color-reference { --velvet-color-reference: 1; }
-
-/* Gives an element on which Velvet added or removed a class of the application's own (CornerRadiusFit.WatchClass) the
-   custom property that makes UI Toolkit send it CustomStyleResolvedEvent once its style is resolved; CornerRadiusFit reads
-   a radius that class swap brings in without a size change from that event. */
-.velvet-radius-watch { --velvet-radius-watch: 1; }

@@ -11,13 +11,14 @@ namespace Velvet.Tests.Performance
 {
     /// <summary>
     /// Frames in which a class is toggled at the root of a mounted tree of 1,000 Divs, on a live runtime panel carrying
-    /// Velvet's utility stylesheet. Each sample is one such frame: the time the panel recorded under the markers
-    /// <see cref="PanelFrameRecorder"/> reads, and the GC.Alloc blocks every thread charged in it.
+    /// Velvet's utility stylesheet and a stylesheet of its own with a rule that declares a border radius. Each sample is one
+    /// such frame: the time the panel recorded under the markers <see cref="PanelFrameRecorder"/> reads, and the GC.Alloc
+    /// blocks every thread charged in it.
     /// <para>
-    /// Two cases, each over a fresh tree of the same shape. In the first no Div has had a class of its own added or
-    /// removed since it was built, which is the state of an element before the radius fit watches style passes. In the
-    /// second each Div has, so it carries <see cref="CornerRadiusFit.WatchClass"/>. A case throws when its elements do
-    /// not hold what it says, or when a frame ran none of a phase.
+    /// Two cases, each over a fresh tree of the same shape. In the first no Div matches the radius rule, which is what an
+    /// element costs without the radius fit's property. In the second every Div does, so each carries the property
+    /// (<c>RadiusWatchSheets</c>) and gets a style event in each restyle. A case throws when its Divs do not resolve the
+    /// property as it says, or when a frame ran none of a phase.
     /// </para>
     /// </summary>
     [TestFixture]
@@ -36,8 +37,7 @@ namespace Velvet.Tests.Performance
         private PanelSettings _panelSettings = null!;
         private VisualElement _root = null!;
         private MountedTree _mounted = null!;
-        private static StateUpdater<bool> s_setOwnClass;
-
+    
         [UnitySetUp]
         public IEnumerator SetUp()
         {
@@ -66,43 +66,38 @@ namespace Velvet.Tests.Performance
 
         // GREEN_ON_BASE(characterization): a benchmark asserts nothing about its numbers, so the base runs it green.
         [UnityTest, Performance]
-        public IEnumerator RestyleFrames_1000DivsAfterAClassOfTheirOwnChanged() => Run(watched: true);
+        public IEnumerator RestyleFrames_1000DivsUnderARadiusRule() => Run(watched: true);
 
         // GREEN_ON_BASE(characterization): a benchmark asserts nothing about its numbers, so the base runs it green.
         [UnityTest, Performance]
-        public IEnumerator RestyleFrames_1000DivsNeverClassChanged() => Run(watched: false);
+        public IEnumerator RestyleFrames_1000DivsUnderNoRadiusRule() => Run(watched: false);
 
-        [Component]
-        private static VNode RenderDivs()
+        // The class the sheet below gives a 10px radius, which a 40px Div fits unscaled.
+        private const string RadiusClass = "layout-id-test-round";
+
+        private static VNode RenderDivs(bool watched)
         {
-            var (own, setOwn) = Hooks.UseState(false);
-            s_setOwnClass = setOwn;
             var children = new VNode[Divs];
             for (var i = 0; i < Divs; i++)
             {
-                children[i] = V.Div(className: own ? "w-[10px] h-[10px] own-class" : "w-[10px] h-[10px]", key: "div-" + i);
+                children[i] = V.Div(className: watched ? "w-[40px] h-[40px] " + RadiusClass : "w-[40px] h-[40px]", key: "div-" + i);
             }
             return V.Div("flex flex-col", children);
         }
 
         private IEnumerator Run(bool watched)
         {
-            _mounted = V.Mount(_root, V.Component(RenderDivs));
+#if UNITY_EDITOR
+            _root.styleSheets.Add(UnityEditor.AssetDatabase.LoadAssetAtPath<StyleSheet>(
+                "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/LayoutIdTestRules.uss"));
+#endif
+            _mounted = V.Mount(_root, RenderDivs(watched));
             _mounted.FlushStateForTest();
             for (var i = 0; i < SettleFrames; i++)
             {
                 yield return null;
             }
             var top = _root[0];
-            if (watched)
-            {
-                s_setOwnClass.Invoke(true);
-                _mounted.FlushStateForTest();
-            }
-            for (var i = 0; i < SettleFrames; i++)
-            {
-                yield return null;
-            }
             RequireArm(top, watched);
 
             var phases = new SampleGroup[PanelFrameRecorder.Phases.Length];
@@ -148,22 +143,15 @@ namespace Velvet.Tests.Performance
             {
                 throw new InvalidOperationException($"expected {Divs} mounted Divs, the root holds {top.childCount}");
             }
-            RequireWatch(top, false, "the top Div");
             for (var i = 0; i < top.childCount; i++)
             {
-                RequireWatch(top[i], watched, $"Div {i}");
-            }
-        }
-
-        // The class and the property it brings, so a sheet without the rule leaves the two arms alike and fails the run.
-        private static void RequireWatch(VisualElement element, bool watched, string label)
-        {
-            var resolves = element.customStyle.TryGetValue(new CustomStyleProperty<float>("--velvet-radius-watch"), out _);
-            if (element.ClassListContains(CornerRadiusFit.WatchClass) != watched || resolves != watched)
-            {
-                throw new InvalidOperationException(
-                    $"{label} has the class {element.ClassListContains(CornerRadiusFit.WatchClass)} and resolves the property {resolves}, "
-                    + $"where this arm says {watched} for both");
+                var resolves = top[i].customStyle.TryGetValue(new CustomStyleProperty<string>("--velvet-radius-watch"), out _);
+                if (resolves != watched)
+                {
+                    throw new InvalidOperationException(
+                        $"Div {i} resolves the watch property {resolves}, where this arm says {watched}: the radius rule did "
+                        + "not reach it, or the property was not written into it");
+                }
             }
         }
     }

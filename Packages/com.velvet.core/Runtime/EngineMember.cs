@@ -105,7 +105,21 @@ namespace Velvet
             ReadProperty(UIElements, "UnityEngine.UIElements.StyleProperty", "name", "System.String");
 
         internal static readonly EngineMember StylePropertyValues =
-            ReadProperty(UIElements, "UnityEngine.UIElements.StyleProperty", "values", "UnityEngine.UIElements.StyleValueHandle[]");
+            WrittenProperty(UIElements, "UnityEngine.UIElements.StyleProperty", "values", "UnityEngine.UIElements.StyleValueHandle[]");
+
+        // RadiusWatchSheets' property in a rule that declares a radius, with one keyword value of its own, and the take-back
+        // of it. The handle is built by its constructor, whose second argument is the kind of value.
+        internal static readonly EngineMember StyleRuleAddProperty = Method(UIElements, "UnityEngine.UIElements.StyleRule",
+            "AddProperty", "UnityEngine.UIElements.StyleProperty", "System.String");
+
+        internal static readonly EngineMember StyleRuleRemoveProperty = Method(UIElements, "UnityEngine.UIElements.StyleRule",
+            "RemoveProperty", "System.Boolean", "UnityEngine.UIElements.StyleProperty");
+
+        internal static readonly EngineMember StyleValueTypeKeyword = Field(UIElements,
+            "UnityEngine.UIElements.StyleValueType", "Keyword", "enum:UnityEngine.UIElements.StyleValueType");
+
+        internal static readonly EngineMember StyleValueHandleConstruct = Constructor(UIElements,
+            "UnityEngine.UIElements.StyleValueHandle", "System.Int32", "enum:UnityEngine.UIElements.StyleValueType");
 
         internal static readonly EngineMember StyleComplexSelectorSelectors = ReadProperty(UIElements,
             "UnityEngine.UIElements.StyleComplexSelector", "selectors", "UnityEngine.UIElements.StyleSelector[]");

@@ -1,11 +1,10 @@
 ### Fixed
 
-- A corner radius that overflows its box and comes in through a class of your own that a re-render adds or removes,
-  with no size change, is scaled down the way CSS does it (Backgrounds 3 §5.5) in the same update, where it kept its
-  unfitted value until the box next resized. A class of your own is one Velvet does not resolve itself, so the bundled
-  utilities, `ring-2` and `uppercase` do not count. It holds on the elements `V.Div`, `V.Button`, `V.Custom<T>` and the
-  other element factories build, for a radius from a stylesheet of your own, and needs the bundled stylesheet
-  attached. A class change your code makes outside Velvet still waits for the next size change, as does a write to
-  `style.border*Radius` after layout. A rule of your own keyed on an ancestor's class or on a pseudo-class Velvet does
-  not toggle is seen only where a style event reaches the fit: on an element with a bundled `rounded-*` class, on a
-  Label or a Button the fit already tracks, or on one a class of your own has marked.
+- A corner radius that overflows its box and comes in with no size change is scaled down the way CSS does it
+  (Backgrounds 3 §5.5) in the same update, where it kept its unfitted value until the box next resized. This holds
+  whatever brought the radius: a class your code or Velvet adds or removes, a class on an ancestor that a rule of
+  yours keys on, or a pseudo-class like `:hover`. Velvet reads the stylesheets attached to the mounted element or one of
+  its ancestors, and what they import, and writes a custom property into each rule that declares a radius in memory
+  (in the editor it is taken back before an assembly reload and when play mode ends). A stylesheet attached to an
+  element inside the tree, or the panel's theme sheet, is not read. A write to `style.border*Radius` after layout is
+  still fitted at the element's next size change or next style pass.

@@ -435,15 +435,16 @@ declared radius, and a radius your code writes to `style` is scaled with the oth
 no longer needs the fit. A keyword written there (`initial`) is left alone. A change of class under
 `transition-all` animates between the fitted radii rather than the declared ones. An element with no such class and
 no arbitrary radius is fitted all the same, from a radius your own stylesheet gives it or your code writes to `style`
-(`border-radius: 400px` on a `.pill` rule). It is checked each time its size changes, first layout included, and
-each time the style of an element on which Velvet added or removed a class of your own (one Velvet does not resolve
-itself, so not a utility, `ring-2`, `uppercase` or `dark`) is resolved, so a class swap that brings a radius in after
-layout is fitted in the same update, with no size change. That needs the bundled stylesheet attached, and it does not
-see a class change your code makes to the element outside Velvet. A rule of your own keyed on an ancestor's class or on
-a pseudo-class that Velvet does not toggle is seen only where a style event reaches the fit: on an element with a
-bundled `rounded-*` class, on a Label or a Button the fit already tracks, or on one a class of your own has marked. A
-write to `style` after layout is fitted at the element's next size change, or the next time one of those classes
-changes.
+(`border-radius: 400px` on a `.pill` rule). It is checked each time its size changes, first layout included, and each
+time a rule that declares a radius starts or stops matching it, so a radius that arrives with no size change is fitted
+in the same update, whatever brought it: a class your code or Velvet adds or removes, a class on an ancestor that a rule
+of yours keys on, or a pseudo-class such as `:hover`. Velvet reads the stylesheets attached to the element a tree is
+mounted on or to one of its ancestors, and what they import, and gives each rule that declares a radius a custom
+property of its own in memory, which is what makes UI Toolkit report the match; a sheet attached to an element inside
+the tree, or the panel's theme sheet, is not read, and the bundled utilities are covered by the rules that restate their
+radii. An element no radius rule matches is restyled as before. A write to `style` after layout is the exception: UI
+Toolkit reports it to nobody, so it is fitted at the element's next size change or next style pass, and a style pass
+comes with the next change of a class that a radius rule matches.
 
 **The wrapper-less paints under a hidden overflow.** UI Toolkit applies an element's own overflow clip to the
 element's own painted content, and cuts it at the **padding** box, while CSS clips neither a box-shadow nor a border

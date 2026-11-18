@@ -58,12 +58,7 @@ namespace Velvet
         public static void Remove(VisualElement element, string cls, long priority)
         {
             var previousUniform = StyleArbitraryValueResolver.UniformScaleClassFallback(element);
-            var held = element.ClassListContains(cls);
             RemoveFromModel(element, cls, priority);
-            if (held && !element.ClassListContains(cls))
-            {
-                CornerRadiusFit.NoteRemoved(element, cls);
-            }
             StyleArbitraryValueResolver.NotifyClassesChanged(element, previousUniform);
         }
 

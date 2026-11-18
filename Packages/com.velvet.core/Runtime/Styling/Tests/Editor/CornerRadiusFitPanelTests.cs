@@ -23,8 +23,6 @@ namespace Velvet.Tests
 
         private const string WideBox = "w-[330px] h-[34px]";
 
-        private const string StylesDirectory = "Packages/com.velvet.core/Runtime/Styles";
-
         private const string OwnRadiusSheet = "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/LayoutIdTestRules.uss";
 
         private static StateUpdater<string> s_setClass;
@@ -490,8 +488,10 @@ namespace Velvet.Tests
             Assert.That(Radii(box), Is.EqualTo(s_unevenRadiiFittedToWideBox).Within(1e-3f));
         }
 
-        // Each kind is a type the factory builds a different way: a Label and a Button are hosts of the fit, a TextField and a
-        // Toggle are pooled, a ScrollView is built directly, a Motion goes through the factory's other entry point, and RadiusWatchProbeBox reaches the factory's Activator fallback.
+        // The class declares all four corners, so the expected radii do not depend on a radius a control's own style gives a
+        // corner the class leaves out. Each kind is a type the factory builds a different way: a Label and a Button are hosts
+        // of the fit, a TextField and a Toggle are pooled, a ScrollView is built directly, a Motion goes through the
+        // factory's other entry point, and RadiusWatchProbeBox reaches its Activator fallback.
         [TestCase("label")]
         [TestCase("button")]
         [TestCase("textfield")]
@@ -506,7 +506,7 @@ namespace Velvet.Tests
             var box = MountSwitchableOfKind(kind);
 
             // Act
-            SwitchClass($"{WideBox} layout-id-test-uneven");
+            SwitchClass($"{WideBox} radius-watch-uneven");
 
             // Assert
             Assert.That(Radii(box), Is.EqualTo(s_unevenRadiiFittedToWideBox).Within(1e-3f));
@@ -559,167 +559,71 @@ namespace Velvet.Tests
             Assert.That(Radii(box), Is.EqualTo(s_unevenRadiiFittedToWideBox).Within(1e-3f));
         }
 
-        // A token of each family Velvet resolves itself, beside the ones the bundled table does not name. The fit is asked
-        // directly, so a token the patcher routes elsewhere cannot make a row pass for want of reaching it.
-        [TestCase("ring-2")]
-        [TestCase("gap-4")]
-        [TestCase("space-x-2")]
-        [TestCase("shadow-md")]
-        [TestCase("animate-spin")]
-        [TestCase("skew-x-3")]
-        [TestCase("border-dashed")]
-        [TestCase("backdrop-blur-md")]
-        [TestCase("grid-cols-3")]
-        [TestCase("divide-x")]
-        [TestCase("pointer-events-none")]
-        [TestCase("z-10")]
-        [TestCase("order-2")]
-        [TestCase("uppercase")]
-        [TestCase("underline")]
-        [TestCase("font-sans")]
-        [TestCase("from-red-500")]
-        [TestCase("via-red-500")]
-        [TestCase("to-red-500")]
-        [TestCase("clip-path-none")]
-        [TestCase("@container")]
-        [TestCase("@container/main")]
-        [TestCase("velvet-viewport")]
-        [TestCase("velvet-label")]
-        [TestCase("unity-button")]
-        [TestCase("group")]
-        [TestCase("group/sidebar")]
-        [TestCase("peer")]
-        [TestCase("peer/email")]
-        [TestCase("dark")]
-        [TestCase("is-selected")]
-        [TestCase("is-active")]
-        [TestCase("p-4!")]
-        [TestCase("!p-4")]
-        public void Given_ALaidOutBox_When_AClassVelvetResolvesItselfIsTracked_Then_TheBoxIsNotMarkedForTheFit(string token)
-        {
-            // Arrange
-            var box = MountBox(WideBox);
-
-            // Act
-            CornerRadiusFit.TrackClass(box, token);
-
-            // Assert
-            Assert.That(box.ClassListContains(CornerRadiusFit.WatchClass), Is.False);
-        }
-
         [Test]
-        public void Given_ALaidOutBox_When_EveryClassTheBundledSheetsNameIsTracked_Then_NoneMarksTheBox()
+        public void Given_ALaidOutBoxWithNoRadius_When_CodeAddsAClassWhoseRuleOverflowsItsHeightDirectly_Then_ItsCornersAreScaledWithNoSizeChange()
         {
-            // Arrange — the class names are read off the selectors of every sheet in the styles directory, so a class a
-            // sheet adds is held to the same test without a row being written for it.
-            var comment = new System.Text.RegularExpressions.Regex(@"/\*.*?\*/", System.Text.RegularExpressions.RegexOptions.Singleline);
-            var head = new System.Text.RegularExpressions.Regex(@"([^{}]+)\{");
-            var name = new System.Text.RegularExpressions.Regex(@"\.([A-Za-z_][A-Za-z0-9_-]*)");
-            var names = new SortedSet<string>(System.StringComparer.Ordinal);
-            foreach (var path in System.IO.Directory.GetFiles(StylesDirectory, "*.uss"))
-            {
-                var text = comment.Replace(System.IO.File.ReadAllText(path), " ");
-                foreach (System.Text.RegularExpressions.Match rule in head.Matches(text))
-                {
-                    foreach (System.Text.RegularExpressions.Match match in name.Matches(rule.Groups[1].Value))
-                    {
-                        names.Add(match.Groups[1].Value);
-                    }
-                }
-            }
-            var box = MountBox(WideBox);
-            var marked = new List<string>();
-
-            // Act
-            foreach (var cls in names)
-            {
-                CornerRadiusFit.TrackClass(box, cls);
-                if (box.ClassListContains(CornerRadiusFit.WatchClass))
-                {
-                    marked.Add(cls);
-                    box.RemoveFromClassList(CornerRadiusFit.WatchClass);
-                }
-            }
-
-            // Assert — a sentinel stands in for an extraction that lacks classes every bundled sheet set holds.
-            if (!names.Contains("p-4") || !names.Contains("rounded-full"))
-            {
-                marked.Add($"the {names.Count} class names read lack p-4 or rounded-full");
-            }
-            Assert.That(marked, Is.Empty);
-        }
-
-        // The tokens Velvet resolves to inline style, which the patcher never hands the fit and an animation channel does. Each
-        // is no table entry, so IsInlineResolved is the clause that keeps it from marking the box.
-        [TestCase("w-[120px]")]
-        [TestCase("bg-red-500/50")]
-        [TestCase("-mt-4")]
-        [TestCase("ms-2")]
-        [TestCase("border-t-red-500")]
-        [TestCase("tracking-wide")]
-        [TestCase("blur-md")]
-        [TestCase("bg-current")]
-        [TestCase("w-1/2")]
-        [TestCase("translate-x-4")]
-        [TestCase("hue-rotate-90")]
-        public void Given_ALaidOutBox_When_AClassResolvedToInlineStyleArrivesThroughAnAnimationChannel_Then_TheBoxIsNotMarkedForTheFit(string token)
-        {
-            // Arrange
+            // Arrange — a class change Velvet never sees, on a box that keeps its 330 x 34.
+            AttachOwnRadiusSheet();
             var box = MountBox(WideBox);
 
             // Act
-            StyleAnimationClassUtils.AddClasses(box, new[] { token });
+            box.AddToClassList("layout-id-test-uneven");
             ForcePanelUpdate(box.panel);
 
             // Assert
-            Assert.That(box.ClassListContains(CornerRadiusFit.WatchClass), Is.False);
+            Assert.That(Radii(box), Is.EqualTo(s_unevenRadiiFittedToWideBox).Within(1e-3f));
         }
 
         [Test]
-        public void Given_ALaidOutBoxUnderADeclaredThemeVariable_When_ItsUtilityIsTrackedOutsideAThemeScope_Then_TheBoxIsNotMarkedForTheFit()
+        public void Given_ALaidOutBoxFittedFromAClassOfItsOwn_When_CodeRemovesThatClassDirectly_Then_TheFittedSlotsAreGivenBack()
         {
-            // Arrange — the sheet declares --color-brandtest, so bg-brandtest is the theme's utility, and a direct call holds
-            // no theme scope.
-            _window.rootVisualElement.styleSheets.Add(
-                UnityEditor.AssetDatabase.LoadAssetAtPath<StyleSheet>("Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ThemeTokenSheet.uss"));
-            _mounted = V.Mount(_window.rootVisualElement, V.Div(className: "theme-token-host", children: new VNode?[]
+            // Arrange
+            AttachOwnRadiusSheet();
+            var box = MountBox($"{WideBox} layout-id-test-uneven");
+
+            // Act
+            box.RemoveFromClassList("layout-id-test-uneven");
+            ForcePanelUpdate(box.panel);
+
+            // Assert
+            Assert.That(Radii(box), Is.EqualTo(new[] { 0f, 0f, 0f, 0f }).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_ALaidOutBoxUnderAnAncestorRuleThatGivesARadius_When_TheAncestorGainsItsClass_Then_ItsCornersAreScaledWithNoSizeChange()
+        {
+            // Arrange — the rule is `.radius-watch-parent .radius-watch-child`, so the box is styled by a class on its parent.
+            AttachOwnRadiusSheet();
+            _mounted = V.Mount(_window.rootVisualElement, V.Div(name: "parent", children: new VNode?[]
             {
-                V.Div(name: "box", className: WideBox),
+                V.Div(name: "box", className: $"{WideBox} radius-watch-child"),
             }));
             ForcePanelUpdate(Box.panel);
 
             // Act
-            CornerRadiusFit.TrackClass(Box, "bg-brandtest");
+            Box.parent.AddToClassList("radius-watch-parent");
+            ForcePanelUpdate(Box.panel);
 
             // Assert
-            Assert.That(Box.ClassListContains(CornerRadiusFit.WatchClass), Is.False);
+            Assert.That(Radii(Box), Is.EqualTo(s_unevenRadiiFittedToWideBox).Within(1e-3f));
         }
 
         [Test]
-        public void Given_ALaidOutBox_When_ABundledClassWrittenWithTheImportantMarkerArrivesThroughAnAnimationChannel_Then_TheBoxIsNotMarkedForTheFit()
+        public void Given_ALaidOutBoxUnderAHoverRuleThatGivesARadius_When_ItIsHovered_Then_ItsCornersAreScaledWithNoSizeChange()
         {
-            // Arrange — the one path that hands the fit the token as written, with its marker.
-            var box = MountBox(WideBox);
+            // Arrange — `.radius-watch-hover:hover` matches only while the pseudo-state is set.
+            AttachOwnRadiusSheet();
+            var box = MountBox($"{WideBox} radius-watch-hover");
 
             // Act
-            StyleAnimationClassUtils.AddClasses(box, new[] { "p-4!" });
+            var pseudo = EngineMember.PseudoStates.ResolveProperty()!;
+            var hover = System.Convert.ToInt32(System.Enum.Parse(pseudo.PropertyType, "Hover"));
+            var states = System.Convert.ToInt32(pseudo.GetValue(box));
+            pseudo.SetValue(box, System.Enum.ToObject(pseudo.PropertyType, states | hover));
             ForcePanelUpdate(box.panel);
 
             // Assert
-            Assert.That(box.ClassListContains(CornerRadiusFit.WatchClass), Is.False);
-        }
-
-        [Test]
-        public void Given_ALaidOutBox_When_AClassOfTheApplicationsOwnArrives_Then_TheBoxIsMarkedForTheFit()
-        {
-            // Arrange — the control for the cases above: the same swap with a class nothing resolves.
-            var box = MountSwitchable(WideBox);
-
-            // Act
-            SwitchClass($"{WideBox} unrelated-class");
-
-            // Assert
-            Assert.That(box.ClassListContains(CornerRadiusFit.WatchClass), Is.True);
+            Assert.That(Radii(box), Is.EqualTo(s_unevenRadiiFittedToWideBox).Within(1e-3f));
         }
 
         [Test]

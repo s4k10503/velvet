@@ -443,6 +443,11 @@ namespace Velvet
             var signature = SignatureAbove(ctx.ThemeRoot);
             if (signature != scope.Signature)
             {
+                // Writing RadiusWatchSheets' property moves the content hash of a sheet, which the signature holds.
+                if (RadiusWatchSheets.EnsureAbove(ctx.ThemeRoot))
+                {
+                    signature = SignatureAbove(ctx.ThemeRoot);
+                }
                 var first = scope.Signature == int.MinValue;
                 scope.Signature = signature;
                 scope.Version++;
