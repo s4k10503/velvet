@@ -19,7 +19,8 @@ namespace Velvet
     // save: it is never the source, and the source is never edited. Left out are the bundled utilities, whose radius rules
     // each have a restating rule of custom properties already (RadiusWatchSheetsPanelTests pins the pair), the sheets of
     // Velvet's own, and what a sheet the engine marks as a default theme imports, since that is the engine's own theme; the
-    // rules of such a sheet itself are read.
+    // rules of such a sheet itself are read. A rule that names a class or an id with the prefix `unity-` is left out in
+    // every sheet: it styles a built-in control, as the engine's themes do.
     internal static class RadiusWatchSheets
     {
         internal const string Property = "--velvet-radius-watch";
@@ -34,6 +35,8 @@ namespace Velvet
         private static readonly PropertyInfo? s_specificity = EngineMember.StyleComplexSelectorSpecificity.ResolveProperty();
         private static readonly PropertyInfo? s_parts = EngineMember.StyleSelectorParts.ResolveProperty();
         private static readonly PropertyInfo? s_relationship = EngineMember.StyleSelectorPreviousRelationship.ResolveProperty();
+        private static readonly PropertyInfo? s_partValue = EngineMember.StyleSelectorPartValue.ResolveProperty();
+        private static readonly PropertyInfo? s_partType = EngineMember.StyleSelectorPartType.ResolveProperty();
         private static readonly PropertyInfo? s_defaultSheet = EngineMember.StyleSheetIsDefault.ResolveProperty();
 
         private static readonly Type? s_builderType = EngineMember.StyleSheetBuilderConstruct.ResolveType();
@@ -49,7 +52,7 @@ namespace Velvet
 
         private static readonly bool s_ready = s_sheetRules != null && s_ruleProperties != null && s_propertyName != null
             && s_ruleSelectors != null && s_complex != null && s_specificity != null && s_parts != null
-            && s_relationship != null && s_builderType != null && s_beginRule != null && s_beginSelector != null
+            && s_relationship != null && s_partValue != null && s_partType != null && s_builderType != null && s_beginRule != null && s_beginSelector != null
             && s_addSelector != null && s_endSelector != null && s_beginProperty != null && s_addFloat != null
             && s_endProperty != null && s_endRule != null && s_buildTo != null;
 
@@ -108,7 +111,7 @@ namespace Velvet
             }
         }
 
-        private static StyleSheet? DerivedOf(StyleSheet source)
+        internal static StyleSheet? DerivedOf(StyleSheet source)
         {
             if (s_derived.TryGetValue(source, out var known) && known.Hash == source.contentHash)
             {
@@ -138,12 +141,43 @@ namespace Velvet
                 {
                     if (IsRadius((string)s_propertyName!.GetValue(property)))
                     {
-                        found.Add(rule);
+                        if (!NamesEngineControl(rule))
+                        {
+                            found.Add(rule);
+                        }
                         break;
                     }
                 }
             }
             return found;
+        }
+
+        // Whether a selector of the rule names a class or an id of UI Toolkit's own controls, which the engine's themes style
+        // and the application's classes do not use; every built-in control carries one, so a rule of theirs would give every
+        // control the property.
+        private static bool NamesEngineControl(object rule)
+        {
+            var names = false;
+            foreach (var (kind, value) in PartsOf(rule))
+            {
+                // StyleSelectorType.Class and ID.
+                names |= (kind == 3 || kind == 6) && value.StartsWith("unity-", StringComparison.Ordinal);
+            }
+            return names;
+        }
+
+        private static System.Collections.Generic.IEnumerable<(int Kind, string Value)> PartsOf(object rule)
+        {
+            foreach (var complex in (Array)s_ruleSelectors!.GetValue(rule))
+            {
+                foreach (var simple in (Array)s_complex!.GetValue(complex))
+                {
+                    foreach (var part in (Array)s_parts!.GetValue(simple))
+                    {
+                        yield return (Convert.ToInt32(s_partType!.GetValue(part)), (string)s_partValue!.GetValue(part));
+                    }
+                }
+            }
         }
 
         private static bool IsRadius(string name)

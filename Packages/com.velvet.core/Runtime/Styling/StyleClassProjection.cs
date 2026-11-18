@@ -59,6 +59,7 @@ namespace Velvet
         {
             var previousUniform = StyleArbitraryValueResolver.UniformScaleClassFallback(element);
             RemoveFromModel(element, cls, priority);
+            CornerRadiusFit.NoteClassWrite(element);
             StyleArbitraryValueResolver.NotifyClassesChanged(element, previousUniform);
         }
 

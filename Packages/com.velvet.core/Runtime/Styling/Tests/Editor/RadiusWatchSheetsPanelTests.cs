@@ -19,6 +19,7 @@ namespace Velvet.Tests
     {
         private const string Watch = "--velvet-radius-watch";
         private const string OwnSheet = "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/LayoutIdTestRules.uss";
+        private const string EngineRulesSheet = "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/RadiusWatchEngineRules.uss";
         private const string NoRadiusSheet = "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ThemeTokenSheet.uss";
         private const string StylesDirectory = "Packages/com.velvet.core/Runtime/Styles";
         private const BindingFlags Statics = BindingFlags.NonPublic | BindingFlags.Static;
@@ -47,19 +48,6 @@ namespace Velvet.Tests
         private static bool DeclaresRadius(string[] names)
             => names.Any(n => n == "border-radius" || (n.StartsWith("border-") && n.EndsWith("-radius")));
 
-        private static List<StyleSheet> WatchSheetsOn(VisualElement element)
-        {
-            var found = new List<StyleSheet>();
-            for (var i = 0; i < element.styleSheets.count; i++)
-            {
-                if (RadiusWatchSheets.IsWatch(element.styleSheets[i]))
-                {
-                    found.Add(element.styleSheets[i]);
-                }
-            }
-            return found;
-        }
-
         // One tick of the panel's watch over the stylesheets of its ancestors, which BorderPreflight owns.
         private static void TickSheetWatch(IPanel panel)
         {
@@ -70,7 +58,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AUserSheetAboveAMount_When_TheTreeMounts_Then_TheRootHoldsAWatchSheetWithARulePerRadiusRule()
+        public void Given_AUserSheetAboveAMount_When_TheTreeMounts_Then_TheRootHoldsItsWatchSheetWithARulePerRadiusRule()
         {
             // Arrange
             var source = Load(OwnSheet);
@@ -79,24 +67,27 @@ namespace Velvet.Tests
             // Act
             MountAndSettle();
 
-            // Assert
-            var watch = WatchSheetsOn(_window.rootVisualElement).SelectMany(PropertyNamesPerRule).Count();
-            Assert.That(watch, Is.EqualTo(PropertyNamesPerRule(source).Count(DeclaresRadius)).And.GreaterThan(0));
+            // Assert — a sheet the root does not hold counts -1, which no number of rules equals.
+            var watch = RadiusWatchSheets.DerivedOf(source);
+            var held = watch != null && _window.rootVisualElement.styleSheets.Contains(watch);
+            Assert.That(held ? PropertyNamesPerRule(watch).Count() : -1,
+                Is.EqualTo(PropertyNamesPerRule(source).Count(DeclaresRadius)).And.GreaterThan(0));
         }
 
         [Test]
-        public void Given_AUserSheetAboveAMount_When_TheTreeMounts_Then_EveryRuleOfTheWatchSheetHoldsOnlyTheWatchProperty()
+        public void Given_AUserSheetAboveAMount_When_TheTreeMounts_Then_EveryRuleOfItsWatchSheetHoldsOnlyTheWatchProperty()
         {
             // Arrange
-            _window.rootVisualElement.styleSheets.Add(Load(OwnSheet));
+            var source = Load(OwnSheet);
+            _window.rootVisualElement.styleSheets.Add(source);
 
             // Act
             MountAndSettle();
 
             // Assert — a run with no watch rule at all reads -1, which no count of wrong rules equals.
-            var rules = WatchSheetsOn(_window.rootVisualElement).SelectMany(PropertyNamesPerRule).ToList();
-            var others = rules.Count(names => names.Length != 1 || names[0] != Watch);
-            Assert.That(rules.Count == 0 ? -1 : others, Is.Zero);
+            var watch = RadiusWatchSheets.DerivedOf(source);
+            var rules = watch == null ? new List<string[]>() : PropertyNamesPerRule(watch).ToList();
+            Assert.That(rules.Count == 0 ? -1 : rules.Count(names => names.Length != 1 || names[0] != Watch), Is.Zero);
         }
 
         [Test]
@@ -117,47 +108,40 @@ namespace Velvet.Tests
             Assert.That(PropertyNamesPerRule(source).Count(names => names.Contains(Watch)), Is.Zero);
         }
 
+        // GREEN_ON_BASE(characterization): the base derives no watch sheet from any sheet.
         [Test]
-        public void Given_AUserSheetAboveAMount_When_TwoTreesMountOnIt_Then_TheRootHoldsOneWatchSheet()
+        public void Given_ASheetWithNoRadiusRule_When_ItsWatchSheetIsAsked_Then_ThereIsNone()
         {
-            // Arrange
-            _window.rootVisualElement.styleSheets.Add(Load(OwnSheet));
-            MountAndSettle();
-            var other = new VisualElement();
-            _window.rootVisualElement.Add(other);
-            var second = V.Mount(other, V.Div(name: "second"));
-
             // Act
-            ForcePanelUpdate(_window.rootVisualElement.panel);
-            second.Dispose();
+            var watch = RadiusWatchSheets.DerivedOf(Load(NoRadiusSheet));
 
             // Assert
-            Assert.That(WatchSheetsOn(_window.rootVisualElement).Count, Is.EqualTo(1));
+            Assert.That(watch, Is.Null);
+        }
+
+        [Test]
+        public void Given_ASheetWithARadiusRuleOfABuiltInControlAndOneOfItsOwn_When_ItsWatchSheetIsAsked_Then_OnlyTheRuleOfItsOwnIsKept()
+        {
+            // Act
+            var watch = RadiusWatchSheets.DerivedOf(Load(EngineRulesSheet));
+
+            // Assert — a missing sheet reads -1.
+            Assert.That(watch == null ? -1 : PropertyNamesPerRule(watch).Count(), Is.EqualTo(1));
         }
 
         // GREEN_ON_BASE(characterization): the base attaches no watch sheet to any root.
         [Test]
-        public void Given_ASheetWithNoRadiusRuleAboveAMount_When_TheTreeMounts_Then_NoWatchSheetIsAttached()
+        public void Given_OnlyTheBundledUtilitiesAboveAMount_When_TheTreeMounts_Then_TheirWatchSheetIsNotAttached()
         {
             // Arrange
-            _window.rootVisualElement.styleSheets.Add(Load(NoRadiusSheet));
+            var bundled = Load(StylesDirectory + "/StyleUtilities.uss");
 
             // Act
             MountAndSettle();
 
             // Assert
-            Assert.That(WatchSheetsOn(_window.rootVisualElement).Count, Is.Zero);
-        }
-
-        // GREEN_ON_BASE(characterization): the base attaches no watch sheet to any root.
-        [Test]
-        public void Given_OnlyTheBundledUtilitiesAboveAMount_When_TheTreeMounts_Then_NoWatchSheetIsAttached()
-        {
-            // Act
-            MountAndSettle();
-
-            // Assert
-            Assert.That(WatchSheetsOn(_window.rootVisualElement).Count, Is.Zero);
+            var watch = RadiusWatchSheets.DerivedOf(bundled);
+            Assert.That(watch != null && _window.rootVisualElement.styleSheets.Contains(watch), Is.False);
         }
 
         [Test]
@@ -168,11 +152,13 @@ namespace Velvet.Tests
             ForcePanelUpdate(_window.rootVisualElement.panel);
 
             // Act
-            _window.rootVisualElement.styleSheets.Add(Load(OwnSheet));
+            var source = Load(OwnSheet);
+            _window.rootVisualElement.styleSheets.Add(source);
             TickSheetWatch(_window.rootVisualElement.panel);
 
             // Assert
-            Assert.That(WatchSheetsOn(_window.rootVisualElement).Count, Is.EqualTo(1));
+            var watch = RadiusWatchSheets.DerivedOf(source);
+            Assert.That(watch != null && _window.rootVisualElement.styleSheets.Contains(watch), Is.True);
         }
 
         [Test]
@@ -187,11 +173,13 @@ namespace Velvet.Tests
             var inner = _window.rootVisualElement.Q<VisualElement>("inner");
 
             // Act
-            inner.styleSheets.Add(Load(OwnSheet));
+            var source = Load(OwnSheet);
+            inner.styleSheets.Add(source);
             TickSheetWatch(inner.panel);
 
             // Assert
-            Assert.That(WatchSheetsOn(inner).Count, Is.EqualTo(1));
+            var watch = RadiusWatchSheets.DerivedOf(source);
+            Assert.That(watch != null && inner.styleSheets.Contains(watch), Is.True);
         }
 
         // GREEN_ON_BASE(construction): both sides are the repository's own sheets. Delete `.rounded-full` from

@@ -130,7 +130,41 @@ namespace Velvet
             if (cls.StartsWith(RadiusClassPrefix, StringComparison.Ordinal))
             {
                 GetOrAttach(element);
+                return;
             }
+            NoteClassWrite(element);
+        }
+
+        // A class written through Velvet on an element that holds a radius its code wrote, which no rule need declare for the
+        // class to leave it overflowing: nothing raises a style event for a class whose rule declares no radius, so the radius
+        // the element holds is fitted here, against the size it has.
+        public static void NoteClassWrite(VisualElement element)
+        {
+            if (element.panel == null)
+            {
+                return;
+            }
+            if (!s_states.TryGetValue(element, out var state))
+            {
+                if (!HoldsInlineRadius(element.style))
+                {
+                    return;
+                }
+                state = GetOrAttach(element);
+                state.ReadsCascade = true;
+            }
+            RefreshDeclared(element, state);
+        }
+
+        private static bool HoldsInlineRadius(IStyle style)
+        {
+            var held = false;
+            for (var i = 0; i < CornerCount; i++)
+            {
+                var slot = InlineCorner(style, i);
+                held |= slot.keyword == StyleKeyword.Undefined && slot.value.value > 0f;
+            }
+            return held;
         }
 
         public static void SetInline(VisualElement element, RadiusCorners corners, Length value)

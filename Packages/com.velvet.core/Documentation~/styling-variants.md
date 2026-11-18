@@ -446,9 +446,10 @@ edited. A sheet attached later is read within a tick of the panel's sheet watch 
 reads the root's sheets at once. A theme sheet the engine marks as a default is read for its own rules and not for what
 it imports, so a radius a theme your own theme imports declares is not watched; the bundled utilities are covered by the
 rules that restate their radii. The elements a radius rule matches get a style event for each restyle; one that no such
-rule matches is restyled as before, apart from the variable context it inherits from a matching ancestor. A write to
-`style` after layout is the exception: UI Toolkit reports it to nobody, so it is fitted at the element's next size change,
-or the next time a radius rule starts or stops matching it.
+rule matches is restyled as before, apart from the variable context it inherits from a matching ancestor. A rule that
+names a `unity-` class or id, which styles a built-in control, is not watched. A write to `style` after layout is the
+exception: UI Toolkit reports it to nobody, so it is fitted at the element's next size change, the next time a radius rule
+starts or stops matching it, or when Velvet adds or removes a class on it.
 
 **The wrapper-less paints under a hidden overflow.** UI Toolkit applies an element's own overflow clip to the
 element's own painted content, and cuts it at the **padding** box, while CSS clips neither a box-shadow nor a border

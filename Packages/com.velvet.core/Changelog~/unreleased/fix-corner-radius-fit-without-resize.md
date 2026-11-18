@@ -7,5 +7,6 @@
   an element inside the tree, with what they import, and attaches a runtime-only sheet beside each one that has a radius
   rule; your own sheets are not edited. A sheet attached later is read within 16 ms. A theme sheet the engine marks as
   a default is read for its own rules only, so a radius that a theme imported by your own declares is not watched. A
-  write to `style.border*Radius` after layout is still fitted only at the element's next size change or the next time
-  a radius rule starts or stops matching it.
+  rule that names a `unity-` class or id is not watched. A write to `style.border*Radius` after layout is fitted at the
+  element's next size change, the next time a radius rule starts or stops matching it, or when Velvet adds or removes a
+  class on it.
