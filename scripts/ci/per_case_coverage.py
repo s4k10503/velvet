@@ -4,38 +4,58 @@
 `.github/workflows/per-case-coverage.yml` runs this inside the `unityci/editor` image, under
 `licensed_editor.py`'s licence, the way `kill-set.yml` runs `ci_mutation_shard.py`:
 
-    python3 scripts/ci/per_case_coverage.py --platform EditMode --output Logs/per-case-coverage
+    python3 scripts/ci/per_case_coverage.py --platform EditMode --output Logs/per-case-coverage \\
+        --shard 2/6
 
 The editor is given `generateTestReferences` in `-coverageOptions`, under which Code Coverage writes an
-OpenCover file as each case finishes. The EditMode suite is thousands of those, so each file the package
-has finished writing is gzipped into `OUTPUT/per-case` while the suite runs rather than after it, and an
-empty file is left under its name in `OUTPUT/coverage`: the package numbers its next file by how many
+OpenCover file as each case finishes. One editor taking the whole suite, in a container limited to 12g
+of memory with swap at the same figure, was killed with SIGKILL after 223 of the EditMode suite's 17033
+cases and after 232 of the PlayMode suite's 500: at nearly the same count although a PlayMode file is over ten
+times the size of an EditMode one. Each launch below reports the most memory one of the watcher's samples read
+while it ran, which is the reading that says whether a launch's size fits. This runs the suite in launches of at
+most `--cases-per-launch` cases each:
+
+1. One plain run of the suite, whose results file names every case: `OUTPUT/results`, where the
+   workflow's provenance checks read it, and where a run that fails stops here.
+2. `--shard I/N` takes the I-th of N contiguous blocks of those names, and each launch takes a slice of
+   the block through a `-testFilter` of anchored names, with a coverage folder, results file and log of
+   its own under `OUTPUT/coverage` and `OUTPUT/launches`. A launch killed with SIGKILL runs again as two
+   halves, since the files it finished stay; a launch of one case that is killed fails the run.
+
+Both are one licence's work: the licence is activated once around this script's own `--measure` run,
+and every editor above is launched from that.
+
+Each file the package has finished writing is gzipped into `OUTPUT/per-case` while its launch runs, and
+an empty file is left under its name in `OUTPUT/coverage`: the package numbers its next file by how many
 `.xml` files that folder already holds, and writes nothing where the name it arrives at exists, so a
 deleted file would make it skip a later case. That reading is of the writer in Code Coverage
 `PINNED_PACKAGE`, and a project resolving another version is refused before any editor starts.
 
 `scripts/test_quality/unique_coverage.py` reads what `OUTPUT/per-case` holds, the assemblies the run asked
 for among it under that script's `ASKED`, so that the reader can refuse an asked assembly no record
-reaches. The editor's results and log go to `OUTPUT/results`, where the workflow's provenance checks
-read them. An `OUTPUT` that already
-holds anything is refused: the package clears its own folder's `.xml` files when a run starts and
-numbers from zero again, so a second run's files would take names whose copies the first run left, and
-be passed over.
+reaches. Several shards' folders are read together: a case a halved launch ran twice is one test to it. An
+`OUTPUT` that already holds anything is refused: the package clears its own folder's `.xml` files when a
+run starts and numbers from zero again, so a second run's files would take names whose copies the first
+run left, and be passed over.
 
-Exits with the editor's status; 1 where the editor passed and compressing failed; 2, before any editor
-starts, where the project resolves a Code Coverage version other than `PINNED_PACKAGE`, declares no
-package assembly to measure, or `OUTPUT` already holds something.
+Exits with the first failing editor's status; 1 where every editor passed and compressing failed, where
+the plain run named no case, or where a launch selected fewer cases than it was given; 2, before any
+editor starts, where the project resolves a Code Coverage version other than `PINNED_PACKAGE`, declares
+no package assembly to measure, `--shard` is not I/N, or `OUTPUT` already holds something.
 
 Run: python3 scripts/ci/test_per_case_coverage.py
 """
 
 import argparse
+import collections
 import gzip
 import json
 import re
 import shutil
+import subprocess
 import sys
 import threading
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -54,9 +74,21 @@ PACKAGE_ROOT = Path("Packages/com.velvet.core")
 NOT_MEASURED = frozenset({"Tests", "TestUtilities"})
 
 NUMBERED = re.compile(r"_(\d+)\.xml$")
+SHARD = re.compile(r"([1-9][0-9]*)/([1-9][0-9]*)$")
 
 POLL = 5
-PROGRESS = 1000
+
+# Cases one editor launch takes. A launch over a whole suite was killed after 223 cases of one suite and
+# 232 of the other, so a hundred is under half of the fewer of those, and a launch killed anyway runs
+# again as halves.
+CASES_PER_LAUNCH = 100
+
+# What a launch killed with SIGKILL returns: `subprocess.call` reports a death by signal 9 as -9, and a
+# shell reports it as 128 + 9.
+KILLED = (-9, 137)
+
+# Where a container reads its own memory in use, the unified hierarchy first.
+CGROUP_MEMORY = (Path("/sys/fs/cgroup/memory.current"), Path("/sys/fs/cgroup/memory/memory.usage_in_bytes"))
 
 
 def pinned_refusal(lock):
@@ -83,13 +115,78 @@ def package_assemblies(project):
     return names
 
 
-def editor_command(platform, project, coverage, results, assemblies, unity=licensed_editor.UNITY):
-    options = "generateTestReferences;assemblyFilters:" + ",".join("+" + name for name in assemblies)
+def suite_command(platform, project, results, unity=licensed_editor.UNITY):
+    """The plain run of the suite, whose results file is the roster the launches take their cases from."""
     # -debugCodeOptimization: AGENTS.md's headless recipe says why a run passes it.
     return [unity, "-runTests", "-batchmode", "-debugCodeOptimization", "-projectPath", str(project),
             "-testPlatform", platform,
-            "-testResults", str(results / "results.xml"), "-logFile", str(results / "run.log"),
-            "-enableCodeCoverage", "-coverageResultsPath", str(coverage), "-coverageOptions", options]
+            "-testResults", str(results / "results.xml"), "-logFile", str(results / "run.log")]
+
+
+def editor_command(platform, project, coverage, results, assemblies, names=None,
+                   unity=licensed_editor.UNITY):
+    """A launch with coverage on, over the cases `names` give by their full names, or over the whole
+    suite where there are none."""
+    options = "generateTestReferences;assemblyFilters:" + ",".join("+" + name for name in assemblies)
+    command = suite_command(platform, project, results, unity)
+    if names:
+        command += ["-testFilter", filter_for(names)]
+    return command + ["-enableCodeCoverage", "-coverageResultsPath", str(coverage),
+                      "-coverageOptions", options]
+
+
+def filter_for(names):
+    """A `-testFilter` value selecting the cases with these full names.
+
+    The value is a regex per `;`-separated term, so a name is escaped and anchored, and the split does
+    not trim. A name carrying `;` would split a term, so that character is matched as any character
+    and the term can select a neighbour too, whose second record names the same test to the reader.
+    """
+    return ";".join("^" + re.escape(name).replace(";", ".") + "$" for name in names)
+
+
+def roster_of(results_xml):
+    """The full name of each case a results file holds, each once, in sorted order, or [] where there is
+    no readable file."""
+    names = set()
+    try:
+        for _, element in ET.iterparse(str(results_xml), events=("end",)):
+            if element.tag == "test-case" and element.get("fullname"):
+                names.add(element.get("fullname"))
+            element.clear()
+    except (OSError, ET.ParseError):
+        return []
+    return sorted(names)
+
+
+def selected_by(results_xml):
+    """How many cases a results file ran or skipped, or None where it names no total."""
+    try:
+        for _, element in ET.iterparse(str(results_xml), events=("start",)):
+            if element.tag == "test-run":
+                return int(element.get("total"))
+    except (OSError, ET.ParseError, TypeError, ValueError):
+        pass
+    return None
+
+
+def block_of(names, shard, shards):
+    """The `shard`-th (from 1) of `shards` contiguous blocks of `names`."""
+    return names[len(names) * (shard - 1) // shards: len(names) * shard // shards]
+
+
+def slices_of(names, size):
+    return [names[start:start + size] for start in range(0, len(names), size)]
+
+
+def memory_in_use(paths=CGROUP_MEMORY):
+    """MiB the container holds right now, or None where no cgroup file says."""
+    for path in paths:
+        try:
+            return int(path.read_text()) // (1024 * 1024)
+        except (OSError, ValueError):
+            continue
+    return None
 
 
 def numbered_files(directory):
@@ -130,16 +227,21 @@ def compress_finished(source, target, final=False):
     return compressed
 
 
-def watch(source, target, stop, poll=POLL):
-    """Compress finished files every `poll` seconds until `stop` is set.
+def watch(source, target, stop, poll=POLL, peak=None, memory=memory_in_use):
+    """Compress finished files every `poll` seconds until `stop` is set, and keep in `peak[0]` the most
+    memory the container held at any pass.
 
     A pass that fails is reported once and the next one tries again, since nothing it raises stops the
     editor writing; whether every file was compressed is the closing pass's to say.
     """
-    done, failing = 0, False
+    failing = False
     while not stop.wait(poll):
+        if peak is not None:
+            held = memory()
+            if held is not None:
+                peak[0] = max(peak[0], held)
         try:
-            compressed = compress_finished(source, target)
+            compress_finished(source, target)
         except Exception as error:
             if not failing:
                 print("::warning::compressing the per-case coverage failed, and is retried: {}".format(error),
@@ -147,53 +249,115 @@ def watch(source, target, stop, poll=POLL):
             failing = True
             continue
         failing = False
-        if (done + compressed) // PROGRESS > done // PROGRESS:
-            licensed_editor.say("{} per-case files compressed".format(done + compressed))
-        done += compressed
 
 
-def main(argv, run=licensed_editor.run_licensed, poll=POLL):
+def watched(launch, command, source, target, poll):
+    """(the launch's status, whether every file compressed, the most MiB sampled during it)."""
+    stop, peak = threading.Event(), [0]
+    watcher = threading.Thread(target=watch, args=(source, target, stop, poll, peak), daemon=True)
+    watcher.start()
+    try:
+        status = launch(command)
+    finally:
+        stop.set()
+        watcher.join()
+    try:
+        compress_finished(source, target, final=True)
+    except Exception as error:
+        print("::error::compressing the per-case coverage failed: {}".format(error), flush=True)
+        return status, False, peak[0]
+    return status, True, peak[0]
+
+
+def measure(platform, project, output, shard, per_launch, assemblies, launch=subprocess.call, poll=POLL):
+    """Run the plain suite, then this shard's cases in launches of at most `per_launch`, and return the
+    status the run ends with."""
+    coverage, per_case = output / "coverage", output / "per-case"
+    results, launches = output / "results", output / "launches"
+    for directory in (results, per_case, launches):
+        directory.mkdir(parents=True, exist_ok=True)
+    (per_case / unique_coverage.ASKED).write_text("".join(name + "\n" for name in assemblies))
+
+    licensed_editor.say("running the {} suite".format(platform))
+    status = launch(suite_command(platform, project, results))
+    names = roster_of(results / "results.xml")
+    if status or not names:
+        print("::error::the plain {} run {}".format(
+            platform, "ended with status {}".format(status) if status else "named no case"), flush=True)
+        return status or 1
+    mine = block_of(names, *shard)
+    licensed_editor.say("{} case(s), {} of them this shard's, in launches of at most {}".format(
+        len(names), len(mine), per_launch))
+
+    waiting, number, failed = collections.deque(slices_of(mine, per_launch)), 0, 0
+    while waiting:
+        chunk = waiting.popleft()
+        number += 1
+        folder = "{:04d}".format(number)
+        directory = launches / folder
+        directory.mkdir()
+        command = editor_command(platform, project, coverage / folder, directory, assemblies, chunk)
+        status, compressed, peak = watched(launch, command, coverage / folder, per_case / folder, poll)
+        files = sum(1 for _ in (coverage / folder).rglob("*.xml")) if (coverage / folder).is_dir() else 0
+        licensed_editor.say("launch {}: {} case(s), {} file(s), peak {} MiB, status {}, {} slice(s) waiting".format(
+            number, len(chunk), files, peak if peak else "unread", status, len(waiting)))
+        if not compressed:
+            failed = failed or 1
+        if status in KILLED and len(chunk) > 1:
+            half = len(chunk) // 2
+            waiting.extendleft([chunk[half:], chunk[:half]])
+            print("::warning::launch {} was killed with the container holding {} MiB at its last reading and runs again as two halves".format(
+                number, peak or "no"), flush=True)
+            continue
+        if status:
+            failed = failed or status
+            continue
+        ran = selected_by(directory / "results.xml")
+        if ran is None or ran < len(chunk):
+            print("::error::launch {} was given {} case(s) and ran {}".format(
+                number, len(chunk), "none that it reported" if ran is None else ran), flush=True)
+            failed = failed or 1
+    licensed_editor.say("{} per-case files in {}".format(
+        sum(1 for _ in per_case.rglob("*.xml.gz")), per_case))
+    return failed
+
+
+def main(argv, run=licensed_editor.run_licensed, poll=POLL, launch=subprocess.call):
     parser = argparse.ArgumentParser(description="Run a suite with each case's coverage on its own.")
     parser.add_argument("--platform", required=True, choices=("EditMode", "PlayMode"))
     parser.add_argument("--output", required=True)
     parser.add_argument("--project", default=".")
+    parser.add_argument("--shard", default="1/1", help="I/N: the I-th of N blocks of the suite's cases")
+    parser.add_argument("--cases-per-launch", type=int, default=CASES_PER_LAUNCH)
+    parser.add_argument("--measure", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
 
     project = Path(args.project).resolve()
     output = Path(args.output).resolve()
     assemblies = package_assemblies(project)
+    shard = SHARD.match(args.shard)
     refusal = pinned_refusal(project / LOCK)
     if not refusal and not assemblies:
         refusal = "no asmdef under {} declares an assembly to measure".format(project / PACKAGE_ROOT)
-    if not refusal and output.exists() and any(output.iterdir()):
+    if not refusal and (not shard or int(shard.group(1)) > int(shard.group(2))):
+        refusal = "--shard {} is not I/N with I at most N".format(args.shard)
+    if not refusal and args.cases_per_launch < 1:
+        refusal = "--cases-per-launch {} is not a case count".format(args.cases_per_launch)
+    if not refusal and not args.measure and output.exists() and any(output.iterdir()):
         refusal = "{} already holds a run; name an output that does not exist yet".format(output)
     if refusal:
         print("::error::{}".format(refusal), flush=True)
         return 2
 
-    coverage, per_case, results = output / "coverage", output / "per-case", output / "results"
-    results.mkdir(parents=True, exist_ok=True)
-    per_case.mkdir(parents=True)
-    (per_case / unique_coverage.ASKED).write_text("".join(name + "\n" for name in assemblies))
-
-    stop = threading.Event()
-    watcher = threading.Thread(target=watch, args=(coverage, per_case, stop, poll), daemon=True)
-    watcher.start()
-    try:
-        status = run(editor_command(args.platform, project, coverage, results, assemblies),
-                     "the {} suite".format(args.platform))
-    finally:
-        stop.set()
-        watcher.join()
-
-    try:
-        compress_finished(coverage, per_case, final=True)
-    except Exception as error:
-        print("::error::compressing the per-case coverage failed: {}".format(error), flush=True)
-        return status or 1
-    licensed_editor.say("{} per-case files in {}".format(
-        sum(1 for _ in per_case.rglob("*.xml.gz")) if per_case.is_dir() else 0, per_case))
-    return status
+    if args.measure:
+        return measure(args.platform, project, output, (int(shard.group(1)), int(shard.group(2))),
+                       args.cases_per_launch, assemblies, launch, poll)
+    # The licence is held around this script's own measuring run, so that one activation serves every
+    # launch.
+    return run([sys.executable, "-u", str(Path(__file__).resolve()), "--measure",
+                "--platform", args.platform, "--output", str(output), "--project", str(project),
+                "--shard", args.shard, "--cases-per-launch", str(args.cases_per_launch)],
+               "the {} suite".format(args.platform))
 
 
 if __name__ == "__main__":

@@ -605,7 +605,11 @@ mutants the campaign places, and says nothing of a line where it places none.
 `.github/workflows/per-case-coverage.yml` runs both suites with each case's coverage recorded on its
 own, and its report job runs `scripts/test_quality/unique_coverage.py` over them: for each fixture, the
 lines no other fixture's cases reach, with the tests `group` names taken out of their fixtures and
-reported as one unit. Measure the tree that still holds the cases, the pull request's base, naming them
+reported as one unit. One editor over a whole suite was killed with SIGKILL after 223 EditMode cases and
+232 PlayMode ones, under a 12g memory limit, so the EditMode suite runs as several shard jobs and every
+editor takes a bounded number of cases; `scripts/ci/per_case_coverage.py` owns how. A dispatch holds a job
+per shard for hours, which counts against the account's concurrent-job cap beside a campaign's shards.
+Measure the tree that still holds the cases, the pull request's base, naming them
 in `group`:
 
 ```bash
