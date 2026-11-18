@@ -568,5 +568,80 @@ namespace Velvet.Tests
             // Assert
             Assert.That(red, Is.EqualTo(1f));
         }
+
+        [TestCase("resource(\"a\\\"b\")", "resource(\"a\\\"b\")")]
+        [TestCase("resource(\"a\\\\b\")", "resource(\"a\\\\b\")")]
+        public void Given_AResourcePathHoldingAQuoteOrABackslash_When_TheStockImporterReadsTheRawSheet_Then_ItIsSpelledEscaped(
+            string value, string expected)
+        {
+            // Arrange
+            // Act
+            var stored = StoredText(value);
+
+            // Assert
+            Assert.That(stored, Is.EqualTo(expected));
+        }
+
+        // GREEN_ON_BASE(characterization): how the stock importer reads a resource() path is an engine fact the base meets
+        // too. UssCustomPropertyText.StoredOtherwise takes a dimension and a percentage for tokens whose unit the
+        // importer drops from the path.
+        [TestCase("resource(icon@2x.png)", "resource(\"icon@2.png\")")]
+        [TestCase("resource(img/50%.png)", "resource(\"img/50.png\")")]
+        public void Given_AResourcePathHoldingADimensionOrAPercentage_When_TheStockImporterReadsTheRawSheet_Then_ItStoresAnotherPath(
+            string value, string expected)
+        {
+            // Arrange
+            // Act
+            var stored = StoredText(value);
+
+            // Assert
+            Assert.That(stored, Is.EqualTo(expected));
+        }
+
+        [TestCase("resource(icon@2x.png)", "resource(\"icon@2x.png\")")]
+        [TestCase("resource(img/50%.png)", "resource(\"img/50%.png\")")]
+        [TestCase("resource(a/-1x)", "resource(\"a/-1x\")")]
+        public void Given_AResourceHoldingADimensionOrAPercentage_When_TheRewrittenSheetIsImported_Then_ItStoresThePathAsWritten(
+            string value, string expected)
+        {
+            // Arrange
+            var uss = UssCustomPropertyTextTests.RewriteWithin(":root { " + Name + ": " + value + "; }") ?? string.Empty;
+
+            // Act
+            var stored = ImportedSheet(uss, sheet => sheet.importedWithErrors ? null : Spelled(sheet));
+
+            // Assert
+            Assert.That(stored, Is.EqualTo(expected));
+        }
+
+        // GREEN_ON_BASE(characterization): how the stock importer joins tokens is an engine fact the base meets too.
+        // UssCustomPropertyText.HoldsAdjacentStrings quotes a string with nothing between it and the next token because
+        // the importer stores the tokens as one string.
+        [TestCase("\"a\"b", "ab")]
+        [TestCase("\"a\"\"b\"", "ab")]
+        public void Given_AStringGluedToAnIdentifierOrAString_When_TheStockImporterReadsTheRawSheet_Then_ItStoresOneString(
+            string value, string expected)
+        {
+            // Arrange
+            // Act
+            var stored = StoredText(value);
+
+            // Assert
+            Assert.That(stored, Is.EqualTo(expected));
+        }
+
+        [TestCase("\"a\"b", "\"a\"b")]
+        [TestCase("a\"b\"", "a\"b\"")]
+        public void Given_AStringGluedToAnIdentifier_When_TheRewrittenSheetIsImported_Then_ItStoresItsText(string value, string expected)
+        {
+            // Arrange
+            var uss = UssCustomPropertyTextTests.RewriteWithin(":root { " + Name + ": " + value + "; }") ?? string.Empty;
+
+            // Act
+            var stored = ImportedSheet(uss, sheet => sheet.importedWithErrors ? null : Spelled(sheet));
+
+            // Assert
+            Assert.That(stored, Is.EqualTo(expected));
+        }
     }
 }

@@ -37,6 +37,8 @@ namespace Velvet.Editor
             "px", "s", "ms", "deg", "grad", "rad", "turn",
         };
 
+        private static readonly Regex s_unitRun = new(@"(?<![A-Za-z0-9_\-\u0080-\uffff])-?[0-9]+(?=[A-Za-z_\-\u0080-\uffff])", RegexOptions.CultureInvariant);
+
         private static readonly Regex s_range = new(@"(?<![A-Za-z0-9_\-\u0080-\uffff])[uU]\+[0-9A-Fa-f?]", RegexOptions.CultureInvariant);
 
         // In NumberShape's letters: three integers separated alike, and for rgba() an alpha after them.
@@ -291,7 +293,7 @@ namespace Velvet.Editor
 
         private static void AppendResourcePath(string path, StringBuilder text)
         {
-            if (!HoldsRange(path) || path.IndexOfAny(new[] { '"', '\'' }) >= 0)
+            if (!StoredOtherwise(path) || path.IndexOfAny(new[] { '"', '\'' }) >= 0)
             {
                 text.Append(path);
                 return;
@@ -307,8 +309,11 @@ namespace Velvet.Editor
             text.Append('"');
         }
 
-        // A range as the importer's lexer reads one, which UssValueImportTests holds.
-        private static bool HoldsRange(string text) => s_range.IsMatch(text);
+        // Whether the importer would store a resource() path other than as written: it stores the number of a dimension
+        // or a percentage without its unit, a hash or an at-keyword without its sign, a function without its arguments
+        // and a range as its digits. UssValueImportTests holds what it stores for each.
+        private static bool StoredOtherwise(string path)
+            => path.IndexOfAny(new[] { '#', '@', '%', '(' }) >= 0 || s_unitRun.IsMatch(path) || s_range.IsMatch(path);
 
         // The lines the importer's lexer counts: a CR and the LF after it make one, and a CR alone makes one too.
         private static int LineBreaks(string text)
@@ -430,7 +435,24 @@ namespace Velvet.Editor
         {
             commentInResource = false;
             return !HoldsEscapeOutsideString(value)
-                   && (HasUnheldToken(value) || HasCommentInArguments(written, out commentInResource));
+                   && (HasUnheldToken(value) || HoldsAdjacentStrings(value) || HasCommentInArguments(written, out commentInResource));
+        }
+
+        // Whether value is one string beside identifiers or strings with nothing between them, which the importer joins
+        // into a single string where CSS reads the tokens apart.
+        private static bool HoldsAdjacentStrings(string value)
+        {
+            var tokens = 0;
+            for (var k = 0; k < value.Length; tokens++)
+            {
+                var end = TokenEnd(value, k);
+                if (value[k] is not ('"' or '\'') && (!StartsIdentifier(value, k) || end > NameEnd(value, k + 1)))
+                {
+                    return false;
+                }
+                k = end;
+            }
+            return tokens > 1;
         }
 
         private static bool HoldsEscapeOutsideString(string value)
@@ -591,7 +613,7 @@ namespace Velvet.Editor
             if (name == "resource")
             {
                 var held = At(value, UrlSpaceEnd(value, i + 1)) != ')';
-                i = CloseOf(value, i) + 1;
+                i = MatchOf(value, i) + 1;
                 return held;
             }
             if (name is "rgb" or "rgba")

@@ -644,6 +644,77 @@ namespace Velvet.Tests
             Assert.That(rewritten, Is.EqualTo(uss));
         }
 
+        [TestCase(":root { --x: resource(icon@2x.png); }", ":root { --x: resource(\"icon@2x.png\"); }")]
+        [TestCase(":root { --x: resource(img/50%.png); }", ":root { --x: resource(\"img/50%.png\"); }")]
+        [TestCase(":root { --x: resource(a#b); }", ":root { --x: resource(\"a#b\"); }")]
+        [TestCase(":root { --x: resource(@a); }", ":root { --x: resource(\"@a\"); }")]
+        [TestCase(":root { --x: resource(url(a)); }", ":root { --x: resource(\"url(a)\"); }")]
+        [TestCase(":root { --x: resource(2x/a.png); }", ":root { --x: resource(\"2x/a.png\"); }")]
+        [TestCase(":root { --x: resource(a/-1x); }", ":root { --x: resource(\"a/-1x\"); }")]
+        [TestCase(":root { --x: resource(a/1.5x); }", ":root { --x: resource(\"a/1.5x\"); }")]
+        [TestCase(":root { --x: resource(a /* c */ @2x); }", ":root { --x: resource(\"a@2x\"); }")]
+        public void Given_AResourceTheImporterStoresOtherwiseThanWritten_When_TheSheetIsRewritten_Then_ItsPathIsAStringOfTheText(
+            string uss, string expected)
+        {
+            // Arrange
+            // Act
+            var rewritten = RewriteWithin(uss);
+
+            // Assert
+            Assert.That(rewritten, Is.EqualTo(expected));
+        }
+
+        // GREEN_ON_BASE(characterization): the base already leaves each of these as written. None holds a token whose
+        // text the importer shortens.
+        [TestCase(":root { --x: resource(img/1.png); }")]
+        [TestCase(":root { --x: resource(a/b-1.png); }")]
+        [TestCase(":root { --x: resource(a_1x/b.png); }")]
+        [TestCase(":root { --x: resource(1/2); }")]
+        [TestCase(":root { --x: resource(a:b); }")]
+        [TestCase(":root { --x: resource(a 1 b); }")]
+        public void Given_AResourceTheImporterStoresAsWritten_When_TheSheetIsRewritten_Then_ItsPathIsLeftAlone(string uss)
+        {
+            // Arrange
+            // Act
+            var rewritten = RewriteWithin(uss);
+
+            // Assert
+            Assert.That(rewritten, Is.EqualTo(uss));
+        }
+
+        [TestCase(":root { --x: \"a\"b; }", ":root { --x: \"\\\"a\\\"b\"; }")]
+        [TestCase(":root { --x: a\"b\"; }", ":root { --x: \"a\\\"b\\\"\"; }")]
+        [TestCase(":root { --x: \"a\"\"b\"; }", ":root { --x: \"\\\"a\\\"\\\"b\\\"\"; }")]
+        [TestCase(":root { --x: 'a'b !IMPORTANT; }", ":root { --x: \"'a'b\" !important; }")]
+        public void Given_AStringGluedToAnIdentifierOrAString_When_TheSheetIsRewritten_Then_ItsValueIsQuoted(
+            string uss, string expected)
+        {
+            // Arrange
+            // Act
+            var rewritten = RewriteWithin(uss);
+
+            // Assert
+            Assert.That(rewritten, Is.EqualTo(expected));
+        }
+
+        // GREEN_ON_BASE(characterization): the base already leaves each of these as written. The importer stores the
+        // tokens of each apart, with whitespace or another kind of token between them.
+        [TestCase(":root { --x: \"a\" b; }")]
+        [TestCase(":root { --x: \"a\"b 1px; }")]
+        [TestCase(":root { --x: \"a\", b; }")]
+        [TestCase(":root { --x: \"a\"blur(4px); }")]
+        [TestCase(":root { --x: \"a\"; }")]
+        [TestCase(":root { --x: a b; }")]
+        public void Given_AStringTheImporterStoresApartFromItsNeighbours_When_TheSheetIsRewritten_Then_ItIsUnchanged(string uss)
+        {
+            // Arrange
+            // Act
+            var rewritten = RewriteWithin(uss);
+
+            // Assert
+            Assert.That(rewritten, Is.EqualTo(uss));
+        }
+
         private static readonly TimeSpan RewriteBound = TimeSpan.FromSeconds(10);
 
         // On a thread of its own, so a rewrite that never returns fails its case rather than holding the suite; it then
