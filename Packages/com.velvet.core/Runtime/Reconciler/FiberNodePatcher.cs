@@ -1464,7 +1464,15 @@ namespace Velvet
                     newNode.FocusOrder, _ctx);
             }
 
-            PatchPortalChildrenPre(ref patch, record.Document.rootVisualElement, oldNode.Children, newNode.Children,
+            var target = record.Document.rootVisualElement;
+            if (_ctx.PortalState.TryGetValue(placeholder, out var recorded)
+                && recorded.Target != null && !ReferenceEquals(recorded.Target, target))
+            {
+                _host.ReleasePortalRangeForRetarget(placeholder);
+                RebaseRangeOnto(placeholder, target);
+            }
+
+            PatchPortalChildrenPre(ref patch, target, oldNode.Children, newNode.Children,
                 "world-space");
         }
 
