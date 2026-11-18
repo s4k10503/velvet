@@ -347,6 +347,24 @@ namespace Velvet.Tests
         }
 
         [UnityTest]
+        public IEnumerator Given_ALayerHostWhosePanelWasReplaced_When_NothingPatchesThePortal_Then_ItsNewRootCarriesTheDeclaringPanelsClass()
+        {
+            // Arrange
+            _panelGo.GetComponent<UIDocument>().rootVisualElement.panel.visualTree.AddToClassList("carried-by-host");
+            yield return MountLayerHost(PanelFocusOrder.Isolated);
+            var document = LayerDocument;
+            var oldRoot = document.rootVisualElement;
+            var oldPanel = oldRoot.panel;
+
+            // Act
+            yield return ReplaceRoot(document);
+            var root = document.rootVisualElement;
+
+            // Assert
+            Assert.That(Replaced(root, oldRoot, oldPanel) && root.ClassListContains("carried-by-host"), Is.True);
+        }
+
+        [UnityTest]
         public IEnumerator Given_AWorldSpaceHostWhosePanelWasReplaced_When_NothingPatchesIt_Then_TheNavigatorIsAttachedToTheNewPanel()
         {
             // Arrange
