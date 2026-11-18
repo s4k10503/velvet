@@ -567,9 +567,8 @@ namespace Velvet
 
         private static bool OutputComesAfter(LogicalElementTree tree, VisualElement placeholder, ComponentFiber fiber)
         {
-            var start = tree.StartOf(fiber, out var endOf);
-            if (start != null) return tree.ComesAfter(placeholder, start, atEnd: false);
-            return endOf != null && tree.ComesAfter(placeholder, endOf, atEnd: true);
+            var place = tree.PlaceOf(fiber, out var behindLast);
+            return place != null && tree.PlaceComesAfter(place, behindLast, placeholder, otherAtEnd: true);
         }
 
         // The entry goes ahead of the first fiber it precedes in the tree. Its ancestors and descendants it

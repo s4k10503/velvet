@@ -252,14 +252,30 @@ namespace Velvet
             return Precedes(parent, element);
         }
 
-        // RenderedChildrenCache.StartOf, each container read once while the tree is held.
-        internal VisualElement? StartOf(ComponentFiber fiber, out VisualElement? endOf) => _rendered.StartOf(fiber, out endOf);
-
-        // Whether element, or with atEnd the place behind its last child, comes after everything inside subtree.
-        internal bool ComesAfter(VisualElement subtree, VisualElement element, bool atEnd)
+        // Where a walk down this tree reaches the fiber's output: in front of the row its slot holds, its own first row
+        // where it holds any, or, where its slot holds no child of the element its rows are children of (RowParentOf),
+        // behindLast that element's last child, which for a Portal child past its range's rows is the placeholder's.
+        // Null for a fiber mounted nowhere.
+        internal VisualElement? PlaceOf(ComponentFiber fiber, out bool behindLast)
         {
-            var chainA = ChainOf(subtree, _chainA);
-            var chainB = ChainOf(element, _chainB);
+            behindLast = false;
+            var mount = fiber.MountPoint;
+            if (mount == null) return null;
+            var container = RowParentOf(fiber);
+            var rows = _rendered.Of(mount);
+            var slot = fiber.MountSlotStart;
+            if (slot >= 0 && slot < rows.Count && ReferenceEquals(ParentOf(rows[slot]), container)) return rows[slot];
+            behindLast = true;
+            return container;
+        }
+
+        // Whether the place in front of element, or with atEnd behind its last child, comes after the place other and
+        // otherAtEnd name, as a walk down this tree reaches them: an element's front ahead of everything inside it, and
+        // its end behind.
+        internal bool PlaceComesAfter(VisualElement element, bool atEnd, VisualElement other, bool otherAtEnd)
+        {
+            var chainA = ChainOf(element, _chainA);
+            var chainB = ChainOf(other, _chainB);
             var ia = chainA.Count - 1;
             var ib = chainB.Count - 1;
             while (ia > 0 && ib > 0 && ReferenceEquals(chainA[ia - 1], chainB[ib - 1]))
@@ -267,9 +283,10 @@ namespace Velvet
                 ia--;
                 ib--;
             }
-            if (ia == 0) return false;
-            if (ib == 0) return atEnd;
-            return SiblingPrecedes(chainA[ia - 1], chainB[ib - 1]);
+            if (ia == 0 && ib == 0) return atEnd && !otherAtEnd;
+            if (ia == 0) return atEnd;
+            if (ib == 0) return !otherAtEnd;
+            return SiblingPrecedes(chainB[ib - 1], chainA[ia - 1]);
         }
 
         // Whether the walk completes a before b: a is inside b, or comes earlier in the tree.
