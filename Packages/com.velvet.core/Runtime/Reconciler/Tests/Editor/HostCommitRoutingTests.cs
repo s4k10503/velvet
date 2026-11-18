@@ -78,5 +78,41 @@ namespace Velvet.Tests
             Assert.That(string.Join("\n", missing.Concat(offenders)), Is.Empty,
                 "write the child list through HostCommitQueue");
         }
+
+        // The calls FinishPass makes that write a child list or reconcile into one other than through the queue: the
+        // portal drain, the retired z-layer reals, the z-layer teardown and arrangement, and the two placement drains.
+        private static readonly string[] FinishPassPhase =
+        {
+            nameof(ChildReconciler) + "." + nameof(ChildReconciler.DrainPendingPortalMounts),
+            nameof(FiberElementCleaner) + "." + nameof(FiberElementCleaner.ReleaseRetiredZLayerReals),
+            nameof(FiberZLayerCoordinator) + "." + nameof(FiberZLayerCoordinator.DrainTeardowns),
+            nameof(FiberZLayerCoordinator) + "." + nameof(FiberZLayerCoordinator.ResortLayers),
+            nameof(RingOverlay) + "." + nameof(RingOverlay.DrainPendingPlacements),
+            nameof(BackdropFilterLayer) + "." + nameof(BackdropFilterLayer.DrainPendingPlacements),
+        };
+
+        [Test]
+        public void Given_FinishPass_When_ItsCallsAreRead_Then_TheRecordedWritesAreAppliedBeforeTheWritersItNames()
+        {
+            // Arrange
+            using var runtime = ModuleDefinition.ReadModule(typeof(V).Assembly.Location);
+            var finishPass = runtime.GetType(typeof(Reconciler).FullName).Methods.Single(method => method.Name == "FinishPass");
+            var calls = finishPass.Body.Instructions
+                .Where(instruction => instruction.Operand is MethodReference)
+                .Select(instruction => (Offset: instruction.Offset,
+                    Name: ((MethodReference)instruction.Operand).DeclaringType.Name + "." + ((MethodReference)instruction.Operand).Name))
+                .ToList();
+            var apply = calls.Where(call => call.Name == nameof(HostCommitQueue) + "." + nameof(HostCommitQueue.EndRecordedPass)).Select(call => call.Offset)
+                .DefaultIfEmpty(int.MaxValue).Min();
+
+            // Act
+            var early = FinishPassPhase
+                .Where(name => calls.Any(call => call.Name == name && call.Offset < apply))
+                .ToList();
+            var missing = FinishPassPhase.Where(name => calls.All(call => call.Name != name)).Select(name => "missing: " + name);
+
+            // Assert
+            Assert.That(string.Join("\n", early.Select(name => "before the apply: " + name).Concat(missing)), Is.Empty);
+        }
     }
 }

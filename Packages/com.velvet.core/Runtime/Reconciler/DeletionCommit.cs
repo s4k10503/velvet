@@ -94,7 +94,7 @@ namespace Velvet
         internal static List<ComponentFiber>? TakeDownLeaving(ReconcilerContext ctx, FiberElementCleaner cleaner,
             VisualElement element)
         {
-            var commit = Begin(ctx, cleaner, element.hierarchy.parent, slotStart: 0, occupants: null);
+            var commit = Begin(ctx, cleaner, ChildListWrites.ParentOf(element), slotStart: 0, occupants: null);
             try
             {
                 commit.AddRowAsRoot(element);
@@ -182,7 +182,7 @@ namespace Velvet
         private bool IsUnderARoot(VisualElement element)
         {
             var ve = element;
-            while (ve != null && !_roots.ContainsKey(ve)) ve = ve.hierarchy.parent;
+            while (ve != null && !_roots.ContainsKey(ve)) ve = ChildListWrites.ParentOf(ve);
             return ve != null;
         }
 

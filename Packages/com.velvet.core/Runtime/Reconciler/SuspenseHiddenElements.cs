@@ -39,7 +39,7 @@ namespace Velvet
 
         internal static bool IsAtOrUnderHidden(VisualElement? element)
         {
-            for (var ve = element; ve != null; ve = ve.parent)
+            for (var ve = element; ve != null; ve = ChildListWrites.ParentOf(ve))
             {
                 if (IsHidden(ve)) return true;
             }
@@ -48,7 +48,7 @@ namespace Velvet
 
         internal static VisualElement? NearestHiddenAtOrAbove(VisualElement? element)
         {
-            for (var ve = element; ve != null; ve = ve.parent)
+            for (var ve = element; ve != null; ve = ChildListWrites.ParentOf(ve))
             {
                 if (IsHidden(ve)) return ve;
             }

@@ -294,7 +294,7 @@ namespace Velvet
         // Portal target it stands for.
         private bool SiblingPrecedes(VisualElement a, VisualElement b)
         {
-            var parent = a.hierarchy.parent;
+            var parent = ChildListWrites.ParentOf(a);
             // MUTANT_SURVIVES(equivalent, boundary): a and b are two distinct branches under their lowest common
             // ancestor, where the loop in Precedes stops once the chains differ, so their indices never tie.
             return _rendered.IndexIn(parent, a) < _rendered.IndexIn(parent, b);
@@ -310,7 +310,7 @@ namespace Velvet
 
         private VisualElement? ParentOf(VisualElement element)
         {
-            var physical = element.hierarchy.parent;
+            var physical = ChildListWrites.ParentOf(element);
             if (physical == null) return null;
             if (_standInOf.TryGetValue(element, out var standIn)) return standIn;
             if (!_portalsOf.TryGetValue(physical, out var ranges)) return physical;
@@ -322,6 +322,6 @@ namespace Velvet
             return physical;
         }
 
-        private int LogicalSlotOf(VisualElement element) => _rendered.SlotIn(element.hierarchy.parent, element);
+        private int LogicalSlotOf(VisualElement element) => _rendered.SlotIn(ChildListWrites.ParentOf(element), element);
     }
 }

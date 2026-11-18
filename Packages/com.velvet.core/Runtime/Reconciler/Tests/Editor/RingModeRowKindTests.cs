@@ -27,9 +27,8 @@ namespace Velvet.Tests
             }
         }
 
-        // GREEN_ON_BASE(characterization): the base counts an overlay that stopped being inset as no leading child.
         [Test]
-        public void Given_AnInsetRingOnAnElementWithNoParent_When_ItIsSyncedToASiblingBand_Then_AFirstChildGoesBeforeTheOverlayLeftInside()
+        public void Given_AnInsetRingOnAnElementWithNoParent_When_ItIsSyncedToASiblingBand_Then_ItsRowIsOneHostedAfterItsRow()
         {
             // Arrange — with no parent to host the band beside, the overlay stays where the inset role put it.
             _element = new VisualElement();
@@ -38,8 +37,8 @@ namespace Velvet.Tests
             // Act
             RingOverlay.Sync(_element, _binding, Sibling, Array.Empty<string>());
 
-            // Assert — read as -1 where the overlay is not the one child, which the slot's answer is never.
-            Assert.That(_element.childCount == 1 ? LogicalChildSlots.ToPhysical(_element, 0) : -1, Is.EqualTo(0));
+            // Assert — a missing model reads as null, which no kind equals.
+            Assert.That(RowModelAccess.Peek(_element)?.KindAt(0), Is.EqualTo(RowKind.Hosted));
         }
     }
 }

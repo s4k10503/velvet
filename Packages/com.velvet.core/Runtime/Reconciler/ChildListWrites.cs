@@ -8,7 +8,8 @@ using UnityEngine.UIElements;
 namespace Velvet
 {
     // Every write the runtime assembly makes to a child list goes through here (RowModelRoutingTests), and each op
-    // updates the ContainerRows of the container beside the write: the model first and then the UI Toolkit call, so a
+    // updates the ContainerRows of the container beside the write (a recorded write, below, is applied to the live list
+    // later): the model first and then the UI Toolkit call, so a
     // write nested inside that call finds the child already in the model; only
     // HierarchySort makes its call first and rebuilds after.
     //
@@ -29,8 +30,13 @@ namespace Velvet
         internal static RowKind Classify(VisualElement element)
         {
             if (!LogicalChildSlots.IsInvisible(element)) return RowKind.Rendered;
-            return LogicalChildSlots.StaysFirst(element) ? RowKind.LeadingInvisible : RowKind.Invisible;
+            if (LogicalChildSlots.StaysFirst(element)) return RowKind.LeadingInvisible;
+            return LogicalChildSlots.IsHostedAfterItsRow(element) ? RowKind.Hosted : RowKind.Invisible;
         }
+
+        // The child count of a container: the live list's, or the model's where a write is recorded and not yet applied.
+        private static int CountOf(VisualElement content)
+            => s_rows.TryGetValue(content, out var rows) && rows.Pending > 0 ? rows.TotalCount : content.hierarchy.childCount;
 
         // The model of a container that has one, as it stands: a read that never builds or checks. Private until a
         // caller needs one that does not build; the tests reach it by reflection (RowModelAccess).
@@ -45,7 +51,7 @@ namespace Velvet
                 s_rows.Add(container, rows);
                 Fill(rows, container);
             }
-            else if (s_open == 0 && !Agrees(rows, container, readAt))
+            else if (s_open == 0 && rows.Pending == 0 && !Agrees(rows, container, readAt))
             {
                 rows.Clear();
                 Fill(rows, container);
@@ -142,7 +148,7 @@ namespace Velvet
         // lists are compared child for child, since two writes that each moved a child can leave the probes agreeing.
         private static void Settle(VisualElement container, bool full)
         {
-            if (!s_rows.TryGetValue(container, out var rows)) return;
+            if (!s_rows.TryGetValue(container, out var rows) || rows.Pending > 0) return;
             if (full ? Compare(rows, container) == null : Agrees(rows, container, -1)) return;
             rows.Clear();
             Fill(rows, container);
@@ -153,13 +159,13 @@ namespace Velvet
         internal static int RenderedCount(VisualElement container)
         {
             var content = ContentOf(container);
-            return content.hierarchy.childCount == 0 ? 0 : Synced(content, -1).RenderedCount;
+            return CountOf(content) == 0 ? 0 : Synced(content, -1).RenderedCount;
         }
 
         internal static int ToLogical(VisualElement container, int physical)
         {
             var content = ContentOf(container);
-            var count = content.hierarchy.childCount;
+            var count = CountOf(content);
             return count == 0 ? 0 : Synced(content, Math.Min(physical, count) - 1).ToLogical(physical);
         }
 
@@ -169,7 +175,7 @@ namespace Velvet
         internal static int ToPhysical(VisualElement container, int logical)
         {
             var content = ContentOf(container);
-            if (content.hierarchy.childCount == 0) return 0;
+            if (CountOf(content) == 0) return 0;
             var rows = Synced(content, -1);
             var physical = rows.ToPhysical(logical);
             if (!AgreesAt(rows, content, physical))
@@ -183,7 +189,7 @@ namespace Velvet
         internal static bool TryGetPhysical(VisualElement container, int logical, out int physical)
         {
             var content = ContentOf(container);
-            if (content.hierarchy.childCount == 0)
+            if (CountOf(content) == 0)
             {
                 physical = 0;
                 return false;
@@ -199,7 +205,7 @@ namespace Velvet
         }
 
         private static bool AgreesAt(ContainerRows rows, VisualElement content, int physical)
-            => s_open > 0 || physical >= content.hierarchy.childCount
+            => s_open > 0 || rows.Pending > 0 || physical >= CountOf(content)
                 || ReferenceEquals(rows.ElementAt(physical), content.hierarchy[physical]);
 
         private static ContainerRows Rebuilt(ContainerRows rows, VisualElement content)
@@ -213,19 +219,19 @@ namespace Velvet
         internal static int PhysicalIndexOf(VisualElement container, VisualElement element)
         {
             var content = ContentOf(container);
-            return content.hierarchy.childCount == 0 ? -1 : Synced(content, -1).PhysicalIndexOf(element);
+            return CountOf(content) == 0 ? -1 : Synced(content, -1).PhysicalIndexOf(element);
         }
 
         // The index of the child in container's own hierarchy list, for a container written through HierarchyInsert,
         // whose model is keyed on container itself where PhysicalIndexOf reads the one its content element holds.
         internal static int HierarchyIndexOf(VisualElement container, VisualElement element)
-            => container.hierarchy.childCount == 0 ? -1 : Synced(container, -1).PhysicalIndexOf(element);
+            => CountOf(container) == 0 ? -1 : Synced(container, -1).PhysicalIndexOf(element);
 
         // Appends the rendered children at slots [slotStart, end) to into, as OldSlotOccupants reads them.
         internal static void Rows(VisualElement container, int slotStart, int end, List<VisualElement?> into)
         {
             var content = ContentOf(container);
-            if (content.hierarchy.childCount == 0) return;
+            if (CountOf(content) == 0) return;
             Synced(content, -1).Rows(slotStart, end, into);
         }
 
@@ -233,7 +239,7 @@ namespace Velvet
         internal static VisualElement? RowAt(VisualElement container, int logical)
         {
             var content = ContentOf(container);
-            if (content.hierarchy.childCount == 0) return null;
+            if (CountOf(content) == 0) return null;
             var rows = Synced(content, -1);
             var row = rows.RowAt(logical);
             if (!AgreesAt(rows, content, rows.ToPhysical(logical)))
@@ -247,9 +253,9 @@ namespace Velvet
         internal static void PhysicalRange(VisualElement container, int start, int end, List<VisualElement> into)
         {
             var content = ContentOf(container);
-            if (content.hierarchy.childCount == 0) return;
+            if (CountOf(content) == 0) return;
             // MUTANT_SURVIVES(equivalent, arithmetic): readAt reaches only the probe in Agrees, and past the last child that probe repeats the last-child comparison made before it.
-            Synced(content, Math.Min(start, content.hierarchy.childCount - 1)).PhysicalRange(start, end, into);
+            Synced(content, Math.Min(start, CountOf(content) - 1)).PhysicalRange(start, end, into);
         }
 
         // Inserts a rendered child where LogicalChildSlots.ToPhysical puts a child at the slot.
@@ -298,6 +304,12 @@ namespace Velvet
         private static void InsertCore(VisualElement container, int index, VisualElement child, bool viaHierarchy,
             VisualElement caller)
         {
+            if (ShouldRecord(container, child))
+            {
+                RecordInsert(container, index, child, viaHierarchy, caller);
+                return;
+            }
+            FlushIfPending(container, child);
             var left = child.hierarchy.parent;
             // MUTANT_SURVIVES(equivalent, arithmetic): readAt reaches only the probe in Agrees, and past the last child that probe repeats the last-child comparison made before it.
             var rows = Enter(container, Math.Min(index, container.hierarchy.childCount - 1));
@@ -324,7 +336,13 @@ namespace Velvet
 
         internal static void Remove(VisualElement parent, VisualElement child)
         {
+            if (s_applying)
+            {
+                RecordRemoveChild(child);
+                return;
+            }
             var container = ContentOf(parent);
+            FlushIfPending(container, child);
             var rows = Enter(container, -1);
             try
             {
@@ -340,6 +358,7 @@ namespace Velvet
 
         internal static void HierarchyRemove(VisualElement parent, VisualElement child)
         {
+            FlushIfPending(parent, child);
             var rows = Enter(parent, -1);
             try
             {
@@ -356,6 +375,12 @@ namespace Velvet
         internal static void RemoveAt(VisualElement parent, int index)
         {
             var container = ContentOf(parent);
+            if (s_applying)
+            {
+                RecordRemoveAt(container, parent, index);
+                return;
+            }
+            FlushIfPending(container, null);
             var rows = Enter(container, index);
             try
             {
@@ -371,6 +396,12 @@ namespace Velvet
 
         internal static void RemoveFromHierarchy(VisualElement child)
         {
+            if (s_applying)
+            {
+                RecordRemoveChild(child);
+                return;
+            }
+            FlushIfPending(null, child);
             var parent = child.hierarchy.parent;
             if (parent == null)
             {
@@ -394,6 +425,7 @@ namespace Velvet
         internal static void Clear(VisualElement parent)
         {
             var container = ContentOf(parent);
+            FlushIfPending(container, null);
             if (container.hierarchy.childCount == 0)
             {
                 parent.Clear();
@@ -412,16 +444,237 @@ namespace Velvet
             PruneIfEmpty(container);
         }
 
+        // ---- Recorded writes ----
+        //
+        // Inside a pass, an insert or a move the walk makes through HostCommitQueue into a container the pass did not
+        // create updates the model and is recorded; the live list takes it where FinishPass starts (ApplyRecorded), in
+        // the order recorded. The readers the walk has moved to the model (ParentOf, ChildCount, ElementAtPhysical and
+        // the reads above) answer from it meanwhile, and a container with a recorded write is skipped by the checks that
+        // compare the model with the live list. Any other write into such a container applies the recorded ones first,
+        // except one made while they apply, which is recorded behind them.
+        private enum OpKind : byte { Insert, RemoveAt, RemoveChild }
+
+        private struct Op
+        {
+            internal VisualElement Container;
+            internal VisualElement Caller;
+            internal VisualElement Child;
+            internal int Index;
+            internal OpKind Kind;
+            internal bool ViaHierarchy;
+        }
+
+        private static readonly List<Op> s_ops = new();
+        // Where the model holds each child a recorded write touched; null where the write took it out.
+        private static readonly Dictionary<VisualElement, VisualElement?> s_pendingParent = new();
+        private static readonly HashSet<VisualElement> s_pendingContainers = new();
+        private static readonly HashSet<VisualElement> s_created = new();
+        private static bool s_recording;
+        private static bool s_applying;
+
+        // Raised by HostCommitQueue around the writes it makes, which are the ones recorded.
+        internal static int ViaQueue;
+
+        // A pass starting where another is still recording applies the other's writes first.
+        internal static void BeginRecording()
+        {
+            if (s_recording) ApplyRecorded();
+            s_created.Clear();
+            s_recording = true;
+        }
+
+        // A container the pass creates takes its children at once.
+        internal static void MarkCreated(VisualElement element)
+        {
+            if (!s_recording) return;
+            s_created.Add(element);
+            s_created.Add(ContentOf(element));
+        }
+
+        // A write made while the recorded ones apply (a child attaching to the panel places the layer it hosts beside
+        // itself) is recorded behind them, since the model already holds the rows still to apply and the live list
+        // does not.
+        private static bool ShouldRecord(VisualElement container, VisualElement child)
+            => s_applying
+               || (s_recording && ViaQueue > 0 && (!s_created.Contains(container) || s_pendingParent.ContainsKey(child)));
+
+        internal static int ChildCount(VisualElement container) => CountOf(ContentOf(container));
+
+        // What element.hierarchy.childCount and element.hierarchy[index] answer where nothing is recorded, and what the
+        // model holds where a write is: a read of a descendant that builds no model.
+        internal static int HierarchyCount(VisualElement? element)
+            => element == null ? 0 : s_rows.TryGetValue(element, out var rows) && rows.Pending > 0 ? rows.TotalCount : element.hierarchy.childCount;
+
+        internal static VisualElement HierarchyChild(VisualElement element, int index)
+            => s_rows.TryGetValue(element, out var rows) && rows.Pending > 0 ? rows.ElementAt(index) : element.hierarchy[index];
+
+        internal static VisualElement? ParentOf(VisualElement element)
+            => s_pendingParent.TryGetValue(element, out var parent) ? parent : element.hierarchy.parent;
+
+        // The child at the physical index of the container's model, which is the live list where nothing is recorded.
+        internal static VisualElement? ElementAtPhysical(VisualElement container, int physical)
+        {
+            var content = ContentOf(container);
+            return physical < 0 || physical >= CountOf(content) ? null : Synced(content, physical).ElementAt(physical);
+        }
+
+        private static void Mark(VisualElement container)
+        {
+            if (s_rows.TryGetValue(container, out var rows)) rows.Pending++;
+            s_pendingContainers.Add(container);
+        }
+
+        private static void RecordInsert(VisualElement container, int index, VisualElement child, bool viaHierarchy,
+            VisualElement caller)
+        {
+            var left = ParentOf(child);
+            var rows = Synced(container, -1);
+            var held = false;
+            if (index >= 0 && index <= rows.TotalCount)
+            {
+                if (left != null)
+                {
+                    var leftRows = ReferenceEquals(left, container) ? rows
+                        : left.hierarchy.childCount > 0 || s_rows.TryGetValue(left, out _) ? Synced(left, -1) : null;
+                    if (leftRows != null && leftRows.Contains(child))
+                    {
+                        leftRows.Remove(child);
+                        Mark(left);
+                    }
+                }
+                rows.Insert(Math.Min(index, rows.TotalCount), child, Classify(child));
+                held = true;
+            }
+            Mark(container);
+            if (held) s_pendingParent[child] = container;
+            s_ops.Add(new Op
+            {
+                Container = container, Caller = caller, Child = child, Index = index, Kind = OpKind.Insert,
+                ViaHierarchy = viaHierarchy,
+            });
+            Touch(container);
+        }
+
+        // The removal half of a move HostCommitQueue.Reorder makes.
+        internal static void RemoveAtForMove(VisualElement parent, int index)
+        {
+            var container = ContentOf(parent);
+            if (s_applying || (s_recording && ViaQueue > 0 && !s_created.Contains(container)))
+            {
+                RecordRemoveAt(container, parent, index);
+                return;
+            }
+            RemoveAt(parent, index);
+        }
+
+        private static void RecordRemoveAt(VisualElement container, VisualElement caller, int index)
+        {
+            var rows = Synced(container, -1);
+            if (index >= 0 && index < rows.TotalCount)
+            {
+                var element = rows.ElementAt(index);
+                rows.Remove(element);
+                s_pendingParent[element] = null;
+            }
+            Mark(container);
+            s_ops.Add(new Op { Container = container, Caller = caller, Index = index, Kind = OpKind.RemoveAt });
+            Touch(container);
+        }
+
+        private static void RecordRemoveChild(VisualElement child)
+        {
+            var container = ParentOf(child);
+            if (container == null) return;
+            if (s_rows.TryGetValue(container, out var rows) && rows.Contains(child))
+            {
+                rows.Remove(child);
+                Mark(container);
+                Touch(container);
+            }
+            s_pendingParent[child] = null;
+            s_ops.Add(new Op { Container = container, Child = child, Kind = OpKind.RemoveChild });
+        }
+
+        // For a reader of container's live child list: the recorded writes of the container apply first.
+        internal static void SyncLive(VisualElement container) => FlushIfPending(ContentOf(container), null);
+
+
+        private static void FlushIfPending(VisualElement? container, VisualElement? child)
+        {
+            if (s_ops.Count == 0 || s_applying) return;
+            if ((container != null && s_pendingContainers.Contains(container))
+                || (child != null && (s_pendingParent.ContainsKey(child)
+                    || (child.hierarchy.parent is { } live && s_pendingContainers.Contains(live)))))
+            {
+                ApplyRecorded();
+            }
+        }
+
+        // Puts the recorded writes on the live lists in the order they were made and ends recording.
+        internal static void ApplyRecorded()
+        {
+            if (s_applying) return;
+            s_applying = true;
+            try
+            {
+                for (var i = 0; i < s_ops.Count; i++)
+                {
+                    var op = s_ops[i];
+                    s_open++;
+                    s_flight.Add(op.Container);
+                    try
+                    {
+                        if (op.Kind == OpKind.RemoveChild) op.Child.RemoveFromHierarchy();
+                        else if (op.Kind == OpKind.RemoveAt) op.Caller.RemoveAt(op.Index);
+                        else if (op.ViaHierarchy) op.Container.hierarchy.Insert(op.Index, op.Child);
+                        else op.Caller.Insert(op.Index, op.Child);
+                    }
+                    finally
+                    {
+                        s_flight.RemoveAt(s_flight.Count - 1);
+                        s_open--;
+                    }
+                }
+            }
+            finally
+            {
+                s_applying = false;
+                s_ops.Clear();
+                s_pendingParent.Clear();
+                foreach (var container in s_pendingContainers)
+                {
+                    if (s_rows.TryGetValue(container, out var rows)) rows.Pending = 0;
+                }
+                foreach (var container in s_pendingContainers)
+                {
+                    Touch(container);
+                    PruneIfEmpty(container);
+                }
+                s_pendingContainers.Clear();
+                foreach (var nested in s_nested) Settle(nested, full: true);
+                s_nested.Clear();
+            }
+        }
+
+        // Ends recording and applies what it recorded.
+        internal static void EndRecording()
+        {
+            s_recording = false;
+            ApplyRecorded();
+            s_created.Clear();
+        }
+
         // A container with no children keeps no model.
         private static void PruneIfEmpty(VisualElement container)
         {
-            if (container.hierarchy.childCount == 0) s_rows.Remove(container);
+            if (container.hierarchy.childCount == 0 && !(s_rows.TryGetValue(container, out var rows) && rows.Pending > 0)) s_rows.Remove(container);
         }
 
         // Sorts the live list and takes the order it came out in; the comparison runs in UI Toolkit's own sort, so the
         // model never has to reproduce it.
         internal static void HierarchySort(VisualElement parent, Comparison<VisualElement> comparison)
         {
+            FlushIfPending(parent, null);
             var rows = Enter(parent, -1);
             try
             {
@@ -457,7 +710,7 @@ namespace Velvet
             if (s_open > 0) return;
             foreach (var container in s_touched)
             {
-                if (!s_rows.TryGetValue(container, out var rows)) continue;
+                if (!s_rows.TryGetValue(container, out var rows) || rows.Pending > 0) continue;
                 if (rows.Stale || (carried && rows.TotalCount != container.hierarchy.childCount))
                 {
                     rows.Clear();

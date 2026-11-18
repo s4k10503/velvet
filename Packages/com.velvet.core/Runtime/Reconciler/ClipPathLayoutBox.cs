@@ -170,7 +170,7 @@ namespace Velvet
         internal static VisualElement Of(VisualElement element)
         {
             var binding = Registered(s_byInner, element);
-            return binding != null && element.parent == binding.Wrapper ? binding.Wrapper : element;
+            return binding != null && ChildListWrites.ParentOf(element) == binding.Wrapper ? binding.Wrapper : element;
         }
 
         // The inverse of Of: the clipped element a clip wrapper stands in for, else outer itself.
@@ -236,7 +236,7 @@ namespace Velvet
             var binding = Registered(s_byInner, element);
             // MUTANT_SURVIVES(equivalent, clause removed): an element leaves its wrapper by an unwrap or a removal,
             // and both take the wrapper out of the tree, so classes mirrored onto it after that reach nothing.
-            if (binding == null || element.parent != binding.Wrapper)
+            if (binding == null || ChildListWrites.ParentOf(element) != binding.Wrapper)
             {
                 return;
             }

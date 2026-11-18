@@ -220,8 +220,8 @@ namespace Velvet
 
             private VisualElement? AnchorAbove(VisualElement element)
             {
-                var anchor = element.hierarchy.parent;
-                while (anchor != null && !_ctx.EventManager.IsBridgeAnchor(anchor)) anchor = anchor.hierarchy.parent;
+                var anchor = ChildListWrites.ParentOf(element);
+                while (anchor != null && !_ctx.EventManager.IsBridgeAnchor(anchor)) anchor = ChildListWrites.ParentOf(anchor);
                 return anchor;
             }
         }
@@ -254,7 +254,7 @@ namespace Velvet
 
         private static bool IsPhysicalAncestorOrSelf(VisualElement candidate, VisualElement? target)
         {
-            for (var element = target; element != null; element = element.hierarchy.parent)
+            for (var element = target; element != null; element = ChildListWrites.ParentOf(element))
             {
                 if (ReferenceEquals(element, candidate)) return true;
             }
@@ -307,7 +307,7 @@ namespace Velvet
                 var relocated = RelocatedParent(element, ctx);
                 if (relocated != null) return relocated;
             }
-            return element.hierarchy.parent;
+            return ChildListWrites.ParentOf(element);
         }
 
         // The position an element answers to when that is not the element it is mounted under: the placeholder
@@ -316,7 +316,7 @@ namespace Velvet
         private static VisualElement? RelocatedParent(VisualElement element, ReconcilerContext ctx)
         {
             var slot = ctx.ZLayerMembers.TryGetValue(element, out var member) ? member.Placeholder : element;
-            var parent = slot.parent;
+            var parent = ChildListWrites.ParentOf(slot);
             if (parent == null) return null;
             return ctx.PortalHoldingRow(slot, parent) ?? (ReferenceEquals(slot, element) ? null : slot);
         }
@@ -327,7 +327,7 @@ namespace Velvet
         private static VisualElement? LogicalParent(VisualElement element, ReconcilerContext ctx)
         {
             var slot = ctx.ZLayerMembers.TryGetValue(element, out var member) ? member.Placeholder : element;
-            var parent = slot.parent;
+            var parent = ChildListWrites.ParentOf(slot);
             if (parent == null) return null;
             var placeholder = ctx.PortalHoldingRow(slot, parent);
             return placeholder != null ? LogicalParent(placeholder, ctx) : parent;

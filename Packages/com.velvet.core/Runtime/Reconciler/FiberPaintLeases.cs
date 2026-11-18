@@ -367,7 +367,7 @@ namespace Velvet
                 {
                     GradientBackground.EndOwned(_element, drawn);
                 }
-                if (_element.parent == null)
+                if (ChildListWrites.ParentOf(_element) == null)
                 {
                     return;
                 }
