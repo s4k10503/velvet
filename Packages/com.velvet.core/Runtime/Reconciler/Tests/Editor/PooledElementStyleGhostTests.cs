@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using NUnit.Framework;
+using UnityEngine;
 using UnityEngine.UIElements;
 using Velvet.TestUtilities;
 
@@ -308,37 +309,17 @@ namespace Velvet.Tests
             nameof(IStyle.transitionTimingFunction),
         };
 
-        // GREEN_ON_BASE(refactor): the reset drops an in-place list clear this editor's setter makes dead.
-        // Should a Null assignment ever leave the inline filter list readable again, filter reddens here.
+        // GREEN_ON_BASE(refactor): the arrangement moved into helpers the Clear measurements below share, and the
+        // reset it pins is unchanged. The reset drops an in-place list clear this editor's setter makes dead;
+        // should a Null assignment ever leave the inline filter list readable again, filter reddens here.
         [Test]
         public void Given_EveryInlineStylePropertyWritten_When_ResetForReuse_Then_ScrubbedPropertiesMatchTheContractList()
         {
-            // Arrange — write EVERY settable IStyle property as a real inline entry. StyleKeyword.Initial is
-            // the sentinel because it is distinguishable from the unset state (which reads back as
-            // StyleKeyword.Null), so "reads equal to a fresh element" after the reset means exactly "scrubbed".
-            // Obsolete properties are excluded: they are synthetic shims whose getters derive from the real
-            // background properties instead of owning storage, so they would always read equal to fresh.
+            // Arrange — every settable IStyle property written as a real inline entry.
             var element = new VisualElement();
             var fresh = new VisualElement();
-            // unityMaterial is also excluded: its inline getter returns StyleKeyword.Null whenever the
-            // stored material object is null, so a keyword-only sentinel cannot round-trip and the
-            // property is indistinguishable from fresh without a live Material. Velvet's styling layer
-            // never writes it inline.
-            var properties = typeof(IStyle).GetProperties()
-                .Where(p => p.CanWrite && !p.IsDefined(typeof(ObsoleteAttribute))
-                    && p.Name != nameof(IStyle.unityMaterial))
-                .ToArray();
-            var unsettable = new List<string>();
-            foreach (var property in properties)
-            {
-                var sentinel = MakeStyleValue(property.PropertyType, StyleKeyword.Initial);
-                if (sentinel == null)
-                {
-                    unsettable.Add(property.Name);
-                    continue;
-                }
-                property.SetValue(element.style, sentinel);
-            }
+            var properties = WritableInlineProperties();
+            var unsettable = WriteEveryInlineProperty(element, properties);
             Assume.That(unsettable, Is.Empty, "Precondition: every IStyle property type accepts a StyleKeyword value");
 
             // Act — the shared pool reset runs.
@@ -399,6 +380,184 @@ namespace Velvet.Tests
                 .Select(probe => probe.Name)
                 .ToList();
             Assert.That(mismatches, Is.Empty);
+        }
+
+        // IStyle.Clear measurements. Each case decides one condition for replacing the enumeration in
+        // ResetInlineStyle with Clear().
+
+        private const string FadeSheet = "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/LayoutIdTestRules.uss";
+
+        // GREEN_ON_BASE(characterization): measurement (i) of replacing the enumeration with Clear(); it runs
+        // against the enumeration unchanged, so it reports what Clear would cover.
+        [Test]
+        public void Given_EveryInlineStylePropertyWrittenOnAPanel_When_TheStyleIsCleared_Then_EveryScrubbedPropertyReadsAsFresh()
+        {
+            // Arrange
+            using var host = new HeadlessEditorPanelHost();
+            var element = new VisualElement();
+            var fresh = new VisualElement();
+            host.Root.Add(element);
+            EditorPanelTestHelpers.ForcePanelUpdate(host.Panel);
+            var properties = WritableInlineProperties();
+            var unsettable = WriteEveryInlineProperty(element, properties);
+
+            // Act
+            element.style.Clear();
+
+            // Assert — a property no sentinel could be written for is a gap in the measurement, so it reports too.
+            var cleared = properties
+                .Where(p => Equals(p.GetValue(element.style), p.GetValue(fresh.style)))
+                .Select(p => p.Name)
+                .ToArray();
+            var gaps = ScrubbedInlineStyleProperties.Except(cleared)
+                .Select(name => $"named by the enumeration, not cleared by Clear: {name}")
+                .Concat(unsettable.Select(name => $"no value to write, unmeasured: {name}"))
+                .ToList();
+            Assert.That(gaps, Is.Empty);
+        }
+
+        // The zero duration the reset writes before its scrub, then the opacity the scrub restores through the
+        // transition system. The sheet's rule fades opacity over a second, so a clear that starts a transition
+        // leaves the opacity part-way after half of it. The element carries an inline duration of its own, written
+        // before the opacity, when durationFirst is set.
+        private float OpacityHalfASecondAfterAClearThatFollowsTheZeroDuration(bool durationFirst)
+        {
+            using var host = new HeadlessEditorPanelHost();
+            var now = 100.0;
+            EditorPanelTestHelpers.SetPanelTimeFunction(host.Panel, () => now);
+            host.Root.styleSheets.Add(UnityEditor.AssetDatabase.LoadAssetAtPath<StyleSheet>(FadeSheet));
+            var element = new VisualElement();
+            element.AddToClassList("layout-id-test-fade");
+            host.Root.Add(element);
+            EditorPanelTestHelpers.ForcePanelUpdate(host.Panel);
+            if (durationFirst)
+            {
+                element.style.transitionDuration = new StyleList<TimeValue>(new List<TimeValue> { new TimeValue(1f) });
+            }
+            element.style.opacity = 0.2f;
+            now += 2.0;
+            EditorPanelTestHelpers.DriveAnimationsOnce(host.Panel);
+            var settled = element.resolvedStyle.opacity;
+
+            element.style.transitionDuration = new StyleList<TimeValue>(new List<TimeValue> { new TimeValue(0f) });
+            element.style.Clear();
+            now += 0.5;
+            EditorPanelTestHelpers.DriveAnimationsOnce(host.Panel);
+
+            // NaN where the opacity never settled at the inline value, which no expected opacity equals.
+            return Mathf.Approximately(settled, 0.2f) ? element.resolvedStyle.opacity : float.NaN;
+        }
+
+        // GREEN_ON_BASE(characterization): measurement (ii), the inline duration absent when the guard writes its zero.
+        [Test]
+        public void Given_AZeroDurationWrittenAfterTheInlineOpacity_When_TheStyleIsCleared_Then_NoTransitionStarts()
+        {
+            // Arrange / Act
+            var opacity = OpacityHalfASecondAfterAClearThatFollowsTheZeroDuration(durationFirst: false);
+
+            // Assert — fully back to the rule's value, not part-way through fading back to it.
+            Assert.That(opacity, Is.EqualTo(1f).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_AZeroDurationWrittenOverAnInlineDurationThatPrecededTheInlineOpacity_When_TheStyleIsCleared_Then_NoTransitionStarts()
+        {
+            // Arrange / Act
+            var opacity = OpacityHalfASecondAfterAClearThatFollowsTheZeroDuration(durationFirst: true);
+
+            // Assert
+            Assert.That(opacity, Is.EqualTo(1f).Within(1e-3f));
+        }
+
+        // GREEN_ON_BASE(characterization): measurement (iii), which compares two Clear calls and never reads the enumeration.
+        [Test]
+        public void Given_EveryInlineStylePropertyWritten_When_ClearedWithAndWithoutTheSourceAssetFlag_Then_NoPropertyDiffers()
+        {
+            // Arrange
+            var kept = new VisualElement();
+            var dropped = new VisualElement();
+            var properties = WritableInlineProperties();
+            WriteEveryInlineProperty(kept, properties);
+            WriteEveryInlineProperty(dropped, properties);
+
+            // Act
+            kept.style.Clear(false);
+            dropped.style.Clear(true);
+
+            // Assert
+            var differing = properties
+                .Where(p => !Equals(p.GetValue(kept.style), p.GetValue(dropped.style)))
+                .Select(p => p.Name)
+                .ToList();
+            Assert.That(differing, Is.Empty);
+        }
+
+        // GREEN_ON_BASE(characterization): measurement (iii), the other half: what the flag would act on.
+        [Test]
+        public void Given_AMountedTreeOfPrimitives_When_EachElementsInlineRuleIsRead_Then_NoneCarriesASourceAsset()
+        {
+            // Arrange — a tree the reconciler builds from C#, not from an asset.
+            using var mounted = V.Mount(_root, V.Div(name: "tree", className: "w-[10px]", children: new VNode[]
+            {
+                V.Label(name: "label", text: "a", className: "tracking-[2px]"),
+                V.Button(name: "button", text: "b"),
+                V.TextField(name: "field"),
+                V.Toggle(name: "toggle"),
+                V.Slider(name: "slider"),
+                V.ScrollView(name: "scroll"),
+            }));
+            var inlineStyleAccess = typeof(VisualElement).GetField(
+                "inlineStyleAccess", BindingFlags.Instance | BindingFlags.NonPublic)!;
+
+            // Act
+            var carrying = new List<string>();
+            foreach (var element in _root.Query<VisualElement>().Build().ToList())
+            {
+                var access = inlineStyleAccess.GetValue(element);
+                if (access == null)
+                {
+                    continue;
+                }
+                var rule = access.GetType().GetProperty("inlineRule")!.GetValue(access);
+                if (rule.GetType().GetField("sheet")!.GetValue(rule) != null)
+                {
+                    carrying.Add(element.name);
+                }
+            }
+
+            // Assert
+            Assert.That(carrying, Is.Empty);
+        }
+
+        // Obsolete properties are excluded: they are synthetic shims whose getters derive from the real background
+        // properties instead of owning storage, so they would always read equal to fresh. unityMaterial is also
+        // excluded: its inline getter returns StyleKeyword.Null whenever the stored material object is null, so a
+        // keyword-only sentinel cannot round-trip and the property is indistinguishable from fresh without a live
+        // Material. Velvet's styling layer never writes it inline.
+        private static PropertyInfo[] WritableInlineProperties()
+            => typeof(IStyle).GetProperties()
+                .Where(p => p.CanWrite && !p.IsDefined(typeof(ObsoleteAttribute))
+                    && p.Name != nameof(IStyle.unityMaterial))
+                .ToArray();
+
+        // Writes every property as a real inline entry. StyleKeyword.Initial is the sentinel because it is
+        // distinguishable from the unset state (which reads back as StyleKeyword.Null), so "reads equal to a fresh
+        // element" afterwards means exactly "scrubbed". Returns the names of the properties no sentinel could be
+        // built for, which stay unwritten.
+        private static List<string> WriteEveryInlineProperty(VisualElement element, PropertyInfo[] properties)
+        {
+            var unsettable = new List<string>();
+            foreach (var property in properties)
+            {
+                var sentinel = MakeStyleValue(property.PropertyType, StyleKeyword.Initial);
+                if (sentinel == null)
+                {
+                    unsettable.Add(property.Name);
+                    continue;
+                }
+                property.SetValue(element.style, sentinel);
+            }
+            return unsettable;
         }
 
         // Resolves a boxed style value carrying the given keyword for any IStyle property type. Every
