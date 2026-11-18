@@ -354,7 +354,8 @@ namespace Velvet.Tests
                 renderer: r => V.Div(children: new VNode[] { V.Component(InnerSub, key: "body-" + r.Id) }),
                 overscan: 0);
             var scrollView = new ScrollView(ScrollViewMode.Vertical);
-            using var controller = new FiberVirtualListController(scrollView, node, scope.Reconciler);
+            var controller = new FiberVirtualListController(scrollView, node, scope.Reconciler);
+            using var controllerDisposal = FiberExecutionContextTestAccess.DisposedAsEntryForTest(controller);
             controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 200f);
             FiberEffects.FlushPendingPassiveEffects(scope.Reconciler.Context);
             var firstWindow = StoreSubscriberCount(store);

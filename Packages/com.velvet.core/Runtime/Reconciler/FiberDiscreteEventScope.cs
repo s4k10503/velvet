@@ -7,7 +7,8 @@ namespace Velvet
     /// Brackets a discrete user-input handler: marks <see cref="FiberWorkLoop.IsInDiscreteEvent"/> for its
     /// duration so hook-triggered renders take the Urgent lane, then — at the outermost discrete boundary —
     /// runs the pending passive effects of earlier commits and flushes the owning context's immediate batch
-    /// synchronously, so the update commits in the same frame. That commit is a sync-lane one, so it runs its
+    /// synchronously, so the update commits in the same frame; fired while a root renders or commits,
+    /// <c>FiberBatchScheduler.HoldFlush</c> decides where that flush runs. That commit is a sync-lane one, so it runs its
     /// own passive effects as it ends (<c>FiberBatchScheduler.DrainImmediatePasses</c>). The flag is restored
     /// before both, so an update an effect schedules takes the Normal lane: one from the earlier commits'
     /// effects commits within this same flush, and one from this commit's waits for the next drain, unless one of those
@@ -41,20 +42,7 @@ namespace Velvet
                 {
                     FiberWorkLoop.IsInDiscreteEvent = wasInDiscreteEvent;
                 }
-                if (!wasInDiscreteEvent)
-                {
-                    // Flushed here as well as before the drain's render (FiberBatchScheduler.Drain), so an event
-                    // that schedules no update still runs the effects of the commit before it. The event's own
-                    // flush still runs even if a runaway passive-effect loop throws its guard.
-                    try
-                    {
-                        batchScheduler?.FlushPendingPassiveEffects();
-                    }
-                    finally
-                    {
-                        batchScheduler?.FlushImmediate();
-                    }
-                }
+                if (!wasInDiscreteEvent) batchScheduler?.FlushDiscreteEvent();
             }
         }
     }

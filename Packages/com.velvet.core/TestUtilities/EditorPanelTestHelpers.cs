@@ -53,7 +53,20 @@ namespace Velvet.TestUtilities
             {
                 throw new MissingMethodException(scheduler.GetType().FullName, "UpdateScheduledEvents");
             }
-            update.Invoke(scheduler, null);
+            var throttling = scheduler.GetType().GetField(
+                "disableThrottling",
+                BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+                ?? throw new MissingFieldException(scheduler.GetType().FullName, "disableThrottling");
+            var wasDisabled = throttling.GetValue(scheduler);
+            throttling.SetValue(scheduler, true);
+            try
+            {
+                update.Invoke(scheduler, null);
+            }
+            finally
+            {
+                throttling.SetValue(scheduler, wasDisabled);
+            }
         }
 
         /// <summary>
