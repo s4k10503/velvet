@@ -1,0 +1,5 @@
+### Fixed
+
+- A `V.FocusScope` with `autoFocus` inside a `V.Portal` that mounted while its `V.Suspense` kept its children hidden
+  could take focus while `display: none` hid its button. Its `autoFocus` now waits for the boundary to reveal the
+  scope and takes focus then, as React runs the `autoFocus` of a host that appears with a reveal.
