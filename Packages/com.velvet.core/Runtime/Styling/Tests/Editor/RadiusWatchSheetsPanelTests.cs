@@ -283,12 +283,15 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ASourceDestroyedWhileItsWatchSheetIsAttached_When_TheRootIsReadAndThePanelsWatchTicks_Then_NoWatchSheetRemainsOnIt()
+        public void Given_ASourceDestroyedWhileItsWatchSheetIsAttached_When_TheRootIsReadAndThePanelsWatchTicks_Then_ThatWatchSheetIsNoLongerListed()
         {
-            // Arrange
+            // Arrange — the window's root also holds watch sheets of the editor's own sheets, so the sheet asked after is this
+            // one, by reference, which stays the same object once destroyed.
             var source = Clone(OwnSheet);
             _window.rootVisualElement.styleSheets.Add(source);
             MountAndSettle();
+            var watch = RadiusWatchSheets.DerivedOf(source);
+            var made = (object)watch != null;
             UnityEngine.Object.DestroyImmediate(source);
 
             // Act
@@ -296,13 +299,13 @@ namespace Velvet.Tests
             TickSheetWatch(_window.rootVisualElement.panel);
 
             // Assert
-            var left = 0;
+            var listed = 0;
             for (var i = 0; i < _window.rootVisualElement.styleSheets.count; i++)
             {
-                var held = _window.rootVisualElement.styleSheets[i];
-                left += RadiusWatchSheets.IsWatch(held) ? 1 : 0;
+                listed += ReferenceEquals(_window.rootVisualElement.styleSheets[i], watch) ? 1 : 0;
             }
-            Assert.That(left, Is.Zero);
+            // A sheet never made, or one still alive, reads -1.
+            Assert.That(made && watch == null ? listed : -1, Is.Zero);
         }
 
         [Test]
