@@ -761,8 +761,16 @@ namespace Velvet
             FiberExecutionContext.Enter<ComponentFiber>(null, fiber, static run => RunEffects(run));
         }
 
+        // The contexts that have staged passive work since the start of an entry last took them off, in the order each
+        // staged it first. React keeps one root's passive effects pending and flushes them before it renders or commits
+        // anything; here each context keeps its own, so every entry starts by running all of them
+        // (FlushEveryContextsPendingPassiveWork).
+        private static readonly List<ReconcilerContext> s_withPendingPassiveWork = new();
+
+        // Ahead of the returns below, since a context with no anchor arms no drain and its work still waits for an entry.
         private static void ArmPassiveDrain(ReconcilerContext context)
         {
+            if (!s_withPendingPassiveWork.Contains(context)) s_withPendingPassiveWork.Add(context);
             if (context.PassiveEffectDrainScheduled) return;
             // One drain serves the whole context and only that drain clears the latch below, so the
             // registration has to sit on a host outliving any single subtree: the batch scheduler's
@@ -813,7 +821,7 @@ namespace Velvet
 
         // Run whether or not the presence's owner has unmounted since staging: an inner presence that leaves with
         // its enclosing child is gone by the flush, and Framer Motion still calls its onExitComplete.
-        internal static void RunPassiveCompletions(ReconcilerContext context)
+        private static void RunPassiveCompletions(ReconcilerContext context)
         {
             if (context.PendingPassiveCompletions.Count == 0) return;
             var completions = context.PendingPassiveCompletions.ToArray();
@@ -852,6 +860,22 @@ namespace Velvet
             // React's passive flush ends by flushing sync work, so a store hook's forced re-render renders before
             // the drain returns rather than on a later tick. Inside an immediate drain, that drain's own passes do.
             if (context.EffectCommitDepth == 0) context.BatchScheduler.FlushSyncWorkAfterPassiveEffects();
+        }
+
+        // Runs where an entry starts (FiberExecutionContext.Enter), outside every render, commit and passive flush, since
+        // those run inside an entry. Each context's work runs in a bracket of the anchor its scheduled drain runs on, so
+        // FiberBatchScheduler.ScheduleDelayed places a transition one of its effects asks for as it does there. A context
+        // comes off the list before its work runs, and what that work stages puts it back behind the others.
+        internal static void FlushEveryContextsPendingPassiveWork()
+        {
+            UnityEngine.Debug.Assert(!ChildListWrites.PassIsOpen, "Passive effects ran inside an open pass.");
+            while (s_withPendingPassiveWork.Count > 0)
+            {
+                var context = s_withPendingPassiveWork[0];
+                s_withPendingPassiveWork.RemoveAt(0);
+                PanelSchedulerCallback.Run(
+                    context.PassiveEffectDrainAnchor, context, static flushed => FlushPendingPassiveEffectsWork(flushed));
+            }
         }
 
         private static void RunPassivePhases(ReconcilerContext context)

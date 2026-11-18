@@ -926,30 +926,16 @@ namespace Velvet
                 HoldFlush();
                 return;
             }
-            FiberExecutionContext.Enter(this, this, static scheduler => scheduler.FlushDiscreteEventWork());
+            FiberExecutionContext.Enter(this, this, static scheduler => scheduler.FlushImmediateWork());
         }
 
-        // The passive effects are flushed here as well as before the drain's render (Drain), so an event that schedules
-        // no update still runs the effects of the commit before it. The flush still runs even if a runaway
-        // passive-effect loop throws its guard.
-        private void FlushDiscreteEventWork()
-        {
-            try
-            {
-                FlushPendingPassiveEffectsWork();
-            }
-            finally
-            {
-                FlushImmediateWork();
-            }
-        }
+        internal int ImmediateIntake => _immediateIntake;
 
         // React's task flushes pending passive effects and then renders the highest-priority lanes pending, so an
-        // update one of those effects schedules renders ahead of the transition the task was resuming.
-        internal void FlushPendingPassiveEffectsAheadOfAResume()
+        // update one of those effects schedules renders ahead of the transition the task was resuming. The entry that
+        // resumes it ran them as it started, and intake is ImmediateIntake from before that entry.
+        internal void FlushUpdatesQueuedAheadOfAResume(int intake)
         {
-            var intake = _immediateIntake;
-            FlushPendingPassiveEffectsWork();
             if (_immediateIntake != intake) FlushImmediateWork();
         }
 

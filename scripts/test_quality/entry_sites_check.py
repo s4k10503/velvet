@@ -84,8 +84,7 @@ ALLOWED = {
     "FiberDiscreteEventScope.Run": {"FiberBatchScheduler.FlushDiscreteEvent"},
     "Hooks.UseCore": {"FiberRenderer.NotifyAsyncResourceCompleted"},
     # Held work runs through the door it was asked for at, with nothing set (FiberExecutionContext).
-    "FiberExecutionContext.Release": {
-        "FiberBatchScheduler.FlushPendingPassiveEffects", "FiberBatchScheduler.FlushImmediate"},
+    "FiberExecutionContext.Release": {"FiberBatchScheduler.FlushImmediate"},
     "FiberBatchScheduler.FiberBatchScheduler": {
         "FiberBatchScheduler.FlushDiscreteEvent", "FiberBatchScheduler.FlushPendingPassiveEffects"},
     "FiberRenderer.HoldFirstRender": {"FiberRenderer.RenderMounted"},
