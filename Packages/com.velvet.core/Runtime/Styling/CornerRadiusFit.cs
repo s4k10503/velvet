@@ -58,10 +58,11 @@ namespace Velvet
     /// when it is first laid out.
     ///
     /// An element none of that reaches is observed from its creation (<see cref="Observe"/>, which the factory calls
-    /// beside adding <see cref="WatchClass"/>): the first size change or style pass that finds a radius resolved on it attaches the fit, which then reads the rules' radius through
-    /// <see cref="StyleCascade.Radius"/> and a length its code writes as it does for any other element. A style
-    /// pass reaches the fit through the custom property <c>_preflight.uss</c> gives <see cref="WatchClass"/>, which
-    /// the factory puts on each element it builds, so it needs the bundled stylesheet attached.
+    /// beside adding <see cref="WatchClass"/>): the first size change or style pass that finds a radius resolved on it
+    /// attaches the fit, which then reads the rules' radius through <see cref="StyleCascade.Radius"/> and a length its
+    /// code writes as it does for any other element. A style pass reaches the fit through the custom property
+    /// <c>_preflight.uss</c> gives <see cref="WatchClass"/>, which the factory puts on each element it builds, so it
+    /// needs the bundled stylesheet attached.
     /// </remarks>
     internal static class CornerRadiusFit
     {
@@ -110,12 +111,9 @@ namespace Velvet
         // Watches element for a radius its rules or its code give it, which no class or arbitrary value declared.
         public static void Observe(VisualElement element) => Watch(element);
 
-        // The class _preflight.uss keys the custom property on that makes UI Toolkit send an element its style passes. The
-        // factory adds it beside the Observe call, which allocates nothing (CornerRadiusFitObserveAllocationTests) and so
-        // leaves it out; a recycled element loses the class with the rest of its class list and gets it again when the
-        // factory builds with it.
+        // The class _preflight.uss keys the custom property on that makes UI Toolkit send an element its style passes. A
+        // recycled element loses it with the rest of its class list and gets it again when the factory builds with it.
         internal const string WatchClass = "velvet-radius-watch";
-
 
         // Watching a host sets its flag, and its type hands it its size changes and style passes, so watching one allocates
         // nothing (CornerRadiusFitObserveAllocationTests). Neither kind is ever unwatched: nothing unregisters a callback,
