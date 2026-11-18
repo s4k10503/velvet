@@ -29,6 +29,11 @@ namespace Velvet
             // Weak, so a tree nobody disposed does not keep the element it was mounted on alive through this.
             public readonly WeakReference<VisualElement> Element;
             public int Holds;
+            public readonly long HeldAt = s_heldCount++;
+
+            // Set by the release that took the last hold. s_held keeps the entry until the next prune rather than
+            // searching for it, so the release costs the same whatever else is held.
+            public bool Released;
 
             // What the last write here put on the element, or null for a write taking it back.
             public FontAsset? Written;
@@ -56,12 +61,19 @@ namespace Velvet
 
         private static readonly ConditionalWeakTable<VisualElement, Root> s_roots = new();
         private static readonly List<Root> s_held = new();
-        private static readonly Predicate<Root> s_collected = static root => !root.Element.TryGetTarget(out _);
+        private static readonly List<Root> s_scoped = new();
+        private static readonly Comparison<Root> s_byHeldOrder = static (a, b) => a.HeldAt.CompareTo(b.HeldAt);
+        private static long s_heldCount;
+        private static int s_pruneAt = 32;
+        private static readonly Predicate<Root> s_collected =
+            // MUTANT_SURVIVES(equivalent, clause removed): a collected element's entry is skipped by the unscoped loop
+            // whether or not it is pruned; pruning keeps the entries of trees nobody disposed from piling up.
+            static root => root.Released || !root.Element.TryGetTarget(out _);
 
         private static readonly string[] s_definition = { "-unity-font-definition" };
         private static readonly string[] s_legacy = { "-unity-font" };
 
-        static DefaultFamilyRoots() => VelvetFonts.FontsChanged += Apply;
+        static DefaultFamilyRoots() => VelvetFonts.FontsChanged += () => Apply();
 
         // StyleFontResolver wrote element's inline font from its classes, or cleared it: what is there is not this
         // class's to take back, and where it was cleared the default family may be written again.
@@ -83,7 +95,7 @@ namespace Velvet
             }
 
             root.Holds++;
-            Apply();
+            Apply(element);
             return new Release(element, root);
         }
 
@@ -106,29 +118,70 @@ namespace Velvet
                 if (--_root.Holds == 0)
                 {
                     s_roots.Remove(_element);
-                    s_held.Remove(_root);
+                    _root.Released = true;
                     Decide(_element, _root, null);
                 }
 
-                Apply();
+                Apply(_element);
             }
         }
 
         private static FontAsset? DefaultAsset()
             => VelvetFonts.Resolve(null, VelvetFontWeight.Normal, italic: false).Asset;
 
-        private static void Apply()
+        // Decides again each held element a hold or release of scope can change the decision of: scope itself and the
+        // elements below it, whose InsideAnother and AuthorFont read scope, in the order they were held. Without a
+        // scope, every held element, which is what a change of the default family needs.
+        private static void Apply(VisualElement? scope = null)
         {
             var asset = DefaultAsset();
-            // MUTANT_SURVIVES(equivalent, line removed): the loop below skips a collected element's entry whether or
-            // not it is taken out here; taking it out keeps entries of trees nobody disposed from piling up.
-            s_held.RemoveAll(s_collected);
-            foreach (var root in s_held)
+            // MUTANT_SURVIVES(equivalent, boundary): which count prunes moves no decision; a scoped call reads the
+            // subtree, not this list.
+            if (scope == null || s_held.Count >= s_pruneAt)
+            {
+                // What the unscoped loop below reads is what this leaves, so a released root is taken out here: it
+                // would be decided again, and its element written, otherwise.
+                s_held.RemoveAll(s_collected);
+                // MUTANT_SURVIVES(equivalent, line removed): the threshold only spaces the prunes of a scoped call.
+                s_pruneAt = Math.Max(32, s_held.Count * 2);
+            }
+
+            if (scope == null)
+            {
+                foreach (var root in s_held)
+                {
+                    if (root.Element.TryGetTarget(out var element))
+                    {
+                        Decide(element, root, asset);
+                    }
+                }
+
+                return;
+            }
+
+            s_scoped.Clear();
+            CollectHeldAtOrUnder(scope);
+            s_scoped.Sort(s_byHeldOrder);
+            foreach (var root in s_scoped)
             {
                 if (root.Element.TryGetTarget(out var element))
                 {
                     Decide(element, root, asset);
                 }
+            }
+
+            s_scoped.Clear();
+        }
+
+        // Read off the subtree rather than tested root by root, so a hold costs what its own rows are rather than
+        // every element held.
+        private static void CollectHeldAtOrUnder(VisualElement element)
+        {
+            if (s_roots.TryGetValue(element, out var root)) s_scoped.Add(root);
+            var count = ChildListWrites.HierarchyCount(element);
+            for (var i = 0; i < count; i++)
+            {
+                CollectHeldAtOrUnder(ChildListWrites.HierarchyChild(element, i));
             }
         }
 

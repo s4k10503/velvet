@@ -34,6 +34,12 @@ namespace Velvet
         private readonly Dictionary<(ComponentFiber? parentFiber, VisualElement? portalScope, VisualElement? container, object? positionKey, object identity), ComponentFiber> _inlineInstances = new();
         // O(1) reverse index inline fiber → its key, so disposal removes the entry without scanning.
         private readonly Dictionary<ComponentFiber, (ComponentFiber? parentFiber, VisualElement? portalScope, VisualElement? container, object? positionKey, object identity)> _inlineFiberToKey = new();
+        // The inline fibers stamped with each Portal placeholder, in the order they were stamped, so the fibers a Portal
+        // owns are read off its entry rather than found by testing every registered fiber. A list a fiber leaves by
+        // its own node (_portalIndexNodes) rather than by a search, so what a Portal's teardown costs per fiber does
+        // not grow with the fibers beside it.
+        private readonly Dictionary<VisualElement, LinkedList<ComponentFiber>> _inlineFibersOfPortal = new();
+        private readonly Dictionary<ComponentFiber, LinkedListNode<ComponentFiber>> _portalIndexNodes = new();
         // O(1) forward index parent fiber → its inline child fibers, so subtree disposal locates them
         // without scanning _inlineInstances (and without the re-entrant dictionary-mutation hazard when
         // FiberRenderer.Dispose recursively triggers disposal during descendant cleanup).
@@ -204,7 +210,7 @@ namespace Velvet
             // (Reconciler.BeginDetachedItemScope). An inline fiber left without one is the same fiber
             // DisposeInlineFibersOwnedByPortal already reaches through the parent index, and FiberCommitWork reads
             // the nearest stamp up its chain.
-            existingFiber.OwningPortalPlaceholder = _ctx.CurrentPortalPlaceholder;
+            RestampOwningPortal(existingFiber, _ctx.CurrentPortalPlaceholder);
             if (site.IsInline)
             {
                 // Synchronously re-render when props changed or the fiber is dirty
@@ -329,6 +335,36 @@ namespace Velvet
             return _wrapperFiberInfo.TryGetValue(fiber, out var info) && Equals(info.identity, identity) ? fiber : null;
         }
 
+        // The stamp is written here and at registration alone, which is what keeps _inlineFibersOfPortal equal to the
+        // inline fibers carrying each placeholder.
+        private void RestampOwningPortal(ComponentFiber fiber, VisualElement? placeholder)
+        {
+            if (ReferenceEquals(fiber.OwningPortalPlaceholder, placeholder)) return;
+            var indexed = _inlineFiberToKey.ContainsKey(fiber);
+            if (indexed) RemoveFromOwningPortalIndex(fiber);
+            fiber.OwningPortalPlaceholder = placeholder;
+            if (indexed) IndexUnderOwningPortal(fiber);
+        }
+
+        private void IndexUnderOwningPortal(ComponentFiber fiber)
+        {
+            var placeholder = fiber.OwningPortalPlaceholder;
+            if (placeholder == null) return;
+            if (!_inlineFibersOfPortal.TryGetValue(placeholder, out var owned))
+            {
+                _inlineFibersOfPortal[placeholder] = owned = new LinkedList<ComponentFiber>();
+            }
+            _portalIndexNodes[fiber] = owned.AddLast(fiber);
+        }
+
+        private void RemoveFromOwningPortalIndex(ComponentFiber fiber)
+        {
+            if (!_portalIndexNodes.Remove(fiber, out var node)) return;
+            var owned = node.List!;
+            owned.Remove(node);
+            if (owned.Count == 0) _inlineFibersOfPortal.Remove(fiber.OwningPortalPlaceholder!);
+        }
+
         private void RegisterFiber(in FiberMountSite site, object identity, ComponentFiber fiber)
         {
             var anchor = site.Anchor;
@@ -341,6 +377,7 @@ namespace Velvet
                 var key = (parentFiber, site.PortalScope, site.MountPoint, site.PositionKey, identity);
                 _inlineInstances[key] = fiber;
                 _inlineFiberToKey[fiber] = key;
+                IndexUnderOwningPortal(fiber);
                 RetainExplicitPositionKey(site.PositionKey);
                 if (site.MountPoint != null)
                 {
@@ -416,6 +453,7 @@ namespace Velvet
 
             if (_inlineFiberToKey.TryGetValue(fiber, out var key))
             {
+                RemoveFromOwningPortalIndex(fiber);
                 _inlineFiberToKey.Remove(fiber);
                 _inlineInstances.Remove(key);
                 ReleaseExplicitPositionKey(key.positionKey);
@@ -730,13 +768,11 @@ namespace Velvet
         // The selection DisposeInlineFibersOwnedByPortal disposes, appended to into, which the first match creates.
         internal void CollectInlineFibersOwnedByPortal(VisualElement placeholder, ref List<ComponentFiber>? into)
         {
-            if (placeholder == null || _inlineFiberToKey.Count == 0) return;
+            if (placeholder == null || !_inlineFibersOfPortal.TryGetValue(placeholder, out var stamped)) return;
             List<ComponentFiber>? doomed = null;
-            foreach (var entry in _inlineFiberToKey)
+            foreach (var fiber in stamped)
             {
-                var fiber = entry.Key;
-                if (fiber == null || fiber.IsDisposed) continue;
-                if (!ReferenceEquals(fiber.OwningPortalPlaceholder, placeholder)) continue;
+                if (fiber.IsDisposed) continue;
                 (doomed ??= new List<ComponentFiber>()).Add(fiber);
             }
             if (doomed == null) return;
@@ -834,6 +870,8 @@ namespace Velvet
             // class must be cleared here. Adding a new index without updating this block leaks.
             _inlineInstances.Clear();
             _inlineFiberToKey.Clear();
+            _inlineFibersOfPortal.Clear();
+            _portalIndexNodes.Clear();
             _parentToInlineFibers.Clear();
             _tenancies.Clear();
             _wrapperIndex.Clear();
