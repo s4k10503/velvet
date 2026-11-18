@@ -72,7 +72,7 @@ Repository = collections.namedtuple("Repository", "open published series closed"
 # The pull request's own fields the decision reads: `landing` is the branch its merge lands on, its
 # stack's base for a stack member.
 PullRequest = collections.namedtuple("PullRequest",
-                                     "title state base landing head sha fork")
+                                     "title state base landing head commit fork")
 
 # What a head's tree changes against where it branched: whether it touches the package, the versions
 # it closes, and `next_version.derive`'s reading of the entries and members it adds, None where its
@@ -407,7 +407,7 @@ def check(project, api, number, base, head, timeout):
     """`merge_reasons` for pull request `number`, read off the API and the checkout."""
     asked = pull_request(api, number)
     state = repository(project, api, timeout)
-    read = change(project, base or f"origin/{asked.base}", head or asked.sha, state.published)
+    read = change(project, base or f"origin/{asked.base}", head or asked.commit, state.published)
     return merge_reasons(number, asked, read, state)
 
 

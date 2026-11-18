@@ -96,7 +96,7 @@ def refuse_one(cwd, pr):
         if fetched.code != 0:
             return UNREADABLE_REFUSAL.format(label, f"origin/{' '.join(refs)} could not be fetched")
         state = milestone.repository(cwd, ask, READ_TIMEOUT, pages=MILESTONE_PAGES)
-        change = milestone.change(cwd, f"origin/{asked.base}", asked.sha, state.published)
+        change = milestone.change(cwd, f"origin/{asked.base}", asked.commit, state.published)
     except milestone.Unread as failure:
         return UNREADABLE_REFUSAL.format(label, failure)
     found = milestone.merge_reasons(number, asked, change, state)
