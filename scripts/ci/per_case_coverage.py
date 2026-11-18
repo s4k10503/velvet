@@ -173,6 +173,19 @@ def selected_by(results_xml):
     return None
 
 
+def shard_of(text):
+    """(I, N) of an `I/N` argument whose I is at most N, or None."""
+    found = SHARD.match(text)
+    return (int(found.group(1)), int(found.group(2))) if found and int(found.group(1)) <= int(found.group(2)) else None
+
+
+def measuring_command(platform, output, project, shard, per_launch):
+    """What the licence is held around: this script's own measuring run."""
+    return [sys.executable, "-u", str(Path(__file__).resolve()), "--measure",
+            "--platform", platform, "--output", str(output), "--project", str(project),
+            "--shard", "{}/{}".format(*shard), "--cases-per-launch", str(per_launch)]
+
+
 def block_of(names, shard, shards):
     """The `shard`-th (from 1) of `shards` contiguous blocks of `names`."""
     return names[len(names) * (shard - 1) // shards: len(names) * shard // shards]
@@ -344,7 +357,7 @@ def measure(platform, project, output, shard, per_launch, assemblies, launch=sub
     return failed
 
 
-def main(argv, run=licensed_editor.run_licensed, poll=POLL, launch=subprocess.call):
+def main(argv, run=licensed_editor.run_licensed, poll=POLL):
     parser = argparse.ArgumentParser(description="Run a suite with each case's coverage on its own.")
     parser.add_argument("--platform", required=True, choices=("EditMode", "PlayMode"))
     parser.add_argument("--output", required=True)
@@ -357,11 +370,11 @@ def main(argv, run=licensed_editor.run_licensed, poll=POLL, launch=subprocess.ca
     project = Path(args.project).resolve()
     output = Path(args.output).resolve()
     assemblies = package_assemblies(project)
-    shard = SHARD.match(args.shard)
+    shard = shard_of(args.shard)
     refusal = pinned_refusal(project / LOCK)
     if not refusal and not assemblies:
         refusal = "no asmdef under {} declares an assembly to measure".format(project / PACKAGE_ROOT)
-    if not refusal and (not shard or int(shard.group(1)) > int(shard.group(2))):
+    if not refusal and not shard:
         refusal = "--shard {} is not I/N with I at most N".format(args.shard)
     if not refusal and args.cases_per_launch < 1:
         refusal = "--cases-per-launch {} is not a case count".format(args.cases_per_launch)
@@ -372,13 +385,11 @@ def main(argv, run=licensed_editor.run_licensed, poll=POLL, launch=subprocess.ca
         return 2
 
     if args.measure:
-        return measure(args.platform, project, output, (int(shard.group(1)), int(shard.group(2))),
-                       args.cases_per_launch, assemblies, launch, poll)
+        return measure(args.platform, project, output, shard, args.cases_per_launch, assemblies,
+                       poll=poll)
     # The licence is held around this script's own measuring run, so that one activation serves every
     # launch.
-    return run([sys.executable, "-u", str(Path(__file__).resolve()), "--measure",
-                "--platform", args.platform, "--output", str(output), "--project", str(project),
-                "--shard", args.shard, "--cases-per-launch", str(args.cases_per_launch)],
+    return run(measuring_command(args.platform, output, project, shard, args.cases_per_launch),
                "the {} suite".format(args.platform))
 
 

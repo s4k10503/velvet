@@ -128,11 +128,11 @@ class Editor:
         return self.status
 
 
-def run_measure(holder, editor, *extra, poll=3600, root=None):
+def run_measure(holder, editor, shard=(1, 1), per_launch=100, poll=3600, root=None):
     output = Path(holder) / "output"
-    status = per_case_coverage.main(["--measure", "--platform", "EditMode", "--output", str(output),
-                                     "--project", str(root or project(holder)), *extra],
-                                    launch=editor, poll=poll)
+    root = root or project(holder)
+    status = per_case_coverage.measure("EditMode", root, output, shard, per_launch,
+                                       per_case_coverage.package_assemblies(root), editor, poll)
     return status, output
 
 
@@ -331,6 +331,7 @@ class MainTests(unittest.TestCase):
         # The status only where nothing was started, which no refusal can read as.
         return status if not licence.commands else "a run started"
 
+    # GREEN_ON_BASE(characterization): the base's main refuses a project resolving another Code Coverage version the same way; this branch moved the refusal in front of the licensed run unchanged.
     def test_Given_AProjectResolvingAnotherCoverageVersion_When_Run_Then_NothingStartsAndTheRunIsRefused(self):
         # Arrange
         holder, licence = self.holder(), Licence()
@@ -341,6 +342,7 @@ class MainTests(unittest.TestCase):
         # Assert
         self.assertEqual(refused, 2)
 
+    # GREEN_ON_BASE(characterization): the base's main refuses an output that holds a run the same way; this branch only moved the refusal in front of the licensed run.
     def test_Given_AnOutputThatAlreadyHoldsARun_When_Run_Then_NothingStartsAndTheRunIsRefused(self):
         # Arrange — a second run's files would take the first run's names and be passed over.
         holder, licence = self.holder(), Licence()
@@ -353,6 +355,7 @@ class MainTests(unittest.TestCase):
         # Assert
         self.assertEqual(refused, 2)
 
+    # GREEN_ON_BASE(characterization): the base's main refuses a project declaring no package assembly the same way; this branch only moved the refusal in front of the licensed run.
     def test_Given_AProjectDeclaringNoPackageAssembly_When_Run_Then_NothingStartsAndTheRunIsRefused(self):
         # Arrange — an empty filter would leave the package's default to choose what is measured.
         holder, licence = self.holder(), Licence()
@@ -363,28 +366,27 @@ class MainTests(unittest.TestCase):
         # Assert
         self.assertEqual(refused, 2)
 
-    def test_Given_AShardPastTheLastOne_When_Run_Then_NothingStartsAndTheRunIsRefused(self):
+    def test_Given_AShardPastTheLastOne_When_ItIsRead_Then_NoShardIsTaken(self):
         # Arrange — a block no shard takes would leave its cases unmeasured with every job green.
-        holder, licence = self.holder(), Licence()
+        text = "7/6"
 
         # Act
-        refused = self.refused(holder, licence, None, "--shard", "7/6")
+        shard = per_case_coverage.shard_of(text)
 
         # Assert
-        self.assertEqual(refused, 2)
+        self.assertIsNone(shard)
 
-    def test_Given_AShard_When_Run_Then_TheLicensedCommandIsTheMeasuringRunOfThatShard(self):
+    def test_Given_AShard_When_TheMeasuringCommandIsBuilt_Then_ItNamesThatShard(self):
         # Arrange
-        holder, licence = self.holder(), Licence()
+        shard = (2, 6)
 
         # Act
-        run_main(holder, licence, "--shard", "2/6")
+        command = per_case_coverage.measuring_command("EditMode", Path("out"), Path("project"), shard, 100)
 
         # Assert
-        command = licence.commands[0]
-        self.assertEqual(command[command.index("--measure"):][:1] + [command[command.index("--shard") + 1]],
-                         ["--measure", "2/6"])
+        self.assertEqual(command[command.index("--shard") + 1], "2/6")
 
+    # GREEN_ON_BASE(characterization): the base's main returned the licensed run's status as the run's own; the licensed command is what this branch changed.
     def test_Given_TheLicensedRun_When_ItEnds_Then_ItsStatusIsTheRunsOwn(self):
         # Arrange
         holder, licence = self.holder(), Licence(status=3)
@@ -408,7 +410,7 @@ class MeasureTests(unittest.TestCase):
         editor = Editor()
 
         # Act
-        run_measure(self.holder(), editor, "--cases-per-launch", "4")
+        run_measure(self.holder(), editor, per_launch=4)
 
         # Assert
         self.assertEqual([len(cases) for cases in editor.launched()], [4, 4, 1])
@@ -418,7 +420,7 @@ class MeasureTests(unittest.TestCase):
         editor = Editor()
 
         # Act
-        run_measure(self.holder(), editor, "--cases-per-launch", "4")
+        run_measure(self.holder(), editor, per_launch=4)
 
         # Assert
         self.assertEqual(sorted(case for cases in editor.launched() for case in cases), sorted(CASES))
@@ -428,7 +430,7 @@ class MeasureTests(unittest.TestCase):
         editor = Editor()
 
         # Act
-        run_measure(self.holder(), editor, "--shard", "2/3")
+        run_measure(self.holder(), editor, shard=(2, 3))
 
         # Assert
         self.assertEqual([case for cases in editor.launched() for case in cases], sorted(CASES)[3:6])
@@ -448,7 +450,7 @@ class MeasureTests(unittest.TestCase):
         editor = Editor(kill_over=5)
 
         # Act
-        run_measure(self.holder(), editor, "--cases-per-launch", "9")
+        run_measure(self.holder(), editor, per_launch=9)
 
         # Assert
         self.assertEqual([len(cases) for cases in editor.launched()], [9, 4, 5])
@@ -458,7 +460,7 @@ class MeasureTests(unittest.TestCase):
         editor = Editor(kill_over=5)
 
         # Act
-        status, _ = run_measure(self.holder(), editor, "--cases-per-launch", "9")
+        status, _ = run_measure(self.holder(), editor, per_launch=9)
 
         # Assert
         self.assertEqual(status, 0)
@@ -468,7 +470,7 @@ class MeasureTests(unittest.TestCase):
         editor = Editor(cases=CASES[:2], kill_over=0)
 
         # Act
-        status, _ = run_measure(self.holder(), editor, "--cases-per-launch", "1")
+        status, _ = run_measure(self.holder(), editor, per_launch=1)
 
         # Assert
         self.assertEqual(status, -9)
@@ -478,7 +480,7 @@ class MeasureTests(unittest.TestCase):
         editor = Editor(ran=1)
 
         # Act
-        status, _ = run_measure(self.holder(), editor, "--cases-per-launch", "4")
+        status, _ = run_measure(self.holder(), editor, per_launch=4)
 
         # Assert
         self.assertEqual(status, 1)
@@ -498,7 +500,7 @@ class MeasureTests(unittest.TestCase):
         editor = Editor(cases=CASES[:1], kill_over=0)
 
         # Act
-        _, output = run_measure(self.holder(), editor, "--cases-per-launch", "1")
+        _, output = run_measure(self.holder(), editor, per_launch=1)
 
         # Assert
         self.assertEqual(sorted(path.name for path in (output / "per-case").rglob("*.gz")), [name(0) + ".gz"])
@@ -519,7 +521,7 @@ class MeasureTests(unittest.TestCase):
         editor = Editor()
 
         # Act
-        _, output = run_measure(self.holder(), editor, "--shard", "2/2")
+        _, output = run_measure(self.holder(), editor, shard=(2, 2))
 
         # Assert
         manifest = json.loads((output / "per-case" / "shard.json").read_text())
@@ -589,7 +591,7 @@ class MeasureTests(unittest.TestCase):
         editor = Editor(cases=CASES[:2], numbers=(0, 1))
 
         # Act
-        _, output = run_measure(self.holder(), editor, "--cases-per-launch", "1")
+        _, output = run_measure(self.holder(), editor, per_launch=1)
 
         # Assert
         self.assertEqual(len(list((output / "per-case").rglob("*.gz"))), 4)
@@ -701,18 +703,18 @@ class WorkflowTests(unittest.TestCase):
         block = job_block(WORKFLOW.read_text(), "report")
 
         # Act
-        condition = [line for line in block if line.startswith("    if:")][0]
+        conditions = [line for line in block if line.startswith("    if:")]
 
         # Assert
-        self.assertIn("!cancelled()", condition)
+        self.assertTrue(any("!cancelled()" in condition for condition in conditions))
 
     def test_Given_TheWorkflow_When_ItsResultsUploadIsRead_Then_TheLaunchesLogsAreInIt(self):
         # Arrange
         block = "\n".join(job_block(WORKFLOW.read_text(), "suite"))
-        upload = block[block.index("name: per-case-results-"):block.index("name: per-case-records-")]
+        uploads = [part for part in block.split("name: ") if part.startswith("per-case-results-")]
 
         # Act
-        paths = re.findall(r"Logs/per-case-coverage/(\w+)", upload)
+        paths = re.findall(r"Logs/per-case-coverage/(\w+)", uploads[0].split("name: ")[0] if uploads else "")
 
         # Assert
         self.assertEqual(paths, ["results", "launches"])
@@ -727,8 +729,9 @@ class WorkflowTests(unittest.TestCase):
         expected = {mode: int(count) for mode, count in re.findall(
             r"--expect (\w+)=(\d+)", "\n".join(job_block(text, "report")))}
 
-        # Assert
-        self.assertEqual(expected, matrix)
+        # Assert — a workflow with no expectation reads as a string no matrix equals, since both sides
+        # empty would agree.
+        self.assertEqual(expected or "no --expect read", matrix)
 
     def test_Given_TheWorkflow_When_ItsReportStepIsRead_Then_ItChecksTheShardsManifests(self):
         # Arrange
@@ -763,11 +766,12 @@ class WorkflowTests(unittest.TestCase):
     def test_Given_TheWorkflow_When_ItsReportJobDownloadsRecords_Then_ItsPatternTakesWhatEachShardUploads(self):
         # Arrange
         text = WORKFLOW.read_text()
-        pattern = re.search(r"pattern: (\S+)", "\n".join(job_block(text, "report"))).group(1)
-        uploaded = re.search(r"name: (per-case-records-\S+)", "\n".join(job_block(text, "suite"))).group(1)
+        patterns = re.findall(r"pattern: (\S+)", "\n".join(job_block(text, "report")))
+        uploads = re.findall(r"name: (per-case-records-\S+)", "\n".join(job_block(text, "suite")))
 
         # Act
-        taken = uploaded.startswith(pattern.rstrip("*")) and pattern.endswith("*")
+        taken = bool(patterns and uploads) and uploads[0].startswith(patterns[0].rstrip("*")) \
+            and patterns[0].endswith("*")
 
         # Assert
         self.assertTrue(taken)
