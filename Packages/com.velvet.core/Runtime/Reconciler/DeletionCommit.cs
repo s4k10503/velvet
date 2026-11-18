@@ -19,8 +19,8 @@ namespace Velvet
         private readonly List<(int Index, VisualElement Row)> _removedRows = new();
         // The old leaves an orphan's output starts at, each with the element the walk takes the orphan down at.
         private readonly List<(int Index, VisualElement Start)> _orphanRows = new();
-        // Each root with the fibers mounted under it, which its removal disposes (FiberElementCleaner.CleanupElement).
-        private readonly Dictionary<VisualElement, List<ComponentFiber>?> _roots = new();
+        // What the walk decides, which the removals after it read (FiberElementCleaner.CleanupElement).
+        private DeletionPlan _deletion = null!;
         private readonly HashSet<VisualElement> _portalsUnderRoots = new();
         private readonly HashSet<ComponentFiber> _orphans = new();
         private readonly HashSet<ComponentFiber> _collected = new();
@@ -38,6 +38,7 @@ namespace Velvet
             commit._container = container;
             commit._slotStart = slotStart;
             commit._occupants = occupants;
+            commit._deletion = DeletionPlan.Rent();
             return commit;
         }
 
@@ -47,8 +48,18 @@ namespace Velvet
         internal List<(int Index, VisualElement Row)> RemovedRows => _removedRows;
 
         // React deletes a parent's children in the order it reconciled them, so the rows are taken in theirs, each
-        // removed row as a subtree, and an orphan whose row stays where that row is.
-        internal void Run(List<ComponentFiber> oldFibers, HashSet<ComponentFiber> newFibers, int oldLength)
+        // removed row as a subtree, and an orphan whose row stays where that row is. The plan is executed as soon as it
+        // is built, and the removals read what it holds of each root.
+        internal DeletionPlan Run(List<ComponentFiber> oldFibers, HashSet<ComponentFiber> newFibers, int oldLength)
+        {
+            var plan = BuildPlan(oldFibers, newFibers, oldLength);
+            Execute();
+            return plan;
+        }
+
+        // The walk alone: what it reaches is recorded and nothing is taken down, though the fibers it reaches are marked
+        // as being deleted (ComponentFiber.BeginDeletion).
+        internal DeletionPlan BuildPlan(List<ComponentFiber> oldFibers, HashSet<ComponentFiber> newFibers, int oldLength)
         {
             foreach (var fiber in oldFibers)
             {
@@ -77,14 +88,13 @@ namespace Velvet
             }
             for (; next < _orphanRows.Count; next++) TakeDownStartingAt(_orphanRows[next].Start);
             TakeDownTheRest();
-            RunPlan();
-            foreach (var (root, mounted) in _roots) Ctx.RemovalsTakenDown[root] = mounted;
+            return _deletion;
         }
 
-        // A row a walk registered and an abort kept from its removal would otherwise skip the walk of its next one.
+        internal void Execute() => RunPlan();
+
         internal void End()
         {
-            foreach (var root in _roots.Keys) Ctx.RemovalsTakenDown.Remove(root);
             Clear();
             s_pool.Push(this);
         }
@@ -100,7 +110,7 @@ namespace Velvet
             {
                 commit.AddRowAsRoot(element);
                 commit.CollectHeldFibers();
-                var mounted = commit._roots[element];
+                var mounted = commit._deletion.Roots[element].Mounted;
                 // With no fiber held below the element and no ref in the context, the walk has nothing to take down.
                 if (commit._fibers.Count == 0 && ctx.RefCallbacks.Count == 0) return mounted;
                 ComponentFiber.BeginDeletion(commit._fibers);
@@ -133,10 +143,10 @@ namespace Velvet
         {
             // MUTANT_SURVIVES(equivalent, guard removed): a root collected again collects the same fibers.
             // Nothing is disposed while the roots are collected, and the new list replaces the entry where it stands.
-            if (_roots.ContainsKey(element)) return;
+            if (_deletion.Roots.ContainsKey(element)) return;
             List<ComponentFiber>? mounted = null;
             Ctx.ComponentRegistry.CollectFibersIn(element, ref mounted);
-            _roots[element] = mounted;
+            _deletion.Roots[element] = new DeletionPlan.PlannedRoot(mounted, _cleaner.PoolableOccupantOf(element));
         }
 
         // The fibers mounted inside the roots, and a Portal's under them: its rows, which mount on its target and
@@ -164,7 +174,7 @@ namespace Velvet
                     }
                 }
             }
-            foreach (var mounted in _roots.Values) AddHeld(mounted);
+            foreach (var root in _deletion.Roots.Values) AddHeld(root.Mounted);
             AddHeld(owned);
         }
 
@@ -184,7 +194,7 @@ namespace Velvet
         private bool IsUnderARoot(VisualElement element)
         {
             var ve = element;
-            while (ve != null && !_roots.ContainsKey(ve)) ve = ChildListWrites.ParentOf(ve);
+            while (ve != null && !_deletion.Roots.ContainsKey(ve)) ve = ChildListWrites.ParentOf(ve);
             return ve != null;
         }
 
@@ -236,7 +246,9 @@ namespace Velvet
 
         protected override void TakeDown(VisualElement element) => _cleaner.DetachRef(element);
 
-        protected override bool IsRoot(VisualElement element) => _roots.ContainsKey(element);
+        protected override List<Step> Steps => _deletion.Steps;
+
+        protected override bool IsRoot(VisualElement element) => _deletion.Roots.ContainsKey(element);
 
         protected override void Clear()
         {
@@ -250,7 +262,10 @@ namespace Velvet
             _occupants = null;
             _removedRows.Clear();
             _orphanRows.Clear();
-            ClearAndTrim(_roots);
+            _deletion.Release();
+            // MUTANT_SURVIVES(equivalent): Begin assigns the plan before any read.
+            // The reset only lets the pooled instance drop the plan it pointed at.
+            _deletion = null!;
             ClearAndTrim(_portalsUnderRoots);
             ClearAndTrim(_orphans);
             ClearAndTrim(_collected);
