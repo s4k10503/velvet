@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "79a6f19d38fb396067a343b1a25b89f0f13835c6c2cae72bba72f1183e3caf82",
+ "killers": [],
+ "measured_by": "44117360522",
+ "mutant": {
+  "after": ";",
+  "before": "ScheduleStandaloneEffectRun(fiber.MountPoint, fiber);",
+  "column": 16,
+  "line": 667,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberEffects.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "1ffe9b69fd4b31e82bffe0c9c68363a06633552627b636a1086b2532975e99de",
+ "verdict": "survived"
+}

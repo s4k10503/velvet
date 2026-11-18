@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed: Given_AListOfInlineComponents_When_ItsParentReRendersAtTwiceTheLength_Then_TheContainerReadsGrowLessThanTwoAndAHalfTimes",
+ "file": "d852db06292495e3eb91b95349d9f60761e5abdb0e6bb31287ccb2893a224d7b",
+ "killers": [
+  {
+   "case": "Velvet.Tests.GeneralPathSlotLookupScalingTests.Given_AListOfInlineComponents_When_ItsParentReRendersAtTwiceTheLength_Then_TheContainerReadsGrowLessThanTwoAndAHalfTimes",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/GeneralPathSlotLookupScalingTests.cs": "31bbc8d517460bf0b771e9170eb2563ea0fbf189a00a15c3d409fb37f98134ab",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  }
+ ],
+ "measured_by": "44117360522",
+ "mutant": {
+  "after": "<=",
+  "before": "<",
+  "column": 27,
+  "line": 162,
+  "operator": "boundary",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ContainerRows.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "1ffe9b69fd4b31e82bffe0c9c68363a06633552627b636a1086b2532975e99de",
+ "verdict": "killed"
+}

@@ -1,0 +1,28 @@
+{
+ "detail": "EditMode: 1 failed: Given_AMountedFiber_When_ItsEffectsAreCommitted_Then_TheDeferredEntryListIsBackInThePool",
+ "file": "79a6f19d38fb396067a343b1a25b89f0f13835c6c2cae72bba72f1183e3caf82",
+ "killers": [
+  {
+   "case": "Velvet.Tests.PassBufferPoolReturnTests.Given_AMountedFiber_When_ItsEffectsAreCommitted_Then_TheDeferredEntryListIsBackInThePool",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PassBufferPoolReturnTests.cs": "7022fc260842750e0717a174fb0530a12d946e5e521c9973e73f90ad31edef67"
+   }
+  }
+ ],
+ "measured_by": "44117360522",
+ "mutant": {
+  "after": ";",
+  "before": "bufferPool.ReturnDeferredEntryList(popped);",
+  "column": 12,
+  "line": 472,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberEffects.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "1ffe9b69fd4b31e82bffe0c9c68363a06633552627b636a1086b2532975e99de",
+ "verdict": "killed"
+}

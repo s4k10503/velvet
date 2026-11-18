@@ -1,0 +1,38 @@
+{
+ "detail": "EditMode: 2 failed among the 437 case(s) that ran the site: Given_RandomWrites_When_PhysicalRangesAreRead_Then_PhysicalRangeIsTheScansSlice(12), Given_RandomWrites_When_PhysicalRangesAreRead_Then_PhysicalRangeIsTheScansSlice(700)",
+ "file": "d852db06292495e3eb91b95349d9f60761e5abdb0e6bb31287ccb2893a224d7b",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ContainerRowsTests.Given_RandomWrites_When_PhysicalRangesAreRead_Then_PhysicalRangeIsTheScansSlice(12)",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ContainerRowsTests.cs": "fe453e21e66493ae1b16fefd8f7772700525368c236e44f09da4fdd28cdd215f",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/RowModelAccess.cs": "c9281ca1bc8930756e7b643acf56772495143054fc02c02792727059325b4674",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ContainerRowsTests.Given_RandomWrites_When_PhysicalRangesAreRead_Then_PhysicalRangeIsTheScansSlice(700)",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ContainerRowsTests.cs": "fe453e21e66493ae1b16fefd8f7772700525368c236e44f09da4fdd28cdd215f",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/RowModelAccess.cs": "c9281ca1bc8930756e7b643acf56772495143054fc02c02792727059325b4674",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  }
+ ],
+ "measured_by": "44117360522",
+ "mutant": {
+  "after": ";",
+  "before": "start = Math.Max(start, 0);",
+  "column": 12,
+  "line": 235,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ContainerRows.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "1ffe9b69fd4b31e82bffe0c9c68363a06633552627b636a1086b2532975e99de",
+ "verdict": "killed"
+}

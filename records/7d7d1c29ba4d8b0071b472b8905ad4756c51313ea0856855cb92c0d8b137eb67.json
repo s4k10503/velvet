@@ -2,7 +2,7 @@
  "detail": "EditMode survived; PlayMode: -",
  "file": "9125aa6ee2938bbff79e4a8cb99a67c24c3b3a632df21ac54f5e6f20dcb0cbbd",
  "killers": [],
- "measured_by": "44036517794",
+ "measured_by": "44117360522",
  "mutant": {
   "after": ";",
   "before": "child.RemoveFromHierarchy();",
@@ -16,6 +16,6 @@
  "platform": "PlayMode",
  "schema": 3,
  "stood": null,
- "tests": "4ab31ee6421c5603aa8b285ebc6bb30f1bfdee82c3b8101815a7c689d259e69c",
+ "tests": "1ffe9b69fd4b31e82bffe0c9c68363a06633552627b636a1086b2532975e99de",
  "verdict": "survived"
 }

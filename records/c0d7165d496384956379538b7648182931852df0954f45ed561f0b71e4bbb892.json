@@ -1,12 +1,12 @@
 {
- "detail": "EditMode: 1 failed among the 196 case(s) that ran the site: Given_ARelocatedElement_When_ItUnmounts_Then_ItsPlaceholderIsNoLongerHeld",
+ "detail": "EditMode: 1 failed among the 197 case(s) that ran the site: Given_ARelocatedElement_When_ItUnmounts_Then_ItsPlaceholderIsNoLongerHeld",
  "file": "6d94e9d6b0813c055a582a704547477704d1779e19360df317e4700081a8c0b1",
  "killers": [
   {
    "case": "Velvet.Tests.ZIndexStackingTests.Given_ARelocatedElement_When_ItUnmounts_Then_ItsPlaceholderIsNoLongerHeld",
    "files": {
     "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ButtonChildPoolReuseTests.cs": "0531a5fe43bec4ffe1998b02b1fb81e990435f1ea72a803dd14610afcab1aa51",
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ZIndexStackingTests.cs": "5aae43b6df1084b462c5a3ebe66226d4fd0108762dba8fb65a82c7450bcb4570",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ZIndexStackingTests.cs": "178c1656a8b4a5ed59687dd93d67118afb38451d7ce6382365100cd5171071d3",
     "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
     "Packages/com.velvet.core/TestUtilities/GCAllocationProbe.cs": "492823c099cf4f4de89da0da69c98d45cfc042070d93e2d0c0b95773310ebc2c",
     "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
@@ -18,7 +18,7 @@
    }
   }
  ],
- "measured_by": "43856218771",
+ "measured_by": "44117360522",
  "mutant": {
   "after": ";",
   "before": "Release(placeholder);",
@@ -32,6 +32,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "77df84e62b7b22db9de849f53076452d06518cca50904ac9f617346a1acb092e",
+ "tests": "1ffe9b69fd4b31e82bffe0c9c68363a06633552627b636a1086b2532975e99de",
  "verdict": "killed"
 }

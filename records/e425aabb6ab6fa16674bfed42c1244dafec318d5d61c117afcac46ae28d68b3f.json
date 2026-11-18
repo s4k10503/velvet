@@ -1,8 +1,8 @@
 {
- "detail": "EditMode: mutation_check: the container's memory limit killed 1 process(es) during the launch",
+ "detail": "EditMode: mutation_check: the container's memory limit killed 1 process(es) during the launch; 1 other editor(s) were up",
  "file": "d0d4187e7f29188b92f0cea5405633fdd9b1d285c0a093c8bf07912916381433",
  "killers": [],
- "measured_by": "44036517794",
+ "measured_by": "44117360522",
  "mutant": {
   "after": ";",
   "before": "ChildrenByParent.Clear();",
@@ -16,6 +16,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "4ab31ee6421c5603aa8b285ebc6bb30f1bfdee82c3b8101815a7c689d259e69c",
+ "tests": "1ffe9b69fd4b31e82bffe0c9c68363a06633552627b636a1086b2532975e99de",
  "verdict": "killed (the editor crashed)"
 }

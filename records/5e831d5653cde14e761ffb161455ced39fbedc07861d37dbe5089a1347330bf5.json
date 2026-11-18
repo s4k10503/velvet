@@ -1,0 +1,32 @@
+{
+ "detail": "EditMode: 1 failed: Given_EffectsClosingOverAStateValue_When_TheNextRenderCommits_Then_EachCleanupReadsTheValueOfTheRenderThatSetItUp",
+ "file": "79a6f19d38fb396067a343b1a25b89f0f13835c6c2cae72bba72f1183e3caf82",
+ "killers": [
+  {
+   "case": "Velvet.Tests.RenderPhaseEventLogTests(UIToolkit).Given_EffectsClosingOverAStateValue_When_TheNextRenderCommits_Then_EachCleanupReadsTheValueOfTheRenderThatSetItUp",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/RenderPhaseEventLogTests.cs": "5cbf26c0a6748b6cc74def09d79ca565b2540b5a0089329ad7cd6b639e0be040",
+    "Packages/com.velvet.core/TestUtilities/EventLog.cs": "e191b8d91d56ab6eb1633a8f37e5282dd11f4cbfd649b59ab27deab3a1e4b490",
+    "Packages/com.velvet.core/TestUtilities/EventLogRenderer.cs": "59fbaf33c955e917c5359940c3d0a0f090fefdc0d2a41b370a75eb6ce7304abe",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  }
+ ],
+ "measured_by": "44117360522",
+ "mutant": {
+  "after": ";",
+  "before": "HookEffectExecutor.RunCleanups(fiber, fiber.PendingLayoutEffects);",
+  "column": 12,
+  "line": 345,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberEffects.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "1ffe9b69fd4b31e82bffe0c9c68363a06633552627b636a1086b2532975e99de",
+ "verdict": "killed"
+}
