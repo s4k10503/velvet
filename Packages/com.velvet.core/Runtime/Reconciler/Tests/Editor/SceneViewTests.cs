@@ -124,6 +124,9 @@ namespace Velvet.Tests
         // round-trips it.
         private static RenderTexture FeedTexture(VisualElement element) => Feed(element)?.resolvedStyle.backgroundImage.renderTexture;
 
+        // WIDTHxHEIGHT, or null where there is no texture.
+        private static string SizeOf(Texture texture) => texture == null ? null : $"{texture.width}x{texture.height}";
+
         #region Mount and texture creation
 
         [Test]
@@ -152,6 +155,7 @@ namespace Velvet.Tests
             Assert.That(cam.targetTexture, Is.Not.Null);
         }
 
+        // GREEN_ON_BASE(refactor): the base reads the same texture size, now as one string rather than a tuple.
         [Test]
         public void Given_AMountedSceneView_When_LayoutResolves_Then_TheTextureMatchesTheLaidOutSize()
         {
@@ -162,10 +166,10 @@ namespace Velvet.Tests
             MountAndLayout(V.SceneView(cam, className: "w-[128px] h-[64px]"));
 
             // Assert
-            Assume.That(cam.targetTexture, Is.Not.Null, "Precondition: the camera received a texture");
-            Assert.That((cam.targetTexture.width, cam.targetTexture.height), Is.EqualTo((128, 64)));
+            Assert.That(SizeOf(cam.targetTexture), Is.EqualTo("128x64"));
         }
 
+        // GREEN_ON_BASE(refactor): the base reads the same texture size, now as one string rather than a tuple.
         [Test]
         public void Given_AResolutionScale_When_LayoutResolves_Then_TheTextureIsScaled()
         {
@@ -176,8 +180,7 @@ namespace Velvet.Tests
             MountAndLayout(V.SceneView(cam, className: "w-[128px] h-[64px]", resolutionScale: 0.5f));
 
             // Assert
-            Assume.That(cam.targetTexture, Is.Not.Null, "Precondition: the camera received a texture");
-            Assert.That((cam.targetTexture.width, cam.targetTexture.height), Is.EqualTo((64, 32)));
+            Assert.That(SizeOf(cam.targetTexture), Is.EqualTo("64x32"));
         }
 
         [Test]
@@ -211,6 +214,7 @@ namespace Velvet.Tests
             Assert.That(cam.targetTexture != null ? el.resolvedStyle.backgroundImage.texture : null, Is.SameAs(poster));
         }
 
+        // GREEN_ON_BASE(refactor): the base reads the same texture size, now as one string rather than a tuple.
         [Test]
         public void Given_ABorderedPaddedSceneView_When_LayoutResolves_Then_TheTextureMatchesTheContentBox()
         {
@@ -221,7 +225,7 @@ namespace Velvet.Tests
             MountAndLayout(V.SceneView(cam, className: "w-[136px] h-[72px] border-[2px] p-[2px]"));
 
             // Assert
-            Assert.That((cam.targetTexture.width, cam.targetTexture.height), Is.EqualTo((128, 64)));
+            Assert.That(SizeOf(cam.targetTexture), Is.EqualTo("128x64"));
         }
 
         [Test]
@@ -243,16 +247,20 @@ namespace Velvet.Tests
         }
 
         // Top-left first and clockwise; -1 each where there is no feed.
-        private (float, float, float, float) FeedRadii(string className)
+        private float[] FeedRadii(string className)
         {
             MountAndLayout(V.SceneView(CreateCamera("cam"), name: "sv", className: className));
             var feed = Feed(_host.Root.Q<VisualElement>("sv"));
             return feed == null
-                ? (-1f, -1f, -1f, -1f)
-                : (feed.resolvedStyle.borderTopLeftRadius, feed.resolvedStyle.borderTopRightRadius,
-                    feed.resolvedStyle.borderBottomRightRadius, feed.resolvedStyle.borderBottomLeftRadius);
+                ? new[] { -1f, -1f, -1f, -1f }
+                : new[]
+                {
+                    feed.resolvedStyle.borderTopLeftRadius, feed.resolvedStyle.borderTopRightRadius,
+                    feed.resolvedStyle.borderBottomRightRadius, feed.resolvedStyle.borderBottomLeftRadius,
+                };
         }
 
+        // GREEN_ON_BASE(refactor): the base reads the same four corner radii, now as an array rather than a tuple.
         [Test]
         public void Given_ARoundedSceneViewDeeperAtItsSides_When_LayoutResolves_Then_EachFeedCornerLosesItsSidesInset()
         {
@@ -263,9 +271,10 @@ namespace Velvet.Tests
             var radii = FeedRadii(className);
 
             // Assert
-            Assert.That(radii, Is.EqualTo((10f, 12f, 12f, 10f)));
+            Assert.That(radii, Is.EqualTo(new[] { 10f, 12f, 12f, 10f }));
         }
 
+        // GREEN_ON_BASE(refactor): the base reads the same four corner radii, now as an array rather than a tuple.
         [Test]
         public void Given_ARoundedSceneViewDeeperAtTopAndBottom_When_LayoutResolves_Then_EachFeedCornerLosesThatInset()
         {
@@ -276,7 +285,7 @@ namespace Velvet.Tests
             var radii = FeedRadii(className);
 
             // Assert
-            Assert.That(radii, Is.EqualTo((10f, 10f, 12f, 12f)));
+            Assert.That(radii, Is.EqualTo(new[] { 10f, 10f, 12f, 12f }));
         }
 
         [Component]
@@ -308,6 +317,7 @@ namespace Velvet.Tests
             Assert.That(Feed(el)?.layout ?? Rect.zero, Is.EqualTo(el.contentRect));
         }
 
+        // GREEN_ON_BASE(refactor): the base reads the same row width; the feed the case needs is now a sentinel.
         [Test]
         public void Given_ALiveSceneView_When_APortalRendersRowsIntoIt_Then_FirstLandsOnTheFirstRow()
         {
@@ -323,11 +333,12 @@ namespace Velvet.Tests
                 V.Div(name: "row1", className: "first:w-[10px]"),
             }));
 
-            // Assert — the feed is read too, since without one the rows are the only children anyway.
-            Assert.That((Feed(el) != null, el.Q<VisualElement>("row0")?.style.width.value.value ?? -1f),
-                Is.EqualTo((true, 10f)));
+            // Assert — read as NaN where there is no feed, since without one the rows are the only children anyway.
+            Assert.That(Feed(el) != null ? el.Q<VisualElement>("row0")?.style.width.value.value ?? -1f : float.NaN,
+                Is.EqualTo(10f));
         }
 
+        // GREEN_ON_BASE(refactor): the base reads the same order; the row's place is now a sentinel.
         [Test]
         public void Given_ALiveSceneViewWithNoOtherChild_When_APortalRendersARowIntoIt_Then_TheFeedStaysBeneathTheRow()
         {
@@ -339,8 +350,9 @@ namespace Velvet.Tests
             // Act
             _portalTree = V.Mount(new VisualElement(), V.Portal(el, children: new VNode[] { V.Div(name: "row0") }));
 
-            // Assert — the row is read too, since a row that never rendered leaves the feed first as well.
-            Assert.That((el.IndexOf(Feed(el)), el.IndexOf(el.Q<VisualElement>("row0"))), Is.EqualTo((0, 1)));
+            // Assert — read as -2 where the row is not second, since a row that never rendered leaves the feed first
+            // as well.
+            Assert.That(el.IndexOf(el.Q<VisualElement>("row0")) == 1 ? el.IndexOf(Feed(el)) : -2, Is.Zero);
         }
 
         [Component]
@@ -351,6 +363,7 @@ namespace Velvet.Tests
             return V.SceneView(shown ? s_camera : null, key: "sv", name: "sv", className: "w-[128px] h-[64px]");
         }
 
+        // GREEN_ON_BASE(refactor): the base reads the same order; the row's place is now a sentinel.
         [Test]
         public void Given_APortalRowInALiveSceneView_When_TheCameraLeavesAndReturns_Then_TheFeedStaysBeneathTheRow()
         {
@@ -367,8 +380,9 @@ namespace Velvet.Tests
             s_setFlag.Invoke(true);
             FlushAndLayout();
 
-            // Assert — the row is read too, since a row that never rendered leaves the feed first as well.
-            Assert.That((el.IndexOf(Feed(el)), el.IndexOf(el.Q<VisualElement>("row0"))), Is.EqualTo((0, 1)));
+            // Assert — read as -2 where the row is not second, since a row that never rendered leaves the feed first
+            // as well.
+            Assert.That(el.IndexOf(el.Q<VisualElement>("row0")) == 1 ? el.IndexOf(Feed(el)) : -2, Is.Zero);
         }
 
         [Test]
@@ -437,6 +451,7 @@ namespace Velvet.Tests
 
         private static Camera s_camera;
 
+        // GREEN_ON_BASE(refactor): the base reads the same texture size, now as one string rather than a tuple.
         [Test]
         public void Given_AGeometryChange_When_TheElementResizes_Then_TheTextureFollowsTheNewSize()
         {
@@ -453,7 +468,7 @@ namespace Velvet.Tests
             // Assert — the larger axis (200) rounds up to the next 16px quantization step (208); the
             // unchanged 64px axis is rescaled by the same factor (208/200) to keep the texture's
             // aspect equal to the element's, landing at round(208 * 64 / 200) = 67.
-            Assert.That((s_camera.targetTexture.width, s_camera.targetTexture.height), Is.EqualTo((208, 67)));
+            Assert.That(SizeOf(s_camera.targetTexture), Is.EqualTo("208x67"));
         }
 
         [Test]
@@ -493,6 +508,7 @@ namespace Velvet.Tests
             return V.SceneView(s_camera, className: sizes[step]);
         }
 
+        // GREEN_ON_BASE(refactor): the base reads the same three widths, now as an array rather than a tuple.
         [Test]
         public void Given_ANearSquareElement_When_TheDominantAxisAlternates_Then_TheWidthBasisStaysStable()
         {
@@ -514,7 +530,7 @@ namespace Velvet.Tests
             var widthAtStep2 = s_camera.targetTexture.width;
 
             // Assert
-            Assert.That((widthAtStep0, widthAtStep1, widthAtStep2), Is.EqualTo((112, 112, 112)));
+            Assert.That(new[] { widthAtStep0, widthAtStep1, widthAtStep2 }, Is.EqualTo(new[] { 112, 112, 112 }));
         }
 
         [Test]
@@ -591,22 +607,48 @@ namespace Velvet.Tests
 
         private static Camera s_cameraB;
 
-        [Test]
-        public void Given_ACameraSwap_When_Repatched_Then_TheOldCameraIsReleasedAndTheNewOneTargets()
+        // Mounts what host returns over a fresh s_camera, lays it out, and returns the texture the camera then targets.
+        private RenderTexture MountTargeting(System.Func<VNode> host)
         {
-            // Arrange
-            s_camera = CreateCamera("camA");
-            s_cameraB = CreateCamera("camB");
-            MountAndLayout(V.Component(SwappingHost, key: "root"));
-            Assume.That(s_camera.targetTexture, Is.Not.Null, "Precondition: camera A targets the texture");
+            s_camera = CreateCamera("cam");
+            MountAndLayout(host());
+            return s_camera.targetTexture;
+        }
 
-            // Act
+        private void FlipAndLayout()
+        {
             s_setFlag.Invoke(true);
             FlushAndLayout();
+        }
 
-            // Assert — A released, B targeting.
-            Assert.That((s_camera.targetTexture == null, s_cameraB.targetTexture != null),
-                Is.EqualTo((true, true)));
+        // GREEN_ON_BASE(refactor): split from the swap case that read both cameras in one tuple.
+        [Test]
+        public void Given_ACameraSwap_When_Repatched_Then_TheOldCameraIsReleased()
+        {
+            // Arrange
+            s_cameraB = CreateCamera("camB");
+            var targeted = MountTargeting(() => V.Component(SwappingHost, key: "root")) != null;
+
+            // Act
+            FlipAndLayout();
+
+            // Assert — read as null where the old camera never targeted a texture.
+            Assert.That(targeted ? s_camera.targetTexture == null : (bool?)null, Is.True);
+        }
+
+        // GREEN_ON_BASE(refactor): split from the swap case that read both cameras in one tuple.
+        [Test]
+        public void Given_ACameraSwap_When_Repatched_Then_TheNewCameraTargetsATexture()
+        {
+            // Arrange
+            s_cameraB = CreateCamera("camB");
+            MountTargeting(() => V.Component(SwappingHost, key: "root"));
+
+            // Act
+            FlipAndLayout();
+
+            // Assert
+            Assert.That(s_cameraB.targetTexture, Is.Not.Null);
         }
 
         [Component]
@@ -617,21 +659,33 @@ namespace Velvet.Tests
             return V.SceneView(removed ? null : s_camera, className: "w-[128px] h-[64px]");
         }
 
+        // GREEN_ON_BASE(refactor): split from the removal case that read the camera and the texture in one tuple.
         [Test]
-        public void Given_ACameraRemoved_When_RepatchedToNull_Then_TheCameraAndTextureAreReleased()
+        public void Given_ACameraRemoved_When_RepatchedToNull_Then_TheCameraIsUntargeted()
         {
             // Arrange
-            s_camera = CreateCamera("cam");
-            MountAndLayout(V.Component(CameraToNullHost, key: "root"));
-            var rt = s_camera.targetTexture;
-            Assume.That(rt, Is.Not.Null, "Precondition: the camera targets the texture");
+            var targeted = MountTargeting(() => V.Component(CameraToNullHost, key: "root")) != null;
 
             // Act
-            s_setFlag.Invoke(true);
-            FlushAndLayout();
+            FlipAndLayout();
 
-            // Assert — the camera is untargeted and the framework texture is destroyed.
-            Assert.That((s_camera.targetTexture == null, rt == null), Is.EqualTo((true, true)));
+            // Assert — read as null where the camera never targeted a texture.
+            Assert.That(targeted ? s_camera.targetTexture == null : (bool?)null, Is.True);
+        }
+
+        // GREEN_ON_BASE(refactor): split from the removal case that read the camera and the texture in one tuple.
+        [Test]
+        public void Given_ACameraRemoved_When_RepatchedToNull_Then_TheTextureIsDestroyed()
+        {
+            // Arrange
+            var rt = MountTargeting(() => V.Component(CameraToNullHost, key: "root"));
+            var created = rt != null;
+
+            // Act
+            FlipAndLayout();
+
+            // Assert — read as null where no texture was created to destroy.
+            Assert.That(created ? rt == null : (bool?)null, Is.True);
         }
 
         [Component]
@@ -679,39 +733,65 @@ namespace Velvet.Tests
                 : V.SceneView(s_camera, key: "x", className: "w-[128px] h-[64px]");
         }
 
+        // GREEN_ON_BASE(refactor): split from the type-swap case that read the camera and the texture in one tuple.
         [Test]
-        public void Given_ASameKeyTypeSwap_When_TheSceneViewBecomesADiv_Then_TeardownRuns()
+        public void Given_ASameKeyTypeSwap_When_TheSceneViewBecomesADiv_Then_TheCameraIsUntargeted()
         {
             // Arrange — a same-key element-type change remounts (never patches across types), and the
             // outgoing SceneView must release its camera and texture through that path too.
-            s_camera = CreateCamera("cam");
-            MountAndLayout(V.Component(TypeSwapHost, key: "root"));
-            var rt = s_camera.targetTexture;
-            Assume.That(rt, Is.Not.Null, "Precondition: the camera targets the texture");
+            var targeted = MountTargeting(() => V.Component(TypeSwapHost, key: "root")) != null;
 
             // Act
-            s_setFlag.Invoke(true);
-            FlushAndLayout();
+            FlipAndLayout();
 
-            // Assert
-            Assert.That((s_camera.targetTexture == null, rt == null), Is.EqualTo((true, true)));
+            // Assert — read as null where the camera never targeted a texture.
+            Assert.That(targeted ? s_camera.targetTexture == null : (bool?)null, Is.True);
         }
 
+        // GREEN_ON_BASE(refactor): split from the type-swap case that read the camera and the texture in one tuple.
         [Test]
-        public void Given_AnUnmount_When_TheTreeDisposes_Then_TheCameraAndTextureAreReleased()
+        public void Given_ASameKeyTypeSwap_When_TheSceneViewBecomesADiv_Then_TheTextureIsDestroyed()
         {
             // Arrange
-            var cam = CreateCamera("cam");
-            MountAndLayout(V.SceneView(cam, className: "w-[128px] h-[64px]"));
-            var rt = cam.targetTexture;
-            Assume.That(rt, Is.Not.Null, "Precondition: the camera targets the texture");
+            var rt = MountTargeting(() => V.Component(TypeSwapHost, key: "root"));
+            var created = rt != null;
+
+            // Act
+            FlipAndLayout();
+
+            // Assert — read as null where no texture was created to destroy.
+            Assert.That(created ? rt == null : (bool?)null, Is.True);
+        }
+
+        // GREEN_ON_BASE(refactor): split from the unmount case that read the camera and the texture in one tuple.
+        [Test]
+        public void Given_AnUnmount_When_TheTreeDisposes_Then_TheCameraIsUntargeted()
+        {
+            // Arrange
+            var targeted = MountTargeting(() => V.SceneView(s_camera, className: "w-[128px] h-[64px]")) != null;
 
             // Act
             _mounted.Dispose();
             _mounted = null;
 
-            // Assert
-            Assert.That((cam.targetTexture == null, rt == null), Is.EqualTo((true, true)));
+            // Assert — read as null where the camera never targeted a texture.
+            Assert.That(targeted ? s_camera.targetTexture == null : (bool?)null, Is.True);
+        }
+
+        // GREEN_ON_BASE(refactor): split from the unmount case that read the camera and the texture in one tuple.
+        [Test]
+        public void Given_AnUnmount_When_TheTreeDisposes_Then_TheTextureIsDestroyed()
+        {
+            // Arrange
+            var rt = MountTargeting(() => V.SceneView(s_camera, className: "w-[128px] h-[64px]"));
+            var created = rt != null;
+
+            // Act
+            _mounted.Dispose();
+            _mounted = null;
+
+            // Assert — read as null where no texture was created to destroy.
+            Assert.That(created ? rt == null : (bool?)null, Is.True);
         }
 
         [Component]
@@ -725,21 +805,33 @@ namespace Velvet.Tests
             });
         }
 
+        // GREEN_ON_BASE(refactor): split from the removal case that read the camera and the texture in one tuple.
         [Test]
-        public void Given_AConditionalRemoval_When_TheSceneViewLeavesTheTree_Then_TeardownRuns()
+        public void Given_AConditionalRemoval_When_TheSceneViewLeavesTheTree_Then_TheCameraIsUntargeted()
         {
             // Arrange
-            s_camera = CreateCamera("cam");
-            MountAndLayout(V.Component(ConditionalHost, key: "root"));
-            var rt = s_camera.targetTexture;
-            Assume.That(rt, Is.Not.Null, "Precondition: the camera targets the texture");
+            var targeted = MountTargeting(() => V.Component(ConditionalHost, key: "root")) != null;
 
             // Act
-            s_setFlag.Invoke(true);
-            FlushAndLayout();
+            FlipAndLayout();
 
-            // Assert
-            Assert.That((s_camera.targetTexture == null, rt == null), Is.EqualTo((true, true)));
+            // Assert — read as null where the camera never targeted a texture.
+            Assert.That(targeted ? s_camera.targetTexture == null : (bool?)null, Is.True);
+        }
+
+        // GREEN_ON_BASE(refactor): split from the removal case that read the camera and the texture in one tuple.
+        [Test]
+        public void Given_AConditionalRemoval_When_TheSceneViewLeavesTheTree_Then_TheTextureIsDestroyed()
+        {
+            // Arrange
+            var rt = MountTargeting(() => V.Component(ConditionalHost, key: "root"));
+            var created = rt != null;
+
+            // Act
+            FlipAndLayout();
+
+            // Assert — read as null where no texture was created to destroy.
+            Assert.That(created ? rt == null : (bool?)null, Is.True);
         }
 
         [Test]
@@ -798,6 +890,7 @@ namespace Velvet.Tests
             Assert.That(s_camera.targetTexture, Is.SameAs(foreign));
         }
 
+        // GREEN_ON_BASE(refactor): the base reads the same aspect; its two Assumes are now a sentinel.
         [Test]
         public void Given_AnElementWiderThanTheTextureCap_When_TheTextureIsCreated_Then_TheAspectIsPreserved()
         {
@@ -808,15 +901,15 @@ namespace Velvet.Tests
             // Act
             MountAndLayout(V.SceneView(cam, className: "shrink-0 w-[6000px] h-[300px]"));
 
-            // Assert
+            // Assert — read as infinity where there is no texture or its width is not at the ceiling; at that width an
+            // aspect within the margin keeps the height under the ceiling too.
             var rt = cam.targetTexture;
-            Assume.That(rt, Is.Not.Null, "Precondition: the camera received a texture");
-            Assume.That(rt.width, Is.EqualTo(4096), "Precondition: the width hit the ceiling");
-            var aspect = (float)rt.width / rt.height;
-            Assert.That((rt.height <= 4096, Mathf.Abs(aspect - 20f) < 0.5f), Is.EqualTo((true, true)));
+            Assert.That(
+                rt != null && rt.width == 4096 ? Mathf.Abs((float)rt.width / rt.height - 20f) : float.PositiveInfinity,
+                Is.LessThan(0.5f));
         }
 
-        // GREEN_ON_BASE(characterization): the tick re-derives a texture whose pixel scale went stale, as it did.
+        // GREEN_ON_BASE(refactor): the tick still re-derives a texture whose pixel scale went stale; its size is now one string.
         [Test]
         public void Given_AStalePixelScale_When_TheEditorRepaintTickFires_Then_TheTextureIsRederived()
         {
@@ -836,7 +929,7 @@ namespace Velvet.Tests
             FireTick();
 
             // Assert
-            Assert.That((cam.targetTexture.width, cam.targetTexture.height), Is.EqualTo((256, 128)));
+            Assert.That(SizeOf(cam.targetTexture), Is.EqualTo("256x128"));
         }
 
         // Draws nothing but its red clear color, so a render into the texture reads red.
@@ -935,7 +1028,7 @@ namespace Velvet.Tests
             Assert.That(repaints, Is.GreaterThan(0));
         }
 
-        // GREEN_ON_BASE(characterization): a tick that ran leaves a disabled camera's texture as it was, as before.
+        // GREEN_ON_BASE(refactor): a tick that ran still leaves a disabled camera's texture as it was; the run is now a sentinel.
         [Test]
         public void Given_ADisabledCameraOutsidePlayMode_When_TheTickFires_Then_TheCameraDoesNotRender()
         {
@@ -952,11 +1045,12 @@ namespace Velvet.Tests
             // Act
             FireTick();
 
-            // Assert
-            Assert.That((IsRed(cam.targetTexture), TickRan()), Is.EqualTo((false, true)));
+            // Assert — read as null where the tick never ran.
+            var red = IsRed(cam.targetTexture);
+            Assert.That(TickRan() ? red : (bool?)null, Is.False);
         }
 
-        // GREEN_ON_BASE(characterization): a tick that ran leaves a texture user code gave the camera unrendered, as before.
+        // GREEN_ON_BASE(refactor): a tick that ran still leaves a user's texture unrendered; the run is now a sentinel.
         [Test]
         public void Given_AUserReassignedTargetOutsidePlayMode_When_TheTickFires_Then_TheCameraDoesNotRenderIntoIt()
         {
@@ -975,8 +1069,9 @@ namespace Velvet.Tests
             // Act
             FireTick();
 
-            // Assert
-            Assert.That((IsRed(userTexture), TickRan()), Is.EqualTo((false, true)));
+            // Assert — read as null where the tick never ran.
+            var red = IsRed(userTexture);
+            Assert.That(TickRan() ? red : (bool?)null, Is.False);
         }
 
         [Test]
@@ -1116,6 +1211,7 @@ namespace Velvet.Tests
             return V.SceneView(released ? null : s_camera, key: "sv", name: "sv", className: "w-[128px] h-[64px]");
         }
 
+        // GREEN_ON_BASE(refactor): the base reads the same removal; the live feed before it is now a sentinel.
         [Test]
         public void Given_ALiveFeed_When_TheCameraIsRemoved_Then_TheFeedLeavesTheElement()
         {
@@ -1129,9 +1225,9 @@ namespace Velvet.Tests
             s_setFlag.Invoke(true);
             FlushAndLayout();
 
-            // Assert — the feed is checked while the camera is live too, since a base with none passes
-            // the removal alone.
-            Assert.That((fedWhileLive, Feed(el) != null), Is.EqualTo((true, false)));
+            // Assert — read as null where the live camera showed no feed, since a base with none passes the removal
+            // alone.
+            Assert.That(fedWhileLive ? Feed(el) != null : (bool?)null, Is.False);
         }
 
         #endregion
@@ -1310,6 +1406,7 @@ namespace Velvet.Tests
             Assert.That(s_camera.enabled, Is.True);
         }
 
+        // GREEN_ON_BASE(refactor): the base reads the same camera state; the state before the act is now a sentinel.
         [Test]
         public void Given_ATakeoverThatEnds_When_TheTickFires_Then_TheCameraIsEnabledAgain()
         {
@@ -1321,10 +1418,12 @@ namespace Velvet.Tests
             // Act
             FlipAndTick(false);
 
-            // Assert — read while taken over too, since a base that never disables it passes the end alone.
-            Assert.That((enabledWhileTaken, s_camera.enabled), Is.EqualTo((false, true)));
+            // Assert — read as null where the takeover left the camera enabled, since a base that never disables it
+            // passes the end alone.
+            Assert.That(enabledWhileTaken ? (bool?)null : s_camera.enabled, Is.True);
         }
 
+        // GREEN_ON_BASE(refactor): the base reads the same camera state; the state before the act is now a sentinel.
         [Test]
         public void Given_ATakeoverThatEndedAndStartsAgain_When_TheTickFires_Then_TheCameraIsHeldDisabledAgain()
         {
@@ -1337,10 +1436,12 @@ namespace Velvet.Tests
             // Act
             FlipAndTick(true);
 
-            // Assert — read between the two too, since a base that never disables it is enabled there.
-            Assert.That((enabledBetween, s_camera.enabled), Is.EqualTo((true, false)));
+            // Assert — read as null where the camera was not enabled between the two, since a base that never
+            // disables it is enabled there.
+            Assert.That(enabledBetween ? s_camera.enabled : (bool?)null, Is.False);
         }
 
+        // GREEN_ON_BASE(refactor): the base reads the same camera state; the state before the act is now a sentinel.
         [Test]
         public void Given_ATakenOverSceneView_When_ItsCameraIsSwapped_Then_TheOldCameraIsEnabledAgain()
         {
@@ -1354,8 +1455,8 @@ namespace Velvet.Tests
             s_setFlag.Invoke(true);
             FlushAndLayout();
 
-            // Assert
-            Assert.That((enabledWhileTaken, s_camera.enabled), Is.EqualTo((false, true)));
+            // Assert — read as null where the takeover left the camera enabled.
+            Assert.That(enabledWhileTaken ? (bool?)null : s_camera.enabled, Is.True);
         }
 
         // Runs the subscribers SceneViewDriver declares on one of the editor's events, with the given arguments:
@@ -1385,6 +1486,7 @@ namespace Velvet.Tests
             }
         }
 
+        // GREEN_ON_BASE(refactor): the base reads the same camera state; the state before the act is now a sentinel.
         [Test]
         public void Given_AHeldCamera_When_TheEditorIsAboutToReloadAssemblies_Then_TheCameraIsEnabledAgain()
         {
@@ -1396,10 +1498,12 @@ namespace Velvet.Tests
             // Act
             RunDriverSubscribers(typeof(UnityEditor.AssemblyReloadEvents), "m_BeforeAssemblyReloadEvent");
 
-            // Assert — read while held too, since a base that never holds it is enabled at the end alone.
-            Assert.That((enabledWhileHeld, s_camera.enabled), Is.EqualTo((false, true)));
+            // Assert — read as null where the camera was not held disabled, since a base that never holds it is
+            // enabled at the end alone.
+            Assert.That(enabledWhileHeld ? (bool?)null : s_camera.enabled, Is.True);
         }
 
+        // GREEN_ON_BASE(refactor): the base reads the same camera state; the state before the act is now a sentinel.
         [Test]
         public void Given_AHeldCamera_When_TheEditorIsAboutToSaveAScene_Then_TheCameraIsEnabledAgain()
         {
@@ -1412,10 +1516,12 @@ namespace Velvet.Tests
             RunDriverSubscribers(typeof(UnityEditor.SceneManagement.EditorSceneManager), "m_SceneSavingEvent",
                 s_camera.gameObject.scene, string.Empty);
 
-            // Assert — read while held too, since a base that never holds it is enabled at the end alone.
-            Assert.That((enabledWhileHeld, s_camera.enabled), Is.EqualTo((false, true)));
+            // Assert — read as null where the camera was not held disabled, since a base that never holds it is
+            // enabled at the end alone.
+            Assert.That(enabledWhileHeld ? (bool?)null : s_camera.enabled, Is.True);
         }
 
+        // GREEN_ON_BASE(refactor): the base reads the same camera state; the state before the act is now a sentinel.
         [Test]
         public void Given_ATakenOverSceneView_When_ItUnmounts_Then_ItsCameraIsEnabledAgain()
         {
@@ -1428,8 +1534,8 @@ namespace Velvet.Tests
             s_setFlag.Invoke(false);
             FlushAndLayout();
 
-            // Assert
-            Assert.That((enabledWhileTaken, s_camera.enabled), Is.EqualTo((false, true)));
+            // Assert — read as null where the takeover left the camera enabled.
+            Assert.That(enabledWhileTaken ? (bool?)null : s_camera.enabled, Is.True);
         }
 
         #endregion
