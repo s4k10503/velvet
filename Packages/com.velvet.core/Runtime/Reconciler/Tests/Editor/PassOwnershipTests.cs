@@ -5,8 +5,7 @@ using UnityEngine.UIElements;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Specifies that the recorded child-list writes belong to the pass that made them: a pass that starts while
-    /// another's are unapplied applies them first, and the one that was recording takes over again where the other ends.
+    /// Specifies that a pass a root asks for while another is open waits for it.
     /// </summary>
     [TestFixture]
     internal sealed class PassOwnershipTests
@@ -26,27 +25,8 @@ namespace Velvet.Tests
         {
             _mounted?.Dispose();
             _mounted = null;
-            ChildListWrites.EndRecording(_second.Context.Pass);
-            ChildListWrites.EndRecording(_first.Context.Pass);
             _first.Dispose();
             _second.Dispose();
-        }
-
-        [Test]
-        public void Given_APassWithARecordedInsert_When_AnotherPassBegins_Then_TheInsertIsOnTheLiveList()
-        {
-            // Arrange
-            var parent = new VisualElement();
-            parent.Add(new VisualElement());
-            var child = new VisualElement();
-            ChildListWrites.BeginRecording(_first.Context.Pass);
-            _first.Context.HostCommit.Insert(parent, 1, child);
-
-            // Act
-            ChildListWrites.BeginRecording(_second.Context.Pass);
-
-            // Assert
-            Assert.That(parent.childCount, Is.EqualTo(2));
         }
 
         private MountedTree? _mounted;
@@ -171,39 +151,33 @@ namespace Velvet.Tests
             Assert.That(rendered, Is.EqualTo(1));
         }
 
-        [Test]
-        public void Given_AnotherPassBeganOverARecordingOne_When_ItEnds_Then_TheOuterPassIsRecordingAgain()
-        {
-            // Arrange
-            ChildListWrites.BeginRecording(_first.Context.Pass);
-            ChildListWrites.BeginRecording(_second.Context.Pass);
-
-            // Act
-            ChildListWrites.EndRecording(_second.Context.Pass);
-
-            // Assert
-            Assert.That(ChildListWrites.IsRecording, Is.True);
-        }
-
-        [Test]
-        public void Given_AnotherPassBeganOverARecordingOne_When_ItEnds_Then_ItsInsertIsOnTheLiveList()
-        {
-            // Arrange
-            var parent = new VisualElement();
-            var child = new VisualElement();
-            ChildListWrites.BeginRecording(_first.Context.Pass);
-            ChildListWrites.BeginRecording(_second.Context.Pass);
-            _second.Context.HostCommit.Insert(parent, 0, child);
-
-            // Act
-            ChildListWrites.EndRecording(_second.Context.Pass);
-
-            // Assert
-            Assert.That(parent.childCount, Is.EqualTo(1));
-        }
-
         private VNode[] TreeAskingForHeldWork(Action<FiberBatchScheduler> ask)
             => new VNode[] { V.ScrollView(onCreated: _ => ask(_second.Context.BatchScheduler)) };
+
+        private MountedTree? _inner;
+
+        // GREEN_ON_BASE(characterization): the base holds the unmount a ref cleanup asks for in the walk.
+        // It runs once the entry that ran the pass has ended, as on the branch.
+        [Test]
+        public void Given_ARefCleanupThatDisposesAnotherRootInTheWalk_When_ThePassEnds_Then_TheOtherRootIsDisposed()
+        {
+            // Arrange
+            VNode Row() => V.Div(name: "row", refCallback: element =>
+            {
+                _inner = V.Mount(element, V.Label(text: "inner"));
+                return () => _inner.Dispose();
+            });
+            var parent = new VisualElement();
+            var before = new VNode[] { V.Div(name: "list", children: new VNode[] { Row() }) };
+            _first.Reconcile(parent, Array.Empty<VNode>(), before);
+            var shown = _inner;
+
+            // Act
+            _first.Reconcile(parent, before, new VNode[] { V.Div(name: "list") });
+
+            // Assert
+            Assert.That(shown!.Root.IsDisposed, Is.True);
+        }
 
         private static StateUpdater<int> s_setCounted;
         private static int s_countedRenders;

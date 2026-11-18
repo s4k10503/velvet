@@ -284,6 +284,37 @@ namespace Velvet.Tests
             Assert.That((entry.Element, entry.Box.HasValue), Is.EqualTo(((VisualElement)null, true)));
         }
 
+        private static string s_selectedRow;
+
+        private static VirtualListNode SelectableRows() => V.VirtualList(
+            items: new[] { "row-0", "row-1", "row-2", "row-3" },
+            keySelector: id => id,
+            itemHeight: 50f,
+            renderer: id => V.Motion(key: id, name: id, layoutId: id == s_selectedRow ? "sel" : null,
+                className: "w-[100px] h-[50px]"),
+            overscan: 0);
+
+        // GREEN_ON_BASE(characterization): the base runs the layoutId driver in each patch of a Motion holding an id.
+        // The case pins that a row a scroll patches outside a pass still joins the id it takes.
+        [Test]
+        public void Given_AVirtualListRowThatTakesALayoutId_When_AScrollKeepsItInTheRange_Then_ItJoinsTheId()
+        {
+            // Arrange
+            s_selectedRow = null;
+            var scrollView = new ScrollView(ScrollViewMode.Vertical);
+            Root.Add(scrollView);
+            using var controller = new FiberVirtualListController(scrollView, SelectableRows(), _reconciler);
+            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 100f);
+            var row = Root.Q<VisualElement>("row-1");
+            s_selectedRow = "row-1";
+
+            // Act — a scroll one row down: a range rendered outside any pass, which patches row-1 where it stands.
+            controller.UpdateVisibleRange(scrollY: 50f, viewportHeight: 100f);
+
+            // Assert
+            Assert.That(_reconciler.Context.ElementToLayoutId.TryGetValue(row, out var id) ? id : null, Is.EqualTo("sel"));
+        }
+
         private static float TranslateX(VisualElement element) =>
             element.style.translate.keyword == StyleKeyword.Null ? 0f : element.style.translate.value.x.value;
 

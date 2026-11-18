@@ -11,16 +11,10 @@ namespace Velvet
     internal sealed class TurnAnchor
     {
         internal readonly List<DeletionCommit> Teardowns = new();
-        // Set where the anchor's op applies, after which a teardown can no longer be attached to it and is run ahead
-        // of the ops left instead (ReconcilePass.Late), in the order the anchors were recorded.
-        internal bool Applied;
-        internal int Serial;
 
         internal void Reset()
         {
             Teardowns.Clear();
-            Applied = false;
-            Serial = 0;
         }
     }
 

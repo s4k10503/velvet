@@ -52,6 +52,7 @@ namespace Velvet.Tests
             return null;
         }
 
+        // GREEN_ON_BASE(characterization): the base's walkers write no child list themselves either; the case is on trial for the shared table beside it that changed.
         [Test]
         public void Given_TheWalkersOfAReconcile_When_TheirCallsAreRead_Then_NoneWritesAChildListItself()
         {
@@ -89,6 +90,7 @@ namespace Velvet.Tests
             return false;
         }
 
+        // GREEN_ON_BASE(characterization): the base's cleaner reaches the removal only through the queue as well; the case is on trial for the shared table beside it that changed.
         [Test]
         public void Given_TheCleanerOfARemovedRow_When_ItsCallsAreRead_Then_ItWritesTheRowsRemovalOnlyThroughTheQueue()
         {
@@ -119,8 +121,7 @@ namespace Velvet.Tests
 
         // The methods that read only a child list, or write one, and so answer from the row model and record a write
         // behind the ones recorded already. Realign (the engine's layout list) and HierarchySort (the order of the live
-        // list) act on the live list, and the post-children class passes read what the recorded patch halves wrote: each
-        // applies the recorded ops first, and none is listed, nor is Exchange, which ends in HierarchySort.
+        // list) act on the live list, and none is listed, nor is Exchange, which ends in HierarchySort.
         private static readonly (Type Type, string Method)[] ModelSites =
         {
             (typeof(ChildListWrites), "InsertCore"),
@@ -133,8 +134,9 @@ namespace Velvet.Tests
             (typeof(WrapperInfrastructure), nameof(WrapperInfrastructure.RemoveWrapperRestoreInner)),
         };
 
-        private static readonly HashSet<string> Appliers = new() { "FlushIfPending", "SyncLive", "ApplyPendingPatches", "Apply", "HierarchySort" };
+        private static readonly HashSet<string> Appliers = new() { "Apply", "HierarchySort" };
 
+        // GREEN_ON_BASE(characterization): the base's model sites call neither name the set keeps.
         [Test]
         public void Given_TheSitesThatAnswerFromTheRowModel_When_TheirCallsAreRead_Then_NoneAppliesTheRecordedWrites()
         {
@@ -174,6 +176,7 @@ namespace Velvet.Tests
             nameof(BackdropFilterLayer) + "." + nameof(BackdropFilterLayer.DrainPendingPlacements),
         };
 
+        // GREEN_ON_BASE(characterization): the base applies the recorded writes ahead of the writers FinishPass names as well; the case is on trial for the shared table beside it that changed.
         [Test]
         public void Given_FinishPass_When_ItsCallsAreRead_Then_TheRecordedWritesAreAppliedBeforeTheWritersItNames()
         {

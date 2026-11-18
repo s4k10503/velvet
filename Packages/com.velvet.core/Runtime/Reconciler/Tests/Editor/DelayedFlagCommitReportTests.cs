@@ -75,6 +75,32 @@ namespace Velvet.Tests
             Assert.That((whileHeld, string.Join("|", reported)), Is.EqualTo((0, "typed")));
         }
 
+        [Test]
+        public void Given_AnEditADelayedFieldIsHolding_When_TheSameRenderChangesALabelBeforeIt_Then_TheHandlerReadsTheLabelUpdated()
+        {
+            // Arrange
+            var read = new List<string>();
+            Label label = null;
+            var oldTree = new VNode[]
+            {
+                V.Label(text: "a", refCallback: element =>
+                {
+                    label = (Label)element;
+                    return () => { };
+                }),
+                V.TextField(onValueChanged: _ => read.Add(label.text), isDelayed: true),
+            };
+            _reconciler.Reconcile(_root, Array.Empty<VNode>(), oldTree);
+            ((INotifyValueChanged<string>)(TextElement)((TextField)_root.ElementAt(1)).textEdition).SetValueWithoutNotify("typed");
+            var newTree = new VNode[] { V.Label(text: "b"), V.TextField(onValueChanged: _ => read.Add(label.text), isDelayed: false) };
+
+            // Act
+            _reconciler.Reconcile(_root, oldTree, newTree);
+
+            // Assert
+            Assert.That(string.Join("|", read), Is.EqualTo("b"));
+        }
+
         // The state a delayed field is in mid-edit: text on the inner element, a value that has not
         // received it. Written without notifying, which is what typing does — ITextEdition.UpdateText
         // sends an InputEvent and sets the text silently. The notifying setter TextFieldInputPropTests
