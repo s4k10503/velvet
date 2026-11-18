@@ -187,8 +187,8 @@ namespace Velvet
             drawing.Written = element.style.opacity;
         }
 
-        // For a pass that takes opacity out of a variant swap's list before it draws the element
-        // (MotionNativeTransitionGuard.Refresh): the list is read first, as Step reads it.
+        // For MotionNativeTransitionGuard.Refresh, which takes opacity out of a variant swap's list: the list is read
+        // first, as Step reads it, whichever of Step and Refresh runs first.
         public static void Hold(VisualElement element)
         {
             if (s_drawing.TryGetValue(element, out var drawing)) HoldTiming(element, drawing);

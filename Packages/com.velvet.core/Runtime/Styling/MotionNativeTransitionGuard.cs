@@ -916,14 +916,18 @@ namespace Velvet
         /// Writes the narrowed lists again where the element's rules have changed since they were written, called on
         /// each pass a layoutId projection draws the element
         /// (Given_ANarrowedMotionWhoseTransitionClassesChangeMidMove_When_ItsBackgroundChanges_Then_ItRunsOnTheNewTiming)
-        /// and each step it runs its rotate on past its landing. Where carries read the element's lists (LayoutIdCarry.Hold),
-        /// it is called once they have, since it takes what the narrowers write out of a variant swap's list
+        /// and each step it runs its rotate on past its landing. It first lets the crossfade's opacity carry read the list
+        /// (MotionOpacity.Hold), which it is about to take opacity out of: that carry steps on a schedule item of its own,
+        /// which may run after this call
+        /// (Given_ALeadWhoseOpacityAndRotateRunOnPastItsLanding_When_APoseSwapChangesItsOpacityBeforeItsOpacityTailSteps_Then_ItsOpacityIsCarriedOnThePoseSwapsTiming).
+        /// The rotate, radii, translate and scale carries read in LayoutIdLook.Narrow, which MotionLayoutIdDriver.Compute and
+        /// LayoutIdLook.StepTail each run first
         /// (Given_ALeadMixingARotateItsRulesTransition_When_ItsPoseTweensItsRotateMidMove_Then_ItMixesTowardsThePosesRotateOnThePoseTweensTiming,
-        /// Given_ALeadWhoseTurnRunsOnPastItsLanding_When_ItsPoseTweensAsItsClassesTurnItBack_Then_ItTurnsOnThePoseTweensTiming,
-        /// Given_ALeadCrossfadingInWhoseRulesTransitionItsOpacity_When_ItsPoseTweensItsOpacityToZero_Then_ItsOwnIsCarriedOnThePoseTweensTiming).
+        /// Given_ALeadWhoseTurnRunsOnPastItsLanding_When_ItsPoseTweensAsItsClassesTurnItBack_Then_ItTurnsOnThePoseTweensTiming).
         /// </summary>
         internal static void Refresh(VisualElement element)
         {
+            MotionOpacity.Hold(element);
             if (!s_suspensions.TryGetValue(element, out var suspension)) return;
             if (suspension.Undecided.Count > 0) Redecide(element, suspension);
             if (suspension.Written == null) return;

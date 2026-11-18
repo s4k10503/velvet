@@ -371,7 +371,6 @@ namespace Velvet
             projection.Scale = delta.Scale;
             LayoutIdLook.Adopt(element, projection);
             LayoutIdLook.Narrow(element, projection);
-            MotionOpacity.Hold(element);
             MotionNativeTransitionGuard.Refresh(element);
             Write(element, projection, delta.Translate);
             WriteOpacity(element, projection, Fade(element, projection, ctx), ctx);
@@ -1562,8 +1561,8 @@ namespace Velvet
             {
                 (_heldDurationSec, _heldDelaySec, _heldEasing, _named) = (durationMs / 1000f, delayMs / 1000f, easing, true);
             }
-            // A held list that has not named the property since it was written gives it no transition, as UI Toolkit runs
-            // the inline list; one that named it had it taken out after it was read here
+            // A held list that does not name the property gives it no transition, as UI Toolkit runs the inline list, unless
+            // a read here of the list held since had it named: the narrowing has taken the property out of it since
             // (Given_ALeadMixingRotateUnderAPoseTweenASpinTookRotateOutOf_When_TheSpinEndsAndItsRulesTurnIt_Then_TheTurnIsTakenAtOnce).
             else if (!_named)
             {

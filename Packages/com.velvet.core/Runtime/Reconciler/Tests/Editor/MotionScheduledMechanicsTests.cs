@@ -6151,6 +6151,50 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ALeadWhoseOpacityAndRotateRunOnPastItsLanding_When_APoseSwapChangesItsOpacityBeforeItsOpacityTailSteps_Then_ItsOpacityIsCarriedOnThePoseSwapsTiming()
+        {
+            // Arrange — the bundled sheet and a sheet of the test's own, whose class transitions rotate and opacity
+            // linearly over a second; "b" takes the id from "a" on a one-second tween, its poses on a linear 0.4 s. Its
+            // classes turn it and fade it to three quarters 0.6 s in, so that both run on past the move's landing.
+            VelvetStyleUtilities.AttachTo(Root);
+            Root.styleSheets.Add(AssetDatabase.LoadAssetAtPath<StyleSheet>("Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/LayoutIdTailTestRules.uss"));
+            (s_bClasses, s_bPose) = ("layout-id-test-turn-fade", "first");
+            s_bVariants = new Dictionary<string, MotionVariant> { ["first"] = "w-[100px]", ["second"] = "opacity-25" };
+            s_bTransition = new StyleTransitionConfig { DurationSec = 0.4f, Easing = EasingMode.Linear, Layout = s_slowTween };
+            using var mounted = MountBOverA();
+            for (var i = 0; i < 36; i++) Tick();
+            s_bClasses = "layout-id-test-turn-fade rotate-90 opacity-75";
+            RenderShared(mounted);
+            for (var i = 0; i < 29; i++) Tick();
+            var b = Root.Q<VisualElement>("b");
+            const System.Reflection.BindingFlags Hidden = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static;
+            var drawings = typeof(MotionOpacity).GetField("s_drawing", Hidden)!.GetValue(null);
+            var drawing = new object[] { b, null };
+            var opacityTail = (bool)drawings.GetType().GetMethod("TryGetValue")!.Invoke(drawings, drawing)!
+                ? (IVisualElementScheduledItem)drawing[1].GetType().GetField("Tail")!.GetValue(drawing[1])
+                : null;
+            var looks = typeof(LayoutIdLook).GetField("s_tails", Hidden)!.GetValue(null);
+            var look = (bool)looks.GetType().GetMethod("TryGetValue")!.Invoke(looks, new object[] { b, null })!;
+            var bothRunOn = opacityTail != null && look;
+            var from = WrittenOpacity(b);
+
+            // Act — the opacity tail held back while the look tail steps, so that it steps after the narrowing has taken
+            // opacity out of the swap's list rather than before; "b" takes its second pose, which gives opacity 0.25 in
+            // place of the class's, and ten frames on.
+            opacityTail?.Pause();
+            (s_bPose, s_bClasses) = ("second", "layout-id-test-turn-fade rotate-90");
+            RenderShared(mounted);
+            for (var i = 0; i < 2; i++) Tick();
+            opacityTail?.Resume();
+            for (var i = 0; i < 4; i++) Tick();
+
+            // Assert — as far from where it stood towards 0.25 as the 0.4 s of the swap, from the frames the tail was held
+            // back for on, takes it, rather than at 0.25, or as far as the second its rules give.
+            var own = WrittenOpacity(b);
+            Assert.That(own, Is.EqualTo(bothRunOn ? Mathf.Lerp(from, 0.25f, 0.28f) : float.NaN).Within(0.12f));
+        }
+
+        [Test]
         public void Given_ALayoutIdMotionWithAPixelRadius_When_ItsTweenStartsScaledDifferentlyOnEachAxis_Then_ItsRadiusSlotsHoldNone()
         {
             // Arrange / Act — laid out at 400×200 from 100×100, so drawn at a quarter across and a half down.
