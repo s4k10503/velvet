@@ -175,6 +175,45 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ARevealedPortalFocusScopeWaitingOnAStylePass_When_FocusMovesElsewhere_Then_TheRetryLeavesItThere()
+        {
+            // Arrange
+            Update(s_setBlocked, 1);
+            Update(s_setPortal, true);
+            Update(s_setScoped, true);
+            EditorPanelTestHelpers.ForcePanelUpdate(_host.Panel);
+            Resolve(s_source);
+            var beside = _host.Root.Q<Button>("beside");
+            beside.Focus();
+
+            // Act
+            EditorPanelTestHelpers.ForcePanelUpdate(_host.Panel);
+            EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
+
+            // Assert
+            Assert.That(Focused, Is.SameAs(beside));
+        }
+
+        [Test]
+        public void Given_ARevealedPortalFocusScopeWaitingOnAStylePass_When_TheBoundaryHidesItAgain_Then_TheRetryFocusesNothing()
+        {
+            // Arrange
+            Update(s_setBlocked, 1);
+            Update(s_setPortal, true);
+            Update(s_setScoped, true);
+            EditorPanelTestHelpers.ForcePanelUpdate(_host.Panel);
+            Resolve(s_source);
+            EditorPanelTestHelpers.ForcePanelUpdate(_host.Panel);
+            Update(s_setBlocked, 2);
+
+            // Act
+            EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
+
+            // Assert
+            Assert.That(Focused, Is.Null);
+        }
+
+        [Test]
         public void Given_AFocusScopeAddedToAMountedParent_When_ItMounts_Then_ItsButtonHoldsFocus()
         {
             // Arrange
@@ -236,6 +275,7 @@ namespace Velvet.Tests
             s_setScoped = setScoped;
             return V.Div(children: new VNode[]
             {
+                V.Button(name: "beside"),
                 V.Suspense(
                     fallback: V.Label(text: "loading"),
                     children: new VNode[]

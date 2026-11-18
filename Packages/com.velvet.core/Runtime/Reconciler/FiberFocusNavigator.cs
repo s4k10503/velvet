@@ -47,6 +47,7 @@ namespace Velvet
         public EventCallback<AttachToPanelEvent>? OnAttach;
         public ReconcilerContext? Context;
         public VisualElement? PortalPlaceholder;
+        public IVisualElementScheduledItem? Retry;
 
         // Creation order across every mounted tree. Of two contained scopes a landing crosses between, the
         // newer one keeps it; a strict order is what stops the two pulling focus back from each other.
@@ -1505,6 +1506,7 @@ namespace Velvet
         public static void Detach(VisualElement element, FocusScopeBinding binding)
         {
             binding.Context?.DeferredAutoFocus.RemoveAll(entry => ReferenceEquals(entry.Scope, element));
+            StopRetry(binding);
             if (binding.OnAttach != null)
             {
                 element.UnregisterCallback(binding.OnAttach);
@@ -1570,7 +1572,8 @@ namespace Velvet
         }
 
         // A deferred scope's elements keep the computed display none their hide gave them until the panel's next style
-        // pass, and none of them can take focus before it, so the take is retried on the next ticks (SuspenseHiddenPortalFocusTests pins it).
+        // pass, and none of them can take focus before it, so the take is retried on the next ticks
+        // (SuspenseHiddenPortalFocusTests pins it).
         private static void TakeAutoFocus(VisualElement scope, FocusScopeBinding binding, bool retryAfterStyle)
         {
             binding.AutoFocusFired = true;
@@ -1578,17 +1581,81 @@ namespace Velvet
             {
                 return;
             }
-            var attempts = 0;
-            var focused = false;
-            scope.schedule.Execute(() => focused = AutoFocusFirst(scope)).Every(0).Until(() => focused || ++attempts >= 3);
+            binding.Retry = scope.schedule.Execute(() => Retry(scope, binding)).Every(0);
+        }
+
+        private static void StopRetry(FocusScopeBinding binding)
+        {
+            binding.Retry?.Pause();
+            binding.Retry = null;
+        }
+
+        // Takes the focus only while it is still unset or inside the scope, and waits only while a computed display
+        // that no inline display explains keeps a candidate from taking it.
+        private static void Retry(VisualElement scope, FocusScopeBinding binding)
+        {
+            var focused = scope.panel?.focusController?.focusedElement as VisualElement;
+            if (!binding.Settings.AutoFocus || scope.panel == null
+                || SuspenseHiddenElements.IsAtOrUnderHidden(scope) || SuspenseHiddenElements.IsAtOrUnderHidden(binding.PortalPlaceholder)
+                || (focused != null && !FiberFocusNavigator.ScopeContains(scope, focused))
+                || AutoFocusFirst(scope)
+                || !WaitsOnStaleDisplay(scope))
+            {
+                StopRetry(binding);
+            }
+        }
+
+        private static bool WaitsOnStaleDisplay(VisualElement scope)
+        {
+            var roots = new List<VisualElement>();
+            if (scope is FocusScopeStart start)
+            {
+                FocusScopeRange.AppendContent(start, roots);
+            }
+            else
+            {
+                roots.AddRange(scope.Children());
+            }
+            return roots.Exists(HoldsStaleDisplayCandidate);
+        }
+
+        private static bool HoldsStaleDisplayCandidate(VisualElement element)
+        {
+            if (IsFirstFocusableIgnoringDisplay(element) && element.resolvedStyle.display == DisplayStyle.None && !HiddenInline(element))
+            {
+                return true;
+            }
+            foreach (var child in element.Children())
+            {
+                if (HoldsStaleDisplayCandidate(child))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        private static bool IsFirstFocusableIgnoringDisplay(VisualElement element)
+            => element.focusable && element.tabIndex >= 0 && !element.delegatesFocus && element.enabledInHierarchy;
+
+        private static bool HiddenInline(VisualElement element)
+        {
+            for (var current = element; current != null; current = current.hierarchy.parent)
+            {
+                if (current.style.display.keyword == StyleKeyword.Undefined && current.style.display.value == DisplayStyle.None)
+                {
+                    return true;
+                }
+            }
+            return false;
         }
 
         // Focuses the scope's first focusable descendant (document order), skipped when focus already sits
         // inside the scope. Deliberately NOT computed through a focus ring: ring membership requires the
         // element chain to be resolved as displayed, which has not happened yet at attach time (the panel's
         // style pass runs after this frame's mounts) — the engine ring would read empty here. A plain
-        // traversal over the same focusability predicate (minus the displayed check) is what attach-time
-        // can actually answer.
+        // traversal over the focusability predicate is what attach-time can answer; its displayed term is the
+        // computed one, which TakeAutoFocus waits on after a reveal.
         private static bool AutoFocusFirst(VisualElement scopeRoot)
         {
             var controller = scopeRoot.panel?.focusController;
