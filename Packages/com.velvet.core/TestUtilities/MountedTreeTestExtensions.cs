@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq.Expressions;
 using System.Reflection;
 
 namespace Velvet.TestUtilities
@@ -9,6 +10,12 @@ namespace Velvet.TestUtilities
     /// </summary>
     public static class MountedTreeTestExtensions
     {
+        private static readonly Action<ComponentFiber> s_flushState = FiberWorkLoop.FlushState;
+        private static readonly Func<FiberBatchScheduler, List<ComponentFiber>> s_immediateOrder = SchedulerGetter<List<ComponentFiber>>("_immediateOrder");
+        private static readonly Func<FiberBatchScheduler, HashSet<ComponentFiber>> s_immediateSet = SchedulerGetter<HashSet<ComponentFiber>>("_immediateSet");
+        private static readonly Action<FiberBatchScheduler, bool> s_setSyncLaneQueued = SchedulerSetter("_syncLaneQueued");
+        private static readonly Action<FiberBatchScheduler, bool> s_setExternalStoreRenderQueued = SchedulerSetter("_externalStoreRenderQueued");
+
         /// <summary>
         /// Reaches the tree-wide <see cref="FiberBatchScheduler"/> behind a mounted tree — every fixture that
         /// drains a tier (DrainImmediateForTest/DrainDelayedForTest) or inspects pending counts needs this same
@@ -30,7 +37,7 @@ namespace Velvet.TestUtilities
         public static void FlushStateForTest(this MountedTree mounted)
         {
             mounted.FlushEffectsForTest();
-            FiberTreeTraversal.Visit(mounted.Root, FiberWorkLoop.FlushState);
+            FiberTreeTraversal.Visit(mounted.Root, s_flushState);
             ConsumeRenderedImmediateEntries(mounted);
         }
 
@@ -53,7 +60,7 @@ namespace Velvet.TestUtilities
         // Bypasses: the batch scheduler's drain buffer and its passes, as FlushStateForTest does, and the passive flush a drain runs before it renders.
         public static void FlushStateKeepingPassiveEffectsForTest(this MountedTree mounted)
         {
-            FiberTreeTraversal.Visit(mounted.Root, FiberWorkLoop.FlushState);
+            FiberTreeTraversal.Visit(mounted.Root, s_flushState);
             ConsumeRenderedImmediateEntries(mounted);
         }
 
@@ -65,8 +72,8 @@ namespace Velvet.TestUtilities
         {
             var scheduler = mounted.Root.Reconciler?.Context.BatchScheduler;
             if (scheduler == null) return;
-            var order = (List<ComponentFiber>)SchedulerField("_immediateOrder").GetValue(scheduler);
-            var set = (HashSet<ComponentFiber>)SchedulerField("_immediateSet").GetValue(scheduler);
+            var order = s_immediateOrder(scheduler);
+            var set = s_immediateSet(scheduler);
             for (var i = order.Count - 1; i >= 0; i--)
             {
                 var fiber = order[i];
@@ -75,12 +82,28 @@ namespace Velvet.TestUtilities
                 set.Remove(fiber);
             }
             if (order.Count > 0) return;
-            SchedulerField("_syncLaneQueued").SetValue(scheduler, false);
-            SchedulerField("_externalStoreRenderQueued").SetValue(scheduler, false);
+            s_setSyncLaneQueued(scheduler, false);
+            s_setExternalStoreRenderQueued(scheduler, false);
         }
 
         private static bool HoldsImmediateLane(ComponentFiber fiber)
             => fiber.LaneQueue.Contains(FiberUpdatePriority.Urgent) || fiber.LaneQueue.Contains(FiberUpdatePriority.Normal);
+
+        // Compiled once, so a call reads and writes the field through a delegate rather than boxing through FieldInfo.
+        private static Func<FiberBatchScheduler, T> SchedulerGetter<T>(string name)
+        {
+            var scheduler = Expression.Parameter(typeof(FiberBatchScheduler));
+            return Expression.Lambda<Func<FiberBatchScheduler, T>>(
+                Expression.Field(scheduler, SchedulerField(name)), scheduler).Compile();
+        }
+
+        private static Action<FiberBatchScheduler, bool> SchedulerSetter(string name)
+        {
+            var scheduler = Expression.Parameter(typeof(FiberBatchScheduler));
+            var value = Expression.Parameter(typeof(bool));
+            return Expression.Lambda<Action<FiberBatchScheduler, bool>>(
+                Expression.Assign(Expression.Field(scheduler, SchedulerField(name)), value), scheduler, value).Compile();
+        }
 
         private static FieldInfo SchedulerField(string name)
             => typeof(FiberBatchScheduler).GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)
