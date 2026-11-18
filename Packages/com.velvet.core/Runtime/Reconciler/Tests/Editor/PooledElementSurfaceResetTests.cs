@@ -90,6 +90,7 @@ namespace Velvet.Tests
             public Action<VisualElement, object> Write;
         }
 
+        // GREEN_ON_BASE(refactor): every widget's non-style surface reads back fresh, which the switch to Clear keeps.
         // The floors are the measured slot count of each widget, and they are tight on purpose. Twice now a
         // narrowing went unnoticed because the number below had room in it: once when the walk stopped at
         // VisualElement, and once when these were left behind after it began descending into handles. A
