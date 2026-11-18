@@ -1788,7 +1788,7 @@ namespace Velvet
                 foreach (var (placeholder, slots) in ctx.PortalState)
                 {
                     if (slots.Target == null) continue;
-                    for (var ve = placeholder; ve != null; ve = ve.parent)
+                    for (var ve = placeholder; ve != null; ve = ChildListWrites.ParentOf(ve))
                     {
                         if (!_under.TryGetValue(ve, out var under)) _under[ve] = under = new List<VisualElement>();
                         under.Add(placeholder);

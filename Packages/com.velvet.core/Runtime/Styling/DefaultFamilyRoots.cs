@@ -171,10 +171,10 @@ namespace Velvet
         private static void CollectHeldAtOrUnder(VisualElement element)
         {
             if (s_roots.TryGetValue(element, out var root)) s_scoped.Add(root);
-            var hierarchy = element.hierarchy;
-            for (var i = 0; i < hierarchy.childCount; i++)
+            var count = ChildListWrites.HierarchyCount(element);
+            for (var i = 0; i < count; i++)
             {
-                CollectHeldAtOrUnder(hierarchy[i]);
+                CollectHeldAtOrUnder(ChildListWrites.HierarchyChild(element, i));
             }
         }
 
