@@ -378,6 +378,19 @@ namespace Velvet.Tests
             Assert.That(colour, Is.EqualTo("FF000080"));
         }
 
+        // The variable is declared, so the modifier is a value that is no percentage rather than nothing.
+        [TestCase("ring-[red]/(--a)")]
+        [TestCase("ring-[red]/[var(--a)]")]
+        public void Given_ARingColourWithAModifierReadingAPropertyHoldingNoPercentage_When_Mounted_Then_NoRingIsDrawn(string cls)
+        {
+            // Act
+            var control = Ring("[--a:50%] ring-2");
+            var ring = control == 2f ? RingColour("[--a:0.5] ring-2 " + cls) : "control undrawn";
+
+            // Assert
+            Assert.That(ring, Is.EqualTo("no ring"));
+        }
+
         // GREEN_ON_BASE(characterization): the base already draws the text-colour ring, as Chromium does with the variable undeclared.
         [Test]
         public void Given_ARingBracketHoldingNoColourWithAModifierReadingAnUndeclaredProperty_When_Mounted_Then_TheRingIsDrawnInTheTextColour()
