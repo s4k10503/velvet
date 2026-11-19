@@ -226,6 +226,7 @@ namespace Velvet
         {
             style.cursor = StyleKeyword.Null;
             style.textShadow = StyleKeyword.Null;
+            // MUTANT_SURVIVES(equivalent, line removed): the property is not one the engine animates, so a clear starts no transition whenever it runs, and the Clear that follows nulls it either way.
             style.unityTextAutoSize = StyleKeyword.Null;
             style.transformOrigin = StyleKeyword.Null;
             style.translate = StyleKeyword.Null;

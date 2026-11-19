@@ -85,3 +85,10 @@
     border-bottom-right-radius: 0;
     border-bottom-left-radius: 0;
 }
+
+.layout-id-test-sized {
+    background-size: 50px 50px;
+    transition-property: background-size;
+    transition-duration: 1s;
+    transition-timing-function: linear;
+}
