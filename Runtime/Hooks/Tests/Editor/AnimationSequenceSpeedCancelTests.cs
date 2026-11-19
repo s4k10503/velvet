@@ -1,0 +1,258 @@
+using System;
+using NUnit.Framework;
+using UnityEngine.UIElements;
+
+namespace Velvet.Tests
+{
+    /// <summary>
+    /// Pins <c>AnimationSequenceControls.Speed</c> and <c>Cancel</c>: Framer Motion's <c>speed</c> re-times the
+    /// sequence's timeline and the Bezier play a step's label started, and its <c>cancel()</c> stops both, the play
+    /// back at its starting values, with <c>Play</c> starting the sequence again from step 0.
+    /// </summary>
+    internal sealed class AnimationSequenceSpeedCancelTests : AnimationSequenceMotionTestsBase
+    {
+        [Test]
+        public void Given_ASequenceAtSpeedTwo_When_TenFramesRun_Then_TimeSecIsTwiceTheTimeElapsed()
+        {
+            // Arrange
+            MountCoordinator();
+            Controls.Speed = 2f;
+
+            // Act
+            Frames(10);
+
+            // Assert
+            Assert.That(Controls.TimeSec, Is.EqualTo(0.32f).Within(1e-4f));
+        }
+
+        // Step 0 holds for no time, so a frame that advances the cursor at all, by however little, crosses it.
+        // GREEN_ON_BASE(characterization): the base already keeps a restarted cursor on step 0 at speed zero.
+        [Test]
+        public void Given_ASequenceAtSpeedZero_When_RestartedOntoAStepWithNoHoldAndFramesRun_Then_TheCursorStaysOnIt()
+        {
+            // Arrange
+            MountCoordinator();
+            PlayIntoTheFade();
+            Controls.Speed = 0f;
+
+            // Act
+            Controls.Restart();
+            Frames(3);
+
+            // Assert
+            Assert.That(State.CurrentLabel == "hidden" ? State.StepIndex : -1, Is.EqualTo(0));
+        }
+
+        [Test]
+        public void Given_ASequencePartWayThroughABezierFade_When_ItsSpeedIsHalvedForFourFrames_Then_TheMotionMovesByTwoFramesWorth()
+        {
+            // Arrange
+            MountCoordinator();
+            PlayIntoTheFade();
+            var moving = Opacity().value;
+
+            // Act
+            Controls.Speed = 0.5f;
+            Frames(4);
+
+            // Assert
+            Assert.That(moving > 0f ? Opacity().value - moving : float.NaN, Is.EqualTo(0.032f).Within(1e-4f));
+        }
+
+        [TestCase(-1f)]
+        [TestCase(float.NaN)]
+        [TestCase(float.PositiveInfinity)]
+        public void Given_AMountedSequence_When_ItsSpeedIsSetOutsideZeroOrMore_Then_ItThrows(float speed)
+        {
+            // Arrange
+            MountCoordinator();
+
+            // Act
+            TestDelegate set = () => Controls.Speed = speed;
+
+            // Assert
+            Assert.That(set, Throws.TypeOf<ArgumentOutOfRangeException>());
+        }
+
+        // GREEN_ON_BASE(characterization): the base already holds a cancelled Bezier fade at the opacity it started from.
+        // Removing `Playback.CancelPlays();` from `SequenceWalker.Cancel` leaves the paused fade where it stood,
+        // which reddens this case.
+        [Test]
+        public void Given_ASequencePartWayThroughABezierFade_When_Cancelled_Then_TheMotionHoldsTheOpacityTheFadeStartedFrom()
+        {
+            // Arrange
+            MountCoordinator();
+            PlayIntoTheFade();
+            var moving = Opacity().value;
+
+            // Act
+            Controls.Cancel();
+            Frames(2);
+
+            // Assert
+            var opacity = Opacity();
+            Assert.That(moving > 0f && opacity.keyword == StyleKeyword.Undefined ? opacity.value : float.NaN,
+                Is.EqualTo(0f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base already keeps a cancelled cursor on its step past that step's hold.
+        [Test]
+        public void Given_ASequenceOnAStepWithAShortHold_When_CancelledAndFramesRunPastTheHold_Then_TheCursorStays()
+        {
+            // Arrange
+            Steps = new[]
+            {
+                AnimationSequenceStep.To("hidden", Instant),
+                AnimationSequenceStep.To("visible", Linear(0.1f)),
+                AnimationSequenceStep.To("hidden", Instant),
+            };
+            MountCoordinator();
+            PlayIntoTheFade();
+            var cancelledAt = State.StepIndex;
+
+            // Act
+            Controls.Cancel();
+            Frames(20);
+
+            // Assert
+            Assert.That(cancelledAt == 1 ? State.StepIndex : -1, Is.EqualTo(1));
+        }
+
+        // The cancelled fade to visible started from half, so its held opacity is 0.5, where the reseed's fade
+        // back to half has to start rather than from visible's 1.
+        // GREEN_ON_BASE(characterization): the base already starts the reseed's fade from the opacity a cancel held.
+        [Test]
+        public void Given_ACancelledFade_When_RestartedOntoAStepFadingAnotherWay_Then_TheNewFadeStartsFromTheHeldOpacity()
+        {
+            // Arrange
+            Steps = new[]
+            {
+                AnimationSequenceStep.To("half", Linear(0.1f)),
+                AnimationSequenceStep.To("visible", Linear(1f)),
+            };
+            MountInitialCoordinator();
+            for (var i = 0; i < 20 && State.CurrentLabel != "visible"; i++)
+            {
+                Frames(1);
+            }
+            Frames(3);
+            Controls.Cancel();
+            var held = Opacity().value;
+
+            // Act
+            Controls.Restart();
+            Flush();
+
+            // Assert
+            Assert.That(held == 0.5f && State.CurrentLabel == "half" ? Opacity().value : float.NaN, Is.EqualTo(0.5f));
+        }
+
+        // A reseed that leaves the label where it is starts no play, so nothing takes the held values over.
+        // GREEN_ON_BASE(characterization): the base already takes a held opacity off once a same-label reseed commits.
+        [Test]
+        public void Given_ACancelledFade_When_RestartedOntoTheSameLabel_Then_TheHeldOpacityComesOffAfterTheCommit()
+        {
+            // Arrange
+            Steps = new[] { AnimationSequenceStep.To("visible", Linear(1f)) };
+            MountInitialCoordinator();
+            PlayIntoTheFade();
+            Controls.Cancel();
+            var held = Opacity().keyword;
+
+            // Act
+            Controls.Restart();
+            Flush();
+
+            // Assert
+            Assert.That(held == StyleKeyword.Undefined ? Opacity().keyword != StyleKeyword.Undefined : (bool?)null,
+                Is.EqualTo(true));
+        }
+
+        // The first reseed's commit releases what the first cancel held, and only that commit: what the second
+        // cancel holds stays through a later render's commit.
+        // GREEN_ON_BASE(characterization): the base already keeps the second cancel's opacity held through a later render.
+        [Test]
+        public void Given_ASequenceCancelledRestartedAndCancelledAgain_When_ItRendersAgain_Then_TheSecondCancelsOpacityStaysHeld()
+        {
+            // Arrange
+            MountInitialCoordinator();
+            PlayIntoTheFade();
+            Controls.Cancel();
+            Controls.Restart();
+            Flush();
+            Controls.Play();
+            PlayIntoTheFade();
+            Controls.Cancel();
+
+            // Act
+            RenderAgain();
+            Flush();
+
+            // Assert
+            var opacity = Opacity();
+            Assert.That(opacity.keyword == StyleKeyword.Undefined ? opacity.value : float.NaN, Is.EqualTo(0f));
+        }
+
+        private static int s_stepZeroCalls;
+
+        // GREEN_ON_BASE(characterization): the base already renders step 0's label when a cancelled sequence plays.
+        [Test]
+        public void Given_ACancelledSequenceOnItsSecondStep_When_Played_Then_ItRendersStepZerosLabel()
+        {
+            // Arrange
+            MountCoordinator();
+            PlayIntoTheFade();
+            var cancelledOn = State.CurrentLabel;
+            Controls.Cancel();
+
+            // Act
+            Controls.Play();
+            Flush();
+
+            // Assert
+            Assert.That(cancelledOn == "visible" ? State.CurrentLabel : null, Is.EqualTo("hidden"));
+        }
+
+        // A restart reseeds the sequence, which ends the cancel, so Play only resumes it.
+        // GREEN_ON_BASE(characterization): the base already commits step 0 once for a restart and not again on play.
+        [Test]
+        public void Given_ACancelledSequenceThatWasRestarted_When_Played_Then_StepZeroIsNotCommittedAgain()
+        {
+            // Arrange
+            s_stepZeroCalls = 0;
+            Steps = new[]
+            {
+                AnimationSequenceStep.Call(() => s_stepZeroCalls++),
+                AnimationSequenceStep.To("visible", Linear(1f)),
+            };
+            MountCoordinator();
+            Controls.Cancel();
+            var beforeRestart = s_stepZeroCalls;
+            Controls.Restart();
+            var afterRestart = s_stepZeroCalls;
+
+            // Act
+            Controls.Play();
+
+            // Assert
+            Assert.That(afterRestart - beforeRestart == 1 ? s_stepZeroCalls - afterRestart : -1, Is.EqualTo(0));
+        }
+
+        // GREEN_ON_BASE(characterization): the base already starts a cancelled sequence's timeline again at zero on play.
+        [Test]
+        public void Given_ACancelledSequence_When_Played_Then_ItStartsAgainFromStepZero()
+        {
+            // Arrange
+            MountCoordinator();
+            PlayIntoTheFade();
+            var cancelledAt = Controls.TimeSec;
+            Controls.Cancel();
+
+            // Act
+            Controls.Play();
+
+            // Assert
+            Assert.That(cancelledAt > 0f ? Controls.TimeSec : float.NaN, Is.EqualTo(0f));
+        }
+    }
+}

@@ -1,0 +1,162 @@
+using System;
+using System.Collections.Generic;
+
+namespace Velvet
+{
+    // Parses Velvet's [&>*]:<utility> child-combinator variant. [&>*] is CSS's "every direct child"
+    // combinator, so [&>*]:mt-2 means "apply mt-2 to each direct child of THIS element." UI Toolkit has no
+    // `> *` selector and a USS class name cannot contain the bracket / combinator syntax, so the token never
+    // enters a class list: the reconciler routes it to StyleChildVariantManipulator, which walks the
+    // container's direct children and applies the wrapped payload to each via StyleVariantPayload.
+    //
+    // The wrapped payload is an ordinary utility (mt-2, text-red-500, w-[8px]) or a STATE variant
+    // (hover:bg-red-500, even dark:hover:bg-red-500): a state-variant payload composes through the same
+    // StyleVariantPayload -> ReconcilerContext.GateStackedVariant machinery the has- manipulator uses, so
+    // each child gets its own per-child stacked manipulator gated open by the child-variant walk. A payload
+    // with NO gating owner reachable through that path — a structural (first:/nth-child), has-, attribute-,
+    // supports-, or (self-)child-variant — is rejected at parse time (it would only ever be a dead token),
+    // mirroring the has- extractor's reject-list precisely (which, unlike the structural config's stricter
+    // list, keeps state variants because they DO reach a gating owner here). Because a state variant DOES
+    // compose, an ungated variant can hide one or more state layers deep ([&>*]:hover:first:mt-2,
+    // [&>*]:dark:has-[.x]:mt-2, [&>*]:hover:[&>*]:mt-2) and still be dead, so the reject peels every leading
+    // state layer and re-checks the whole reject-list at each depth, not only at the payload's head. The
+    // self-nesting reject is one of that list for the same reason it never gates: a child is never itself the
+    // CONTAINER a nested [&>*]: would walk, so the inner wrap has nothing to apply to and must not silently
+    // degrade into applying the leaf directly.
+    //
+    // This recognizes the literal [&>*]: direct-child scope and one narrower scope, [&>.unity-base-field__input]:,
+    // the input box of a field control. The input-box factories write that second form themselves
+    // (StyleInputBoxSurface) so a field's surface utilities land on the box; it carries the same payload rules
+    // as the first and differs only in which child the walk hands the payload to. This is not a general
+    // child-combinator family.
+    internal static class StyleChildVariantClass
+    {
+        private const string Prefix = "[&>*]:";
+
+        // The scope prefix naming the one child that carries BaseField's input class.
+        internal const string InputBoxPrefix = "[&>." + InputBoxClass + "]:";
+
+        // A literal so the prefix above can be a constant; InputBoxSurfaceTests pins it to the engine's name.
+        internal const string InputBoxClass = "unity-base-field__input";
+
+        // True when cls is a [&>*]: token (or the input-box scope) — the cheap routing gate the class-list
+        // sites check before their inline-resolved branch, so the combinator token (which starts with '[' and
+        // would otherwise look inline-resolvable) never enters the CONTAINER's own class list.
+        public static bool IsChildVariant(string? cls)
+            => !string.IsNullOrEmpty(cls)
+               && (cls.StartsWith(Prefix, StringComparison.Ordinal)
+                   || cls.StartsWith(InputBoxPrefix, StringComparison.Ordinal));
+
+        // Cheap early-out gate: true when ANY class is a [&>*]: token. Skips the full TryExtract scan on the
+        // ~99% of elements that carry no child-combinator variant.
+        public static bool HasChildVariantClass(string[] classNames)
+        {
+            return StyleClassFamilies.Has(classNames, StyleClassFamily.ChildVariant);
+        }
+
+        // Splits a [&>*]:<payload> token into its wrapped payload. Returns false for a non-token, an empty
+        // payload, or a payload that — at its head or behind any number of intervening state layers — carries a
+        // variant with no gating owner reachable through StyleVariantPayload.Apply: a structural / has- /
+        // attribute- / supports- / (self-nested) child-variant, which would only become a dead token. A state
+        // variant (hover:, dark:hover:, group-hover:) IS accepted: it composes through GateStackedVariant.
+        public static bool TryParse(string? cls, out string payload)
+            => TryParse(cls, out payload, out _);
+
+        // As above, also reporting whether the token is the input-box scope rather than every child.
+        public static bool TryParse(string? cls, out string payload, out bool inputBoxOnly)
+        {
+            payload = string.Empty;
+            inputBoxOnly = false;
+            if (!IsChildVariant(cls))
+            {
+                return false;
+            }
+            var scoped = cls!.StartsWith(InputBoxPrefix, StringComparison.Ordinal);
+            var inner = cls.Substring(scoped ? InputBoxPrefix.Length : Prefix.Length);
+            if (inner.Length == 0 || NestsUngatedVariant(inner))
+            {
+                return false;
+            }
+            inputBoxOnly = scoped;
+            payload = inner;
+            return true;
+        }
+
+        // True when payload — at its head or behind any number of intervening state-variant layers — carries a
+        // variant with no gating owner reachable through StyleVariantPayload.Apply: a structural / has- /
+        // attribute- / supports- / (self-nested) child-variant. Only state variants (hover:, dark:,
+        // group-hover:) compose through Apply, so those are the only peelable layers; every other variant kind
+        // is a dead token here whether it leads the payload or hides one or more state layers deep
+        // (hover:first:mt-2, dark:has-[.x]:mt-2, hover:[&>*]:mt-2). A self-nested [&>*] is rejected for the same
+        // reason it never gates: a child is not the CONTAINER that inner wrap would walk. Peel each leading
+        // state layer and re-check the whole reject-list at every depth; each peel strips the segment after the
+        // variant's ':', so payload strictly shrinks and the loop terminates.
+        private static bool NestsUngatedVariant(string payload)
+        {
+            var current = payload;
+            while (true)
+            {
+                if (StyleStructuralVariantClass.IsStructural(current)
+                    || StyleHasVariantClass.IsHas(current)
+                    || StyleAttributeVariantClass.IsAttribute(current)
+                    || StyleSupportsVariantClass.IsSupports(current)
+                    || IsChildVariant(current))
+                {
+                    return true;
+                }
+                // Only a leading state variant is peelable; a non-variant remainder is the leaf utility, with
+                // nothing left to peel, so no ungated variant is nested behind it.
+                if (!StyleVariantClass.TryParse(current, out _, out var next) || string.IsNullOrEmpty(next))
+                {
+                    return false;
+                }
+                current = next!;
+            }
+        }
+
+        // Collects the wrapped payload of EVERY [&>*]: token, unlike gap / divide's last-value-wins scalar:
+        // [&>*]:mt-2 [&>*]:text-red-500 are two independent utilities that must both compose, not overwrite
+        // each other. Returns false when no valid token is present.
+        public static bool TryExtract(string[] classNames, out string[] payloads)
+            => TryExtract(classNames, out payloads, out _);
+
+        // As above, with each payload's rule place among the container's rules (StyleRuleOrder), aligned with
+        // payloads.
+        public static bool TryExtract(string[] classNames, out string[] payloads, out int[] declarations)
+            => TryExtract(classNames, out payloads, out declarations, out _);
+
+        // As above, with a flag per payload saying it belongs to the input-box scope, aligned with payloads.
+        public static bool TryExtract(string[] classNames, out string[] payloads, out int[] declarations, out bool[] inputOnly)
+        {
+            payloads = Array.Empty<string>();
+            declarations = Array.Empty<int>();
+            inputOnly = Array.Empty<bool>();
+            if (classNames == null)
+            {
+                return false;
+            }
+
+            List<string>? collected = null;
+            List<int>? places = null;
+            List<bool>? scopes = null;
+            for (var i = 0; i < classNames.Length; i++)
+            {
+                if (TryParse(classNames[i], out var payload, out var onlyInput))
+                {
+                    (collected ??= new List<string>()).Add(payload);
+                    (places ??= new List<int>()).Add(StyleRuleOrder.OrdinalOf(classNames, i));
+                    (scopes ??= new List<bool>()).Add(onlyInput);
+                }
+            }
+
+            if (collected == null)
+            {
+                return false;
+            }
+            payloads = collected.ToArray();
+            declarations = places!.ToArray();
+            inputOnly = scopes!.ToArray();
+            return true;
+        }
+    }
+}

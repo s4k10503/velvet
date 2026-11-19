@@ -1,0 +1,273 @@
+using NUnit.Framework;
+using Velvet;
+using static Velvet.Tests.RouteTestStubs;
+
+namespace Velvet.Tests
+{
+    [TestFixture]
+    internal sealed class BlockerProceedTests
+    {
+        [TearDown]
+        public void TearDown()
+        {
+            Router.Current?.Dispose();
+        }
+
+        [Test]
+        public void Given_ABlockedPush_When_Proceed_Then_TheBlockedLocationCommits()
+        {
+            // Arrange
+            var router = BuildRouter("/home", Route("home"), Route("other"));
+            var state = new RouteBlockerState();
+            router.RouteBlockerManager.Register(_ => true, state);
+            var blockedResult = router.NavigateSync("/other");
+
+            // Act
+            state.Proceed();
+
+            // Assert — the block rides along because a blocker that never blocked would leave the router on
+            // "/other" for the ordinary reason, with Proceed() doing nothing at all.
+            Assert.That(
+                (blockedResult, router.CurrentLocation.Path),
+                Is.EqualTo((NavigationResult.Blocked, "/other")));
+        }
+
+        [Test]
+        public void Given_APredicateThatAlwaysBlocks_When_Proceed_Then_ItIsNotConsultedByTheResumedNavigation()
+        {
+            // Arrange
+            var checks = 0;
+            var router = BuildRouter("/home", Route("home"), Route("other"));
+            var state = new RouteBlockerState();
+            router.RouteBlockerManager.Register(_ =>
+            {
+                checks++;
+                return true;
+            }, state);
+            var blockedResult = router.NavigateSync("/other");
+
+            // Act
+            state.Proceed();
+
+            // Assert — the check count alone is 1 whether or not anything was re-issued, so the committed
+            // path is what separates a resumed navigation from a Proceed() that did nothing.
+            Assert.That(
+                (blockedResult, checks, router.CurrentLocation.Path),
+                Is.EqualTo((NavigationResult.Blocked, 1, "/other")));
+        }
+
+        [Test]
+        public void Given_ABlockedReplace_When_Proceed_Then_TheEntryIsReplacedRatherThanPushed()
+        {
+            // Arrange
+            var router = BuildRouter("/home", Route("home"), Route("other"));
+            var state = new RouteBlockerState();
+            router.RouteBlockerManager.Register(_ => true, state);
+            var blockedResult = router.NavigateAsync("/other", NavigationMode.Replace)
+                .GetAwaiter().GetResult();
+
+            // Act
+            state.Proceed();
+
+            // Assert — the index is what separates the mode the attempt carried from a Push, which would
+            // commit the same path one entry further on.
+            Assert.That(
+                (blockedResult, router.HistoryIndex, router.CurrentLocation.Path),
+                Is.EqualTo((NavigationResult.Blocked, 0, "/other")));
+        }
+
+        [Test]
+        public void Given_ABlockedBackStep_When_Proceed_Then_TheHistoryIndexStepsBack()
+        {
+            // Arrange
+            var router = BuildRouter("/home", Route("home"), Route("other"));
+            router.NavigateSync("/other");
+            var state = new RouteBlockerState();
+            router.RouteBlockerManager.Register(_ => true, state);
+            var blockedResult = router.GoBackSync();
+
+            // Act
+            state.Proceed();
+
+            // Assert — an unblocked GoBack lands on index 0 by itself, so the block is what makes the index
+            // evidence about the resume rather than about the step.
+            Assert.That((blockedResult, router.HistoryIndex), Is.EqualTo((NavigationResult.Blocked, 0)));
+        }
+
+        [Test]
+        public void Given_ABackStepAGuardRedirected_When_Proceed_Then_TheRedirectLandsOnTheBackTargetsSlot()
+        {
+            // Arrange — the Guard on "/b" lets the first arrival through and redirects the released Back step
+            // as a Replace to "/login". The step the user asked for is what says which slot that Replace
+            // belongs in.
+            var guardChecks = 0;
+            var router = BuildRouter("/a", Route("a"),
+                Route("b", guard: _ => ++guardChecks == 1 ? null : "/login"),
+                Route("c"), Route("login"));
+            router.NavigateSync("/b");
+            router.NavigateSync("/c");
+            var state = new RouteBlockerState();
+            router.RouteBlockerManager.Register(_ => true, state);
+            var blockedResult = router.GoBackSync();
+
+            // Act
+            state.Proceed();
+
+            // Assert — CanGoForward is what separates the Back target's slot from the slot the user was on:
+            // both land "/login", and only the step's own slot leaves "/c" ahead of it.
+            Assert.That(
+                (blockedResult, router.HistoryIndex, router.CurrentLocation.Path, router.CanGoForward),
+                Is.EqualTo((NavigationResult.Blocked, 1, "/login", true)));
+        }
+
+        [Test]
+        public void Given_ABlockedForwardStep_When_Proceed_Then_TheHistoryIndexStepsForward()
+        {
+            // Arrange
+            var router = BuildRouter("/home", Route("home"), Route("other"));
+            router.NavigateSync("/other");
+            router.GoBackSync();
+            var state = new RouteBlockerState();
+            router.RouteBlockerManager.Register(_ => true, state);
+            var blockedResult = router.GoForwardSync();
+
+            // Act
+            state.Proceed();
+
+            // Assert — the block is what separates the resume from the step, as on the Back case.
+            Assert.That((blockedResult, router.HistoryIndex), Is.EqualTo((NavigationResult.Blocked, 1)));
+        }
+
+        [Test]
+        public void Given_ASecondNavigationBlockedOverTheFirst_When_Proceed_Then_TheSecondIsWhatLands()
+        {
+            // Arrange
+            var router = BuildRouter("/home", Route("home"), Route("other"), Route("third"));
+            var state = new RouteBlockerState();
+            router.RouteBlockerManager.Register(_ => true, state);
+            var firstResult = router.NavigateSync("/other");
+            var secondResult = router.NavigateSync("/third");
+
+            // Act
+            state.Proceed();
+
+            // Assert — the first block rides along, because a Blocker that had only ever seen the second
+            // attempt would land "/third" too.
+            Assert.That(
+                (firstResult, secondResult, router.CurrentLocation.Path),
+                Is.EqualTo((NavigationResult.Blocked, NavigationResult.Blocked, "/third")));
+        }
+
+        [Test]
+        public void Given_AProceedingBlocker_When_TheResumedNavigationCommits_Then_ItReturnsToIdle()
+        {
+            // Arrange
+            var router = BuildRouter("/home", Route("home"), Route("other"));
+            var state = new RouteBlockerState();
+            router.RouteBlockerManager.Register(_ => true, state);
+            var blockedResult = router.NavigateSync("/other");
+
+            // Act
+            state.Proceed();
+
+            // Assert — the committed path rides along because Idle is also what a Proceed() that re-issued
+            // nothing leaves behind.
+            Assert.That(
+                (blockedResult, state.Status, router.CurrentLocation.Path),
+                Is.EqualTo((NavigationResult.Blocked, RouteBlockerStatus.Idle, "/other")));
+        }
+
+        [Test]
+        public void Given_AProceedingBlocker_When_TheResumedNavigationNotifies_Then_ItIsAlreadyIdle()
+        {
+            // Arrange — subscribed after the block, so the only notification the handler reads is the
+            // resumed navigation's own.
+            var router = BuildRouter("/home", Route("home"), Route("other"));
+            var state = new RouteBlockerState();
+            router.RouteBlockerManager.Register(_ => true, state);
+            var blockedResult = router.NavigateSync("/other");
+            string statusOnNotify = null;
+            router.OnLocationChanged += _ => statusOnNotify = state.Status.ToString();
+
+            // Act
+            state.Proceed();
+
+            // Assert — null is what a Proceed() that notified nothing leaves, so the status separates the
+            // ordering under test from the absence of a resume.
+            Assert.That(
+                (blockedResult, statusOnNotify),
+                Is.EqualTo((NavigationResult.Blocked, nameof(RouteBlockerStatus.Idle))));
+        }
+
+        [Test]
+        public void Given_AProceedingBlocker_When_TheResumedNavigationHasCommitted_Then_ItBlocksTheNextNavigation()
+        {
+            // Arrange
+            var router = BuildRouter("/home", Route("home"), Route("other"), Route("third"));
+            var state = new RouteBlockerState();
+            router.RouteBlockerManager.Register(_ => true, state);
+            var blockedResult = router.NavigateSync("/other");
+            state.Proceed();
+
+            // Act
+            var nextResult = router.NavigateSync("/third");
+
+            // Assert — the resumed location rides along because a Proceed() that re-issued nothing also
+            // leaves the next navigation blocked.
+            Assert.That(
+                (blockedResult, nextResult, router.CurrentLocation.Path),
+                Is.EqualTo((NavigationResult.Blocked, NavigationResult.Blocked, "/other")));
+        }
+
+        // GREEN_ON_BASE(characterization): the base also ends a resumed navigation without a commit at
+        // the redirect limit, which this arrangement uses in place of an unmatched redirect target, since an
+        // unmatched target now commits.
+        [Test]
+        public void Given_AResumedNavigationThatCommitsNothing_When_NavigatingAgain_Then_TheBlockerBlocksIt()
+        {
+            // Arrange — the Guard is asked only once the Blocker has let an attempt through, and it sends the
+            // resumed one round in a circle until the redirect limit refuses it, so the resume ends without a
+            // commit.
+            var guardChecks = 0;
+            var router = BuildRouter("/home", Route("home"),
+                Route("other", guard: _ =>
+                {
+                    guardChecks++;
+                    return "/other";
+                }),
+                Route("third"));
+            var state = new RouteBlockerState();
+            router.RouteBlockerManager.Register(_ => true, state);
+            var blockedResult = router.NavigateSync("/other");
+            state.Proceed();
+
+            // Act
+            var nextResult = router.NavigateSync("/third");
+
+            // Assert — the Guard count rides along because a Proceed() that re-issued nothing also leaves
+            // the next navigation blocked, and the Guard reading is what says the resume happened.
+            Assert.That(
+                (blockedResult, guardChecks > 0, nextResult, router.CurrentLocation.Path),
+                Is.EqualTo((NavigationResult.Blocked, true, NavigationResult.Blocked, "/home")));
+        }
+
+        [Test]
+        public void Given_ABlockedPush_When_Reset_Then_TheBlockerIsReleasedAndNothingIsResumed()
+        {
+            // Arrange
+            var router = BuildRouter("/home", Route("home"), Route("other"));
+            var state = new RouteBlockerState();
+            router.RouteBlockerManager.Register(_ => true, state);
+            var blockedResult = router.NavigateSync("/other");
+
+            // Act
+            state.Reset();
+
+            // Assert — the status separates a Reset that did nothing from one that released the Blocker,
+            // which the location cannot: both leave the router where it was.
+            Assert.That(
+                (blockedResult, state.Status, router.CurrentLocation.Path),
+                Is.EqualTo((NavigationResult.Blocked, RouteBlockerStatus.Idle, "/home")));
+        }
+    }
+}

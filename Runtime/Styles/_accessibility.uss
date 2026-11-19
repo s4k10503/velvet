@@ -1,0 +1,13 @@
+/*
+ * Accessibility - Focus indicators for interactive elements.
+ *
+ * Generic focus indicator that applies to all native focusable Unity controls
+ * (Button, TextField, etc.). Caller code can opt into the focus indicator by
+ * adding the `focus-border-accent` utility (defined in `_state_variants.uss`)
+ * to any element that needs visible keyboard-focus feedback.
+ */
+
+ScrollView:focus {
+    border-color: rgb(0, 120, 212);
+    border-width: 1px;
+}

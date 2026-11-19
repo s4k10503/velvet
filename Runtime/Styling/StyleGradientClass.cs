@@ -1,0 +1,1702 @@
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.Linq;
+using UnityEngine;
+using UnityEngine.UIElements;
+
+namespace Velvet
+{
+    // The gradient shape. Linear runs along an angled axis; Radial runs out from a centre to its radii
+    // (by default the farthest box corner); Conic sweeps around a centre.
+    internal enum GradientType
+    {
+        Linear,
+        Radial,
+        Conic,
+    }
+
+    // The colour space the stops interpolate in. Srgb is a plain channel lerp, SrgbLinear the same on linear
+    // light, Oklab and Lab the perceptually-uniform lerps (avoiding the muddy midpoint of opposing sRGB
+    // hues), and Oklch, Lch and Hsl the polar forms, whose hue travels along the arc a HueMethod picks.
+    // A utility class with no modifier interpolates in Oklab, as Tailwind's do; a gradient written in an
+    // arbitrary bracket names no space and is Srgb, which is what CSS does for the legacy colours it carries.
+    internal enum GradientInterp
+    {
+        Srgb,
+        Oklab,
+        SrgbLinear,
+        Oklch,
+        Lab,
+        Lch,
+        Hsl,
+    }
+
+    // Which way round the hue circle a polar interpolation goes.
+    internal enum HueMethod
+    {
+        Shorter,
+        Longer,
+        Increasing,
+        Decreasing,
+    }
+
+    // How far a radial gradient reaches: the extent keywords CSS names, or sizes given explicitly.
+    internal enum RadialExtent
+    {
+        FarthestCorner,
+        ClosestSide,
+        ClosestCorner,
+        FarthestSide,
+        Explicit,
+    }
+
+    // A radial gradient's shape and size as radial-gradient() writes them. The default is CSS's: an ellipse
+    // reaching the farthest corner. Explicit sizes are X and Y: pixels, or fractions of the box where the
+    // matching Percent flag is set (a circle's radius is X, in pixels), or XAt and YAt where an ellipse's radius
+    // is neither a pixel length nor a percentage alone.
+    internal readonly struct RadialSizing : IEquatable<RadialSizing>
+    {
+        public bool Circle { get; init; }
+        public RadialExtent Extent { get; init; }
+        public float X { get; init; }
+        public float Y { get; init; }
+        public bool XPercent { get; init; }
+        public bool YPercent { get; init; }
+        public MeasuredLength? XAt { get; init; }
+        public MeasuredLength? YAt { get; init; }
+
+        public bool Equals(RadialSizing other)
+            => Circle == other.Circle && Extent == other.Extent && XPercent == other.XPercent
+                && YPercent == other.YPercent && Mathf.RoundToInt(X * 100f) == Mathf.RoundToInt(other.X * 100f)
+                && Mathf.RoundToInt(Y * 100f) == Mathf.RoundToInt(other.Y * 100f)
+                && Equals(XAt, other.XAt) && Equals(YAt, other.YAt);
+
+        public override bool Equals(object obj) => obj is RadialSizing o && Equals(o);
+
+        public override int GetHashCode()
+            => HashCode.Combine(Circle, (int)Extent, XPercent, YPercent, Mathf.RoundToInt(X * 100f), Mathf.RoundToInt(Y * 100f),
+                XAt?.Key, YAt?.Key);
+    }
+
+    // One colour stop of a resolved gradient: its colour and its position along the gradient line (0..1,
+    // or beyond), and a colour hint between this stop and the next, if one was written there. A position
+    // written in pixels is PositionPx, with Position NaN until the box is known (the same for HintPx), and
+    // a position the list left out is NaN until the colour-stop fix-up places it. A position that is neither a
+    // fraction plus pixels is PositionAt, its percentage taken of the line's length (the same for HintAt).
+    internal readonly struct GradientStop
+    {
+        public GradientStop(Color color, float position, float positionPx = float.NaN, float hint = float.NaN,
+            float hintPx = float.NaN, MeasuredLength? positionAt = null, MeasuredLength? hintAt = null)
+        {
+            Color = color;
+            Position = position;
+            PositionPx = positionPx;
+            Hint = hint;
+            HintPx = hintPx;
+            PositionAt = positionAt;
+            HintAt = hintAt;
+        }
+
+        public Color Color { get; }
+        public float Position { get; }
+        public float PositionPx { get; }
+        public float Hint { get; }
+        public float HintPx { get; }
+        public MeasuredLength? PositionAt { get; }
+        public MeasuredLength? HintAt { get; }
+
+        public GradientStop WithHint(float hint, float hintPx, MeasuredLength? hintAt)
+            => new(Color, Position, PositionPx, hint, hintPx, PositionAt, hintAt);
+
+        public bool HasLength => !float.IsNaN(PositionPx) || !float.IsNaN(HintPx) || PositionAt != null || HintAt != null;
+    }
+
+    // A resolved gradient: shape (linear angle / radial-or-conic centre), interpolation space, and its ordered
+    // colour stops (positions 0..1, fixed up into a non-decreasing run).
+    // Stops arrays are shared between specs through StyleGradientClass's memos and are never written.
+    // AngleDeg is the linear axis angle (CSS degrees, 0 = to top, clockwise) and doubles as the conic start
+    // angle. ToCorner marks a linear gradient written as a corner direction (to top right), whose angle
+    // AngleDeg only gives the quadrant of: GradientBackground lays a corner direction out over a square and
+    // an angle written as a number over the box's aspect. Equality is value-based (quantized) so the
+    // baked-texture cache and the reconciler binding skip redundant work when an unchanged class list
+    // re-resolves to the same gradient.
+    internal readonly struct GradientSpec : IEquatable<GradientSpec>
+    {
+        // The most colour stops the parser lets through; it rejects a longer list.
+        public const int MaxStops = 64;
+
+        public GradientType Type { get; init; }
+        public float AngleDeg { get; init; }
+        public bool ToCorner { get; init; }
+        public RadialSizing Radial { get; init; }
+        public float CenterX { get; init; }
+        public float CenterY { get; init; }
+        // Pixels the centre sits from where CenterX and CenterY fall (at_right_10px is 1 and -10).
+        public float CenterXPx { get; init; }
+        public float CenterYPx { get; init; }
+        // A length the centre also sits from where CenterX and CenterY fall, its percentage taken of the box's side.
+        public MeasuredLength? CenterXAt { get; init; }
+        public MeasuredLength? CenterYAt { get; init; }
+        public GradientInterp Interp { get; init; }
+        public HueMethod Hue { get; init; }
+        public GradientStop[] Stops { get; init; }
+
+        // 8-bit RGBA key. Equality AND hashing both go through this so the Equals/GetHashCode contract holds
+        // (Color's == is epsilon-approximate while Color.GetHashCode is exact-bit — mixing them would let
+        // two .Equals-equal specs hash to different cache buckets). Quantizing to Color32 also matches the
+        // baked texture's 8-bit precision, so two colors that round to the same byte dedupe.
+        private static int ColorKey(Color c)
+        {
+            var c32 = (Color32)c;
+            return (c32.r << 24) | (c32.g << 16) | (c32.b << 8) | c32.a;
+        }
+
+        // Angle key at 0.25° precision, normalized mod 360 so -45° and 315° (the same axis — sin/cos are
+        // periodic) share one cache entry. Position / centre keys at 0.1% precision.
+        private static int AngleKey(float deg) => Mathf.RoundToInt((((deg % 360f) + 360f) % 360f) * 4f);
+        private static int PosKey(float p) => float.IsNaN(p) ? int.MinValue : Mathf.RoundToInt(p * 1000f);
+
+        public bool Equals(GradientSpec other)
+        {
+            // Only the fields that affect THIS type's render participate in equality, so two specs that
+            // differ only in a field the type ignores (e.g. a radial's angle) still share one bake.
+            if (Type != other.Type || Interp != other.Interp)
+            {
+                return false;
+            }
+            if (IsPolarSpace(Interp) && Hue != other.Hue)
+            {
+                return false;
+            }
+            if (Type != GradientType.Radial && AngleKey(AngleDeg) != AngleKey(other.AngleDeg))
+            {
+                return false;
+            }
+            if (Type == GradientType.Linear && ToCorner != other.ToCorner)
+            {
+                return false;
+            }
+            if (Type == GradientType.Radial && !Radial.Equals(other.Radial))
+            {
+                return false;
+            }
+            if (Type != GradientType.Linear
+                && (PosKey(CenterX) != PosKey(other.CenterX) || PosKey(CenterY) != PosKey(other.CenterY)
+                    || PosKey(CenterXPx) != PosKey(other.CenterXPx) || PosKey(CenterYPx) != PosKey(other.CenterYPx)
+                    || !Equals(CenterXAt, other.CenterXAt) || !Equals(CenterYAt, other.CenterYAt)))
+            {
+                return false;
+            }
+            return StopsEqual(Stops ?? Array.Empty<GradientStop>(), other.Stops ?? Array.Empty<GradientStop>());
+        }
+
+        // Whether the space has a hue, which travels along an arc rather than being averaged.
+        internal static bool IsPolarSpace(GradientInterp interp)
+            => interp == GradientInterp.Oklch || interp == GradientInterp.Lch || interp == GradientInterp.Hsl;
+
+        private static bool StopsEqual(GradientStop[] a, GradientStop[] b)
+        {
+            var same = a.Length == b.Length;
+            for (var i = 0; same && i < a.Length; i++)
+            {
+                same = ColorKey(a[i].Color) == ColorKey(b[i].Color) && PosKey(a[i].Position) == PosKey(b[i].Position)
+                    && PosKey(a[i].PositionPx) == PosKey(b[i].PositionPx) && PosKey(a[i].Hint) == PosKey(b[i].Hint)
+                    && PosKey(a[i].HintPx) == PosKey(b[i].HintPx) && Equals(a[i].PositionAt, b[i].PositionAt)
+                    && Equals(a[i].HintAt, b[i].HintAt);
+            }
+            return same;
+        }
+
+        // The centre as fractions of a width x height box.
+        public Vector2 CentreIn(float width, float height)
+            => new(CenterX + Along(CenterXPx, CenterXAt, width), CenterY + Along(CenterYPx, CenterYAt, height));
+
+        private static float Along(float px, MeasuredLength? at, float side)
+            => side > 0f ? (px + (at?.Of(side) ?? 0f)) / side : 0f;
+
+        // True when the centre is placed in pixels, so its place in the box depends on the box's size.
+        public bool HasCentreLength
+            => Type != GradientType.Linear && (CenterXPx != 0f || CenterYPx != 0f || CenterXAt != null || CenterYAt != null);
+
+        // True when a stop or hint is written in pixels, so the stops cannot be placed before the box is known.
+        public bool HasLengths
+        {
+            get
+            {
+                foreach (var stop in Stops ?? Array.Empty<GradientStop>())
+                {
+                    if (stop.HasLength)
+                    {
+                        return true;
+                    }
+                }
+                return false;
+            }
+        }
+
+        public override bool Equals(object obj) => obj is GradientSpec o && Equals(o);
+
+        public override int GetHashCode()
+        {
+            unchecked
+            {
+                var h = 17;
+                h = h * 31 + (int)Type;
+                h = h * 31 + (int)Interp;
+                h = h * 31 + (IsPolarSpace(Interp) ? (int)Hue : 0);
+                h = h * 31 + (Type != GradientType.Radial ? AngleKey(AngleDeg) : 0);
+                h = h * 31 + (Type == GradientType.Linear && ToCorner ? 1 : 0);
+                h = h * 31 + (Type == GradientType.Radial ? Radial.GetHashCode() : 0);
+                h = h * 31 + (Type != GradientType.Linear ? PosKey(CenterX) : 0);
+                h = h * 31 + (Type != GradientType.Linear ? PosKey(CenterY) : 0);
+                h = h * 31 + (Type != GradientType.Linear ? PosKey(CenterXPx) : 0);
+                h = h * 31 + (Type != GradientType.Linear ? PosKey(CenterYPx) : 0);
+                h = HashCode.Combine(h, Type != GradientType.Linear ? CenterXAt?.Key : null, Type != GradientType.Linear ? CenterYAt?.Key : null);
+                foreach (var stop in Stops ?? Array.Empty<GradientStop>())
+                {
+                    h = HashCode.Combine(h, ColorKey(stop.Color), PosKey(stop.Position), PosKey(stop.PositionPx), PosKey(stop.Hint),
+                        stop.PositionAt?.Key, stop.HintAt?.Key);
+                }
+                return h;
+            }
+        }
+    }
+
+    // Parses Velvet's gradient utilities into a GradientSpec:
+    //   - shape: bg-gradient-to-{dir} / bg-linear-{deg|[deg]} / bg-linear-to-{dir} (linear); bg-radial /
+    //     bg-radial-[at_{position}] (radial); bg-conic / bg-conic-{deg} / bg-conic-[from_{deg}] (conic);
+    //   - interpolation: an optional /srgb or /oklch (== /oklab) modifier on the shape activator;
+    //   - stops: from-/via-/to-{color} (named palette or arbitrary [#hex]) and from-/via-/to-{N%} positions
+    //     (a percentage value is a POSITION, anything else a COLOR — independent utilities);
+    //   - or a CSS argument list in the shape's brackets, its stops carried with it:
+    //     bg-linear-[90deg,red_0%,blue_100%], bg-linear-[to_right_in_oklab,…], bg-radial-[at_top,…],
+    //     bg-conic-[from_90deg_at_25%_75%,…].
+    // A lone stop with no shape activator is inert. Cheap prefix gate + a cascade-correct
+    // extractor (last shape wins; last from/via/to colour and position win).
+    //
+    // CSS-spec coverage (Images L3/L4, Color 4): linear with arbitrary angle + stop positions, radial-
+    // gradient, conic-gradient, and OKLab interpolation. Deviations: the OKLCH cylindrical hue-arc is
+    // approximated by OKLab (cartesian) interpolation; continuously-animated gradients (no CSS gradient
+    // type) are out of scope.
+    internal static class StyleGradientClass
+    {
+        private const string DirActivator = "bg-gradient-to-";
+        private const string LinearActivator = "bg-linear-";
+        private const string RadialActivator = "bg-radial";
+        private const string ConicActivator = "bg-conic";
+        private const string FromPrefix = "from-";
+        private const string ViaPrefix = "via-";
+        private const string ToPrefix = "to-";
+
+        // The one activator shape that accepts a leading '-' for a negative numeric angle
+        // (TryParseAngle strips it before matching LinearActivator; the -to- alias never accepts it).
+        private const string NegativeLinearActivator = "-" + LinearActivator;
+        private const string RadialArbitraryActivator = RadialActivator + "-[";
+        private const string ConicSuffixActivator = ConicActivator + "-";
+        private const string LinearListActivator = LinearActivator + "[";
+        private const string ConicListActivator = ConicSuffixActivator + "[";
+
+        // A shape activator's reading. Stops and Raw are set only by an activator whose brackets carry a stop
+        // list: Raw is the list as written, a stop's position NaN where it gave none, and Stops is Raw
+        // fixed up. The from-/via-/to- utilities extend Raw rather than Stops, since CSS places an
+        // unpositioned stop among the stops on both sides of it.
+        private struct Shape
+        {
+            public GradientType Type;
+            public float Angle;
+            public bool ToCorner;
+            public RadialSizing Radial;
+            public float CenterX;
+            public float CenterY;
+            public float CenterXPx;
+            public float CenterYPx;
+            public MeasuredLength? CenterXAt;
+            public MeasuredLength? CenterYAt;
+            public GradientInterp Interp;
+            public HueMethod Hue;
+            public GradientStop[]? Stops;
+            public GradientStop[]? Raw;
+        }
+
+        // A class string's reading as a shape activator, Ok false when it is not one.
+        private struct ActivatorReading
+        {
+            public bool Ok;
+            public Shape Shape;
+            // Whether the class held a length an element measures, whose reading depends on the element.
+            public bool Measured;
+        }
+
+        // The accumulated reading of one of the from-/via-/to- utilities.
+        private struct UtilityStop
+        {
+            public bool HasColor;
+            public Color Color;
+            public float Position;
+            public float PositionPx;
+            public MeasuredLength? PositionAt;
+        }
+
+        // A from-/via-/to- suffix's reading: a position, a colour, or neither.
+        private struct StopToken
+        {
+            public bool IsPosition;
+            public float Position;
+            public float PositionPx;
+            public MeasuredLength? PositionAt;
+            public bool IsColor;
+            public Color Color;
+            // Whether the suffix held a length an element measures (see ActivatorReading.Measured).
+            public bool Measured;
+        }
+
+        // ApplyGradientOnPatch re-extracts on every patch of a gradient element, so each reading of a class
+        // string, and each stop array the from-/via-/to- utilities build, is kept and handed out again.
+        // Rejected: ClassNameParseCache's admission scheme, which keeps moving values from pushing out a
+        // render's stable strings because a string parsed again after leaving that cache is a new array the
+        // reconciler reads as a change. A spec is compared by value, so an entry cleared here costs only a
+        // re-parse to an equal one.
+        private sealed class BoundedMemo<TKey, TValue> where TKey : notnull
+        {
+            private const int Capacity = 256;
+            private readonly Dictionary<TKey, TValue> _entries = new();
+
+            public bool TryGet(TKey key, out TValue value)
+            {
+                if (_entries.TryGetValue(key, out var found))
+                {
+                    value = found;
+                    return true;
+                }
+                value = default!;
+                return false;
+            }
+
+            public void Add(TKey key, TValue value)
+            {
+                if (_entries.Count >= Capacity)
+                {
+                    _entries.Clear();
+                }
+                _entries.Add(key, value);
+            }
+        }
+
+        private static readonly BoundedMemo<string, ActivatorReading> s_activators = new();
+        private static readonly BoundedMemo<string, StopToken> s_stopTokens = new();
+        private static readonly BoundedMemo<(GradientStop[]?, ((bool, Color, float, float, MeasuredLength?),
+            (bool, Color, float, float, MeasuredLength?), (bool, Color, float, float, MeasuredLength?))),
+            GradientStop[]> s_utilityStops = new();
+
+        // Cheap prefix/equality table for gradient shape activators, shared by the gate and the parser
+        // so the two can never drift apart: TryParseActivator consults this SAME table as its first
+        // check, which makes "parser-accepts implies gate-accepts" hold by construction rather than by
+        // the two being kept in sync by hand. Radial/conic must stay plain StartsWith: the bare
+        // activator may carry a trailing /interp modifier ("bg-radial/oklab"), which an equality check
+        // would miss.
+        private static bool MatchesActivatorPrefix(string cls)
+        {
+            return cls.StartsWith(DirActivator, StringComparison.Ordinal)
+                || cls.StartsWith(LinearActivator, StringComparison.Ordinal)
+                || cls.StartsWith(NegativeLinearActivator, StringComparison.Ordinal)
+                || cls.StartsWith(RadialActivator, StringComparison.Ordinal)
+                || cls.StartsWith(ConicActivator, StringComparison.Ordinal);
+        }
+
+        // True when cls is any token TryExtract reads — a shape activator OR a from-/via-/to- colour stop.
+        // Deliberately wider than the activator gate below: that one answers "could this element have a
+        // gradient at all", while this answers "would this token change the resolved gradient", which is
+        // the question a variant payload has to be judged by — `bg-gradient-to-r from-blue-500
+        // hover:from-red-500` changes the gradient through a stop, with no activator in the payload.
+        public static bool IsGradientClass(string cls)
+            => !string.IsNullOrEmpty(cls)
+                && (MatchesActivatorPrefix(cls)
+                    || cls.StartsWith(FromPrefix, StringComparison.Ordinal)
+                    || cls.StartsWith(ViaPrefix, StringComparison.Ordinal)
+                    || cls.StartsWith(ToPrefix, StringComparison.Ordinal));
+
+        // Cheap early-out gate: true when ANY class LOOKS LIKE a gradient shape activator. A prefix
+        // test per class (IsActivatorToken) with no angle/position parsing, so it never
+        // duplicates TryExtract's parse cost. May false-positive on a malformed activator (e.g. an
+        // unrecognized /modifier or an out-of-range value), which TryExtract then correctly rejects.
+        // It never false-negatives on anything TryExtract can actually resolve BY CONSTRUCTION:
+        // TryParseActivator's first check is this same MatchesActivatorPrefix, so a class TryExtract
+        // can parse always already looked like an activator here. Used to skip the full TryExtract on
+        // the ~99% of elements with no gradient.
+        public static bool HasGradientClass(string[] classNames)
+        {
+            return StyleClassFamilies.Has(classNames, StyleClassFamily.Gradient);
+        }
+
+        internal static bool IsActivatorToken(string cls) => !string.IsNullOrEmpty(cls) && MatchesActivatorPrefix(cls);
+
+        // Resolves the gradient: last shape activator wins, last from/via/to colour and position each win.
+        // Returns false when no from, via or to COLOR is given and the winning activator carries no stop
+        // list (positions alone draw nothing), and a missing from/to colour defaults to the transparent
+        // version of the other end, or of via when it is the only one (the default behavior). Returns false when no shape activator is present.
+        // A stop list's stops are followed by the from-/via-/to- stops when one of them names a colour (see
+        // ResolveStops).
+        public static bool TryExtract(string[] classNames, out GradientSpec spec)
+            => TryExtract(classNames, null, out spec, out _);
+
+        // As above, with the lengths an element measures (a font-relative or viewport unit) read on element; such
+        // a length is declined without one. measured says whether any class read one, so the caller can read
+        // the classes again once what it measures moves.
+        public static bool TryExtract(string[] classNames, VisualElement? element, out GradientSpec spec, out bool measured)
+        {
+            s_basis = element != null && StyleRelativeLengths.TryBasisOf(element, out var basis) ? basis : null;
+            s_measuredRead = false;
+            try
+            {
+                return TryExtractClasses(classNames, out spec);
+            }
+            finally
+            {
+                measured = s_measuredRead;
+                s_basis = null;
+                s_measuredRead = false;
+            }
+        }
+
+        // What a length an element measures is read against while TryExtract runs, null where it is given none;
+        // and whether a class held one, which keeps that class's reading out of the memos.
+        [ThreadStatic] private static RelativeLengthBasis? s_basis;
+        [ThreadStatic] private static bool s_measuredRead;
+
+        // What a length in a gradient's shape (a radius, a centre) or in an arbitrary stop list (a position, a hint) is
+        // read against while there is no basis: the gradient binds on it, and the poll reads the classes again against
+        // the element once it is on a panel. A from-/via-/to- utility's position waits instead, which leaves that stop
+        // at its default position until then.
+        private static readonly RelativeLengthBasis s_provisional = new(StyleLengthExpression.RootFontSize, 0f, 0f, 0f);
+
+        // A length-percentage as a fraction of its basis plus pixels where it is affine in its percentage, and as At,
+        // read once the basis is known, where it is not; one reading a font-relative or viewport unit is measured on
+        // s_basis, and declined where there is none.
+        private static bool TryMeasuredLength(string token, out float fraction, out float px, out MeasuredLength? at,
+            bool provisional = false)
+        {
+            fraction = 0f;
+            px = 0f;
+            at = null;
+            if (!StyleLengthExpression.TryParse(token.AsSpan(), out var expression))
+            {
+                return false;
+            }
+            if (expression!.TrySplitPercentage(out fraction, out px))
+            {
+                return true;
+            }
+            var basis = default(RelativeLengthBasis);
+            if (expression.ReadsElementUnits)
+            {
+                s_measuredRead = true;
+                if (s_basis is { } measured)
+                {
+                    basis = measured;
+                }
+                else if (provisional)
+                {
+                    basis = s_provisional;
+                }
+                else
+                {
+                    return false;
+                }
+            }
+            if (expression.IsAffine)
+            {
+                expression.SplitPercentage(basis, out fraction, out px);
+                return true;
+            }
+            at = new MeasuredLength(expression, basis, token);
+            return true;
+        }
+
+        private static bool TryExtractClasses(string[] classNames, out GradientSpec spec)
+        {
+            spec = default;
+            if (classNames == null)
+            {
+                return false;
+            }
+
+            var hasShape = false;
+            var shape = default(Shape);
+            var fromStop = new UtilityStop { Position = 0f, PositionPx = float.NaN };
+            var viaStop = new UtilityStop { Position = 0.5f, PositionPx = float.NaN };
+            var toStop = new UtilityStop { Position = 1f, PositionPx = float.NaN };
+
+            foreach (var cls in classNames)
+            {
+                if (string.IsNullOrEmpty(cls))
+                {
+                    continue;
+                }
+
+                if (TryReadActivator(cls, out var parsed))
+                {
+                    shape = parsed;
+                    hasShape = true;
+                }
+                else if (cls.StartsWith(FromPrefix, StringComparison.Ordinal))
+                {
+                    ReadStop(cls, FromPrefix.Length, 0f, ref fromStop);
+                }
+                else if (cls.StartsWith(ViaPrefix, StringComparison.Ordinal))
+                {
+                    ReadStop(cls, ViaPrefix.Length, 0.5f, ref viaStop);
+                }
+                else if (cls.StartsWith(ToPrefix, StringComparison.Ordinal))
+                {
+                    ReadStop(cls, ToPrefix.Length, 1f, ref toStop);
+                }
+            }
+
+            var stops = hasShape ? ResolveStops(in shape, in fromStop, in viaStop, in toStop) : null;
+            if (stops == null)
+            {
+                return false;
+            }
+
+            spec = new GradientSpec
+            {
+                Type = shape.Type,
+                AngleDeg = shape.Angle,
+                ToCorner = shape.ToCorner,
+                Radial = shape.Radial,
+                CenterX = shape.CenterX,
+                CenterY = shape.CenterY,
+                CenterXPx = shape.CenterXPx,
+                CenterYPx = shape.CenterYPx,
+                CenterXAt = shape.CenterXAt,
+                CenterYAt = shape.CenterYAt,
+                Interp = shape.Interp,
+                Hue = shape.Hue,
+                Stops = stops,
+            };
+            return true;
+        }
+
+        // The winning shape's stops: its list, extended by the from-/via-/to- utilities that name a colour —
+        // after the list's stops, as Tailwind places them — or, for a shape with no list, the utilities
+        // alone. Null when no stop results, or when a list and the utilities together exceed
+        // GradientSpec.MaxStops.
+        private static GradientStop[]? ResolveStops(in Shape shape, in UtilityStop fromStop, in UtilityStop viaStop,
+            in UtilityStop toStop)
+        {
+            if (!fromStop.HasColor && !viaStop.HasColor && !toStop.HasColor)
+            {
+                return shape.Stops;
+            }
+            var extra = viaStop.HasColor ? 3 : 2;
+            if ((shape.Raw?.Length ?? 0) + extra > GradientSpec.MaxStops)
+            {
+                return null;
+            }
+            var key = (shape.Raw, ((fromStop.HasColor, fromStop.Color, fromStop.Position, fromStop.PositionPx, fromStop.PositionAt),
+                (viaStop.HasColor, viaStop.Color, viaStop.Position, viaStop.PositionPx, viaStop.PositionAt),
+                (toStop.HasColor, toStop.Color, toStop.Position, toStop.PositionPx, toStop.PositionAt)));
+            if (s_utilityStops.TryGet(key, out var cached))
+            {
+                return cached;
+            }
+            var first = new GradientStop(fromStop.HasColor ? fromStop.Color : Transparent(Neighbour(toStop, viaStop)),
+                fromStop.Position, fromStop.PositionPx, positionAt: fromStop.PositionAt);
+            var last = new GradientStop(toStop.HasColor ? toStop.Color : Transparent(Neighbour(fromStop, viaStop)),
+                toStop.Position, toStop.PositionPx, positionAt: toStop.PositionAt);
+            var utilities = viaStop.HasColor
+                ? new[] { first, new GradientStop(viaStop.Color, viaStop.Position, viaStop.PositionPx, positionAt: viaStop.PositionAt), last }
+                : new[] { first, last };
+            var raw = shape.Raw == null ? utilities : shape.Raw.Concat(utilities).ToArray();
+            var stops = Place(raw);
+            s_utilityStops.Add(key, stops);
+            return stops;
+        }
+
+        // The colour an absent end fades from or to: the far end's when it has one, else the via stop's.
+        private static Color Neighbour(in UtilityStop far, in UtilityStop via) => far.HasColor ? far.Color : via.Color;
+
+        private static Color Transparent(Color c) => new Color(c.r, c.g, c.b, 0f);
+
+        // The memoised TryParseActivator. The prefix gate runs first, so a class that is no activator is
+        // turned away without a lookup or an entry.
+        private static bool TryReadActivator(string cls, out Shape shape)
+        {
+            shape = default;
+            if (!MatchesActivatorPrefix(cls))
+            {
+                return false;
+            }
+            if (!s_activators.TryGet(cls, out var reading) || (reading.Measured && s_basis != null))
+            {
+                var before = s_measuredRead;
+                s_measuredRead = false;
+                reading.Ok = TryParseActivator(cls, out reading.Shape);
+                reading.Measured = s_measuredRead;
+                s_measuredRead |= before;
+                if (!reading.Measured || s_basis == null)
+                {
+                    s_activators.Add(cls, reading);
+                }
+            }
+            s_measuredRead |= reading.Measured;
+            shape = reading.Shape;
+            return reading.Ok;
+        }
+
+        // A from-/via-/to- remainder is EITHER a stop position (a percentage, or a bracketed pixel length) or a colour — independent
+        // utilities. A percentage sets only the position; a recognized colour sets the colour (and marks
+        // the stop present); anything else is ignored (leaves the accumulated values untouched).
+        // initialPosition: the stop's registered initial position, which a position the browser rejects falls back to.
+        private static void ReadStop(string cls, int prefixLength, float initialPosition, ref UtilityStop stop)
+        {
+            // A palette colour reads as none under a scope whose sheets clear the colour namespace (VelvetPalette.TryGet),
+            // so a reading taken there is neither kept nor handed out: what the memo holds, every other scope reads alike.
+            var cleared = StyleThemeTokens.Current?.ClearsNamespace("color-") == true;
+            if (!s_stopTokens.TryGet(cls, out var token) || cleared || (token.Measured && s_basis != null))
+            {
+                var before = s_measuredRead;
+                s_measuredRead = false;
+                token = ParseStopToken(cls.Substring(prefixLength));
+                token.Measured = s_measuredRead;
+                s_measuredRead |= before;
+                if (!cleared && (!token.Measured || s_basis == null))
+                {
+                    s_stopTokens.Add(cls, token);
+                }
+            }
+            s_measuredRead |= token.Measured;
+            if (token.IsPosition)
+            {
+                var rejected = float.IsNaN(token.Position) && float.IsNaN(token.PositionPx) && token.PositionAt == null;
+                stop.Position = rejected ? initialPosition : token.Position;
+                stop.PositionPx = token.PositionPx;
+                stop.PositionAt = token.PositionAt;
+            }
+            else if (token.IsColor)
+            {
+                stop.Color = token.Color;
+                stop.HasColor = true;
+            }
+        }
+
+        // A /modifier as Tailwind reads it: an interpolation space, or a hue method alone, which is oklch's.
+        private static bool TryParseModifier(string modifier, out GradientInterp interp, out HueMethod hue)
+        {
+            if (TryParseHueMethod(modifier, out hue))
+            {
+                interp = GradientInterp.Oklch;
+                return true;
+            }
+            hue = HueMethod.Shorter;
+            return TryParseInterp(modifier, out interp);
+        }
+
+        // An interpolation space as the /modifier and a list's in_{space} both name it.
+        private static bool TryParseInterp(string space, out GradientInterp interp)
+        {
+            switch (space)
+            {
+                case "srgb": interp = GradientInterp.Srgb; return true;
+                case "srgb-linear": interp = GradientInterp.SrgbLinear; return true;
+                case "oklab": interp = GradientInterp.Oklab; return true;
+                case "oklch": interp = GradientInterp.Oklch; return true;
+                case "lab": interp = GradientInterp.Lab; return true;
+                case "lch": interp = GradientInterp.Lch; return true;
+                case "hsl": interp = GradientInterp.Hsl; return true;
+                default: interp = GradientInterp.Srgb; return false;
+            }
+        }
+
+        private static bool TryParseHueMethod(string token, out HueMethod hue)
+        {
+            switch (token)
+            {
+                case "shorter": hue = HueMethod.Shorter; return true;
+                case "longer": hue = HueMethod.Longer; return true;
+                case "increasing": hue = HueMethod.Increasing; return true;
+                case "decreasing": hue = HueMethod.Decreasing; return true;
+                default: hue = HueMethod.Shorter; return false;
+            }
+        }
+
+        // Tailwind's bare position: a non-negative integer written without sign, leading zero or fraction,
+        // then '%'. Anything else has to be written in brackets.
+        private static bool IsBarePercent(string suffix)
+        {
+            var digits = suffix.Length - 1;
+            if (digits < 1 || suffix[digits] != '%' || (suffix[0] == '0' && digits > 1))
+            {
+                return false;
+            }
+            for (var i = 0; i < digits; i++)
+            {
+                if (suffix[i] < '0' || suffix[i] > '9')
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        // A bracketed length for a from-/via-/to- position, read as a list-bracket position is. A bare 0 is
+        // declined: Tailwind's length test (TailwindDataTypes.IsLength) requires a unit, and in its own case.
+        private static bool TryParseBracketedPixels(string suffix, out float px)
+        {
+            px = 0f;
+            return suffix.Length > 2 && suffix[0] == '[' && suffix[suffix.Length - 1] == ']'
+                && TailwindDataTypes.IsLength(suffix.AsSpan(1, suffix.Length - 2))
+                && TryParseStopLength(suffix.Substring(1, suffix.Length - 2), out px);
+        }
+
+        // A stop position's length, with the unit StyleArbitraryValueResolver.TryParseValue reads (a bare
+        // number is no length; a math function closes on a parenthesis) converted to pixels, and signed: a
+        // stop may sit before the start of the line, which the percentage forms allow too. A bare 0 is the
+        // start of the line.
+        private static bool TryParseStopLength(string token, out float px)
+        {
+            px = 0f;
+            if (token == "0")
+            {
+                return true;
+            }
+            if (token.EndsWith(")", StringComparison.Ordinal))
+            {
+                return StyleArbitraryValueResolver.TryParseValue(token.AsSpan(), out px, out var folded)
+                    && folded == LengthUnit.Pixel;
+            }
+            return token.Length > 0 && char.IsLetter(token[token.Length - 1])
+                && StyleArbitraryValueResolver.TryParseValue(token.AsSpan(), out px, out var unit)
+                && unit == LengthUnit.Pixel;
+        }
+
+        private static StopToken ParseStopToken(string suffix)
+        {
+            var hint = StyleArbitraryValueResolver.TypeHintOf(suffix);
+            if (hint != null)
+            {
+                return ParseHintedStopToken(suffix, hint);
+            }
+            if ((suffix.Length > 0 && suffix[0] == '[' || IsBarePercent(suffix)) && TryParsePercent(suffix, out var p))
+            {
+                return new StopToken { IsPosition = true, Position = p, PositionPx = float.NaN };
+            }
+            if (TryParseBracketedPixels(suffix, out var px))
+            {
+                return new StopToken { IsPosition = true, Position = float.NaN, PositionPx = px };
+            }
+            // A length Tailwind's tests take that the element measures, or that adds a percentage to a length, is a
+            // position too: what is left of one the element cannot measure yet is no stop.
+            if (StyleArbitraryValueResolver.TryStripBrackets(suffix, 0, out var inner)
+                && (TailwindDataTypes.IsLength(inner) || TailwindDataTypes.IsPercentage(inner)))
+            {
+                return TryMeasuredLength(inner.ToString(), out var fraction, out var measuredPx, out var at)
+                    ? PositionToken(fraction, measuredPx, at)
+                    : default;
+            }
+            return ColourStopToken(suffix);
+        }
+
+        // A position as a fraction of the line plus pixels.
+        private static StopToken PositionToken(float fraction, float px, MeasuredLength? at)
+        {
+            var (position, positionPx) = AsStopPosition(fraction, px, at);
+            return new StopToken { IsPosition = true, Position = position, PositionPx = positionPx, PositionAt = at };
+        }
+
+        // A stop's Position and PositionPx for a fraction of the line plus pixels: NaN for the part that is zero,
+        // pixels alone where both are, and both NaN where at carries the position.
+        private static (float Position, float PositionPx) AsStopPosition(float fraction, float px, MeasuredLength? at)
+            => at != null ? (float.NaN, float.NaN)
+                : fraction == 0f ? (float.NaN, px) : px == 0f ? (fraction, float.NaN) : (fraction, px);
+
+        // Tailwind registers the stop colours as <color> with a transparent initial value, so a bracket it writes as a
+        // colour and the browser rejects, a value that is none or an opacity modifier past 100%, leaves the stop
+        // transparent rather than unset.
+        private static StopToken ColourStopToken(string suffix)
+        {
+            if (StyleColorValueParser.TryResolveColorWithModifier(suffix, out var c))
+            {
+                return new StopToken { IsColor = true, Color = c };
+            }
+            var slash = StyleColorValueParser.ColorModifierSlashIndex(suffix, 0);
+            if (slash >= 0 && VelvetPalette.TryResolveColorToken(suffix.Substring(0, slash), out _)
+                && StyleColorValueParser.ModifierOutside(suffix.AsSpan(slash + 1)))
+            {
+                return new StopToken { IsColor = true, Color = Color.clear };
+            }
+            return StyleArbitraryValueResolver.TryStripBrackets(suffix, 0, out var inner)
+                && StyleColorValueParser.RejectsAsColour(inner.ToString())
+                ? new StopToken { IsColor = true, Color = Color.clear }
+                : default;
+        }
+
+        // A type hint picks the branch in place of Tailwind's tests: a length or percentage hint the position,
+        // read without the case test, and any other the colour.
+        private static StopToken ParseHintedStopToken(string suffix, string hint)
+        {
+            var plain = StyleArbitraryValueResolver.WithoutTypeHint(suffix);
+            if (plain == null)
+            {
+                return default;
+            }
+            if (!StyleColorValueParser.HintSelectsNonColour("from", hint))
+            {
+                return ColourStopToken(plain);
+            }
+            if (TryParsePercent(plain, out var p))
+            {
+                return new StopToken { IsPosition = true, Position = p, PositionPx = float.NaN };
+            }
+            var value = plain.Substring(1, plain.Length - 2);
+            if (TryParseStopLength(value, out var px))
+            {
+                return new StopToken { IsPosition = true, Position = float.NaN, PositionPx = px };
+            }
+            if (TryMeasuredLength(value, out var fraction, out var measuredPx, out var at))
+            {
+                return PositionToken(fraction, measuredPx, at);
+            }
+            // Tailwind registers the stop positions as <length-percentage>, so one the browser rejects is the initial
+            // position, which both NaN stand for in ReadStop; one it takes that the line cannot place is ignored.
+            return StyleCompositeRejection.TakesLengthPercentage(value.Replace('_', ' ').Trim())
+                ? default
+                : new StopToken { IsPosition = true, Position = float.NaN, PositionPx = float.NaN };
+        }
+
+        // Parses a gradient shape activator, including an optional /interp modifier: type, angle (linear
+        // axis / conic start; 0 for radial), centre (radial/conic; 0.5,0.5 default), interp, and the stop
+        // list its brackets carry, if any. False when the class is not a recognized activator (incl. an
+        // unknown /modifier, a malformed stop list, or a modifier after a stop list).
+        private static bool TryParseActivator(string cls, out Shape shape)
+        {
+            shape = new Shape { CenterX = 0.5f, CenterY = 0.5f };
+
+            // Must pass the gate's own prefix table before any parsing: this is what makes the shapes
+            // this method accepts a structural SUBSET of what HasGradientClass matches, so a shape added
+            // here without also widening MatchesActivatorPrefix simply cannot parse (loud), instead of
+            // parsing while the gate silently skips it (the false-negative this guards against).
+            if (!MatchesActivatorPrefix(cls))
+            {
+                return false;
+            }
+
+            // Split off a trailing /interp modifier (the gradient interpolation modifier).
+            var baseTok = cls;
+            var slash = ModifierSlash(cls);
+            if (slash >= 0)
+            {
+                if (!TryParseModifier(cls.Substring(slash + 1), out shape.Interp, out shape.Hue))
+                {
+                    return false; // unknown modifier → not a valid activator
+                }
+                baseTok = cls.Substring(0, slash);
+            }
+            else if (cls.IndexOf('[') < 0)
+            {
+                // Tailwind's utilities name OKLab unless a modifier says otherwise; an arbitrary bracket names no
+                // space, which CSS reads as sRGB for the legacy colours a bracket carries.
+                shape.Interp = GradientInterp.Oklab;
+            }
+
+            if (TryGetStopListBody(baseTok, out var listType, out var listBody))
+            {
+                shape.Type = listType;
+                var listShape = shape;
+                if (TryParseStopList(listBody, ref listShape))
+                {
+                    // A bracketed shape takes no modifier: the interpolation space is named inside it.
+                    shape = listShape;
+                    return slash < 0;
+                }
+                return false;
+            }
+            if (baseTok == RadialActivator)
+            {
+                shape.Type = GradientType.Radial;
+                return true;
+            }
+            if (baseTok.StartsWith(RadialArbitraryActivator, StringComparison.Ordinal) && baseTok[baseTok.Length - 1] == ']')
+            {
+                shape.Type = GradientType.Radial;
+                return TryParseRadialLine(
+                    baseTok.Substring(RadialActivator.Length + 2, baseTok.Length - RadialActivator.Length - 3), ref shape);
+            }
+            if (baseTok == ConicActivator)
+            {
+                shape.Type = GradientType.Conic;
+                return true;
+            }
+            if (baseTok.StartsWith(ConicSuffixActivator, StringComparison.Ordinal))
+            {
+                shape.Type = GradientType.Conic;
+                return TryParseConicStart(baseTok.Substring(ConicActivator.Length + 1), out shape.Angle);
+            }
+            return TryParseAngle(baseTok, out shape.Angle, out shape.ToCorner);
+        }
+
+        // The index of the modifier's '/', or -1: only one after the closing bracket is a modifier, and one
+        // inside the brackets belongs to the bracket's body.
+        internal static int ModifierSlash(string cls)
+        {
+            var slash = cls.LastIndexOf('/');
+            return slash < cls.LastIndexOf(']') ? -1 : slash;
+        }
+
+        // A bracket body holding a comma is a CSS gradient argument list, which this file reads as a stop
+        // list; any other body keeps the angle / position grammar the shape had before stop lists existed.
+        private static bool TryGetStopListBody(string baseTok, out GradientType type, out string body)
+        {
+            type = GradientType.Linear;
+            body = string.Empty;
+            if (baseTok[baseTok.Length - 1] != ']' || !baseTok.Contains(','))
+            {
+                return false;
+            }
+            int open;
+            if (baseTok.StartsWith(LinearListActivator, StringComparison.Ordinal))
+            {
+                open = LinearListActivator.Length;
+            }
+            else if (baseTok.StartsWith(RadialArbitraryActivator, StringComparison.Ordinal))
+            {
+                type = GradientType.Radial;
+                open = RadialArbitraryActivator.Length;
+            }
+            else if (baseTok.StartsWith(ConicListActivator, StringComparison.Ordinal))
+            {
+                type = GradientType.Conic;
+                open = ConicListActivator.Length;
+            }
+            else
+            {
+                // MUTANT_SURVIVES(equivalent): a token reaching here is rejected whichever value this returns.
+                // True hands TryParseStopList an empty body, which it rejects; false sends the token on to
+                // the angle and position grammars, none of which parses a comma.
+                return false;
+            }
+            body = baseTok.Substring(open, baseTok.Length - open - 1);
+            return true;
+        }
+
+        // The argument list of linear-/radial-/conic-gradient(), underscores standing for spaces: an optional
+        // leading line argument for the shape, then 2..MaxStops colour stops. Any argument that is neither
+        // rejects the whole list.
+        private static bool TryParseStopList(string body, ref Shape shape)
+        {
+            var args = SplitTopLevel(body, ',');
+            for (var i = 0; i < args.Count; i++)
+            {
+                // Each _ is a space, so the ones around and doubled within an argument are padding:
+                // pasted CSS writes a space after every comma.
+                args[i] = string.Join("_", args[i].Split(new[] { '_' }, StringSplitOptions.RemoveEmptyEntries));
+            }
+            var raw = new List<GradientStop>();
+            if (shape.Type == GradientType.Linear)
+            {
+                // CSS's default direction, to bottom, for a list with no line argument.
+                shape.Angle = 180f;
+            }
+            var afterStop = TryAddColorStop(args[0], shape.Type, raw);
+            if (!afterStop && !TryParseLine(args[0], ref shape))
+            {
+                return false;
+            }
+            for (var i = 1; i < args.Count; i++)
+            {
+                if (TryAddColorStop(args[i], shape.Type, raw))
+                {
+                    afterStop = true;
+                }
+                else if (afterStop && i < args.Count - 1
+                    && TryParseStopPosition(args[i], shape.Type, out var hint, out var hintPx, out var hintAt))
+                {
+                    // A bare position between two stops is a colour hint on the stop before it.
+                    raw[raw.Count - 1] = raw[raw.Count - 1].WithHint(hint, hintPx, hintAt);
+                    afterStop = false;
+                }
+                else
+                {
+                    return false;
+                }
+            }
+            if (raw.Count < 2 || raw.Count > GradientSpec.MaxStops)
+            {
+                return false;
+            }
+            shape.Raw = raw.ToArray();
+            shape.Stops = Place(shape.Raw);
+            return true;
+        }
+
+        // Splits on separator wherever it sits outside a (...) group, so rgb(255,0,0) stays one argument.
+        internal static List<string> SplitTopLevel(string s, char separator)
+        {
+            var parts = new List<string>();
+            var depth = 0;
+            var start = 0;
+            for (var i = 0; i < s.Length; i++)
+            {
+                var c = s[i];
+                if (c == '(')
+                {
+                    depth++;
+                }
+                else if (c == ')')
+                {
+                    depth--;
+                }
+                else if (c == separator && depth == 0)
+                {
+                    parts.Add(s.Substring(start, i - start));
+                    start = i + 1;
+                }
+            }
+            parts.Add(s.Substring(start));
+            return parts;
+        }
+
+        // One colour stop: a colour, then none, one or two positions (CSS Images 4's two-position form is two
+        // stops of one colour). An unpositioned stop is recorded as NaN for FixUp to place. Adds nothing when
+        // the argument is not a colour stop.
+        private static bool TryAddColorStop(string arg, GradientType type, List<GradientStop> stops)
+        {
+            var tokens = SplitTopLevel(arg, '_');
+            if (tokens.Count > 3)
+            {
+                return false;
+            }
+            if (!TryParseListColor(tokens[0], out var color))
+            {
+                return false;
+            }
+            float first = float.NaN, firstPx = float.NaN, second = float.NaN, secondPx = float.NaN;
+            MeasuredLength? firstAt = null, secondAt = null;
+            if (tokens.Count > 1 && !TryParseStopPosition(tokens[1], type, out first, out firstPx, out firstAt))
+            {
+                return false;
+            }
+            if (tokens.Count > 2 && !TryParseStopPosition(tokens[2], type, out second, out secondPx, out secondAt))
+            {
+                return false;
+            }
+            stops.Add(new GradientStop(color, first, firstPx, positionAt: firstAt));
+            if (tokens.Count > 2)
+            {
+                stops.Add(new GradientStop(color, second, secondPx, positionAt: secondAt));
+            }
+            return true;
+        }
+
+        // A stop or hint position: a percentage, a conic's angle (a fraction of the turn), or any other
+        // shape's length in pixels, which waits for the box. A bare 0 is the start of the line.
+        private static bool TryParseStopPosition(string token, GradientType type, out float fraction, out float px,
+            out MeasuredLength? at)
+        {
+            px = float.NaN;
+            at = null;
+            if (token == "0")
+            {
+                fraction = 0f;
+                return true;
+            }
+            if (TryParsePercent(token, out fraction))
+            {
+                return true;
+            }
+            if (type == GradientType.Conic)
+            {
+                var ok = StyleLengthExpression.OpensMathFunction(token.AsSpan())
+                    ? StyleLengthExpression.TryParseAnglePercentage(token.AsSpan(), 360f, out var deg)
+                    : TryParseCssAngle(token, out deg);
+                fraction = deg / 360f;
+                return ok;
+            }
+            fraction = float.NaN;
+            if (TryParseStopLength(token, out px))
+            {
+                return true;
+            }
+            // A length the element measures, or a percentage beside a length or under a function of one.
+            if (!TryMeasuredLength(token, out var measuredFraction, out var measuredPx, out at, provisional: true))
+            {
+                return false;
+            }
+            (fraction, px) = AsStopPosition(measuredFraction, measuredPx, at);
+            return true;
+        }
+
+        // A palette name or [bracketed] value as from-/via-/to- take it, or a bare CSS colour, which is how a
+        // CSS argument list spells one.
+        private static bool TryParseListColor(string token, out Color color)
+        {
+            if (VelvetPalette.TryResolveColorToken(token, out color))
+            {
+                return true;
+            }
+            return StyleColorValueParser.TryParseColor(token, out color);
+        }
+
+        // The leading line argument: an angle or to_{side}[_{side}] for linear, a shape, size and at_{position} for
+        // radial, from_{angle} and/or at_{position} for conic, each optionally led or followed by
+        // in_{space}[_{method}_hue].
+        private static bool TryParseLine(string arg, ref Shape shape)
+        {
+            var tokens = SplitTopLevel(arg, '_').ToArray();
+            var at = Array.IndexOf(tokens, "in");
+            if (at < 0)
+            {
+                return TryParseShapeLine(arg, ref shape);
+            }
+            if (at + 1 >= tokens.Length || !TryParseInterp(tokens[at + 1], out shape.Interp))
+            {
+                return false;
+            }
+            // The space, and the hue method that may follow a polar one.
+            var length = 2;
+            shape.Hue = HueMethod.Shorter;
+            if (at + 3 < tokens.Length && tokens[at + 3] == "hue")
+            {
+                if (!GradientSpec.IsPolarSpace(shape.Interp) || !TryParseHueMethod(tokens[at + 2], out shape.Hue))
+                {
+                    return false;
+                }
+                length = 4;
+            }
+            if (at != 0 && at + length != tokens.Length)
+            {
+                return false;
+            }
+            var line = at == 0
+                ? string.Join("_", tokens, length, tokens.Length - length)
+                : string.Join("_", tokens, 0, at);
+            return line.Length == 0 || TryParseShapeLine(line, ref shape);
+        }
+
+        private static bool TryParseShapeLine(string line, ref Shape shape)
+        {
+            switch (shape.Type)
+            {
+                case GradientType.Radial:
+                    return TryParseRadialLine(line, ref shape);
+                case GradientType.Conic:
+                    return TryParseConicLine(line, ref shape);
+                default:
+                    return line.StartsWith("to_", StringComparison.Ordinal)
+                        ? TryParseSides(line.Substring(3), out shape.Angle, out shape.ToCorner)
+                        : TryParseCssAngle(line, out shape.Angle);
+            }
+        }
+
+        // to_{side} or to_{side}_{side} in either order → the angle of the matching bg-gradient-to-{dir}.
+        private static bool TryParseSides(string sides, out float angleDeg, out bool toCorner)
+        {
+            angleDeg = 0f;
+            var vertical = string.Empty;
+            var horizontal = string.Empty;
+            foreach (var side in sides.Split('_'))
+            {
+                switch (side)
+                {
+                    case "top" when vertical.Length == 0: vertical = "t"; break;
+                    case "bottom" when vertical.Length == 0: vertical = "b"; break;
+                    case "left" when horizontal.Length == 0: horizontal = "l"; break;
+                    case "right" when horizontal.Length == 0: horizontal = "r"; break;
+                    default: toCorner = false; return false;
+                }
+            }
+            return TryDirectionAngle(vertical + horizontal, out angleDeg, out toCorner);
+        }
+
+        private static bool TryParseConicLine(string arg, ref Shape shape)
+        {
+            var rest = arg;
+            if (rest.StartsWith("from_", StringComparison.Ordinal))
+            {
+                // "from", the angle, and whatever follows it.
+                var parts = SplitTopLevel(rest, '_');
+                if (!TryParseCssAngle(parts[1], out shape.Angle))
+                {
+                    return false;
+                }
+                if (parts.Count < 3)
+                {
+                    return true;
+                }
+                rest = string.Join("_", parts.Skip(2));
+            }
+            return TryParseListPosition(rest, ref shape);
+        }
+
+        // The head of radial-gradient(): an optional shape and size, then an optional at_{position}, in any
+        // order of shape and size. Writes the shape only when the whole line reads.
+        private static bool TryParseRadialLine(string line, ref Shape shape)
+        {
+            var tokens = SplitTopLevel(line, '_').ToArray();
+            var at = Array.IndexOf(tokens, "at");
+            var centre = shape;
+            if (at >= 0 && !TryParseListPosition(string.Join("_", tokens, at, tokens.Length - at), ref centre))
+            {
+                return false;
+            }
+            var head = at < 0 ? tokens : tokens.Take(at).ToArray();
+            if (!TryParseRadialSizing(head, out var sizing))
+            {
+                return false;
+            }
+            shape.Radial = sizing;
+            (shape.CenterX, shape.CenterXPx, shape.CenterXAt, shape.CenterY, shape.CenterYPx, shape.CenterYAt) =
+                (centre.CenterX, centre.CenterXPx, centre.CenterXAt, centre.CenterY, centre.CenterYPx, centre.CenterYAt);
+            return true;
+        }
+
+        private static bool TryParseRadialSizing(string[] head, out RadialSizing sizing)
+        {
+            sizing = default;
+            string? shapeToken = null;
+            var rest = new List<string>();
+            foreach (var token in head)
+            {
+                if (token is "circle" or "ellipse")
+                {
+                    if (shapeToken != null)
+                    {
+                        return false;
+                    }
+                    shapeToken = token;
+                }
+                else
+                {
+                    rest.Add(token);
+                }
+            }
+            var circle = shapeToken == "circle";
+            switch (rest.Count)
+            {
+                case 0:
+                    sizing = new RadialSizing { Circle = circle };
+                    return true;
+                case 1 when TryParseExtent(rest[0], out var extent):
+                    sizing = new RadialSizing { Circle = circle, Extent = extent };
+                    return true;
+                case 1 when shapeToken != "ellipse" && TryParsePixelLength(rest[0], out var radius):
+                    sizing = new RadialSizing { Circle = true, Extent = RadialExtent.Explicit, X = radius, Y = radius };
+                    return true;
+                case 2 when !circle && TryParseLengthPercentage(rest[0], out var x, out var xPercent, out var xAt)
+                    && TryParseLengthPercentage(rest[1], out var y, out var yPercent, out var yAt):
+                    sizing = new RadialSizing
+                    {
+                        Extent = RadialExtent.Explicit, X = x, Y = y, XPercent = xPercent, YPercent = yPercent, XAt = xAt,
+                        YAt = yAt,
+                    };
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        private static bool TryParseExtent(string token, out RadialExtent extent)
+        {
+            switch (token)
+            {
+                case "closest-side": extent = RadialExtent.ClosestSide; return true;
+                case "closest-corner": extent = RadialExtent.ClosestCorner; return true;
+                case "farthest-side": extent = RadialExtent.FarthestSide; return true;
+                case "farthest-corner": extent = RadialExtent.FarthestCorner; return true;
+                default: extent = RadialExtent.FarthestCorner; return false;
+            }
+        }
+
+        // A non-negative length, as a radius is: TryParseStopLength's grammar without the sign.
+        // CSS rejects a negative radius written as a literal and clamps one a math function comes to at zero.
+        private static bool TryParsePixelLength(string token, out float px)
+        {
+            var literal = !StyleLengthExpression.OpensMathFunction(token.AsSpan());
+            // A circle takes no percentage.
+            var read = TryParseStopLength(token, out px)
+                || (StyleLengthExpression.TryParse(token.AsSpan(), out var expression) && !expression!.ReadsPercentage
+                    && TryMeasuredLength(token, out _, out px, out _, provisional: true));
+            px = literal ? px : Mathf.Max(px, 0f);
+            return read && px >= 0f;
+        }
+
+        // An ellipse's radius: pixels or a percentage alone, the percentage as a fraction of the box, and any other
+        // length-percentage as at, which RadialRadii reads against the box's side.
+        private static bool TryParseLengthPercentage(string token, out float value, out bool percent, out MeasuredLength? at)
+        {
+            at = null;
+            var literal = !StyleLengthExpression.OpensMathFunction(token.AsSpan());
+            percent = literal && token.EndsWith("%", StringComparison.Ordinal);
+            if (percent)
+            {
+                return TryParsePercent(token, out value) && value >= 0f;
+            }
+            if (TryParseStopLength(token, out value))
+            {
+                value = literal ? value : Mathf.Max(value, 0f);
+                return value >= 0f;
+            }
+            if (!StyleLengthExpression.TryParse(token.AsSpan(), out var expression))
+            {
+                return false;
+            }
+            if (expression!.ReadsElementUnits)
+            {
+                s_measuredRead = true;
+            }
+            at = new MeasuredLength(expression, s_basis ?? (expression.ReadsElementUnits ? s_provisional : default), token);
+            return !literal || at.Of(0f) >= 0f;
+        }
+
+        // An angle as CSS writes one: a number with a deg, grad, rad or turn unit, or a bare 0. Any other
+        // bare number is no angle in CSS.
+        private static bool TryParseCssAngle(string s, out float deg)
+        {
+            if (StyleLengthExpression.OpensMathFunction(s.AsSpan()))
+            {
+                return StyleLengthExpression.TryParseAngle(s.AsSpan(), out deg);
+            }
+            deg = 0f;
+            foreach (var (unit, degrees) in AngleUnits)
+            {
+                if (s.EndsWith(unit, StringComparison.OrdinalIgnoreCase))
+                {
+                    var ok = float.TryParse(s.Substring(0, s.Length - unit.Length), NumberStyles.Float,
+                        CultureInfo.InvariantCulture, out var value) && !float.IsNaN(value) && !float.IsInfinity(value);
+                    deg = value * degrees;
+                    return ok;
+                }
+            }
+            return s == "0";
+        }
+
+        private static bool IsLowerCaseAngle(string s)
+        {
+            foreach (var (unit, _) in AngleUnits)
+            {
+                if (s.EndsWith(unit, StringComparison.Ordinal))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        private static readonly (string Unit, float Degrees)[] AngleUnits =
+        {
+            ("deg", 1f), ("grad", 0.9f), ("rad", 180f / Mathf.PI), ("turn", 360f),
+        };
+
+        // An at_{position} the list reads, as CSS's <position> writes one after the at: one value, two (x then y,
+        // or two keywords in either order), or two keywords each followed by its offset from that edge. A length
+        // places the centre in pixels from the box's left or top, so it is a fraction of the box plus pixels.
+        private static bool TryParseListPosition(string arg, ref Shape shape)
+        {
+            if (!arg.StartsWith("at_", StringComparison.Ordinal))
+            {
+                return false;
+            }
+            var tokens = SplitTopLevel(arg.Substring(3), '_');
+            var x = new Offset(0.5f, 0f);
+            var y = new Offset(0.5f, 0f);
+            var read = tokens.Count switch
+            {
+                1 => TryOneValue(tokens[0], ref x, ref y),
+                2 => TryTwoValues(tokens[0], tokens[1], ref x, ref y),
+                4 => TryEdgeOffset(tokens[0], tokens[1], ref x, ref y) && TryEdgeOffset(tokens[2], tokens[3], ref x, ref y)
+                    && IsHorizontal(tokens[0]) != IsHorizontal(tokens[2]),
+                _ => false,
+            };
+            if (read)
+            {
+                (shape.CenterX, shape.CenterXPx, shape.CenterXAt, shape.CenterY, shape.CenterYPx, shape.CenterYAt) =
+                    (x.Fraction, x.Pixels, x.At, y.Fraction, y.Pixels, y.At);
+            }
+            return read;
+        }
+
+        // A place along one axis: a fraction of the box's side, and pixels from where that fraction falls.
+        private readonly struct Offset
+        {
+            public readonly float Fraction;
+            public readonly float Pixels;
+            // A length added to both, its percentage taken of the box's side.
+            public readonly MeasuredLength? At;
+
+            public Offset(float fraction, float pixels, MeasuredLength? at = null)
+            {
+                Fraction = fraction;
+                Pixels = pixels;
+                At = at;
+            }
+        }
+
+        private static bool TryOneValue(string token, ref Offset x, ref Offset y)
+        {
+            switch (token)
+            {
+                case "center": return true;
+                case "left": x = new Offset(0f, 0f); return true;
+                case "right": x = new Offset(1f, 0f); return true;
+                case "top": y = new Offset(0f, 0f); return true;
+                case "bottom": y = new Offset(1f, 0f); return true;
+                default: return TryLengthPercentage(token, out x);
+            }
+        }
+
+        // x then y, either a keyword of its own axis, center, or a length-percentage; or two keywords, which may come
+        // y first.
+        private static bool TryTwoValues(string first, string second, ref Offset x, ref Offset y)
+        {
+            if (IsVertical(first) || (first == "center" && IsHorizontal(second)))
+            {
+                return IsKeyword(second) && !IsVertical(second) && TryOneValue(first, ref x, ref y)
+                    && TryOneValue(second, ref x, ref y);
+            }
+            return TryAxisValue(first, horizontal: true, out x) && TryAxisValue(second, horizontal: false, out y);
+        }
+
+        private static bool TryAxisValue(string token, bool horizontal, out Offset offset)
+        {
+            offset = new Offset(0.5f, 0f);
+            switch (token)
+            {
+                case "center": return true;
+                case "left" when horizontal: offset = new Offset(0f, 0f); return true;
+                case "right" when horizontal: offset = new Offset(1f, 0f); return true;
+                case "top" when !horizontal: offset = new Offset(0f, 0f); return true;
+                case "bottom" when !horizontal: offset = new Offset(1f, 0f); return true;
+                default: return !IsKeyword(token) && TryLengthPercentage(token, out offset);
+            }
+        }
+
+        // An edge keyword and its offset into the box from that edge.
+        private static bool TryEdgeOffset(string edge, string length, ref Offset x, ref Offset y)
+        {
+            if (!TryLengthPercentage(length, out var offset))
+            {
+                return false;
+            }
+            var fromFar = new Offset(1f - offset.Fraction, -offset.Pixels, offset.At?.Negated());
+            switch (edge)
+            {
+                case "left": x = offset; return true;
+                case "right": x = fromFar; return true;
+                case "top": y = offset; return true;
+                case "bottom": y = fromFar; return true;
+                default: return false;
+            }
+        }
+
+        private static bool IsHorizontal(string token) => token is "left" or "right";
+
+        private static bool IsVertical(string token) => token is "top" or "bottom";
+
+        private static bool IsKeyword(string token) => token is "left" or "right" or "top" or "bottom" or "center";
+
+        // A length, a percentage, or a math function coming to pixels and a percentage added together.
+        private static bool TryLengthPercentage(string token, out Offset offset)
+        {
+            offset = default;
+            if (StyleArbitraryValueResolver.TryParseValue(token.AsSpan(), out var value, out var unit))
+            {
+                offset = unit == LengthUnit.Percent ? new Offset(value / 100f, 0f) : new Offset(0f, value);
+                return true;
+            }
+            if (TryMeasuredLength(token, out var fraction, out var pixels, out var at, provisional: true))
+            {
+                offset = new Offset(fraction, pixels, at);
+                return true;
+            }
+            return false;
+        }
+
+        // The stops as the spec keeps them: fixed up when every position is known, and as written when one is
+        // in pixels, which GradientBackground.ResolveStops places once it knows the box.
+        private static GradientStop[] Place(GradientStop[] raw)
+        {
+            foreach (var stop in raw)
+            {
+                if (stop.HasLength)
+                {
+                    return raw;
+                }
+            }
+            return FixUp(raw);
+        }
+
+        // CSS Images 3 colour-stop fix-up, over positions where NaN means unpositioned: an unpositioned first
+        // or last stop sits at 0% or 100%; a position or hint behind an earlier one is raised to the largest
+        // before it; then each run of unpositioned stops is spread evenly between its positioned neighbours.
+        internal static GradientStop[] FixUp(GradientStop[] raw)
+        {
+            var n = raw.Length;
+            var positions = new float[n];
+            var hints = new float[n];
+            for (var i = 0; i < n; i++)
+            {
+                positions[i] = raw[i].Position;
+                hints[i] = raw[i].Hint;
+            }
+            if (float.IsNaN(positions[0]))
+            {
+                positions[0] = 0f;
+            }
+            if (float.IsNaN(positions[n - 1]))
+            {
+                positions[n - 1] = 1f;
+            }
+            var largest = positions[0];
+            for (var i = 0; i < n; i++)
+            {
+                if (i > 0 && !float.IsNaN(positions[i]))
+                {
+                    largest = Mathf.Max(largest, positions[i]);
+                    positions[i] = largest;
+                }
+                if (!float.IsNaN(hints[i]))
+                {
+                    largest = Mathf.Max(largest, hints[i]);
+                    hints[i] = largest;
+                }
+            }
+            SpreadUnpositioned(positions);
+
+            var stops = new GradientStop[n];
+            for (var i = 0; i < n; i++)
+            {
+                stops[i] = new GradientStop(raw[i].Color, positions[i], float.NaN, hints[i]);
+            }
+            return stops;
+        }
+
+        // Ordering constraint: runs after the first and last positions are set, so every run of NaN ends
+        // at a positioned stop and the inner loop stops there.
+        private static void SpreadUnpositioned(float[] positions)
+        {
+            var previous = 0;
+            for (var i = 1; i < positions.Length; i++)
+            {
+                if (float.IsNaN(positions[i]))
+                {
+                    continue;
+                }
+                for (var k = previous + 1; float.IsNaN(positions[k]); k++)
+                {
+                    positions[k] = Mathf.Lerp(positions[previous], positions[i], (k - previous) / (float)(i - previous));
+                }
+                previous = i;
+            }
+        }
+
+        // bg-conic-{int} (start degrees) or bg-conic-[from_{angle}]. A bracket without `from` is no start angle:
+        // conic-gradient() takes an angle only after it.
+        private static bool TryParseConicStart(string s, out float deg)
+        {
+            if (s.StartsWith("[from_", StringComparison.Ordinal) && s[s.Length - 1] == ']')
+            {
+                return TryParseAngleValue("[" + s.Substring(6), negative: false, out deg);
+            }
+            deg = 0f;
+            return s.Length > 0 && s[0] != '[' && TryParseAngleValue(s, negative: false, out deg);
+        }
+
+        // "10%" or "[12.5%]" → 0.10 / 0.125, beyond 0..1 as written. False when not a percentage. Delegates to
+        // the shared utility length grammar (the same one w-[…]-style arbitrary values use) so the numeric
+        // parse can never drift from it; the explicit LengthUnit.Percent check is what keeps this a
+        // percentage-only grammar even though the shared parser also accepts px/rem/bare-number lengths.
+        private static bool TryParsePercent(string s, out float frac)
+        {
+            frac = 0f;
+            if (string.IsNullOrEmpty(s))
+            {
+                return false;
+            }
+            var body = StyleArbitraryValueResolver.TryStripBrackets(s, 0, out var inner) ? inner : s.AsSpan();
+            if (!StyleArbitraryValueResolver.TryParseValue(body, out var v, out var unit)
+                || unit != LengthUnit.Percent)
+            {
+                return false;
+            }
+            frac = v / 100f;
+            return true;
+        }
+
+        // Resolves a linear gradient axis activator to a CSS angle (degrees): bg-gradient-to-{dir},
+        // bg-linear-to-{dir} (v4 alias), bg-linear-{deg} / -bg-linear-{deg}, bg-linear-[{deg}deg].
+        private static bool TryParseAngle(string cls, out float angleDeg, out bool toCorner)
+        {
+            angleDeg = 0f;
+            toCorner = false;
+            var negative = cls.Length > 0 && cls[0] == '-';
+            var body = negative ? cls.Substring(1) : cls;
+
+            if (body.StartsWith(DirActivator, StringComparison.Ordinal))
+            {
+                return !negative && TryDirectionAngle(body.Substring(DirActivator.Length), out angleDeg, out toCorner);
+            }
+            if (body.StartsWith(LinearActivator, StringComparison.Ordinal))
+            {
+                var rest = body.Substring(LinearActivator.Length);
+                if (rest.StartsWith("to-", StringComparison.Ordinal))
+                {
+                    return !negative && TryDirectionAngle(rest.Substring(3), out angleDeg, out toCorner);
+                }
+                if (TryParseAngleValue(rest, negative, out var deg))
+                {
+                    angleDeg = negative ? -deg : deg;
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        // One of the 8 named directions → its CSS angle (0 = to top, clockwise), and whether it is a corner,
+        // which CSS lays out over the physical box rather than at the angle.
+        private static bool TryDirectionAngle(string dir, out float angleDeg, out bool toCorner)
+        {
+            toCorner = dir.Length == 2;
+            switch (dir)
+            {
+                case "t": angleDeg = 0f; return true;
+                case "tr": angleDeg = 45f; return true;
+                case "r": angleDeg = 90f; return true;
+                case "br": angleDeg = 135f; return true;
+                case "b": angleDeg = 180f; return true;
+                case "bl": angleDeg = 225f; return true;
+                case "l": angleDeg = 270f; return true;
+                case "tl": angleDeg = 315f; return true;
+                default: angleDeg = 0f; toCorner = false; return false;
+            }
+        }
+
+        // {int} (degrees) or a bracketed CSS angle (arbitrary). A negated bracket is read only where Tailwind's
+        // angle test passes it, which takes the unit in lower case and no bare 0; anything else it does not negate.
+        private static bool TryParseAngleValue(string s, bool negative, out float deg)
+        {
+            deg = 0f;
+            if (string.IsNullOrEmpty(s))
+            {
+                return false;
+            }
+            if (StyleArbitraryValueResolver.TryStripBrackets(s, 0, out var inner))
+            {
+                // An `angle:` hint passes the angle test whatever it holds; any other hint fails it.
+                if (!StyleArbitraryValueResolver.TrySplitTypeHint(inner, out var hint, out inner))
+                {
+                    return false;
+                }
+                var text = inner.ToString();
+                return TryParseCssAngle(text, out deg)
+                    && (!negative || (hint != null ? hint == "angle" : IsLowerCaseAngle(text)));
+            }
+            if (int.TryParse(s, NumberStyles.None, CultureInfo.InvariantCulture, out var whole))
+            {
+                deg = whole;
+                return true;
+            }
+            return false;
+        }
+    }
+}

@@ -1,0 +1,2 @@
+/* A theme declaring a text input's caret and selection colours on the control. */
+.theme-control { --unity-cursor-color: #0000ff; --unity-selection-color: #0000ff; }

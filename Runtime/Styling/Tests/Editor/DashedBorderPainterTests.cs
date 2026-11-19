@@ -1,0 +1,317 @@
+using System.Collections.Generic;
+using System.Linq;
+using NUnit.Framework;
+using UnityEngine;
+
+namespace Velvet.Tests
+{
+    /// <summary>
+    /// Specifies the arc-length dash/dot marcher (<see cref="DashedBorderPainter.ComputeSegments"/>) and the
+    /// polyline flattener it consumes (<see cref="SilhouetteFace.BuildShearedRoundedRectPolyline"/>). A dashed /
+    /// dotted outline is walked by arc length in Chromium's pattern for a stroked border.
+    /// A closed polyline wraps its last edge back to point 0; the flattened rounded-rect gains points as its
+    /// corners round, matching the corner sampling the shared Painter2D path builder emits. GWT, one assert
+    /// per case.
+    /// </summary>
+    [TestFixture]
+    internal sealed class DashedBorderPainterTests
+    {
+        private static List<(Vector2 From, Vector2 To)> Compute(IReadOnlyList<Vector2> polyline, bool closed,
+            float lineWidth, BorderLineStyle style)
+        {
+            var output = new List<(Vector2 From, Vector2 To)>();
+            DashedBorderPainter.ComputeSegments(polyline, closed, lineWidth, style, output);
+            return output;
+        }
+
+        [Test]
+        public void Given_AKnownEdgeAndWidth_When_DashesComputed_Then_TheRunCountMatchesTheFormula()
+        {
+            // Arrange — an open 26-unit edge at width 2: dash 6, gap 4, period 10 → runs at [0,6] [10,16] [20,26].
+            var edge = new List<Vector2> { new(0f, 0f), new(26f, 0f) };
+
+            // Act
+            var runs = Compute(edge, closed: false, lineWidth: 2f, BorderLineStyle.Dashed);
+
+            // Assert
+            Assert.That(runs.Count, Is.EqualTo(3));
+        }
+
+        [Test]
+        public void Given_AKnownEdgeAndWidth_When_DashesComputed_Then_EachRunIsThreeWidthsLong()
+        {
+            // Arrange
+            var edge = new List<Vector2> { new(0f, 0f), new(26f, 0f) };
+
+            // Act — the first painted run spans exactly the dash length (3× the line width).
+            var runs = Compute(edge, closed: false, lineWidth: 2f, BorderLineStyle.Dashed);
+
+            // Assert
+            Assume.That(runs, Is.Not.Empty, "Precondition: at least one dash run");
+            Assert.That((runs[0].To - runs[0].From).magnitude, Is.EqualTo(6f).Within(1e-3f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base draws every dot round, so a dot thicker than 3px was already one.
+        [Test]
+        public void Given_ADottedEdge_When_SegmentsComputed_Then_EveryDotIsZeroLength()
+        {
+            // Arrange — an open 20-unit edge at width 4, past the 3px up to which a dot is square.
+            var edge = new List<Vector2> { new(0f, 0f), new(20f, 0f) };
+
+            // Act — a round dot is a zero-length stroke (from == to), rendered as a round cap.
+            var dots = Compute(edge, closed: false, lineWidth: 4f, BorderLineStyle.Dotted);
+
+            // Assert
+            Assume.That(dots, Is.Not.Empty, "Precondition: at least one dot");
+            Assert.That(dots.All(d => d.From == d.To), Is.True);
+        }
+
+        // GREEN_ON_BASE(characterization): the base spaces every dot two widths apart, which a 22-unit edge keeps.
+        [Test]
+        public void Given_ADottedEdge_When_SegmentsComputed_Then_ConsecutiveDotsAreTwoWidthsApart()
+        {
+            // Arrange — 22 units at width 2 leaves a remainder of 2 over 4, which moves neither end dot.
+            var edge = new List<Vector2> { new(0f, 0f), new(22f, 0f) };
+
+            // Act — dots are spaced by 2× the line width along the arc.
+            var dots = Compute(edge, closed: false, lineWidth: 2f, BorderLineStyle.Dotted);
+
+            // Assert
+            Assume.That(dots.Count, Is.GreaterThan(1), "Precondition: at least two dots to measure spacing");
+            Assert.That((dots[1].From - dots[0].From).magnitude, Is.EqualTo(4f).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_AThreePixelDashedEdge_When_DashesComputed_Then_EachRunIsTwoWidthsLong()
+        {
+            // Arrange — from 3px up a dash is 2× the width and a gap 1×: dash 6, gap 3 fitted to 1 on 20 units.
+            var edge = new List<Vector2> { new(0f, 0f), new(20f, 0f) };
+
+            // Act
+            var runs = Compute(edge, closed: false, lineWidth: 3f, BorderLineStyle.Dashed);
+
+            // Assert
+            Assert.That((runs[0].To - runs[0].From).magnitude, Is.EqualTo(6f).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_AnEdgeThePatternDoesNotDivide_When_DashesComputed_Then_TheLastRunEndsAtTheEdgesEnd()
+        {
+            // Arrange — dash 6 and gap 4 do not divide 30 units; a gap of 2 fits four dashes end to end.
+            var edge = new List<Vector2> { new(0f, 0f), new(30f, 0f) };
+
+            // Act
+            var runs = Compute(edge, closed: false, lineWidth: 2f, BorderLineStyle.Dashed);
+
+            // Assert
+            Assert.That(runs[runs.Count - 1].To.x, Is.EqualTo(30f).Within(1e-3f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base fits a dash more where that leaves the gap nearer the preferred one.
+        [Test]
+        public void Given_AnEdgeWhereADashMoreFitsNearerThePreferredGap_When_DashesComputed_Then_TheDashMoreIsDrawn()
+        {
+            // Arrange — dash 3 and gap 2 on 22 units: four dashes would leave gaps of 10/3, five leave gaps of 7/4,
+            // the nearer to 2.
+            var edge = new List<Vector2> { new(0f, 0f), new(22f, 0f) };
+
+            // Act
+            var runs = Compute(edge, closed: false, lineWidth: 1f, BorderLineStyle.Dashed);
+
+            // Assert
+            Assert.That(runs.Count, Is.EqualTo(5));
+        }
+
+        // GREEN_ON_BASE(characterization): the base never fits a dash more that would leave no gap.
+        [Test]
+        public void Given_AnEdgeWhereADashMoreLeavesNoGap_When_DashesComputed_Then_TheGapIsKept()
+        {
+            // Arrange — dash 6 and gap 3 on 18 units: two dashes leave a gap of 6 and three leave none. None is as near
+            // the preferred 3 as 6 is, and is refused all the same, as it would draw the line solid.
+            var edge = new List<Vector2> { new(0f, 0f), new(18f, 0f) };
+
+            // Act
+            var runs = Compute(edge, closed: false, lineWidth: 3f, BorderLineStyle.Dashed);
+
+            // Assert
+            Assert.That(runs.Count, Is.EqualTo(2));
+        }
+
+        [Test]
+        public void Given_AnEdgeNoLongerThanTwoDashes_When_DashesComputed_Then_OneRunCoversIt()
+        {
+            // Arrange — 10 units is no longer than two dashes of 6, so the line is drawn solid.
+            var edge = new List<Vector2> { new(0f, 0f), new(10f, 0f) };
+
+            // Act
+            var runs = Compute(edge, closed: false, lineWidth: 2f, BorderLineStyle.Dashed);
+
+            // Assert
+            Assert.That((runs[0].To - runs[0].From).magnitude, Is.EqualTo(10f).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_AnEdgeShorterThanTwoDashesAndAGap_When_DashesComputed_Then_TheTwoDashesShrinkToFit()
+        {
+            // Arrange — dash 6, gap 4 and dash 6 take 16 units; on 14 each shrinks by 14/16, a dash to 5.25.
+            var edge = new List<Vector2> { new(0f, 0f), new(14f, 0f) };
+
+            // Act
+            var runs = Compute(edge, closed: false, lineWidth: 2f, BorderLineStyle.Dashed);
+
+            // Assert
+            Assert.That((runs[0].To - runs[0].From).magnitude, Is.EqualTo(5.25f).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_AClosedSquareThePatternDoesNotDivide_When_DashesComputed_Then_EachSideHoldsOneWholeDash()
+        {
+            // Arrange — dash 6 and gap 4 do not divide the 44-unit outline; a gap of 5 fits one dash per side.
+            var square = new List<Vector2> { new(0f, 0f), new(11f, 0f), new(11f, 11f), new(0f, 11f) };
+
+            // Act
+            var runs = Compute(square, closed: true, lineWidth: 2f, BorderLineStyle.Dashed);
+
+            // Assert — a dash crossing a corner would be broken into two runs there.
+            Assert.That(runs.Count, Is.EqualTo(4));
+        }
+
+        [Test]
+        public void Given_AThinDottedEdge_When_SegmentsComputed_Then_EachDotIsASquareAWidthLong()
+        {
+            // Arrange — up to 3px a dot is a butt-capped run as long as the line is wide.
+            var edge = new List<Vector2> { new(0f, 0f), new(20f, 0f) };
+
+            // Act
+            var dots = Compute(edge, closed: false, lineWidth: 2f, BorderLineStyle.Dotted);
+
+            // Assert
+            Assert.That((dots[0].To - dots[0].From).magnitude, Is.EqualTo(2f).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_ATwoPixelDottedEdgeAMultipleOfFourLong_When_SegmentsComputed_Then_ItEndsOnAWholeDot()
+        {
+            // Arrange — 2px dots two widths apart leave a gap at the end of 20 units, so the last dot is drawn on
+            // its own at 18 to 20.
+            var edge = new List<Vector2> { new(0f, 0f), new(20f, 0f) };
+
+            // Act
+            var dots = Compute(edge, closed: false, lineWidth: 2f, BorderLineStyle.Dotted);
+
+            // Assert
+            Assert.That(dots[dots.Count - 1].To.x, Is.EqualTo(20f).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_ATwoPixelDottedEdgeAMultipleOfFourLong_When_SegmentsComputed_Then_ItsFirstGapLosesAPixel()
+        {
+            // Arrange — the first dot is drawn on its own at 0 to 2 and the pattern resumes a pixel early, at 3.
+            var edge = new List<Vector2> { new(0f, 0f), new(20f, 0f) };
+
+            // Act
+            var dots = Compute(edge, closed: false, lineWidth: 2f, BorderLineStyle.Dotted);
+
+            // Assert
+            Assert.That(dots[1].From.x, Is.EqualTo(3f).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_AThreePixelDottedEdgeOneOverAMultipleOfSix_When_SegmentsComputed_Then_ThePatternStopsShortOfTheLastDot()
+        {
+            // Arrange — on 25 units the dots start at 0, 5, 11 and 17, and a last one is drawn on its own at 22 to
+            // 25; a pattern run on to the end would put a fifth dot at 23 ahead of it.
+            var edge = new List<Vector2> { new(0f, 0f), new(25f, 0f) };
+
+            // Act
+            var dots = Compute(edge, closed: false, lineWidth: 3f, BorderLineStyle.Dotted);
+
+            // Assert
+            Assert.That(dots[4].From.x, Is.EqualTo(22f).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_AThickDottedEdge_When_SegmentsComputed_Then_TheLastDotIsHalfAWidthFromTheEnd()
+        {
+            // Arrange — 4px dots on 24 units: the gap fits to 8/3 so four dots run from 2 to 22, their caps
+            // reaching both ends.
+            var edge = new List<Vector2> { new(0f, 0f), new(24f, 0f) };
+
+            // Act
+            var dots = Compute(edge, closed: false, lineWidth: 4f, BorderLineStyle.Dotted);
+
+            // Assert
+            Assert.That(dots[dots.Count - 1].From.x, Is.EqualTo(22f).Within(1e-3f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base grows a dotted edge's end dots by the growth it computes.
+        [Test]
+        public void Given_AOnePixelDottedEdgeAnEvenLength_When_SegmentsComputed_Then_ItsFirstDotGrowsByAPixel()
+        {
+            // Arrange — on 10 units the first dot is drawn on its own and grows from 0 to 2.
+            var edge = new List<Vector2> { new(0f, 0f), new(10f, 0f) };
+
+            // Act
+            var dots = Compute(edge, closed: false, lineWidth: 1f, BorderLineStyle.Dotted);
+
+            // Assert
+            Assert.That(dots[0].To.x, Is.EqualTo(2f).Within(1e-3f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base keeps a short edge's dot on its own segment.
+        [Test]
+        public void Given_AThickDottedEdgeShorterThanHalfADot_When_SegmentsComputed_Then_ItsDotStaysHalfAWidthIn()
+        {
+            // Arrange — a 4px dot on a 1-unit edge sits half a diameter in, at 2, past the edge's end.
+            var edge = new List<Vector2> { new(0f, 0f), new(1f, 0f) };
+
+            // Act
+            var dots = Compute(edge, closed: false, lineWidth: 4f, BorderLineStyle.Dotted);
+
+            // Assert
+            Assert.That(dots[0].From.x, Is.EqualTo(2f).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_AClosedSquare_When_SegmentsComputed_Then_TheWrapEdgeBackToPointZeroIsWalked()
+        {
+            // Arrange — a closed square. Its last edge runs from point 3 back to point 0 (the left edge, x = 0);
+            // an OPEN polyline would never traverse it, so a dot on that edge proves the wrap.
+            var square = new List<Vector2> { new(0f, 0f), new(10f, 0f), new(10f, 10f), new(0f, 10f) };
+
+            // Act
+            var dots = Compute(square, closed: true, lineWidth: 2f, BorderLineStyle.Dotted);
+
+            // Assert — a dot sits on the interior of the point-3 → point-0 edge (x == 0, strictly between the
+            // two corners), which only the closed wrap produces.
+            Assert.That(dots.Any(d => Mathf.Approximately(d.From.x, 0f) && d.From.y > 0.1f && d.From.y < 9.9f), Is.True);
+        }
+
+        [Test]
+        public void Given_ARoundedRectPolyline_When_Built_Then_ItHasMorePointsThanASquare()
+        {
+            // Arrange — the polyline flattener (an IRoundedRectPathSink) must keep the bezier corners a
+            // Painter2D path would draw: a rounded rect samples each corner into chords, so it flattens to
+            // strictly more points than a square (whose corners emit none).
+            var square = new List<Vector2>();
+            SilhouetteFace.BuildShearedRoundedRectPolyline(square,
+                new ShearedRoundedRect { Width = 100f, Height = 100f });
+            var rounded = new List<Vector2>();
+
+            // Act
+            SilhouetteFace.BuildShearedRoundedRectPolyline(rounded, new ShearedRoundedRect
+            {
+                Width = 100f,
+                Height = 100f,
+                RadiusTopLeft = 20f,
+                RadiusTopRight = 20f,
+                RadiusBottomRight = 20f,
+                RadiusBottomLeft = 20f,
+            });
+
+            // Assert
+            Assume.That(square, Is.Not.Empty, "Precondition: the square flattens to a polyline");
+            Assert.That(rounded.Count, Is.GreaterThan(square.Count));
+        }
+    }
+}

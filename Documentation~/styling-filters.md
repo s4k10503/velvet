@@ -1,0 +1,288 @@
+# Styling notes: Filters & the custom filter registry
+
+UI Toolkit 6.3 renders the USS `filter` property — a list of filter functions applied to an
+element's rendered output, the CSS `filter` equivalent. Velvet exposes it two ways:
+
+- **Built-in utilities** (`blur-*`, `contrast-*`, `grayscale-*`, …, `drop-shadow-*`) mirroring
+  Tailwind's filter scale, resolved to inline filter functions.
+- **The custom filter registry** (`VelvetFilters`), which exposes user-authored
+  `FilterFunctionDefinition` assets (custom filter shaders) to class strings as
+  `filter-[name:args]` — the CSS `filter: url(#name)` parity point.
+
+Every filter utility on an element — built-in or custom — composes into the **one** inline
+`filter` list, so they merge rather than overwrite: `blur-sm grayscale-[0.5]` produces
+`filter: blur(8px) grayscale(0.5)`.
+
+## Built-in filter utilities
+
+| Utility | Values | Notes |
+|---|---|---|
+| `blur` / `blur-<k>` / `blur-[N]` | bare = 8px; `none`/`xs`/`sm`/`md`/`lg`/`xl`/`2xl`/`3xl` = 0/4/8/12/16/24/40/64px | bracket: `px`, `rem` (at 16px), an absolute unit (`in`, `cm`, `mm`, `pt`, `pc`, `Q`), a bare `0`, `em`, a viewport unit, or a math function over them; no `%`, as CSS `blur()` takes none. `em` and the viewport units are measured on the element ([styling-arbitrary-lengths.md](styling-arbitrary-lengths.md#lengths-only-an-element-can-measure)) |
+| `contrast-<n>` / `contrast-[N]` | any whole `n` as `n`%; bracket ≥ 0, or a percentage | |
+| `grayscale` / `grayscale-<n>` / `grayscale-[N]` | bare = 100%; any whole `n` as `n`% | N ≥ 0, or a percentage; above 1 is clamped to 1, as CSS clamps it |
+| `invert` / `invert-<n>` / `invert-[N]` | bare = 100%; any whole `n` as `n`% | N ≥ 0, or a percentage; above 1 is clamped to 1, as CSS clamps it |
+| `sepia` / `sepia-<n>` / `sepia-[N]` | bare = 100%; any whole `n` as `n`% | N ≥ 0, or a percentage; above 1 is clamped to 1, as CSS clamps it |
+| `hue-rotate-<deg>` / `hue-rotate-[Ndeg]` | any whole number of degrees; the only filter with a negative form (`-hue-rotate-90`) | bracket: a CSS angle in `deg`, `rad`, `grad` or `turn`; a bare number only as `0`, as CSS takes it |
+| `brightness-<n>` / `brightness-[N]` | any whole `n` as `n`%; bracket ≥ 0, or a percentage | full CSS range, see below |
+| `saturate-<n>` / `saturate-[N]` | any whole `n` as `n`%; bracket ≥ 0, or a percentage | full CSS range, see below |
+
+`brightness` and `saturate` are the only two utilities UI Toolkit has no native filter type
+for. Rather than approximate them through a built-in (which clamps to the darken/desaturate
+range), Velvet renders each through its own custom-filter shader — `Velvet/FilterBrightness`
+and `Velvet/FilterSaturate`, registered internally as `FilterFunctionType.Custom` definitions.
+The shaders apply CSS `brightness()`'s uniform multiply and `saturate()`'s lerp-toward-luminance
+directly, unclamped, so the **full CSS range** applies: over-brightening (`brightness-150`) and
+over-saturation (`saturate-150`) work, and both match the browser exactly (the arithmetic and its clamp
+run on the pixel's encoded colour divided by its alpha, as CSS filters a colour that is not premultiplied,
+before the engine's Linear-colorspace conversion, so a Linear project does not over-darken). Only negative
+amounts are rejected, as CSS disallows them.
+
+`hue-rotate` renders through `Velvet/FilterHueRotate` in the same way: the Filter Effects `feColorMatrix`
+`hueRotate` matrix applied to the same colour, as CSS `hue-rotate()` is. UI Toolkit's own hue-rotate filter
+type is not used. `animate-hue` drives the same shader.
+
+All three shaders are put in front of the build by the step [player-builds.md](player-builds.md) describes,
+which needs nothing from you.
+
+Stacked filters compose in a fixed order (blur, brightness, contrast, grayscale, hue-rotate, invert,
+saturate, sepia, drop-shadow) regardless of class order, as Tailwind composes its filter utilities into one
+`filter` value. A browser applies a `filter` list in the order it is written, and the list Tailwind writes is in
+this order.
+
+### `drop-shadow-*`
+
+| Utility | Shadows |
+|---|---|
+| `drop-shadow` | `0 1px 2px` black at 10% and `0 1px 1px` black at 6%, Tailwind's deprecated default |
+| `drop-shadow-xs` / `-sm` / `-md` / `-lg` / `-xl` / `-2xl` | `0 1px 1px` 5% / `0 1px 2px` 15% / `0 3px 3px` 12% / `0 4px 4px` 15% / `0 9px 7px` 10% / `0 25px 25px` 15%, in black |
+| `drop-shadow-none` | none |
+| `drop-shadow-[<shadow>(,<shadow>)*]` | each shadow two or three lengths in the units `blur-[…]` takes (the offsets may be negative, the deviation may not), and an optional colour, the element's `color` where none is given, with `_` for spaces: `drop-shadow-[0_35px_35px_rgba(0,0,0,0.25)]` |
+| `drop-shadow-<color>` / `drop-shadow-[<color>]` | a palette name, an arbitrary colour, or `current` / `[currentcolor]` for the element's `color`, which colours the size beside it |
+
+The third length is the standard deviation of the blur, as CSS reads `drop-shadow()`. The shadow follows what
+the element draws, children and transparency included, and is drawn below it; `Velvet/FilterDropShadow` renders
+it, and the build step [player-builds.md](player-builds.md) describes ships it. `drop-shadow-*` and `shadow-*`
+are separate properties, as `filter` and `box-shadow` are in CSS: both render on one element, and neither's
+`-none` removes the other.
+
+A size and a colour on one element combine as Tailwind's do. The colour replaces each shadow's colour, except
+under the bare `drop-shadow`, a theme size without a modifier, or `drop-shadow-none`, that outranks it: those
+write their own colours, or none, so `drop-shadow-[#f00] hover:drop-shadow-md` is black on hover, while an
+arbitrary shadow takes the colour whichever outranks. A `/N` modifier on a theme size or an arbitrary shadow
+replaces its shadows' alpha; on any size it scales a colour token's alpha, and on a colour it scales that
+colour's own. A colour with no size draws no shadow.
+
+Filter utilities work everywhere other utilities do: under variants
+(`hover:blur-sm`, `dark:grayscale`), with the important modifier, and inside recipes. A filter change
+animates like any other property: `transition-all`, a bare `duration-*`, and the dedicated
+`transition-filter` class all tween it — see [Transitions](#transitions) for which of the two
+animators runs and why it matters.
+
+## Custom filters: `VelvetFilters` + `filter-[name:args]`
+
+Unity 6.3 lets you author your own filter as a `FilterFunctionDefinition` — a ScriptableObject
+that names the filter, declares its parameters, and lists the post-processing passes (your
+shader) it runs. Velvet exposes such a definition to class strings through a registry, keeping
+assets out of the render path the same way `VelvetFonts` keeps font assets out of class names:
+
+```csharp
+// Startup:
+VelvetFilters.Register("dissolve", dissolveDefinition);
+VelvetFilters.Register("glow", glowDefinition);
+
+// Anywhere in a component:
+V.Div(className: "filter-[dissolve:0.4]");
+V.Div(className: "filter-[glow:#ff0000:2] hover:filter-[glow:#ff0000:4]");
+```
+
+### Token grammar
+
+`filter-[name]` or `filter-[name:arg(:arg)*]`. Arguments fill the definition's **declared
+parameters** in order, and each one is parsed by its slot's declared type: a float slot takes
+a signed float (`filter-[wave:-0.5]`), a color slot takes Velvet's color grammar
+([styling-colors.md](styling-colors.md)). A missing tail is padded from the declaration's
+defaults — the same values the USS parser pads with — so a bare `filter-[name]` applies the
+declared defaults outright. Supplying more arguments than the declaration, or an argument that
+fails its slot's grammar, refuses the arguments as a whole. UI Toolkit's `FilterFunction` holds at most 4
+parameters, and adding a fifth throws (`CustomFilterRegistryTests` pins the engine's cap), so a definition
+declaring more is rejected at registration.
+
+A name nothing is registered under is a reference to a missing filter: the element draws no filter at
+all, its built-in utilities included, as CSS ignores the whole chain when a `url()` names no filter. The
+name is warned about once, and a change into or out of that state applies at once, as CSS interpolates a list
+holding a `url()` discretely. An extra argument, or an argument that fails its slot's grammar, leaves the class
+adding nothing, as CSS drops an invalid declaration, so a layer of the same name under it still applies; a
+registration that accepts the arguments resolves it.
+
+### Composition and layering
+
+- Custom functions compose **after** the built-in utilities, in the order their classes first
+  applied: `blur-sm filter-[dissolve:0.4]` → `blur(8px) dissolve(0.4)`.
+- Each registered name is its own layer stack, so `filter-[dissolve:0.4] filter-[glitch:0.1]`
+  are independent — and a variant over one name (`hover:filter-[dissolve:0.9]`) restores that
+  name's base arguments on hover-off without touching the others.
+- Repeating a name in one class string replaces its arguments instead of stacking a duplicate
+  function; the one Tailwind emits last wins, whichever is written first.
+- A name keeps its compose slot for the element's lifetime: changing a filter's arguments
+  (which the class diff performs as a clear-then-apply) does not re-slot it behind its
+  neighbors.
+
+### Transitions
+
+A filter change transitions, by the interpolation rule below, wherever the resolved `transition-property` runs
+an entry for `filter` — `transition-filter`, `transition-all`, a bare `duration-*` (whose `transition-property`
+stays at its initial whole-property value), or a hand-authored list naming `filter`. No opt-in class is required, matching
+CSS. An entry counts only where a transition runs for it, as UI Toolkit reads the lists: its own duration
+(floored at `0`) plus its own delay, each list wrapping, has to be positive. The last such entry naming `filter`,
+or `all`, gives the change its duration, delay and curve, and the old value holds through the delay. Where no
+entry runs for `filter` (`duration-0` with no delay, `transition-colors`, say), and on an off-panel change, the
+target value is written instantly, matching CSS's zero-duration behavior.
+
+Two animators run these changes:
+
+| The entry that runs for `filter` | Set by | Who animates |
+|---|---|---|
+| has the duration, delay and curve of the entry that runs for `background-size` or `-unity-background-scale-mode`, on a mount on the default `MotionClock` | `transition-all`, a bare `duration-*` | UI Toolkit's own transition system |
+| any other | `transition-filter`, a hand-authored list, either of the above on any other clock | Velvet's scheduler-driven tween (`StyleFilterTransitionDriver`) |
+
+UI Toolkit's inline-filter setter animates a filter list write by the entry for `background-size`, whatever the
+list says about `filter`. Where that entry's timing is the one `filter`'s entry gives (an `all` covering both, say),
+Velvet leaves the engine's animation in place, which keeps UI Toolkit's shortening of a reversed transition,
+on a mount whose `MotionClock` is the default; on any other the engine's animation would run on the panel's
+time, so Velvet's tween runs the change on the mount's clock
+([motion.md](motion.md#clocks-holding-motion-with-game-time)).
+Anywhere else Velvet's tween runs the change, and a filter write the setter would animate — a tween frame or an
+instant write — is made with transitions suspended, so a list naming `background-size` never animates a filter
+utility's change on its behalf. The tween eases by the curve a transition takes for each `ease-*` value (a cubic-bezier included, as
+[styling-colors.md](styling-colors.md#theme-tokens) describes),
+and a change back to where a running tween started reverses it over the shortened duration and negative delay
+the engine gives a reversed transition.
+
+A filter change that lands at once leaves a transform-origin transition running on the element, as in CSS, although
+UI Toolkit's inline-filter setter cancels that transition on such a write (Group G of `FilterTransitionPanelTests`):
+while one runs, Velvet writes the change past the cancel.
+
+While `animate-hue` drives an element's filter, the motion shows: a filter utility's change under it starts no
+transition and is not painted, and a filter transition already running keeps its clock unseen. When the motion
+ends, the filter its layers compose, variant layers included, is written at once, or the transition still running
+shows again until it ends. This is CSS's order: a transition applies only while no animation runs on the property,
+and an animation's start or end starts no transition.
+
+> **`transition-filter` does not combine with another `transition-*` utility.** They all set the
+> same `transition-property`, and at equal specificity the one Tailwind emits later, which the bundled
+> sheet declares later, wins outright rather than merging — `transition-filter transition-opacity`
+> resolves to the opacity list, which silently takes filter changes back to instant. Note also that pinning the property
+> means `transition-filter` transitions *only* `filter`: the element's colours, transforms and
+> geometry stop transitioning, which is what CSS does too. Put the other properties' transitions on a
+> different element, or hand-author a `transition-property` naming `filter` alongside them, in a stylesheet
+> that loads after the bundled utilities so it wins the cascade.
+
+Both animators interpolate the filter list by the CSS rule: functions pair by position, and a filter added or
+removed at the **end** of the list fades in from, or out to, its neutral value — `contrast` from and to `1` under
+either animator (Group E of `FilterTransitionPanelTests`). Any other change is discrete and applies at once, as in
+CSS: a filter added *before* an existing one (`grayscale` → `blur grayscale`), or a position whose function
+changes. The native filter types the utilities compose (`blur`, `contrast`, `grayscale`, `hue-rotate`, `invert`,
+`sepia`) and the first-party built-in customs (`brightness`, `saturate`, `drop-shadow`) interpolate, so
+`transition-filter duration-300` tweens `blur-none` → `blur-md` (or `brightness-100` → `brightness-150`) smoothly.
+A `drop-shadow` added or removed at the end fades from or to every length `0` and a transparent colour, as CSS
+pads it: those are the neutrals its definition declares.
+
+A user custom filter is a `url()` reference in CSS's terms, and CSS interpolates a filter list holding one
+discretely. So a change where the element's filter holds a `filter-[name:args]` before or after it applies at
+once under either animator: `filter-[glow:#f00:2]` → `hover:filter-[glow:#00f:6]`, a custom appearing or going,
+and a built-in beside a custom (`blur-none filter-[glow:2]` → `blur-md filter-[glow:2]`) alike. The same holds for
+the first filter utility written over a stylesheet `filter` that holds a custom filter function. Such a change
+stops a filter tween already running on the element.
+
+### Contract
+
+- **Registration reaches mounted elements.** `Register`, a re-registration and `Unregister` each resolve
+  every element carrying the name again, without starting a transition, by the `url()` rule under
+  [Transitions](#transitions). A class applied before its name was registered resolves when it is
+  registered, in the compose slot it took when applied.
+- The built-in family names (`blur`, `brightness`, `contrast`, `grayscale`, `hue-rotate`,
+  `invert`, `saturate`, `sepia`, `drop-shadow`) are **reserved** and cannot be registered.
+- A name must be free of whitespace, `:`, `[` and `]` (they would break the token grammar) and of `(` and `)`,
+  and must not be `none`: a `filter-[...]` body of that shape is CSS filter syntax (`filter-[blur(4px)]`,
+  `filter-[url(#x)]`, `filter-[none]`), which Velvet leaves as an inert class that costs the rest of the chain
+  nothing, and which a registration could never be reached through.
+- Re-registering a name warns and overwrites; `Unregister` removes it, and an element that keeps the
+  class draws no filter until the name is registered again. A re-registered definition that refuses a
+  class's arguments leaves that class inert, and the next registration that accepts them resolves it.
+- A definition destroyed after registration stops rendering, and the element's next compose drops its
+  whole filter, as for a name nothing is registered under.
+
+### Authoring the definition
+
+The definition asset and its shader contract are Unity's:
+[FilterFunctionDefinition](https://docs.unity3d.com/6000.3/Documentation/ScriptReference/UIElements.FilterFunctionDefinition.html)
+(`filterName`, `parameters`, `passes`). Velvet's own `Velvet/FilterBrightness`,
+`Velvet/FilterSaturate`, `Velvet/FilterHueRotate` and `Velvet/FilterDropShadow` shaders are written against `UnityUIEFilter.cginc`, and
+`BuiltInFilterShaderPlaybackTests` and `DropShadowFilterPlaybackTests` render them on this project's URP
+pipeline.
+
+## Backdrop filters
+
+Tailwind v4's `backdrop-*` utilities set CSS `backdrop-filter`: what lies behind the element is filtered, inside the
+element's border box and its rounded corners, and the element's own background, border and children paint over the
+result unfiltered. A translucent background over a blur is the frosted-glass pattern:
+
+```csharp
+V.Div(className: "rounded-xl bg-white/30 backdrop-blur-md backdrop-saturate-150");
+```
+
+| Utility | Values |
+|---|---|
+| `backdrop-blur-<k>` / `backdrop-blur-[N]` | `none`/`xs`/`sm`/`md`/`lg`/`xl`/`2xl`/`3xl` = 0/4/8/12/16/24/40/64px; the bracket takes what `blur-[…]` takes |
+| `backdrop-brightness-<n>` / `backdrop-brightness-[N]` | any whole `n` as `n`%; the bracket takes what `brightness-[…]` takes |
+| `backdrop-contrast-<n>` / `backdrop-contrast-[N]` | as `backdrop-brightness-*` |
+| `backdrop-saturate-<n>` / `backdrop-saturate-[N]` | as `backdrop-brightness-*` |
+| `backdrop-grayscale` / `backdrop-grayscale-<n>` / `backdrop-grayscale-[N]` | bare = 100%; `n`%, above 100% clamped to 100% |
+| `backdrop-invert` / `backdrop-invert-<n>` / `backdrop-invert-[N]` | as `backdrop-grayscale-*` |
+| `backdrop-sepia` / `backdrop-sepia-<n>` / `backdrop-sepia-[N]` | as `backdrop-grayscale-*` |
+| `backdrop-opacity-<n>` / `backdrop-opacity-[N]` | `n`%, or a number or percentage in the bracket; above 1 clamped to 1 |
+| `backdrop-hue-rotate-<n>` / `backdrop-hue-rotate-[angle]` | `n` degrees; the negative form `-backdrop-hue-rotate-<n>`; the bracket takes what `hue-rotate-[…]` takes |
+| `backdrop-filter-none` | `backdrop-filter: none` |
+| `backdrop-filter-[<list>]` | a CSS filter list with `_` for spaces, its functions run in the order written: `blur()`, `brightness()`, `contrast()`, `drop-shadow()`, `grayscale()`, `hue-rotate()`, `invert()`, `opacity()`, `saturate()`, `sepia()`, each taking what its filter utility's bracket takes and an empty argument as the function's default |
+
+Every utility of the family writes the one `backdrop-filter` declaration, and the class holding it is an important
+one before any other and otherwise the one Tailwind emits last, as for any other property:
+`backdrop-filter-none backdrop-blur-sm` resolves to none, `backdrop-filter-none backdrop-sepia` to `sepia(1)`.
+The function utilities compose into that declaration in Tailwind's order whatever the class order: blur,
+brightness, contrast, grayscale, hue-rotate, invert, opacity, saturate, sepia, each taking its value from the class
+holding its own slot. A function bracket the browser rejects (`backdrop-blur-[-4px]`) leaves the composed
+declaration invalid, so the element draws no backdrop filter; a list the browser rejects declares nothing, so the
+class under it holds the declaration; a name with no value (`backdrop-blur-huge`) adds nothing. A `url()` in a list
+names an SVG filter, which Velvet has none of, so it runs as no function and the rest of the list runs as written,
+as Chromium builds a backdrop filter whose reference does not resolve.
+The utilities work under variants (`hover:backdrop-blur-sm`), with the important modifier, and in the
+custom-property forms (`backdrop-blur-(--glass)`, [styling-custom-properties.md](styling-custom-properties.md)).
+
+What is filtered is what the target the panel draws into holds beneath the element's box at the moment the element
+is painted: what the target held when the panel began drawing, under everything the panel paints before the element
+in that frame, and nothing it paints after. Velvet places an immediate-mode layer directly before the element among
+its parent's children, which copies those pixels and paints them back filtered. It carries the element's transform,
+opacity, visibility and display, so the backdrop follows a rotated or scaled element and fades with it, and it sits
+inside every clip the element sits in: an ancestor's `overflow-hidden`, its rounded corners included, and the
+element's own `clip-path-*`. A screen-space overlay panel, a panel rendering into a `RenderTexture` and an editor
+window's panel all take the same layer.
+
+Each `blur()` and `drop-shadow()` is a Gaussian of the deviation given, cut at three deviations, in the element's
+own coordinates; past the box's edges it reads the box's own pixels mirrored. A deviation whose three-deviation reach
+exceeds 1024 pixels is blurred on a copy halved until the reach fits and drawn back up, so there is no limit on the
+deviation. A colour function runs on the
+encoded value, clamped to 0..1 after each one.
+
+A change transitions where the resolved `transition-property` runs an entry for `all` (`transition-all`, a bare
+`duration-*`), by CSS's rules for a filter list: functions pair by position, a list shorter than the other fades
+in or out at its end from the functions' initial values, `none` counts as an empty list, and any other change
+applies at once. A change back to where a running transition started runs for the part it had covered. UI Toolkit
+reads back no transition-property entry naming `backdrop-filter`, so only `all` reaches it.
+
+What remains different from a browser: a world-space panel draws no backdrop filter. UI Toolkit refuses an
+immediate-mode element in a panel cameras draw (`WorldSpaceImmediateModeTests` pins the refusal), and the layer has to
+be one to run at the element's place in paint order.
+
+The layer is `Velvet/BackdropFilter`, a shader the build step [player-builds.md](player-builds.md) describes ships.
+`BackdropFilterPlaybackTests`, `BackdropFilterOverlayPlaybackTests` and `BackdropFilterLayerTests` render it on a
+`RenderTexture` panel, a screen-space overlay panel and an editor window's panel.

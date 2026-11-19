@@ -1,0 +1,3583 @@
+#nullable enable
+using System.Collections.Generic;
+using UnityEngine.UIElements;
+
+namespace Velvet
+{
+    // A same-panel target's synthetic-bubbling bridge: what releases it.
+    internal readonly record struct SamePanelBridge(System.Action Release);
+
+    // Slot range that a single Portal placeholder owns within its target's children list.
+    // Multiple Portals targeting the same DOM node each carry one entry of this record so
+    // a Portal patch / CleanupPortal can address only that range without disturbing siblings.
+    // Keyed by the RESOLVED target element (not a registry id): registry portals, layer portals
+    // and world-space panels all share this bookkeeping, and only the element identity groups the
+    // portals whose ranges shift together — two layer portals on different layers must never
+    // shift each other even though neither carries a registry id. Null only for the mount-time
+    // path that found no registry target (nothing was mounted; SlotLength is 0), and for the
+    // window a retarget opens between leaving one element and mounting into the next.
+    // TargetId is carried for the one flavor whose element can be replaced under it: it is what
+    // ReconcilerContext.OnPortalTargetRegistered matches an incoming registration against, and it is null
+    // for the layer, world-space and caller-held-element flavors, which no registration addresses.
+    // DeclaringFiber is the component that rendered the node — the one whose re-render carries the
+    // registered element into a patch — and is null for a Portal rendered outside any component body.
+    // First and Last are the first and last rows of the range, held once the Portal has mounted or patched:
+    // PortalRangeTable reads the range from where those rows are, so a row that other code, another tree or
+    // a sibling's render put ahead of the range does not leave SlotStart pointing at somebody else's row.
+    // SlotStart and SlotLength remain what a range with no rows to read — an empty one, or one whose rows
+    // have left the target — is addressed by, which the shifts in PortalSlotTracker keep.
+    // ChildrenPending is set where the drain of a mount suspended: the Portal's node stands in the tree its
+    // owner committed with children that nothing mounted, so the patch that follows diffs them from nothing.
+    internal readonly record struct PortalSlotInfo(
+        VisualElement? Target, int SlotStart, int SlotLength,
+        string? TargetId = null, ComponentFiber? DeclaringFiber = null,
+        VisualElement? First = null, VisualElement? Last = null, bool ChildrenPending = false);
+
+    // ReconcilerContext.PortalState: the ranges as Portals recorded them, read back as their rows place them.
+    // Every read answers from the rows, the way a range with no rows to read answers from what was recorded;
+    // Stored is the recording itself, which the shifts in PortalSlotTracker and FiberCommitWork move and
+    // measure, since a read there would count a row once as moved and once as shifted.
+    internal sealed class PortalRangeTable : IEnumerable<KeyValuePair<VisualElement, PortalSlotInfo>>
+    {
+        private readonly Dictionary<VisualElement, PortalSlotInfo> _stored = new();
+
+        internal Dictionary<VisualElement, PortalSlotInfo> Stored => _stored;
+
+        public int Count => _stored.Count;
+
+        public Dictionary<VisualElement, PortalSlotInfo>.KeyCollection Keys => _stored.Keys;
+
+        public ValueView Values => new(this);
+
+        public bool ContainsKey(VisualElement placeholder) => _stored.ContainsKey(placeholder);
+
+        public bool Remove(VisualElement placeholder) => _stored.Remove(placeholder);
+
+        public void Clear() => _stored.Clear();
+
+        public PortalSlotInfo this[VisualElement placeholder]
+        {
+            get => Resolve(_stored[placeholder]);
+            set => _stored[placeholder] = value;
+        }
+
+        public bool TryGetValue(VisualElement placeholder, out PortalSlotInfo info)
+        {
+            var found = _stored.TryGetValue(placeholder, out info);
+            info = found ? Resolve(info) : default;
+            return found;
+        }
+
+        // Records which rows the range holds now, so later reads follow them. Called where a Portal's range
+        // is final: the end of its mount and of each patch.
+        internal void Anchor(VisualElement placeholder)
+        {
+            if (!_stored.TryGetValue(placeholder, out var info))
+            {
+                return;
+            }
+            VisualElement? first = null;
+            VisualElement? last = null;
+            if (info.Target != null && info.SlotLength > 0)
+            {
+                first = ChildListWrites.RowAt(info.Target, info.SlotStart);
+                last = ChildListWrites.RowAt(info.Target, info.SlotStart + info.SlotLength - 1);
+            }
+            _stored[placeholder] = info with { First = first, Last = last };
+        }
+
+        // The range as it stands for a patch that is about to change its rows, which nothing reads as anchored
+        // until the patch records them again.
+        internal void Unanchor(VisualElement placeholder)
+        {
+            if (_stored.TryGetValue(placeholder, out var info))
+            {
+                _stored[placeholder] = Resolve(info) with { First = null, Last = null };
+            }
+        }
+
+        private static PortalSlotInfo Resolve(PortalSlotInfo info)
+        {
+            var target = info.Target;
+            if (target == null || info.First == null || info.Last == null)
+            {
+                return info;
+            }
+            var firstIndex = ChildListWrites.PhysicalIndexOf(target, info.First);
+            var lastIndex = ChildListWrites.PhysicalIndexOf(target, info.Last);
+            if (firstIndex < 0 || lastIndex < firstIndex)
+            {
+                return info;
+            }
+            var start = LogicalChildSlots.ToLogical(target, firstIndex);
+            var end = LogicalChildSlots.ToLogical(target, lastIndex);
+            return info with { SlotStart = start, SlotLength = end - start + 1 };
+        }
+
+        public Enumerator GetEnumerator() => new(this);
+
+        IEnumerator<KeyValuePair<VisualElement, PortalSlotInfo>> IEnumerable<KeyValuePair<VisualElement, PortalSlotInfo>>.GetEnumerator()
+            => GetEnumerator();
+
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+
+        internal struct Enumerator : IEnumerator<KeyValuePair<VisualElement, PortalSlotInfo>>
+        {
+            private Dictionary<VisualElement, PortalSlotInfo>.Enumerator _inner;
+
+            internal Enumerator(PortalRangeTable table) => _inner = table._stored.GetEnumerator();
+
+            public KeyValuePair<VisualElement, PortalSlotInfo> Current
+                => new(_inner.Current.Key, Resolve(_inner.Current.Value));
+
+            object System.Collections.IEnumerator.Current => Current;
+
+            public bool MoveNext() => _inner.MoveNext();
+
+            public void Reset() => throw new System.NotSupportedException();
+
+            public void Dispose() => _inner.Dispose();
+        }
+
+        internal readonly struct ValueView : IEnumerable<PortalSlotInfo>
+        {
+            private readonly PortalRangeTable _table;
+
+            internal ValueView(PortalRangeTable table) => _table = table;
+
+            public ValueEnumerator GetEnumerator() => new(_table);
+
+            IEnumerator<PortalSlotInfo> IEnumerable<PortalSlotInfo>.GetEnumerator() => GetEnumerator();
+
+            System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+        }
+
+        internal struct ValueEnumerator : IEnumerator<PortalSlotInfo>
+        {
+            private Enumerator _pairs;
+
+            internal ValueEnumerator(PortalRangeTable table) => _pairs = new Enumerator(table);
+
+            public PortalSlotInfo Current => _pairs.Current.Value;
+
+            object System.Collections.IEnumerator.Current => Current;
+
+            public bool MoveNext() => _pairs.MoveNext();
+
+            public void Reset() => throw new System.NotSupportedException();
+
+            public void Dispose() => _pairs.Dispose();
+        }
+    }
+
+    // Captured on the top-level child fiber of a DETACHED mount — one whose children reconcile outside the
+    // normal parent-walked reconcile, so FiberContextSpine's parent-walk cannot reach the host that carries
+    // their enclosing Providers. Two cases:
+    //   Portal — children mount in the deferred drain (DrainPendingPortalMounts), after the pass that
+    //   reconciled the declaring component's own tree has already unwound past it.
+    //   VirtualList — items mount via the controller (FiberVirtualListController) on scroll, outside any pass.
+    // EnclosingSnapshot is the top value of every context active outside the detached mount (the base the
+    // consumer reads). DescendantNodes is the committed VNode subtree to walk to recover any Provider placed
+    // directly inside the detached subtree above this fiber. Anchor is the fiber the detached mount parented
+    // the children under (the registry-lookup parent the DescendantNodes walk matches against; null when no
+    // walk is needed). The snapshot reflects mount time; a host re-render that changes the enclosing context
+    // re-runs the detached mount with a correct cursor, so this stale copy only matters for the narrow case
+    // of an isolated re-render after such a change.
+    internal sealed class DetachedMountContext
+    {
+        internal readonly List<KeyValuePair<object, object>>? EnclosingSnapshot;
+        internal readonly VNode?[]? DescendantNodes;
+        internal readonly ComponentFiber Anchor;
+        internal readonly bool RootProviderChildrenStartAtWalkRoot;
+        // The ComponentFiber that logically called V.Portal/V.WorldSpace (captured at enqueue time — see
+        // PendingPortalMounts). Null for VirtualList's detached items (no portal call site to resolve)
+        // and for a bare Reconciler.Reconcile() drain with nothing on FiberStack. Anchor is the separate
+        // question of which fiber the detached mount parented the children under, which VirtualList
+        // answers with its host and a portal drain answers with this same declaring fiber.
+        internal readonly ComponentFiber? LogicalParent;
+
+        internal DetachedMountContext(
+            List<KeyValuePair<object, object>>? enclosingSnapshot, VNode?[]? descendantNodes, ComponentFiber anchor,
+            ComponentFiber? logicalParent = null, bool rootProviderChildrenStartAtWalkRoot = false)
+        {
+            EnclosingSnapshot = MotionContext.OutlivingPass(enclosingSnapshot);
+            DescendantNodes = descendantNodes;
+            Anchor = anchor;
+            LogicalParent = logicalParent;
+            RootProviderChildrenStartAtWalkRoot = rootProviderChildrenStartAtWalkRoot;
+        }
+    }
+
+    // What FiberZLayerCoordinator last arranged a parent's children into: whether its positioned children paint in the
+    // band after its unpositioned ones, and whether its layout list holds a relocated child's box at another child's
+    // index.
+    internal sealed class ZLayerHostRecord
+    {
+        public bool Lifted;
+        public bool Swapped;
+    }
+
+    // Per-relocated-element bookkeeping: the placeholder standing in its declared slot, the parent both share, and
+    // the z (null for auto) and flex order it was last arranged at. Keyed by the REAL element in
+    // ReconcilerContext.ZLayerMembers; the reverse index (placeholder -> real) is ZLayerPlaceholders.
+    internal readonly record struct ZLayerMember(
+        VisualElement Placeholder, VisualElement StackingParent, int? Z, int Order);
+
+    // The z (null for auto) and flex order an element's classes give it, recorded for an element whose classes name
+    // either or a position (FiberZLayerCoordinator.Record).
+    internal readonly record struct StackingFacts(int? Z, int Order);
+
+    // Shared helpers for maintaining the multi-Portal slot range invariant.
+    internal static class PortalSlotTracker
+    {
+        // Whether rows starting at start lie behind the range changedPlaceholder held before it changed. A
+        // range that held rows ends where the rows behind it begin, and one starting at its first row is
+        // ahead of it. At the first row of a range that held none, rows are behind it, and so is an empty
+        // start whose Portal comes later in the element tree; an empty start of the target's own content,
+        // with no Portal, is ahead.
+        internal static bool IsBehind(
+            int start, bool holdsRows, VisualElement? startsPortal, VisualElement changedPlaceholder, PortalSlotInfo changed)
+        {
+            var end = changed.SlotStart + changed.SlotLength;
+            // MUTANT_SURVIVES(equivalent): start differs from end on this line, so > and >= agree.
+            if (start != end) return start > end;
+            if (changed.SlotLength > 0 || holdsRows) return true;
+            return startsPortal != null && PrecedesInTree(changedPlaceholder, startsPortal);
+        }
+
+        // Moves by delta the other ranges on target that lie behind the one changedPlaceholder held before its
+        // change. The changed entry is excluded whether or not it is still recorded. Mutate-while-iterate is
+        // avoided via a deferred 2-pass scan.
+        internal static void ShiftRangesBehind(
+            Dictionary<VisualElement, PortalSlotInfo> portalState,
+            VisualElement? target,
+            VisualElement changedPlaceholder,
+            PortalSlotInfo changed,
+            int delta)
+        {
+            if (delta == 0 || target == null) return;
+            List<VisualElement>? placeholders = null;
+            foreach (var entry in portalState)
+            {
+                if (ReferenceEquals(entry.Key, changedPlaceholder)) continue;
+                if (!ReferenceEquals(entry.Value.Target, target)) continue;
+                if (!IsBehind(entry.Value.SlotStart, entry.Value.SlotLength > 0, entry.Key, changedPlaceholder, changed)) continue;
+                placeholders ??= new List<VisualElement>();
+                placeholders.Add(entry.Key);
+            }
+            if (placeholders == null) return;
+            foreach (var ph in placeholders)
+            {
+                var state = portalState[ph];
+                portalState[ph] = state with { SlotStart = state.SlotStart + delta };
+            }
+        }
+
+        // The rows target holds behind the end of the last range on it, or null when no range is on target.
+        // Target's own children sit ahead of every range, so a change in their count moves this while the
+        // recorded ends stand still.
+        internal static int? RowsBehindRanges(Dictionary<VisualElement, PortalSlotInfo> portalState, VisualElement target)
+        {
+            int? lastEnd = null;
+            foreach (var info in portalState.Values)
+            {
+                if (!ReferenceEquals(info.Target, target)) continue;
+                var end = info.SlotStart + info.SlotLength;
+                // MUTANT_SURVIVES(equivalent, boundary): where the two are equal, either arm is the same number.
+                lastEnd = lastEnd > end ? lastEnd : end;
+            }
+            return lastEnd == null ? null : LogicalChildSlots.Count(target) - lastEnd.Value;
+        }
+
+        // Moves by delta every range on target, which a change in target's own children does.
+        internal static void ShiftRangesOn(Dictionary<VisualElement, PortalSlotInfo> portalState, VisualElement target, int delta)
+        {
+            // MUTANT_SURVIVES(equivalent): a zero delta rewrites every start it visits to its own value.
+            if (delta == 0) return;
+            List<VisualElement>? placeholders = null;
+            foreach (var entry in portalState)
+            {
+                if (!ReferenceEquals(entry.Value.Target, target)) continue;
+                placeholders ??= new List<VisualElement>();
+                placeholders.Add(entry.Key);
+            }
+            if (placeholders == null) return;
+            foreach (var ph in placeholders)
+            {
+                var state = portalState[ph];
+                portalState[ph] = state with { SlotStart = state.SlotStart + delta };
+            }
+        }
+
+        // Document order between two distinct Portal placeholders, which hold no children, so neither is an
+        // ancestor of the other; elements in separate trees are unordered.
+        internal static bool PrecedesInTree(VisualElement first, VisualElement second)
+        {
+            var a = first;
+            var b = second;
+            var depthA = Depth(a);
+            var depthB = Depth(b);
+            for (; depthA > depthB; depthA--) a = ChildListWrites.ParentOf(a);
+            for (; depthB > depthA; depthB--) b = ChildListWrites.ParentOf(b);
+            while (!ReferenceEquals(ChildListWrites.ParentOf(a), ChildListWrites.ParentOf(b)))
+            {
+                a = ChildListWrites.ParentOf(a);
+                b = ChildListWrites.ParentOf(b);
+            }
+            var parent = ChildListWrites.ParentOf(a);
+            // MUTANT_SURVIVES(unreachable): every caller passes two placeholders that differ, and neither holds
+            // the other, so a and b are distinct children of parent here and their indices differ.
+            return parent != null && ChildListWrites.PhysicalIndexOf(parent, a) < ChildListWrites.PhysicalIndexOf(parent, b);
+        }
+
+        private static int Depth(VisualElement element)
+        {
+            var depth = 0;
+            for (var ancestor = ChildListWrites.ParentOf(element); ancestor != null; ancestor = ChildListWrites.ParentOf(ancestor)) depth++;
+            return depth;
+        }
+    }
+
+    // Per-element bookkeeping for the class-driven passes a variant payload can change, held in
+    // ReconcilerContext.VariantGateClasses. An entry is opened by whichever comes first: the reconcile pass
+    // that sees the element DECLARE a gated payload (FiberNodePatcher.RecordVariantGateSource), the create or
+    // patch that sees a gesture or drag channel or a play's classes carry one (ReconcilerContext.ExpectGatePayload,
+    // ExpectPlayGates), a create or patch under a [&>*]: container (ChildVariantHostDepth), or the toggle
+    // itself for an element none of those named — a play on an element ExpectPlayGates did not reach. It outlives an emptied token set,
+    // because the array it holds is what the NEXT toggle will need and no reconcile need ever run again to
+    // re-record it.
+    internal sealed class VariantGateState
+    {
+        // One slot per (token, priority) pair a variant currently has applied — the same slot model
+        // StyleClassProjection keeps for the live class list, so the two agree on when a token is still
+        // wanted. The projection decides which CLASSES may sit on the element; it cannot decide which of two
+        // same-family tokens a class-driven pass reads, because that is settled by the order of the composed
+        // array. This list carries that ranking.
+        // Priority is the layer key, which carries the applying rule's place among its element's rules
+        // (StyleLayerPriority.WithRule), so two rules asserting the same token hold a slot each, as they do in
+        // the projection. Declaration is that same place, kept per slot to break a tie inside one priority.
+        private readonly List<(string Token, long Priority, int Declaration)> _entries = new();
+
+        private readonly List<(string Token, long Priority, int Declaration)> _ranked = new();
+        private List<string> _tokens = new();
+        private List<string> _pending = new();
+
+        // Each applied gate token once, weakest first. Empty means the element declares one but has none lit,
+        // which is what puts it back on the cheap reconciled-array path.
+        // These are appended to the reconciled array to form the class source the passes read, and every
+        // family there resolves last-token-wins — so ascending is what makes the strongest payload win.
+        public List<string> Tokens => _tokens;
+
+        // Gate tokens of the reconciled array a play has taken off the element (StyleAnimationClassUtils), which
+        // the composed source leaves out until the play puts them back.
+        public List<string> Withheld { get; } = new();
+
+        // Whether the composed source differs from the reconciled array.
+        public bool Composes => _tokens.Count != 0 || Withheld.Count != 0;
+
+        // Withholds or restores one reconciled token, reporting whether that changed anything.
+        public bool Withhold(string token, bool on)
+        {
+            var index = Withheld.IndexOf(token);
+            if (on == index >= 0)
+            {
+                return false;
+            }
+            if (on)
+            {
+                Withheld.Add(token);
+            }
+            else
+            {
+                Withheld.RemoveAt(index);
+            }
+            return true;
+        }
+
+        // Records / drops one applied payload, reporting whether Tokens changed as a sequence — which is
+        // what decides whether the caller re-derives the gated passes. A token another live layer still
+        // asserts at a DIFFERENT priority survives the drop and reports no change; two layers at one
+        // priority share a slot, exactly as they do in the projection, so the second one to leave is what
+        // drops it there and here alike.
+        public bool Track(string cls, long priority, int declaration, bool on)
+        {
+            var index = IndexOf(cls, priority);
+            if (on)
+            {
+                if (index >= 0)
+                {
+                    // A slot the key already names: a re-apply keeps the later position and an idempotent one
+                    // leaves it alone.
+                    if (declaration <= _entries[index].Declaration)
+                    {
+                        return false;
+                    }
+                    _entries[index] = (cls, priority, declaration);
+                }
+                else
+                {
+                    _entries.Add((cls, priority, declaration));
+                }
+            }
+            else
+            {
+                // declaration is not consulted here: the slot is keyed by (token, priority), and the priority
+                // already names the rule. Callers pass it anyway, to keep their clear and evaluate loops the
+                // same call.
+                if (index < 0)
+                {
+                    return false;
+                }
+                _entries.RemoveAt(index);
+            }
+            return Reorder();
+        }
+
+        // Ranks each distinct token by its HIGHEST asserted priority, so a token two layers assert sits where
+        // the stronger one puts it, and breaks a tie within a band by that layer's declaration position.
+        // A stable insertion sort, so a token neither key separates keeps arrival order.
+        //
+        // What was verified, enumerated over StyleLayerPriority rather than summarised: the structural ranks,
+        // Supports, Aria and Data have one side-table supplier each; the responsive ranks and Dark have the
+        // conditional manipulator; the group/peer ranks have the relational one; the element-state ranks have
+        // the state manipulator; Has has BOTH the has-[.class]: side table and the event-driven manipulator;
+        // and ChildVariant has the child-combinator manipulator alone. All of those declare a position. The
+        // important band is those priorities with one more bit set, so it partitions identically.
+        //
+        // A stacked payload ranks at every part it carries (see StyleLayerPriority.Stack), so one gated by the
+        // child-combinator manipulator keeps that variant in its rank and never ties a payload the child declares
+        // itself. Between two payloads with no position, NoDeclaration being the weakest rank leaves arrival
+        // order to decide.
+        // Quadratic on a handful of tokens, and only on a toggle; the per-patch composition just reads it.
+        private bool Reorder()
+        {
+            BuildRanked();
+            for (var i = 1; i < _ranked.Count; i++)
+            {
+                var item = _ranked[i];
+                var at = i;
+                while (at > 0 && Outranks(_ranked[at - 1], item))
+                {
+                    _ranked[at] = _ranked[at - 1];
+                    at--;
+                }
+                _ranked[at] = item;
+            }
+
+            _pending.Clear();
+            foreach (var ranked in _ranked)
+            {
+                _pending.Add(ranked.Token);
+            }
+            if (SameSequence(_pending, _tokens))
+            {
+                return false;
+            }
+            (_tokens, _pending) = (_pending, _tokens);
+            return true;
+        }
+
+        private static bool Outranks((string Token, long Priority, int Declaration) a,
+            (string Token, long Priority, int Declaration) b)
+            => a.Priority > b.Priority || (a.Priority == b.Priority && a.Declaration > b.Declaration);
+
+        // Each distinct token at the strongest priority any layer asserts it at, carrying that same layer's
+        // declaration — the tie-break has to come from the rule that WINS the token, not from a weaker one
+        // that also names it.
+        private void BuildRanked()
+        {
+            _ranked.Clear();
+            foreach (var entry in _entries)
+            {
+                if (RankOf(entry.Token) < 0)
+                {
+                    _ranked.Add(StrongestOf(entry.Token));
+                }
+            }
+        }
+
+        private (string Token, long Priority, int Declaration) StrongestOf(string cls)
+        {
+            var strongest = (Token: cls, Priority: long.MinValue, Declaration: StyleVariantPayload.NoDeclaration);
+            foreach (var entry in _entries)
+            {
+                if (entry.Token == cls && entry.Priority > strongest.Priority)
+                {
+                    strongest = entry;
+                }
+            }
+            return strongest;
+        }
+
+        private int RankOf(string cls)
+        {
+            for (var i = 0; i < _ranked.Count; i++)
+            {
+                if (_ranked[i].Token == cls)
+                {
+                    return i;
+                }
+            }
+            return -1;
+        }
+
+        private int IndexOf(string cls, long priority)
+        {
+            for (var i = 0; i < _entries.Count; i++)
+            {
+                if (_entries[i].Priority == priority && _entries[i].Token == cls)
+                {
+                    return i;
+                }
+            }
+            return -1;
+        }
+
+        private static bool SameSequence(List<string> a, List<string> b)
+        {
+            if (a.Count != b.Count)
+            {
+                return false;
+            }
+            for (var i = 0; i < a.Count; i++)
+            {
+                if (a[i] != b[i])
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        // The class array this element's last reconcile pass was given — the only source carrying the tokens
+        // no class list can hold (variant tokens, and the bracket / static-scale values that resolve to
+        // inline style), which is why the resolved array is built ON it rather than from the live list alone.
+        //
+        public string[]? Reconciled;
+
+        // The array the passes were last given. Returned again, by reference, whenever the freshly composed
+        // one matches it token for token — so a tracked element allocates only on a real change, and the
+        // paint layers' "did the classes change" question is answered by a reference compare.
+        public string[]? Resolved;
+
+        // Whether a pass of this element's own has resolved it, which is what lets the re-sync run the
+        // wrapper-less paint tail. An element made or patched under a [&>*]: container is recorded as it is
+        // made, so the container's payload paints at mount for it; False for an element nothing but a toggle
+        // has ever named, for which the re-sync drives the layout gates alone until its next patch.
+        public bool PaintTail;
+    }
+
+    // Shared infrastructure between Reconciler subsystems.
+    // Holds the host-platform element operations and shared reconcile state injected into each subsystem.
+    internal sealed class ReconcilerContext
+    {
+        public FiberEventBindingManager EventManager { get; }
+        public FiberElementFactory FiberElementFactory { get; }
+        public ComponentRegistry ComponentRegistry { get; }
+        public FiberMemoCache FiberMemoCache { get; }
+        public StyleAnimationScheduler StyleAnimationScheduler { get; }
+        public ComponentContextStack ComponentContextStack { get; }
+        public FiberStack FiberStack { get; }
+        public ReconcilerBufferPool BufferPool { get; }
+
+        public Dictionary<VisualElement, VisualElement> WrapperToInnerMap { get; } = new();
+        public Dictionary<VisualElement, StyleGestureClassManipulator> GestureManipulators { get; } = new();
+        public Dictionary<VisualElement, StyleVariantManipulator> VariantManipulators { get; } = new();
+        public Dictionary<VisualElement, StyleConditionalVariantManipulator> ConditionalVariantManipulators { get; } = new();
+        public Dictionary<VisualElement, StyleContainerVariantManipulator> ContainerVariantManipulators { get; } = new();
+        public Dictionary<VisualElement, StyleRelationalVariantManipulator> RelationalVariantManipulators { get; } = new();
+        // The panels this context's relational consumers live on, heard for a source that joins outside a pass.
+        public RelationalTreeWatch RelationalTreeWatch { get; }
+
+        // The RelationalSourceSets hooking each relational source element (see RelationalSourceSet).
+        public Dictionary<VisualElement, List<RelationalSourceSet>> RelationalVariantSources { get; } = new();
+
+        // Structural variants (first:/last:/odd:/even:/only:/[&:nth-child(N)]:) declared on a CHILD but
+        // evaluated against its position among siblings. Each such child registers its parsed rules here at
+        // config time; the container's post-children pass (ApplyStructuralVariants) re-derives every rule's
+        // match from the live sibling order. Cleared on element cleanup / reconciler dispose.
+        public Dictionary<VisualElement, List<(StyleStructuralKind Kind, int N, string[] Payloads,
+            int[] Declarations, long Priority)>> StructuralVariants { get; } = new();
+
+        // has-[:checked]: / has-[:focus]: — an element styled by an event-driven descendant condition. The
+        // manipulator lives on the element and listens to bubbling descendant events (ChangeEvent<bool> for
+        // checked, FocusIn/Out for focus-within). Mirrors VariantManipulators. The has-[.class]: form is NOT
+        // here — it is a side-table (HasClassVariants) re-evaluated by the container post-children pass.
+        public Dictionary<VisualElement, StyleHasVariantManipulator> HasVariantManipulators { get; } = new();
+
+        // has-[.class]: — an element styled when one of its DESCENDANTS carries the named class. Unlike the
+        // event-driven has- forms there is no signal to listen to, so each such element registers its parsed
+        // (className, payload) rules here at config time; the element's own post-children pass
+        // (ApplyHasClassVariants, the same hook ApplyStructuralVariants uses but with the element as subject)
+        // re-derives every rule from a fresh descendant query, so a child added / removed re-derives it.
+        // Cleared on element cleanup / reconciler dispose.
+        public Dictionary<VisualElement, List<(string? ClassName, string?[] Payloads, int[] Declarations)>>
+            HasClassVariants { get; } = new();
+
+        // data-[key=value]: / data-[key]: / aria-[...]: — an element styled by its OWN carried attribute
+        // values (UI Toolkit has no HTML attributes, so the element supplies them via the Data / Aria props).
+        // Two side-tables, both keyed by the element:
+        //   DataAttributes — the live attribute store, namespaced by an "data:"/"aria:" key prefix so one map
+        //     holds both families. Updated on mount and on the props (DiffProps) path; the single source the
+        //     variant matches against.
+        //   AttributeVariants — the parsed (namespace, key, expectedValue, payload) rules, registered at
+        //     config time from the class list, re-evaluated against DataAttributes whenever the class list OR
+        //     the attribute store changes. There is no UI-Toolkit signal to listen to (no attribute-changed
+        //     event), so the props path drives the re-evaluation, mirroring the has-[.class]: side-table.
+        // Both cleared on element cleanup / reconciler dispose.
+        public Dictionary<VisualElement, Dictionary<string, string>> DataAttributes { get; } = new();
+        public Dictionary<VisualElement, List<(StyleAttributeNamespace Ns, string Key, string? ExpectedValue,
+            string[] Payloads, int[] Declarations)>> AttributeVariants { get; } = new();
+
+        // supports-[prop:value]: — an element styled by a CSS feature query. UI Toolkit targets one fixed
+        // engine, so a feature query is STATIC: a well-formed token is always-applied (see
+        // StyleSupportsVariantClass). There is no reactive signal and nothing to re-derive, so this table
+        // exists only to remember the applied payloads: it is written once at config time (payload applied
+        // immediately, always-on) and read solely so a later class-list change can clear the prior payload
+        // before re-deriving. Cleared on element cleanup / reconciler dispose.
+        public Dictionary<VisualElement, List<(string[] Payloads, int[] Declarations)>> SupportsVariants { get; } = new();
+
+        // The element's own custom-property tokens as FiberNodePatcher.ApplyCustomPropertyConfig last applied them,
+        // so a class-list change toggles only the ones that moved. Cleared on element cleanup / reconciler dispose.
+        public Dictionary<VisualElement, List<(string Core, long Priority, int Declaration, int Order)>> CustomPropertyClasses { get; } = new();
+
+        // text-transform / text-decoration / whitespace-pre-line / leading-* (uppercase / underline / … / the
+        // pre-line collapse / line-height). UI Toolkit has no property for any of them, so they are realised
+        // in the string the leaf shows (StyleTextEffectResolver). TextEffects holds each element's OWN
+        // parsed effect (the cascade source, now four axes — Leading rides the same table, see LeadingUnit);
+        // TextRawText holds the text the app gave, captured at the text-set seams so the effect re-applies
+        // idempotently. TextWhitespaceOwned is a THIRD table, set-shaped (a Dictionary with a trivial bool
+        // value): presence means this element's CURRENT inline style.whiteSpace was written by the resolver
+        // itself, so a later resolve that writes nothing clears only what the resolver owns — never a
+        // value set directly by other means (e.g. a refCallback, a pattern the framework treats as legitimate
+        // — see RefCallbacks below). All of them are pure (teardown = Remove(element)).
+        public Dictionary<VisualElement, TextEffect> TextEffects { get; } = new();
+        public Dictionary<VisualElement, string> TextRawText { get; } = new();
+        public Dictionary<VisualElement, bool> TextWhitespaceOwned { get; } = new();
+
+        // The string a text leaf shows when the resolver has handed the engine one other than the leaf's text
+        // (StyleTextEffectResolver.ShowText), with the text it was made from. Absent while the leaf shows its
+        // text. Pure like the three above.
+        public Dictionary<VisualElement, (string Raw, string Shown)> TextRendered { get; } = new();
+
+        // A FOURTH pure table, set-shaped like TextWhitespaceOwned: presence means the reconciler made this
+        // element for a TextNode, so its own reconcile applies no class of its own — ever, not merely not
+        // yet. That is what lets the variant re-sync resolve a parent's [&>*]: payload for it from the
+        // payload alone: for every other element an absent reconciled array means "its own pass has not run
+        // yet", and resolving without it would overwrite the font or leading that element declares. Written
+        // at the TextNode text-set seam (StyleTextEffectResolver.OnTextSet), which the Text-prop seam
+        // (CaptureRaw) deliberately does not share.
+        public Dictionary<VisualElement, bool> TextNodeElements { get; } = new();
+
+        // The three per-child claim tables — StyleChildOwnership owns why they exist and why they are split by
+        // property domain rather than by manipulator. Each is enrolled below because its value is a claim
+        // marker: the manipulators' own lifetimes are held by the tables further down, so dropping the entry
+        // is the whole of a claim's teardown.
+        //
+        // The [&>*]: walk's payload. An arbitrary payload does not need the two containers to carry the same
+        // token: an inline layer is keyed by property and priority, so [&>*]:w-[8px] takes [&>*]:w-[12px]'s
+        // layer away.
+        public Dictionary<VisualElement, Manipulator> ChildVariantOwners { get; } = new();
+
+        // The child's own box — the margins StyleGapManipulator writes, and the width plus four margins
+        // StyleGridManipulator writes. Shared by those two because a grid container and a gap container
+        // write the same margin slots on whichever child they hold.
+        public Dictionary<VisualElement, Manipulator> ChildBoxOwners { get; } = new();
+
+        // The divider border StyleDivideManipulator writes on a child, along with the dashed-stroke paint
+        // binding that rides on the same edge.
+        public Dictionary<VisualElement, Manipulator> ChildDividerOwners { get; } = new();
+
+        // The one table for this subsystem that is NOT pure, backing the Decoration axis's Overline value
+        // specifically:
+        // UI Toolkit rich text has no overline tag (unlike Underline/LineThrough, which rewrite the string
+        // with <u>/<s>), so Overline is realised as a generateVisualContent PAINT binding on the leaf
+        // TextElement instead — see TextOverlineBinding / TextOverlineSilhouette. Unlike the pure
+        // tables above, an entry here owns a live delegate subscription (like ShadowBindings and
+        // BorderStyleBindings below), so it is deliberately NOT enrolled in _pureElementSideTables —
+        // FiberElementCleaner detaches the callback explicitly before an element is torn down or returned to
+        // the pool, mirroring exactly how those paint bindings are swept.
+        public Dictionary<VisualElement, TextOverlineBinding> TextOverlineBindings { get; } = new();
+
+        // Elements declaring an em or percentage leading-[…], each with the probe reading its font size. Not
+        // pure for the reason TextOverlineBindings is not: an entry owns live callbacks, which
+        // FiberElementCleaner detaches.
+        public Dictionary<VisualElement, LeadingLengthProbe> LeadingLengthProbes { get; } = new();
+
+        // Text leaves whose shown string differs from their text, each with the callback that notices what it
+        // was built under moving (TextShownWatch). Not pure for the same reason: FiberElementCleaner detaches it.
+        public Dictionary<VisualElement, TextShownWatch> TextShownWatches { get; } = new();
+
+        // The per-element "pure" side-tables (structural / has-[.class]: / data-/aria- rules + their attribute
+        // store / supports- / Motion applied-classes) — those whose teardown is a plain Remove(element): no
+        // manipulator to detach and no resource (a shader Material, a baked VectorImage, an event subscription,
+        // a cleanup callback) to dispose, because the applied style payloads simply die with the element. They
+        // are collected here so element cleanup and reconciler dispose clear them through one mechanism
+        // (ClearElementSideTables / ClearAllSideTables) rather than one hand-wired line per table: a NEW such
+        // side-table is enrolled by adding it to this list, which removes the recurring risk that a new
+        // variant's table is introduced but its cleanup / dispose wiring is forgotten (a ghost-leak / pool-reuse
+        // bug). Tables backed by a manipulator, a disposable resource, or a cleanup callback (e.g. the variant /
+        // gesture / gap / divide / stacked manipulators, the ref cleanups, the shadow / clip / gradient / skew
+        // bindings, VirtualList controllers, Outlet scopes) are deliberately NOT here — each needs bespoke
+        // teardown and stays wired explicitly. Populated in the constructor (an instance field initializer may
+        // not reference these instance properties).
+        private readonly System.Collections.IDictionary[] _pureElementSideTables;
+
+        // Removes the element's entry from every pure side-table. The non-generic IDictionary.Remove ignores a
+        // key the table does not hold, so this is a no-op for any table the element was never registered in.
+        internal void ClearElementSideTables(VisualElement element)
+        {
+            ChildListWrites.Drop(element);
+            foreach (var table in _pureElementSideTables)
+            {
+                if (table.Count != 0)
+                {
+                    table.Remove(element);
+                }
+            }
+        }
+
+        // Empties every pure side-table. Used by Reconciler.Dispose to drop all element references at once.
+        internal void ClearAllSideTables()
+        {
+            foreach (var table in _pureElementSideTables)
+            {
+                table.Clear();
+            }
+        }
+
+        // Stacked-variant manipulators (dark:hover:..., group-hover:focus:...), keyed by (target, outer owner,
+        // inner kind, inner name, leaf) so each distinct stacked leaf gets its own gated manipulator and is torn
+        // down with the element. The owner is the top-level manipulator instance (or a parent stacked
+        // manipulator for a 3-deep stack), so two different outer variants stacking the same inner+leaf stay
+        // distinct. innerName is the relational name of a NAMED inner (dark:group-hover/sidebar:bg-on) — "" for
+        // every other inner — so two stacked named relationals (dark:group-hover/a / dark:group-hover/b) get
+        // separate manipulators resolving their own source.
+        public IReadOnlyDictionary<(VisualElement target, object owner, long outerPriority, StyleVariantKind inner, string innerName, string? leaf), StyleStackedVariantManipulator> StackedVariantManipulators => _stackedVariantManipulators;
+        private readonly Dictionary<(VisualElement target, object owner, long outerPriority, StyleVariantKind inner, string innerName, string? leaf), StyleStackedVariantManipulator> _stackedVariantManipulators = new();
+
+        // The same registrations grouped by target, so a settle on one element reads that element's entries
+        // instead of copying the whole registry. Written only by AddStackedVariant, RemoveStackedVariant and
+        // ClearStackedVariants, beside the registry above. A target's entry goes with its last registration, so
+        // the index holds no element the registry has let go of. An entry carries its manipulator beside its
+        // key so that reading a target's manipulators looks no key up in the registry.
+        private readonly Dictionary<VisualElement, List<StackedVariantRegistration>> _stackedVariantsByTarget = new();
+
+        private readonly struct StackedVariantRegistration
+        {
+            public readonly (VisualElement target, object owner, long outerPriority, StyleVariantKind inner, string innerName, string? leaf) Key;
+            public readonly StyleStackedVariantManipulator Manipulator;
+
+            public StackedVariantRegistration((VisualElement target, object owner, long outerPriority, StyleVariantKind inner, string innerName, string? leaf) key,
+                StyleStackedVariantManipulator manipulator)
+            {
+                Key = key;
+                Manipulator = manipulator;
+            }
+        }
+
+        private void AddStackedVariant((VisualElement target, object owner, long outerPriority, StyleVariantKind inner, string innerName, string? leaf) key, StyleStackedVariantManipulator manipulator)
+        {
+            _stackedVariantManipulators[key] = manipulator;
+            if (!_stackedVariantsByTarget.TryGetValue(key.target, out var registrations))
+            {
+                registrations = new List<StackedVariantRegistration>();
+                _stackedVariantsByTarget[key.target] = registrations;
+            }
+            registrations.Add(new StackedVariantRegistration(key, manipulator));
+        }
+
+        private StyleStackedVariantManipulator? RemoveStackedVariant((VisualElement target, object owner, long outerPriority, StyleVariantKind inner, string innerName, string? leaf) key)
+        {
+            if (!_stackedVariantManipulators.Remove(key, out var removed))
+            {
+                return null;
+            }
+            var registrations = _stackedVariantsByTarget[key.target];
+            // MUTANT_SURVIVES(unreachable, boundary): AddStackedVariant listed every manipulator the registry
+            // holds under its key's target, so the loop finds removed and breaks before i reaches Count.
+            for (var i = 0; i < registrations.Count; i++)
+            {
+                if (ReferenceEquals(registrations[i].Manipulator, removed))
+                {
+                    registrations.RemoveAt(i);
+                    break;
+                }
+            }
+            if (registrations.Count == 0)
+            {
+                _stackedVariantsByTarget.Remove(key.target);
+            }
+            return removed;
+        }
+
+        internal void ClearStackedVariants()
+        {
+            _stackedVariantManipulators.Clear();
+            _stackedVariantsByTarget.Clear();
+        }
+
+        internal bool HasStackedVariantsOn(VisualElement target) => _stackedVariantsByTarget.ContainsKey(target);
+
+        // A caller walks the copy rather than the index: a settle applies a payload, and a payload that is
+        // itself a variant re-enters GateStackedVariant, which adds to and removes from the very list it would
+        // be reading. StackedVariantEdgeTests pins the case.
+        internal void CopyStackedVariantsOn(VisualElement target, List<StyleStackedVariantManipulator> into)
+        {
+            if (!_stackedVariantsByTarget.TryGetValue(target, out var registrations))
+            {
+                return;
+            }
+            foreach (var registration in registrations)
+            {
+                into.Add(registration.Manipulator);
+            }
+        }
+
+        // Walks the whole registry over a pooled copy, for the reason CopyStackedVariantsOn gives.
+        internal void ForEachStackedVariant<TState>(TState state,
+            System.Action<StyleStackedVariantManipulator, TState> action)
+        {
+            if (_stackedVariantManipulators.Count == 0)
+            {
+                return;
+            }
+            var stacked = BufferPool.RentStackedVariantList();
+            try
+            {
+                foreach (var manipulator in _stackedVariantManipulators.Values)
+                {
+                    stacked.Add(manipulator);
+                }
+                foreach (var manipulator in stacked)
+                {
+                    action(manipulator, state);
+                }
+            }
+            finally
+            {
+                BufferPool.ReturnStackedVariantList(stacked);
+            }
+        }
+
+        // Walked over a copy, each removed before it is detached and skipped once already gone: a detach closes
+        // its leaf through GateStackedVariant, which can remove a registration listed after it.
+        internal void DetachStackedVariants(VisualElement target)
+        {
+            if (!_stackedVariantsByTarget.TryGetValue(target, out var registrations))
+            {
+                return;
+            }
+            foreach (var registration in registrations.ToArray())
+            {
+                var removed = RemoveStackedVariant(registration.Key);
+                if (removed != null)
+                {
+                    target.RemoveManipulator(removed);
+                }
+            }
+        }
+
+        // Detaches and forgets every stacked manipulator owner gated, and every one those gated in turn, for an
+        // owner that is going away while its target stays: no call opens their gates again, and a retained one
+        // would otherwise stay on the element, hooked, until unmount.
+        internal void DropStackedVariants(object owner)
+        {
+            List<(VisualElement, object, long, StyleVariantKind, string, string?)>? owned = null;
+            foreach (var kv in _stackedVariantManipulators)
+            {
+                if (ReferenceEquals(kv.Key.owner, owner))
+                {
+                    (owned ??= new List<(VisualElement, object, long, StyleVariantKind, string, string?)>()).Add(kv.Key);
+                }
+            }
+            if (owned == null)
+            {
+                return;
+            }
+            foreach (var key in owned)
+            {
+                var dropped = RemoveStackedVariant(key);
+                if (dropped != null)
+                {
+                    key.Item1.RemoveManipulator(dropped);
+                    DropStackedVariants(dropped);
+                }
+            }
+        }
+
+        // Looks up/creates the stacked manipulator for this outer owner + inner variant + leaf and toggles its
+        // outer gate. Called by StyleVariantPayload.Apply when a payload is itself a variant. A named inner
+        // relational (group-hover/sidebar:) threads its name through so the nested manipulator resolves the
+        // named source, not the unnamed group/peer.
+        internal void GateStackedVariant(VisualElement target, object owner, string variantPayload,
+            bool outerOn, long outerPriority, int declaration)
+        {
+            if (!StyleVariantClass.TryParse(variantPayload, out var innerKind, out var innerName, out var leafPayload))
+            {
+                return;
+            }
+            // outerPriority is part of the key because two sub-states of one owning manipulator (dark: + sm:
+            // share the conditional manipulator; the six group/peer states share the relational one) have the
+            // same owner instance and must NOT share a stacked manipulator or its single outer-gate bit.
+            var key = (target, owner, outerPriority, innerKind, innerName ?? string.Empty, leafPayload);
+            if (outerOn)
+            {
+                if (!_stackedVariantManipulators.TryGetValue(key, out var m))
+                {
+                    var innerPriority = StyleLayerPriority.ForVariant(innerKind, innerName);
+                    var priority = StyleLayerPriority.Stack(outerPriority, innerPriority);
+                    m = new StyleStackedVariantManipulator(this, innerKind, innerName,
+                        new string?[] { leafPayload }, priority, declaration);
+                    m.SeedInner(VariantManipulators.TryGetValue(target, out var local)
+                        ? local.Holds(innerKind)
+                        : StyleVariantManipulator.LiveHolds(target, innerKind));
+                    AddStackedVariant(key, m);
+                    target.AddManipulator(m);
+                }
+                else
+                {
+                    // A retained manipulator was built at an earlier render, and the rule's place moves with the
+                    // element's other rules; it takes the current one while its gate is still closed.
+                    m.Redeclare(declaration);
+                }
+                m.SetOuterGate(true);
+            }
+            else if (_stackedVariantManipulators.TryGetValue(key, out var m))
+            {
+                // Outer gate closed: clear the leaf. Level-based inners (dark, responsive) are then
+                // detached + dropped so their subscription (a stacked dark:'s process-wide
+                // DarkModeChanged) is released immediately, not left until unmount — safe because a
+                // re-created manipulator re-derives that ambient truth on attach. An EDGE-based
+                // inner (hover/focus/active, element-local or relational) must stay attached with
+                // just the gate closed: its pointer/focus signals fire only on state edges, so a
+                // fresh instance cannot re-seed "pointer already over" and a continuously-held
+                // hover would be lost across an outer close/reopen until a physical re-hover. Its
+                // hooks are per-element (no process-wide leak) and unmount still sweeps it.
+                m.SetOuterGate(false);
+                if (!m.RetainsAcrossOuterClose)
+                {
+                    target.RemoveManipulator(m);
+                    RemoveStackedVariant(key);
+                    DropStackedVariants(m);
+                }
+            }
+        }
+
+        public Dictionary<VisualElement, StyleGapManipulator> GapManipulators { get; } = new();
+        public Dictionary<VisualElement, StyleCompositeFlowManipulator> CompositeFlowManipulators { get; } = new();
+        public Dictionary<VisualElement, StyleDivideManipulator> DivideManipulators { get; } = new();
+        public Dictionary<VisualElement, StyleGridManipulator> GridManipulators { get; } = new();
+        // The line-breaking manipulator of each text leaf whose resolved text-wrap-style is balance or pretty
+        // (StyleTextEffectResolver attaches it). Mirrors GapManipulators / GridManipulators; removed on
+        // cleanup / dispose.
+        public Dictionary<VisualElement, StyleTextBalanceManipulator> TextBalanceManipulators { get; } = new();
+        // The automatic minimum size of a text flex item, one per Label / Button the reconciler creates.
+        // Removed on cleanup / dispose like the manipulators above.
+        public Dictionary<VisualElement, StyleFlexMinSizeManipulator> FlexMinSizeManipulators { get; } = new();
+
+        internal void RescanFlexMinSize(VisualElement element)
+        {
+            if (FlexMinSizeManipulators.TryGetValue(element, out var manipulator))
+            {
+                manipulator.Rescan();
+            }
+        }
+        // Each element whose own class list carries pointer-events-none or pointer-events-auto. Not a pure
+        // side-table: a scope holds picking off across a subtree, released on cleanup / dispose.
+        public Dictionary<VisualElement, PointerEventsScope> PointerEventsScopes { get; } = new();
+        // Elements this context put children into, or may have changed a pointer-events utility under, since the
+        // pointer-events scopes were last walked: the element each top-level pass reconciled into, each Portal
+        // target a mount or patch reconciled into, and the mount target and Portal targets a request outside a pass
+        // names (PointerEventsScope.NoteReconciledInto). Every walk (PointerEventsScope.WalkAll) empties it.
+        public HashSet<VisualElement> PointerEventsAnchors { get; } = new();
+        // Above zero from the start of Reconciler.FinishTopLevelPass until the pointer-events walk near its end. In
+        // that span SharedReconcileDepth is already back at zero, while the portal drain can still create elements,
+        // and the relational retarget toggle payloads, that request a walk (PointerEventsScope.RequestSyncAll).
+        internal int PointerEventsWalkHeld { get; set; }
+
+        // Elements a VARIANT currently has a gate token toggled onto, keyed by that element. A gate token is
+        // one whose mere presence in a class array decides what a class-driven pass builds; the families are
+        // enumerated once, in StyleVariantPayload.IsVariantGateToken. Those
+        // passes are configured from the RECONCILED class array, which never carries such a token: `md:grid`
+        // is a variant token, and the bare `grid` it resolves to is written straight onto the live class list
+        // by the conditional manipulator without passing back through the reconciler. An entry here marks the
+        // element as one whose passes must read a class source that APPENDS the tokens recorded below to that
+        // array (see FiberNodePatcher.ResolveVariantClasses), so `gap-4 md:grid md:grid-cols-3` lays out as a
+        // spaced grid above the breakpoint and as a gapped flex row below it, and `md:shadow-lg` paints a
+        // shadow. Only the gate tokens are tracked, so an ordinary `hover:bg-red` element never gets an entry
+        // and never pays the composition. Written by StyleVariantPayload.Apply for EVERY variant family (state
+        // / conditional / relational / child / stacked / has-), since any of them can carry such a payload. A
+        // pure side-table (teardown is a plain Remove), so it is enrolled in _pureElementSideTables.
+        public Dictionary<VisualElement, VariantGateState> VariantGateClasses { get; } = new();
+
+        // The family each element's font layer named or inherited (FiberFontScope). Its two tables are pure
+        // side-tables, enrolled below.
+        internal FiberFontScope FontScope { get; } = new();
+
+        // Hook to re-run every class-driven pass a variant payload can change (the layout manipulators and
+        // the paint layers) against the element's current class source, set by FiberNodePatcher.
+        // StyleVariantPayload.Apply invokes it after a variant toggles one of the gate tokens above: that
+        // toggle happens outside any reconcile pass (a breakpoint crossing, a theme flip, a pointer state
+        // change), so nothing else would re-run those passes. Null until the patcher wires it.
+        public System.Action<VisualElement> VariantGatedReSync { get; set; } = null!;
+
+        // A class channel that is not a variant (whileHoverClass, a drag's class) carrying a gate token needs the
+        // element's class source recorded as a declared variant payload does (FiberNodePatcher.RecordVariantGateSource),
+        // so a toggle re-derives its paints. Called ahead of the create path's paint resolution.
+        internal void ExpectGatePayload(VisualElement element, string[] payloads)
+        {
+            if (StyleVariantPayload.CarriesGatePayload(payloads))
+            {
+                VariantGateClasses.TryAdd(element, new VariantGateState());
+            }
+        }
+
+        // A play's class (StyleAnimationClassUtils) as the composed class source sees it: a gate token the play
+        // shows ranks at the play's priority, one a play takes off that the reconciled array names is withheld
+        // from it, and any add restores a withheld token. A class put on at the base priority rests there, so it
+        // is the reconciled array's again. Returns whether the composition changed.
+        internal bool TrackPlayGate(VisualElement element, string token, long priority, bool on)
+        {
+            if (!StyleVariantPayload.IsVariantGateToken(token))
+            {
+                return false;
+            }
+            if (on)
+            {
+                var shown = priority != StyleLayerPriority.Base
+                    && TrackVariantGateClass(element, token, priority, StyleVariantPayload.NoDeclaration, on: true);
+                return RestoreWithheld(element, token) | shown;
+            }
+            var hidden = UntrackPlayGate(element, token);
+            return (VariantGateClasses.TryGetValue(element, out var state) && state.Reconciled != null
+                    && ReconciledNames(state.Reconciled, token) && state.Withhold(token, on: true))
+                | hidden;
+        }
+
+        // A play's class that came to rest: the reconciled array carries it from now on.
+        internal bool RestPlayGate(VisualElement element, string token)
+            => StyleVariantPayload.IsVariantGateToken(token) && UntrackPlayGate(element, token);
+
+        // Drops the slot a play's class holds, at whichever of the two play bands it was shown in.
+        private bool UntrackPlayGate(VisualElement element, string token)
+            => TrackVariantGateClass(element, token, StyleLayerPriority.Animation, StyleVariantPayload.NoDeclaration,
+                    on: false)
+                | TrackVariantGateClass(element, token, StyleLayerPriority.Exit, StyleVariantPayload.NoDeclaration,
+                    on: false);
+
+        private bool RestoreWithheld(VisualElement element, string token)
+            => VariantGateClasses.TryGetValue(element, out var state) && state.Withhold(token, on: false);
+
+        private static bool ReconciledNames(string[] reconciled, string token)
+        {
+            foreach (var cls in reconciled)
+            {
+                if (!string.IsNullOrEmpty(cls) && StyleArbitraryValueResolver.StripImportant(cls, out _) == token)
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        // ExpectGatePayload for the classes a play can show on element: a Motion's poses and transitions, and the
+        // classes of the transition of the presence child being emitted, whose classic play can land on an
+        // element of that child's ahead of its Motion.
+        internal void ExpectPlayGates(VisualElement element, MotionNode? motion)
+        {
+            if (motion != null)
+            {
+                ExpectTransitionGates(element, motion.Transition);
+                if (motion.Variants != null)
+                {
+                    foreach (var variant in motion.Variants.Values)
+                    {
+                        ExpectGatePayload(element, V.ParseClassNames(variant.ClassName));
+                        ExpectTransitionGates(element, variant.Transition);
+                    }
+                }
+            }
+            ExpectTransitionGates(element, PresenceAnchorMotion?.Transition);
+        }
+
+        private void ExpectTransitionGates(VisualElement element, StyleTransitionConfig? transition)
+        {
+            if (transition == null)
+            {
+                return;
+            }
+            ExpectGatePayload(element, transition.EnterFromClasses);
+            ExpectGatePayload(element, transition.EnterToClasses);
+            ExpectGatePayload(element, transition.ExitFromClasses);
+            ExpectGatePayload(element, transition.ExitToClasses);
+        }
+
+        // Records / drops one variant-applied gate token for target at the priority its payload was applied
+        // at — the same one StyleClassProjection layers the class itself at, so the token set and the class
+        // list rank and expire together — plus, for the rules that carry one, the rule place (see
+        // VariantDeclarations) that settles a tie inside that priority. Returns true when the composed order actually changed, so the
+        // caller signals a re-derive exactly once per real change: a manipulator may re-assert an
+        // already-applied payload, and an off-toggle for a payload that was never on is a no-op, either of
+        // which would drift a count.
+        internal bool TrackVariantGateClass(VisualElement target, string cls, long priority, int declaration,
+            bool on)
+        {
+            if (on)
+            {
+                if (!VariantGateClasses.TryGetValue(target, out var state))
+                {
+                    state = new VariantGateState();
+                    VariantGateClasses[target] = state;
+                }
+                return state.Track(cls, priority, declaration, on: true);
+            }
+
+            // The entry stays behind once its last token leaves: an empty token set is already what puts the
+            // element back on the cheap reconciled-array path, and the recorded array is what the NEXT toggle
+            // composes from — dropping it would leave a payload that turns on again with nothing to build on,
+            // since no reconcile need ever run in between to re-record it.
+            return VariantGateClasses.TryGetValue(target, out var current)
+                && current.Track(cls, priority, declaration, on: false);
+        }
+
+        // Per-divided-child dashed / dotted divider paint (divide-dashed / divide-dotted), keyed by the CHILD
+        // element (not the container) — the divider is painted on the child's own generateVisualContent, since
+        // a container paints BEHIND its children. Attached / updated by StyleDivideManipulator;
+        // FiberElementCleaner detaches it per child (so a keyed-list reorder recycling one child is still
+        // caught) and Reconciler.Dispose sweeps the rest.
+        public Dictionary<VisualElement, DivideDashChildBinding> DivideDashBindings { get; } = new();
+        // [&>*]:<utility> child-combinator variant — a manipulator on the CONTAINER that applies the wrapped
+        // payload to each direct child. Mirrors GapManipulators / DivideManipulators; removed on cleanup /
+        // dispose. The per-child stacked manipulators a state-variant payload spawns live in
+        // StackedVariantManipulators (keyed by the child) and are swept with each child, not here.
+        public Dictionary<VisualElement, StyleChildVariantManipulator> ChildVariantManipulators { get; } = new();
+
+        // Above zero while the children of a container carrying a [&>*]: token are being reconciled, so that each
+        // element made or patched there is recorded for the re-sync the container's payload raises
+        // (FiberNodePatcher.RecordVariantGateSource). Nested containers raise it further; it is a superset of the
+        // direct children, which costs a record per descendant and nothing else.
+        internal int ChildVariantHostDepth;
+
+        // Raises ChildVariantHostDepth for the span of a using, when hosts says the children being reconciled
+        // belong to a container carrying a [&>*]: token.
+        internal ChildVariantHostScope OpenChildVariantHost(bool hosts) => new(this, hosts);
+
+        internal readonly struct ChildVariantHostScope : System.IDisposable
+        {
+            private readonly ReconcilerContext _ctx;
+            private readonly bool _hosts;
+
+            public ChildVariantHostScope(ReconcilerContext ctx, bool hosts)
+            {
+                _ctx = ctx;
+                _hosts = hosts;
+                if (hosts)
+                {
+                    ctx.ChildVariantHostDepth++;
+                }
+            }
+
+            public void Dispose()
+            {
+                if (_hosts)
+                {
+                    _ctx.ChildVariantHostDepth--;
+                }
+            }
+        }
+
+        // Whether parent, as a reconcile target, is the child container of an element that carries a manipulator.
+        internal bool HostsChildVariant(VisualElement? parent)
+        {
+            if (parent == null || ChildVariantManipulators.Count == 0)
+            {
+                return false;
+            }
+            if (ChildVariantManipulators.ContainsKey(parent))
+            {
+                return true;
+            }
+            var owner = ChildListWrites.ParentOf(parent);
+            for (var level = 0; owner != null && level < 4; level++, owner = ChildListWrites.ParentOf(owner))
+            {
+                if (ChildVariantManipulators.ContainsKey(owner)
+                    && ReferenceEquals(FiberNodePatcher.GetChildContainer(owner), parent))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        // Per-Motion-element bookkeeping of the class set actually APPLIED (base ClassNames plus any
+        // variant classes propagated from an ancestor Motion's active label, PLUS the variant-only classes
+        // alone — see MotionAppliedClassSet). The patch path diffs the new applied set against this stored one
+        // so a label change swaps the propagated classes even though the node's base ClassNames are unchanged,
+        // and replays that swap as a runtime variant transition when the variant-only classes actually
+        // changed and the node declares a Transition (see FiberNodePatcher.PatchMotionPost). A pure side-table
+        // (bare Remove on teardown), so it is enrolled in _pureElementSideTables and cleared on element
+        // cleanup / reconciler dispose through that mechanism.
+        public Dictionary<VisualElement, MotionAppliedClassSet> MotionAppliedClasses { get; } = new();
+
+        // Per-Motion-element hold on a pending tween swap's inline-resolved tokens (see MotionHeldInline). A
+        // pure side-table, enrolled in _pureElementSideTables.
+        public Dictionary<VisualElement, MotionHeldInline> MotionHeldInline { get; } = new();
+
+        // Per-Motion-element record of the inline-resolved tokens a variant exit's swap wrote (see
+        // FiberNodePatcher.PlanInlineExit). A pure side-table, enrolled in _pureElementSideTables.
+        public Dictionary<VisualElement, string[]> MotionInlineExits { get; } = new();
+
+        // Per-Motion-element bookkeeping of the label last propagated to CHILDREN (Animate ?? ambient) —
+        // independent of MotionAppliedClasses above, because a "coordinator" Motion may propagate a label to
+        // descendants (for staggerChildren/delayChildren orchestration) while carrying no Variants of its own,
+        // and so never gets a MotionAppliedClasses entry at all. FiberNodePatcher.PatchMotionPre compares the
+        // freshly-resolved child label against this stored one to detect an ACTUAL change (not merely an
+        // unrelated re-render that happens to re-propagate the same label) before establishing a fresh
+        // MotionOrchestrationFrame — a re-render that keeps the same label must not re-trigger the stagger.
+        // A pure side-table (bare Remove on teardown), so it is enrolled in _pureElementSideTables and cleared
+        // on element cleanup / reconciler dispose through that mechanism.
+        public Dictionary<VisualElement, string> MotionChildLabel { get; } = new();
+
+        // The MotionNode each Motion element was last created or patched from. A keyed AnimatePresence child's
+        // removal reads it to find the Motions its committed subtree holds, including those behind a component
+        // or a memo, whose nodes the child's own VNode does not contain. A pure side-table (bare Remove on
+        // teardown), enrolled in _pureElementSideTables.
+        public Dictionary<VisualElement, MotionNode> MotionNodes { get; } = new();
+
+        // The AnimatePresence child each top-level element a keyed child emits belongs to, and the emission
+        // that recorded it. An element that is the top of an inner presence's child as well stays that inner
+        // child's: PresenceChildRootOwner.Emission is what lets the outer child's emission, which runs around
+        // the inner one, tell a claim made inside it from one left by an earlier emission. A pure side-table,
+        // enrolled in _pureElementSideTables, so a root that leaves the tree leaves its presence child with it.
+        public Dictionary<VisualElement, PresenceChildRootOwner> PresenceChildRoots { get; } = new();
+
+        // Numbers each committing presence-child emission, for PresenceChildRootOwner.Emission.
+        internal long PresenceChildEmissionCount;
+
+        // The wait each descendant Motion of an exiting presence child belongs to, by that Motion's element, so
+        // a descendant torn down before its exit completes stops holding the child, and one torn down at all is
+        // left alone by a later re-entry. FiberElementCleaner reaches it; it is not a pure side-table, because
+        // its teardown tells the wait.
+        public Dictionary<VisualElement, PresenceExitWait> PresenceDescendantExitWaits { get; } = new();
+
+        // The element a V.Motion(layoutId:) id is registered to, and the box MotionLayoutIdDriver falls
+        // back to when that element gives none. A null element marks a torn-down element's box, which stays until
+        // another Motion takes the id. Keyed by the id string, not an element, so it
+        // cannot ride the _pureElementSideTables auto-clear mechanism below (that clears entries keyed BY
+        // a departing element, not entries that happen to reference one as a value) — ElementToLayoutId
+        // is the reverse index that makes manual cleanup possible: when an element is torn down, look up
+        // its id here, and only then touch the LayoutIdRegistry entry IF it still points at this exact
+        // element (a replacement created before the old element's teardown has already taken it over).
+        public Dictionary<string, (VisualElement? Element, LayoutIdBox? Box)> LayoutIdRegistry { get; } = new();
+        public Dictionary<VisualElement, string> ElementToLayoutId { get; } = new();
+        // How many layoutId Motions the children being created are inside, which a Motion created with no parent yet
+        // reads as an ancestor (MotionLayoutIdDriver.Corrects).
+        internal int LayoutIdMotionDepth;
+        // The parent the children being reconciled are placed under (ChildReconciler.Reconcile).
+        internal VisualElement? ReconcileParent;
+        // The ids whose entry holds a box read under each parent, and the ids whose entry lost its element, oldest
+        // first (MotionLayoutIdDriver.SetEntry).
+        public Dictionary<VisualElement, HashSet<string>> LayoutIdBoxParents { get; } = new();
+        public Queue<string> LayoutIdSnapshotOrder { get; } = new();
+
+        // The live elements holding each id, in the order they joined it; LayoutIdRegistry names the lead among
+        // them. Each member's layout transition, for a lead it takes without a patch of its own; the inline
+        // visibility each member another leads held before it followed that lead; and the members inside a
+        // V.AnimatePresence child whose exit is running, with the element that child's exit started on.
+        public Dictionary<string, List<VisualElement>> LayoutIdMembers { get; } = new();
+        public Dictionary<VisualElement, LayoutIdTiming> LayoutIdTimings { get; } = new();
+        public Dictionary<VisualElement, StyleEnum<Visibility>> LayoutIdFollows { get; } = new();
+        public Dictionary<VisualElement, VisualElement> LayoutIdExiting { get; } = new();
+        // The relegated presence children waiting for a lead to land (MotionLayoutIdDriver.Relegate).
+        public List<LayoutIdLanding> LayoutIdLandings { get; } = new();
+        // The translate, in pixels, the scale and the rotate, in degrees, a projection ended inside this render handed back
+        // to its element, which the element's resolved style shows only after the next style pass
+        // (MotionLayoutIdDriver.CreateProjection).
+        public Dictionary<VisualElement, (UnityEngine.Vector3? Translate, UnityEngine.Vector3? Scale, float? Rotate)> LayoutIdRestored { get; } = new();
+
+        // The GeometryChangedEvent callback a layoutId patch waits on for its new rect, with the box it
+        // tweens from. A registered callback, so it is removed explicitly at teardown like
+        // LayoutIdProjections below rather than through _pureElementSideTables.
+        public Dictionary<VisualElement, LayoutIdPendingSettle> LayoutIdPendingSettles { get; } = new();
+
+        // The layoutId Motions whose inline translate and scale MotionLayoutIdDriver currently writes, and
+        // the per-panel frame that steps and writes them, keyed by the panel's visual tree. An element's
+        // entry is removed by MotionLayoutIdDriver.CancelForTeardown; a frame pauses itself once its panel
+        // has none left.
+        public Dictionary<VisualElement, LayoutIdProjection> LayoutIdProjections { get; } = new();
+        public Dictionary<VisualElement, IVisualElementScheduledItem> LayoutIdFrames { get; } = new();
+
+        // Per-element box-shadow bookkeeping for the shadow-* className layer, keyed by the element
+        // itself — the shadow needs NO structural wrapper. Like gradient, the shadow is painted
+        // by the element's own generateVisualContent (BoxShadowSilhouette draws the baked shadow texture
+        // BEHIND the content, bleeding outside the box), so it composes as a paint, not a wrapper —
+        // matching CSS box-shadow (non-structural: it neither alters layout nor escapes a transform on the
+        // element). Maintained by FiberNodePatcher's shadow methods and torn down by FiberElementCleaner.
+        public Dictionary<VisualElement, BoxShadowBinding> ShadowBindings { get; } = new();
+
+        // Per-element clip-path bookkeeping for the clip-path-* className layer, keyed by the INNER
+        // (real) element. An entry means the element is wrapped in a stencil-masking clip wrapper
+        // (also present in WrapperToInnerMap) whose baked VectorImage must be destroyed when the
+        // element is cleaned up or the clip class is removed. Maintained by FiberNodePatcher's
+        // clip-path methods and torn down by FiberElementCleaner. The shadow paint is suppressed
+        // while a clip is active (CSS clip-path clips the box-shadow too), but that is a paint gate,
+        // not a wrapper conflict — the clip wrapper still hosts a now-paint-shadow inner fine.
+        public Dictionary<VisualElement, ClipPathBinding> ClipPathBindings { get; } = new();
+
+        // Hook to re-resolve a clipped element's mask from its live class list, set by FiberNodePatcher.
+        // StyleVariantPayload.Apply invokes it after toggling a clip-path payload on a state change
+        // (hover:clip-path-[…] etc.) — a clip class toggle alone does nothing (UITK has no clip-path
+        // property), so the clip wrapper's mask must be re-derived. Null until the patcher wires it.
+        public System.Action<VisualElement> ClipPathReResolve { get; set; } = null!;
+
+        // Per-element ring-* / outline-* bookkeeping, keyed by the element itself. An entry means a
+        // native-border overlay painting the outset (or inset) band is hosted as a reconciler-invisible
+        // sibling of the element (RingOverlay). No GPU resource to dispose (unlike clip), but cleanup must
+        // still remove the overlay from the hierarchy: it lives in the element's parent, so it does not leave
+        // with the element's own subtree. Suppressed by an active clip-path-* (CSS clip-path clips an outline)
+        // — a suppression gate, not a competition for a wrapper, since this layer adds none.
+        public Dictionary<VisualElement, RingBinding> RingBindings { get; } = new();
+
+        // Elements whose ring overlay still needs a host, drained at the top-level reconcile boundary
+        // (Reconciler.FinishTopLevelPass, shared with ContinueReconcile so a time-sliced pass places its
+        // bands at the slice that finishes it) — the first point at which an element created during it is in its
+        // final parent. A create-time attach cannot place the overlay itself: the factory returns the element
+        // for the caller to insert, so element.parent is still null while the binding is being built.
+        public List<VisualElement> PendingRingPlacements { get; } = new();
+
+        // Per-element backdrop-* bookkeeping (BackdropFilterLayer), every entry placed again where
+        // PendingRingPlacements drains. The layer lives in the element's parent, so cleanup has to remove it.
+        public Dictionary<VisualElement, BackdropBinding> BackdropBindings { get; } = new();
+
+        // The elements whose inline rotate and scale slots carry their skew (FiberSkewApplier), by the skew classes
+        // that won on each axis. A pure side-table, enrolled in _pureElementSideTables.
+        public Dictionary<VisualElement, (string? X, string? Y)> SkewTransformed { get; } = new();
+
+        // The angles the classes resolve to for an element whose skew a motion play is drawing, which the play's
+        // channels run toward and away from (FiberSkewApplier.Drive). A pure side-table, enrolled in
+        // _pureElementSideTables.
+        public Dictionary<VisualElement, (float X, float Y)> SkewDriven { get; } = new();
+
+        // The holds Motion plays take on an element's paint layers (FiberPaintLeases). Set by the wrapper-element
+        // appliers, which own the layers' appliers.
+        public FiberPaintLeases? PaintLeases { get; set; }
+
+        // Dashed / dotted border outline per element (border-dashed / border-dotted), keyed by the element
+        // itself — the outline is painted by the element's own generateVisualContent with no
+        // wrapper (only the border color is suppressed; the fill and width are untouched). Defers to the
+        // shadow when it owns the face. Maintained by FiberWrapperElementAppliers' border-style methods
+        // and torn down by FiberElementCleaner / Reconciler.Dispose.
+        public Dictionary<VisualElement, BorderStyleBinding> BorderStyleBindings { get; } = new();
+
+        // Active gradient background per element (bg-gradient-to-* + from/via/to). Keyed by the element
+        // itself — the gradient is baked to a texture set as the element's own background-image, no
+        // wrapper. The stored spec lets the patch path skip a redundant re-bake, and cleanup clears the
+        // background-image so a pooled element cannot ghost a prior gradient. The binding also holds the
+        // geometry watch a gradient laid out over the box's proportions needs, which cleanup removes.
+        public Dictionary<VisualElement, GradientBinding> GradientBackgrounds { get; } = new();
+
+        // Per-element animate-* motion (animate-gradient / -shimmer / -hue). Keyed by the element itself — the
+        // motion drives the element's own inline style (a background-position pan or a hue-rotate filter) with
+        // no wrapper. The binding holds a recurring scheduled tick, so cleanup must PAUSE it (unlike the pure
+        // side-tables); FiberElementCleaner / Reconciler.Dispose call StyleAnimateDriver.Detach.
+        public Dictionary<VisualElement, StyleAnimateBinding> AnimationBindings { get; } = new();
+
+        // Per-element filter-* transition (the transition-filter class), keyed by the element itself — the tween
+        // drives the element's own inline filter with no wrapper. The binding holds a one-shot scheduled tick,
+        // so cleanup must PAUSE it (unlike the pure side-tables); FiberElementCleaner / Reconciler.Dispose call
+        // StyleFilterTransitionDriver.Detach. The driver's own ConditionalWeakTable is the lookup the resolver
+        // uses during event callbacks (no context there); this dictionary mirrors the bindings made for
+        // transition-filter so the dispose sweep can enumerate them (a CWT is not enumerable).
+        public Dictionary<VisualElement, StyleFilterTransitionBinding> FilterTransitionBindings { get; } = new();
+
+        // Per-SceneView-element bookkeeping (V.SceneView), keyed by the element itself. The binding
+        // owns a live resource pair — the framework-created RenderTexture and the camera targeting it —
+        // so it is NOT a pure side-table: FiberElementCleaner releases both ends on element teardown
+        // (geometry callback unregistered, camera politely untargeted, texture destroyed) and
+        // Reconciler.Dispose sweeps any binding still live at root disposal.
+        public Dictionary<VisualElement, SceneViewBinding> SceneViewBindings { get; } = new();
+
+        // Per-Particles-element bookkeeping (V.Particles), keyed by the element itself. The binding
+        // owns a live GameObject — the hidden simulation host cloned from the source effect — plus a
+        // painter callback and a repaint tick, so it is NOT a pure side-table: FiberElementCleaner
+        // destroys the host on element teardown and Reconciler.Dispose sweeps any binding still live
+        // at root disposal.
+        public Dictionary<VisualElement, ParticlesBinding> ParticlesBindings { get; } = new();
+
+        // Per-Anchored-element bookkeeping (V.Anchored), keyed by the element itself. The binding owns a
+        // live resource — the recurring per-frame projection tick (AnchoredDriver) — so it is NOT a pure
+        // side-table: FiberElementCleaner pauses the tick on element teardown and Reconciler.Dispose sweeps
+        // any binding still live at root disposal.
+        public Dictionary<VisualElement, AnchoredBinding> AnchoredBindings { get; } = new();
+
+        // Per-focus-scope bookkeeping (FiberElementProps.FocusScope / V.FocusScope), keyed by the scope
+        // root element, or by a V.FocusScope's start sentinel. The binding owns a registered AttachToPanelEvent callback (AutoFocus / lazy
+        // navigator attach), so it is NOT a pure side-table: FiberElementCleaner fires RestoreFocus and
+        // detaches it on teardown, and Reconciler.Dispose sweeps any binding still live at root disposal.
+        // FiberFocusNavigator consults this registry at event time (its ScopeWalk resolves an element's scopes
+        // against these keys).
+        public Dictionary<VisualElement, FocusScopeBinding> FocusScopeBindings { get; } = new();
+
+        internal List<DeferredAutoFocus> DeferredAutoFocus { get; } = new();
+
+        // Chained-portal focus bookkeeping (PanelFocusOrder.Chained): the DECLARING-panel placeholder that
+        // acts as the portal's proxy tab stop → the host record its focus forwards into, plus the reverse
+        // index (host panel root → placeholder) the host-edge escape consults. Entries are added in
+        // DrainPendingPortalMounts and removed by FiberElementCleaner when the portal unmounts;
+        // Reconciler.Dispose sweeps the rest.
+        public Dictionary<VisualElement, PanelHostRecord> ChainedPlaceholders { get; } = new();
+        public Dictionary<VisualElement, VisualElement> ChainedHostRoots { get; } = new();
+
+        // Appended-portal focus bookkeeping (PanelFocusOrder.Appended): each appended portal's placeholder → its
+        // host record, and the hosts in the order their first appended portal mounted, which is the order they
+        // follow the tree's own panel in Tab order. Maintained by FiberFocusNavigator.ConfigurePortalFocusOrder and
+        // ReleaseAppended; Reconciler.Dispose sweeps the rest.
+        public Dictionary<VisualElement, PanelHostRecord> AppendedPlaceholders { get; } = new();
+        public List<PanelHostRecord> AppendedHosts { get; } = new();
+
+        // The panel roots FiberFocusNavigator has attached its listeners to, with the registered
+        // callbacks retained so Reconciler.Dispose can unregister them (panel roots belong to the user /
+        // the host panels and can outlive this reconciler). Keyed by the panel's TRUE root
+        // (panel.visualTree), so two attach requests from different elements of one panel dedup.
+        public Dictionary<VisualElement, (EventCallback<NavigationMoveEvent> OnMove, EventCallback<NavigationMoveEvent> OnArrow, EventCallback<FocusInEvent> OnFocusIn, EventCallback<FocusOutEvent> OnFocusOut)> NavigatorAttachments { get; } = new();
+
+        // Deferred navigator attachments: elements whose panel was unresolved when EnsureAttached ran (a
+        // detached mount root, a placeholder configured before its declaring tree attaches), each holding
+        // a self-removing AttachToPanelEvent hook. Tracked so DetachAll can unregister hooks that never
+        // fired.
+        public List<NavigatorPendingAttach> NavigatorPendingAttachHooks { get; } = new();
+
+        // Drag-and-drop registries (V.DndContext / V.Draggable / V.Droppable / V.DragOverlay), keyed by
+        // the carrying element. None are pure side-tables: the draggable binding owns a registered
+        // pointer-down armer, the overlay owns forced inline picking/position state, and all four are
+        // torn down explicitly by FiberElementCleaner and swept by Reconciler.Dispose.
+        public Dictionary<VisualElement, DndScopeBinding> DndScopeBindings { get; } = new();
+        public Dictionary<VisualElement, DndDraggableBinding> DraggableBindings { get; } = new();
+        public Dictionary<VisualElement, DndDroppableBinding> DroppableBindings { get; } = new();
+        // Next DndDroppableBinding.Order; only ever increases.
+        public long NextDroppableOrder;
+        public Dictionary<VisualElement, DndOverlayBinding> DragOverlayBindings { get; } = new();
+        // Elements carrying FiberElementProps.NoDrag. A side-table only: nothing is written to the element.
+        public HashSet<VisualElement> NoDragElements { get; } = new();
+
+        // The one live drag session (pending or active) for this tree, owned by DndActiveDrag itself:
+        // null = idle. See DndActiveDrag for the state machine.
+        internal DndActiveDrag? ActiveDrag { get; set; }
+
+        // Per-Portal placeholder bookkeeping. SlotStart + SlotLength identify the
+        // range of the resolved target's children owned by this Portal — the
+        // invariant that lets multiple Portals coexist on the same target without overwriting each
+        // other on patch (each Portal reconciles only its own slot range) and on cleanup (only the
+        // range is removed, not the entire target). When a Portal's range grows or shrinks, the
+        // SlotStart of Portals later in target.children is shifted by the delta.
+        // A read answers from the rows the range holds (PortalSlotInfo.First and Last), so a row put ahead of
+        // it by something that did not shift the recorded start does not move it; the shifts keep the
+        // recording that a range with no rows to read is addressed by.
+        public PortalRangeTable PortalState { get; } = new();
+
+        // The reconciles of a Portal target's own children in progress, by target: FiberCommitWork.OpenOwnRows owns
+        // what each frame holds. An element's own children never reconcile inside themselves, so one frame each.
+        internal Dictionary<VisualElement, int?> OwnRowFrames { get; } = new();
+
+        // The Portal placeholder whose children are being reconciled right now, or null outside any such
+        // reconcile. Set-and-restore at each entrance a Portal's children reconcile through — the deferred
+        // mount (ChildReconciler.DrainPendingPortalMounts) and every later patch, world-space and heal
+        // included, which all funnel into NodePatchWalk.ReconcilePortalRange. ComponentRegistry stamps it
+        // onto the inline fibers those reconciles mount, which is what
+        // ComponentRegistry.DisposeInlineFibersOwnedByPortal selects by.
+        internal VisualElement? CurrentPortalPlaceholder { get; set; }
+
+        // The same placeholder, for the levels of that Portal's children whose ComponentRegistry parent is
+        // still the declaring component's own fiber — every level the reconcile reaches while the fiber
+        // stack stands where it did. Those all share a whole registry key with what the declaring
+        // component renders outside the Portal, and this is the only member that separates them —
+        // PortalChildFiberContinuityTests holds the two keys side by side, for a host element between the
+        // two and for a Provider.
+        //
+        // Nothing outside the three members below touches the pair: Enter overwrites it and hands back
+        // what it displaced, Exit puts that back, and PortalChildKeyScopeHere is the only other read.
+        // The set of levels above is not the set of levels this reconcile passes through: a component body rendered anywhere below one of them renders again, later and alone,
+        // with no Portal reconcile in sight, and its children have to key the same way both times or the
+        // second reading builds a second set of fibers over the first. The nesting recorded here is what
+        // separates the two. A component body reached through FiberRenderer.PushFiber or
+        // GeneralPathReconciler.ExpandFiberPreviousTree, and a VirtualList item reached through
+        // Reconciler.BeginDetachedItemScope, each push a fiber, so the scope stops applying at each of
+        // them without any of them naming it.
+        private VisualElement? PortalChildKeyScope { get; set; }
+        private int PortalChildKeyScopeNesting { get; set; }
+
+        // The Portal scope in force for a registry key written right here, which is PortalChildKeyScope at
+        // the nesting it was entered at and nothing anywhere else.
+        internal VisualElement? PortalChildKeyScopeHere
+            => FiberStack.Depth == PortalChildKeyScopeNesting ? PortalChildKeyScope : null;
+
+        // Returns what restores the enclosing scope. Restored rather than cleared on the way out: a Portal
+        // declared inside another Portal's children patches from within the outer one's, and what the
+        // outer one reaches after that returns is still the outer one's. The mount entrance does not
+        // nest that way — ChildReconciler.DrainPendingPortalMounts says why.
+        internal (VisualElement? Scope, int Nesting) EnterPortalChildKeyScope(VisualElement placeholder)
+        {
+            var enclosing = (PortalChildKeyScope, PortalChildKeyScopeNesting);
+            PortalChildKeyScope = placeholder;
+            PortalChildKeyScopeNesting = FiberStack.Depth;
+            return enclosing;
+        }
+
+        internal void ExitPortalChildKeyScope((VisualElement? Scope, int Nesting) enclosing)
+        {
+            PortalChildKeyScope = enclosing.Scope;
+            PortalChildKeyScopeNesting = enclosing.Nesting;
+        }
+
+        // Portal mounts deferred until the enclosing reconcile pass completes. When a PortalNode
+        // (or a WorldSpaceNode — the same deferred-mount flow) is encountered during a reconcile,
+        // its target-side reconcile is queued here instead of
+        // running synchronously — synchronous mount would interleave the inner Portal's children
+        // into the outer Portal's slot range and stale every nested slot index by the placeholder
+        // insertion that follows. The queue is drained by Reconciler.Reconcile at
+        // top-level (the SharedReconcileDepth == 0 finally branch) after the outer
+        // reconcile finishes producing target.children for outer's own contribution, so each
+        // queued Portal mounts with a fresh slotStart = target.childCount that sits after
+        // all previously-mounted Portals' ranges. PortalState is recorded for each
+        // placeholder only at drain time — between enqueue and drain the placeholder has no entry,
+        // matching FiberNodePatcher.PatchPortalChildrenPre's missing-entry path which logs and skips.
+        // Target is resolved at ENQUEUE only for registry portals (their not-registered warning
+        // stays a mount-time signal); layer portals and world-space nodes carry null and resolve —
+        // creating their framework host on first use — at drain time, when the placeholder is
+        // attached and the declaring panel is therefore known.
+        // LogicalParent is the ComponentFiber whose Body was mid-render when V.Portal/V.WorldSpace was
+        // called (_ctx.FiberStack.Current at enqueue time — the only point this is available, since the
+        // drain runs after the whole top-level reconcile pass unwinds). The drain pushes it back for its
+        // nested reconcile, so it is both the parent the children register and link under and the logical
+        // ancestor cross-panel synthetic bubbling resolves to; DrainPendingPortalMounts owns why the
+        // registry half cannot be left to whatever fiber the drain happens to find current.
+        public Queue<(VisualElement Placeholder, VNode Node, VisualElement? Target,
+            List<KeyValuePair<object, object>> ContextSnapshot, ComponentFiber? LogicalParent)> PendingPortalMounts { get; } = new();
+
+        // The Portal / WorldSpace placeholders queued in PendingPortalMounts and not torn down since. A
+        // placeholder's parent cannot answer that: one built inside an element whose creation then failed is
+        // still parented by that element, which no caller holds.
+        internal HashSet<VisualElement> PendingHostPlaceholders { get; } = new();
+
+        // Portal targets that lost children to a Portal's teardown this pass. Their remaining children changed
+        // sibling position with no reconcile of the target to re-derive structural variants, so the top-level
+        // boundary does it (Reconciler.FinishTopLevelPass).
+        internal HashSet<VisualElement> PortalTargetsToRestyle { get; } = new();
+
+        // The parents FiberZLayerCoordinator has relocated children of, with how it last arranged them. An entry is
+        // dropped once the parent holds no relocated child.
+        public Dictionary<VisualElement, ZLayerHostRecord> ZLayerHosts { get; } = new();
+
+        // Placeholder -> real element, for a slot whose element FiberZLayerCoordinator relocated within its parent.
+        // FiberElementCleaner's CleanupZLayerPlaceholder consults this (keyed by the PLACEHOLDER, which is what a
+        // slot removal or subtree teardown reaches) to tear down the real element. NOT a pure side-table: removing
+        // an entry here always accompanies retiring the real element.
+        public Dictionary<VisualElement, VisualElement> ZLayerPlaceholders { get; } = new();
+
+        // The elements whose class list FiberZLayerCoordinator.TryClassify last classified, keyed by the element
+        // carrying the classes, so a z a custom property supplies can stack one that its patch left unstacked.
+        internal System.Runtime.CompilerServices.ConditionalWeakTable<VisualElement, object> ZLayerCandidates { get; } = new();
+
+        // The exiting children a PopLayout presence pinned out of flow, keyed by the ghost element, which paint as
+        // positioned children for as long as they exit (FiberZLayerCoordinator.PinnedGhostZ). An entry is taken when
+        // the exit is cancelled or the ghost is removed. A pure side-table, enrolled in _pureElementSideTables: an
+        // exit's completion removes the ghost without unpinning it.
+        internal Dictionary<VisualElement, object> PinnedGhosts { get; } = new();
+
+        // Real element -> its relocation bookkeeping. A pure side-table, enrolled in _pureElementSideTables.
+        public Dictionary<VisualElement, ZLayerMember> ZLayerMembers { get; } = new();
+
+        // Slot element -> the z, flex order and position its classes give it, for an element whose classes name
+        // any of them. A pure side-table, enrolled in _pureElementSideTables.
+        public Dictionary<VisualElement, StackingFacts> StackingFacts { get; } = new();
+
+        // The elements given stacking facts or pinned since FiberZLayerCoordinator.ResortLayers last recorded the
+        // parent each stands in (StackingParents). A pure side-table, enrolled in _pureElementSideTables.
+        public Dictionary<VisualElement, bool> StackingArrivals { get; } = new();
+
+        // The parents FiberZLayerCoordinator.Arrange looks through for a child with stacking facts or a pin: every
+        // parent such a child's slot stands in is here by the time the parent is arranged, and a parent leaves when
+        // a look finds none. A pure side-table, enrolled in _pureElementSideTables.
+        public Dictionary<VisualElement, bool> StackingParents { get; } = new();
+
+        // Retired placeholders and anchors still standing in their parent, removed by
+        // FiberZLayerCoordinator.DrainTeardowns once no diff can be holding a physical index into that parent.
+        public HashSet<VisualElement> PendingZLayerRemovals { get; } = new();
+
+        // Relocated elements whose placeholder was torn down while they still stood in their parent, with the
+        // element FiberElementCleaner returns to the pool for each; released at the end of the top-level pass for
+        // the reason PendingZLayerRemovals waits.
+        internal List<(VisualElement Real, VisualElement Poolable)> PendingZLayerDeadReals { get; } = new();
+
+        // The element FiberElementCleaner.RemoveElement is tearing down while nothing pools it afterwards: it and
+        // everything below it are left to the collector. Null for every other teardown.
+        internal VisualElement? DiscardedSubtreeRoot { get; set; }
+
+        // Whether element is below the root of a discarded teardown, as opposed to being that root: a callback
+        // registered on it, or on a parent inside the subtree, goes with the subtree, where the root's parent
+        // outlives the removal.
+        internal bool IsBelowDiscardedRoot(VisualElement element)
+        {
+            var root = DiscardedSubtreeRoot;
+            return root != null && !ReferenceEquals(element, root) && root.Contains(element);
+        }
+
+        // Parents whose children a pass reconciled or whose stacking facts changed; drained by
+        // FiberZLayerCoordinator.ResortLayers at the end of each top-level pass.
+        public HashSet<VisualElement> PendingZLayerResorts { get; } = new();
+
+        // FiberZLayerCoordinator.ResortLayers' working copy of PendingZLayerResorts, kept so a drain allocates nothing.
+        internal List<VisualElement> ZLayerArrangeQueue { get; } = new();
+
+        // The parent each time-sliced diff parked over, by the ChildReconciler that parked it, kept while a Portal
+        // drain sets the park aside (ChildReconciler.DrainPendingPortalMounts). Arrange leaves the slot occupants of
+        // such a parent until the diff finishes; a settle outside a pass does not wait, and NoteSlotOccupantChanged
+        // carries what it swaps to the parked diff.
+        internal Dictionary<object, VisualElement> ParkedDiffParents { get; } = new();
+
+        internal bool IsParkedParent(VisualElement parent)
+        {
+            foreach (var parked in ParkedDiffParents.Values)
+            {
+                if (ReferenceEquals(parked, parent))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        // Guards FiberCrossPanelPointerRouter.AttachToMainPanel against attaching twice on the same
+        // main panel — V.Mount is idempotent-safe to call from a component's own render (uncommon but
+        // not disallowed) and the router's TrickleDown listeners must not stack.
+        internal bool CrossPanelRouterAttached { get; set; }
+
+        // The VisualElement V.Mount attached this context's root fiber to. Recorded so a framework
+        // host panel (layer or world-space) that currently holds focus can hand it back here before
+        // being torn down — the host's own FocusController is destroyed along with its GameObject
+        // (world-space) or reused across children (layer), so without this, focus would either
+        // dangle on a defunct panel or simply vanish, leaving keyboard input going nowhere until the
+        // app author notices and refocuses something manually.
+        internal VisualElement? MainPanelRoot { get; set; }
+
+        // The element whose own and ancestors' stylesheets declare the theme tokens this mount reads (StyleThemeTokens).
+        internal VisualElement? ThemeRoot { get; set; }
+
+        internal System.Action<System.Exception, ErrorInfo> OnCaughtError { get; set; } = FiberErrorBoundary.LogCaughtError;
+
+        internal System.Action<System.Exception, ErrorInfo> OnUncaughtError { get; set; } = FiberErrorBoundary.LogUncaughtError;
+
+        // Framework-owned layer host panels (V.Portal(layer:)), one per UILayer, created lazily at
+        // the first drain that needs the layer and shared by every portal on it. NOT a pure
+        // side-table: each record owns a live GameObject plus runtime-created panel assets, torn
+        // down by the reconciler dispose sweep. Hosts persist across child removals — a layer whose
+        // last portal left keeps its (empty, cheap) host so toggling portals does not churn panels.
+        public Dictionary<UILayer, PanelHostRecord> LayerHosts { get; } = new();
+
+        // Framework-owned world-space host panels (V.WorldSpace), one per placeholder. NOT a pure
+        // side-table: each record owns a live GameObject plus runtime-created panel assets,
+        // destroyed by FiberElementCleaner when the placeholder leaves the tree and swept at
+        // reconciler disposal.
+        public Dictionary<VisualElement, PanelHostRecord> WorldSpaceBindings { get; } = new();
+
+        // Same-panel portal targets as PortalSlotInfo records them — the content container of the element a
+        // registered id names (V.Portal(targetId:)) or the caller passed (V.Portal(target:)) — mapped to the
+        // bridge each carries, whose Release lets go of the target's hold on FiberCrossPanelEventDispatcher's
+        // synthetic-bubbling listeners and removes the missing-sheet watch. Doubles as the attach-once guard
+        // BindPortalTarget checks, since multiple Portals — or repeated mounts of the same Portal — commonly resolve to the SAME target
+        // (see PortalSlotInfo's own multi-Portal-per-target contract), and re-attaching would stack
+        // duplicate callbacks. The guard is scoped to
+        // this one context: a second, independently mounted reconciler whose own Portal resolves to the
+        // same registered target attaches its own bridge through its own instance of this dictionary,
+        // since it has no way to see this one. Harmless — each listener's walk attributes rows through its own
+        // context's PortalState and invokes through that context's EventManager, so a row of the other
+        // context's portal resolves to no placeholder here and reaches only physical ancestors, which the walk
+        // leaves to native dispatch — just redundant scanning on every event that reaches the shared target.
+        // Released by FiberElementCleaner.CleanupPortal once no live Portal resolves to the element any
+        // more, and swept at Reconciler.Dispose for whatever the teardown order leaves behind. A target
+        // the caller passed outright is routinely one Velvet itself rendered — an element reached
+        // through a refCallback dies with the row that produced it — so an entry held past the last
+        // Portal pins a dead element and its callbacks for the reconciler's whole life. The Dispose
+        // sweep stays necessary on top: a target the app owns independently commonly outlives this
+        // reconciler, so callbacks left attached past disposal would hold a closure over a dead
+        // ReconcilerContext on still-live app UI — mirroring NavigatorAttachments' identical "panel
+        // roots... can outlive this reconciler" teardown rationale.
+        public Dictionary<VisualElement, SamePanelBridge> SamePanelPortalBridges { get; } = new();
+
+        // Called from both places a portal starts rendering into an element it does not own: ChildReconciler's
+        // deferred-mount drain and FiberNodePatcher's retarget or heal of a portal mounted before its id was
+        // registered.
+        internal void BindPortalTarget(VisualElement target)
+        {
+            if (SamePanelPortalBridges.ContainsKey(target)) return;
+            // Containment follows portal content into the target's panel, which the navigator must listen on.
+            var releaseNavigatorHold = FiberFocusNavigator.HoldAttached(target, this);
+            // On the element whose contentContainer target is, where there is one, so that element's own
+            // callbacks — a ScrollView's scroll — answer an event from the portal's children before the bridge
+            // hands it to the declaring tree, as they answer one from the element's own children.
+            var anchor = ContentOwnerOf(target) ?? target;
+            var detachBridge = FiberCrossPanelEventDispatcher.AttachBridge(anchor, this);
+            var sheetWatch = VelvetStyleUtilities.WatchForMissingSheet(target);
+            SamePanelPortalBridges[target] = new SamePanelBridge(() =>
+            {
+                detachBridge();
+                sheetWatch.Dispose();
+                releaseNavigatorHold?.Invoke();
+            });
+        }
+
+        // The rows a same-panel portal has in its target, each held for the default family (DefaultFamilyRoots) in
+        // place of the target, which other code owns along with its other children, as createPortal leaves body's
+        // alone.
+        private readonly Dictionary<VisualElement, System.IDisposable> _portalRowFamilies = new();
+        private readonly HashSet<VisualElement> _portalRows = new();
+        private readonly List<VisualElement> _portalRowsLeft = new();
+        private readonly List<VisualElement?> _portalRowRange = new();
+
+        // Brings the held rows in line with the rows the portals hold now. Called where a pass has placed every row.
+        internal void SyncPortalRowFamilies()
+        {
+            if (PortalState.Count == 0 && _portalRowFamilies.Count == 0) return;
+
+            _portalRows.Clear();
+            foreach (var info in PortalState.Values)
+            {
+                var target = info.Target;
+                if (target == null || !SamePanelPortalBridges.ContainsKey(target)) continue;
+
+                _portalRowRange.Clear();
+                ChildListWrites.Rows(target, info.SlotStart, info.SlotStart + info.SlotLength, _portalRowRange);
+                foreach (var occupant in _portalRowRange)
+                {
+                    // A row FiberZLayerCoordinator relocates keeps only a placeholder in its slot.
+                    _portalRows.Add(ZLayerPlaceholders.TryGetValue(occupant!, out var real) ? real : occupant!);
+                }
+            }
+
+            _portalRowRange.Clear();
+
+            _portalRowsLeft.Clear();
+            foreach (var row in _portalRowFamilies.Keys)
+            {
+                if (!_portalRows.Contains(row)) _portalRowsLeft.Add(row);
+            }
+            foreach (var row in _portalRowsLeft)
+            {
+                _portalRowFamilies[row].Dispose();
+                _portalRowFamilies.Remove(row);
+            }
+            foreach (var row in _portalRows)
+            {
+                if (!_portalRowFamilies.ContainsKey(row)) _portalRowFamilies[row] = DefaultFamilyRoots.Hold(row);
+            }
+        }
+
+        // Every row's hold, given back when the reconciler is disposed.
+        internal void ReleasePortalRowFamilies()
+        {
+            // MUTANT_SURVIVES(unreachable, line removed): no case leaves a row in the table by now, since the unmount
+            // reconcile ahead of Dispose ends in a pass whose sync releases each row its cleanup took out of
+            // PortalState; this is for a pass parked at Dispose, a shape no fixture builds.
+            foreach (var hold in _portalRowFamilies.Values) hold.Dispose();
+            // MUTANT_SURVIVES(equivalent, line removed): a disposed context runs no pass that reads the table.
+            _portalRowFamilies.Clear();
+        }
+
+        // The Portal whose range on parent holds row, or null for a row of parent's own — the logical parent both
+        // the synthetic-bubbling walk and the focus navigator read. Where ranges nest, the one starting last is
+        // the innermost.
+        internal VisualElement? PortalHoldingRow(VisualElement row, VisualElement parent)
+        {
+            if (PortalState.Count == 0) return null;
+            var index = LogicalChildSlots.ToLogical(parent, ChildListWrites.PhysicalIndexOf(parent, row));
+            VisualElement? holder = null;
+            var holderStart = -1;
+            foreach (var entry in PortalState)
+            {
+                var range = entry.Value;
+                if (!ReferenceEquals(range.Target, parent)) continue;
+                if (index < range.SlotStart || index >= range.SlotStart + range.SlotLength) continue;
+                // MUTANT_SURVIVES(unreachable, boundary): a portal nested in another on one target opens its range at
+                // the target's row count, behind the outer's rows, so no two ranges on one target start at one slot.
+                if (range.SlotStart <= holderStart) continue;
+                holder = entry.Key;
+                holderStart = range.SlotStart;
+            }
+            return holder;
+        }
+
+        // The ancestor whose contentContainer container is, or null where container is its own.
+        private static VisualElement? ContentOwnerOf(VisualElement container)
+        {
+            var ancestor = ChildListWrites.ParentOf(container);
+            while (ancestor != null && !ReferenceEquals(ancestor.contentContainer, container))
+            {
+                ancestor = ChildListWrites.ParentOf(ancestor);
+            }
+            return ancestor;
+        }
+
+        // The declaring panel's driving UIDocument per panel, filled by
+        // PanelHostFactory.ResolveDeclaring so each distinct declaring panel costs one
+        // FindObjectsOfTypeAll scan per reconciler instead of one per host mount. Only the document
+        // lookup is cached — the settings and the sorting base are re-read live so runtime changes
+        // propagate — and only successful resolutions land here (a miss must stay retryable for the
+        // late-declaring upgrade).
+        public Dictionary<IPanel, UIDocument> DeclaringSettingsCache { get; } = new();
+
+        // Declaring panels whose resolution MISSED during the current top-level pass. A miss means a
+        // full FindObjectsOfTypeAll scan found nothing, and every further host mount in the same
+        // pass would repeat that scan for the same answer; the set clears at the top-level boundary
+        // so a panel that gains a driving document later still resolves on the next pass (the
+        // late-declaring upgrade path).
+        public HashSet<IPanel> DeclaringResolveMisses { get; } = new();
+
+        // Inline-mounted ComponentFiber whose insertion / layout effect commit is deferred to the
+        // post-commit drain. The DOM mutations must complete before layout effect
+        // setup runs. Velvet's inline-mount path defers child reconcile via
+        // RenderAndReconcile(deferReconcile: true) so the parent expansion calls
+        // CreateElement for child elements AFTER MountInline returns, and the ref setups it queues
+        // attach in the layout commit (FiberRefPlacement);
+        // running LayoutEffects inside MountInline would observe stale (null) refs.
+        // The top-level reconcile entry drains this stack in its own layout-effect commit, after the pass
+        // has created every element. A Stack (LIFO) is used so
+        // the drain runs deepest-first — layout effects commit children
+        // before their parent (bottom-up), so a parent layout effect that reads a child's
+        // imperative handle / measured size observes the child's already-applied effect.
+        // Both Mount and update commits push onto this stack: MountInline pushes with
+        // IsMount: true, SubsumeFiberIntoThisPass (parent re-render reaching an
+        // existing inline child) pushes with IsMount: false. The drain forwards the flag
+        // to the insertion- and layout-effect passes as mountDoubleInvoke so
+        // the Editor-only mount double-invoke fires only on initial Mount, not on the deps-changed
+        // re-expansion path: a layout effect on an update fires its deps
+        // cleanup + setup once, not twice.
+        // Pass is CurrentPass at the push, so a commit can leave what a parked pass pushed (FiberEffects.IsHeld).
+        public Stack<(ComponentFiber Fiber, bool IsMount, Reconciler? Pass)> DeferredInlineLayoutEffectFibers { get; } = new();
+
+        // The fiber whose Hooks.Use read threw the Suspense signal last, which is the read a pass the signal
+        // reaches with no boundary suspended on — see FiberRenderer.SuspendPassOwner.
+        internal ComponentFiber? SuspendingReader;
+
+        // Set where a Suspense gives a transition's pass up rather than hide the primary it shows, so the pass that
+        // receives the signal with no boundary above it does not report a missing boundary.
+        internal bool SuspendDeclinedByRevealedBoundary;
+
+        // The Suspense primaries open on the walk, innermost last, each of which catches a signal raised inside it,
+        // so a pass with none open is one the signal abandons — see ComponentRegistry.ReconcileExistingFiber.
+        private readonly List<SuspensePrimaryFrame> _suspensePrimaries = new();
+
+        internal int SuspensePrimaryDepth => _suspensePrimaries.Count;
+
+        // Retains is whether the Suspense keeps the primary it had committed when that primary suspends again; boundary
+        // is the fiber rendering it.
+        internal void OpenSuspensePrimary(bool retains, ComponentFiber? boundary)
+        {
+            _suspensePrimaries.Add(new SuspensePrimaryFrame(retains, boundary, SuspenseFallbackOwner));
+            SuspenseFallbackOwner = null;
+        }
+
+        // Returns whether the primary suspended, at its own expansion or where HoldSuspendInPrimary held it. The
+        // renders the primary made come back through renders, for the caller that decides whether the Suspense
+        // shows them (ResolveSuspenseRenders).
+        internal bool CloseSuspensePrimary(out List<SuspenseRender>? renders)
+        {
+            var last = _suspensePrimaries.Count - 1;
+            var frame = _suspensePrimaries[last];
+            _suspensePrimaries.RemoveAt(last);
+            SuspenseFallbackOwner = frame.EnclosingFallbackOwner;
+            renders = frame.Renders;
+            return frame.Suspended;
+        }
+
+        // What the walk writes into ComponentFiber.SuspenseFallbackOf: the fiber rendering the Suspense whose fallback
+        // is being expanded, or null inside a primary and outside every fallback.
+        internal ComponentFiber? SuspenseFallbackOwner { get; private set; }
+
+        // Returns the owner to hand back to LeaveSuspenseFallback. A fallback inside a primary of a Suspense the same
+        // fiber renders is that Suspense's to catch, which no search up the fibers tells apart from this one, so the
+        // owner is left null there.
+        internal ComponentFiber? EnterSuspenseFallback(ComponentFiber? boundary)
+        {
+            var enclosing = SuspenseFallbackOwner;
+            SuspenseFallbackOwner = boundary != null && !_suspensePrimaries.Exists(frame => ReferenceEquals(frame.Boundary, boundary))
+                ? boundary
+                : null;
+            return enclosing;
+        }
+
+        internal void LeaveSuspenseFallback(ComponentFiber? enclosing) => SuspenseFallbackOwner = enclosing;
+
+        // Whether the Suspense walking the innermost open primary decides, once its walk ends, whether a render
+        // made in it commits: only a primary that retains what it had committed has one to keep or give up, since
+        // one that discards its children has committed nothing of them.
+        internal bool IsInRetainingSuspensePrimary => _suspensePrimaries.Count > 0 && _suspensePrimaries[^1].Retains;
+
+        internal void RecordSuspenseRender(SuspenseRender render)
+            => (_suspensePrimaries[^1].Renders ??= new List<SuspenseRender>()).Add(render);
+
+        // The renders of the pass on the stack, which a suspend nothing catches takes back.
+        internal FiberPassJournal PassJournal { get; } = new();
+
+        // The Suspense that walked a primary says whether it shows the renders the primary made. One that shows
+        // its children commits them, unless a retaining primary around it is still open to decide for them, or the
+        // pass is, with the journal; one that suspends gives them all up. A walk that throws before this is reached
+        // resolves none.
+        internal void ResolveSuspenseRenders(List<SuspenseRender>? renders, bool discard)
+        {
+            if (renders == null) return;
+            if (!discard && IsInRetainingSuspensePrimary)
+            {
+                (_suspensePrimaries[^1].Renders ??= new List<SuspenseRender>()).AddRange(renders);
+                return;
+            }
+            // Shown by this Suspense, but the pass is still open to being abandoned by a suspend nothing catches.
+            if (!discard && PassJournal.IsOpen)
+            {
+                PassJournal.RecordHooks(renders);
+                return;
+            }
+            foreach (var render in renders)
+            {
+                if (discard) FiberHookCommit.DiscardSuspenseRender(render);
+                else FiberHookCommit.CommitSuspenseRender(render);
+            }
+        }
+
+        // Whether the innermost open primary takes a suspend where it is raised rather than at its own expansion,
+        // which it does only where it retains: that primary has to commit whole to be hidden.
+        internal bool HoldSuspendInPrimary()
+        {
+            var last = _suspensePrimaries.Count - 1;
+            if (last < 0 || !_suspensePrimaries[last].Retains) return false;
+            MarkSuspensePrimarySuspended();
+            return true;
+        }
+
+        internal void MarkSuspensePrimarySuspended()
+        {
+            _suspensePrimaries[^1].Suspended = true;
+            SuspendDeclinedByRevealedBoundary = false;
+        }
+
+        private sealed class SuspensePrimaryFrame
+        {
+            internal SuspensePrimaryFrame(bool retains, ComponentFiber? boundary, ComponentFiber? enclosingFallbackOwner)
+            {
+                Retains = retains;
+                Boundary = boundary;
+                EnclosingFallbackOwner = enclosingFallbackOwner;
+            }
+
+            internal bool Retains { get; }
+            internal ComponentFiber? Boundary { get; }
+            internal ComponentFiber? EnclosingFallbackOwner { get; }
+            internal bool Suspended { get; set; }
+            internal List<SuspenseRender>? Renders { get; set; }
+        }
+
+        // The completions of this top-level pass, an enter's that played nothing and an exit's, which run once the
+        // pass has ended — see CompleteEnterAfterThePass. RemovedBy is the commit whose removals an exit's child
+        // waits on: that exit completes from the passive-effect flush after the pass, and the commit takes it
+        // back if its removals never run (DropCompletionsRemovedBy).
+        internal readonly record struct PendingCompletion(
+            System.Action Complete, ComponentFiber? Boundary, object? RemovedBy, ExitSettlePhase Phase = ExitSettlePhase.Effect,
+            bool Urgent = false);
+
+        // The two ways an exit that animates nothing settles in Framer Motion: a child holding a motion component
+        // from the promise of its exit, which resolves at once when the exit names no target or one reached with a
+        // zero-duration or `type: false` transition and no delay, and a child holding none from PresenceChild's
+        // passive effect. Which settles last decides how onExitComplete's error is routed
+        // (GeneralPathReconciler.CompletePresenceExit).
+        //
+        // The order between the two follows the removing commit's lane. React flushes the passive effects of a
+        // commit whose lanes include SyncLane at the end of that commit (react-dom
+        // commitRootImpl: includesSomeLane(pendingPassiveEffectsLanes, SyncLane) then flushPassiveEffects), before
+        // any promise reaction runs, so the Urgent lane settles Effect before Promise. Any other lane flushes its
+        // passive effects later and the promise reactions run first. The zero-duration skip is motion-dom
+        // animateMotionValue: shouldSkip schedules frame.update(onComplete) and returns undefined, so
+        // animateTarget collects no animation and its Promise.all([]) resolves like an exit with no target.
+        internal enum ExitSettlePhase
+        {
+            Promise,
+            Effect,
+        }
+
+        internal readonly List<PendingCompletion> PendingCompletions = new();
+
+        // The exit completions the passive-effect flush runs after the effects it stages — see
+        // FiberEffects.StagePassiveCompletion.
+        internal readonly List<System.Action> PendingPassiveCompletions = new();
+
+        // An enter that plays nothing completes with the pass that rendered it rather than inside the walk, so a
+        // boundary catching later in that pass can take it back with the rest of the failed output — in the walk
+        // (GeneralPathReconciler.ExpandBoundaryInline), in its own reconcile (Reconciler.ReconcileCatching) or on
+        // the aborting path (FiberErrorBoundary.TryCatch). A
+        // VirtualList renders its rows outside any pass as it scrolls, and there it completes at once, since no
+        // pass end would reach it.
+        internal void CompleteEnterAfterThePass(MotionNode? motion, ComponentFiber? boundary)
+        {
+            // MUTANT_SURVIVES(equivalent, guard removed): every caller passes a motion it has resolved an enter for,
+            // and one with no OnEnterComplete queues an entry whose invocation calls nothing.
+            if (motion?.OnEnterComplete == null) return;
+            CompleteAfterThePass(() => GeneralPathReconciler.InvokeEnterComplete(motion), boundary, removedBy: null);
+        }
+
+        // An AnimatePresence's onExitComplete completes as an enter does, and for the same reason. Framer Motion
+        // calls PresenceChild's from a passive effect once a child with nothing to animate is removed, whose error
+        // React gives a boundary from the presence's owner, and from the exit's promise for a V.Motion child, whose
+        // error no boundary sees.
+        internal void CompleteExitAfterThePass(System.Action? onExitComplete, ComponentFiber? owner, bool fromAMotion)
+        {
+            if (onExitComplete == null) return;
+            CompleteAfterThePass(
+                () => GeneralPathReconciler.InvokeExitComplete(onExitComplete, owner, fromAMotion), owner, removedBy: null);
+        }
+
+        // An exit that animates nothing settles from the passive-effect flush that follows the pass whose commit
+        // removedBy is, and that commit takes it back if its removals never run.
+        internal void CompleteAfterTheRemovals(
+            System.Action settle, ComponentFiber? boundary, object removedBy, ExitSettlePhase phase)
+            => CompleteAfterThePass(settle, boundary, removedBy, phase);
+
+        private void CompleteAfterThePass(System.Action complete, ComponentFiber? boundary, object? removedBy,
+            ExitSettlePhase phase = ExitSettlePhase.Effect)
+        {
+            if (SharedReconcileDepth == 0 && removedBy == null) complete();
+            else PendingCompletions.Add(new PendingCompletion(
+                complete, boundary, removedBy, phase, FiberWorkLoop.RenderLane == FiberUpdatePriority.Urgent));
+        }
+
+        // The entries a render below boundary queued: read before a catch detaches what that render created, since
+        // an entry's owner is placed by its parent chain.
+        internal List<PendingCompletion>? CompletionsBelow(ComponentFiber boundary)
+        {
+            List<PendingCompletion>? below = null;
+            foreach (var entry in PendingCompletions)
+            {
+                if (IsAtOrBelow(entry.Boundary, boundary)) (below ??= new()).Add(entry);
+            }
+            return below;
+        }
+
+        internal void DropCompletions(List<PendingCompletion>? entries)
+        {
+            if (entries == null) return;
+            foreach (var entry in entries) PendingCompletions.Remove(entry);
+        }
+
+        // React runs nothing for removals that never committed.
+        internal void DropCompletionsRemovedBy(object commit)
+            => PendingCompletions.RemoveAll(entry => ReferenceEquals(entry.RemovedBy, commit));
+
+        private static bool IsAtOrBelow(ComponentFiber? fiber, ComponentFiber boundary)
+        {
+            for (var current = fiber; current != null; current = current.Parent)
+            {
+                if (ReferenceEquals(current, boundary)) return true;
+            }
+            return false;
+        }
+
+        internal void RunPendingCompletions()
+        {
+            // MUTANT_SURVIVES(equivalent, guard removed): an empty list copies out nothing and the loop runs no
+            // callback; the guard spares that copy where nothing is queued.
+            if (PendingCompletions.Count == 0) return;
+            // Copied out first: a callback can start a pass whose own end reaches this list.
+            var completions = PendingCompletions.ToArray();
+            PendingCompletions.Clear();
+            List<PendingCompletion>? staged = null;
+            foreach (var entry in completions)
+            {
+                if (entry.RemovedBy == null) entry.Complete();
+                else (staged ??= new List<PendingCompletion>()).Add(entry);
+            }
+            if (staged == null) return;
+            // In ExitSettlePhase order for the entry's lane, tree order within a phase.
+            foreach (var entry in System.Linq.Enumerable.OrderBy(staged, entry => entry.Urgent ? 1 - (int)entry.Phase : (int)entry.Phase))
+            {
+                FiberEffects.StagePassiveCompletion(this, entry.Complete);
+            }
+        }
+
+        // Errors a boundary caught, in catch order, each waiting for the commit that runs its fallback's layout
+        // effects to deliver it to OnCaughtError, or to OnUncaughtError where the mount root caught it
+        // (FiberEffects.DeliverCaughtErrors). Sequence is taken from
+        // NextCaughtErrorSequence at the catch.
+        internal readonly List<(ComponentFiber Boundary, System.Exception Error, ErrorInfo Info, long Sequence)> PendingCaughtErrorReports = new();
+        internal long NextCaughtErrorSequence;
+
+        // Errors a boundary took while showing its fallback (FiberErrorBoundary.TakeDuringTheSwap), which
+        // FiberErrorBoundary.RecordCatch queues behind the report of the error the swap is for.
+        internal readonly List<(ComponentFiber Boundary, System.Exception Error, ErrorInfo Info)> ErrorsDuringFallbackSwap = new();
+
+        // Errors the root took while MountedTree.Dispose unmounted its tree, which it reports once the unmount is done.
+        internal readonly List<(System.Exception Error, ErrorInfo Info)> ErrorsDuringRootDisposal = new();
+
+        // Layout commits and passive drains running on this context; a catch inside one leaves its commit to
+        // it (FiberEffects.CommitStrandedLayoutWork).
+        internal int EffectCommitDepth;
+
+        // The passive drains among EffectCommitDepth, so a layout commit nested in one still reads as running.
+        internal int PassiveDrainDepth;
+
+        internal bool InLayoutCommit => EffectCommitDepth > PassiveDrainDepth;
+
+        // Fibers with pending passive (UseEffect) effects awaiting the next post-paint drain. Unlike
+        // layout effects (committed synchronously, bottom-up, before paint) passive effects fire
+        // asynchronously after paint — but they must still observe the tree-ordered 2-phase
+        // contract: every pending fiber's effect CLEANUPS run before ANY fiber's effect SETUP, and
+        // within each phase fibers commit child-before-parent (post-order). A single drain
+        // (FiberEffects.DrainPassiveEffects) walks this set instead of the old per-fiber
+        // schedule.Execute(RunEffects), which fired each fiber's own cleanup+setup pair in
+        // scheduler-callback order with no cross-fiber phase separation. Insertion-ordered (List)
+        // with a membership set so a fiber re-staged in the same pass is not enqueued twice.
+        public List<ComponentFiber> PendingPassiveEffectFibers { get; } = new();
+        public HashSet<ComponentFiber> PendingPassiveEffectFiberSet { get; } = new();
+
+        // The rows a container's deletion has taken down and whose removal has not reached FiberElementCleaner yet, each
+        // with the fibers mounted under it (DeletionCommit.Run, ended by DeletionCommit.End).
+        internal readonly Dictionary<VisualElement, List<ComponentFiber>?> RemovalsTakenDown = new();
+
+        // True once a DrainPassiveEffects callback has been registered on the host scheduler for
+        // the current batch of PendingPassiveEffectFibers. Prevents scheduling more than
+        // one drain per paint-tick even when many fibers stage passive effects in one reconcile pass.
+        // Reset when the drain runs.
+        public bool PassiveEffectDrainScheduled { get; set; }
+
+        internal System.Action? PassiveEffectDrainCallback;
+        internal VisualElement? PassiveEffectDrainAnchor;
+
+        // Staged fibers the passive drain took out of PendingPassiveEffectFibers because a parked time-sliced
+        // pass rendered them (FiberEffects.HoldWhileParked). Their EffectFlushScheduled stays set, so nothing
+        // stages them again until FiberEffects.StageReleasedPassiveEffects does.
+        internal readonly List<ComponentFiber> PassiveEffectFibersHeldByParkedPass = new();
+        public Dictionary<VisualElement, FiberVirtualListController> VirtualListControllers { get; } = new();
+        // Keyed on the Outlet's own ComponentFiber; FiberOutletScope owns what an entry holds and when
+        // it is released.
+        public Dictionary<ComponentFiber, FiberOutletScope.Entry> OutletScopes { get; } = new();
+
+        // The node array being expanded for the fiber on top of FiberStack, which is the array whose nodes a
+        // GetOrCreate reached from here is stamping onto its children. Set where a fiber's own output enters
+        // the reconcile and where a nested fiber's committed output is descended, and restored after both, so
+        // an expansion nested inside either reads the array of the fiber it belongs to rather than the outer
+        // one. ComponentFiber.SourceTree owns what reads it.
+        internal VNode?[]? CurrentFiberTree { get; set; }
+
+        // The old instances of each general walk in progress, innermost last; OldSlotOccupants.ResolveAgain says
+        // who resolves them again and why.
+        internal List<OldSlotOccupants> OpenOldInstances { get; } = new();
+
+        // FiberZLayerCoordinator put `to` in the logical slot `from` held. Each diff holding old instances names that
+        // slot's element by `to` from here on, since the swap can come from outside the diff: an out-of-pass restack
+        // between two slices of a parked pass is one. A parked keyed Pass 2 also holds the old rows it already took,
+        // which its reorder places later, so those are rewritten too. Neither compares a parent. For the old instances
+        // OldSlotOccupants.ReplaceOccupant gives why; a taken row stays a child of its own container until the reorder
+        // places it, so a row naming `from` is one of the container the swap is in.
+        internal void NoteSlotOccupantChanged(VisualElement from, VisualElement to)
+        {
+            foreach (var occupants in BufferPool.RentedOldSlotOccupants) occupants.ReplaceOccupant(from, to);
+            foreach (var parked in ParkedDiffParents.Keys) (parked as ChildReconciler)?.ReplaceParkedRow(from, to);
+        }
+
+        internal HostCommitQueue HostCommit { get; }
+
+        // Callback-ref bookkeeping per element (BaseElementNode.RefCallback): the callback identity
+        // that installed the current ref plus its returned cleanup. The identity is stored so a
+        // patch can tell a STABLE ref apart from a swapped one — a ref cycles
+        // (cleanup, then setup) only when its identity changes or the element remounts. The cleanup
+        // fires when the element detaches from the DOM, releasing resources such as resetting
+        // Ref<T>.Current to null.
+        public Dictionary<VisualElement, (System.Func<VisualElement, System.Action> Callback, System.Action? Cleanup)>
+            RefCallbacks { get; } = new();
+
+        // Ref setups queued and not yet run, in the order the walks reached them, keyed for replacement
+        // so one element contributes one setup however many times a pass syncs it. Run by DrainRefAttaches at
+        // the end of a pass no commit follows, and otherwise by the layout commit that takes them
+        // (TakeRefAttaches); a hole (a default entry) is one an element's departure cancelled or one already
+        // run, left in place so the indices either side of it stay addressable until the compaction that ends
+        // the drain or the commit.
+        private readonly List<(VisualElement? Element, System.Func<VisualElement, System.Action>? Callback,
+            ComponentFiber? Owner, Reconciler? Pass)> _pendingRefAttaches = new();
+
+        private readonly Dictionary<VisualElement, int> _pendingRefAttachIndex = new();
+
+        private bool _drainingRefAttaches;
+
+        // A boundary catching a ref setup's failure mid-drain must not commit layout effects ahead of the setups
+        // still queued behind it (FiberEffects.IsCommitOnTheStack reads this).
+        internal bool IsDrainingRefAttaches => _drainingRefAttaches;
+
+        // The Reconciler whose Reconcile / ContinueReconcile bracket is innermost on the stack, and null
+        // outside every pass — the VirtualList controller's scroll-driven item loop reaches the queue
+        // below from there. Stamped onto each setup it queues so the drain asks the pass that created the
+        // element, rather than the context, whether the removals that setup has to follow have run.
+        internal Reconciler? CurrentPass { get; set; }
+
+        // Where a user callback the reconciler invokes goes when it throws. The teardown funnels —
+        // FiberElementCleaner, Reconciler's disposal sweeps, and the route-scope release at FiberNodePatcher that
+        // mirrors them — report to the console. A callback the reconciler makes for an owner that is still live
+        // comes here, to the nearest error boundary, because a boundary is the mechanism a component has for its
+        // own failures, and an effect cleanup — the same kind of callback — already reaches one
+        // (HookEffectExecutor.RunCleanups). A site that routes otherwise argues it where it does:
+        // ChildReconciler.DrainPendingPortalMounts for its ZLayerMountNode arm's throw,
+        // FiberNodeFactory.ContainCreationCallbackFailure for an element still being created,
+        // GeneralPathReconciler.InvokeExitComplete and InvokeEnterComplete for a presence's or a Motion's
+        // completion, and FiberOutletScope.CreateOutletScope for an Outlet's route-scope factory.
+        //
+        // owner is the component the failing callback belongs to, where ComponentBoundarySearch.PropagateFromOwner
+        // starts the search.
+        internal static void ContainUserCallbackFailure(ComponentFiber? owner, System.Exception exception)
+            => ComponentBoundarySearch.PropagateFromOwner(owner, exception);
+
+        // Cycles the ref installed on an element to match the node being committed: both the old cleanup and
+        // the new setup after the pass, at its boundary or in the layout commit that follows it, the old first,
+        // as React detaches the refs of a commit before it attaches. Run mid-pass, the cleanup took away
+        // whatever the old setup published — a portal id — from the patches still to come in that pass, which
+        // an inline lambda, a new delegate at every render,
+        // turned into a render that re-published the id and asked for the next. A ref removed outright is
+        // cleaned up at once. A patch carrying the SAME callback delegate is a no-op —
+        // unconditionally re-invoking made any state write in a ref cleanup a per-patch mid-flush write,
+        // forcing consumers into deferred-correction workarounds.
+        internal void SyncRefCallback(VisualElement element, System.Func<VisualElement, System.Action>? refCallback)
+        {
+            if (RefCallbacks.TryGetValue(element, out var installed)
+                && refCallback != null && ReferenceEquals(installed.Callback, refCallback))
+            {
+                // The installed ref stays until the drain, so an earlier patch can have queued another callback
+                // over it; this patch, carrying the installed one back, supersedes that. A setup queued for this
+                // same callback is still to be installed, and is kept.
+                if (_pendingRefAttachIndex.TryGetValue(element, out var superseded)
+                    && !ReferenceEquals(_pendingRefAttaches[superseded].Callback, refCallback))
+                {
+                    DropPendingRefAttach(element);
+                }
+                return;
+            }
+            if (refCallback == null)
+            {
+                DetachRefCallback(element);
+                DropPendingRefAttach(element);
+                return;
+            }
+            var entry = (Element: (VisualElement?)element, Callback: refCallback,
+                Owner: FiberStack.Current, Pass: CurrentPass);
+            if (_pendingRefAttachIndex.TryGetValue(element, out var queued))
+            {
+                _pendingRefAttaches[queued] = entry;
+                return;
+            }
+            _pendingRefAttachIndex[element] = _pendingRefAttaches.Count;
+            _pendingRefAttaches.Add(entry);
+        }
+
+        // The detach half. Remove first: if a user-defined cleanup throws, leaving a stale entry would
+        // cause a double-fire on the next reconcile. Remove → Invoke order preserves exception safety.
+        internal void DetachRefCallback(VisualElement element)
+        {
+            if (!RefCallbacks.TryGetValue(element, out var installed)) return;
+            RefCallbacks.Remove(element);
+            try
+            {
+                installed.Cleanup?.Invoke();
+            }
+            catch (System.Exception exception)
+            {
+                ContainUserCallbackFailure(FiberStack.Current, exception);
+            }
+        }
+
+        // The refs of the elements a Suspense keeps hidden, detached as React 18 detaches a hidden tree's host refs,
+        // each with the callback that attaches it again on the reveal.
+        private readonly Dictionary<VisualElement, System.Func<VisualElement, System.Action>> _refsDetachedWhileHidden =
+            new();
+
+        internal void DetachRefsWhileHidden(VisualElement element)
+        {
+            DetachRefWhileHidden(element);
+            for (var i = 0; i < ChildListWrites.HierarchyCount(element); i++) DetachRefsWhileHidden(ChildListWrites.HierarchyChild(element, i));
+        }
+
+        // A setup still queued is taken back with the installed one. A render of the Suspense hiding an element
+        // patches it like any other, queueing a setup where its callback changed, and the hide that render ends with
+        // takes that setup back here.
+        internal void DetachRefWhileHidden(VisualElement element)
+        {
+            var callback = _pendingRefAttachIndex.TryGetValue(element, out var queued)
+                ? _pendingRefAttaches[queued].Callback
+                : RefCallbacks.TryGetValue(element, out var installed) ? installed.Callback : null;
+            if (callback == null) return;
+            DetachRefCallback(element);
+            DropPendingRefAttach(element);
+            _refsDetachedWhileHidden[element] = callback;
+        }
+
+        // Over element and every element below it, short of one a nested Suspense still hides, whose refs that
+        // Suspense attaches when it reveals. A setup the reveal's own render queued carries the newer callback, so
+        // it is the one kept.
+        internal void AttachRefsHiddenUnder(VisualElement element)
+        {
+            if (_refsDetachedWhileHidden.Remove(element, out var callback) && !_pendingRefAttachIndex.ContainsKey(element))
+            {
+                SyncRefCallback(element, callback);
+            }
+            for (var i = 0; i < ChildListWrites.HierarchyCount(element); i++)
+            {
+                var child = ChildListWrites.HierarchyChild(element, i);
+                if (!SuspenseHiddenElements.IsHidden(child)) AttachRefsHiddenUnder(child);
+            }
+        }
+
+        // An element that leaves while its ref is detached has had that ref's cleanup already.
+        internal void ForgetRefDetachedWhileHidden(VisualElement element) => _refsDetachedWhileHidden.Remove(element);
+
+        // Cancels a setup queued for an element that is leaving before the drain reaches it. The setup
+        // never ran, so there is no cleanup owed and nothing to undo — running it would install a ref
+        // pointing at an element no tree holds.
+        internal void DropPendingRefAttach(VisualElement element)
+        {
+            if (_pendingRefAttachIndex.Remove(element, out var queued))
+            {
+                _pendingRefAttaches[queued] = default;
+            }
+        }
+
+        // Runs the queued setups in walk order, for a pass no layout commit follows. An entry is recorded whether
+        // or not the setup completed — the identity is what makes the stable-ref skip possible, so a setup that
+        // throws is attempted once rather than again on every later patch carrying the same delegate.
+        internal void DrainRefAttaches()
+        {
+            // A nested caller — the VirtualList controller's item loop, reached from a patch as well as
+            // from a scroll callback — hands its entries to the enclosing pass's own boundary, which is
+            // the point where every removal of that pass is behind them.
+            if (SharedReconcileDepth > 0) return;
+            // A virtual-list range render in progress hands every entry to its own end, where its rows are in
+            // the list (FiberVirtualListController.RenderRange); a row's mount would otherwise attach them first.
+            if (HeldRowLayoutEffects.Count > 0) return;
+            // A setup that re-enters a top-level pass leaves its own entries to the loop below, which
+            // re-reads the count and takes them as a batch of their own; draining them from inside would
+            // run the ones already run a second time.
+            if (_drainingRefAttaches) return;
+            // A pass a fiber's render or flush reconciles is followed by that fiber's layout commit, or by
+            // FiberEffects.CommitStrandedLayoutWork, which attaches what it queued among the layout effects
+            // (FiberRefPlacement) and runs the cleanups of the refs it replaced ahead of them. A bare
+            // Reconciler.Reconcile has no fiber on the stack and nothing after it.
+            if (FiberStack.Current != null) return;
+            _drainingRefAttaches = true;
+            try
+            {
+                var batchEnd = 0;
+                for (var i = 0; i < _pendingRefAttaches.Count; i++)
+                {
+                    // Every cleanup a batch replaces runs ahead of every setup in it, as React detaches the
+                    // old refs of a commit before it attaches the new: one element's new setup registering
+                    // an id must not be followed by another element's old cleanup unregistering it.
+                    if (i == batchEnd)
+                    {
+                        batchEnd = _pendingRefAttaches.Count;
+                        RunReplacedRefCleanups(i, batchEnd, null);
+                    }
+                    var (element, callback, _, pass) = _pendingRefAttaches[i];
+                    // MUTANT_SURVIVES(equivalent): an entry's element and callback are written together —
+                    // SyncRefCallback queues one only with both set, and a cancelled or consumed one is
+                    // overwritten with default — so neither is null without the other and both spellings
+                    // skip exactly the holes.
+                    if (element == null || callback == null) continue;
+                    // The queue is the context's while a pass belongs to one Reconciler, so the pass that
+                    // reached this boundary is not necessarily the one that queued this entry. A parked
+                    // pass holds back the entries it queued and no others — Reconciler.FinishTopLevelPass
+                    // owns why it has to hold those.
+                    if (pass is { HasPendingWork: true }) continue;
+                    AttachQueuedRef(i);
+                }
+            }
+            finally
+            {
+                CompactPendingRefAttaches();
+                _drainingRefAttaches = false;
+            }
+        }
+
+        // Detaches the ref the queued setup of element replaces, where the commit's walk reaches the element
+        // (FiberRefPlacement): a detach already run leaves nothing for a second call. The commit calls it for the
+        // elements its TakeRefAttaches took, so it detaches the refs it goes on to attach.
+        internal void DetachReplacedRef(VisualElement element)
+        {
+            if (!_pendingRefAttachIndex.TryGetValue(element, out var queued)) return;
+            var (_, callback, owner, pass) = _pendingRefAttaches[queued];
+            if (callback == null || pass is { HasPendingWork: true }) return;
+            var enclosing = _drainingRefAttaches;
+            _drainingRefAttaches = true;
+            try
+            {
+                RunReplacedRefCleanup(element, callback, owner);
+            }
+            finally
+            {
+                _drainingRefAttaches = enclosing;
+            }
+        }
+
+        private bool CanRunRefSetups
+            => SharedReconcileDepth == 0 && HeldRowLayoutEffects.Count == 0 && !_drainingRefAttaches;
+
+        private static bool IsAttachable(
+            (VisualElement? Element, System.Func<VisualElement, System.Action>? Callback, ComponentFiber? Owner,
+                Reconciler? Pass) entry)
+            => entry.Element != null && entry.Callback != null && entry.Pass is not { HasPendingWork: true };
+
+        private static readonly List<PendingRefAttach> s_noRefAttaches = new();
+
+        // scope null is every setup. Otherwise it is the fiber being committed and what lies below it.
+        private static bool IsInRefScope(ComponentFiber? owner, ComponentFiber? scope)
+            => scope == null || (owner != null && IsAtOrBelow(owner, scope));
+
+        // The setups a layout commit attaches, in queue order: those no parked pass holds, owned by scope or by a
+        // component below it, or by any component when scope is null. A commit rooted at a fiber leaves the rest
+        // to the commit that has the rest of their pass: a render owed ahead of a pass's own commit
+        // (FiberWorkLoop.FlushOwedSettleRenders) commits first, and attaching the pass's setups there would put
+        // them ahead of the layout effects that commit still has to run. Empty wherever DrainRefAttaches leaves
+        // the queue alone.
+        internal List<PendingRefAttach> TakeRefAttaches(ComponentFiber? scope)
+        {
+            if (_pendingRefAttaches.Count == 0 || !CanRunRefSetups) return s_noRefAttaches;
+            List<PendingRefAttach>? taken = null;
+            foreach (var entry in _pendingRefAttaches)
+            {
+                if (!IsAttachable(entry)) continue;
+                if (!IsInRefScope(entry.Owner, scope)) continue;
+                (taken ??= new List<PendingRefAttach>()).Add(new PendingRefAttach(entry.Element!, entry.Owner));
+            }
+            return taken ?? s_noRefAttaches;
+        }
+
+        // Whether a setup waits for a commit that has no fiber of its own to bring. Read only where
+        // FiberEffects.CommitStrandedLayoutWork has found no commit on the stack.
+        internal bool HasAttachableRefs() => _pendingRefAttaches.Exists(IsAttachable);
+
+        // Runs the setup the queue holds for the element, which is not always the one the commit took: a write
+        // since then can have queued another callback, and can have taken the element out or dropped its ref.
+        internal void RunRefAttach(VisualElement element)
+        {
+            if (!_pendingRefAttachIndex.TryGetValue(element, out var queued)) return;
+            var enclosing = _drainingRefAttaches;
+            _drainingRefAttaches = true;
+            try
+            {
+                AttachQueuedRef(queued);
+            }
+            finally
+            {
+                _drainingRefAttaches = enclosing;
+            }
+        }
+
+        // Ends a commit's use of the queue, dropping the slots of the setups it ran.
+        internal void CompactRefAttaches()
+        {
+            if (!_drainingRefAttaches) CompactPendingRefAttaches();
+        }
+
+        private void AttachQueuedRef(int index)
+        {
+            var (queuedElement, queuedCallback, owner, _) = _pendingRefAttaches[index];
+            var element = queuedElement!;
+            var callback = queuedCallback!;
+            // Ahead of the setup, so a setup that re-queues this same element appends a fresh
+            // entry instead of overwriting the one being run.
+            _pendingRefAttachIndex.Remove(element);
+            _pendingRefAttaches[index] = default;
+            // Ahead of the setup too, so an element the setup itself takes out of the tree is one
+            // FiberElementCleaner finds an entry for and removes. A setup CAN reach that: it runs
+            // at depth zero now, where a discrete event it dispatches commits synchronously instead
+            // of being held back. Recorded only afterwards, the removal would find no entry and the
+            // write below would then add one for an element no tree holds, past the removal that
+            // would have taken it.
+            RefCallbacks[element] = (callback, null);
+            // A callback that reads its element's box here reads it laid out, as in React's layout phase.
+            FiberLayoutReflow.LayOutFor(this, element, owner);
+            System.Action? cleanup = null;
+            try
+            {
+                cleanup = InOwnersFrame(owner, callback, element);
+            }
+            catch (System.Exception exception)
+            {
+                ContainUserCallbackFailure(owner, exception);
+            }
+            if (RefCallbacks.ContainsKey(element))
+            {
+                RefCallbacks[element] = (callback, cleanup);
+            }
+            else if (cleanup != null)
+            {
+                // Its entry is gone, so nothing is left holding this cleanup. Firing it here is
+                // what keeps a setup that acquires a resource from leaking it.
+                try
+                {
+                    InOwnersFrame(owner, _ => { cleanup(); return null; }, element);
+                }
+                catch (System.Exception exception)
+                {
+                    ContainUserCallbackFailure(owner, exception);
+                }
+            }
+        }
+
+        // A ref callback runs with its owner on the ambient stack, as it did when the pass attached it, so a hook
+        // called from it is refused by name (HookGuard.ThrowIfNotRendering) rather than as an anonymous component.
+        private static System.Action? InOwnersFrame(
+            ComponentFiber? owner, System.Func<VisualElement, System.Action?> callback, VisualElement element)
+        {
+            if (owner != null) FiberAmbientStack.Push(owner);
+            try
+            {
+                return callback(element);
+            }
+            finally
+            {
+                if (owner != null) FiberAmbientStack.Pop();
+            }
+        }
+
+        private void RunReplacedRefCleanups(int start, int end, ComponentFiber? scope)
+        {
+            for (var i = start; i < end; i++)
+            {
+                var (element, callback, owner, pass) = _pendingRefAttaches[i];
+                // MUTANT_SURVIVES(equivalent): the two are null together for the reason DrainRefAttaches's own
+                // skip gives, so this reaches the same entries either way.
+                if (element == null || callback == null) continue;
+                // The batch's own setup loop skips this entry too, so its old ref stays as it is.
+                if (pass is { HasPendingWork: true }) continue;
+                if (!IsInRefScope(owner, scope)) continue;
+                RunReplacedRefCleanup(element, callback, owner);
+            }
+        }
+
+        private void RunReplacedRefCleanup(
+            VisualElement element, System.Func<VisualElement, System.Action> callback, ComponentFiber? owner)
+        {
+            if (!RefCallbacks.TryGetValue(element, out var installed)) return;
+            var replaced = installed.Cleanup;
+            if (replaced == null) return;
+            // Ahead of the cleanup: a boundary catching its failure can take the element out, and
+            // finding the replaced entry there, FiberElementCleaner would run the cleanup a second time.
+            RefCallbacks[element] = (callback, null);
+            // Its failure goes where a setup's does, and the setup still runs.
+            try
+            {
+                InOwnersFrame(owner, _ => { replaced(); return null; }, element);
+            }
+            catch (System.Exception exception)
+            {
+                ContainUserCallbackFailure(owner, exception);
+            }
+        }
+
+        // Clearing the list outright is no longer available: the entries a parked pass queued have to
+        // survive the drain that skipped them. What is left is compacted instead, so the list does not
+        // keep a slot per entry already run.
+        private void CompactPendingRefAttaches()
+        {
+            var kept = 0;
+            for (var i = 0; i < _pendingRefAttaches.Count; i++)
+            {
+                var entry = _pendingRefAttaches[i];
+                // MUTANT_SURVIVES(equivalent): an entry's two members are null together for the reason
+                // DrainRefAttaches's own skip gives, so this reaches the same entries either way.
+                if (entry.Element == null || entry.Callback == null) continue;
+                _pendingRefAttaches[kept++] = entry;
+            }
+            _pendingRefAttaches.RemoveRange(kept, _pendingRefAttaches.Count - kept);
+            // MUTANT_SURVIVES(equivalent): every key here belongs to an entry the loop above kept, because
+            // a hole's key is removed where the hole is made — so the rebuild below rewrites each of them
+            // and leaves none behind for this to have removed.
+            _pendingRefAttachIndex.Clear();
+            for (var i = 0; i < _pendingRefAttaches.Count; i++)
+            {
+                _pendingRefAttachIndex[_pendingRefAttaches[i].Element!] = i;
+            }
+        }
+
+        // Only shown fallbacks are stored, so boundary-level deferral reads this table's presence.
+        // The node identifies the branch when a context-spine walk reaches it through a nested host.
+        // HidesPrimary says the primary the boundary had committed is still in the container, hidden, ahead of
+        // the fallback, which the old-side walk then reproduces as well.
+        private readonly Dictionary<ComponentFiber, Dictionary<(VisualElement? Container, VisualElement? PortalScope, long Position), SuspenseFallbackRecord>>
+            _suspenseFallbackKeys = new();
+        private readonly Dictionary<(VisualElement? Container, VisualElement? PortalScope, long Position), SuspenseFallbackRecord>
+            _rootlessSuspenseFallbackKeys = new();
+
+        // Every container and portal scope a key in either table names, and possibly more: a key leaving its table
+        // does not leave here, so a prune that finds its element absent has nothing to scan for and one that finds it
+        // present scans once and drops it.
+        private readonly HashSet<VisualElement> _suspenseContainers = new();
+
+        private void IndexSuspenseContainers((VisualElement? Container, VisualElement? PortalScope, long Position) position)
+        {
+            if (position.Container != null) _suspenseContainers.Add(position.Container);
+            if (position.PortalScope != null) _suspenseContainers.Add(position.PortalScope);
+        }
+
+        internal bool AnyBoundaryShowingFallback => _suspenseFallbackKeys.Count > 0;
+
+        internal bool IsBoundaryShowingFallback(ComponentFiber boundary)
+            => _suspenseFallbackKeys.ContainsKey(boundary);
+
+        internal bool IsSuspenseFallbackShown(ComponentFiber? boundary, VisualElement? container, VisualElement? portalScope, long positionKey)
+            => boundary == null
+                ? _rootlessSuspenseFallbackKeys.ContainsKey((container, portalScope, positionKey))
+                : _suspenseFallbackKeys.TryGetValue(boundary, out var keys) && keys.ContainsKey((container, portalScope, positionKey));
+
+        internal bool IsBoundaryHidingPrimary(ComponentFiber boundary)
+            => _suspenseFallbackKeys.TryGetValue(boundary, out var keys)
+                && System.Linq.Enumerable.Any(keys.Values, record => record.HidesPrimary);
+
+        internal SuspenseFallbackRecord? SuspenseRecordAt(ComponentFiber? boundary, VisualElement? container,
+            VisualElement? portalScope, long positionKey)
+        {
+            var position = (container, portalScope, positionKey);
+            if (boundary == null)
+            {
+                return _rootlessSuspenseFallbackKeys.TryGetValue(position, out var rootless) ? rootless : null;
+            }
+            if (!_suspenseFallbackKeys.TryGetValue(boundary, out var keys)) return null;
+            return keys.TryGetValue(position, out var record) ? record : null;
+        }
+
+        internal bool IsSuspensePrimaryHidden(ComponentFiber? boundary, VisualElement? container, VisualElement? portalScope, long positionKey)
+            => SuspenseRecordAt(boundary, container, portalScope, positionKey).GetValueOrDefault().HidesPrimary;
+
+        internal bool IsSuspenseFallbackShownOnSpine(ComponentFiber boundary, VisualElement? container, VisualElement? portalScope,
+            long positionKey, SuspenseNode node)
+        {
+            if (!_suspenseFallbackKeys.TryGetValue(boundary, out var entries)) return false;
+            foreach (var entry in entries)
+            {
+                // MUTANT_SURVIVES(equivalent): each boundary in these fixtures records one fallback row per position key.
+                if (entry.Key.Position != positionKey || !ReferenceEquals(entry.Key.PortalScope, portalScope)
+                    || !ReferenceEquals(entry.Value.Node, node)) continue;
+                for (var current = container; current != null; current = ChildListWrites.ParentOf(current))
+                    if (ReferenceEquals(current, entry.Key.Container)) return true;
+            }
+            return false;
+        }
+
+        // A null record is no fallback shown, which is what SuspenseRecordAt reads back for it.
+        internal void SetSuspenseFallbackShown(ComponentFiber? boundary, VisualElement? container, VisualElement? portalScope,
+            long positionKey, SuspenseFallbackRecord? record)
+        {
+            var position = (container, portalScope, positionKey);
+            if (boundary == null)
+            {
+                if (record is { } rootless)
+                {
+                    _rootlessSuspenseFallbackKeys[position] = rootless;
+                    IndexSuspenseContainers(position);
+                }
+                else _rootlessSuspenseFallbackKeys.Remove(position);
+                return;
+            }
+            if (record is { } shown)
+            {
+                if (!_suspenseFallbackKeys.TryGetValue(boundary, out var keys))
+                {
+                    keys = new Dictionary<(VisualElement? Container, VisualElement? PortalScope, long Position), SuspenseFallbackRecord>();
+                    _suspenseFallbackKeys[boundary] = keys;
+                }
+                keys[position] = shown;
+                IndexSuspenseContainers(position);
+                return;
+            }
+            RemoveSuspenseFallback(boundary, position);
+        }
+
+        // The Suspense and AnimatePresence records kept against a boundary, taken before its own reconcile so that
+        // a catch there can put them back (FiberCommitWork.ReconcileOwnRowsCatching).
+        internal BoundaryRecords RecordsOf(ComponentFiber boundary)
+        {
+            var suspense = _suspenseFallbackKeys.TryGetValue(boundary, out var keys)
+                ? new Dictionary<(VisualElement? Container, VisualElement? PortalScope, long Position), SuspenseFallbackRecord>(keys)
+                : null;
+            HashSet<(VisualElement? Parent, long Position)>? presence = null;
+            foreach (var key in PresenceStates.Keys)
+            {
+                if (ReferenceEquals(key.boundary, boundary)) (presence ??= new()).Add((key.parent, key.presenceKey));
+            }
+            return new BoundaryRecords(suspense, presence);
+        }
+
+        // Puts the boundary's Suspense records back as they were and drops the AnimatePresence records the failed
+        // render added; one that was there before stays as that render left it.
+        internal void RestoreRecordsOf(ComponentFiber boundary, BoundaryRecords before)
+        {
+            if (before.Suspense == null) _suspenseFallbackKeys.Remove(boundary);
+            else
+            {
+                _suspenseFallbackKeys[boundary] = before.Suspense;
+                foreach (var position in before.Suspense.Keys) IndexSuspenseContainers(position);
+            }
+            List<(ComponentFiber? boundary, VisualElement? parent, long presenceKey)>? added = null;
+            foreach (var key in PresenceStates.Keys)
+            {
+                if (!ReferenceEquals(key.boundary, boundary)) continue;
+                if (before.Presence != null && before.Presence.Contains((key.parent, key.presenceKey))) continue;
+                (added ??= new()).Add(key);
+            }
+            if (added == null) return;
+            // A render the boundary took back committed none of these presences, so none of their exits settles.
+            foreach (var key in added) RetirePresenceState(key, settlesExits: false);
+        }
+
+        internal readonly record struct SuspenseFallbackRecord(SuspenseNode Node, bool HidesPrimary);
+
+        internal readonly record struct BoundaryRecords(
+            Dictionary<(VisualElement? Container, VisualElement? PortalScope, long Position), SuspenseFallbackRecord>? Suspense,
+            HashSet<(VisualElement? Parent, long Position)>? Presence);
+
+        private void RemoveSuspenseFallback(ComponentFiber? boundary,
+            (VisualElement? Container, VisualElement? PortalScope, long Position) position)
+        {
+            if (boundary == null)
+            {
+                // MUTANT_SURVIVES(unreachable): rootless fallback retirement goes through SetSuspenseFallbackShown's shown=false arm instead.
+                _rootlessSuspenseFallbackKeys.Remove(position);
+                return;
+            }
+            if (_suspenseFallbackKeys.TryGetValue(boundary, out var existing)
+                && existing.Remove(position) && existing.Count == 0)
+            {
+                _suspenseFallbackKeys.Remove(boundary);
+            }
+        }
+
+        internal void ClearSuspenseState()
+        {
+            _suspenseFallbackKeys.Clear();
+            _rootlessSuspenseFallbackKeys.Clear();
+            _suspenseContainers.Clear();
+        }
+
+        internal void PruneSuspenseContainerState(VisualElement container)
+        {
+            if (!_suspenseContainers.Remove(container)) return;
+            var emptyBoundaries = BufferPool.RentFiberList();
+            try
+            {
+                // MUTANT_SURVIVES(equivalent): rootless fallback keys outlive only the root container, never a pruned child.
+                RemoveSuspenseContainer(_rootlessSuspenseFallbackKeys, container);
+                foreach (var entry in _suspenseFallbackKeys)
+                {
+                    RemoveSuspenseContainer(entry.Value, container);
+                    if (entry.Value.Count == 0) emptyBoundaries.Add(entry.Key);
+                }
+                foreach (var boundary in emptyBoundaries) _suspenseFallbackKeys.Remove(boundary);
+            }
+            finally
+            {
+                // MUTANT_SURVIVES(equivalent): the rented list is empty here, so omitting the return leaks nothing observable.
+                BufferPool.ReturnFiberList(emptyBoundaries);
+            }
+        }
+
+        private static void RemoveSuspenseContainer(
+            Dictionary<(VisualElement? Container, VisualElement? PortalScope, long Position), SuspenseFallbackRecord> entries, VisualElement container)
+        {
+            List<(VisualElement? Container, VisualElement? PortalScope, long Position)>? removed = null;
+            foreach (var position in entries.Keys)
+                if (ReferenceEquals(position.Container, container) || ReferenceEquals(position.PortalScope, container)) (removed ??= new()).Add(position);
+            if (removed != null)
+                foreach (var position in removed) entries.Remove(position);
+        }
+
+        // Removes all wrapper-less Suspense boundary state keyed by boundary.
+        // Invoked from ComponentRegistry when the boundary fiber is unregistered, so a
+        // boundary that unmounts while suspended leaves no dangling fiber reference behind.
+        internal void PruneSuspenseBoundaryState(ComponentFiber boundary)
+        {
+            _suspenseFallbackKeys.Remove(boundary);
+        }
+
+        // An exit's settle waiting for a commit to run after. Equal only to itself: a key's later exit puts another
+        // in its place, which GeneralPathReconciler.TakeIfStillPending tells apart by reference.
+        internal sealed class PendingSettle
+        {
+            internal PendingSettle(System.Action settle, ExitSettlePhase phase)
+            {
+                Settle = settle;
+                Phase = phase;
+            }
+
+            internal System.Action Settle { get; }
+            internal ExitSettlePhase Phase { get; }
+        }
+
+        // Per-AnimatePresence state for the DOM-less (wrapper-less) expansion, keyed as PresenceStates below
+        // is. The keyed children are expanded directly into the parent's slot range (no wrapper element);
+        // this state records, per AnimatePresence, the leaf composition currently committed to the DOM so
+        // the old-side structural walk can reproduce it for the diff, plus which keys are mid-exit (kept
+        // mounted as ghosts) and which have finished exiting (dropped on the next render). PresenceStateOwner
+        // enumerates what it is pruned with; RetireBoundaryStatesNotReRendered and the whole-table clear in
+        // Reconciler.ReleaseHostsAndScopes are the other two ways it ends.
+        internal sealed class PresenceBoundaryState
+        {
+            // Keyed children currently in the DOM (in DOM order), including exiting ghosts.
+            public readonly List<(string key, VNode node)> Committed = new();
+
+            // Keys present at the first render under initial: false and not removed since (see LiveEntrySite).
+            public readonly HashSet<string> InitialBlocked = new();
+
+            // Keys whose exit animation is running; the leaf is kept mounted as a ghost.
+            public readonly HashSet<string> Exiting = new();
+
+            // Keys whose exit animation has completed; the next render stops emitting them so the
+            // diff removes their leaves.
+            public readonly HashSet<string> ExitComplete = new();
+
+            // Per exiting key, the settle that waits for a commit to run after
+            // (GeneralPathReconciler.SettleAfterTheRemovingCommit). A re-entry drops it.
+            public readonly Dictionary<string, PendingSettle> PendingSettles = new();
+
+            // Anchor element of each exiting ghost (its first emitted leaf). Once a Motion's exit detaches
+            // its element, the old-side reproduction can no longer recurse into the ghost's subtree, so its
+            // inline fibers escape the orphan sweep. Keeping the anchor lets the drop path dispose them
+            // explicitly via DisposeFibersUnder — otherwise a same-key re-entry restores a zombie fiber whose
+            // local state updates never re-render.
+            public readonly Dictionary<string, VisualElement> ExitAnchors = new();
+
+            // The anchor Motion's OWN element per live key — the target its variant enter/exit classes land
+            // on. A ghost's emission reproduces the SAME committed node instance on both diff sides, so the
+            // patch that would re-record the element (PresenceAnchorMotionElement) bails on reference
+            // equality and never runs; this per-key memo, written whenever an emission DOES record the
+            // element, is what the ghost's exit dispatch falls back to. Entries retire with their key
+            // (exit-complete drop) so a pooled element is never resurrected as a target.
+            public readonly Dictionary<string, VisualElement> MotionElements = new();
+
+            // The top-level elements each key's last committing emission placed, a z-managed placeholder
+            // replaced by the element it stands for and any an inner presence's child claimed left out. A
+            // removal walks down from these to find the descendant Motions whose exits it waits for;
+            // ReconcilerContext.PresenceChildRoots says which of them the key still owns. Entries retire with
+            // their key.
+            public readonly Dictionary<string, List<VisualElement>> ChildRoots = new();
+
+            // Per exiting key, the exits it waits for, so a re-entry can close the wait and cancel or undo its
+            // descendants' exits. Entries retire with their key.
+            public readonly Dictionary<string, PresenceExitWait> ExitWaits = new();
+
+            // The nearest enclosing presence's keyed child that this presence last expanded inside, Framer's
+            // nearest PresenceContext. A committing expansion made while that child is emitted writes it; the re-render
+            // this presence makes on its own (no enclosing emission around it) reads the last one.
+            public PresenceBoundaryState? Enclosing;
+            public string? EnclosingKey;
+
+            // As of the last expansion: whether this presence propagates, and whether that expansion treated every
+            // child as not present because the enclosing child is leaving.
+            public bool Propagate;
+            public bool ExitedForEnclosing;
+
+            // The slot this presence holds in the enclosing child's exit wait, for as long as it holds one.
+            public PresenceRegistration? Registration;
+
+            // The keys of the children the last committing expansion was given, which tells a key added since
+            // from one a finished exit has dropped while the props still list it.
+            public readonly HashSet<string> PropKeys = new();
+
+            // The keys mounted already leaving, whose Motions rest at their initial pose until they return or drop.
+            public readonly HashSet<string> LeavingMounts = new();
+
+            // Whether an expansion of this presence is under way, and the exit completions that fired meanwhile,
+            // each with its key, staged once it has finished its bookkeeping
+            // (GeneralPathReconciler.ExpandAnimatePresenceInline).
+            public bool Expanding;
+            public List<(string Key, System.Action Settle)>? DeferredCompletions;
+
+            // Whether the key is on its way out, not yet dropped: an exit running, or finished and awaiting the
+            // render that drops it.
+            internal bool IsLeaving(string key) => Exiting.Contains(key) || ExitComplete.Contains(key);
+
+            // The Portal placeholder whose children reconcile last expanded this presence, if any. Kept
+            // rather than rewritten from a null the way ComponentFiber.OwningPortalPlaceholder is: a fiber a
+            // reconcile leaves unstamped is still reached through the parent index, and an entry has no second
+            // route to it. Several Portals rendering into one container reach one
+            // entry, so this names the last of them to expand it rather than all of them —
+            // AnimatePresenceStateRetirementTests' shared-container case is what goes red if a teardown
+            // starts reaching an entry another Portal still holds leaves for.
+            public VisualElement? OwningPortalPlaceholder;
+        }
+
+        // Keyed by (boundary fiber, parent element, the SlotPath FiberKeying.Presence gives). The parent
+        // element is part of the key because an AnimatePresence nested inside a real element (e.g. a Motion)
+        // reconciles its children through a fresh ReconcileChildren call that restarts the walk at
+        // FiberKeying.WalkRoot; without the parent, that inner AnimatePresence would collide with an outer
+        // one at the same fiber and index. The parent is stable across the AnimatePresence's renders (the
+        // host element is reused), and disambiguates inner from outer.
+        internal Dictionary<(ComponentFiber? boundary, VisualElement? parent, long presenceKey), PresenceBoundaryState> PresenceStates { get; } = new();
+
+        // The MotionNode a presence expansion is CURRENTLY dispatching enter/exit for — the one
+        // FindFirstMotionDescendant resolved for whichever keyed child GeneralPathReconciler is expanding right
+        // now (set/restored around each EmitPresenceChild call, not just cleared, so a nested AnimatePresence
+        // inside that child's own subtree does not lose the OUTER anchor once its own expansion returns). Null
+        // outside any presence expansion, and also null for a keyed child whose FindFirstMotionDescendant walk
+        // found no Motion (e.g. a plain Div wrapper). FiberNodeFactory's standalone-enter gate compares a
+        // freshly created MotionNode against this BY REFERENCE (see CreateForMotionNode).
+        internal MotionNode? PresenceAnchorMotion;
+
+        // The live element CreateElement / NodePatchWalk.ReconcileUnderMotion recorded for PresenceAnchorMotion during
+        // the current EmitPresenceChild expansion (same set/restore discipline). Needed because variant
+        // enter/exit classes must land on the Motion's OWN element — where the resting
+        // variants[animate] classes live — not on the keyed child's top-level anchor: for a wrapped
+        // Motion (a z-managed Div or a Provider between the presence and the Motion) those are
+        // different elements, and classes applied to the wrapper would double-apply against the
+        // Motion's resting set and be clobbered by the wrapper's own class patching.
+        internal VisualElement? PresenceAnchorMotionElement;
+
+        // Set by the create path when it plays, or withholds, the enter of PresenceAnchorMotion itself. Same
+        // set/restore discipline.
+        internal bool PresenceAnchorEnterHandled;
+
+        // Set by the create path when it creates PresenceAnchorMotion's element, so the expansion can tell a
+        // live key remounted under its own key from one it patched. Same set/restore discipline.
+        internal bool PresenceAnchorCreated;
+
+        // The delay the expansion plays PresenceAnchorMotion's enter in: its stagger slot, which the create path raises
+        // to the end of its children's plays once they have been created where the Motion waits for them
+        // (TransitionWhen.AfterChildren). Same set/restore discipline.
+        internal float PresenceAnchorEnterDelaySec;
+
+        // The keyed child being emitted now and whether it is present: what a presence expanding inside that
+        // child's subtree reads as its nearest enclosing presence. Same set/restore discipline as
+        // PresenceAnchorMotion, and null outside any presence child's emission.
+        internal PresenceChildContext? EnclosingPresenceChild;
+
+        // Whether the keyed child being emitted was mounted already leaving: its Motions rest at their initial pose
+        // and exit from there. Same set/restore discipline as PresenceAnchorMotion.
+        internal bool PresenceMountsLeaving;
+
+        internal readonly record struct PresenceChildContext(PresenceBoundaryState State, string Key, bool IsPresent);
+
+        // Roots is the owning key's list in PresenceBoundaryState.ChildRoots, which stands for that key; State and
+        // Key name that key's presence and entry.
+        internal readonly record struct PresenceChildRootOwner(
+            List<VisualElement> Roots, long Emission, PresenceBoundaryState State, string Key);
+
+        // The presence child an element sits in, read off the nearest ancestor that is the top of one: what a
+        // presence expanding in a deferred mount (no emission around it) takes as its enclosing child.
+        internal PresenceChildContext? PresenceChildOf(VisualElement element)
+        {
+            for (var ancestor = element; ancestor != null; ancestor = ChildListWrites.ParentOf(ancestor))
+            {
+                if (PresenceChildRoots.TryGetValue(ancestor, out var owner))
+                {
+                    return new PresenceChildContext(owner.State, owner.Key, !owner.State.IsLeaving(owner.Key));
+                }
+            }
+            return null;
+        }
+
+        // One descendant Motion's exit: the element, the config PlayExit was handed, and whether that config's
+        // from classes are the resting pose a cancel returns to. WaitSec: the part of DelaySec a wait above makes up
+        // (MotionOrchestrationFrame.WaitSec).
+        internal readonly record struct PresenceDescendantExit(
+            VisualElement Element, StyleTransitionConfig Config, bool RestoresResting, float DelaySec, float WaitSec = 0f);
+
+        // Counts one exiting presence child's exits down and settles when the last has completed or left the
+        // tree. A re-entry cancels the exits still playing and drops the wait from
+        // PresenceBoundaryState.ExitWaits, which a teardown's deferred settle is read against.
+        internal sealed class PresenceExitWait
+        {
+            internal enum DescendantStatus { Playing, Completed, Gone }
+
+            private readonly DescendantStatus[] _statuses;
+            private int _pending;
+            private bool _settled;
+            private readonly System.Action _onSettled;
+            private readonly System.Action<VisualElement?> _onSettledByTeardown;
+
+            // inners are the propagating presences under this child that still have exits to play, each of which
+            // holds one slot of the count until its own exits are done.
+            internal PresenceExitWait(bool anchorPlays, List<PresenceDescendantExit> descendants,
+                List<PresenceBoundaryState>? inners, System.Action onSettled,
+                System.Action<VisualElement?> onSettledByTeardown)
+            {
+                Descendants = descendants;
+                _statuses = new DescendantStatus[descendants.Count];
+                _pending = descendants.Count + (inners?.Count ?? 0) + (anchorPlays ? 1 : 0);
+                _onSettled = onSettled;
+                _onSettledByTeardown = onSettledByTeardown;
+                Registrations = Register(inners);
+            }
+
+            internal List<PresenceDescendantExit> Descendants { get; }
+
+            internal PresenceRegistration[] Registrations { get; }
+
+            private PresenceRegistration[] Register(List<PresenceBoundaryState>? inners)
+            {
+                if (inners == null) return System.Array.Empty<PresenceRegistration>();
+                var registrations = new PresenceRegistration[inners.Count];
+                for (var i = 0; i < registrations.Length; i++)
+                {
+                    registrations[i] = new PresenceRegistration(inners[i], this);
+                    inners[i].Registration = registrations[i];
+                }
+                return registrations;
+            }
+
+            // Settles a wait that has not settled yet, whatever is still pending, and leaves nothing for a slot
+            // completing after it to settle. A wait that has settled is not settled again: the exit's own count in
+            // StartPresenceExit holds a layoutId landing's slot apart from it, and that one is still owed.
+            internal void SettleForTeardown()
+            {
+                if (!TrySettle()) return;
+                _pending = 0;
+                _onSettled();
+            }
+
+            // Claims the wait's one settle. Reaching a pending count of zero does not claim it: a teardown's settle is
+            // deferred, and a retirement in between has to find the wait still owed.
+            internal bool TrySettle()
+            {
+                if (_settled) return false;
+                _settled = true;
+                return true;
+            }
+
+            internal void CompleteRegistration()
+            {
+                if (Settles() && TrySettle()) _onSettled();
+            }
+
+            internal void TearDownRegistration()
+            {
+                if (Settles()) _onSettledByTeardown(null);
+            }
+
+            internal DescendantStatus StatusOf(int index) => _statuses[index];
+
+            internal void CompleteAnchor()
+            {
+                if (Settles() && TrySettle()) _onSettled();
+            }
+
+            internal void CompleteDescendant(VisualElement element)
+            {
+                _statuses[IndexOf(element)] = DescendantStatus.Completed;
+                if (Settles() && TrySettle()) _onSettled();
+            }
+
+            // A descendant leaving the tree is marked whatever its exit had reached, so nothing touches its
+            // element again: a pooled element can already be serving another mount. Only one still playing
+            // was being waited for.
+            internal void TearDown(VisualElement element)
+            {
+                var index = IndexOf(element);
+                if (_statuses[index] != DescendantStatus.Playing)
+                {
+                    _statuses[index] = DescendantStatus.Gone;
+                    return;
+                }
+                _statuses[index] = DescendantStatus.Gone;
+                if (Settles()) _onSettledByTeardown(element);
+            }
+
+            private int IndexOf(VisualElement element)
+                => Descendants.FindIndex(exit => ReferenceEquals(exit.Element, element));
+
+            private bool Settles() => --_pending == 0;
+        }
+
+        // One propagating inner presence's slot in an enclosing child's exit wait, Framer's register(id) for
+        // usePresence(true). Whichever of the three ends it first settles the slot and the others find it spent.
+        internal sealed class PresenceRegistration
+        {
+            private readonly PresenceBoundaryState _inner;
+            private PresenceExitWait? _wait;
+
+            internal PresenceRegistration(PresenceBoundaryState inner, PresenceExitWait wait)
+            {
+                _inner = inner;
+                _wait = wait;
+            }
+
+            // safeToRemove: the inner presence's exits have finished, or it stopped propagating.
+            internal void Complete() => Spend()?.CompleteRegistration();
+
+            // The inner presence was retired before it finished, the way a descendant Motion leaves the tree.
+            internal void Gone() => Spend()?.TearDownRegistration();
+
+            // The enclosing key came back: nothing is waited for any more and nobody is told.
+            internal void Release() => Spend();
+
+            private PresenceExitWait? Spend()
+            {
+                var wait = _wait;
+                _wait = null;
+                if (ReferenceEquals(_inner.Registration, this)) _inner.Registration = null;
+                return wait;
+            }
+        }
+
+        // The three subjects a prune retires a DOM-less AnimatePresence entry for. A presence whose node
+        // stops being rendered outlives all three, which is what RetireBoundaryStatesNotReRendered
+        // answers for.
+        private enum PresenceStateOwner
+        {
+            // The fiber that rendered the AnimatePresence, unregistered.
+            Boundary,
+
+            // The element its children expand into, leaving the DOM.
+            ParentElement,
+
+            // The Portal placeholder whose children reconcile expanded it, releasing its range.
+            PortalPlaceholder,
+        }
+
+        // One collect-then-remove for the three, so a fourth owner is a case rather than a fourth copy of
+        // the loop. Collected first because Remove mutates the dictionary this walks.
+        private void PrunePresenceStates(PresenceStateOwner owner, object subject)
+        {
+            if (!ForgetPresenceSubject(owner, subject)) return;
+            List<(ComponentFiber? boundary, VisualElement? parent, long presenceKey)>? stale = null;
+            foreach (var entry in PresenceStates)
+            {
+#pragma warning disable CS8524 // no discard arm, so a fourth owner fails the build rather than falling in here
+                var owned = owner switch
+                {
+                    PresenceStateOwner.Boundary => ReferenceEquals(entry.Key.boundary, subject),
+                    PresenceStateOwner.ParentElement => ReferenceEquals(entry.Key.parent, subject),
+                    PresenceStateOwner.PortalPlaceholder =>
+                        ReferenceEquals(entry.Value.OwningPortalPlaceholder, subject),
+                };
+#pragma warning restore CS8524
+                if (owned) (stale ??= new()).Add(entry.Key);
+            }
+            if (stale != null)
+            {
+                foreach (var key in stale) RetirePresenceState(key);
+            }
+        }
+
+        // Whether the subject was named by an entry of PresenceStates registered under its role. The sets hold every
+        // subject an entry names and possibly more, since an entry retired on its own leaves them untouched, so a
+        // subject found absent has no entry to retire and one found present is dropped here, scanned for once.
+        private bool ForgetPresenceSubject(PresenceStateOwner owner, object subject)
+        {
+#pragma warning disable CS8524 // no discard arm, so a fourth owner fails the build rather than falling in here
+            return owner switch
+            {
+                PresenceStateOwner.Boundary => _presenceBoundaries.Remove((ComponentFiber)subject),
+                PresenceStateOwner.ParentElement => _presenceParents.Remove((VisualElement)subject),
+                PresenceStateOwner.PortalPlaceholder => _presencePortalPlaceholders.Remove((VisualElement)subject),
+            };
+#pragma warning restore CS8524
+        }
+
+        private readonly HashSet<ComponentFiber> _presenceBoundaries = new();
+        private readonly HashSet<VisualElement> _presenceParents = new();
+        private readonly HashSet<VisualElement> _presencePortalPlaceholders = new();
+
+        // The one place an entry joins PresenceStates, so the sets above stay a superset of what its keys name.
+        internal PresenceBoundaryState RegisterPresenceState((ComponentFiber? boundary, VisualElement? parent, long presenceKey) key)
+        {
+            var state = new PresenceBoundaryState();
+            PresenceStates[key] = state;
+            if (key.boundary != null) _presenceBoundaries.Add(key.boundary);
+            if (key.parent != null) _presenceParents.Add(key.parent);
+            return state;
+        }
+
+        internal void SetPresenceOwningPortal(PresenceBoundaryState state, VisualElement placeholder)
+        {
+            state.OwningPortalPlaceholder = placeholder;
+            _presencePortalPlaceholders.Add(placeholder);
+        }
+
+        // The one place an AnimatePresence entry leaves PresenceStates before the whole table is dropped. An inner
+        // presence retired while an enclosing child waits on it stops holding that child, as a descendant Motion
+        // torn down does (FiberElementCleaner).
+        private void RetirePresenceState(
+            (ComponentFiber? boundary, VisualElement? parent, long presenceKey) key, bool settlesExits = true)
+        {
+            if (!PresenceStates.Remove(key, out var state)) return;
+            if (settlesExits) SettleExitsOf(state);
+            state.Registration?.Gone();
+        }
+
+        // Invoked from ComponentRegistry when the boundary fiber is unregistered, so a boundary that
+        // unmounts while a child is exiting leaves no dangling fiber reference in PresenceStates.
+        internal void PrunePresenceBoundaryState(ComponentFiber boundary)
+            => PrunePresenceStates(PresenceStateOwner.Boundary, boundary);
+
+        // Called from FiberElementCleaner, which owns which teardowns reach it.
+        internal void PrunePresenceParentElementState(VisualElement parent)
+            => PrunePresenceStates(PresenceStateOwner.ParentElement, parent);
+
+        // Called from FiberElementCleaner.CleanupPortal, which the retarget release also runs through. The
+        // Portal itself going is what the other three routes can all miss: the container it renders into
+        // belongs to the caller, the boundary fiber that rendered it can go on living, and no walk of the
+        // tree CONTAINING the PortalNode names what is inside — the node emits as an opaque leaf there. The
+        // Portal's own children reconcile does name it, on both sides, which is what retires a presence that
+        // stops being rendered while the Portal stays open.
+        internal void PrunePresencePortalState(VisualElement placeholder)
+            => PrunePresenceStates(PresenceStateOwner.PortalPlaceholder, placeholder);
+
+        // Retire absent wrappers after their container's removals, including removals owed by a parked diff.
+        private readonly List<BoundaryReproductionKey> _boundaryReproduced = new();
+        private readonly List<BoundaryReproductionKey> _boundaryRetirable = new();
+        private readonly HashSet<BoundaryReproductionKey> _boundaryReRendered = new();
+
+        internal readonly record struct BoundaryReproductionKey(
+            ComponentFiber? Boundary, VisualElement? Parent, VisualElement? PortalScope, long Position, bool IsSuspense);
+
+        internal void MarkPresenceReproduced((ComponentFiber? boundary, VisualElement? parent, long presenceKey) key)
+            => _boundaryReproduced.Add(new(key.boundary, key.parent, null, key.presenceKey, false));
+
+        internal void MarkPresenceReRendered((ComponentFiber? boundary, VisualElement? parent, long presenceKey) key)
+            => _boundaryReRendered.Add(new(key.boundary, key.parent, null, key.presenceKey, false));
+
+        internal void MarkSuspenseReproduced(ComponentFiber? boundary, VisualElement? parent,
+            VisualElement? portalScope, long position)
+            => _boundaryReproduced.Add(new(boundary, parent, portalScope, position, true));
+
+        internal void MarkSuspenseReRendered(ComponentFiber? boundary, VisualElement? parent,
+            VisualElement? portalScope, long position)
+            => _boundaryReRendered.Add(new(boundary, parent, portalScope, position, true));
+
+        // The Suspense positions whose old side reproduced the primary, which is what tells the new side of the
+        // same container that the boundary is showing its children. Read once, by that new side.
+        private readonly HashSet<BoundaryReproductionKey> _suspensePrimariesReproduced = new();
+
+        internal void MarkSuspensePrimaryReproduced(ComponentFiber? boundary, VisualElement? parent,
+            VisualElement? portalScope, long position)
+            => _suspensePrimariesReproduced.Add(new(boundary, parent, portalScope, position, true));
+
+        internal bool TakeSuspensePrimaryReproduced(ComponentFiber? boundary, VisualElement? parent,
+            VisualElement? portalScope, long position)
+            => _suspensePrimariesReproduced.Remove(new(boundary, parent, portalScope, position, true));
+
+        // The records RecordsOf takes, and the primaries an old side of the boundary's rows reproduced for a new side
+        // to read. FiberErrorBoundary.UnmountShownRows owns why they go before the fallback mounts.
+        internal void ForgetRecordsOf(ComponentFiber boundary)
+        {
+            PruneSuspenseBoundaryState(boundary);
+            PrunePresenceBoundaryState(boundary);
+            _suspensePrimariesReproduced.RemoveWhere(key => ReferenceEquals(key.Boundary, boundary));
+        }
+
+        // Opens the span of reproductions one container's reconcile takes, closed by
+        // EndBoundaryReproductionScope. Nested containers reconcile inside that span and close their own
+        // first, so the tail this returns is exactly the enclosing container's own.
+        internal int BeginBoundaryReproductionScope() => _boundaryReproduced.Count;
+
+        // What a container's removal pass — GeneralPathReconciler's FinalizeGeneralCommit, or the
+        // time-sliced diff's own removal phase — did about the slots an absent wrapper held. Until it has
+        // run, the reproduced leaves are still in the DOM and the entry is what the next old side names
+        // them from, so the entry must not retire. The reading is per container rather than per pass: an
+        // abort holds for the rest of the pass, while every container that finalized before it emptied its
+        // slots for real.
+        internal enum BoundaryRemovalOutcome
+        {
+            // Emptied, so the span may retire.
+            Ran,
+
+            // Skipped, with nothing left to run it. The span is dropped rather than carried.
+            Skipped,
+
+            // Parked mid-diff. ContinueIndexed / ContinueKeyed resume from the old side this pass already
+            // expanded, so no walk names these wrappers a second time — dropping the span would leave the
+            // entry to outlive the leaves it names rather than defer its retirement.
+            OwedByAContinuation,
+        }
+
+        // Where a span an outcome describes belongs: the pass's own retirable list, the parked
+        // container's carry list, or nowhere.
+        private List<BoundaryReproductionKey>? DestinationFor(
+            BoundaryRemovalOutcome outcome,
+            List<BoundaryReproductionKey> owedByThisPark)
+        {
+#pragma warning disable CS8524 // no discard arm, so a fourth outcome fails the build rather than being dropped
+            return outcome switch
+            {
+                BoundaryRemovalOutcome.Ran => _boundaryRetirable,
+                BoundaryRemovalOutcome.OwedByAContinuation => owedByThisPark,
+                BoundaryRemovalOutcome.Skipped => null,
+            };
+#pragma warning restore CS8524
+        }
+
+        internal void EndBoundaryReproductionScope(
+            int scope,
+            BoundaryRemovalOutcome outcome,
+            List<BoundaryReproductionKey> owedByThisPark)
+        {
+            var destination = DestinationFor(outcome, owedByThisPark);
+            if (destination != null)
+            {
+                for (var i = scope; i < _boundaryReproduced.Count; i++)
+                {
+                    destination.Add(_boundaryReproduced[i]);
+                }
+            }
+            // MUTANT_SURVIVES(equivalent): RetireBoundaryStatesNotReRendered clears the list at pass end, so scope-local RemoveRange changes nothing observable here.
+            _boundaryReproduced.RemoveRange(scope, _boundaryReproduced.Count - scope);
+        }
+
+        // Closes what a park left owed, once the slice that resumed it has run. Its outcome is read the
+        // same way the container's own was, so a slice that parked again leaves the span where it is.
+        // Dropping it is a discarded park's reading — the diff that owed those removals is the one nobody
+        // finishes, so the entry must stay live (see BoundaryRemovalOutcome.Skipped).
+        internal void SettleBoundaryReproductionsOwedByAPark(
+            BoundaryRemovalOutcome outcome,
+            List<BoundaryReproductionKey> owed)
+        {
+            if (outcome == BoundaryRemovalOutcome.OwedByAContinuation) return;
+            DestinationFor(outcome, owed)?.AddRange(owed);
+            owed.Clear();
+        }
+
+        // Retires every retirable entry the pass did not render again, then drops the pass's marks.
+        internal void RetireBoundaryStatesNotReRendered()
+        {
+            foreach (var key in _boundaryRetirable)
+            {
+                if (_boundaryReRendered.Contains(key)) continue;
+                if (key.IsSuspense)
+                    RemoveSuspenseFallback(key.Boundary, (key.Parent, key.PortalScope, key.Position));
+                else
+                    RetirePresenceState((key.Boundary, key.Parent, key.Position));
+            }
+            // MUTANT_SURVIVES(equivalent): EndBoundaryReproductionScope truncates each scope in a finally, so the list is already empty before this clear runs.
+            _boundaryReproduced.Clear();
+            _boundaryRetirable.Clear();
+            _boundaryReRendered.Clear();
+            _suspensePrimariesReproduced.Clear();
+        }
+
+        // Tree-wide auto-batching scheduler. Coalesces setState across every fiber that shares this
+        // context into a single frame-boundary flush so an event handler touching N fibers commits in
+        // one reconcile pass rather than N. Inline-mounted descendants share the root fiber's context
+        // (see Reconciler), so this set spans the canonical
+        // cross-fiber case. Automatic batching is always on; there is no opt-out.
+        internal FiberBatchScheduler BatchScheduler { get; } = new();
+
+        internal IHostScheduler HostScheduler => BatchScheduler.Host;
+
+        internal IFrameClock FrameClock { get; } = PanelFrameClock.Instance;
+
+        // Tearing guard for Hooks.UseStore<TStore,TSel>. Holds the store snapshot pinned for the current
+        // batch-scheduler drain pass (a wave), keyed by the Store reference (the value is the store's TState
+        // snapshot, boxed). Every UseStore read of the same store within one wave returns the selector applied
+        // to this pinned snapshot rather than the live store.Current, so readers committed in one pass agree
+        // even when the store mutates partway through it; a reader whose pin is older than the store asks for
+        // the render that catches it up (see Hooks.UseStore). Pinning is active only inside a drain
+        // (_storeSnapshotWaveActive); outside one — on mount or a synchronous whole-tree flush — reads return
+        // the live store.Current and nothing is pinned. Pinning is reference-keyed, so distinct stores never
+        // collide, and the pins are dropped when the wave ends.
+        // Hooks.UseSyncExternalStore pins here too, keyed by its getSnapshot delegate under Delegate.Equals
+        // rather than by a Store, since an external store has no Velvet object to key on.
+        private readonly Dictionary<object, object?> _pinnedStoreSnapshots = new();
+        private bool _storeSnapshotWaveActive;
+
+        // While a batch drain is in progress, fibers defer their effect commit (insertion / layout effects)
+        // here instead of running it immediately after their own render, so EVERY fiber's render (mutation)
+        // completes before ANY layout effect runs — the commit-phase order. Flushed in collection order at
+        // the end of the outer drain. Outside a drain (mount / synchronous flush) this stays false and effects
+        // run inline. See FiberEffects.CommitSubtreeEffects / FlushDeferredDrainLayoutEffects.
+        internal bool DeferDrainLayoutEffects;
+        internal readonly List<(ComponentFiber fiber, bool mountDoubleInvoke)> PendingDrainLayoutEffects = new();
+
+        // One list per virtual-list range render in progress, holding the effect commits of the rows it creates or
+        // patches until it has placed them; a drain neither takes nor flushes them. See
+        // FiberVirtualListController.RenderRange.
+        internal readonly Stack<List<(ComponentFiber fiber, bool mountDoubleInvoke)>> HeldRowLayoutEffects = new();
+
+        // Returns the snapshot pinned for store within the current drain wave, capturing
+        // liveSnapshot on the first read that finds no pin. Returns liveSnapshot
+        // unpinned when no wave is active. See _pinnedStoreSnapshots for the consistency contract.
+        internal TStore PinStoreSnapshot<TStore>(object store, TStore liveSnapshot)
+        {
+            if (!_storeSnapshotWaveActive) return liveSnapshot;
+            // A cast rather than a type test, which a pinned null fails.
+            if (_pinnedStoreSnapshots.TryGetValue(store, out var pinned))
+            {
+                return (TStore)pinned!;
+            }
+            _pinnedStoreSnapshots[store] = liveSnapshot;
+            return liveSnapshot;
+        }
+
+        // Paired with EndStoreSnapshotWave.
+        internal void BeginStoreSnapshotWave() => _storeSnapshotWaveActive = true;
+
+        // Every drain pass is a wave of its own: a pin carried into the next pass would hand a reader that pass
+        // queued a snapshot older than the store it was queued for.
+        internal void EndStoreSnapshotWave()
+        {
+            _storeSnapshotWaveActive = false;
+            _pinnedStoreSnapshots.Clear();
+        }
+
+        // Gates the one-time ContextPropagationGeneration bump within a reconcile pass: the first Provider
+        // whose value changed flips this and bumps the generation; later changed Providers in the same pass
+        // see it already set and reuse that generation (dedup). Saved and restored around each inline
+        // Provider-expansion scope in ChildReconciler so a nested expansion cannot leak its flag state out.
+        public bool ContextValueChanged { get; internal set; }
+
+        // Generation counter bumped by the outermost Provider patch (one whose value changed).
+        // When multiple Provider patches within the same reconcile pass invoke
+        // FiberTreeTraversal.NotifyContextChanged in succession, this is matched against
+        // the consumer fiber's ComponentFiber.LastForceRenderGeneration to dedupe
+        // duplicate force-renders.
+        public int ContextPropagationGeneration { get; internal set; }
+
+        // Reconcile depth shared across all Reconciler instances that observe this context.
+        // Each fiber owns its own Reconciler (so per-fiber pause/resume state is
+        // independent), but the top-level reset in Reconciler.Reconcile's finally must run only when the
+        // OUTERMOST Reconcile pass across the entire fiber tree completes. Using an instance-local depth would
+        // treat each fiber-owned Reconciler.Reconcile call as a fresh top-level and run that reset mid-pass.
+        internal int SharedReconcileDepth { get; set; }
+
+        // The SharedReconcileDepth the bracket of a VirtualList range rendered outside a pass holds while it is open
+        // (Reconciler's BeginRangeForController), and 0 while none is. For the abort the bracket is no pass: a boundary
+        // catching at its depth raises none (FiberErrorBoundary.TryCatch), and a Reconcile or a resume entered at its
+        // depth takes the one raised inside it as a top-level pass does, without that pass's drains (Reconciler's
+        // ReconcileCatching and ContinueReconcile).
+        internal int RangeBracketDepth { get; set; }
+        public IReconcilerBridge ReconcilerBridge { get; private set; } = null!;
+        public bool IsDisposed { get; private set; }
+
+        // Becomes true when an Error Boundary switches to its fallback.
+        // Signal used to abort processing of the remaining sibling nodes in the same Reconcile batch.
+        // Reset to false when the top-level Reconcile completes.
+        public bool IsAborted { get; internal set; }
+
+        // Framer lets the exit animations of an AnimatePresence unmounted with its tree, or by its parent, run out and
+        // then calls its onExitComplete; Velvet ends those animations with the presence, so its exits settle as it is
+        // retired. An exit also waiting on a layoutId landing stays owed, as Framer's relegated node is removed only
+        // by its lead's layout animation, which the unmount stops reaching it.
+        private static void SettleExitsOf(PresenceBoundaryState state)
+        {
+            foreach (var entry in new List<KeyValuePair<string, PresenceExitWait>>(state.ExitWaits))
+            {
+                if (state.Exiting.Contains(entry.Key)) entry.Value.SettleForTeardown();
+            }
+        }
+
+        // Retires the whole table, as the owning Reconciler's disposal does.
+        internal void RetireAllPresenceStates()
+        {
+            foreach (var state in new List<PresenceBoundaryState>(PresenceStates.Values)) SettleExitsOf(state);
+            PresenceStates.Clear();
+            _presenceBoundaries.Clear();
+            _presenceParents.Clear();
+            _presencePortalPlaceholders.Clear();
+        }
+
+        internal void MarkDisposed()
+        {
+            IsDisposed = true;
+            FiberPortalRegistry.TargetRegistered -= OnPortalTargetRegistered;
+        }
+
+        // Sets the bridge invoked from internal elements (e.g. FiberVirtualListController) that need access
+        // to Reconciler subsystems. A double invocation indicates an initialization-order bug, so this
+        // throws fail-fast.
+        internal void SetReconcilerBridge(IReconcilerBridge bridge)
+        {
+            if (ReconcilerBridge != null)
+            {
+                throw new System.InvalidOperationException("[ReconcilerContext] SetReconcilerBridge called twice");
+            }
+            ReconcilerBridge = bridge;
+        }
+
+        public ReconcilerContext()
+        {
+            EventManager = new FiberEventBindingManager(BatchScheduler);
+            FiberElementFactory = new FiberElementFactory(EventManager);
+            ComponentRegistry = new ComponentRegistry(this);
+            RelationalTreeWatch = new RelationalTreeWatch(this);
+            FiberMemoCache = new FiberMemoCache();
+            StyleAnimationScheduler = new StyleAnimationScheduler { Context = this };
+            ComponentContextStack = new ComponentContextStack();
+            FiberStack = new FiberStack();
+            BufferPool = new ReconcilerBufferPool();
+            HostCommit = new HostCommitQueue(this);
+            _pureElementSideTables = new System.Collections.IDictionary[]
+            {
+                StructuralVariants,
+                HasClassVariants,
+                AttributeVariants,
+                DataAttributes,
+                SupportsVariants,
+                CustomPropertyClasses,
+                MotionAppliedClasses,
+                MotionHeldInline,
+                MotionInlineExits,
+                MotionChildLabel,
+                MotionNodes,
+                PresenceChildRoots,
+                ElementToLayoutId,
+                LayoutIdTimings,
+                LayoutIdFollows,
+                LayoutIdExiting,
+                LayoutIdRestored,
+                SkewTransformed,
+                SkewDriven,
+                TextEffects,
+                TextRawText,
+                TextWhitespaceOwned,
+                TextRendered,
+                TextNodeElements,
+                ChildVariantOwners,
+                ChildBoxOwners,
+                ChildDividerOwners,
+                VariantGateClasses,
+                FontScope.Families,
+                FontScope.Inheritors,
+                ZLayerHosts,
+                ZLayerMembers,
+                StackingFacts,
+                StackingArrivals,
+                StackingParents,
+                PinnedGhosts,
+            };
+            FiberPortalRegistry.TargetRegistered += OnPortalTargetRegistered;
+        }
+
+        // Carries a registration to the Portals on that id not already on the registered element. A Portal
+        // re-reads the registry only when it is patched, and a registration causes no patch of its own,
+        // so the registration reaches one only by asking its declaring component to render again;
+        // FiberNodePatcher.ResolvePortalTarget owns what that patch then does. Portals holding NO element
+        // are included, which is the ordinary first run: a Portal whose id was still unregistered when it
+        // mounted warned, recorded no target, and would otherwise stay empty until its declaring
+        // component happened to re-render for a reason of its own. Register
+        // rejects a null target, so a recorded null is never reference-equal to one and the no-op case
+        // below still excludes only a genuine re-registration of the same element. The memo cache is
+        // dropped first because a component whose hook inputs and props are unchanged otherwise hands back
+        // the same VNode instances, and the reconciler skips a reference-identical node without patching it.
+        private void OnPortalTargetRegistered(string id, VisualElement registered)
+        {
+            if (IsDisposed)
+            {
+                return;
+            }
+            foreach (var info in PortalState.Values)
+            {
+                if (info.TargetId != id || ReferenceEquals(info.Target, FiberNodePatcher.PortalContainerOf(registered)))
+                {
+                    continue;
+                }
+                var declaring = info.DeclaringFiber;
+                if (declaring == null)
+                {
+                    continue;
+                }
+                declaring.InvalidateMemoCache();
+                FiberWorkLoop.RequestRenderFromHook(declaring);
+            }
+        }
+    }
+}

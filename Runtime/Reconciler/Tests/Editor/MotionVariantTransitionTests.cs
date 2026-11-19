@@ -1,0 +1,863 @@
+using System.Collections.Generic;
+using System.Linq;
+using NUnit.Framework;
+using UnityEngine;
+using UnityEngine.UIElements;
+using UnityEngine.UIElements.TestFramework;
+using UnityEditor.UIElements.TestFramework;
+using Velvet.TestUtilities;
+
+namespace Velvet.Tests
+{
+    /// <summary>
+    /// Pins <see cref="MotionVariant.Transition"/>: a pose carrying its own
+    /// <see cref="StyleTransitionConfig"/> drives the swap INTO that pose at each of the four call sites
+    /// that play one — a standalone mount enter, a presence mount enter, a runtime <c>animate</c> label
+    /// change, and an AnimatePresence exit — with the Motion's own <c>transition:</c> as the default a pose
+    /// replaces. Every one of the four reads the destination pose rather than the one left behind, whether
+    /// or not that pose applies a class. A classless initial pose, the one an enter starts from, starts it
+    /// from the Motion's own classes; a classless exit pose is still a variant exit. A case pins each. The presence enter and
+    /// the exit share one
+    /// declaration, 0.5s in against 0.05s out over a Motion whose own transition declares 0.2s, which is
+    /// the asymmetry a single per-node config cannot express.
+    /// Whether a removal animates is read from the same chain, so a Motion whose own transition is
+    /// <c>StyleTransitionConfig.None</c> still exits on the timing its exit pose declares: the ghost outliving the
+    /// render an exit with nothing to animate leaves on, the reversed-stagger count and <c>mode: Wait</c> are
+    /// pinned one case each. The
+    /// orchestration frame a label change establishes for inheriting descendants is measured off the same
+    /// resolved span.
+    /// Durations are read back as the inline transition-duration the scheduler wrote, or its absence — a
+    /// declared value in milliseconds, never a measured one — and no case reads <c>resolvedStyle</c>, so
+    /// the bundled stylesheet is deliberately not attached.
+    /// </summary>
+    [TestFixture]
+    internal sealed class MotionVariantTransitionTests
+    {
+        private static readonly StyleTransitionConfig s_nodeDefault = new() { DurationSec = 0.2f };
+
+        // 0.5s in against 0.05s out: each pose carries the timing for swaps INTO it, and both differ from
+        // the node default above, so a reading names which of the three configs was consulted.
+        private static readonly Dictionary<string, MotionVariant> s_asymmetric = new()
+        {
+            ["hidden"] = new MotionVariant("opacity-0", new StyleTransitionConfig { DurationSec = 0.05f }),
+            ["visible"] = new MotionVariant("opacity-100", new StyleTransitionConfig { DurationSec = 0.5f }),
+        };
+
+        // Only the exit pose is timed; the node opts out of animation entirely. Without that pose the exit has
+        // nothing to animate and the child leaves on the render after its removal.
+        private static readonly Dictionary<string, MotionVariant> s_exitTimedOnly = new()
+        {
+            ["hidden"] = new MotionVariant("opacity-0", new StyleTransitionConfig { DurationSec = 0.5f }),
+            ["visible"] = "opacity-100",
+        };
+
+        // The coordinator's own resting pose carries a span an order of magnitude longer than the node's, so
+        // an inheriting descendant's BeforeChildren wait names which of the two it was measured from.
+        private static readonly Dictionary<string, MotionVariant> s_coordinatorPoses = new()
+        {
+            ["hidden"] = "opacity-0",
+            ["visible"] = new MotionVariant("opacity-100",
+                new StyleTransitionConfig { DurationSec = 0.5f, When = TransitionWhen.BeforeChildren }),
+        };
+
+        // The coordinator's resting pose springs an opacity on the spring a 0.05 s duration describes, which ends
+        // at 0.05 s, where Framer's default spring would end at 1.05 s on the browser.
+        private static readonly Dictionary<string, MotionVariant> s_springCoordinatorPoses = new()
+        {
+            ["hidden"] = "opacity-0",
+            ["visible"] = new MotionVariant("opacity-100", new StyleTransitionConfig
+            {
+                Type = TransitionType.Spring, DurationSec = 0.05f, When = TransitionWhen.BeforeChildren,
+            }),
+        };
+
+        private static readonly Dictionary<string, MotionVariant> s_plainFade = new()
+        {
+            ["hidden"] = "opacity-0",
+            ["visible"] = "opacity-100",
+        };
+
+        // The destination pose applies no class of its own and still carries a timing — the "null or empty
+        // applies nothing" spelling the XML documents. The source pose is classed, so a swap into this one
+        // still changes which classes are applied and the play fires.
+        // The child stagger lives on the coordinator's destination pose; its node transition declares
+        // none, so a frame built from the node's config would start both children on the same slot.
+        private static readonly Dictionary<string, MotionVariant> s_staggerOnThePose = new()
+        {
+            ["hidden"] = "opacity-0",
+            ["visible"] = new MotionVariant("opacity-100",
+                new StyleTransitionConfig { DurationSec = 0.02f, StaggerChildrenSec = 0.4f }),
+        };
+
+        private static readonly Dictionary<string, MotionVariant> s_classlessTimedPose = new()
+        {
+            ["hidden"] = "opacity-0",
+            ["shown"] = new MotionVariant(null, new StyleTransitionConfig { DurationSec = 0.5f }),
+        };
+
+        // The classless-but-timed shape of s_classlessTimedPose above, reached as an `exit` target instead
+        // of an `animate` one, under each spelling of "applies nothing". The two presence builders reading
+        // the fields below take the map and the node transition from them, and each case using one sets both.
+        private static Dictionary<string, MotionVariant> ClasslessTimedExit(string exitClass) => new()
+        {
+            ["visible"] = "opacity-100",
+            ["gone"] = new MotionVariant(exitClass, new StyleTransitionConfig { DurationSec = 0.5f }),
+        };
+
+        // A label coordinator: neither pose applies a class of its own, and each only orchestrates or times
+        // the inheriting child below it.
+        private static readonly Dictionary<string, MotionVariant> s_classlessCoordinator = new()
+        {
+            ["visible"] = new MotionVariant(null, new StyleTransitionConfig { StaggerChildrenSec = 0.1f }),
+            ["hidden"] = new MotionVariant(null, new StyleTransitionConfig { DurationSec = 0.3f }),
+        };
+
+        private static Dictionary<string, MotionVariant> s_classlessExitVariants;
+        private static StyleTransitionConfig s_classlessExitNode;
+
+        // The classless pose reached as the enter's SOURCE, where the same rule costs the whole play
+        // rather than one config: the destination is classed and timed, so a reading that finds any
+        // duration at all names an enter the source's empty class was supposed to have declined.
+        private static readonly Dictionary<string, MotionVariant> s_classlessInitial = new()
+        {
+            ["start"] = new MotionVariant(null),
+            ["end"] = new MotionVariant("opacity-100", new StyleTransitionConfig { DurationSec = 0.5f }),
+        };
+
+        private readonly record struct LabelState(string Label);
+
+        private sealed class LabelStore : Store<LabelState>
+        {
+            public LabelStore() : base(new LabelState("hidden")) { }
+            public void Set(string label) => SetState(_ => new LabelState(label));
+            protected override void ResetCore() => SetState(_ => new LabelState("hidden"));
+        }
+
+        private readonly record struct KeySetState(string Keys);
+
+        private sealed class KeySetStore : Store<KeySetState>
+        {
+            public KeySetStore(string initial) : base(new KeySetState(initial)) { }
+            public void Set(string keys) => SetState(_ => new KeySetState(keys));
+            protected override void ResetCore() => SetState(_ => new KeySetState("a"));
+        }
+
+        private static LabelStore s_labelStore;
+        private static KeySetStore s_keyStore;
+        private static AnimatePresenceMode s_mode;
+        private static float s_staggerSec;
+        private static int s_staggerDirection;
+
+        private EditorPanelSimulator _sim;
+
+        [SetUp]
+        public void SetUp()
+        {
+            PanelSimulator.ResetCurrentTime();
+            _sim = new EditorPanelSimulator { panelSize = new Vector2(800, 600) };
+            _sim.ResetTimePerSimulatedFrameToDefault();
+            s_labelStore = null;
+            s_keyStore = null;
+            s_mode = AnimatePresenceMode.Sync;
+            s_staggerSec = 0f;
+            s_staggerDirection = 1;
+        }
+
+        [TearDown]
+        public void TearDown()
+        {
+            _sim?.Dispose();
+            _sim = null;
+        }
+
+        private VisualElement Root => _sim.rootVisualElement;
+
+        private void Tick() => _sim.FrameUpdateMs(16);
+
+        private void Advance(float seconds)
+        {
+            var steps = (int)(seconds * 1000f / 16f) + 1;
+            for (var i = 0; i < steps; i++) Tick();
+        }
+
+        // The inline transition-duration currently applied to this element, in milliseconds — the scheduler
+        // authors its TimeValue entries in TimeUnit.Millisecond, and reading style rather than resolvedStyle
+        // returns exactly what it wrote. float.NaN when no play holds the slot, so a case that samples at the
+        // wrong moment fails instead of reporting a plausible number.
+        private static float InlineDurationMs(VisualElement element)
+        {
+            var duration = element.style.transitionDuration;
+            return duration.keyword != StyleKeyword.Null && duration.value != null && duration.value.Count > 0
+                ? duration.value[0].value
+                : float.NaN;
+        }
+
+        // Which pose of s_exitTimedOnly / s_plainFade this element currently carries, with "gone" for an
+        // element that is no longer in the tree — a removal and a parked swap are different findings, and a
+        // bool pair would report them the same way.
+        private static string PoseOf(VisualElement element) =>
+            element == null ? "gone" : element.ClassListContains("opacity-100") ? "visible" : "hidden";
+
+        [Component]
+        private static VNode AsymmetricPresence()
+        {
+            var keys = Hooks.UseStore(s_keyStore, s => s.Keys);
+            var children = new List<VNode>();
+            foreach (var key in keys)
+            {
+                children.Add(V.Motion(name: "item-" + key, key: key.ToString(),
+                    variants: s_asymmetric, initial: "hidden", animate: "visible", exit: "hidden",
+                    transition: s_nodeDefault));
+            }
+            return V.Div(name: "host", children: new VNode[]
+            {
+                V.AnimatePresence(key: "presence", children: children.ToArray()),
+            });
+        }
+
+        [Component]
+        private static VNode LabeledBox()
+        {
+            var label = Hooks.UseStore(s_labelStore, s => s.Label);
+            return V.Div(name: "wrap", children: new VNode[]
+            {
+                V.Motion(key: "m", name: "m", variants: s_asymmetric, animate: label,
+                    transition: s_nodeDefault, enterOnMount: false),
+            });
+        }
+
+        [Component]
+        private static VNode ClasslessPoseBox()
+        {
+            var label = Hooks.UseStore(s_labelStore, s => s.Label);
+            return V.Div(name: "wrap", children: new VNode[]
+            {
+                V.Motion(key: "m", name: "m", variants: s_classlessTimedPose, animate: label,
+                    transition: s_nodeDefault, enterOnMount: false),
+            });
+        }
+
+        [Component]
+        private static VNode ClasslessExitPresence()
+        {
+            var keys = Hooks.UseStore(s_keyStore, s => s.Keys);
+            var children = new List<VNode>();
+            foreach (var key in keys)
+            {
+                children.Add(V.Motion(name: "item-" + key, key: key.ToString(),
+                    variants: s_classlessExitVariants, animate: "visible", exit: "gone",
+                    transition: s_classlessExitNode, enterOnMount: false));
+            }
+            return V.Div(name: "host", children: new VNode[]
+            {
+                V.AnimatePresence(key: "presence", children: children.ToArray()),
+            });
+        }
+
+        [Component]
+        private static VNode MissingExitPosePresence()
+        {
+            var keys = Hooks.UseStore(s_keyStore, s => s.Keys);
+            var children = new List<VNode>();
+            foreach (var key in keys)
+            {
+                children.Add(V.Motion(name: "item-" + key, key: key.ToString(),
+                    variants: s_classlessExitVariants, animate: "visible", exit: "absent",
+                    transition: s_classlessExitNode, enterOnMount: false));
+            }
+            return V.Div(name: "host", children: new VNode[]
+            {
+                V.AnimatePresence(key: "presence", children: children.ToArray()),
+            });
+        }
+
+        [Component]
+        private static VNode ClasslessCoordinatorPresence()
+        {
+            var keys = Hooks.UseStore(s_keyStore, s => s.Keys);
+            var children = new List<VNode>();
+            foreach (var key in keys)
+            {
+                children.Add(V.Motion(name: "coordinator-" + key, key: key.ToString(),
+                    variants: s_classlessCoordinator, animate: "visible", exit: "hidden",
+                    transition: s_nodeDefault,
+                    children: new VNode[] { V.Motion(name: "child-" + key, variants: s_plainFade, transition: StyleTransition.Fade) }, enterOnMount: false));
+            }
+            return V.Div(name: "host", children: new VNode[]
+            {
+                V.AnimatePresence(key: "presence", children: children.ToArray()),
+            });
+        }
+
+        [Component]
+        private static VNode ClasslessInitialPresence()
+        {
+            var keys = Hooks.UseStore(s_keyStore, s => s.Keys);
+            var children = new List<VNode>();
+            foreach (var key in keys)
+            {
+                children.Add(V.Motion(name: "item-" + key, key: key.ToString(),
+                    variants: s_classlessInitial, initial: "start", animate: "end",
+                    transition: s_nodeDefault));
+            }
+            return V.Div(name: "host", children: new VNode[]
+            {
+                V.AnimatePresence(key: "presence", children: children.ToArray()),
+            });
+        }
+
+        [Component]
+        private static VNode ExitTimedPresence()
+        {
+            var keys = Hooks.UseStore(s_keyStore, s => s.Keys);
+            var children = new List<VNode>();
+            foreach (var key in keys)
+            {
+                children.Add(V.Motion(name: "item-" + key, key: key.ToString(),
+                    variants: s_exitTimedOnly, animate: "visible", exit: "hidden",
+                    transition: StyleTransitionConfig.None, enterOnMount: false));
+            }
+            return V.Div(name: "host", children: new VNode[]
+            {
+                V.AnimatePresence(key: "presence", initial: false, staggerSec: s_staggerSec,
+                    staggerDirection: s_staggerDirection, mode: s_mode, children: children.ToArray()),
+            });
+        }
+
+        [Component]
+        private static VNode StaggerCoordinator()
+        {
+            var label = Hooks.UseStore(s_labelStore, s => s.Label);
+            return V.Motion(key: "p", name: "p", variants: s_staggerOnThePose, animate: label,
+                transition: new StyleTransitionConfig { DurationSec = 0.02f },
+                children: new VNode[]
+                {
+                    V.Motion(key: "c0", name: "c0", variants: s_plainFade,
+                        transition: new StyleTransitionConfig { DurationSec = 0.05f }),
+                    V.Motion(key: "c1", name: "c1", variants: s_plainFade,
+                        transition: new StyleTransitionConfig { DurationSec = 0.05f }),
+                }, enterOnMount: false);
+        }
+
+        [Component]
+        private static VNode SpringBeforeChildrenCoordinator()
+        {
+            var label = Hooks.UseStore(s_labelStore, s => s.Label);
+            return V.Motion(key: "p", name: "p", variants: s_springCoordinatorPoses, animate: label,
+                transition: new StyleTransitionConfig { DurationSec = 0.02f },
+                children: new VNode[]
+                {
+                    V.Motion(key: "c", name: "c", variants: s_plainFade,
+                        transition: new StyleTransitionConfig { DurationSec = 0.05f }),
+                }, enterOnMount: false);
+        }
+
+        [Component]
+        private static VNode BeforeChildrenCoordinator()
+        {
+            var label = Hooks.UseStore(s_labelStore, s => s.Label);
+            return V.Motion(key: "p", name: "p", variants: s_coordinatorPoses, animate: label,
+                transition: new StyleTransitionConfig
+                {
+                    DurationSec = 0.02f,
+                    When = TransitionWhen.BeforeChildren,
+                },
+                children: new VNode[]
+                {
+                    V.Motion(key: "c", name: "c", variants: s_plainFade,
+                        transition: new StyleTransitionConfig { DurationSec = 0.05f }),
+                }, enterOnMount: false);
+        }
+
+        [Test]
+        public void Given_AnEnterWhoseTargetPoseCarriesATransition_When_TheMotionMounts_Then_TheEnterRidesThatPosesDuration()
+        {
+            // Arrange — variants[visible] declares 0.5s; the Motion's own transition declares 0.2s.
+            using var keys = new KeySetStore("a");
+            s_keyStore = keys;
+
+            // Act — the presence mount enter plays inside the reconcile, writing its inline timing there.
+            using var mounted = V.Mount(Root, V.Component(AsymmetricPresence, key: "root"));
+
+            // Assert — the target pose's own 500ms, not the node's 200ms.
+            Assert.That(InlineDurationMs(Root.Q<VisualElement>("item-a")), Is.EqualTo(500f).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_AStandaloneMotionEnter_When_ItsTargetPoseCarriesATransition_Then_TheEnterRidesThatPosesDuration()
+        {
+            // Arrange — the same variants map, on a Motion outside any AnimatePresence: the mount enter is
+            // dispatched from the element-creation path rather than the presence expansion, and each resolves
+            // its own timing.
+            using var reconciler = new Reconciler();
+
+            // Act
+            reconciler.Reconcile(Root, System.Array.Empty<VNode>(), new VNode[]
+            {
+                V.Motion(key: "m", name: "m", variants: s_asymmetric, initial: "hidden", animate: "visible",
+                    transition: s_nodeDefault),
+            });
+
+            // Assert — the target pose's own 500ms, not the node's 200ms.
+            Assert.That(InlineDurationMs(Root.Q<VisualElement>("m")), Is.EqualTo(500f).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_NeitherThePoseNorTheNodeCarryingATransition_When_AnInitialIsDeclared_Then_TheUnplayableEnterIsDiagnosed()
+        {
+            // Arrange — the enter resolves its classes and has nothing to play them on. `V.Motion`
+            // cannot build this, always resolving a transition and falling back to the Fade preset, so
+            // the node is constructed directly; an unexpected Warning fails no Unity test on its own,
+            // which is why the count is captured and asserted rather than left to LogAssert.
+            var diagnosed = 0;
+            void OnLog(string condition, string stackTrace, LogType type)
+            {
+                if (type == LogType.Warning && condition.Contains("initial is set but has no resolvable enter"))
+                {
+                    diagnosed++;
+                }
+            }
+            Application.logMessageReceived += OnLog;
+
+            // Act
+            try
+            {
+                using var mounted = V.Mount(Root, new MotionNode
+                {
+                    Name = "m",
+                    Variants = s_plainFade,
+                    Initial = "hidden",
+                    Animate = "visible",
+                });
+            }
+            finally
+            {
+                Application.logMessageReceived -= OnLog;
+            }
+
+            // Assert — diagnosed once, rather than mounting inert or playing on a config it has not got.
+            Assert.That(diagnosed, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_AnExitPoseCarryingATransition_When_TheKeyIsRemoved_Then_TheExitRidesThatPosesDuration()
+        {
+            // Arrange — the same declaration the enter case reads: variants[hidden] declares 0.05s, the
+            // node 0.2s, and the pose the element is leaving 0.5s. Settled first, so this is a removal from
+            // rest rather than an interrupted enter.
+            using var keys = new KeySetStore("a");
+            s_keyStore = keys;
+            using var mounted = V.Mount(Root, V.Component(AsymmetricPresence, key: "root"));
+            var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
+            Advance(0.6f);
+
+            // Act — remove the key; the exit play writes its inline timing inside the reconcile.
+            keys.Set(string.Empty);
+            scheduler.DrainImmediateForTest();
+
+            // Assert — the exit pose's own 50ms: neither the node's 200ms nor the resting pose's 500ms.
+            Assert.That(InlineDurationMs(Root.Q<VisualElement>("item-a")), Is.EqualTo(50f).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_AnExitPoseApplyingNoClassButCarryingATransition_When_TheKeyIsRemoved_Then_TheExitRidesThatPosesDuration(
+            [Values(null, "")] string exitClass)
+        {
+            // Arrange — variants[gone] applies no class and declares 0.5s against the node's 0.2s. The
+            // Motion declares no `initial` label, so no enter play holds the duration slot and the reading
+            // below is the removal's own write.
+            s_classlessExitVariants = ClasslessTimedExit(exitClass);
+            s_classlessExitNode = s_nodeDefault;
+            using var keys = new KeySetStore("a");
+            s_keyStore = keys;
+            using var mounted = V.Mount(Root, V.Component(ClasslessExitPresence, key: "root"));
+            var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
+            Tick();
+
+            // Act — remove the key; the exit play writes its inline timing inside the reconcile.
+            keys.Set(string.Empty);
+            scheduler.DrainImmediateForTest();
+
+            // Assert — the pose's 500ms, not the node's 200ms, the same answer the classed exit pose gives.
+            Assert.That(InlineDurationMs(Root.Q<VisualElement>("item-a")), Is.EqualTo(500f).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_AnExitPoseApplyingNoClass_When_TheExitSwapFires_Then_TheRestingPosesClassesComeOff()
+        {
+            // Arrange — the node's own transition names no exit classes, so a classic exit would leave the
+            // resting variants[visible] class on the element for the whole removal.
+            s_classlessExitVariants = ClasslessTimedExit(null);
+            s_classlessExitNode = s_nodeDefault;
+            using var keys = new KeySetStore("a");
+            s_keyStore = keys;
+            using var mounted = V.Mount(Root, V.Component(ClasslessExitPresence, key: "root"));
+            var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
+            Tick();
+
+            // Act — remove the key, then run the frame the exit swap is scheduled on.
+            keys.Set(string.Empty);
+            scheduler.DrainImmediateForTest();
+            Tick();
+
+            // Assert — still mounted, and without variants[visible]'s class.
+            Assert.That(PoseOf(Root.Q<VisualElement>("item-a")), Is.EqualTo("hidden"));
+        }
+
+        // GREEN_ON_BASE(characterization): an exit label naming no pose keeps the classic exit this change
+        // leaves alone, which is what separates it from a present pose applying no class.
+        [Test]
+        public void Given_AnExitLabelNamingNoPose_When_TheExitSwapFires_Then_TheRestingPosesClassesStay()
+        {
+            // Arrange — the same node and map as the case above, with an exit label the map has no entry for.
+            s_classlessExitVariants = ClasslessTimedExit(null);
+            s_classlessExitNode = s_nodeDefault;
+            using var keys = new KeySetStore("a");
+            s_keyStore = keys;
+            using var mounted = V.Mount(Root, V.Component(MissingExitPosePresence, key: "root"));
+            var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
+            Tick();
+
+            // Act
+            keys.Set(string.Empty);
+            scheduler.DrainImmediateForTest();
+            Tick();
+
+            // Assert — still mounted and still at variants[visible]: the classic exit swaps only the node
+            // transition's own exit classes, and this one names none.
+            Assert.That(PoseOf(Root.Q<VisualElement>("item-a")), Is.EqualTo("visible"));
+        }
+
+        [Test]
+        public void Given_APoseCarryingATransition_When_TheAnimateLabelFlipsToIt_Then_TheSwapRidesThatPosesDuration()
+        {
+            // Arrange — mounted resting at variants[hidden] (no `initial`, so nothing plays on mount).
+            using var labels = new LabelStore();
+            s_labelStore = labels;
+            using var mounted = V.Mount(Root, V.Component(LabeledBox, key: "root"));
+            var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
+            Tick();
+
+            // Act — flip the label; the runtime swap plays inside the patch.
+            labels.Set("visible");
+            scheduler.DrainImmediateForTest();
+
+            // Assert — the DESTINATION pose's 500ms, not the source pose's 50ms and not the node's 200ms.
+            Assert.That(InlineDurationMs(Root.Q<VisualElement>("m")), Is.EqualTo(500f).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_APoseApplyingNoClassButCarryingATransition_When_TheAnimateLabelFlipsToIt_Then_TheSwapRidesThatPosesDuration()
+        {
+            // Arrange — mounted resting at variants[hidden]; variants[shown] applies no class and declares
+            // 0.5s against the node's 0.2s, so the reading names which config the swap consulted.
+            using var labels = new LabelStore();
+            s_labelStore = labels;
+            using var mounted = V.Mount(Root, V.Component(ClasslessPoseBox, key: "root"));
+            var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
+            Tick();
+
+            // Act
+            labels.Set("shown");
+            scheduler.DrainImmediateForTest();
+
+            // Assert — the destination pose's 500ms. A pose is found either way, so what it applies cannot
+            // decide whose timing plays.
+            Assert.That(InlineDurationMs(Root.Q<VisualElement>("m")), Is.EqualTo(500f).Within(1e-3f));
+        }
+
+        // GREEN_ON_BASE(characterization): a label swap already read its pose's PropertyOverrides, which
+        // motion.md said it did not.
+        [Test]
+        public void Given_APoseWithPropertyOverrides_When_TheLabelSwapsIntoIt_Then_TheSwapTransitionsTheOverriddenProperty()
+        {
+            // Arrange
+            var poses = new Dictionary<string, MotionVariant>
+            {
+                ["hidden"] = "opacity-0 scale-50",
+                ["visible"] = new MotionVariant("opacity-100 scale-100", new StyleTransitionConfig
+                {
+                    DurationSec = 0.3f,
+                    PropertyOverrides = new[] { new StylePropertyTransition("opacity", durationSec: 0.15f) },
+                }),
+            };
+            VNode[] Tree(string label) => new VNode[]
+            {
+                V.Motion(key: "m", name: "m", variants: poses, animate: label, transition: s_nodeDefault, enterOnMount: false),
+            };
+            using var reconciler = new Reconciler();
+            reconciler.Reconcile(Root, System.Array.Empty<VNode>(), Tree("hidden"));
+
+            // Act
+            reconciler.Reconcile(Root, Tree("hidden"), Tree("visible"));
+
+            // Assert — the overrides follow the "all" entry the rest of the swap transitions on.
+            var property = Root.Q<VisualElement>("m").style.transitionProperty;
+            Assert.That(string.Join(",", property.value?.Select(p => p.ToString()) ?? Enumerable.Empty<string>()),
+                Is.EqualTo("all,opacity"));
+        }
+
+        [Test]
+        public void Given_APoseApplyingNoClassButCarryingATransition_When_TheMotionMounts_Then_TheEnterRidesThatPosesDuration()
+        {
+            // Arrange — the same pose reached by the mount enter rather than a label change.
+            using var reconciler = new Reconciler();
+
+            // Act
+            reconciler.Reconcile(Root, System.Array.Empty<VNode>(), new VNode[]
+            {
+                V.Motion(key: "m", name: "m", variants: s_classlessTimedPose, initial: "hidden",
+                    animate: "shown", transition: s_nodeDefault),
+            });
+
+            // Assert — the destination pose's 500ms, the same answer the swap above has to give.
+            Assert.That(InlineDurationMs(Root.Q<VisualElement>("m")), Is.EqualTo(500f).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_AnInitialPoseApplyingNoClass_When_ThePresenceChildMounts_Then_TheEnterPlaysOnTheTargetPosesTiming()
+        {
+            // Arrange — variants[start] applies no class, against a classed variants[end] declaring 0.5s. A
+            // Framer `initial` naming no value starts each animated value from the one it already has, which
+            // here is the Motion's own classes.
+            using var keys = new KeySetStore("a");
+            s_keyStore = keys;
+
+            // Act — the enter writes its inline timing inside this reconcile.
+            using var mounted = V.Mount(Root, V.Component(ClasslessInitialPresence, key: "root"));
+
+            // Assert
+            Assert.That(InlineDurationMs(Root.Q<VisualElement>("item-a")), Is.EqualTo(500f).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_AStandaloneInitialPoseApplyingNoClass_When_TheMotionMounts_Then_ItStartsWithoutTheTargetPosesClasses()
+        {
+            // Arrange / Act — the same declaration outside any presence.
+            using var mounted = V.Mount(Root, V.Motion(name: "m", variants: s_classlessInitial, initial: "start",
+                animate: "end", transition: s_nodeDefault));
+
+            // Assert — the enter starts from the Motion's own classes, so variants[end]'s are off until its swap.
+            Assert.That(Root.Q<VisualElement>("m").ClassListContains("opacity-100"), Is.False);
+        }
+
+        // GREEN_ON_BASE(characterization): the base held the ghost for the pose's exit as well.
+        // The flush and drain added are the ones that would drop an exit with nothing to animate.
+        [Test]
+        public void Given_AMotionTransitionOfNone_When_ItsExitPoseDeclaresADuration_Then_TheRemovalIsHeldAsAnExitingGhost()
+        {
+            // Arrange — the node opts out of animation (StyleTransitionConfig.None); only variants[hidden],
+            // the exit pose, carries a duration.
+            using var keys = new KeySetStore("a");
+            s_keyStore = keys;
+            using var mounted = V.Mount(Root, V.Component(ExitTimedPresence, key: "root"));
+            var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
+            Tick();
+
+            // Act — the removing render, the flush an exit with nothing to animate settles in, and the render
+            // that settle asks for.
+            keys.Set(string.Empty);
+            scheduler.DrainImmediateForTest();
+            mounted.FlushEffectsForTest();
+            scheduler.DrainImmediateForTest();
+
+            // Assert — still mounted as a ghost: an exit reading only the node's config sees DurationSec 0 and
+            // settles in that flush, so the render after it drops the leaf.
+            Assert.That(Root.Q<VisualElement>("host").childCount, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_ACoordinatorWhoseExitPoseAppliesNoClass_When_TheKeyIsRemoved_Then_ItsInheritingChildTakesTheExitLabel()
+        {
+            // Arrange — the child declares no `animate` of its own and rests at the coordinator's label.
+            using var keys = new KeySetStore("a");
+            s_keyStore = keys;
+            using var mounted = V.Mount(Root, V.Component(ClasslessCoordinatorPresence, key: "root"));
+            var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
+            Tick();
+
+            // Act — remove the key, then run the frame an exit swap is scheduled on.
+            keys.Set(string.Empty);
+            scheduler.DrainImmediateForTest();
+            Tick();
+
+            // Assert — the coordinator is held as a ghost and its child exits to variants[hidden].
+            Assert.That(
+                (Root.Q<VisualElement>("host").childCount, PoseOf(Root.Q<VisualElement>("child-a"))),
+                Is.EqualTo((1, "hidden")));
+        }
+
+        [Test]
+        public void Given_AMotionTransitionOfNone_When_ItsClasslessExitPoseDeclaresADuration_Then_TheGhostPlaysThatDuration()
+        {
+            // Arrange — the node opts out of animation and variants[gone], which applies no class, is the only
+            // timing. The exit play decides from this pose: one that disregarded it would play nothing and leave
+            // no duration written.
+            s_classlessExitVariants = ClasslessTimedExit(null);
+            s_classlessExitNode = StyleTransitionConfig.None;
+            using var keys = new KeySetStore("a");
+            s_keyStore = keys;
+            using var mounted = V.Mount(Root, V.Component(ClasslessExitPresence, key: "root"));
+            var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
+            Tick();
+
+            // Act
+            keys.Set(string.Empty);
+            scheduler.DrainImmediateForTest();
+
+            // Assert — a held ghost playing the pose's 500ms; a reaped child reads as NaN.
+            var ghost = Root.Q<VisualElement>("item-a");
+            Assert.That(ghost == null ? float.NaN : InlineDurationMs(ghost), Is.EqualTo(500f).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_AReversedExitStagger_When_OnlyTheExitPoseDeclaresADuration_Then_TheLastChildLeavesFirst()
+        {
+            // Arrange — two children, both leaving at once, under a reversed stagger. The reversal is
+            // computed from how many of them animate their exit, which is decided by the exit pose here.
+            using var keys = new KeySetStore("ab");
+            s_keyStore = keys;
+            s_staggerSec = 0.3f;
+            s_staggerDirection = -1;
+            using var mounted = V.Mount(Root, V.Component(ExitTimedPresence, key: "root"));
+            var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
+            Tick();
+
+            // Act — remove both, then sample inside the first stagger slot.
+            keys.Set(string.Empty);
+            scheduler.DrainImmediateForTest();
+            Advance(0.15f);
+
+            // Assert — b's swap fired and a's is still parked behind the 0.3s slot. An uncounted exit
+            // collapses the reversal to forward order, which is the same two readings the other way round.
+            Assert.That(
+                (PoseOf(Root.Q<VisualElement>("item-a")), PoseOf(Root.Q<VisualElement>("item-b"))),
+                Is.EqualTo(("visible", "hidden")));
+        }
+
+        // GREEN_ON_BASE(characterization): the base withheld the new child behind the pose's exit as well.
+        // The flush and drain added are the ones that would drop an exit with nothing to animate.
+        [Test]
+        public void Given_WaitModeAndAnExitTimedByItsPoseAlone_When_ANewKeyArrives_Then_TheNewChildIsWithheld()
+        {
+            // Arrange — mode: Wait renders the exiting children alone while any previously committed child is
+            // still exiting, and whether that exit animates, rather than settling after the removing render, is
+            // decided by the exit pose here.
+            using var keys = new KeySetStore("a");
+            s_keyStore = keys;
+            s_mode = AnimatePresenceMode.Wait;
+            using var mounted = V.Mount(Root, V.Component(ExitTimedPresence, key: "root"));
+            var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
+            Tick();
+
+            // Act — swap the key set entirely: a leaves, b arrives. Then the flush an exit with nothing to animate
+            // settles in, and the render that settle asks for.
+            keys.Set("b");
+            scheduler.DrainImmediateForTest();
+            mounted.FlushEffectsForTest();
+            scheduler.DrainImmediateForTest();
+
+            // Assert — a's ghost holds the slot past both and b has not mounted yet.
+            Assert.That(
+                (PoseOf(Root.Q<VisualElement>("item-a")), PoseOf(Root.Q<VisualElement>("item-b"))),
+                Is.EqualTo(("visible", "gone")));
+        }
+
+        [Test]
+        public void Given_BeforeChildrenOnACoordinatorsPose_When_ItsLabelFlips_Then_ChildrenWaitOutThatPosesSpan()
+        {
+            // Arrange — the coordinator's resting pose declares a 0.5s BeforeChildren span while the node's
+            // own transition declares 0.02s. Both orchestrate; only the span differs.
+            using var labels = new LabelStore();
+            s_labelStore = labels;
+            using var mounted = V.Mount(Root, V.Component(BeforeChildrenCoordinator, key: "root"));
+            var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
+            Tick();
+
+            // Act — flip the coordinator's label, then sample inside the pose's span and past the node's.
+            labels.Set("visible");
+            scheduler.DrainImmediateForTest();
+            Advance(0.2f);
+
+            // Assert — the coordinator's own swap has landed and the inheriting child is still parked. The
+            // parent term is what separates "still waiting" from "nothing was orchestrated at all".
+            Assert.That(
+                (PoseOf(Root.Q<VisualElement>("p")), PoseOf(Root.Q<VisualElement>("c"))),
+                Is.EqualTo(("visible", "hidden")));
+        }
+
+        [TestCase(0f, "hidden")]
+        [TestCase(0.3f, "visible")]
+        public void Given_BeforeChildrenOnASpringPoseItsDurationDescribes_When_ItsLabelFlips_Then_ChildrenWaitOutThatDurationOnly(
+            float seconds, string expected)
+        {
+            // Arrange
+            using var labels = new LabelStore();
+            s_labelStore = labels;
+            using var mounted = V.Mount(Root, V.Component(SpringBeforeChildrenCoordinator, key: "root"));
+            var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
+            Tick();
+
+            // Act — one frame, inside the spring's 0.05 s, or 0.3 s, past it and well short of the 1.05 s the
+            // default physics would take.
+            labels.Set("visible");
+            scheduler.DrainImmediateForTest();
+            Advance(seconds);
+
+            // Assert — parked through the duration, swapped once it has run.
+            Assert.That(PoseOf(Root.Q<VisualElement>("c")), Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void Given_StaggerChildrenOnACoordinatorsPose_When_ItsLabelFlips_Then_ItsChildrenTakeSeparateSlots()
+        {
+            // Arrange — the stagger is declared only by the destination pose. The case above pins the
+            // BeforeChildren term of the same frame, which the node's own config also carries; this one
+            // pins the stagger term, which it does not, so a frame read off the node cannot separate them.
+            using var labels = new LabelStore();
+            s_labelStore = labels;
+            using var mounted = V.Mount(Root, V.Component(StaggerCoordinator, key: "root"));
+            var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
+            Tick();
+
+            // Act — flip, then sample past the first child's slot and inside the second's 0.4s one.
+            labels.Set("visible");
+            scheduler.DrainImmediateForTest();
+            Advance(0.2f);
+
+            // Assert — separate slots. Both children swapping together is the frame having been built
+            // without the pose's stagger.
+            Assert.That(
+                (PoseOf(Root.Q<VisualElement>("c0")), PoseOf(Root.Q<VisualElement>("c1"))),
+                Is.EqualTo(("visible", "hidden")));
+        }
+
+        [Test]
+        public void Given_APresenceChildTimedOnlyByItsPose_When_ItMounts_Then_TheEnterRidesThatPosesDuration()
+        {
+            // Arrange — the node carries no transition at all, which `V.Motion` cannot build (it falls back
+            // to the Fade preset), so the node is constructed directly. The only timing is the target pose's.
+            using var reconciler = new Reconciler();
+
+            // Act
+            reconciler.Reconcile(Root, System.Array.Empty<VNode>(), new VNode[]
+            {
+                V.AnimatePresence(key: "presence", children: new VNode[]
+                {
+                    new MotionNode
+                    {
+                        Key = "item",
+                        Name = "item",
+                        Variants = s_asymmetric,
+                        Initial = "hidden",
+                        Animate = "visible",
+                    },
+                }),
+            });
+
+            // Assert — the pose's 500ms. A gate asking only whether the NODE is timed skips this enter
+            // entirely, which drops OnEnterComplete with it.
+            Assert.That(InlineDurationMs(Root.Q<VisualElement>("item")), Is.EqualTo(500f).Within(1e-3f));
+        }
+    }
+}

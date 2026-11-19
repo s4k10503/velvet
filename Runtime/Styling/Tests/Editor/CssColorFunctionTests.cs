@@ -1,0 +1,229 @@
+using System;
+using NUnit.Framework;
+
+namespace Velvet.Tests
+{
+    /// <summary>
+    /// Specifies the CSS Color 4 functions the shared colour grammar (<see cref="StyleColorValueParser.TryParseColor"/>)
+    /// reads, each against the sRGB value the specification's conversion gives: <c>rgb()</c> / <c>rgba()</c> and
+    /// <c>hsl()</c> / <c>hsla()</c> in the comma and the space syntax, <c>hwb()</c>, the <c>/</c> alpha, percentages,
+    /// <c>none</c>, hue units, the parse-time clamps, and <c>transparent</c>. Underscores stand for spaces, as a
+    /// class string writes them.
+    /// </summary>
+    internal sealed class CssColorFunctionTests
+    {
+        private const float Tolerance = 1e-4f;
+
+        // A value the grammar declines reads as NaN in every channel, so a case expecting a colour fails on it
+        // rather than comparing against the default colour.
+        private static float[] Parse(string value)
+            => StyleColorValueParser.TryParseColor(value.AsSpan(), out var c)
+                ? new[] { c.r, c.g, c.b, c.a }
+                : new[] { float.NaN, float.NaN, float.NaN, float.NaN };
+
+        private static bool Parses(string value) => StyleColorValueParser.TryParseColor(value.AsSpan(), out _);
+
+        // GREEN_ON_BASE(refactor): the rows are cases these methods already ran, with the same literals.
+        [TestCase("rgb(255_0_0_/_50%)", 1f, 0f, 0f, 0.5f, TestName = "Given_SpaceSyntaxRgbWithSlashAlpha_When_Parsed_Then_ChannelsAndAlphaResolve")]
+        [TestCase("rgb(100%_50%_0%)", 1f, 0.5f, 0f, 1f, TestName = "Given_RgbPercentages_When_Parsed_Then_HundredPercentIsTheFullChannel")]
+        [TestCase("rgb(none_255_0)", 0f, 1f, 0f, 1f, TestName = "Given_ANoneRgbComponent_When_Parsed_Then_ItReadsAsZero")]
+        [TestCase("rgb(0_0_255/0.25)", 0f, 0f, 1f, 0.25f, TestName = "Given_ASlashWithoutSpaces_When_Parsed_Then_TheAlphaStillResolves")]
+        [TestCase("rgb(0_0_255_/_none)", 0f, 0f, 1f, 0f, TestName = "Given_ANoneAlpha_When_Parsed_Then_ItReadsAsZero")]
+        [TestCase("rgb(0_0_255_/_1.5)", 0f, 0f, 1f, 1f, TestName = "Given_AnAlphaAboveOne_When_Parsed_Then_ItIsClampedToOne")]
+        [TestCase("rgb(300_-20_0)", 1f, 0f, 0f, 1f, TestName = "Given_SpaceSyntaxChannelsOutsideTheRange_When_Parsed_Then_TheyAreClamped")]
+        [TestCase("rgb(255,0,0,0.25)", 1f, 0f, 0f, 0.25f, TestName = "Given_LegacyRgbWithAFourthArgument_When_Parsed_Then_ItIsTheAlpha")]
+        [TestCase("rgba(0,0,255)", 0f, 0f, 1f, 1f, TestName = "Given_LegacyRgbaWithThreeArguments_When_Parsed_Then_ItIsOpaque")]
+        [TestCase("rgb(300,-20,0,2)", 1f, 0f, 0f, 1f, TestName = "Given_LegacyChannelsOutsideTheRange_When_Parsed_Then_TheyAreClamped")]
+        [TestCase("rgb(100%,_0%,_50%,_50%)", 1f, 0f, 0.5f, 0.5f, TestName = "Given_LegacyPercentages_When_Parsed_Then_HundredPercentIsTheFullChannel")]
+        [TestCase("rgb(127.5,0,0)", 0.5f, 0f, 0f, 1f, TestName = "Given_AFractionalChannel_When_Parsed_Then_ItIsKept")]
+        [TestCase("rgb(+2.55e2_0_0)", 1f, 0f, 0f, 1f, TestName = "Given_ASignedExponentNumber_When_Parsed_Then_ItIsANumber")]
+        [TestCase("RGB(255_0_0)", 1f, 0f, 0f, 1f, TestName = "Given_AnUppercaseFunctionName_When_Parsed_Then_ItIsRead")]
+        [TestCase("hsl(210_40%_50%)", 0.3f, 0.5f, 0.7f, 1f, TestName = "Given_SpaceSyntaxHsl_When_Parsed_Then_ItIsTheSpecificationsSrgb")]
+        [TestCase("hsl(210_40_50)", 0.3f, 0.5f, 0.7f, 1f, TestName = "Given_HslSaturationAndLightnessAsNumbers_When_Parsed_Then_TheyReadAsPercentages")]
+        [TestCase("hsla(120,100%,25%,0.5)", 0f, 0.5f, 0f, 0.5f, TestName = "Given_LegacyHslaWithAlpha_When_Parsed_Then_ChannelsAndAlphaResolve")]
+        [TestCase("hsl(0.5turn,100%,50%)", 0f, 1f, 1f, 1f, TestName = "Given_LegacyHslWithAnAngleUnit_When_Parsed_Then_TheHueReadsInThatUnit")]
+        [TestCase("hsl(none_100%_50%)", 1f, 0f, 0f, 1f, TestName = "Given_ANoneHue_When_Parsed_Then_ItReadsAsZeroDegrees")]
+        [TestCase("hsl(120_100%_75%)", 0.5f, 1f, 0.5f, 1f, TestName = "Given_AHslLighterThanHalf_When_Parsed_Then_ItMixesTowardWhite")]
+        public void Given_AColourFunction_When_Parsed_Then_ItIsTheSpecificationsSrgb(string value, float r, float g, float b, float a)
+        {
+            // Act
+            var color = Parse(value);
+
+            // Assert
+            Assert.That(color, Is.EqualTo(new[] { r, g, b, a }).Within(Tolerance));
+        }
+
+        // Each declined value sits beside the nearest value the grammar reads, so a grammar declining
+        // everything fails here too.
+        [TestCase("rgb(100%,0,0)", "rgb(100%,0%,0%)")]
+        [TestCase("rgb(0,0%,0%)", "rgb(0%,0%,0%)")]
+        [TestCase("rgb(none,0,0)", "rgb(none_0_0)")]
+        [TestCase("rgb(0,0,0,none)", "rgb(0,0,0,0)")]
+        [TestCase("rgb(0,0,0,0,0)", "rgb(0,0,0,0)")]
+        [TestCase("rgb(0,0)", "rgba(0,0,0)")]
+        [TestCase("rgb(0_0_0_/)", "rgb(0_0_0_/_1)")]
+        [TestCase("rgb(0_0)", "rgb(0_0_0)")]
+        [TestCase("rgb(0_0_0_0)", "rgb(0_0_0_/_0)")]
+        [TestCase("rgb(0_0_/_0_1)", "rgb(0_0_0_/_1)")]
+        [TestCase("rgb(0_0_0_/_1_1)", "rgb(0_0_0_/_1)")]
+        [TestCase("rgb(0_0_0_/_/_1)", "rgb(0_0_0_/_1)")]
+        [TestCase("rgb(0_0_x)", "rgb(0_0_0)")]
+        [TestCase("rgb(0_0_infinity)", "rgb(0_0_1e1)")]
+        [TestCase("rgb(0_0_nan)", "rgb(0_0_1e1)")]
+        [TestCase("rgb(0_0_1.)", "rgb(0_0_1.0)")]
+        [TestCase("rgb(0_0_1e)", "rgb(0_0_1e0)")]
+        [TestCase("rgb(0_0_1e+)", "rgb(0_0_1e+0)")]
+        [TestCase("rgb(0_0_.)", "rgb(0_0_.5)")]
+        [TestCase("rgb(0_0_-)", "rgb(0_0_-0)")]
+        [TestCase("rgb(0_0_1x)", "rgb(0_0_1)")]
+        [TestCase("rgb(0_0_1e1x)", "rgb(0_0_1e1)")]
+        [TestCase("rgb(0_0_1x5)", "rgb(0_0_1e5)")]
+        [TestCase("rgb(0_0_x%)", "rgb(0_0_0%)")]
+        [TestCase("rgb(0_0_0", "rgb(0_0_0)")]
+        [TestCase("rgbx(0_0_0)", "rgb(0_0_0)")]
+        [TestCase("hsl(120,100,25%)", "hsl(120,100%,25%)")]
+        [TestCase("hsl(120,100%,25)", "hsl(120,100%,25%)")]
+        [TestCase("hsl(none,100%,50%)", "hsl(none_100%_50%)")]
+        [TestCase("hsl(1px_100%_50%)", "hsl(1deg_100%_50%)")]
+        [TestCase("hsl(120,100%,25%,0.5,1)", "hsl(120,100%,25%,0.5)")]
+        [TestCase("hsl(120,100%)", "hsl(120,100%,25%)")]
+        [TestCase("hsl(120,100%,25%,x)", "hsl(120,100%,25%,1)")]
+        [TestCase("hsl(120_100%_25%_/_x)", "hsl(120_100%_25%_/_1)")]
+        [TestCase("hwb(150,20%,10%)", "hwb(150_20%_10%)")]
+        [TestCase("notacolor", "transparent")]
+        public void Given_AValueTheGrammarDeclines_When_Parsed_Then_OnlyItsReadableNeighbourParses(string declined, string read)
+        {
+            // Act
+            var parsed = (Parses(declined), Parses(read));
+
+            // Assert
+            Assert.That(parsed, Is.EqualTo((false, true)));
+        }
+
+        // Each literal is past float's range, and reads as Chromium reads it: a channel, a percentage or an alpha
+        // clamps to its end, and a hue is the hue of float's largest, which is 0deg in degrees and in turns.
+        [TestCase("rgb(1e999_0_0)", 1f, 0f, 0f, 1f)]
+        [TestCase("rgb(+1e999,0,0)", 1f, 0f, 0f, 1f)]
+        [TestCase("rgb(1e999%_0_0)", 1f, 0f, 0f, 1f)]
+        [TestCase("rgb(-1e999_0_0)", 0f, 0f, 0f, 1f)]
+        [TestCase("rgb(255_0_0_/_-1e999)", 1f, 0f, 0f, 0f)]
+        [TestCase("hsl(0_1e999%_50%)", 1f, 0f, 0f, 1f)]
+        [TestCase("hsl(90_1e999%_50%)", 0.5f, 1f, 0f, 1f)]
+        [TestCase("hsl(1e999_100%_50%)", 1f, 0f, 0f, 1f)]
+        [TestCase("hsl(-1e999deg_100%_50%)", 1f, 0f, 0f, 1f)]
+        [TestCase("hsl(1e307turn_100%_50%)", 1f, 0f, 0f, 1f)]
+        public void Given_ALiteralPastDoublesRange_When_Parsed_Then_ItReadsAsChromiumReadsIt(string value, float r, float g, float b, float a)
+        {
+            // Act
+            var color = Parse(value);
+
+            // Assert
+            Assert.That(color, Is.EqualTo(new[] { r, g, b, a }).Within(Tolerance));
+        }
+
+        // GREEN_ON_BASE(characterization): the base reads no Lab-family function, so a component past float's range has
+        // no reading to match Chromium's, and an implementation of the family has to decide that reading.
+        [TestCase("lab(50_10_0)")]
+        [TestCase("lab(50_1e200_0)")]
+        [TestCase("lch(50_1e999_0)")]
+        [TestCase("oklab(0.5_1e200_0)")]
+        [TestCase("oklch(0.5_1e999_0)")]
+        public void Given_ALabFamilyFunction_When_Parsed_Then_ItIsDeclinedWhateverItsMagnitude(string value)
+        {
+            // Act
+            var parsed = Parses(value);
+
+            // Assert
+            Assert.That(parsed, Is.False);
+        }
+
+        [TestCase("hsl(180deg_100%_50%)")]
+        [TestCase("hsl(0.5turn_100%_50%)")]
+        [TestCase("hsl(200grad_100%_50%)")]
+        [TestCase("hsl(3.14159265rad_100%_50%)")]
+        [TestCase("hsl(-180_100%_50%)")]
+        [TestCase("hsl(540_100%_50%)")]
+        public void Given_AHueOfHalfATurn_When_Parsed_Then_ItIsCyan(string value)
+        {
+            // Act
+            var color = Parse(value);
+
+            // Assert
+            Assert.That(color, Is.EqualTo(new[] { 0f, 1f, 1f, 1f }).Within(Tolerance));
+        }
+
+        [Test]
+        public void Given_ANegativeHue_When_Parsed_Then_ItWrapsAroundTheCircle()
+        {
+            // Act — -120deg is 240deg, sRGB blue.
+            var color = Parse("hsl(-120_100%_50%)");
+
+            // Assert
+            Assert.That(color, Is.EqualTo(new[] { 0f, 0f, 1f, 1f }).Within(Tolerance));
+        }
+
+        [TestCase("hsl(0_-50%_50%)")]
+        [TestCase("hsl(0,-50%,50%)")]
+        public void Given_ANegativeSaturation_When_Parsed_Then_ItIsClampedToGray(string value)
+        {
+            // Act
+            var color = Parse(value);
+
+            // Assert
+            Assert.That(color, Is.EqualTo(new[] { 0.5f, 0.5f, 0.5f, 1f }).Within(Tolerance));
+        }
+
+        [Test]
+        public void Given_Hwb_When_Parsed_Then_ItIsTheSpecificationsSrgb()
+        {
+            // Act — the specification's own example: hwb(150 20% 10%) is rgb(20% 90% 55%).
+            var color = Parse("hwb(150_20%_10%)");
+
+            // Assert
+            Assert.That(color, Is.EqualTo(new[] { 0.2f, 0.9f, 0.55f, 1f }).Within(Tolerance));
+        }
+
+        [Test]
+        public void Given_HwbWhoseWhiteAndBlackExceedTheWhole_When_Parsed_Then_ItIsTheirRatioOfGray()
+        {
+            // Act — white 40 and black 80 sum past 100, so the gray is 40 / (40 + 80).
+            var color = Parse("hwb(45_40%_80%)");
+
+            // Assert
+            Assert.That(color, Is.EqualTo(new[] { 1f / 3f, 1f / 3f, 1f / 3f, 1f }).Within(Tolerance));
+        }
+
+        [Test]
+        public void Given_ANegativeHwbWhiteness_When_Parsed_Then_ItIsNotClampedAtParse()
+        {
+            // Act — the specification's sample conversion gives rgb(1, 0.4, -0.2) for a whiteness of -20%.
+            var color = Parse("hwb(30_-20%_0%)");
+
+            // Assert
+            Assert.That(color, Is.EqualTo(new[] { 1f, 0.4f, 0f, 1f }).Within(Tolerance));
+        }
+
+        // GREEN_ON_BASE(characterization): a hex colour read through ColorUtility before and still does.
+        [Test]
+        public void Given_AHexColour_When_Parsed_Then_ItStillReadsThroughColorUtility()
+        {
+            // Act
+            var color = Parse("#336699");
+
+            // Assert
+            Assert.That(color, Is.EqualTo(new[] { 0.2f, 0.4f, 0.6f, 1f }).Within(Tolerance));
+        }
+
+        // GREEN_ON_BASE(characterization): ColorUtility reads the keyword as transparent black before the function
+        // grammar sits in front of it, and must still once it does.
+        [Test]
+        public void Given_Transparent_When_Parsed_Then_ItIsTransparentBlack()
+        {
+            // Act
+            var color = Parse("transparent");
+
+            // Assert
+            Assert.That(color, Is.EqualTo(new[] { 0f, 0f, 0f, 0f }).Within(Tolerance));
+        }
+    }
+}

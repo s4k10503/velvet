@@ -1,0 +1,98 @@
+/* Typography Utilities - font-size, font-family/weight/style, text-align, white-space, text-overflow (the text colours are in _palette.uss) */
+
+/* Font Size */
+.text-2xl { font-size: var(--text-2xl); }
+.text-3xl { font-size: var(--text-3xl); }
+.text-4xl { font-size: var(--text-4xl); }
+.text-5xl { font-size: var(--text-5xl); }
+.text-6xl { font-size: var(--text-6xl); }
+.text-7xl { font-size: var(--text-7xl); }
+.text-8xl { font-size: var(--text-8xl); }
+.text-9xl { font-size: var(--text-9xl); }
+.text-base { font-size: var(--text-base); }
+.text-lg { font-size: var(--text-lg); }
+.text-sm { font-size: var(--text-sm); }
+.text-xl { font-size: var(--text-xl); }
+.text-xs { font-size: var(--text-xs); }
+
+/*
+ * Font Family / Weight / Style
+ *
+ * These rules are the USS *fallback* layer. The authoritative font layer is the C#
+ * `StyleFontResolver`, which resolves `font-<family>`, the `font-thin`…`font-black`
+ * weight scale, and `italic` together and writes them as inline
+ * `-unity-font-definition` + `-unity-font-style`. That inline pass is what makes
+ * `font-bold italic` compose and lets weight-specific Font Assets render true weights.
+ * Register families via `VelvetFonts.Register`; see Documentation~/fonts.md.
+ *
+ * Standalone (no registered fonts) these rules still give sensible output: USS's
+ * `-unity-font-style` is a binary normal/bold axis, so the 100–900 scale folds to bold
+ * at `>= 600` — exactly the threshold the resolver falls back to. `font-<family>` classes
+ * intentionally have no USS rule (a family needs a real Font Asset to take effect).
+ */
+
+/* Weight scale (Tailwind: font-thin … font-black, folded to the binary normal/bold axis) and style
+   (Tailwind: italic / not-italic) write one property, so they run as one band in Tailwind's order.
+   `bold-italic` is the only rule that gives both: pure USS cannot compose two separate classes into one
+   `-unity-font-style` value; the StyleFontResolver inline layer composes `font-bold italic`. `font-italic`
+   is a deprecated alias of `italic` (non-standard name; kept for back-compat). */
+.bold-italic { -unity-font-style: bold-and-italic; }
+.font-black { -unity-font-style: bold; }
+.font-bold { -unity-font-style: bold; }
+.font-extrabold { -unity-font-style: bold; }
+.font-extralight { -unity-font-style: normal; }
+.font-italic { -unity-font-style: italic; }
+.font-light { -unity-font-style: normal; }
+.font-medium { -unity-font-style: normal; }
+.font-normal { -unity-font-style: normal; }
+.font-semibold { -unity-font-style: bold; }
+.font-thin { -unity-font-style: normal; }
+.italic { -unity-font-style: italic; }
+.not-italic { -unity-font-style: normal; }
+
+/* Text Align. The logical forms (Tailwind text-start/end) map to the LTR physical edges, since UI Toolkit
+   has no writing-direction: start = left, end = right. */
+.text-center { -unity-text-align: middle-center; }
+.text-end { -unity-text-align: middle-right; }
+.text-left { -unity-text-align: middle-left; }
+.text-right { -unity-text-align: middle-right; }
+.text-start { -unity-text-align: middle-left; }
+.text-top-center { -unity-text-align: upper-center; }
+.text-top-left { -unity-text-align: upper-left; }
+
+/* White Space. UnityEngine.UIElements.WhiteSpace has four members — normal / nowrap / pre / pre-wrap —
+   all reachable directly from USS. whitespace-pre-line has no rule here: CSS pre-line (collapse
+   space/tab runs, keep newlines) has no matching enum member, so it is realised in C# instead — a
+   display-string rewrite plus an inline `white-space: pre-wrap` write — see StyleTextEffectResolver.cs. */
+.whitespace-normal { white-space: normal; }
+.whitespace-nowrap { white-space: nowrap; }
+.whitespace-pre { white-space: pre; }
+.whitespace-pre-wrap { white-space: pre-wrap; }
+
+/* text-wrap / text-nowrap / text-balance / text-pretty have no rule here: they set CSS's wrap mode and
+   leave the collapse alone, which white-space cannot hold apart, so StyleTextEffectResolver writes the
+   white-space per text leaf, and StyleTextBalanceManipulator breaks the lines for text-balance and text-pretty.
+   StyleTextEffectClass.WhiteSpaceClassesInSheetOrder lists the white-space rules in this file's order. */
+
+/* Gives an element declaring an em or percentage leading-[…] the custom property that makes UI Toolkit
+   send it CustomStyleResolvedEvent; see LeadingLengthProbe. */
+.velvet-leading-length { --velvet-leading-length: 1; }
+
+/* Gives a field's input text the custom property that makes UI Toolkit send it CustomStyleResolvedEvent; see
+   FieldLineBox. A label or button Velvet creates has it from _preflight.uss. */
+.velvet-line-box { --velvet-line-box: 1; }
+
+/* Text Overflow (Tailwind: text-ellipsis / text-clip; `truncate` is declared in _layout.uss).
+   The ellipsis only renders with hidden overflow and no wrapping. `-unity-text-overflow-position`
+   defaults to `end`, matching Tailwind's trailing ellipsis. */
+.text-clip { text-overflow: clip; }
+.text-ellipsis { text-overflow: ellipsis; }
+
+/* Letter Spacing (Tailwind: tracking-*) has no rule here: its scale is in em, which USS letter-spacing
+   cannot spell, so StyleArbitraryValueResolver measures it on the element like tracking-[0.025em]. */
+
+/* Font smoothing (Tailwind: antialiased / subpixel-antialiased), as the two modes of
+   -unity-editor-text-rendering-mode: sdf is grayscale smoothing from one scalable atlas, bitmap one
+   atlas per size. */
+.antialiased { -unity-editor-text-rendering-mode: sdf; }
+.subpixel-antialiased { -unity-editor-text-rendering-mode: bitmap; }

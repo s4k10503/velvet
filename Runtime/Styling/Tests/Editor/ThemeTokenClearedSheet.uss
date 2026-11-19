@@ -1,0 +1,5 @@
+/* The color namespace set to initial, and one token declared after it. */
+.theme-token-host {
+    --color-*: initial;
+    --color-keeptest: rgb(0, 0, 255);
+}

@@ -1,0 +1,370 @@
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+
+namespace Velvet
+{
+    /// <summary>
+    /// The combined font request extracted from an element's class list: a family, a weight, and an
+    /// italic flag, each tracked with a "was it specified?" companion. Because all three facets are
+    /// gathered together (rather than applied class-by-class), <c>font-bold italic</c> composes into a
+    /// single <c>bold-and-italic</c> result — something the raw <c>-unity-font-style</c> property cannot
+    /// express from two independent classes.
+    /// </summary>
+    public readonly struct FontIntent
+    {
+        public readonly string? Family;       // null when no font-<name> / font-[name] class was present.
+        public readonly bool HasFamily;
+        public readonly VelvetFontWeight Weight;
+        public readonly bool HasWeight;
+        public readonly bool Italic;
+        public readonly bool HasItalic;
+        public readonly float Stretch;        // A percentage of the normal width; 100 when no font-stretch-* class was present.
+        public readonly bool HasStretch;
+
+        public FontIntent(string? family, bool hasFamily, VelvetFontWeight weight, bool hasWeight, bool italic, bool hasItalic,
+            float stretch = 100f, bool hasStretch = false)
+        {
+            Family = family;
+            HasFamily = hasFamily;
+            Weight = weight;
+            HasWeight = hasWeight;
+            Italic = italic;
+            HasItalic = hasItalic;
+            Stretch = stretch;
+            HasStretch = hasStretch;
+        }
+    }
+
+    /// <summary>
+    /// Parses Velvet's font utility classes — <c>font-&lt;name&gt;</c> (family), <c>font-thin</c> …
+    /// <c>font-black</c> (weight), <c>italic</c> / <c>not-italic</c> / <c>bold-italic</c> (style), plus
+    /// the arbitrary <c>font-[…]</c> forms — into a single <see cref="FontIntent"/>. Mirrors
+    /// <see cref="StyleGapClass"/>'s whole-array, last-wins extraction so it slots into the reconciler
+    /// the same way. Resolution to actual assets/styles is done by <see cref="StyleFontResolver"/>.
+    /// </summary>
+    public static class StyleFontClass
+    {
+        // font-<keyword> → weight. Keys are the class suffix after "font-".
+        private static readonly Dictionary<string, VelvetFontWeight> WeightKeywords = new(StringComparer.Ordinal)
+        {
+            ["thin"] = VelvetFontWeight.Thin,
+            ["extralight"] = VelvetFontWeight.ExtraLight,
+            ["light"] = VelvetFontWeight.Light,
+            ["normal"] = VelvetFontWeight.Normal,
+            ["medium"] = VelvetFontWeight.Medium,
+            ["semibold"] = VelvetFontWeight.SemiBold,
+            ["bold"] = VelvetFontWeight.Bold,
+            ["extrabold"] = VelvetFontWeight.ExtraBold,
+            ["black"] = VelvetFontWeight.Black,
+        };
+
+        // Bundles the three font facets (family / weight / italic) and their "was it specified?"
+        // companions into one ref-passable unit, so ParseClass / ParseArbitrary thread a single argument
+        // through the class-list walk instead of six independent ref locals.
+        private struct FontFacets
+        {
+            public string? Family;
+            public bool HasFamily;
+            public VelvetFontWeight Weight;
+            public bool HasWeight;
+            public bool Italic;
+            public bool HasItalic;
+            public float Stretch;
+            public bool HasStretch;
+        }
+
+        /// <summary>
+        /// Cheap early-out: true when ANY class is a font utility. Avoids the full <see cref="TryExtract"/>
+        /// scan on the elements (the vast majority) that carry no font class.
+        /// </summary>
+        public static bool HasFontClass(string[] classNames)
+        {
+            if (classNames == null)
+            {
+                return false;
+            }
+
+            foreach (var cls in classNames)
+            {
+                if (IsFontToken(StyleArbitraryValueResolver.StripImportant(cls, out _)))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Whether <paramref name="cls"/> can change what <see cref="TryExtract"/> builds. Both readers ask
+        /// it as a cheap over-approximation and pay only a wasted resolve for a false positive — the
+        /// presence gate below decides whether to run the resolver at all, and
+        /// <c>StyleVariantPayload.IsVariantGateToken</c> decides whether to track a payload for it. Reading
+        /// the <c>font-</c> prefix rather than the parse is what keeps it on the cheap side of that trade:
+        /// a suffix <see cref="TryExtract"/> goes on to reject still enters, where a spelling this failed to
+        /// recognise would cost the payload its effect.
+        /// </summary>
+        public static bool IsFontToken(string cls)
+        {
+            if (string.IsNullOrEmpty(cls))
+            {
+                return false;
+            }
+
+            return cls.StartsWith("font-", StringComparison.Ordinal)
+                   || cls == "italic"
+                   || cls == "not-italic"
+                   || cls == "bold-italic";
+        }
+
+        /// <summary>
+        /// True when <paramref name="cls"/> is an arbitrary font class (<c>font-[…]</c>). These are owned
+        /// by <see cref="StyleFontResolver"/> (resolved from the whole class array and applied as inline
+        /// style), so the reconciler must keep them out of the USS class list — unlike the non-bracket
+        /// font classes (<c>font-bold</c>, <c>font-sans</c>, …) which stay in the list as the USS fallback.
+        /// Single source of truth for the AddClass / RemoveClass / ApplyClassNames exclusion checks.
+        /// Routed through <see cref="StyleArbitraryValueResolver.StripImportant"/> first so an
+        /// important-modifier bang (<c>!font-[…]</c> / <c>font-[…]!</c>) is tolerated: the 3 call sites
+        /// above run THIS check before their own <c>StripImportant</c> call, so a bang'd token that only
+        /// matched the un-prefixed form would fall through, have its bang stripped downstream, and leak the
+        /// bare bracket core into the class list as a dead token.
+        /// </summary>
+        public static bool IsArbitraryFontClass(string cls)
+        {
+            if (string.IsNullOrEmpty(cls))
+            {
+                return false;
+            }
+            var core = StyleArbitraryValueResolver.StripImportant(cls, out _);
+            return core.StartsWith("font-[", StringComparison.Ordinal);
+        }
+
+        /// <summary>
+        /// Scans <paramref name="classNames"/> and folds every font utility into one
+        /// <see cref="FontIntent"/>. Each facet (family / weight / italic) follows CSS cascade order:
+        /// a later class of the same facet overrides an earlier one. Returns false when no font class is
+        /// present.
+        /// </summary>
+        public static bool TryExtract(string[] classNames, out FontIntent intent)
+        {
+            intent = default;
+            if (classNames == null)
+            {
+                return false;
+            }
+
+            var facets = new FontFacets { Weight = VelvetFontWeight.Normal, Stretch = 100f };
+            var any = false;
+
+            // The important tokens are folded in a second pass, so each facet one of them sets overrides every
+            // plain token's wherever it sits, and within either group the later class wins.
+            for (var pass = 0; pass < 2; pass++)
+            {
+                foreach (var cls in classNames)
+                {
+                    var core = StyleArbitraryValueResolver.StripImportant(cls, out var important);
+                    if (important == (pass == 1) && ParseClass(core, ref facets))
+                    {
+                        any = true;
+                    }
+                }
+            }
+
+            if (!any)
+            {
+                return false;
+            }
+
+            intent = new FontIntent(facets.Family, facets.HasFamily, facets.Weight, facets.HasWeight, facets.Italic, facets.HasItalic,
+                facets.Stretch, facets.HasStretch);
+            return true;
+        }
+
+        // Returns true when cls was recognized as a font utility (and mutated the facets accordingly).
+        private static bool ParseClass(string cls, ref FontFacets facets)
+        {
+            if (string.IsNullOrEmpty(cls))
+            {
+                return false;
+            }
+
+            switch (cls)
+            {
+                case "italic":
+                    facets.Italic = true;
+                    facets.HasItalic = true;
+                    return true;
+                case "not-italic":
+                    facets.Italic = false;
+                    facets.HasItalic = true;
+                    return true;
+                case "bold-italic":
+                    facets.Weight = VelvetFontWeight.Bold;
+                    facets.HasWeight = true;
+                    facets.Italic = true;
+                    facets.HasItalic = true;
+                    return true;
+            }
+
+            // A token reading a custom property is read through the payload its reader resolves it to.
+            if (!cls.StartsWith("font-", StringComparison.Ordinal) || StyleCustomPropertyClass.IsConsumer(cls))
+            {
+                return false;
+            }
+
+            var rest = cls.Substring("font-".Length);
+            if (rest.Length == 0)
+            {
+                return false;
+            }
+
+            // Arbitrary form: font-[<value>]. Bracket-shaped tokens always resolve here (never fall through
+            // to the family-name catch-all below) — TryStripBrackets only "fails" for the empty font-[]
+            // case, for which ParseArbitrary independently rejects the empty value anyway.
+            if (rest[0] == '[' && rest[rest.Length - 1] == ']')
+            {
+                var value = StyleArbitraryValueResolver.TryStripBrackets(rest, 0, out var inner) ? inner.ToString() : string.Empty;
+                return ParseArbitrary(value, ref facets);
+            }
+
+            // Deprecated alias of `italic` (kept in sync with _typography.uss's .font-italic).
+            if (rest == "italic")
+            {
+                facets.Italic = true;
+                facets.HasItalic = true;
+                return true;
+            }
+
+            // font-<weight-keyword>.
+            if (WeightKeywords.TryGetValue(rest, out var kw))
+            {
+                facets.Weight = kw;
+                facets.HasWeight = true;
+                return true;
+            }
+
+            // font-stretch-<keyword | percentage | [value]>, never read as a family named stretch-….
+            if (rest.StartsWith("stretch-", StringComparison.Ordinal))
+            {
+                return TryParseStretch(rest.Substring("stretch-".Length), ref facets);
+            }
+
+            // Otherwise a family name: font-sans, font-mono, font-display, …
+            facets.Family = rest;
+            facets.HasFamily = true;
+            return true;
+        }
+
+        // font-[weight:550] / font-[550] / font-[number:550] → weight; font-[addr:key] / font-[Inter] /
+        // font-[family-name:Inter] / font-[generic-name:serif] → family. A family other than an addr: key is read as
+        // Tailwind reads a bracket: `_` is a space and `\_` an underscore.
+        private static bool ParseArbitrary(string value, ref FontFacets facets)
+        {
+            if (value.Length == 0)
+            {
+                return false;
+            }
+
+            if (value.StartsWith("weight:", StringComparison.Ordinal) || value.StartsWith("number:", StringComparison.Ordinal))
+            {
+                return TryParseWeight(value.Substring(value.IndexOf(':') + 1), ref facets);
+            }
+
+            // A bare number is a weight (font-[550]); anything else (incl. addr:key) is a family.
+            if (char.IsDigit(value[0]) && TryParseWeight(value, ref facets))
+            {
+                return true;
+            }
+
+            var family = value.StartsWith("family-name:", StringComparison.Ordinal)
+                    || value.StartsWith("generic-name:", StringComparison.Ordinal)
+                ? value.Substring(value.IndexOf(':') + 1)
+                : value;
+            // CSS-wide inherit or unset: the element takes its parent's family, as if it named none.
+            if (family is "inherit" or "unset")
+            {
+                facets.Family = null;
+                facets.HasFamily = false;
+                return true;
+            }
+            // An addr: key keeps its underscores, and takes `\_` for one as any family does.
+            facets.Family = family.StartsWith("addr:", StringComparison.Ordinal)
+                ? family.Replace("\\_", "_")
+                : StyleCustomPropertyClass.Decode(family);
+            facets.HasFamily = true;
+            return true;
+        }
+
+        // font-stretch keywords as Tailwind v4 spells them, with the percentages CSS gives them.
+        private static readonly Dictionary<string, float> StretchKeywords = new(StringComparer.Ordinal)
+        {
+            ["ultra-condensed"] = 50f,
+            ["extra-condensed"] = 62.5f,
+            ["condensed"] = 75f,
+            ["semi-condensed"] = 87.5f,
+            ["normal"] = 100f,
+            ["semi-expanded"] = 112.5f,
+            ["expanded"] = 125f,
+            ["extra-expanded"] = 150f,
+            ["ultra-expanded"] = 200f,
+        };
+
+        // A keyword, a percentage (font-stretch-87.5%), or either in a bracket (font-stretch-[66.66%]). A value
+        // CSS's font-stretch rejects (a negative percentage, a bare number) sets nothing, as an unrecognised
+        // class does.
+        private static bool TryParseStretch(string raw, ref FontFacets facets)
+        {
+            if (StyleArbitraryValueResolver.TryStripBrackets(raw, 0, out var inner))
+            {
+                raw = inner.ToString();
+            }
+
+            if (!TryReadStretch(raw, out var percent))
+            {
+                return false;
+            }
+
+            facets.Stretch = percent;
+            facets.HasStretch = true;
+            return true;
+        }
+
+        private static bool TryReadStretch(string raw, out float percent)
+        {
+            if (StretchKeywords.TryGetValue(raw, out percent))
+            {
+                return true;
+            }
+
+            percent = 0f;
+            if (raw.Length < 2 || raw[raw.Length - 1] != '%')
+            {
+                return false;
+            }
+
+            var number = raw.Substring(0, raw.Length - 1);
+            return float.TryParse(number, NumberStyles.Float, CultureInfo.InvariantCulture, out percent)
+                && float.IsFinite(percent) && percent >= 0f;
+        }
+
+        private static bool TryParseWeight(string raw, ref FontFacets facets)
+        {
+            // CSS-wide inherit or unset: the element takes its parent's weight, as if it named none.
+            if (raw is "inherit" or "unset")
+            {
+                facets.Weight = default;
+                facets.HasWeight = false;
+                return true;
+            }
+            if (!int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out var value))
+            {
+                return false;
+            }
+
+            facets.Weight = (VelvetFontWeight)value;
+            facets.HasWeight = true;
+            return true;
+        }
+    }
+}

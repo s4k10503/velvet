@@ -1,0 +1,4 @@
+/* A rule that gives a focused element a scale of its own, which no bundled sheet does. AnimateBaseValueTests reads it. */
+.focus-scale-110:focus {
+    scale: 1.1;
+}

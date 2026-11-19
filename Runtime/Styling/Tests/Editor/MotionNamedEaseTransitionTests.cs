@@ -1,0 +1,426 @@
+using System.Collections.Generic;
+using System.Reflection;
+using NUnit.Framework;
+using UnityEngine.UIElements;
+using Velvet.TestUtilities;
+
+namespace Velvet.Tests
+{
+    /// <summary>
+    /// Specifies that a Motion tween UI Toolkit's own transition plays runs a named ease on Framer Motion's curve for it
+    /// from its first frame, each property on the keyword its own entry names and opacity as Framer's Web Animations path
+    /// eases it, that a transition the tween did not start keeps its curve, that the element stops being listened to
+    /// once no tween plays on it, and that a layoutId carry eases a value as the value's own transition would under the
+    /// tween, and on UI Toolkit's curve where no tween started that transition.
+    /// </summary>
+    [TestFixture]
+    internal sealed class MotionNamedEaseTransitionTests : PanelTestBase
+    {
+        private StyleAnimationScheduler _scheduler;
+        private double _now;
+
+        public override void TearDown()
+        {
+            _scheduler?.CancelAll();
+            base.TearDown();
+        }
+
+        // An element carrying from, on the panel's own clock at 100 s, after arrange.
+        private VisualElement OnClock(string from, System.Action<VisualElement> arrange = null)
+        {
+            VelvetStyleUtilities.AttachTo(_window.rootVisualElement);
+            var element = new VisualElement();
+            _window.rootVisualElement.Add(element);
+            element.AddToClassList(from);
+            arrange?.Invoke(element);
+            ForcePanelUpdate(element.panel);
+            _now = 100.0;
+            EditorPanelTestHelpers.SetPanelTimeFunction(element.panel, () => _now);
+            EditorPanelTestHelpers.DriveAnimationsOnce(element.panel);
+            return element;
+        }
+
+        // A tween enter from from to to on config, which plays as UI Toolkit's transition on the panel's clock.
+        private void TweenEnter(VisualElement element, string from, string to, StyleTransitionConfig config)
+        {
+            _scheduler = new StyleAnimationScheduler();
+            _scheduler.PlayVariantEnter(element, new[] { from }, new[] { to }, config);
+            ForcePanelUpdate(element.panel);
+        }
+
+        // The frame that swaps the classes, up to the styles pass that starts the transitions the swap asks for.
+        private void Swap(VisualElement element)
+        {
+            _now += 0.016;
+            EditorPanelTestHelpers.DriveSchedulerOnce(element.panel);
+            EditorPanelTestHelpers.DriveAnimationsOnce(element.panel);
+            ForcePanelUpdate(element.panel);
+        }
+
+        // The frame that swaps the classes and the one the transitions it starts first run in.
+        private void FirstFrame(VisualElement element)
+        {
+            Swap(element);
+            EditorPanelTestHelpers.DriveAnimationsOnce(element.panel);
+            ForcePanelUpdate(element.panel);
+        }
+
+        private float FirstFrameOpacity(StyleTransitionConfig config)
+        {
+            var element = OnClock("opacity-0");
+            TweenEnter(element, "opacity-0", "opacity-100", config);
+            FirstFrame(element);
+            return element.resolvedStyle.opacity;
+        }
+
+        private static StyleTransitionConfig OneSecond(EasingMode easing, float delaySec)
+            => new() { DurationSec = 1f, Easing = easing, DelaySec = delaySec };
+
+        // Framer Motion's backIn: back.ts's, backOut reversed, and the Web Animations one supportedWaapiEasing names.
+        private static float FramerBackIn(float t) => 1f - CubicBezierEvaluator.Evaluate(0.33f, 1.53f, 0.69f, 0.99f, 1f - t);
+
+        private static float WebAnimationsBackIn(float t) => CubicBezierEvaluator.Evaluate(0.31f, 0.01f, 0.66f, -0.59f, t);
+
+        // The circIn and circOut Framer's supportedWaapiEasing table gives the Web Animations API.
+        private static float WebAnimationsCircIn(float t) => CubicBezierEvaluator.Evaluate(0f, 0.65f, 0.55f, 1f, t);
+
+        private static float WebAnimationsCircOut(float t) => CubicBezierEvaluator.Evaluate(0.55f, 0f, 1f, 0.45f, t);
+
+        // Whether StyleEaseCurve listens for the element's transitions; null where it holds nothing for the element.
+        private static bool? Listens(VisualElement element)
+        {
+            var table = typeof(StyleEaseCurve).GetField("s_bindings", BindingFlags.NonPublic | BindingFlags.Static)!.GetValue(null);
+            var arguments = new object[] { element, null };
+            if (!(bool)table.GetType().GetMethod("TryGetValue")!.Invoke(table, arguments))
+            {
+                return null;
+            }
+            return (bool)arguments[1].GetType().GetField("Registered")!.GetValue(arguments[1]);
+        }
+
+        [Test]
+        public void Given_ATweenEnterEasingOutAQuarterSecondIn_When_TheFirstFrameRuns_Then_OpacityIsWhereFramersEaseOutPutsIt()
+        {
+            // Arrange — Framer Motion's easeOut a quarter of the way along.
+            var expected = CubicBezierEvaluator.Evaluate(0f, 0f, 0.58f, 1f, 0.25f);
+
+            // Act
+            var opacity = FirstFrameOpacity(OneSecond(EasingMode.EaseOut, -0.25f));
+
+            // Assert
+            Assert.That(opacity, Is.EqualTo(expected).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_ATweenEnterEasingOutBackThreeTenthsOfASecondIn_When_TheFirstFrameRuns_Then_OpacityIsWhereFramersBackOutPutsIt()
+        {
+            // Arrange — Framer Motion's backOut three tenths of the way along, short of its overshoot.
+            var expected = CubicBezierEvaluator.Evaluate(0.33f, 1.53f, 0.69f, 0.99f, 0.3f);
+
+            // Act
+            var opacity = FirstFrameOpacity(OneSecond(EasingMode.EaseOutBack, -0.3f));
+
+            // Assert
+            Assert.That(opacity, Is.EqualTo(expected).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_ATweenEnterEasingInBackThreeQuartersOfASecondIn_When_TheFirstFrameRuns_Then_OpacityIsWhereFramersWebAnimationsBackInPutsIt()
+        {
+            // Arrange
+            var expected = WebAnimationsBackIn(0.75f);
+
+            // Act
+            var opacity = FirstFrameOpacity(OneSecond(EasingMode.EaseInBack, -0.75f));
+
+            // Assert
+            Assert.That(opacity, Is.EqualTo(expected).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_ATweenEnterEasingInBackWithARepeatDelay_When_TheFirstFrameRuns_Then_OpacityIsWhereBackTsBackInPutsIt()
+        {
+            // Arrange — a repeat delay keeps Framer's opacity off the Web Animations API, whatever the count.
+            var config = new StyleTransitionConfig { DurationSec = 1f, Easing = EasingMode.EaseInBack, DelaySec = -0.75f, RepeatDelaySec = 0.5f };
+            var expected = FramerBackIn(0.75f);
+
+            // Act
+            var opacity = FirstFrameOpacity(config);
+
+            // Assert
+            Assert.That(opacity, Is.EqualTo(expected).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_ATweenEnterEasingInCircThreeTenthsOfASecondIn_When_TheFirstFrameRuns_Then_OpacityIsWhereFramersWebAnimationsCircInPutsIt()
+        {
+            // Arrange
+            var expected = WebAnimationsCircIn(0.3f);
+
+            // Act
+            var opacity = FirstFrameOpacity(OneSecond(EasingMode.EaseInCirc, -0.3f));
+
+            // Assert
+            Assert.That(opacity, Is.EqualTo(expected).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_ATweenEnterEasingOutCircSevenTenthsOfASecondIn_When_TheFirstFrameRuns_Then_OpacityIsWhereFramersWebAnimationsCircOutPutsIt()
+        {
+            // Arrange
+            var expected = WebAnimationsCircOut(0.7f);
+
+            // Act
+            var opacity = FirstFrameOpacity(OneSecond(EasingMode.EaseOutCirc, -0.7f));
+
+            // Assert
+            Assert.That(opacity, Is.EqualTo(expected).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_ATweenEnterWithARepeatDelayWhoseOpacityEntryEasesInBack_When_TheFirstFrameRuns_Then_OpacityIsWhereFramersWebAnimationsBackInPutsIt()
+        {
+            // Arrange — Framer hands an entry's value the entry alone, so the play's repeat delay does not keep it off the
+            // Web Animations API.
+            var config = new StyleTransitionConfig
+            {
+                DurationSec = 1f, Easing = EasingMode.Linear, RepeatDelaySec = 0.5f,
+                PropertyOverrides = new[] { new StylePropertyTransition("opacity", durationSec: 1f, easing: EasingMode.EaseInBack, delaySec: -0.75f) },
+            };
+            var expected = WebAnimationsBackIn(0.75f);
+
+            // Act
+            var opacity = FirstFrameOpacity(config);
+
+            // Assert
+            Assert.That(opacity, Is.EqualTo(expected).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_AnOpacityCarryOnAnElementATweenEnterEasingInBackTimes_When_ThreeQuartersOfASecondPass_Then_ItIsWhereFramersWebAnimationsBackInPutsIt()
+        {
+            // Arrange — an opacity carry, as a layoutId crossfade runs one, on the one-second EaseInBack a variant swap's
+            // list holds.
+            var element = OnClock("opacity-0");
+            TweenEnter(element, "opacity-0", "opacity-100", OneSecond(EasingMode.EaseInBack, 0f));
+            var carry = new LayoutIdCarry();
+            carry.Hold(new TransitionLists(new List<StylePropertyName> { new("opacity") }, new List<TimeValue> { new(1f) },
+                new List<TimeValue> { new(0f) }, new List<EasingFunction> { new(EasingMode.EaseInBack) }), listed: true, "opacity", null);
+
+            // Act
+            carry.Step(1f, 0.75f, element, "opacity", null);
+
+            // Assert
+            Assert.That(carry.Value, Is.EqualTo(WebAnimationsBackIn(0.75f)).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_ATweenEnterEasingInCircThreeTenthsOfASecondIn_When_ACarryTakesItsOpacityOverBeforeItsRunEvent_Then_ItCarriesFramersWebAnimationsCircIn()
+        {
+            // Arrange — taken over as a layoutId crossfade's first draw takes it, in the frame that starts it.
+            var element = OnClock("opacity-0");
+            var ran = false;
+            element.RegisterCallback<TransitionRunEvent>(_ => ran = true);
+            TweenEnter(element, "opacity-0", "opacity-100", OneSecond(EasingMode.EaseInCirc, -0.3f));
+            Swap(element);
+            var carry = new LayoutIdCarry();
+
+            // Act
+            RunningStyleTransition.TakeOverOpacity(element, carry);
+            var opacity = carry.Advance(0f);
+
+            // Assert — NaN where a run event had already reached the element, which the expected value never matches.
+            Assert.That(ran ? float.NaN : opacity, Is.EqualTo(WebAnimationsCircIn(0.3f)).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_ASlideUpTweenEnterEasingInBack_When_ACarryTakesItsTranslateOverBeforeItsRunEvent_Then_ItCarriesBackTsBackIn()
+        {
+            // Arrange — anim-slide-up-enter-from translates 20px down; taken over as a layoutId move's first pass takes
+            // it, in the frame that starts it.
+            var element = OnClock("anim-slide-up-enter-from");
+            var ran = false;
+            element.RegisterCallback<TransitionRunEvent>(_ => ran = true);
+            TweenEnter(element, "anim-slide-up-enter-from", "anim-slide-up-enter-to", OneSecond(EasingMode.EaseInBack, -0.75f));
+            Swap(element);
+            var axes = new[] { new LayoutIdCarry(), new LayoutIdCarry() };
+
+            // Act
+            RunningStyleTransition.TakeOverTranslate(element, axes, new[] { LengthUnit.Pixel, LengthUnit.Pixel });
+            var y = axes[1].Advance(0f);
+
+            // Assert — NaN where a run event had already reached the element, which the expected value never matches.
+            Assert.That(ran ? float.NaN : y, Is.EqualTo(20f - 20f * FramerBackIn(0.75f)).Within(1e-2f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base hands a carry the curve UI Toolkit runs a transition on.
+        // Dropping the PlaysCurve clause from StyleEaseCurve.TakenOver reddens it.
+        [Test]
+        public void Given_AnOpacityTransitionOfTheElementsOwnEasingInCirc_When_ACarryTakesItOver_Then_ItKeepsUIToolkitsCurve()
+        {
+            // Arrange — a second on EaseInCirc begun three tenths of a second in, which no Motion's tween times.
+            var element = OnClock("opacity-0", e =>
+            {
+                e.style.transitionProperty = new List<StylePropertyName> { new("opacity") };
+                e.style.transitionDuration = new List<TimeValue> { new(1f) };
+                e.style.transitionDelay = new List<TimeValue> { new(-0.3f) };
+                e.style.transitionTimingFunction = new List<EasingFunction> { new(EasingMode.EaseInCirc) };
+            });
+            element.style.opacity = 1f;
+            ForcePanelUpdate(element.panel);
+            var carry = new LayoutIdCarry();
+
+            // Act
+            RunningStyleTransition.TakeOverOpacity(element, carry);
+            var opacity = carry.Advance(0f);
+
+            // Assert — three tenths of the way along UI Toolkit's own curve, which UssEasingTests holds UssEasing to.
+            Assert.That(opacity, Is.EqualTo(UssEasing.Evaluate(EasingMode.EaseInCirc, 0.3f)).Within(1e-3f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base hands a carry the curve UI Toolkit runs a transition on.
+        // Dropping the RanAtTween clause from StyleEaseCurve.TakenOver reddens it.
+        [Test]
+        public void Given_AnOpacityTransitionOfTheElementsOwnEasingInCircRunningAsATweenEnterBegins_When_ACarryTakesItOver_Then_ItKeepsUIToolkitsCurve()
+        {
+            // Arrange — a second on EaseInCirc begun three tenths of a second in, then a tween enter turning the element,
+            // which leaves its opacity alone.
+            var element = OnClock("rotate-0", e =>
+            {
+                e.style.opacity = 0f;
+                e.style.transitionProperty = new List<StylePropertyName> { new("opacity") };
+                e.style.transitionDuration = new List<TimeValue> { new(1f) };
+                e.style.transitionDelay = new List<TimeValue> { new(-0.3f) };
+                e.style.transitionTimingFunction = new List<EasingFunction> { new(EasingMode.EaseInCirc) };
+            });
+            element.style.opacity = 1f;
+            ForcePanelUpdate(element.panel);
+            TweenEnter(element, "rotate-0", "rotate-90", OneSecond(EasingMode.EaseOut, 0f));
+            var carry = new LayoutIdCarry();
+
+            // Act
+            RunningStyleTransition.TakeOverOpacity(element, carry);
+            var opacity = carry.Advance(0f);
+
+            // Assert — three tenths of the way along UI Toolkit's own curve, which UssEasingTests holds UssEasing to.
+            Assert.That(opacity, Is.EqualTo(UssEasing.Evaluate(EasingMode.EaseInCirc, 0.3f)).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_ATweenExitEasingInBackWithARepeatDelay_When_TheFirstFrameRuns_Then_OpacityIsWhereBackTsBackInPutsIt()
+        {
+            // Arrange — an exit from opacity-100 to opacity-0; a repeat delay keeps Framer's opacity off the Web Animations
+            // API, whatever the count.
+            var element = OnClock("opacity-100");
+            _scheduler = new StyleAnimationScheduler();
+            _scheduler.PlayExit(element, new StyleTransitionConfig
+            {
+                DurationSec = 1f, Easing = EasingMode.Linear, ExitEasing = EasingMode.EaseInBack, DelaySec = -0.75f,
+                RepeatDelaySec = 0.5f, ExitFromClass = "opacity-100", ExitToClass = "opacity-0",
+            }, onComplete: null, restoreFromOnCancel: true);
+            ForcePanelUpdate(element.panel);
+            var expected = 1f - FramerBackIn(0.75f);
+
+            // Act
+            FirstFrame(element);
+
+            // Assert
+            Assert.That(element.resolvedStyle.opacity, Is.EqualTo(expected).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_ASlideUpTweenEnterEasingInBack_When_TheFirstFrameRuns_Then_ItsTranslateIsWhereBackTsBackInPutsIt()
+        {
+            // Arrange — anim-slide-up-enter-from translates 20px down; Framer runs a translate on back.ts's backIn.
+            var element = OnClock("anim-slide-up-enter-from");
+            TweenEnter(element, "anim-slide-up-enter-from", "anim-slide-up-enter-to", OneSecond(EasingMode.EaseInBack, -0.75f));
+            var expected = 20f - 20f * FramerBackIn(0.75f);
+
+            // Act
+            FirstFrame(element);
+
+            // Assert
+            Assert.That(element.resolvedStyle.translate.y, Is.EqualTo(expected).Within(1e-2f));
+        }
+
+        [Test]
+        public void Given_ALinearTweenEnterWhoseOpacityEntryEasesInHalfASecondIn_When_TheFirstFrameRuns_Then_OpacityIsWhereFramersEaseInPutsIt()
+        {
+            // Arrange — the play's own keyword and the entry's differ; Framer Motion's easeIn half way along.
+            var config = new StyleTransitionConfig
+            {
+                DurationSec = 1f, Easing = EasingMode.Linear,
+                PropertyOverrides = new[] { new StylePropertyTransition("opacity", durationSec: 1f, easing: EasingMode.EaseIn, delaySec: -0.5f) },
+            };
+            var expected = CubicBezierEvaluator.Evaluate(0.42f, 0f, 1f, 1f, 0.5f);
+
+            // Act
+            var opacity = FirstFrameOpacity(config);
+
+            // Assert
+            Assert.That(opacity, Is.EqualTo(expected).Within(1e-3f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base retimes no transition for a Motion tween, so the width keeps its curve.
+        // Having StyleEaseCurve.OnRun retime every running transition of the element, not those its event reports, reddens it.
+        [Test]
+        public void Given_AWidthTransitionRunningOnTheElementsOwnEaseOut_When_ATweenEnterStartsOnIt_Then_TheWidthKeepsTheCurveItStartedOn()
+        {
+            // Arrange — width runs a second on an inline ease-out of the element's own from 100 s, a quarter of a second
+            // before a tween enter of its opacity starts.
+            var element = OnClock("opacity-0", e =>
+            {
+                e.style.width = 0f;
+                e.style.transitionProperty = new List<StylePropertyName> { new("width") };
+                e.style.transitionDuration = new List<TimeValue> { new(1f) };
+                e.style.transitionTimingFunction = new List<EasingFunction> { new(EasingMode.EaseOut) };
+            });
+            element.style.width = 100f;
+            ForcePanelUpdate(element.panel);
+            EditorPanelTestHelpers.DriveAnimationsOnce(element.panel);
+            _now = 100.25;
+            EditorPanelTestHelpers.DriveAnimationsOnce(element.panel);
+            ForcePanelUpdate(element.panel);
+            TweenEnter(element, "opacity-0", "opacity-100", OneSecond(EasingMode.EaseOut, 0f));
+            FirstFrame(element);
+
+            // Act
+            _now = 100.5;
+            EditorPanelTestHelpers.DriveAnimationsOnce(element.panel);
+            ForcePanelUpdate(element.panel);
+
+            // Assert — half way along UI Toolkit's own curve, which UssEasingTests holds UssEasing to.
+            Assert.That(element.resolvedStyle.width / 100f, Is.EqualTo(UssEasing.Evaluate(EasingMode.EaseOut, 0.5f)).Within(0.01f));
+        }
+
+        [Test]
+        public void Given_AnElementATweenEnterStartedOn_When_ItIsReleasedForAnotherConsumer_Then_NothingListensForItsTransitions()
+        {
+            // Arrange
+            var element = OnClock("opacity-0");
+            TweenEnter(element, "opacity-0", "opacity-100", OneSecond(EasingMode.EaseOut, 0f));
+            var listenedBefore = Listens(element);
+
+            // Act
+            StyleEaseCurve.Release(element);
+
+            // Assert — read as null where nothing listened before the release, which False never matches.
+            Assert.That(listenedBefore == true ? Listens(element) : null, Is.False);
+        }
+
+        [Test]
+        public void Given_AnElementATweenEnterStartedOn_When_EveryPlayIsCancelled_Then_NothingListensForItsTransitions()
+        {
+            // Arrange
+            var element = OnClock("opacity-0");
+            TweenEnter(element, "opacity-0", "opacity-100", OneSecond(EasingMode.EaseOut, 0f));
+            var listenedBefore = Listens(element);
+
+            // Act
+            _scheduler.CancelAll();
+
+            // Assert — read as null where nothing listened before the cancel, which False never matches.
+            Assert.That(listenedBefore == true ? Listens(element) : null, Is.False);
+        }
+    }
+}

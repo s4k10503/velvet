@@ -1,0 +1,616 @@
+using System;
+using System.Collections.Generic;
+using UnityEngine;
+using UnityEngine.UIElements;
+
+namespace Velvet
+{
+    // The corners of a box, in the order a four-value border-radius lists them.
+    [Flags]
+    internal enum RadiusCorners
+    {
+        None = 0,
+        TopLeft = 1 << 0,
+        TopRight = 1 << 1,
+        BottomRight = 1 << 2,
+        BottomLeft = 1 << 3,
+        All = TopLeft | TopRight | BottomRight | BottomLeft,
+    }
+
+    // Four corner radii, each with its horizontal component in x and its vertical one in y.
+    internal readonly struct CornerRadii
+    {
+        public Vector2 TopLeft { get; init; }
+        public Vector2 TopRight { get; init; }
+        public Vector2 BottomRight { get; init; }
+        public Vector2 BottomLeft { get; init; }
+
+        public static CornerRadii Circular(float topLeft, float topRight, float bottomRight, float bottomLeft) => new()
+        {
+            TopLeft = new Vector2(topLeft, topLeft),
+            TopRight = new Vector2(topRight, topRight),
+            BottomRight = new Vector2(bottomRight, bottomRight),
+            BottomLeft = new Vector2(bottomLeft, bottomLeft),
+        };
+    }
+
+    // An element type that hands its own events to CornerRadiusFit.OnHostEvent while RadiusFitWatches is set, in place
+    // of the callbacks the fit registers on any other element it watches.
+    internal interface IRadiusFitHost
+    {
+        bool RadiusFitWatches { get; set; }
+    }
+
+    /// <summary>
+    /// Scales an element's declared corner radii the way CSS does once adjacent ones overlap on a side
+    /// (Backgrounds 3 §5.5), and holds the result inline.
+    /// </summary>
+    /// <remarks>
+    /// A held radius hides the declared one from every public reading, so the declared radii reach this by
+    /// routes of their own: a <c>rounded-*</c> class through the custom properties <c>_radius_declared.uss</c>
+    /// restates it as, and an inline writer through <see cref="SetInline"/>, which
+    /// <see cref="StyleArbitraryValueResolver.ApplyInline"/> calls in place of writing a radius slot itself. A
+    /// length other code writes to a slot is a declaration as well, found on the next refresh. A corner none of
+    /// these declares is never held, since nothing would say when its value changed.
+    ///
+    /// A refit a size change causes suspends the element's transitions while it writes: a new size is not a
+    /// declared change, and a <c>transition-all</c> element would otherwise animate from the unfitted radius
+    /// when it is first laid out.
+    ///
+    /// An element none of that reaches is observed from its creation (<see cref="Observe"/>): the first size change or
+    /// style pass that finds a radius resolved on it attaches the fit, which then reads the rules' radius through
+    /// <see cref="StyleCascade.Radius"/> and a length its code writes as it does for any other element. A style pass
+    /// reaches the fit through the custom property that <see cref="RadiusWatchSheets"/> gives the selectors of each rule
+    /// that declares a radius, so a rule of those starting or stopping to match the element, whether a class, an ancestor's
+    /// class or a pseudo-class changed it, arrives in the pass that restyles the element.
+    /// </remarks>
+    internal static class CornerRadiusFit
+    {
+        private const int CornerCount = 4;
+
+        // The prefix of every bundled class that declares a radius.
+        private const string RadiusClassPrefix = "rounded";
+
+        // Named by Generators~/src/Velvet.StyleTable/CornerRadiusDeclarationSheet.cs, in RadiusCorners order.
+        private static readonly CustomStyleProperty<string>[] s_declaredProperties =
+        {
+            new("--velvet-radius-top-left"),
+            new("--velvet-radius-top-right"),
+            new("--velvet-radius-bottom-right"),
+            new("--velvet-radius-bottom-left"),
+        };
+
+        // The spelling MotionNativeTransitionGuard suspends transitions with.
+        private static readonly List<StylePropertyName> s_noTransitions = new() { new StylePropertyName("none") };
+
+        private sealed class State
+        {
+            // What an inline writer declared for each corner; null where none has.
+            public readonly Length?[] Inline = new Length?[CornerCount];
+
+            // What the element's rules declare for each corner, as the restating custom properties report it.
+            public readonly Length?[] Sheet = new Length?[CornerCount];
+
+            // What this last wrote to each corner's inline slot; null where it holds nothing.
+            public readonly Length?[] Written = new Length?[CornerCount];
+
+            // The length other code last wrote to each corner's inline slot; null where none has, or where it
+            // has since cleared the slot.
+            public readonly Length?[] Code = new Length?[CornerCount];
+
+            // Corners whose inline slot holds a keyword, which outranks every declaration and is left alone.
+            public readonly bool[] Foreign = new bool[CornerCount];
+
+            // Whether the rules' radii are read from the cascade at each size change; set on a state a size change
+            // attached rather than a class.
+            public bool ReadsCascade;
+
+            // The matched rules' hash the last style event was read at.
+            public long? Rules;
+        }
+
+        private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<VisualElement, State> s_states = new();
+
+        // Watches element for a radius its rules or its code give it, which no class or arbitrary value declared.
+        public static void Observe(VisualElement element) => Watch(element);
+
+        // Watching a host sets its flag, and its type hands it its size changes and style passes, so watching one allocates
+        // nothing (CornerRadiusFitObserveAllocationTests). Neither kind is ever unwatched: nothing unregisters a callback,
+        // and a host's flag outlives the pool, so a pooled host is still watched when it is rented again.
+        private static void Watch(VisualElement element)
+        {
+            if (element is IRadiusFitHost host)
+            {
+                host.RadiusFitWatches = true;
+                return;
+            }
+            element.RegisterCallback(s_onGeometryChanged);
+            element.RegisterCallback(s_onStyleResolved);
+        }
+
+        public static void TrackClass(VisualElement element, string cls)
+        {
+            if (cls.StartsWith(RadiusClassPrefix, StringComparison.Ordinal))
+            {
+                GetOrAttach(element);
+                return;
+            }
+            NoteClassWrite(element);
+        }
+
+        // A class written through Velvet on an element that holds a radius its code wrote, which no rule need declare for the
+        // class to leave it overflowing: nothing raises a style event for a class whose rule declares no radius, so the radius
+        // the element holds is fitted here, against the size it has.
+        public static void NoteClassWrite(VisualElement element)
+        {
+            if (element.panel == null)
+            {
+                return;
+            }
+            if (!s_states.TryGetValue(element, out var state))
+            {
+                if (!HoldsInlineRadius(element.style))
+                {
+                    return;
+                }
+                state = GetOrAttach(element);
+                state.ReadsCascade = true;
+            }
+            RefreshDeclared(element, state);
+        }
+
+        private static bool HoldsInlineRadius(IStyle style)
+        {
+            var held = false;
+            for (var i = 0; i < CornerCount; i++)
+            {
+                var slot = InlineCorner(style, i);
+                held |= slot.keyword == StyleKeyword.Undefined && slot.value.value > 0f;
+            }
+            return held;
+        }
+
+        public static void SetInline(VisualElement element, RadiusCorners corners, Length value)
+        {
+            var state = GetOrAttach(element);
+            Assign(state.Inline, corners, value);
+            RefreshDeclared(element, state);
+        }
+
+        public static void ClearInline(VisualElement element, RadiusCorners corners)
+        {
+            if (!s_states.TryGetValue(element, out var state))
+            {
+                WriteSlots(element, corners, new StyleLength(StyleKeyword.Null));
+                return;
+            }
+            Assign(state.Inline, corners, null);
+            RefreshDeclared(element, state);
+        }
+
+        // Elements a layoutId projection writes the radius slots of (LayoutIdLook.WriteRadii), whose values would
+        // otherwise read as foreign and end the fit for good. Kept apart from the states so that a state attached
+        // while the projection writes, by a radius the element takes mid-move, is held from the start.
+        private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<VisualElement, object> s_holds = new();
+
+        // Stops refitting while a layoutId projection writes the element's radius slots.
+        public static void Hold(VisualElement element) => s_holds.AddOrUpdate(element, s_holds);
+
+        // Resumes once the projection has written back what the slots held before it, which the fit reads as its own.
+        public static void Unhold(VisualElement element)
+        {
+            s_holds.Remove(element);
+            if (s_states.TryGetValue(element, out var state)) RefreshDeclared(element, state);
+        }
+
+        // The radius a corner is declared by what the fit tracks, scaled as the fit would scale it now; null for a
+        // corner it tracks no declaration of.
+        internal static Length? Fitted(VisualElement element, int corner)
+        {
+            if (!s_states.TryGetValue(element, out var state)) return null;
+            if (state.ReadsCascade)
+            {
+                ReadSheet(element, state, null);
+            }
+            var declared = Declared(state, corner);
+            return declared == null ? null : new Length(declared.Value.value * FactorFor(element, state), declared.Value.unit);
+        }
+
+        // Whether the slot holds what the fit last wrote to the corner.
+        internal static bool Wrote(VisualElement element, int corner, StyleLength slot)
+        {
+            if (!s_states.TryGetValue(element, out var state)) return false;
+            return slot.keyword == StyleKeyword.Undefined && slot.value == state.Written[corner];
+        }
+
+        // Drops what the fit tracks, for an element on its way to the pool; its callbacks find nothing after
+        // this. The inline slots themselves are the caller's to clear.
+        public static void Release(VisualElement element)
+        {
+            s_states.Remove(element);
+            s_holds.Remove(element);
+            s_chainsRead.Remove(element);
+        }
+
+        /// <summary>
+        /// The factor CSS scales every radius by so that no two adjacent radii overlap on a side — 1 where none
+        /// does.
+        /// </summary>
+        internal static float ScaleFactor(float width, float height, in CornerRadii radii)
+        {
+            var factor = 1f;
+            factor = Reduce(factor, width, radii.TopLeft.x + radii.TopRight.x);
+            factor = Reduce(factor, width, radii.BottomLeft.x + radii.BottomRight.x);
+            factor = Reduce(factor, height, radii.TopLeft.y + radii.BottomLeft.y);
+            factor = Reduce(factor, height, radii.TopRight.y + radii.BottomRight.y);
+            return factor;
+        }
+
+        private static float Reduce(float factor, float side, float sum)
+        {
+            // MUTANT_SURVIVES(equivalent): where the sum equals the side the ratio is 1, and a factor is never above 1.
+            return sum > side ? Mathf.Min(factor, side / sum) : factor;
+        }
+
+        private static void Assign(Length?[] slots, RadiusCorners corners, Length? value)
+        {
+            var corner = 0;
+            for (var bits = (int)corners; bits != 0; bits >>= 1)
+            {
+                if ((bits & 1) != 0)
+                {
+                    slots[corner] = value;
+                }
+                corner++;
+            }
+        }
+
+        private static readonly CustomStyleProperty<float> s_watchProperty = new(RadiusWatchSheets.Property);
+
+        private static readonly EventCallback<CustomStyleResolvedEvent> s_onStyleResolved =
+            evt => OnStyleResolved((VisualElement)evt.currentTarget);
+        private static readonly EventCallback<GeometryChangedEvent> s_onGeometryChanged =
+            evt => OnGeometryChanged((VisualElement)evt.currentTarget, evt);
+
+        private static State GetOrAttach(VisualElement element)
+        {
+            if (s_states.TryGetValue(element, out var state))
+            {
+                return state;
+            }
+            state = new State();
+            Watch(element);
+            s_states.Add(element, state);
+            return state;
+        }
+
+        // The handler of an element's style pass, and a watched host's.
+        internal static void OnStyleResolved(VisualElement element)
+        {
+            var state = s_states.TryGetValue(element, out var tracked) ? tracked : AttachIfWatched(element);
+            if (state == null)
+            {
+                return;
+            }
+            // The rules that matched the element are what the radii of its rules come from: a restyle that matched the same ones
+            // leaves what was read as it was.
+            var rules = StyleCascade.RulesHash(element);
+            if (rules != null && rules == state.Rules)
+            {
+                return;
+            }
+            state.Rules = rules;
+            ReadSheet(element, state, element.customStyle);
+            RefreshDeclared(element, state);
+        }
+
+        private static void ReadSheet(VisualElement element, State state, ICustomStyle? customStyle)
+        {
+            for (var i = 0; i < CornerCount; i++)
+            {
+                // A cascade that cannot be read now leaves what was read before.
+                if (customStyle == null && StyleCascade.Radius(element, i) == null)
+                {
+                    continue;
+                }
+                state.Sheet[i] = DeclaredBySheet(element, customStyle, i);
+            }
+        }
+
+        // What the rules give the corner once they have been through the cascade, so a rule of the application's own
+        // that outranks a rounded-* class on one corner is the declaration there. A corner no rule gives a radius
+        // reads as 0, which declares nothing unless a class's restatement says the corner is declared.
+        private static Length? DeclaredBySheet(VisualElement element, ICustomStyle? customStyle, int corner)
+        {
+            var restated = DeclaredByRestatement(customStyle, corner);
+            var cascaded = StyleCascade.Radius(element, corner);
+            var declared = cascaded != null && (cascaded.Value.value != 0f || restated != null);
+            return declared ? cascaded : restated;
+        }
+
+        private static Length? DeclaredByRestatement(ICustomStyle? customStyle, int corner)
+        {
+            if (customStyle == null)
+            {
+                return null;
+            }
+            if (!customStyle.TryGetValue(s_declaredProperties[corner], out var text))
+            {
+                return null;
+            }
+            return StyleArbitraryValueResolver.TryParseValue(text.AsSpan(), out var value, out var unit) ? new Length(value, unit) : null;
+        }
+
+        // An event a watched host's type was handed, of which the fit reads its size changes and style passes.
+        internal static void OnHostEvent(VisualElement host, EventBase evt)
+        {
+            if (evt is GeometryChangedEvent geometry)
+            {
+                OnGeometryChanged(host, geometry);
+            }
+            else if (evt is CustomStyleResolvedEvent)
+            {
+                OnStyleResolved(host);
+            }
+        }
+
+        // The parents whose stylesheets have been looked at for radius rules, so that the siblings of one do not look again.
+        private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<VisualElement, object> s_chainsRead = new();
+
+        // Looks, once for each parent, at the stylesheets above an element for rules that declare a radius, which
+        // RadiusWatchSheets gives their own property. A sheet an ancestor takes later is looked at when its stylesheets
+        // change (BorderPreflight's tick over the panel's ancestors).
+        private static void ReadSheetsAbove(VisualElement element)
+        {
+            if (element.styleSheets.count > 0)
+            {
+                RadiusWatchSheets.EnsureOn(element);
+                BorderPreflight.WatchSheets(element, self: true);
+            }
+            var parent = element.hierarchy.parent;
+            if (parent == null || s_chainsRead.TryGetValue(parent, out _))
+            {
+                return;
+            }
+            s_chainsRead.Add(parent, s_chainsRead);
+            RadiusWatchSheets.EnsureAbove(parent);
+            BorderPreflight.WatchSheets(element);
+        }
+
+        // A host's size change once its own geometry binding has run (FiberEventBindingManager.FitAfter).
+        internal static void AfterHostHandler(VisualElement element, GeometryChangedEvent evt)
+        {
+            if (element is IRadiusFitHost { RadiusFitWatches: true })
+            {
+                OnGeometryChanged(element, evt);
+            }
+        }
+
+        // The callback's handler, and a watched host's.
+        internal static void OnGeometryChanged(VisualElement element, GeometryChangedEvent evt)
+        {
+            ReadSheetsAbove(element);
+            if (evt.oldRect.size == evt.newRect.size)
+            {
+                return;
+            }
+            var state = s_states.TryGetValue(element, out var tracked) ? tracked : AttachWhereRadiusResolves(element);
+            if (state == null)
+            {
+                return;
+            }
+            if (state.ReadsCascade)
+            {
+                ReadSheet(element, state, null);
+            }
+            Refresh(element, state, suspendTransitions: true);
+        }
+
+        // The style pass of an element nothing tracks is read only where a rule declaring a radius matches it, which
+        // RadiusWatchSheets gives the property this asks for.
+        // The bundled radius classes are watched through the custom properties that restate them (_radius_declared.uss).
+        private static State? AttachIfWatched(VisualElement element)
+        {
+            var custom = element.customStyle;
+            var watched = custom.TryGetValue(s_watchProperty, out _);
+            for (var i = 0; i < CornerCount && !watched; i++)
+            {
+                watched = custom.TryGetValue(s_declaredProperties[i], out _);
+            }
+            return watched ? AttachWhereRadiusResolves(element) : null;
+        }
+
+        // The state of an element observed without a class or arbitrary value, once a radius resolves on it; null
+        // while none does.
+        private static State? AttachWhereRadiusResolves(VisualElement element)
+        {
+            // The inline slots and the rules' radii are read as well as the resolved ones, which a style pass that
+            // follows a layout has not yet brought up to date.
+            var style = element.resolvedStyle;
+            var resolves = false;
+            for (var i = 0; i < CornerCount; i++)
+            {
+                var inline = InlineCorner(element.style, i);
+                resolves |= ResolvedCorner(style, i) > 0f;
+                resolves |= inline.keyword == StyleKeyword.Undefined && inline.value.value > 0f;
+                resolves |= StyleCascade.Radius(element, i) is { value: > 0f };
+            }
+            if (!resolves)
+            {
+                return null;
+            }
+            var state = GetOrAttach(element);
+            state.ReadsCascade = true;
+            return state;
+        }
+
+        private static void RefreshDeclared(VisualElement element, State state)
+            => Refresh(element, state, suspendTransitions: false);
+
+        // A length other code wrote into the slot outranks the class the way inline style does, and is scaled as CSS
+        // scales a declared radius; a keyword there counts as undeclared, neither fitted nor given back.
+        private static Length? Declared(State state, int corner)
+            => state.Foreign[corner] ? null : state.Code[corner] ?? state.Inline[corner] ?? state.Sheet[corner];
+
+        private static void FindForeignValues(VisualElement element, State state)
+        {
+            for (var i = 0; i < CornerCount; i++)
+            {
+                var slot = InlineCorner(element.style, i);
+                var keyword = slot.keyword != StyleKeyword.Null && slot.keyword != StyleKeyword.Undefined;
+                var written = slot.keyword == StyleKeyword.Undefined && slot.value != state.Written[i];
+                state.Foreign[i] = keyword;
+                if (written)
+                {
+                    state.Code[i] = slot.value;
+                }
+                else if (keyword || slot.keyword == StyleKeyword.Null)
+                {
+                    state.Code[i] = null;
+                }
+                // A slot found empty no longer holds what this wrote, as when a layoutId projection hands back the slot it
+                // held over it (Given_AnArbitrarilyRoundedLayoutIdMotionMidTween_When_ARadiusWrittenOverItIsClearedAgain_Then_ItLandsAtItsOwnRadius).
+                if (keyword || written || slot.keyword == StyleKeyword.Null)
+                {
+                    state.Written[i] = null;
+                }
+            }
+        }
+
+        internal static StyleLength InlineCorner(IStyle style, int corner) => corner switch
+        {
+            0 => style.borderTopLeftRadius,
+            1 => style.borderTopRightRadius,
+            2 => style.borderBottomRightRadius,
+            _ => style.borderBottomLeftRadius,
+        };
+
+        private static void Refresh(VisualElement element, State state, bool suspendTransitions)
+        {
+            if (s_holds.TryGetValue(element, out _)) return;
+            FindForeignValues(element, state);
+            // A corner nothing tracked declares any longer gives back what this wrote first, so the value read
+            // for it below is the cascade's own rather than ours.
+            for (var i = 0; i < CornerCount; i++)
+            {
+                if (Declared(state, i) == null && state.Written[i] != null)
+                {
+                    WriteCorner(element, state, i, null);
+                }
+            }
+
+            // The factor is taken before any write: a write changes only a declared corner, whose radius the
+            // factor reads from its declaration rather than from the element.
+            var factor = FactorFor(element, state);
+            var restore = default(StyleList<StylePropertyName>);
+            var suspended = false;
+            for (var i = 0; i < CornerCount; i++)
+            {
+                var target = TargetFor(state, i, factor);
+                if (target == state.Written[i])
+                {
+                    continue;
+                }
+                if (suspendTransitions && !suspended)
+                {
+                    restore = DetachedCopy(element.style.transitionProperty);
+                    element.style.transitionProperty = s_noTransitions;
+                    suspended = true;
+                }
+                WriteCorner(element, state, i, target);
+            }
+            if (suspended)
+            {
+                element.style.transitionProperty = restore;
+            }
+        }
+
+        // Copied before the suspending write, which reuses the slot's list: CornerRadiusFitPanelTests'
+        // inline transition-property case reddens when the restore is read straight from the slot.
+        internal static StyleList<StylePropertyName> DetachedCopy(StyleList<StylePropertyName> slot)
+            => slot.value != null ? new StyleList<StylePropertyName>(new List<StylePropertyName>(slot.value)) : slot;
+
+        private static Length? TargetFor(State state, int corner, float factor)
+        {
+            if (Declared(state, corner) is not { } declared)
+            {
+                return null;
+            }
+            if (factor < 1f)
+            {
+                return new Length(declared.value * factor, declared.unit);
+            }
+            // A class radius that fits is the stylesheet's to paint.
+            return state.Inline[corner] != null || state.Code[corner] != null ? declared : null;
+        }
+
+        private static float FactorFor(VisualElement element, State state)
+        {
+            var width = element.layout.width;
+            var height = element.layout.height;
+            // Unlaid-out (NaN) and empty boxes alike: nothing is painted to fit.
+            if (!(width * height > 0f))
+            {
+                return 1f;
+            }
+            var radii = new CornerRadii
+            {
+                TopLeft = RadiusOf(element, state, 0, width, height),
+                TopRight = RadiusOf(element, state, 1, width, height),
+                BottomRight = RadiusOf(element, state, 2, width, height),
+                BottomLeft = RadiusOf(element, state, 3, width, height),
+            };
+            return ScaleFactor(width, height, radii);
+        }
+
+        private static Vector2 RadiusOf(VisualElement element, State state, int corner, float width, float height)
+        {
+            if (Declared(state, corner) is { } declared)
+            {
+                if (declared.unit == LengthUnit.Percent)
+                {
+                    return new Vector2(Mathf.Max(0f, width * declared.value / 100f), Mathf.Max(0f, height * declared.value / 100f));
+                }
+                return new Vector2(Mathf.Max(0f, declared.value), Mathf.Max(0f, declared.value));
+            }
+            var resolved = ResolvedCorner(element.resolvedStyle, corner);
+            return float.IsNaN(resolved) ? Vector2.zero : new Vector2(Mathf.Max(0f, resolved), Mathf.Max(0f, resolved));
+        }
+
+        internal static float ResolvedCorner(IResolvedStyle style, int corner) => corner switch
+        {
+            0 => style.borderTopLeftRadius,
+            1 => style.borderTopRightRadius,
+            2 => style.borderBottomRightRadius,
+            _ => style.borderBottomLeftRadius,
+        };
+
+        private static void WriteCorner(VisualElement element, State state, int corner, Length? target)
+        {
+            state.Written[corner] = target;
+            var value = target is { } length ? new StyleLength(length) : new StyleLength(StyleKeyword.Null);
+            WriteSlots(element, (RadiusCorners)(1 << corner), value);
+        }
+
+        private static void WriteSlots(VisualElement element, RadiusCorners corners, StyleLength value)
+        {
+            var style = element.style;
+            if ((corners & RadiusCorners.TopLeft) != 0)
+            {
+                style.borderTopLeftRadius = value;
+            }
+            if ((corners & RadiusCorners.TopRight) != 0)
+            {
+                style.borderTopRightRadius = value;
+            }
+            if ((corners & RadiusCorners.BottomRight) != 0)
+            {
+                style.borderBottomRightRadius = value;
+            }
+            if ((corners & RadiusCorners.BottomLeft) != 0)
+            {
+                style.borderBottomLeftRadius = value;
+            }
+        }
+    }
+}

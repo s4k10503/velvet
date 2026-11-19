@@ -1,0 +1,1098 @@
+using System;
+using System.Collections.Generic;
+using System.Runtime.ExceptionServices;
+
+namespace Velvet
+{
+    // The work-loop + lane scheduling driver for Velvet function components.
+    // Owns re-render-request intake (from hooks / contexts / transitions), lane-priority
+    // classification + queue enrollment, the flush / continue driver loop that turns pending
+    // lanes into RenderAndReconcile passes, transition-starvation promotion, and the
+    // discrete-event Urgent gate. The render core (RenderAndReconcile) lives in FiberRenderer, with
+    // hook-slot commit in FiberHookCommit; this class drives it.
+    internal static class FiberWorkLoop
+    {
+        // The FlushState invocation at which a continuously-pending Transition lane is promoted
+        // (see PromoteStarvedTransitionLane); it survives threshold-1 preempted flushes.
+        internal const int TransitionStarvationThreshold = 30;
+
+        // Set while a discrete user-input event handler (click, change, pointer down/up, key down/up, focus/blur)
+        // is executing. A hook-triggered render requested during a discrete event takes the Urgent lane and the
+        // originating context's immediate batch is flushed synchronously when the handler returns, so the
+        // UI updates before the next frame. Process-global because Unity dispatches one input event at a time on the main
+        // thread; FiberEventBindingManager brackets each discrete handler to set and clear it.
+        // Known limitation, intentional: because the flag is process-global, an update to a *different*
+        // router/panel context that happens while some other context's discrete handler runs is also
+        // lane-classified as Urgent. This is harmless: the synchronous flush is performed only for the owning
+        // context (the one whose handler is running) — see the owning-context check at the flush site — so the
+        // misclassified context's update still drains on its normal frame boundary. A context-scoped flag
+        // would instead risk diverging lane classification from the actual synchronous-flush decision, so the
+        // process-global flag is kept deliberately.
+        internal static bool IsInDiscreteEvent
+        {
+            get => s_isInDiscreteEvent;
+            set
+            {
+                s_isInDiscreteEvent = value;
+                // A handler bracketed by FiberDiscreteEventScope has drained the queue already; one that sets
+                // the flag itself would otherwise leave what it deferred to the next discrete event.
+                ScheduleDeferredAwaitContinuations();
+            }
+        }
+
+        private static bool s_isInDiscreteEvent;
+
+        // The transition calls whose callback is running synchronously right now. A Transition-lane enrolment
+        // made while these are open is credited to each of them that still owns its slot (see
+        // MarkTransitionWorkQueued), so a nested or joined call credits the calls it sits inside as well.
+        // Ambient rather than per-fiber, because the fiber owning the state a callback writes need not be the
+        // one the transition was started on — a setter received as a prop is the case the per-fiber form
+        // missed.
+        // Nothing re-opens the scope for an async action's continuation: inferring one from the fiber's
+        // in-flight transitions instead gave the Transition lane to unrelated writes in that window.
+        // Unsynchronised, so it holds only while one caller pushes and pops at a time.
+        private static readonly List<HookTransitionSlot> OpenTransitionScopes = new();
+
+        // UseDeferredValue has to tell the deferred commit from an ordinary render it must keep withholding
+        // from, and with no lane visible to it the pending value promotes on whatever renders next, urgent or
+        // not. Covers one RenderAndReconcile call or one resumed slice — not the drain that contains it, which
+        // flushes many fibers at their own lanes.
+        // Ambient rather than per-fiber: a flush's render reaches descendant component bodies through the
+        // reconcile, and a deferred value one of those holds belongs to this pass just as much.
+        // Saved and restored, so a flush nested inside a render leaves the enclosing answer intact.
+        internal static bool IsRenderingTransitionLane;
+
+        // The fiber whose drain of Transition work the render in progress belongs to, null wherever
+        // IsRenderingTransitionLane is false. A descendant its pass renders commits with it, which is how a
+        // component holding optimistic entries learns the commit it is in lands its transition's work
+        // (HookTransitionSlot.SettlesWithCommitOf). Saved and restored beside the flag.
+        internal static ComponentFiber? TransitionDrainFiber;
+
+        // The lane the render in progress renders: a hook folds in the queued updates that lane renders
+        // (FiberLane.Renders) and leaves the rest queued. Transition exactly where IsRenderingTransitionLane is
+        // true, so a render outside a flush, such as the retry of a resolved resource, is not a transition's.
+        // Ambient for the reason IsRenderingTransitionLane is, and saved and restored beside it.
+        internal static FiberUpdatePriority RenderLane = FiberUpdatePriority.Normal;
+
+        // A starvation-promoted drain carries Transition updates under the Normal label (HasPromotedTransition), so
+        // it renders the Transition lane.
+        private static FiberUpdatePriority RenderLaneOf(FiberUpdatePriority flushingLane, bool drainsTransitionWork)
+            => drainsTransitionWork ? FiberUpdatePriority.Transition : flushingLane;
+
+        // The lane a state update written now is queued on: the one RequestRenderFromHook schedules its render on,
+        // except during its own component's render, where the rerun that write asks for renders the lane in progress.
+        internal static FiberUpdatePriority HookUpdateLane(ComponentFiber fiber)
+            => fiber.IsInRenderPhase ? RenderLane
+                : OpenTransitionScopes.Count > 0 ? FiberUpdatePriority.Transition
+                : IsInDiscreteEvent ? FiberUpdatePriority.Urgent
+                : FiberUpdatePriority.Normal;
+
+        // Internal API that requests a render via a Hook (UseState / UseReducer setter, UseStore subscription).
+        // Takes the Transition lane while a StartTransition callback is running synchronously; otherwise the
+        // Urgent lane while a discrete event handler is running (IsInDiscreteEvent), and the Normal lane elsewhere.
+        // setState calls that land on the Normal lane are coalesced by the frame-boundary FiberBatchScheduler into
+        // one drain, so several post-await setters commit in a single render — async auto-batching, with no opt-in.
+        // The request is silently ignored if the fiber is disposed or not mounted.
+        // fiber: Fiber whose state changed.
+        public static void RequestRenderFromHook(ComponentFiber fiber)
+            => RequestRenderFromHook(fiber, joinsTransition: true);
+
+        // addOptimistic's own render is never a transition's: on the Transition lane it would wait out the
+        // delayed tier, and enrol the optimistic component on the transition whose pending lifetime the value
+        // exists to cover.
+        internal static void RequestOptimisticRender(ComponentFiber fiber)
+            => RequestRenderFromHook(fiber, joinsTransition: false);
+
+        // The transition an addOptimistic call belongs to, whose settle retires the entry: the innermost open
+        // scope whose slot still has an owner, on the rule MarkTransitionWorkQueued skips a released slot by;
+        // failing that, every async action in flight together. Null where neither is there.
+        internal static HookTransitionSlot? CurrentOptimisticOwner
+        {
+            get
+            {
+                for (var i = OpenTransitionScopes.Count - 1; i >= 0; i--)
+                {
+                    if (OpenTransitionScopes[i].HasActiveOwner)
+                    {
+                        return OpenTransitionScopes[i];
+                    }
+                }
+                return s_asyncActionsInFlight > 0 ? AsyncActionsInFlight : null;
+            }
+        }
+
+        internal static bool IsInTransitionScope => OpenTransitionScopes.Count > 0;
+
+        // Stands for no single slot: its isPending is lit while the count holds an action that has not completed,
+        // so the entries it owns retire when the last of those does. Outside every scope nothing says which
+        // in-flight action's code made the call, so the entry waits for all of them. A transition settling
+        // while any action is in flight hands its entries to this slot as well (see
+        // HookTransitionSlot.RetireOptimisticEntries).
+        internal static readonly HookTransitionSlot AsyncActionsInFlight = new();
+        private static int s_asyncActionsInFlight;
+        // Bumped by the reset below, so an action counted in before it cannot count itself out of the new count.
+        private static int s_asyncActionsEpoch;
+
+        // Returns the epoch the action was counted in, which its completion hands back to CountAsyncActionOut.
+        internal static int CountAsyncActionIn()
+        {
+            s_asyncActionsInFlight++;
+            AsyncActionsInFlight.IsPending = true;
+            return s_asyncActionsEpoch;
+        }
+
+        // Called once per counted action when its task completes, whether or not the component that started
+        // it is still mounted: the count follows the task.
+        internal static void CountAsyncActionOut(int epoch)
+        {
+            if (epoch != s_asyncActionsEpoch)
+            {
+                return;
+            }
+            s_asyncActionsInFlight--;
+            AsyncActionsInFlight.IsPending = s_asyncActionsInFlight > 0;
+        }
+
+        // Without a domain reload between play sessions the count would carry an action the previous session
+        // never completed, and every transition settling afterwards would hand its entries to a slot that stays
+        // lit. The entries the slot holds retire through the setter like any other settle: a render requested
+        // for a fiber that is no longer mounted is ignored, and one still mounted drops its entries.
+        [UnityEngine.RuntimeInitializeOnLoadMethod(UnityEngine.RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetAsyncActionsInFlight()
+        {
+            s_asyncActionsEpoch++;
+            s_asyncActionsInFlight = 0;
+            AsyncActionsInFlight.IsPending = false;
+        }
+
+        // A UseSyncExternalStore change notification never takes the Transition lane and always takes the
+        // Urgent one, as React gives an external store's update its sync lane even when the store is mutated
+        // inside startTransition. The scheduler is then asked to flush the immediate tier without waiting for
+        // its frame-boundary callback (FiberBatchScheduler.OweExternalStoreFlush).
+        public static void RequestExternalStoreRender(ComponentFiber fiber)
+        {
+            RequestRenderFromHook(fiber, joinsTransition: false, forceUrgent: true);
+            if (fiber.IsDirty) fiber.Reconciler?.Context.BatchScheduler.OweExternalStoreFlush();
+        }
+
+        private static void RequestRenderFromHook(ComponentFiber fiber, bool joinsTransition, bool forceUrgent = false)
+        {
+            if (fiber.IsDisposed || !fiber.IsMounted)
+            {
+                return;
+            }
+
+            // Render-phase setState: the setter updates this fiber's own state while this same
+            // fiber's BODY is on the stack. Such updates are processed synchronously (discard the
+            // in-progress output and re-run Render() before committing) instead of scheduling a
+            // next-frame re-render. Flag the fiber and let the render loop in RenderAndReconcile
+            // re-run; the update is already queued on the render's own lane by the time this is called. The
+            // gate is the render-phase window, NOT IsRendering: a write landing later in the same
+            // flush (a callback ref invoked during the patch, an event dispatched from a detach) is
+            // a commit-phase update that falls through to the regular schedule below (a state update
+            // issued during commit schedules a follow-up pass) — where the flag would be consumed
+            // by nobody and cleared, silently dropping the write. A setter for a *different* fiber
+            // that fires during this fiber's render also falls through.
+            if (fiber.IsInRenderPhase && ReferenceEquals(FiberAmbientStack.Current, fiber))
+            {
+                fiber.HasRenderPhaseUpdate = true;
+                return;
+            }
+
+            // Tested ahead of the discrete-event gate below, because a discrete handler calling
+            // startTransition is the ordinary way to start one and its updates are still the transition's.
+            if (joinsTransition && OpenTransitionScopes.Count > 0)
+            {
+                // Attributed on this branch rather than inside ScheduleRerender, which would also charge
+                // UseDeferredValue's own Transition-lane request (RequestTransitionRerender) to a
+                // transition slot that did not ask for it.
+                MarkTransitionWorkQueued(fiber);
+                ScheduleRerender(fiber, FiberUpdatePriority.Transition);
+                return;
+            }
+
+            ScheduleRerender(fiber, forceUrgent || IsInDiscreteEvent ? FiberUpdatePriority.Urgent : FiberUpdatePriority.Normal);
+        }
+
+        // Reached as each scope closes. Inside a discrete handler FiberDiscreteEventScope drains the queue once
+        // the handler returns, so the handler's own later writes land first; elsewhere the drain waits for the
+        // main thread's next tick.
+        private static void ScheduleDeferredAwaitContinuations()
+        {
+            // MUTANT_SURVIVES(equivalent): a drain posted with nothing queued, or one posted beside the discrete
+            // handler's own, finds the queue empty and runs nothing.
+            if (IsInDiscreteEvent || AwaitContinuationGate.Queued.Count == 0)
+            {
+                return;
+            }
+            VelvetMainThread.Post(static _ => DrainDeferredAwaitContinuations(), null);
+        }
+
+        // One continuation that throws must not keep the rest from running, nor end the discrete event whose
+        // flush follows the drain.
+        internal static void DrainDeferredAwaitContinuations()
+        {
+            while (AwaitContinuationGate.Queued.TryDequeue(out var continuation))
+            {
+                RunContained(continuation);
+            }
+        }
+
+        private static void RunContained(Action continuation)
+        {
+            try
+            {
+                continuation();
+            }
+            catch (Exception thrown)
+            {
+                VelvetTaskScheduler.PublishUnobservedException(thrown);
+            }
+        }
+
+        // Transition-lane re-render request dedicated to UseDeferredValue.
+        // Achieves value-level deferral by scheduling directly into the Transition lane without going through
+        // urgent (Normal): RequestRenderFromHook classifies by the surrounding scheduling scope, which for a
+        // deferred value is whatever render happened to observe the changed input.
+        // The request is silently ignored if the fiber is disposed or not mounted.
+        // fiber: Fiber to schedule a Transition-lane render on.
+        public static void RequestTransitionRerender(ComponentFiber fiber)
+        {
+            if (fiber.IsDisposed || !fiber.IsMounted)
+            {
+                return;
+            }
+            ScheduleRerender(fiber, FiberUpdatePriority.Transition);
+        }
+
+        internal static void ScheduleRerender(ComponentFiber fiber, FiberUpdatePriority priority)
+        {
+            // Record the current highest priority before adding.
+            // If the same Lane already exists, Add returns false (coalesced).
+            var prevHighest = FiberLane.GetHighestPendingPriority(fiber);
+
+            // Goes through EnsureLanes()/Lanes directly (not the fiber.LaneQueue read accessor): FiberLaneSet
+            // is a struct, so a property getter can only hand back a copy — Add must mutate the backing
+            // LaneState.Queue field in place to enroll for real.
+            var lanes = fiber.EnsureLanes();
+            var enrolled = lanes.Queue.Add(priority);
+            // Records the request whether or not it changed the queue. Only a caller that resets this first
+            // reads it (FiberRenderer.SubsumeFiberIntoThisPass, FiberRenderer.NotifyAsyncResourceCompleted), so it is
+            // otherwise inert history.
+            lanes.LanesRequestedSinceReset.Add(priority);
+
+            // A coalesced re-add must NOT restart the starvation clock: it measures how long the lane
+            // has been continuously pending, so sustained re-scheduling (e.g. a per-frame
+            // transition-tier update) cannot indefinitely defeat the promotion while higher-priority
+            // work keeps preempting the flush. The genuine-enrol reset is still required: without it a
+            // lane that drained normally would inherit the previous cycle's residual count and promote
+            // early.
+            if (priority == FiberUpdatePriority.Transition && enrolled)
+            {
+                fiber.TransitionStarvationCounter = 0;
+            }
+
+            if (!fiber.IsDirty)
+            {
+                fiber.IsDirty = true;
+                ScheduleFlush(fiber, priority);
+            }
+            else if (priority < prevHighest && FiberLane.SchedulesOnImmediateTier(priority))
+            {
+                // The new lane outranks what was already scheduled. When it routes to the immediate tier
+                // (Urgent / Normal) but the fiber is currently only enrolled on the delayed tier
+                // (prevHighest = Transition), enroll it on the immediate tier too so the next-frame
+                // and end-of-discrete-event flush can drain it; the per-fiber lane queue still orders the
+                // actual drain. ScheduleImmediate dedups, so re-enrolling a fiber already on the immediate
+                // tier is a no-op.
+                ScheduleFlush(fiber, priority);
+            }
+        }
+
+        // Routes the fiber's flush through the tree-wide FiberBatchScheduler so concurrent
+        // dirty fibers sharing one ReconcilerContext coalesce into a single frame-boundary
+        // drain. Normal / Urgent enqueue on the immediate tier; Transition enqueues on the
+        // delayed tier. The per-fiber lane queue is still drained one lane per FlushState
+        // inside the batch, preserving priority ordering.
+        internal static void ScheduleFlush(ComponentFiber fiber, FiberUpdatePriority priority)
+        {
+            var scheduler = fiber.Reconciler?.Context.BatchScheduler;
+            if (scheduler == null)
+            {
+                // MUTANT_SURVIVES(unreachable, line removed): a fiber reaches ScheduleFlush only while mounted, and a mounted fiber holds a Reconciler (SetupMount assigns it before IsMounted; Unmount clears IsMounted and its lanes first), so the scheduler is never null here.
+                ScheduleStandaloneFlush(fiber);
+                return;
+            }
+
+            if (FiberLane.SchedulesOnImmediateTier(priority))
+            {
+                scheduler.ScheduleImmediate(fiber);
+            }
+            else
+            {
+                scheduler.ScheduleDelayed(fiber);
+            }
+        }
+
+        // Kept out of ScheduleFlush, whose every call would otherwise build this closure
+        // (RenderCommitAllocationTests).
+        private static void ScheduleStandaloneFlush(ComponentFiber fiber)
+        {
+            if (fiber.MountPoint == null) return;
+            HostSchedulers.For(fiber).Schedule(fiber.MountPoint, () => FlushState(fiber));
+        }
+
+        // Flushes the dirty state and runs RenderAndReconcile + the layout-effect commit.
+        // Normally invoked automatically via schedule.Execute.
+        // In test environments (no panel attached), call manually after a hook setter fires to confirm
+        // immediate reflection.
+        // The layout-effect commit is intentionally outside the OnRenderError guard.
+        // An error thrown from an effect is not routed to an Error Boundary; Velvet
+        // instead try-catches each effect individually and emits via Debug.LogException.
+        // Returns immediately if the fiber is not mounted or not dirty.
+        // fiber: Fiber whose pending lane updates should be flushed.
+        public static void FlushState(ComponentFiber fiber) => FlushState(fiber, FiberLane.TimeSlicedBudgetMs);
+
+        // The time-sliced budget travels on the call rather than being read from FiberLane, so a caller that
+        // needs one flush to park deterministically cannot leave that budget set for an unrelated later flush
+        // to inherit.
+        internal static void FlushState(ComponentFiber fiber, double timeSlicedBudgetMs)
+        {
+            OpenOwedSettleWindow(out var enclosing);
+            try
+            {
+                FlushFiber(fiber, timeSlicedBudgetMs, endsEnclosingCommit: enclosing != null);
+            }
+            finally
+            {
+                // MUTANT_SURVIVES(equivalent, line removed): FlushOwedSettleRenders is the only reader of a list, and it holds the list it was handed, so a list left installed is appended to by a settle outside every flush, or after the flush's last read, and read by nothing.
+                s_owedSettleRenders = enclosing;
+            }
+        }
+
+        // The components a settle inside the running FlushState or ContinueReconcile asked for a render, in the
+        // order it asked; null outside both. Each call makes its own list, so a nested call neither reads nor
+        // disturbs its enclosing one's.
+        private static List<ComponentFiber>? s_owedSettleRenders;
+
+        private static List<ComponentFiber> OpenOwedSettleWindow(out List<ComponentFiber>? enclosing)
+        {
+            enclosing = s_owedSettleRenders;
+            var owed = new List<ComponentFiber>();
+            s_owedSettleRenders = owed;
+            return owed;
+        }
+
+        // Called by the settle that takes optimistic entries down. A holder owed a render by a settle inside a
+        // flush is rendered before that flush returns, ahead of the commit's layout effects, so the commit that
+        // lands a transition's last work shows the revert in a holder its pass does not reach and in one it
+        // rendered before the settle. A settle outside every flush, an async action completing, has no commit
+        // to join and leaves the render it requested to the scheduler.
+        internal static void OweSettleRender(ComponentFiber holder) => s_owedSettleRenders?.Add(holder);
+
+        // Only a holder still holding an immediate-tier lane is flushed, so Transition work it holds for itself
+        // keeps its tier, and one the flush skips (unmounted, hidden under a fallback, in a detached host)
+        // keeps its lane for the scheduler.
+        private static void FlushOwedSettleRenders(List<ComponentFiber> owed)
+        {
+            for (var i = 0; i < owed.Count; i++)
+            {
+                if (FiberLane.SchedulesOnImmediateTier(FiberLane.GetHighestPendingPriority(owed[i])))
+                {
+                    FlushState(owed[i]);
+                }
+            }
+        }
+
+        // endsEnclosingCommit: the flush runs inside an enclosing flush's owed window, ahead of that flush's own
+        // effect commit, so the follow-up commit that ends a flush is the enclosing one's to run: it would take the
+        // enclosing flush's refs ahead of its insertion effects and layout cleanups.
+        private static void FlushFiber(ComponentFiber fiber, double timeSlicedBudgetMs, bool endsEnclosingCommit)
+        {
+            if (!fiber.IsMounted) return;
+            if (!fiber.IsDirty)
+            {
+                fiber.SettleTransitionPending();
+                return;
+            }
+
+            // Offscreen guard: a fiber inside a wrapper-less Suspense boundary that is currently showing its
+            // fallback must not flush independently where its host slot is occupied by the fallback, and a primary
+            // the boundary keeps hidden waits for the reveal with it. The boundary's
+            // own re-render (scheduled when the resource resolved) re-attempts the primary subtree and commits
+            // the reveal in one pass: a resolved resource schedules the boundary itself, not the
+            // suspended child. Leave IsDirty set so that re-render picks this fiber up via the expansion.
+            var context = fiber.Reconciler?.Context;
+            if (context is { AnyBoundaryShowingFallback: true })
+            {
+                // Defer only PRIMARY (offscreen) descendants — a discarded primary's slot is occupied by the
+                // fallback, so an independent flush would write into the fallback's range. A visible fallback-subtree
+                // fiber carries no offscreen mark and may flush normally (the fallback renders while the
+                // primary is offscreen).
+                //
+                // Every enclosing boundary, not the nearest: a Suspense is marked a boundary whenever it is
+                // expanded, whether or not it suspended, so a resolved one between the fiber and the
+                // boundary that did suspend is what a nearest-only reading stops at — and the mark it
+                // stops short of is the one an outer expansion wrote.
+                //
+                // No IsSuspenseBoundary test beside the lookup: only a fiber ExpandSuspenseInline marked
+                // as one is ever recorded as showing a fallback, in the same branch that marks it.
+                var offscreen = fiber.IsOffscreen;
+                for (var f = fiber.Parent; f != null; f = f.Parent)
+                {
+                    if (offscreen && context.IsBoundaryShowingFallback(f)) return;
+                    if (f.IsOffscreen) offscreen = true;
+                }
+            }
+
+            // Detached-host guard: an inline-mounted fiber commits its body into a slot RANGE of a MountPoint it
+            // shares with sibling fibers (the parent expansion owns the range; PreviousTree is the patch baseline
+            // the parent re-reads). While that host is detached from the mounted tree — e.g. an AnimatePresence ghost
+            // whose Motion was just removed from the DOM but whose inner fiber is not yet disposed, kept alive by a
+            // store subscription — an independent flush would reconcile into the off-tree container and advance
+            // PreviousTree past the live DOM. The parent's next re-render then re-expands this fiber against that
+            // advanced baseline while the live container still holds the smaller committed set, over-indexing the
+            // inner reconcile (parent.ElementAt(slotStart + i) out of range). Defer instead: leave IsDirty set so a
+            // later parent re-render (which re-attaches / re-commits this fiber) reconciles it with the baseline and
+            // the DOM in agreement. A root / wrapper-mounted fiber owns its whole MountPoint and is exempt. The
+            // check is panel-independent (an EditMode test mounts onto a panel-less root), so it compares
+            // VE-roots rather than panel attachment: detachment = the host no longer shares the root's VE-tree.
+            //
+            // The early return is BEFORE the lane-queue bookkeeping below, so the pending lane stays queued and is
+            // deliberately NOT removed or rescheduled here. Rescheduling on the same delayed tier would re-flush,
+            // find the host still detached, defer again — a busy-loop. The fiber instead waits for the parent
+            // re-render that re-attaches (and re-commits) it, which settles every lane that re-render subsumes
+            // (FiberRenderer.SubsumeFiberIntoThisPass), or for disposal, which scrubs the queue and dirty flag outright (Unmount).
+            // A further update on the same delayed tier coalesces onto the
+            // queued lane without rescheduling (IsDirty is already set, and Transition does not re-enrol on
+            // the immediate tier). A higher-priority Urgent/Normal update DOES re-enrol and re-flush, but that flush
+            // hits this same guard and harmlessly re-defers. Either way a detached fiber never flushes independently.
+            if (fiber.IsInlineMounted && IsHostDetachedFromRoot(fiber))
+            {
+                return;
+            }
+
+            PromoteStarvedTransitionLane(fiber);
+
+            // The lane being drained decides this flush's frame budget (Transition may time-slice;
+            // Urgent / Normal stay synchronous). Capture it from the lane before removing it. With no pending
+            // lane (e.g. a context-driven flush) the reconcile runs synchronously.
+            var flushBudget = FiberLane.FrameBudgetMs;
+            var drainsTransitionWork = false;
+            var renderLane = FiberUpdatePriority.Normal;
+
+            if (fiber.LaneQueue.Count > 0)
+            {
+                var flushingLane = fiber.LaneQueue.Min;
+                flushBudget = FiberLane.BudgetForLane(flushingLane, timeSlicedBudgetMs);
+                // A starvation-promoted lane carries the transition's own updates under the Normal label, and
+                // the marker that says so is cleared a few lines below, so read it here. Withholding a deferred
+                // value from the promoted drain would put it back behind the traffic promotion exists to escape.
+                drainsTransitionWork = flushingLane == FiberUpdatePriority.Transition
+                    || (flushingLane == FiberUpdatePriority.Normal && fiber.HasPromotedTransition);
+                renderLane = RenderLaneOf(flushingLane, drainsTransitionWork);
+                // A non-empty read above means Lanes was already allocated (Queue is only ever populated
+                // through EnsureLanes()), so the backing field is safe to mutate directly here — the
+                // fiber.LaneQueue accessor itself only ever hands back a read-only copy of the mask.
+                fiber.Lanes!.Queue.Remove(flushingLane);
+
+                // The promoted marker retires at the drain that commits its content — a
+                // starvation-promoted lane rides the Normal label (see HasPromotedTransition).
+                if (flushingLane == FiberUpdatePriority.Normal)
+                {
+                    fiber.HasPromotedTransition = false;
+                }
+
+                if (fiber.LaneQueue.Count > 0)
+                {
+                    ScheduleFlush(fiber, fiber.LaneQueue.Min);
+                }
+                else
+                {
+                    fiber.IsDirty = false;
+                }
+
+                // The Transition label alone is not the settled signal — starvation promotion erases it
+                // while the promoted work is still queued (possibly parked behind an Urgent drain), so
+                // the promoted marker must ALSO be clear before the pending flags may sweep.
+                if (ShouldSettleBeforeReconcile(fiber, drainsTransitionWork))
+                {
+                    fiber.SettleTransitionPending();
+                }
+            }
+            else
+            {
+                fiber.IsDirty = false;
+                fiber.SettleTransitionPending();
+            }
+
+            // A resume (ContinueReconcile) reads both of these so it continues at the same budget the starting
+            // lane chose, and answers the deferred-commit question the same way this pass does.
+            fiber.PendingReconcileBudgetMs = flushBudget;
+            fiber.PendingReconcileDrainsTransitionWork = drainsTransitionWork;
+            var wasRenderingTransitionLane = IsRenderingTransitionLane;
+            var wasTransitionDrainFiber = TransitionDrainFiber;
+            var wasRenderLane = RenderLane;
+            IsRenderingTransitionLane = drainsTransitionWork;
+            TransitionDrainFiber = drainsTransitionWork ? fiber : null;
+            RenderLane = renderLane;
+            var suspended = false;
+            FiberRenderer.BeginPass(fiber);
+            try
+            {
+                FiberRenderer.RenderAndReconcile(fiber, flushBudget);
+            }
+            catch (FiberSuspendSignal)
+            {
+                // A flush of this fiber alone has no ancestor walk on the stack to hand the signal to.
+                FiberRenderer.SuspendPassOwner(fiber, drainsTransitionWork);
+                suspended = true;
+            }
+            finally
+            {
+                IsRenderingTransitionLane = wasRenderingTransitionLane;
+                TransitionDrainFiber = wasTransitionDrainFiber;
+                RenderLane = wasRenderLane;
+            }
+            // Defer layout / passive effects while a time-sliced reconcile is still paused: a parked commit has
+            // only partially mutated the DOM, so a UseLayoutEffect reading a UseRef to a not-yet-attached node
+            // would observe null. ContinueReconcile's terminal chunk runs these once the work completes.
+            if (!suspended && fiber.Reconciler?.HasPendingWork != true)
+            {
+                SettleCompletedTransition(fiber);
+                // Ahead of the effect commit below, which outside a drain runs its layout effects inline.
+                FlushOwedSettleRenders(s_owedSettleRenders!);
+                // Bottom-up commit — descendant effects run before this fiber's so a
+                // parent effect that reads a child imperative handle / measured size observes the
+                // child's already-applied effect. The drain pops fibers in LIFO order (deepest first).
+                FiberEffects.CommitSubtreeEffects(fiber);
+                // This independent flush may have toggled a descendant's class / controlled value without
+                // re-rendering an enclosing has- element; re-derive the registered has- elements now that the
+                // DOM mutations are committed so a has- ancestor that did not itself reconcile is not left stale.
+                // Scoped to this flush's region (the fiber's MountPoint subtree) — see RefreshHasVariants.
+                FiberNodePatcher.RefreshHasVariants(fiber.Reconciler?.Context, fiber.MountPoint);
+                FlushCompletedTransitionIndicator(fiber);
+            }
+            if (!endsEnclosingCommit) FiberEffects.CommitStrandedLayoutWork(context!);
+        }
+
+        private static void SettleCompletedTransition(ComponentFiber fiber)
+        {
+            if (fiber.PendingReconcileDrainsTransitionWork)
+            {
+                fiber.SettleTransitionPendingAfterCommit();
+            }
+        }
+
+        private static bool ShouldSettleBeforeReconcile(ComponentFiber fiber, bool drainsTransitionWork)
+            => !drainsTransitionWork
+                && (fiber.LaneQueue.Count == 0
+                    || (!fiber.LaneQueue.Contains(FiberUpdatePriority.Transition)
+                        && !fiber.HasPromotedTransition));
+
+        private static void FlushCompletedTransitionIndicator(ComponentFiber fiber)
+        {
+            if (fiber.PendingReconcileDrainsTransitionWork)
+            {
+                fiber.Reconciler?.Context.BatchScheduler.FlushImmediate();
+            }
+        }
+
+        // True when this inline-mounted fiber's MountPoint no longer shares a VE-root with the tree the root fiber
+        // was mounted onto — i.e. the host slot range was removed from the live tree (an AnimatePresence ghost's
+        // Motion detached, a route subtree swapped out) but this fiber is not yet disposed. Independent flushes
+        // while detached desync PreviousTree from the live DOM (see the FlushState guard). Panel-independent so an
+        // EditMode test (mounted onto a panel-less root) is not falsely flagged: a still-attached inline fiber and
+        // the root fiber resolve to the same VE-root; a detached host resolves to a different one.
+        private static bool IsHostDetachedFromRoot(ComponentFiber fiber)
+        {
+            var host = fiber.MountPoint;
+            if (host == null) return false;
+
+            // Walk to the nearest MOUNT ROOT: the app root (Parent == null) or a detached-mount top (a Portal's
+            // drained children / a VirtualList's controller items, which legitimately mount into a SEPARATE
+            // VE-tree). Comparing against that boundary — not the absolute app root — means a Portal child is judged
+            // against the portal target's tree, so its in-place re-render is not falsely flagged as detached.
+            var mountRoot = fiber;
+            while (mountRoot.Parent != null && mountRoot.DetachedMountContext == null)
+            {
+                mountRoot = mountRoot.Parent;
+            }
+            var rootHost = mountRoot.MountPoint;
+            if (rootHost == null) return false;
+
+            return VeRoot(host) != VeRoot(rootHost);
+        }
+
+        private static UnityEngine.UIElements.VisualElement VeRoot(UnityEngine.UIElements.VisualElement ve)
+        {
+            while (ve.parent != null) ve = ve.parent;
+            return ve;
+        }
+
+        // Resumes the suspended state of time-sliced reconciliation in the next frame.
+        // Invoked automatically via schedule.Execute. Exposed to tests (the UIToolkit scheduler does not
+        // advance in EditMode) so a parked slice can be driven to completion manually.
+        internal static void ContinueReconcile(ComponentFiber fiber)
+        {
+            // A resumed slice renders, so pending passive effects run before it as they do before a drain
+            // (FiberBatchScheduler.Drain), and ahead of the guards below, which read what those effects leave.
+            fiber.Reconciler?.Context.BatchScheduler.FlushPendingPassiveEffectsAheadOfAResume();
+            // Ahead of the guards below, since the flush can unmount the fiber or finish its pass.
+            fiber.Reconciler?.Context.BatchScheduler.FlushOwedExternalStoreRenders();
+            if (!fiber.IsMounted) return;
+            if (fiber.Reconciler == null) return;
+            var mountPoint = fiber.MountPoint;
+            if (mountPoint == null) return;
+            if (!fiber.Reconciler.HasPendingWork) return;
+            if (fiber.ParkedPassSuspended) return;
+            if (fiber.IsOffscreen)
+            {
+                // Held as FlushFiber holds a flush, and left dirty for the same reveal to render: its walk renders a
+                // dirty inline fiber it reaches, GeneralPathReconciler.SetPrimaryHidden asks for the render of a dirty
+                // one hidden inside an element it reveals, and that render drains the parked pass before it reconciles
+                // its own output.
+                fiber.IsDirty = true;
+                return;
+            }
+
+            var owed = OpenOwedSettleWindow(out var enclosingOwed);
+            var pushedOnto = FiberRenderer.PushFiber(fiber);
+            try
+            {
+                // Resume at the budget the starting lane chose so a Transition slice keeps time-slicing.
+                // An inline-mount fiber commits its child-count delta incrementally across resume slices, so
+                // each slice's delta must be propagated here exactly as the initial RenderAndReconcile pass
+                // does — otherwise the recorded starts behind this fiber, and the captured slotStart of a
+                // fiber parked there, go stale against the rows this slice just inserted / removed.
+                // The resumed slice can still expand components, so it answers the deferred-commit question
+                // the same way the pass that parked it did — see PendingReconcileDrainsTransitionWork.
+                var wasRenderingTransitionLane = IsRenderingTransitionLane;
+                var wasTransitionDrainFiber = TransitionDrainFiber;
+                var wasRenderLane = RenderLane;
+                IsRenderingTransitionLane = fiber.PendingReconcileDrainsTransitionWork;
+                TransitionDrainFiber = fiber.PendingReconcileDrainsTransitionWork ? fiber : null;
+                RenderLane = RenderLaneOf(FiberUpdatePriority.Normal, fiber.PendingReconcileDrainsTransitionWork);
+                // A resume continues the pass whose output is already this fiber's PreviousTree, so the
+                // children it reaches are stamped against that array exactly as the slice that parked
+                // stamped the ones it reached. Without it they are stamped against nothing, and
+                // ComponentFiber.SourceTree owns what that costs them.
+                var resumeContext = fiber.Reconciler.Context;
+                var enclosingFiberTree = resumeContext.CurrentFiberTree;
+                resumeContext.CurrentFiberTree = fiber.PreviousTree;
+                resumeContext.SuspendDeclinedByRevealedBoundary = false;
+                // A resume has no walk of this fiber's ancestors on the stack to have pushed the Providers above
+                // it, so they go back on the cursor for the rows this slice renders, as RenderAndReconcile puts
+                // them there for the slice that parked.
+                var contextSpine = FiberContextSpine.Push(fiber);
+                try
+                {
+                    using var portal = new FiberCommitWork.PortalScope(resumeContext, fiber);
+                    if (fiber.IsInlineMounted)
+                    {
+                        // Logical (container-blind) count, not raw childCount: this same ContinueReconcile call
+                        // now also drains any Portal / z-layer mount this slice enqueued (see Reconciler.
+                        // ContinueReconcile), and a first-of-its-sign container the drain creates or removes
+                        // would otherwise leak its own +-1 into this fiber's delta exactly like
+                        // FiberCommitWork.ReconcileOwnRows's own measurement — see
+                        // LogicalMountPointChildCount.
+                        var slice = new FiberCommitWork.RowCountWindow(fiber);
+                        fiber.Reconciler.ContinueReconcile(fiber.PendingReconcileBudgetMs);
+                        resumeContext.HostCommit.ShiftRows(fiber, slice.UnshiftedChange);
+                    }
+                    else
+                    {
+                        fiber.Reconciler.ContinueReconcile(fiber.PendingReconcileBudgetMs);
+                    }
+                }
+                finally
+                {
+                    contextSpine.Unwind();
+                    resumeContext.CurrentFiberTree = enclosingFiberTree;
+                    IsRenderingTransitionLane = wasRenderingTransitionLane;
+                    TransitionDrainFiber = wasTransitionDrainFiber;
+                    RenderLane = wasRenderLane;
+                }
+
+                // Null once the slice has disposed this fiber, which a boundary above does when it swaps in its
+                // fallback for an error a row of the slice threw. That ends the pass, as FlushFiber's own check
+                // reads it.
+                if (fiber.Reconciler?.HasPendingWork == true)
+                {
+                    ScheduleNextSlice(mountPoint, fiber);
+                }
+                else
+                {
+                    fiber.PendingOldTree = null;
+                    SettleCompletedTransition(fiber);
+                    // Ahead of the effect commit below, so its layout effects read the holders without the
+                    // entries the settle took down.
+                    FlushOwedSettleRenders(owed);
+                    // The commit is now fully applied — run the insertion / layout / passive effects FlushState
+                    // deferred while this reconcile was paused. Runs once, only on the terminal chunk.
+                    // Bottom-up — descendant effects (LIFO drain) before this fiber's.
+                    FiberEffects.CommitSubtreeEffects(fiber);
+                    // This commit completes outside the batch drain, whose end joins a mid-drag overlay.
+                    resumeContext.ActiveDrag?.JoinOverlaysAfterCommit();
+                    // Mirror FlushState's settled-flush pass: re-derive registered has- elements so a
+                    // time-sliced flush that toggled a descendant's class / controlled value reflects on a
+                    // has- ancestor that did not itself reconcile. Scoped to this flush's region (the fiber's
+                    // MountPoint subtree) — see RefreshHasVariants.
+                    FiberNodePatcher.RefreshHasVariants(fiber.Reconciler?.Context, fiber.MountPoint);
+                    // The setState-in-commit guarantee is entry-point-agnostic: this terminal slice's
+                    // commits may have invoked callback refs that wrote state (the measure-in-ref
+                    // pattern), and the resume runs outside any batch drain — flush now so the write
+                    // commits before the frame yields. Safe here: the pass completed (no pending
+                    // work) and the reconcile-active bracket was exited by ContinueReconcile above.
+                    fiber.Reconciler?.Context.BatchScheduler.FlushImmediate();
+                }
+                FiberEffects.CommitStrandedLayoutWork(resumeContext);
+            }
+            catch (Exception ex)
+            {
+                if (ex is FiberSuspendSignal && fiber.Reconciler?.HasPendingWork == true)
+                {
+                    // This slice parked again before the drain at its end suspended, so the parked state still diffs
+                    // against the baseline: it stays parked, and the retry's render resumes the slices.
+                    fiber.ParkedPassSuspended = true;
+                    FiberRenderer.SuspendPassOwner(fiber, fiber.PendingReconcileDrainsTransitionWork);
+                    var parkedContext = fiber.Reconciler?.Context;
+                    // MUTANT_SURVIVES(equivalent, equality): the walk is still parked here, so everything the slice queued carries the parked pass and is held, and CommitStrandedLayoutWork finds nothing attachable — ParkedTransitionPassSuspendTests' later-slice cases reach this branch.
+                    if (parkedContext != null) FiberEffects.CommitStrandedLayoutWork(parkedContext);
+                    return;
+                }
+                fiber.PendingOldTree = null;
+                if (ex is FiberSuspendSignal)
+                {
+                    // Same exit as FlushState's: the transition this slice belonged to has not committed.
+                    FiberRenderer.SuspendPassOwner(fiber, fiber.PendingReconcileDrainsTransitionWork);
+                    var suspendedContext = fiber.Reconciler?.Context;
+                    if (suspendedContext != null) FiberEffects.CommitStrandedLayoutWork(suspendedContext);
+                    return;
+                }
+                if (fiber.PendingReconcileDrainsTransitionWork)
+                {
+                    fiber.SettleTransitionPending();
+                    FlushOwedSettleRenders(owed);
+                }
+                FiberErrorBoundary.OnRenderError(fiber, ex);
+            }
+            finally
+            {
+                // MUTANT_SURVIVES(equivalent, line removed): same reason as the restore in FlushState, whose only reader of a list is FlushOwedSettleRenders over the list it was handed.
+                s_owedSettleRenders = enclosingOwed;
+                FiberRenderer.PopFiber(pushedOnto);
+            }
+        }
+
+        // Kept out of ContinueReconcile, whose every call would otherwise build this closure
+        // (RenderCommitAllocationTests).
+        private static void ScheduleNextSlice(UnityEngine.UIElements.VisualElement mountPoint, ComponentFiber fiber)
+        {
+            var host = HostSchedulers.For(fiber);
+            host.Schedule(mountPoint, () => host.Run(mountPoint, fiber, ContinueReconcile));
+        }
+
+        private static void PromoteStarvedTransitionLane(ComponentFiber fiber)
+        {
+            if (!fiber.LaneQueue.Contains(FiberUpdatePriority.Transition))
+            {
+                fiber.TransitionStarvationCounter = 0;
+                return;
+            }
+
+            fiber.TransitionStarvationCounter++;
+
+            if (fiber.TransitionStarvationCounter >= TransitionStarvationThreshold)
+            {
+                // Promote to Normal so the starved work coalesces with the very traffic that kept
+                // preempting it and drains in this flush (the caller drains the queue's minimum next;
+                // co-pending Urgent drains still go first, parking the promoted lane on the immediate
+                // tier, not back behind the sustained stream that starved it). An expired lane must
+                // flush synchronously, abandoning time-slicing, so starvation is bounded no matter how
+                // relentless the higher-priority traffic is. The promoted marker keeps the settle sweep
+                // honest about the erased Transition label (see HasPromotedTransition), so isPending
+                // still clears at (not before) the commit that renders the promoted content.
+                // Contains(Transition) above guarantees Lanes was already allocated; mutate the backing
+                // field directly, as the fiber.LaneQueue accessor only hands back a read-only copy.
+                fiber.Lanes!.Queue.Remove(FiberUpdatePriority.Transition);
+                fiber.Lanes.Queue.Add(FiberUpdatePriority.Normal);
+                fiber.HasPromotedTransition = true;
+                fiber.TransitionStarvationCounter = 0;
+            }
+        }
+
+        // Wrapper that runs internal SetState at Transition priority.
+        // UseState setters (etc.) called during updates are scheduled on the lowest-priority Lane, whichever
+        // fiber owns the state slot they write.
+        // A re-entrant call on the SAME slot joins the call that owns it: the inner call runs its updates at
+        // Transition priority but does not start a new transition or independently clear isPending. A call on
+        // a different slot is a concurrent transition and owns its own pending flag, whether or not another
+        // slot's transition is in flight.
+        // fiber: Fiber whose transition slot tracks this call's pending state.
+        // updates: Action whose state mutations should run at Transition priority. Must not be null.
+        public static void StartTransition(ComponentFiber fiber, HookTransitionSlot slot, Action updates)
+        {
+            if (updates == null) throw new ArgumentNullException(nameof(updates));
+
+            // The scope opens here too — classification is ambient, so a starter that outlived its component
+            // still marks what its callback writes on live ones. Only the pending bookkeeping below is
+            // skipped: the flag is read during a render, and a disposed component has none left.
+            if (fiber.IsDisposed)
+            {
+                // React catches the callback's error whatever the fiber, and its dispatch to one that has
+                // unmounted does nothing, so the error goes nowhere.
+                try
+                {
+                    RunInTransitionScope(slot, updates);
+                }
+                catch (Exception)
+                {
+                }
+                return;
+            }
+
+            var opensTransition = !slot.HasActiveOwner;
+            if (opensTransition)
+            {
+                slot.IsPending = true;
+                slot.OwnerGeneration++;
+            }
+            var ownerGeneration = slot.OwnerGeneration;
+            slot.OwnerDepth++;
+            ExceptionDispatchInfo? failure = null;
+            try
+            {
+                RunInTransitionScope(slot, updates);
+            }
+            catch (Exception ex)
+            {
+                failure = ExceptionDispatchInfo.Capture(ex);
+            }
+            finally
+            {
+                if (slot.OwnerGeneration == ownerGeneration)
+                {
+                    RecordOutcome(fiber, slot, Dispatch(slot), failure);
+                    slot.OwnerDepth--;
+                    // A callback that enrolled nothing has settled the moment it returns, whatever else the
+                    // fiber is busy with — the previous fiber-wide dirty test held isPending up for the
+                    // duration of another slot's work. Once it did enrol, what settles it is the drain of
+                    // each fiber it enrolled — see ComponentFiber.DischargeTransitionEnrolments.
+                    if (!slot.HasActiveOwner && !slot.HasQueuedWork)
+                    {
+                        var showedPending = slot.IsPending && slot.LastRenderedPending;
+                        slot.IsPending = false;
+                        // A callback can render the declaring component without enrolling anything on it —
+                        // driving a flush of work queued before the call, say — and that render read the
+                        // flag this clear invalidates.
+                        if (showedPending)
+                        {
+                            ComponentFiber.RequestRenderForClearedPending(slot);
+                        }
+                    }
+                    if (opensTransition && slot.IsPending)
+                    {
+                        RequestPendingRender(fiber);
+                    }
+                }
+            }
+        }
+
+        // React renders isPending = true on the sync lane before the transition's own render, through the
+        // optimistic update startTransition dispatches ahead of the callback (ReactFiberHooks.js:
+        // startTransition, dispatchOptimisticSetState). Asked as the call that opened the transition hands control
+        // back, and only for a flag still lit there: a callback that queued nothing and left no joined call open
+        // has settled by then, and a render of it would only show the flag false. Both callers have checked that
+        // the call still owns the slot, which an unmount takes away, so the fiber is mounted here.
+        private static void RequestPendingRender(ComponentFiber fiber)
+            => ScheduleRerender(fiber, FiberUpdatePriority.Urgent);
+
+        // React's startTransition catches the callback's error and dispatches it as the isPending update, so the
+        // declaring component throws it from its Transition-lane render to the boundary above it, and the caller
+        // never sees it. That update takes its place in the queue where the callback returns, an async action's
+        // too, whose settlement only resolves it later, so the outcome rendered is that of the call whose callback
+        // returned last: a later return takes down an error not yet rendered, and an action settling behind a
+        // later return writes nothing.
+        private static int Dispatch(HookTransitionSlot slot)
+        {
+            slot.PendingError = null;
+            return ++slot.OutcomeSequence;
+        }
+
+        private static void RecordOutcome(
+            ComponentFiber fiber, HookTransitionSlot slot, int sequence, ExceptionDispatchInfo? failure)
+        {
+            if (failure == null || sequence != slot.OutcomeSequence)
+            {
+                return;
+            }
+            slot.PendingError = failure;
+            RequestTransitionRerender(fiber);
+        }
+
+        private static void MarkTransitionWorkQueued(ComponentFiber fiber)
+        {
+            foreach (var slot in OpenTransitionScopes)
+            {
+                // An unmount driven from inside the callback releases the slots of the fiber it tears down
+                // (ComponentFiber.ReleaseTransitionSlotOwnership), and a released slot is one a remount hands
+                // to the next transition — which would then wait on an enrolment its own callback never made.
+                if (!slot.HasActiveOwner)
+                {
+                    continue;
+                }
+                fiber.EnrolTransitionSlot(slot);
+            }
+        }
+
+        private static void RunInTransitionScope(HookTransitionSlot slot, Action body)
+        {
+            OpenTransitionScopes.Add(slot);
+            AwaitContinuationGate.OpenScopes = OpenTransitionScopes.Count;
+            try
+            {
+                body();
+            }
+            finally
+            {
+                OpenTransitionScopes.RemoveAt(OpenTransitionScopes.Count - 1);
+                AwaitContinuationGate.OpenScopes = OpenTransitionScopes.Count;
+                ScheduleDeferredAwaitContinuations();
+            }
+        }
+
+        // The async starter runs its callback through this overload and awaits the returned task outside the
+        // scope, so the transition covers everything the callback runs before it first suspends — not
+        // everything before its first `await`, which is a different boundary whenever the awaited task had
+        // already completed. UseTransitionTests holds both sides of that difference. Awaiting inside would
+        // extend the scope across every await the action takes.
+        private static T RunInTransitionScope<T>(HookTransitionSlot slot, Func<T> body)
+        {
+            OpenTransitionScopes.Add(slot);
+            AwaitContinuationGate.OpenScopes = OpenTransitionScopes.Count;
+            try
+            {
+                return body();
+            }
+            finally
+            {
+                OpenTransitionScopes.RemoveAt(OpenTransitionScopes.Count - 1);
+                AwaitContinuationGate.OpenScopes = OpenTransitionScopes.Count;
+                ScheduleDeferredAwaitContinuations();
+            }
+        }
+
+        // Asynchronous StartTransition (an async callback: StartTransition(async () => ...)).
+        // isPending stays true across every await inside asyncUpdates and is cleared once the returned task
+        // completes and every fiber its callback enrolled has discharged that work — by committing it, by
+        // unmounting, or by the scheduler dropping the starvation-promoted lane it rode at the update-depth
+        // cap. Unmounting the declaring component clears the flag ahead of any of that, the release taking
+        // the slot off this call (ReleaseTransitionSlotOwnership). The
+        // updates the action makes before it first suspends are scheduled on the Transition lane (see
+        // RunInTransitionScope for where that boundary falls); reaching it past a suspension means wrapping
+        // those updates in a further StartTransition call, which joins this transition. A call on another
+        // slot does not.
+        // fiber: Fiber whose transition slot tracks this call's pending state.
+        // asyncUpdates: Async action whose run up to its first suspension is at Transition priority. Must not
+        // be null.
+        // A task that completes when asyncUpdates has fully run.
+        public static async VelvetTask StartTransition(
+            ComponentFiber fiber, HookTransitionSlot slot, Func<VelvetTask> asyncUpdates)
+        {
+            if (asyncUpdates == null) throw new ArgumentNullException(nameof(asyncUpdates));
+
+            // Same disposed guard as the sync overload: the scope, without the flag or the error. The action is
+            // still counted, since the count follows the task and not the component.
+            if (fiber.IsDisposed)
+            {
+                var disposedEpoch = CountAsyncActionIn();
+                try
+                {
+                    await RunInTransitionScope(slot, asyncUpdates);
+                }
+                catch (Exception)
+                {
+                }
+                finally
+                {
+                    CountAsyncActionOut(disposedEpoch);
+                }
+                return;
+            }
+
+            var opensTransition = !slot.HasActiveOwner;
+            if (opensTransition)
+            {
+                slot.IsPending = true;
+                slot.OwnerGeneration++;
+            }
+            // While the action is awaiting (before its setState calls land) the fiber can be entirely
+            // clean, and a drain callback armed earlier that fires on that clean fiber must not read the
+            // empty lane queue as this transition having settled (see SettleTransitionPending).
+            slot.AsyncOwnerDepth++;
+            var countEpoch = CountAsyncActionIn();
+            slot.OwnerDepth++;
+            var ownerGeneration = slot.OwnerGeneration;
+            var suspended = false;
+            var sequence = 0;
+            ExceptionDispatchInfo? failure = null;
+            try
+            {
+                // The call stays inside the try: asyncUpdates need not be an async method, and one that is not
+                // can throw before handing a task back, which must still reach the release below.
+                VelvetTask action;
+                try
+                {
+                    action = RunInTransitionScope(slot, asyncUpdates);
+                }
+                finally
+                {
+                    sequence = Dispatch(slot);
+                }
+                // A task still pending where the scope has already closed is a callback that suspended, since
+                // the scope closes exactly where it hands the task back. Pinned by the completion case for an
+                // action that never suspended, which fails if that stops answering.
+                suspended = action.Status == VelvetTaskStatus.Pending;
+                if (opensTransition && slot.OwnerGeneration == ownerGeneration
+                    && (suspended || slot.HasQueuedWork || slot.OwnerDepth > 1))
+                {
+                    RequestPendingRender(fiber);
+                }
+                await action;
+            }
+            catch (Exception ex)
+            {
+                // React chains the action's rejection into the isPending update; an unmount in the meantime
+                // leaves it nowhere to go, which the generation test below drops it for.
+                failure = ExceptionDispatchInfo.Capture(ex);
+            }
+            finally
+            {
+                CountAsyncActionOut(countEpoch);
+                // An unmount forces the release this task can no longer perform, so a task settling afterwards
+                // must not write over whatever took the slot since — see ReleaseTransitionSlotOwnership.
+                if (slot.OwnerGeneration == ownerGeneration)
+                {
+                    RecordOutcome(fiber, slot, sequence, failure);
+                    slot.AsyncOwnerDepth--;
+                    slot.OwnerDepth--;
+                    // Same slot-scoped exit as the sync overload.
+                    if (!slot.HasActiveOwner && (fiber.IsDisposed || !slot.HasQueuedWork))
+                    {
+                        var wasPending = slot.IsPending;
+                        slot.IsPending = false;
+                        // A task continuation renders nothing on its own, so a flag lit across a suspension
+                        // needs this unconditionally. An action that never suspended is held to what the
+                        // synchronous overload's exit does — ask only where the component's last render
+                        // read the flag lit.
+                        if (wasPending && (suspended || slot.LastRenderedPending))
+                        {
+                            ComponentFiber.RequestRenderForClearedPending(slot);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,320 @@
+using System.Collections.Generic;
+using UnityEngine;
+using UnityEngine.UIElements;
+
+namespace Velvet
+{
+    // A resolved grid spec: the column count, the row / column gaps the grid owns, and the space-x-* /
+    // space-y-* margins.
+    internal readonly struct GridSpec
+    {
+        public readonly int Columns;
+        public readonly float ColumnGap;
+        public readonly float RowGap;
+        public readonly SpaceSpec Space;
+        // A gap the container measures in place of ColumnGap or RowGap; null where it is in pixels.
+        public readonly StyleLengthExpression? ColumnGapMeasured;
+        public readonly StyleLengthExpression? RowGapMeasured;
+
+        public GridSpec(int columns, float columnGap, float rowGap, SpaceSpec space,
+            StyleLengthExpression? columnGapMeasured = null, StyleLengthExpression? rowGapMeasured = null)
+        {
+            Columns = columns;
+            ColumnGap = columnGap;
+            RowGap = rowGap;
+            Space = space;
+            ColumnGapMeasured = columnGapMeasured;
+            RowGapMeasured = rowGapMeasured;
+        }
+
+        public bool IsMeasured => ColumnGapMeasured != null || RowGapMeasured != null || Space.IsMeasured;
+    }
+
+    // Framework-level CSS-Grid polyfill. UI Toolkit (6000.3) has no `display: grid` — its layout is a Flexbox
+    // subset — so Velvet realizes `grid` as a flex-wrap row (_layout.uss) and this manipulator sizes the
+    // children into N equal columns: each direct child gets width = (rowWidth - (N-1)*columnGap) / N, the
+    // column gap as a leading margin-left on every child but the first OF ITS ROW, and the row gap as a
+    // leading margin-top on every row but the first. The children then wrap into aligned rows of N; a final
+    // short row left-packs under the leading columns, matching CSS grid auto-placement.
+    //
+    // The column width depends on the resolved row width, so Apply reads contentRect.width and re-runs from
+    // GeometryChangedEvent on resize. A signature keyed on that width makes the height-change feedback its own
+    // wrapping provokes a no-op. Off-panel (no resolved width yet) it writes only the gap margins and defers
+    // the widths until a real width resolves on attach. The width is reduced by a sub-pixel safety margin so
+    // floating-point division never overflows the row and forces a spurious wrap.
+    //
+    // The grid OWNS its children's width + all four margins (like the gap manipulator owns its margin edge),
+    // so a grid container routes its gap-* and space-* through this manipulator and StyleGapManipulator is
+    // suppressed when grid-cols-* is present — a single owner avoids a double-write race. A per-child width /
+    // margin utility on a grid child is overwritten: the column owns the box. A space-* margin is Tailwind's
+    // `> :not(:last-child)` rule, as StyleGapManipulator writes it; a horizontal one comes out of the child's
+    // width, the way a CSS grid item stretched to its cell gives up its margins, so the row still fits N.
+    //
+    // Lifecycle mirrors StyleGapManipulator / StyleDivideManipulator: the reconciler attaches one per grid
+    // container, keeps it in ReconcilerContext.GridManipulators, and removes it on cleanup / dispose.
+    // UnregisterCallbacksFromTarget clears what it still owns, on the same terms the gap manipulator's
+    // header states — the two share ReconcilerContext.ChildBoxOwners, both writing a child's margins.
+    // Like the gap manipulator it iterates FiberNodePatcher.GetChildContainer,
+    // so the sizing lands on the reconciled content and never on a composite widget's internal hierarchy.
+    //
+    // Out-of-flow children (position: absolute) are excluded from the column/row walk — see
+    // StyleOutOfFlowChild — matching CSS Grid, whose auto-placement never assigns a cell to an
+    // out-of-flow item. This also keeps a PopLayout-pinned ghost's frozen geometry untouched instead of
+    // being reassigned a column width and margin as if it still occupied a cell.
+    internal sealed class StyleGridManipulator : Manipulator
+    {
+        // A sub-pixel shave off each column so that N*colWidth + (N-1)*gap never exceeds the row width through
+        // float-division rounding (which would overflow the line and wrap N columns down to N-1).
+        private const float WrapSafetyPx = 0.5f;
+
+        private GridSpec _spec;
+        private readonly ReconcilerContext _ctx;
+
+        // Every child this manipulator has sized. A child reparented or removed out of the grid is offered
+        // for release; whether it loses the width + margins is the claim's answer, not this list's — see
+        // ReconcilerContext.ChildBoxOwners.
+        private readonly List<VisualElement> _sized = new();
+        // The children in flex order, refilled by each Apply.
+        private readonly List<VisualElement> _flow = new();
+
+        private int _lastSignature;
+        private bool _hasSignature;
+
+        // The gaps as the container measures them, read at the start of each Apply.
+        private float _columnGap;
+        private float _rowGap;
+
+        // Re-applies once what a measured gap or margin reads has moved; null while the spec measures none.
+        private RelativeLengthPoll? _poll;
+
+        // What the children measure, which the poll reads beside the container: a child's own font moves the length
+        // it measures without moving the container.
+        private int ChildReading() => _spec.Space.IsMeasured ? StyleRelativeLengths.ChildrenReading(ChildContainer) : 0;
+
+        // Static lambdas, as StyleGapManipulator's are.
+        private void SyncPoll(bool wanted)
+            => StyleRelativeLengths.SyncPoll(ref _poll, target, wanted, this, static self => self.Reapply(),
+                static self => self.ChildReading());
+
+        public StyleGridManipulator(ReconcilerContext ctx, GridSpec spec)
+        {
+            _ctx = ctx;
+            _spec = spec;
+        }
+
+        // Swaps the spec (column count / gaps changed) and re-applies.
+        public void UpdateSpec(GridSpec spec)
+        {
+            _spec = spec;
+            SyncPoll(_spec.IsMeasured);
+            _hasSignature = false;
+            Apply();
+        }
+
+        private void Reapply()
+        {
+            _hasSignature = false;
+            Apply();
+        }
+
+        protected override void RegisterCallbacksOnTarget()
+        {
+            target.RegisterCallback<AttachToPanelEvent>(OnAttach);
+            target.RegisterCallback<GeometryChangedEvent>(OnGeometryChanged);
+            SyncPoll(_spec.IsMeasured);
+            Apply();
+        }
+
+        protected override void UnregisterCallbacksFromTarget()
+        {
+            SyncPoll(false);
+            Clear();
+            target.UnregisterCallback<AttachToPanelEvent>(OnAttach);
+            target.UnregisterCallback<GeometryChangedEvent>(OnGeometryChanged);
+        }
+
+        private void OnAttach(AttachToPanelEvent evt)
+        {
+            _hasSignature = false;
+            Apply();
+        }
+
+        private void OnGeometryChanged(GeometryChangedEvent evt) => Apply();
+
+        private VisualElement? ChildContainer
+            => target == null ? null : FiberNodePatcher.GetChildContainer(target);
+
+        // Sizes the children into N equal columns and writes the row / column gap margins. Early-returns when
+        // nothing relevant (spec, resolved row width, child set) changed since the last application.
+        public void Apply()
+        {
+            var container = ChildContainer;
+            if (container == null)
+            {
+                return;
+            }
+
+            _columnGap = StyleRelativeLengths.MeasureOr(target, _spec.ColumnGapMeasured, _spec.ColumnGap);
+            _rowGap = StyleRelativeLengths.MeasureOr(target, _spec.RowGapMeasured, _spec.RowGap);
+            // Resolved content width of the row; 0 / NaN off-panel before the first layout.
+            var width = container.contentRect.width;
+            var hasWidth = width > 0f && !float.IsNaN(width);
+
+            var signature = ComputeSignature(container, width);
+            if (_hasSignature && signature == _lastSignature)
+            {
+                return;
+            }
+
+            ResetStaleSized(container);
+            _sized.Clear();
+
+            var n = _spec.Columns < 1 ? 1 : _spec.Columns;
+            var colWidth = hasWidth
+                ? Mathf.Max(0f, (width - (n - 1) * _columnGap) / n - WrapSafetyPx)
+                : 0f;
+
+            var last = StyleOutOfFlowChild.LastSpacedChild(container);
+            FiberZLayerCoordinator.FlowChildren(container, _flow);
+            var logicalIndex = 0;
+            foreach (var child in _flow)
+            {
+                // An out-of-flow child (a PopLayout-pinned ghost, or an app-authored .absolute child)
+                // takes no grid cell, so it is skipped rather than assigned a column/row and sized.
+                if (StyleOutOfFlowChild.IsOutOfFlow(child))
+                {
+                    continue;
+                }
+                var col = logicalIndex % n;
+                var row = logicalIndex / n;
+                var spaced = !ReferenceEquals(child, last);
+                var spaceX = spaced ? StyleRelativeLengths.MeasureOr(child, _spec.Space.XMeasured, _spec.Space.X) : 0f;
+                var spaceY = spaced ? StyleRelativeLengths.MeasureOr(child, _spec.Space.YMeasured, _spec.Space.Y) : 0f;
+                var columnGap = col == 0 ? 0f : _columnGap;
+                var rowGap = row == 0 ? 0f : _rowGap;
+                var left = columnGap;
+                var top = rowGap;
+                var right = 0f;
+                var bottom = 0f;
+                if (_spec.Space.XReverse)
+                {
+                    left += spaceX;
+                }
+                else
+                {
+                    right += spaceX;
+                }
+                if (_spec.Space.YReverse)
+                {
+                    top += spaceY;
+                }
+                else
+                {
+                    bottom += spaceY;
+                }
+                // The column owns the box: width + all four margins. Width is deferred — handed back — until a
+                // real row width resolves on panel.
+                if (hasWidth)
+                {
+                    StyleArbitraryValueResolver.Hold(child, HeldSlot.Width, new StyleLength(colWidth - spaceX));
+                }
+                else
+                {
+                    StyleArbitraryValueResolver.HandBack(child, HeldSlot.Width);
+                }
+                StyleArbitraryValueResolver.Hold(child, HeldSlot.MarginLeft, new StyleLength(left), columnGap);
+                StyleArbitraryValueResolver.Hold(child, HeldSlot.MarginTop, new StyleLength(top), rowGap);
+                StyleArbitraryValueResolver.Hold(child, HeldSlot.MarginRight, new StyleLength(right));
+                StyleArbitraryValueResolver.Hold(child, HeldSlot.MarginBottom, new StyleLength(bottom));
+                StyleChildOwnership.Claim(_ctx.ChildBoxOwners, child, this);
+                _sized.Add(child);
+                logicalIndex++;
+            }
+
+            // Only lock the signature once a real width resolved, so the deferred (off-panel) pass re-runs
+            // when contentRect.width becomes available on attach / first layout.
+            if (hasWidth)
+            {
+                _lastSignature = signature;
+                _hasSignature = true;
+            }
+            else
+            {
+                _hasSignature = false;
+            }
+        }
+
+        // Clears every width + margin this manipulator wrote (invoked on detach / removal).
+        private void Clear()
+        {
+            var container = ChildContainer;
+            if (container != null)
+            {
+                ResetStaleSized(container);
+            }
+            ResetAllSized();
+            _hasSignature = false;
+        }
+
+        // Offers any tracked element no longer a current child for release, then prunes it.
+        private void ResetStaleSized(VisualElement container)
+        {
+            for (var i = _sized.Count - 1; i >= 0; i--)
+            {
+                var child = _sized[i];
+                if (child.parent != container)
+                {
+                    ReleaseChild(child);
+                    _sized.RemoveAt(i);
+                }
+            }
+        }
+
+        private void ResetAllSized()
+        {
+            foreach (var child in _sized)
+            {
+                ReleaseChild(child);
+            }
+            _sized.Clear();
+        }
+
+        // The claim in ReconcilerContext.ChildBoxOwners decides this, not the tracked list, and every
+        // turn-off on a child that has LEFT the container goes through here. The one hand-back that lands on a
+        // CURRENT child does not ask — Apply hands the width back while no row width has resolved yet.
+        private void ReleaseChild(VisualElement child)
+        {
+            if (StyleChildOwnership.TryRelease(_ctx.ChildBoxOwners, child, this))
+            {
+                ResetChild(child);
+            }
+        }
+
+        private static void ResetChild(VisualElement child)
+        {
+            StyleArbitraryValueResolver.HandBack(child, HeldSlot.Width);
+            StyleArbitraryValueResolver.HandBack(child, HeldSlot.MarginLeft);
+            StyleArbitraryValueResolver.HandBack(child, HeldSlot.MarginTop);
+            StyleArbitraryValueResolver.HandBack(child, HeldSlot.MarginRight);
+            StyleArbitraryValueResolver.HandBack(child, HeldSlot.MarginBottom);
+        }
+
+        // Order-sensitive hash of the inputs that change the sizing: columns, gaps, resolved row width
+        // (rounded to skip float jitter), and the current child identity sequence.
+        private int ComputeSignature(VisualElement container, float width)
+        {
+            unchecked
+            {
+                var hash = 17;
+                hash = hash * 31 + _spec.Columns;
+                hash = hash * 31 + _columnGap.GetHashCode();
+                hash = hash * 31 + _rowGap.GetHashCode();
+                hash = hash * 31 + Mathf.RoundToInt(width);
+                var count = container.childCount;
+                hash = hash * 31 + count;
+                hash = StyleOutOfFlowChild.HashChildSequence(hash, container);
+                return hash;
+            }
+        }
+    }
+}

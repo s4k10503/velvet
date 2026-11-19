@@ -1,0 +1,4 @@
+/* A spacing unit declared under a class, which only the elements the class matches read. */
+.theme-token-host {
+    --spacing: 5px;
+}

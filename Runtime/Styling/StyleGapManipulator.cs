@@ -1,0 +1,737 @@
+using System.Collections.Generic;
+using UnityEngine.UIElements;
+
+namespace Velvet
+{
+    // The axis a gap spaces children along. Within an axis, StyleGapManipulator still picks the leading
+    // vs. trailing physical edge (margin-left/-top vs. margin-right/-bottom) — see
+    // StyleGapManipulator.ResolveGapSlot.
+    internal enum GapAxis
+    {
+        // Plain gap-*: follow the container's resolved flex-direction.
+        Auto,
+        // gap-x-*/space-x-*: always horizontal.
+        Horizontal,
+        // gap-y-*/space-y-*: always vertical.
+        Vertical,
+    }
+
+    // Framework-level polyfill for CSS gap and for Tailwind's space-* margin rule. UI Toolkit (6000.3) has
+    // no flex gap and no :first-child / :last-child selector, and Velvet owns the ordered child list, so this
+    // manipulator writes the margins itself. Each in-flow child's four margin slots are summed from two
+    // independent sources, as the two compose in a browser (gap on the container, margin on the child):
+    //   gap-*: the leading margin (margin-left for a row, margin-top for a column) on every child EXCEPT the
+    //   first, so the spacing sits strictly BETWEEN children. A row-reverse / column-reverse container moves
+    //   it to the axis's trailing edge (margin-right / margin-bottom), the edge that sits between the
+    //   visually adjacent pair there. Under flex-wrap it switches to the half-margin strategy below.
+    //   space-x-* / space-y-*: Tailwind v4's `:where(& > :not(:last-child))` rule — margin-inline-end
+    //   (margin-right) / margin-block-end (margin-bottom) on every child EXCEPT the last, or the start edge
+    //   under space-x-reverse / space-y-reverse. flex-direction and flex-wrap are never read for it, and a
+    //   margin the child's own classes set on that edge wins over it, as a class wins over Tailwind's
+    //   zero-specificity `:where()` there.
+    // A margin slot this pass does not ask for but still holds is handed back to the child's own layers.
+    // Lifecycle mirrors the other style manipulators (StyleVariantManipulator): the
+    // reconciler attaches one per gap container, keeps it in ReconcilerContext.GapManipulators,
+    // and removes it on cleanup / dispose. UnregisterCallbacksFromTarget clears what it still owns —
+    // the margins on its current children, and on a departed one only while
+    // ReconcilerContext.ChildBoxOwners still names this manipulator.
+    // Child container. The manipulator is attached to the gap ELEMENT, but its children are reconciled
+    // into FiberNodePatcher.GetChildContainer(element) — a composite widget's inner box, not the widget.
+    // Everything naming a container names that one: the iteration, the wrap path's negative margin, and
+    // the direction / wrap verdicts (DirectionOf, IsWrap). A direction or wrap class on the widget reaches
+    // that box inline, through StyleCompositeFlowManipulator.
+    // Re-application. The spacing depends on the child set and, for a gap, the resolved direction, both of
+    // which change outside this manipulator's own events. It is re-applied from three sources: (1) the
+    // reconciler calls Apply right after it reconciles the container's children (the panel-independent path
+    // that also covers EditMode, where layout never ticks); (2) GeometryChangedEvent, on the container and on
+    // the last child it spaces, catches a child set or a direction changed by anything else, and reads the direction
+    // and the wrap from resolvedStyle, which the layout pass that raised it has just brought up to date;
+    // (3) AttachToPanelEvent re-resolves once resolvedStyle is valid.
+    // A signature (_lastSignature) makes repeated Apply calls with no relevant change — notably the
+    // GeometryChanged feedback the manipulator's own margin writes provoke — into no-ops.
+    // Reparent / removal. The manipulator tracks every element it wrote a margin to
+    // (_margined); on each Apply / Clear any tracked element that is no longer a current child is offered
+    // for release first, so a child moved out of (or removed from) a gap container carries no margin this
+    // container still owns. What it owns is ReconcilerContext.ChildBoxOwners' answer rather than the
+    // tracked list's: a child re-rented by another gap or grid container keeps what that one wrote.
+    // Out-of-flow children (position: absolute) are excluded from the index walk entirely — see
+    // StyleOutOfFlowChild — matching CSS gap, which never spaces a child that has been taken out of
+    // flow. This is not a PopLayout-only carve-out: any app-authored .absolute child under a gap
+    // container was already exempt from occupying a flex slot, so it must not consume or shift a gap
+    // margin either. It is also what lets AnimatePresenceMode.PopLayout deliver its purpose — a
+    // GeneralPathReconciler.PinExitingChildOutOfFlow ghost must stop being counted the instant it is
+    // pinned so its still-present siblings reflow into its slot immediately, and the ghost's own frozen
+    // margin (folded into its pinned left/top) is left untouched rather than being reset or reassigned.
+    // Wrap (flex-wrap) hybrid. CSS gap under wrapping spaces BOTH axes
+    // (between items in a line AND between wrapped lines), but a single leading-edge margin can only
+    // space the main axis. So a gap switches strategy under wrap: gap/2 on ALL FOUR sides of EVERY child
+    // and -gap/2 on all four sides of the CHILD CONTAINER. Adjacent items (in either axis, including across
+    // wrapped lines) are then separated by gap/2 + gap/2 == gap, and the container's negative margin pulls
+    // content flush to its edge. Wrap is detected from the child container — see IsWrap. The half-margin
+    // path writes layout-independent margins, so it is fully resolved (and assertable) without a layout
+    // tick. Direction never changes which edges wrap spaces (always symmetric).
+    // A margin of a child's own on an edge a gap writes, and of the container's own under the wrap path, is
+    // added to rather than replaced (StyleArbitraryValueResolver.HoldGap), as CSS adds a gap to an item's
+    // margin and leaves the container's alone.
+    // The wrap path's container negative margin draws the container's box half of each gap past each edge that
+    // gap spaces, where CSS draws it at them; Documentation~/styling-flexbox-and-gap.md owns why.
+    internal sealed class StyleGapManipulator : Manipulator, IChildClassWatcher
+    {
+        private static readonly HeldSlot[] s_marginSlots =
+        {
+            HeldSlot.MarginTop, HeldSlot.MarginRight, HeldSlot.MarginBottom, HeldSlot.MarginLeft,
+        };
+
+        private readonly ReconcilerContext _ctx;
+
+        // Source asymmetry (by design, not an oversight): the reverse markers are extracted at gap-config time
+        // from the same class array the gap and space values are read from, so a variant-prefixed
+        // md:space-x-reverse resolves with the rest of the spec — the patcher switches that array to the
+        // element's live class list once a variant has toggled any layout gate class onto it, which is what
+        // carries the marker across a breakpoint.
+        // StyleFlexDirectionResolver, by contrast, reads the live child container's classList
+        // unconditionally: unlike the gap spec, the direction can change with no matching gap-config patch.
+        private GapSpec _spec;
+
+        // Every element this manipulator has written a margin to. On each Apply / Clear, any tracked element
+        // that is no longer a current child of the child container is offered for release; whether it loses
+        // the margin is the claim's answer, not this list's — see ReconcilerContext.ChildBoxOwners.
+        private readonly List<VisualElement> _margined = new();
+        // The children in flex order, refilled by each Apply.
+        private readonly List<VisualElement> _flow = new();
+
+        // Whether the child container carries the wrap path's negative margin.
+        private bool _containerHeld;
+
+        // The size slots of the child container's layout box this manipulator holds (HoldSizes), by HeldSlot bit, and
+        // the parent it listens to for a percentage size.
+        private int _sizesHeld;
+
+        // The layout box the container's margins and sizes were last held on — see MoveBox.
+        private VisualElement? _box;
+        private VisualElement? _sizeParent;
+
+        // One child's summed margins and which slots anything asked for, indexed by HeldSlot; reused per child.
+        private readonly float[] _margins = new float[s_marginSlots.Length];
+        private readonly bool[] _wanted = new bool[s_marginSlots.Length];
+
+        // Which slots a gap writes, and how much of _margins it writes there; a slot only a space margin writes
+        // yields to the child's own layers.
+        private readonly bool[] _gapWanted = new bool[s_marginSlots.Length];
+        private readonly float[] _gaps = new float[s_marginSlots.Length];
+
+        // Signature of the last successful Apply. Apply() early-returns when this is unchanged, so the
+        // GeometryChanged churn the margin writes themselves provoke (and repeated reconcile passes that do
+        // not touch the child set) are no-ops.
+        private int _lastSignature;
+        private bool _hasSignature;
+
+        // Null unless the child container is a separate element — see ObserveChildContainer.
+        private VisualElement? _observed;
+
+        // The child whose geometry this listens to — see WatchGeometry.
+        private VisualElement? _watchedChild;
+
+        // Set while a GeometryChangedEvent applies: a layout pass has just run, so resolvedStyle holds the
+        // cascade's answer for the direction and the wrap — see DirectionOf.
+        private bool _settled;
+
+        // The child container's content width at the last geometry event — see OnGeometryChanged.
+        private float _lastWidth = float.NaN;
+
+        // Whether the last read found a class — a flex-wrap / flex-nowrap / flex-wrap-reverse marker for the
+        // wrap, one of the five direction/display classes for the direction — and whether such a class has
+        // left since the last GeometryChangedEvent. They record class presence, not which source answered.
+        // See DirectionOf and IsWrap.
+        private bool _wrapFromMarker;
+        private bool _directionFromClass;
+        private bool _directionClassLeft;
+        private bool _wrapClassLeft;
+
+        // The gaps as the container measures them, read at the start of each Apply.
+        private float _columnGap;
+        private float _rowGap;
+
+        // Re-applies once what a measured gap or margin reads has moved; null while the spec measures none.
+        private RelativeLengthPoll? _poll;
+
+        // What the children measure, which the poll reads beside the container: a child's own font moves the length
+        // it measures without moving the container.
+        private int ChildReading() => _spec.Space.IsMeasured ? StyleRelativeLengths.ChildrenReading(ChildContainer) : 0;
+
+        // Static lambdas, so a call starting no poll builds nothing (RelativeLengthPollAllocationTests).
+        private void SyncPoll(bool wanted)
+            => StyleRelativeLengths.SyncPoll(ref _poll, target, wanted, this, static self => self.Reapply(),
+                static self => self.ChildReading());
+
+        public StyleGapManipulator(ReconcilerContext ctx, GapSpec spec)
+        {
+            _ctx = ctx;
+            _spec = spec;
+        }
+
+        // Swaps the spec and re-applies.
+        public void UpdateGap(GapSpec spec)
+        {
+            _spec = spec;
+            SyncPoll(_spec.IsMeasured);
+            // Force a re-apply: the spec changed even when the child set did not, so invalidate the cache.
+            Reapply();
+        }
+
+        // A class of a child's own changed: a space margin may now give way to it, or a display:none child
+        // take no gap slot.
+        public void Reapply()
+        {
+            _hasSignature = false;
+            Apply();
+        }
+
+        protected override void RegisterCallbacksOnTarget()
+        {
+            target.RegisterCallback<AttachToPanelEvent>(OnAttach);
+            target.RegisterCallback<GeometryChangedEvent>(OnGeometryChanged);
+            ObserveChildContainer();
+            SyncPoll(_spec.IsMeasured);
+            Apply();
+        }
+
+        protected override void UnregisterCallbacksFromTarget()
+        {
+            SyncPoll(false);
+            Clear();
+            target.UnregisterCallback<AttachToPanelEvent>(OnAttach);
+            target.UnregisterCallback<GeometryChangedEvent>(OnGeometryChanged);
+            if (_observed != null)
+            {
+                _observed.UnregisterCallback<GeometryChangedEvent>(OnGeometryChanged);
+                _observed = null;
+            }
+        }
+
+        // GeometryChangedEvent neither bubbles nor trickles, so a re-layout confined to a composite widget's
+        // inner box — the box the verdicts come from — reaches nothing registered on the target.
+        // AttachToPanelEvent is not doubled: the inner box attaches in the target's own subtree pass.
+        // The element is remembered, not re-derived, so teardown releases what registration took.
+        private void ObserveChildContainer()
+        {
+            var container = ChildContainer;
+            if (container == null || ReferenceEquals(container, target))
+            {
+                return;
+            }
+            _observed = container;
+            container.RegisterCallback<GeometryChangedEvent>(OnGeometryChanged);
+        }
+
+        private void OnAttach(AttachToPanelEvent evt)
+        {
+            // resolvedStyle.flexDirection / flexWrap only become valid on a panel; force a re-resolve.
+            _hasSignature = false;
+            Apply();
+        }
+
+        // A percentage margin of a child's own that a gap adds to (StyleArbitraryValueResolver.HoldGap) is taken of
+        // the content width, so a width that moved re-applies past the signature.
+        private void OnGeometryChanged(GeometryChangedEvent evt)
+        {
+            _directionClassLeft = false;
+            _wrapClassLeft = false;
+            var width = ChildContainer?.contentRect.width ?? float.NaN;
+            if (!width.Equals(_lastWidth))
+            {
+                _lastWidth = width;
+                _hasSignature = false;
+            }
+            _settled = true;
+            try
+            {
+                Apply();
+            }
+            finally
+            {
+                _settled = false;
+            }
+        }
+
+        // A direction or wrap written outside the class list on a container that keeps its size raises no event
+        // on the container, but it moves the last child the gap spaces, so that child's geometry is listened to as
+        // well. One child rather than each: every child's event would re-read the whole child set.
+        private void WatchGeometry(VisualElement? child)
+        {
+            if (ReferenceEquals(child, _watchedChild))
+            {
+                return;
+            }
+            _watchedChild?.UnregisterCallback<GeometryChangedEvent>(OnGeometryChanged);
+            _watchedChild = child;
+            _watchedChild?.RegisterCallback<GeometryChangedEvent>(OnGeometryChanged);
+        }
+
+        // The container children are reconciled into (a composite widget's inner box; else self).
+        private VisualElement? ChildContainer
+            => target == null ? null : FiberNodePatcher.GetChildContainer(target);
+
+        // Sums what the gap and the two space axes ask of each in-flow child's margin slots, holds those and
+        // hands back the rest, and holds or hands back the container's negative margin for the wrap path.
+        // Early-returns when nothing relevant (spec, wrap, gap slot, child set) changed since the last
+        // successful application.
+        public void Apply()
+        {
+            var container = ChildContainer;
+            if (container == null)
+            {
+                return;
+            }
+
+            _columnGap = StyleRelativeLengths.MeasureOr(target, _spec.ColumnGapMeasured, _spec.ColumnGap);
+            _rowGap = StyleRelativeLengths.MeasureOr(target, _spec.RowGapMeasured, _spec.RowGap);
+            var wrap = (_spec.HasColumnGap || _spec.HasRowGap) && IsWrap(container);
+            var box = ClipPathLayoutBox.Of(container);
+            MoveBox(box);
+            // Ahead of the signature: a size declaration of the container's own changes with none of its inputs.
+            HoldSizes(box, wrap);
+            var gapSlot = ResolveGapSlot(container);
+            var signature = ComputeSignature(container, wrap, gapSlot);
+            if (_hasSignature && signature == _lastSignature)
+            {
+                return;
+            }
+
+            // Must run before _margined.Clear(): it reads the pre-clear list to find children that left.
+            ResetStaleMargined(container);
+            _margined.Clear();
+
+            // Tailwind's `:last-child` counts an absolutely positioned child, so the space rule reads the raw index;
+            // CSS gap spaces only boxed in-flow children, so the gap reads its own count.
+            var last = StyleOutOfFlowChild.LastSpacedChild(container);
+            FiberZLayerCoordinator.FlowChildren(container, _flow);
+            var gapIndex = 0;
+            VisualElement? lastSpaced = null;
+            foreach (var child in _flow)
+            {
+                // Out-of-flow children (a PopLayout-pinned exiting ghost, or an app-authored .absolute
+                // child) hold no slot in the flex line — see StyleOutOfFlowChild. Skip them entirely rather
+                // than resetting their margin: a pinned ghost's own margin is frozen into the compensated
+                // left/top PinExitingChildOutOfFlow already computed for it, and touching it here would
+                // reintroduce the same double-application it was pinned to avoid.
+                if (StyleOutOfFlowChild.IsOutOfFlow(child))
+                {
+                    continue;
+                }
+                System.Array.Clear(_margins, 0, _margins.Length);
+                System.Array.Clear(_wanted, 0, _wanted.Length);
+                System.Array.Clear(_gapWanted, 0, _gapWanted.Length);
+                System.Array.Clear(_gaps, 0, _gaps.Length);
+                // A display:none child has no box, so CSS gap neither spaces it nor counts it as the first.
+                if (!StyleOutOfFlowChild.HasNoBox(child))
+                {
+                    SumGap(gapIndex, wrap, gapSlot);
+                    gapIndex++;
+                    lastSpaced = child;
+                }
+                if (!ReferenceEquals(child, last))
+                {
+                    SumSpace(child);
+                }
+                WriteMargins(child);
+                StyleChildOwnership.Claim(_ctx.ChildBoxOwners, child, this);
+                _margined.Add(child);
+            }
+            WatchGeometry(lastSpaced);
+
+            if (wrap)
+            {
+                HoldContainerAxis(box, HeldSlot.MarginLeft, HeldSlot.MarginRight, _spec.HasColumnGap, _columnGap);
+                HoldContainerAxis(box, HeldSlot.MarginTop, HeldSlot.MarginBottom, _spec.HasRowGap, _rowGap);
+            }
+            else if (_containerHeld)
+            {
+                HandBackMargins(box);
+            }
+            _containerHeld = wrap;
+
+            _lastSignature = signature;
+            _hasSignature = true;
+        }
+
+        // Adds what CSS gap asks of the boxed child at gapIndex. Without wrap only the main axis is spaced: the
+        // column gap along a row, the row gap down a column, each on every child but the first. Under wrap every
+        // child takes half of each gap on both edges of that axis.
+        private void SumGap(int gapIndex, bool wrap, HeldSlot gapSlot)
+        {
+            if (wrap)
+            {
+                AddGapPair(HeldSlot.MarginLeft, HeldSlot.MarginRight, _spec.HasColumnGap, _columnGap / 2f);
+                AddGapPair(HeldSlot.MarginTop, HeldSlot.MarginBottom, _spec.HasRowGap, _rowGap / 2f);
+                return;
+            }
+            if (gapIndex == 0)
+            {
+                return;
+            }
+            if (MainGap(gapSlot, out var gap))
+            {
+                AddGap(gapSlot, gap);
+            }
+        }
+
+        // The main axis's gap, which gapSlot lies on: the column gap along a row, the row gap down a column.
+        private bool MainGap(HeldSlot gapSlot, out float gap)
+        {
+            switch (gapSlot)
+            {
+                case HeldSlot.MarginLeft:
+                case HeldSlot.MarginRight:
+                    gap = _columnGap;
+                    return _spec.HasColumnGap;
+                default:
+                    gap = _rowGap;
+                    return _spec.HasRowGap;
+            }
+        }
+
+        private void AddGapPair(HeldSlot start, HeldSlot end, bool has, float value)
+        {
+            if (!has)
+            {
+                return;
+            }
+            AddGap(start, value);
+            AddGap(end, value);
+        }
+
+        // Adds Tailwind's space margins for a child that is not the last. A space margin gives way to one the
+        // child's own classes set on that edge: a USS utility here, an arbitrary value through a yielding hold.
+        private void SumSpace(VisualElement child)
+        {
+            var space = _spec.Space;
+            // A space margin is the child's, so the child measures it.
+            AddSpace(child, space.XReverse ? HeldSlot.MarginLeft : HeldSlot.MarginRight,
+                StyleRelativeLengths.MeasureOr(child, space.XMeasured, space.X));
+            AddSpace(child, space.YReverse ? HeldSlot.MarginTop : HeldSlot.MarginBottom,
+                StyleRelativeLengths.MeasureOr(child, space.YMeasured, space.Y));
+        }
+
+        private void AddSpace(VisualElement child, HeldSlot slot, float value)
+        {
+            if (value != 0f && !StyleArbitraryValueResolver.DeclaresOwn(child, slot))
+            {
+                Add(slot, value);
+            }
+        }
+
+        private void Add(HeldSlot slot, float value)
+        {
+            _margins[(int)slot] += value;
+            _wanted[(int)slot] = true;
+        }
+
+        private void AddGap(HeldSlot slot, float value)
+        {
+            Add(slot, value);
+            _gapWanted[(int)slot] = true;
+            _gaps[(int)slot] += value;
+        }
+
+        // Holds every slot SumMargins asked for and hands back the others this child still has held.
+        private void WriteMargins(VisualElement child)
+        {
+            foreach (var slot in s_marginSlots)
+            {
+                if (!_wanted[(int)slot])
+                {
+                    StyleArbitraryValueResolver.HandBackIfHeld(child, slot);
+                    continue;
+                }
+                if (_gapWanted[(int)slot])
+                {
+                    StyleArbitraryValueResolver.HoldGap(child, slot, new StyleLength(_margins[(int)slot]), _gaps[(int)slot]);
+                    continue;
+                }
+                StyleArbitraryValueResolver.Hold(child, slot, new StyleLength(_margins[(int)slot]));
+                StyleArbitraryValueResolver.Yield(child, slot);
+            }
+        }
+
+        // Clears every margin this manipulator still owns (invoked on detach / removal).
+        private void Clear()
+        {
+            var container = ChildContainer;
+            if (container != null)
+            {
+                var box = ClipPathLayoutBox.Of(container);
+                MoveBox(box);
+                if (_containerHeld)
+                {
+                    HandBackMargins(box);
+                }
+                HoldSizes(box, false);
+            }
+            ResetAllMargined();
+            WatchGeometry(null);
+        }
+
+        // Offers every tracked element that is no longer a current child of container (reparented or
+        // removed) for release, then prunes it from the tracking list.
+        private void ResetStaleMargined(VisualElement container)
+        {
+            for (var i = _margined.Count - 1; i >= 0; i--)
+            {
+                var child = _margined[i];
+                if (child.parent != container)
+                {
+                    ReleaseGapMargins(child);
+                    _margined.RemoveAt(i);
+                }
+            }
+        }
+
+        // Offers every tracked element for release (used on Clear / detach).
+        private void ResetAllMargined()
+        {
+            foreach (var child in _margined)
+            {
+                ReleaseGapMargins(child);
+            }
+            _margined.Clear();
+        }
+
+        // The claim in ReconcilerContext.ChildBoxOwners decides this, not the tracked list, and every
+        // turn-off through Clear or on a child that has LEFT the container goes through here. The hand-backs
+        // Apply makes on CURRENT children do not ask: this pass has just claimed them. It hands back all four
+        // margin edges: an earlier pass may have written any of them while this element was still a member.
+        private void ReleaseGapMargins(VisualElement child)
+        {
+            if (StyleChildOwnership.TryRelease(_ctx.ChildBoxOwners, child, this))
+            {
+                HandBackMargins(child);
+            }
+        }
+
+        // The wrap path's negative margin on one axis of the container: -gap/2 on both edges, or nothing held
+        // there when that axis has no gap.
+        private static void HoldContainerAxis(VisualElement box, HeldSlot start, HeldSlot end, bool has, float gap)
+        {
+            if (!has)
+            {
+                StyleArbitraryValueResolver.HandBackIfHeld(box, start);
+                StyleArbitraryValueResolver.HandBackIfHeld(box, end);
+                return;
+            }
+            StyleArbitraryValueResolver.HoldGap(box, start, new StyleLength(-gap / 2f), -gap / 2f);
+            StyleArbitraryValueResolver.HoldGap(box, end, new StyleLength(-gap / 2f), -gap / 2f);
+        }
+
+        // A clip wrapper arriving or leaving changes which element lays the container out in its parent
+        // (ClipPathLayoutBox.Of), and the move carries the values held there across (ClipPathLayoutBox.Adopt and
+        // Release). The holds stay on the element left behind, where a later reassert would write them over the
+        // value the move left it, so they are dropped without a write and taken again on the new box.
+        private void MoveBox(VisualElement box)
+        {
+            if (_box != null && !ReferenceEquals(_box, box))
+            {
+                foreach (var slot in HeldSlotGroups.EverySlot)
+                {
+                    var margin = _containerHeld && System.Array.IndexOf(s_marginSlots, slot) >= 0;
+                    if (margin || (_sizesHeld & StyleHeldSlots.Bit(slot)) != 0)
+                    {
+                        StyleArbitraryValueResolver.LetGo(_box, slot);
+                    }
+                }
+                _containerHeld = false;
+                _sizesHeld = 0;
+                _hasSignature = false;
+            }
+            _box = box;
+        }
+
+        private static readonly HeldSlot[] s_columnSizes = { HeldSlot.Width, HeldSlot.MinWidth, HeldSlot.MaxWidth };
+        private static readonly HeldSlot[] s_rowSizes = { HeldSlot.Height, HeldSlot.MinHeight, HeldSlot.MaxHeight };
+
+        // The wrap path's negative margin does not grow a size, minimum or maximum the container declares itself,
+        // which would leave its content box a gap short of the room CSS lays the items out in
+        // (WrapGapDefiniteSizePanelTests), so each is grown by its axis's gap.
+        private void HoldSizes(VisualElement box, bool wrap)
+        {
+            var held = 0;
+            HoldAxisSizes(box, s_columnSizes, wrap && _spec.HasColumnGap, _spec.ColumnGap, ref held);
+            HoldAxisSizes(box, s_rowSizes, wrap && _spec.HasRowGap, _spec.RowGap, ref held);
+            _sizesHeld = held;
+            WatchSizeParent(held != 0 ? box.hierarchy.parent : null);
+        }
+
+        private void HoldAxisSizes(VisualElement box, HeldSlot[] slots, bool has, float gap, ref int held)
+        {
+            foreach (var slot in slots)
+            {
+                var bit = StyleHeldSlots.Bit(slot);
+                var mine = (_sizesHeld & bit) != 0;
+                if (has && StyleArbitraryValueResolver.HoldSizeGap(box, slot, gap, mine))
+                {
+                    held |= bit;
+                }
+                else if (mine)
+                {
+                    StyleArbitraryValueResolver.HandBack(box, slot);
+                }
+            }
+        }
+
+        // A percentage size is measured off the parent, which can resize while the container's grown size keeps
+        // the container's own geometry where it was.
+        private void WatchSizeParent(VisualElement? parent)
+        {
+            if (ReferenceEquals(parent, _sizeParent))
+            {
+                return;
+            }
+            _sizeParent?.UnregisterCallback<GeometryChangedEvent>(OnSizeParentGeometryChanged);
+            _sizeParent = parent;
+            _sizeParent?.RegisterCallback<GeometryChangedEvent>(OnSizeParentGeometryChanged);
+        }
+
+        private void OnSizeParentGeometryChanged(GeometryChangedEvent evt) => Apply();
+
+        private static void HandBackMargins(VisualElement element)
+        {
+            foreach (var slot in s_marginSlots)
+            {
+                StyleArbitraryValueResolver.HandBack(element, slot);
+            }
+        }
+
+        // A cheap order-sensitive hash of the inputs besides the spec that change the applied margins — the
+        // spec only changes through UpdateGap, which drops the signature itself: the wrap verdict, the gap's
+        // resolved slot, the current child identity sequence, and which children have no box, which an inline
+        // display changes with the sequence as it was. The gap slot has to be
+        // the slot itself rather than an axis bit — Left→Right or Top→Bottom is a same-axis flip (a direction
+        // toggling without the row/column axis itself changing), and a signature collision here would skip
+        // the re-apply that moves the margin to the new edge.
+        private static int ComputeSignature(VisualElement container, bool wrap, HeldSlot gapSlot)
+        {
+            unchecked
+            {
+                var hash = StyleOutOfFlowChild.HashChildSequence(wrap ? HeldSlotGroups.SlotCount : (int)gapSlot, container);
+                var count = container.childCount;
+                for (var i = 0; i < count; i++)
+                {
+                    // MUTANT_SURVIVES(equivalent, arithmetic): subtracting the term changes the hash wherever adding it does.
+                    hash = hash * 31 + (StyleOutOfFlowChild.HasNoBox(container[i]) ? 1 : 0);
+                }
+                return hash;
+            }
+        }
+
+        // The slot a non-wrap gap writes on every child but the first: the leading edge of the main axis, or the
+        // trailing one when the resolved direction reverses it, which keeps it between the visually adjacent
+        // pair. A space-* marker never reaches it: CSS gap has none.
+        private HeldSlot ResolveGapSlot(VisualElement container)
+        {
+            switch (DirectionOf(container))
+            {
+                case FlexDirection.Row:
+                    return HeldSlot.MarginLeft;
+                case FlexDirection.RowReverse:
+                    return HeldSlot.MarginRight;
+                case FlexDirection.ColumnReverse:
+                    return HeldSlot.MarginBottom;
+                default:
+                    return HeldSlot.MarginTop;
+            }
+        }
+
+        // From a geometry event on a panel, resolvedStyle: the cascade's own answer, which a stylesheet rule
+        // outranking a direction class is part of. Otherwise in the order inline flex-direction, then the class
+        // verdict (StyleFlexDirectionResolver), then resolvedStyle, since a patch runs before the style pass that
+        // reads its classes. Once every direction/display class has left the class list, the fallback is not
+        // taken until the next GeometryChangedEvent — for the reason IsWrap gives — and the verdict is Column,
+        // the direction an element carrying none of those classes lays out in.
+        private FlexDirection DirectionOf(VisualElement container)
+        {
+            var fromClass = StyleFlexDirectionResolver.FromClasses(container);
+            var hadClass = _directionFromClass;
+            _directionFromClass = fromClass != null;
+            // MUTANT_SURVIVES(equivalent, clause removed): the flag is read only once the class is gone, and the
+            // call that first finds it gone sets the flag itself, so setting it earlier changes nothing.
+            if (hadClass && fromClass == null)
+            {
+                _directionClassLeft = true;
+            }
+            if (_settled && container.panel != null)
+            {
+                return container.resolvedStyle.flexDirection;
+            }
+            var inline = container.style.flexDirection;
+            if (inline.keyword != StyleKeyword.Null)
+            {
+                return inline.value;
+            }
+            if (fromClass != null)
+            {
+                return fromClass.Value;
+            }
+            if (_directionClassLeft)
+            {
+                return FlexDirection.Column;
+            }
+            return StyleFlexDirectionResolver.ResolveWithoutClasses(container);
+        }
+
+        // True when the child container wraps (selects the four-side half-margin path). Read from the child
+        // container, like the direction, and in the same order (DirectionOf). An inline flex-wrap is read before
+        // the markers. The flex-wrap / flex-nowrap / flex-wrap-reverse markers
+        // are consulted next, in _layout.uss's
+        // declaration order (flex-wrap-reverse beats flex-wrap beats flex-nowrap when more than one is
+        // present). There is no further "direction class implies a default" tier: flex / flex-row(-reverse)
+        // / flex-col(-reverse) set flex-direction only, and since nearly every real container carries one,
+        // treating them as evidence would take the resolvedStyle fallback away from almost all of them and
+        // misread a genuinely wrapping inline-styled container as non-wrapping. That fallback is the
+        // catch-all for wrap set by a custom stylesheet rule.
+        // Once a marker leaves the class list the fallback is not taken until the next GeometryChangedEvent:
+        // until a layout pass has run, resolvedStyle can still hold the style pass that saw the marker, and
+        // a container that keeps its size would fire no event to correct a stale "wrap". Until then an unset
+        // inline flex-wrap answers no-wrap, the engine's own default.
+        private bool IsWrap(VisualElement container)
+        {
+            var marker = WrapMarker(container);
+            var hadMarker = _wrapFromMarker;
+            _wrapFromMarker = marker != null;
+            // MUTANT_SURVIVES(equivalent, clause removed): the flag is read only once the marker is gone, and the
+            // call that first finds it gone sets the flag itself, so setting it earlier changes nothing.
+            if (hadMarker && marker == null)
+            {
+                _wrapClassLeft = true;
+            }
+            if (_settled && container.panel != null)
+            {
+                return container.resolvedStyle.flexWrap != Wrap.NoWrap;
+            }
+            var inline = container.style.flexWrap;
+            if (inline.keyword != StyleKeyword.Null)
+            {
+                return inline.value != Wrap.NoWrap;
+            }
+            if (marker != null)
+            {
+                return marker.Value;
+            }
+            if (_wrapClassLeft)
+            {
+                return false;
+            }
+            if (container.panel != null)
+            {
+                var wrap = container.resolvedStyle.flexWrap;
+                return wrap == Wrap.Wrap || wrap == Wrap.WrapReverse;
+            }
+            return false;
+        }
+
+        private static bool? WrapMarker(VisualElement container)
+        {
+            var wrap = StyleFlexDirectionResolver.WrapFromClasses(container);
+            return wrap == null ? null : wrap != Wrap.NoWrap;
+        }
+    }
+}

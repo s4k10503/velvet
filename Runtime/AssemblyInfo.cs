@@ -1,0 +1,24 @@
+using System.Runtime.CompilerServices;
+
+[assembly: InternalsVisibleTo("Velvet.Tests.Async.Editor")]
+[assembly: InternalsVisibleTo("Velvet.Tests.Async.PlayMode")]
+[assembly: InternalsVisibleTo("Velvet.Tests.BuildInclusion.Editor")]
+[assembly: InternalsVisibleTo("Velvet.Tests.Component.Editor")]
+[assembly: InternalsVisibleTo("Velvet.Tests.DevTools.Editor")]
+[assembly: InternalsVisibleTo("Velvet.Tests.Component.PlayMode")]
+[assembly: InternalsVisibleTo("Velvet.Tests.Hooks.Editor")]
+[assembly: InternalsVisibleTo("Velvet.Tests.Hooks.PlayMode")]
+[assembly: InternalsVisibleTo("Velvet.Tests.Reconciler.Editor")]
+[assembly: InternalsVisibleTo("Velvet.Tests.Reconciler.PlayMode")]
+[assembly: InternalsVisibleTo("Velvet.Tests.Routing.Editor")]
+[assembly: InternalsVisibleTo("Velvet.Tests.Routing.PlayMode")]
+[assembly: InternalsVisibleTo("Velvet.Tests.Store.Editor")]
+[assembly: InternalsVisibleTo("Velvet.Tests.Store.PlayMode")]
+[assembly: InternalsVisibleTo("Velvet.Tests.Styling.Editor")]
+[assembly: InternalsVisibleTo("Velvet.Tests.Styling.PlayMode")]
+[assembly: InternalsVisibleTo("Velvet.TestUtilities")]
+[assembly: InternalsVisibleTo("Velvet.Editor")]
+[assembly: InternalsVisibleTo("Unity.Velvet.CodeGen")]
+
+// See Generators~/README.md for the code-shape rules and why they are opt-in.
+[assembly: System.Reflection.AssemblyMetadata("Velvet.CodeShape", "enforce")]

@@ -1,0 +1,1178 @@
+using NUnit.Framework;
+using UnityEngine;
+using UnityEngine.UIElements;
+using Velvet.TestUtilities;
+
+namespace Velvet.Tests
+{
+    /// <summary>
+    /// Specifies Tailwind's preflight <c>border-color: currentcolor</c> on an element carrying a border-width utility:
+    /// it draws in the element's text colour, follows it, and gives way to every author rule that sets a border colour
+    /// whatever its selector, but not to a control theme's.
+    /// </summary>
+    internal sealed class BorderPreflightTests : PanelTestBase
+    {
+        private const string RuleSheet = "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BorderPreflightRules.uss";
+        private const string ThemeSheet = "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BorderPreflightTheme.uss";
+
+        protected override void LoadStyleSheets()
+        {
+            var root = _window.rootVisualElement;
+            VelvetStyleUtilities.AttachTo(root);
+            root.styleSheets.Add(UnityEditor.AssetDatabase.LoadAssetAtPath<StyleSheet>(ThemeSheet));
+            EngineMember.StyleSheetIsDefault.ResolveProperty()!.SetValue(
+                UnityEditor.AssetDatabase.LoadAssetAtPath<StyleSheet>(ThemeSheet), true);
+            root.styleSheets.Add(UnityEditor.AssetDatabase.LoadAssetAtPath<StyleSheet>(RuleSheet));
+        }
+
+        private static StateUpdater<string> s_setClass;
+        private static string s_className;
+
+        public override void SetUp()
+        {
+            s_setClass = default;
+            base.SetUp();
+        }
+
+        [Component]
+        private static VNode RenderSwitchable()
+        {
+            var (className, setClass) = Hooks.UseState(s_className);
+            s_setClass = setClass;
+            return V.Label(name: "tag", className: className, text: "Tag");
+        }
+
+        // Mounts a Label whose class list is replaced through s_setClass.
+        private VisualElement MountSwitchable(string className)
+        {
+            s_className = className;
+            _mounted = V.Mount(_window.rootVisualElement, V.Component(RenderSwitchable));
+            return Settled("tag");
+        }
+
+        private VisualElement Patch(string className)
+        {
+            s_setClass.Invoke(className);
+            _mounted.Root.Reconciler.Context.BatchScheduler.DrainImmediateForTest();
+            return Settled("tag");
+        }
+
+        private VisualElement MountLabel(string className, string name = "tag")
+        {
+            _mounted = V.Mount(_window.rootVisualElement, V.Label(name: name, className: className, text: "Tag"));
+            return Settled(name);
+        }
+
+        private VisualElement Settled(string name)
+        {
+            var element = _window.rootVisualElement.Q<VisualElement>(name);
+            for (var i = 0; i < 3; i++)
+            {
+                ForcePanelUpdate(element.panel);
+            }
+            return element;
+        }
+
+        // A reference element whose text colour is what a utility resolves to, to compare a border colour with.
+        private Color TextColourOf(string utility)
+        {
+            var reference = new Label { name = "reference" };
+            reference.AddToClassList(utility);
+            _window.rootVisualElement.Add(reference);
+            ForcePanelUpdate(reference.panel);
+            var colour = reference.resolvedStyle.color;
+            reference.RemoveFromHierarchy();
+            return colour;
+        }
+
+        private static void SetPseudo(VisualElement element, string state, bool on)
+        {
+            var property = EngineMember.PseudoStates.ResolveProperty()!;
+            var flag = System.Convert.ToInt32(System.Enum.Parse(property.PropertyType, state));
+            var current = System.Convert.ToInt32(property.GetValue(element));
+            property.SetValue(element, System.Enum.ToObject(property.PropertyType, on ? current | flag : current & ~flag));
+        }
+
+        [Test]
+        public void Given_ALabelWithABorderWidthAndATextColour_When_Resolved_Then_ItsBorderIsDrawnInTheTextColour()
+        {
+            // Arrange
+            var expected = TextColourOf("text-red-500");
+
+            // Act
+            var tag = MountLabel("border rounded px-2 text-red-500");
+
+            // Assert
+            Assert.That(tag.resolvedStyle.borderTopColor, Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void Given_ALabelWithABorderWidthAndATextColour_When_Resolved_Then_EverySideIsDrawnInTheTextColour()
+        {
+            // Arrange
+            var expected = TextColourOf("text-red-500");
+
+            // Act
+            var tag = MountLabel("border text-red-500");
+
+            // Assert
+            Assert.That(new[]
+            {
+                tag.resolvedStyle.borderRightColor, tag.resolvedStyle.borderBottomColor, tag.resolvedStyle.borderLeftColor,
+            }, Is.All.EqualTo(expected));
+        }
+
+        [Test]
+        public void Given_ABorderedLabel_When_ItsTextColourChanges_Then_ItsBorderFollows()
+        {
+            // Arrange
+            var tag = MountLabel("border text-red-500");
+
+            // Act
+            tag.style.color = new StyleColor(Color.blue);
+            ForcePanelUpdate(tag.panel);
+
+            // Assert
+            Assert.That(tag.resolvedStyle.borderTopColor, Is.EqualTo(Color.blue));
+        }
+
+        [Test]
+        public void Given_ABorderedLabelWithoutATextColourOfItsOwn_When_ItsParentsChanges_Then_ItsBorderFollows()
+        {
+            // Arrange
+            _mounted = V.Mount(_window.rootVisualElement, V.Div(name: "parent", className: "text-red-500",
+                children: new VNode[] { V.Label(name: "tag", className: "border", text: "Tag") }));
+            var tag = Settled("tag");
+
+            // Act
+            _window.rootVisualElement.Q<VisualElement>("parent").style.color = new StyleColor(Color.blue);
+            ForcePanelUpdate(tag.panel);
+
+            // Assert
+            Assert.That(tag.resolvedStyle.borderTopColor, Is.EqualTo(Color.blue));
+        }
+
+        [Test]
+        public void Given_AnElementWithoutABorderWidth_When_Resolved_Then_PreflightDoesNotMarkIt()
+        {
+            // Act
+            var tag = MountLabel("text-red-500");
+
+            // Assert
+            Assert.That(tag.ClassListContains(ColorReferenceWatch.MarkerClass), Is.False);
+        }
+
+        [Test]
+        public void Given_ABorderedLabelWithABorderColourClass_When_Resolved_Then_TheClassWins()
+        {
+            // Arrange
+            var expected = TextColourOf("text-green-500");
+
+            // Act
+            var tag = MountLabel("border border-green-500 text-red-500");
+
+            // Assert
+            Assert.That(tag.resolvedStyle.borderTopColor, Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void Given_ABorderedLabelWithABracketBorderColour_When_Resolved_Then_TheBracketWins()
+        {
+            // Act
+            var tag = MountLabel("border border-[#00ff00] text-red-500");
+
+            // Assert
+            Assert.That(tag.resolvedStyle.borderTopColor, Is.EqualTo(new Color(0f, 1f, 0f, 1f)));
+        }
+
+        [Test]
+        public void Given_ABorderedLabelWithAColourlessSibling_When_Resolved_Then_TheSiblingKeepsTheEnginesBorderColour()
+        {
+            // Arrange
+            _mounted = V.Mount(_window.rootVisualElement, V.Div(name: "row", children: new VNode[]
+            {
+                V.Label(name: "tag", className: "border text-red-500", text: "A"),
+                V.Label(name: "other", className: "text-red-500", text: "B"),
+            }));
+            Settled("tag");
+
+            // Act
+            var other = Settled("other");
+
+            // Assert
+            Assert.That(other.resolvedStyle.borderTopColor, Is.EqualTo(Color.clear));
+        }
+
+        [Test]
+        public void Given_ABorderedLabelWithAClassRuleSettingTransparent_When_Resolved_Then_ItsBorderIsTransparent()
+        {
+            // Act
+            var tag = MountLabel("border pf-transparent text-red-500");
+
+            // Assert
+            Assert.That(tag.resolvedStyle.borderTopColor, Is.EqualTo(Color.clear));
+        }
+
+        [Test]
+        public void Given_ABorderedLabelWithAnIdRuleSettingABorderColour_When_Resolved_Then_TheRuleWins()
+        {
+            // Act
+            var tag = MountLabel("border text-red-500", "pf-id");
+
+            // Assert
+            Assert.That(tag.resolvedStyle.borderTopColor, Is.EqualTo(Color.blue));
+        }
+
+        [Test]
+        public void Given_ABorderedLabelUnderAnAncestorRule_When_Resolved_Then_TheDescendantRuleWins()
+        {
+            // Arrange
+            _mounted = V.Mount(_window.rootVisualElement, V.Div(className: "pf-ancestor", children: new VNode[]
+            {
+                V.Label(name: "tag", className: "border pf-descendant text-red-500", text: "Tag"),
+            }));
+
+            // Act
+            var tag = Settled("tag");
+
+            // Assert
+            Assert.That(tag.resolvedStyle.borderTopColor, Is.EqualTo(new Color(1f, 1f, 0f, 1f)));
+        }
+
+        [Test]
+        public void Given_ABorderedLabelWithAHoverRule_When_ThePointerIsNotOverIt_Then_ItsBorderIsTheTextColour()
+        {
+            // Arrange
+            var expected = TextColourOf("text-red-500");
+
+            // Act
+            var tag = MountLabel("border pf-hover text-red-500");
+
+            // Assert
+            Assert.That(tag.resolvedStyle.borderTopColor, Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void Given_ABorderedLabelWithAHoverRule_When_ThePointerIsOverIt_Then_TheRuleWins()
+        {
+            // Arrange
+            var tag = MountLabel("border pf-hover text-red-500");
+
+            // Act
+            SetPseudo(tag, "Hover", true);
+            ForcePanelUpdate(tag.panel);
+
+            // Assert
+            Assert.That(tag.resolvedStyle.borderTopColor, Is.EqualTo(Color.green));
+        }
+
+        [Test]
+        public void Given_ABorderedLabelWithAHoverRule_When_ThePointerLeavesIt_Then_ItsBorderIsTheTextColourAgain()
+        {
+            // Arrange
+            var expected = TextColourOf("text-red-500");
+            var tag = MountLabel("border pf-hover text-red-500");
+            SetPseudo(tag, "Hover", true);
+            ForcePanelUpdate(tag.panel);
+
+            // Act
+            SetPseudo(tag, "Hover", false);
+            ForcePanelUpdate(tag.panel);
+
+            // Assert
+            Assert.That(tag.resolvedStyle.borderTopColor, Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void Given_ABorderedLabelWithASideRule_When_Resolved_Then_TheRuleSetsThatSideOnly()
+        {
+            // Act
+            var tag = MountLabel("border pf-top text-blue-500");
+
+            // Assert
+            Assert.That(tag.resolvedStyle.borderTopColor, Is.EqualTo(Color.red));
+        }
+
+        [Test]
+        public void Given_ABorderedLabelWithASideRule_When_Resolved_Then_TheOtherSidesAreTheTextColour()
+        {
+            // Arrange
+            var expected = TextColourOf("text-blue-500");
+
+            // Act
+            var tag = MountLabel("border pf-top text-blue-500");
+
+            // Assert
+            Assert.That(tag.resolvedStyle.borderBottomColor, Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void Given_ABorderedLabelWithARuleOfADefaultStylesheet_When_Resolved_Then_PreflightOutranksIt()
+        {
+            // Arrange
+            var expected = TextColourOf("text-red-500");
+
+            // Act
+            var tag = MountLabel("border pf-theme text-red-500");
+
+            // Assert
+            Assert.That(tag.resolvedStyle.borderTopColor, Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void Given_ABorderedLabelWhoseClassGainsARuleSettingABorderColour_When_Patched_Then_TheRuleWins()
+        {
+            // Arrange
+            MountSwitchable("border text-red-500");
+
+            // Act
+            var tag = Patch("border pf-transparent text-red-500");
+
+            // Assert
+            Assert.That(tag.resolvedStyle.borderTopColor, Is.EqualTo(Color.clear));
+        }
+
+        [Test]
+        public void Given_ABorderedLabelWhoseBorderWidthIsRemoved_When_Patched_Then_ItsBorderColourIsLeftToTheEngine()
+        {
+            // Arrange
+            MountSwitchable("border text-red-500");
+
+            // Act
+            var tag = Patch("text-red-500");
+
+            // Assert
+            Assert.That(tag.resolvedStyle.borderTopColor, Is.EqualTo(Color.clear));
+        }
+
+        [Test]
+        public void Given_ALabelWhoseCodeWritesABorderColourInline_When_Mounted_Then_TheInlineColourStands()
+        {
+            // Act
+            _mounted = V.Mount(_window.rootVisualElement, V.Label(name: "tag", className: "border text-red-500", text: "Tag",
+                refCallback: element =>
+                {
+                    element.style.borderTopColor = new StyleColor(Color.magenta);
+                    return () => { };
+                }));
+            var tag = Settled("tag");
+
+            // Assert
+            Assert.That(tag.resolvedStyle.borderTopColor, Is.EqualTo(Color.magenta));
+        }
+
+        [Test]
+        public void Given_ABorderedLabel_When_CodeWritesABorderColourInlineAfterwards_Then_TheInlineColourStands()
+        {
+            // Arrange
+            var tag = MountLabel("border text-red-500");
+
+            // Act
+            tag.style.borderTopColor = new StyleColor(Color.magenta);
+            ForcePanelUpdate(tag.panel);
+            tag.style.color = new StyleColor(Color.blue);
+            ForcePanelUpdate(tag.panel);
+
+            // Assert
+            Assert.That(tag.resolvedStyle.borderTopColor, Is.EqualTo(Color.magenta));
+        }
+
+        [Test]
+        public void Given_ABorderedLabel_When_CodeWritesAnInlineBorderColourEqualToTheTextColourAndTheTextColourChanges_Then_TheInlineColourStands()
+        {
+            // Arrange
+            var expected = TextColourOf("text-red-500");
+            var tag = MountLabel("border text-red-500");
+
+            // Act
+            tag.style.borderTopColor = new StyleColor(expected);
+            tag.style.color = new StyleColor(Color.blue);
+            Settled("tag");
+
+            // Assert
+            Assert.That(tag.resolvedStyle.borderTopColor, Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void Given_ABorderedLabelWhoseInlineBorderColourCodeClears_When_Settled_Then_TheBorderIsTheTextColourAgain()
+        {
+            // Arrange
+            var expected = TextColourOf("text-red-500");
+            var tag = MountLabel("border text-red-500");
+            var now = Time.realtimeSinceStartupAsDouble;
+            EditorPanelTestHelpers.SetPanelTimeFunction(tag.panel, () => now);
+            tag.style.borderTopColor = new StyleColor(Color.magenta);
+            Settled("tag");
+
+            // Act
+            tag.style.borderTopColor = new StyleColor(StyleKeyword.Null);
+            now += 1.0;
+            EditorPanelTestHelpers.DriveSchedulerOnce(tag.panel);
+            Settled("tag");
+
+            // Assert
+            Assert.That(tag.resolvedStyle.borderTopColor, Is.EqualTo(expected));
+        }
+
+        // GREEN_ON_BASE(characterization): a move keeps the colour there as well.
+        [Test]
+        public void Given_ABorderedLabel_When_ItIsRemovedAndAddedAgain_Then_TheBorderIsTheTextColour()
+        {
+            // Arrange
+            var expected = TextColourOf("text-red-500");
+            var tag = MountLabel("border text-red-500");
+            var parent = tag.hierarchy.parent;
+
+            // Act
+            tag.RemoveFromHierarchy();
+            parent.Add(tag);
+            Settled("tag");
+
+            // Assert
+            Assert.That(tag.resolvedStyle.borderTopColor, Is.EqualTo(expected));
+        }
+
+        // GREEN_ON_BASE(characterization): the sibling sides are not code's, so they follow the text colour there as here.
+        [Test]
+        public void Given_ABorderedLabel_When_CodeWritesOneSideInlineEqualToTheTextColourAndTheTextColourChanges_Then_TheOtherSidesFollow()
+        {
+            // Arrange
+            var tag = MountLabel("border text-red-500");
+
+            // Act
+            tag.style.borderTopColor = new StyleColor(tag.resolvedStyle.color);
+            tag.style.color = new StyleColor(Color.blue);
+            Settled("tag");
+
+            // Assert
+            Assert.That(tag.resolvedStyle.borderBottomColor, Is.EqualTo(Color.blue));
+        }
+
+        // GREEN_ON_BASE(characterization): the base replaces the class's inline colour with one write of the text colour. Here
+        // the colour is cleared and shown in two steps, and without the held transition the clear runs a transition away
+        // from the class's colour, which this reads before it ends.
+        [Test]
+        public void Given_ABorderedLabelWithABorderColourClassAndAColourTransition_When_TheClassIsRemoved_Then_TheBorderIsAtOnceTheTextColour()
+        {
+            // Arrange
+            var expected = TextColourOf("text-red-500");
+            MountSwitchable("border border-blue-500 transition-colors duration-1000 text-red-500");
+
+            // Act
+            var tag = Patch("border transition-colors duration-1000 text-red-500");
+
+            // Assert
+            Assert.That(tag.resolvedStyle.borderTopColor, Is.EqualTo(expected));
+        }
+
+        // GREEN_ON_BASE(characterization): the class's inline write is cleared for the text colour to show, as the
+        // preflight write replaced it there.
+        [Test]
+        public void Given_ABorderedLabelWithABorderColourClass_When_TheClassIsRemoved_Then_TheBorderIsTheTextColour()
+        {
+            // Arrange
+            var expected = TextColourOf("text-red-500");
+            MountSwitchable("border border-blue-500 text-red-500");
+
+            // Act
+            var tag = Patch("border text-red-500");
+
+            // Assert
+            Assert.That(tag.resolvedStyle.borderTopColor, Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void Given_ALabelWhoseCodeWroteOneSideInline_When_Mounted_Then_TheOtherSidesAreTheTextColour()
+        {
+            // Arrange
+            var expected = TextColourOf("text-red-500");
+
+            // Act
+            _mounted = V.Mount(_window.rootVisualElement, V.Label(name: "tag", className: "border text-red-500", text: "Tag",
+                refCallback: element =>
+                {
+                    element.style.borderTopColor = new StyleColor(Color.magenta);
+                    return () => { };
+                }));
+            var tag = Settled("tag");
+
+            // Assert
+            Assert.That(tag.resolvedStyle.borderBottomColor, Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void Given_ADividedChildWithoutADivideColour_When_Resolved_Then_TheDividerIsInItsTextColour()
+        {
+            // Arrange
+            var expected = TextColourOf("text-red-500");
+            _mounted = V.Mount(_window.rootVisualElement, V.Div(name: "row", className: "flex flex-row divide-x-2 text-red-500",
+                children: new VNode[]
+                {
+                    V.Label(name: "first", text: "A"),
+                    V.Label(name: "second", text: "B"),
+                }));
+            Settled("row");
+
+            // Act
+            var first = Settled("first");
+
+            // Assert
+            Assert.That(first.resolvedStyle.borderRightColor, Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void Given_ADividedRowWithoutADivideColour_When_Resolved_Then_TheLastChildHasNoDivider()
+        {
+            // Arrange
+            _mounted = V.Mount(_window.rootVisualElement, V.Div(name: "row", className: "flex flex-row divide-x-2 text-red-500",
+                children: new VNode[]
+                {
+                    V.Label(name: "first", text: "A"),
+                    V.Label(name: "second", text: "B"),
+                }));
+            Settled("row");
+
+            // Act
+            var second = Settled("second");
+
+            // Assert
+            Assert.That(second.resolvedStyle.borderRightColor, Is.EqualTo(Color.clear));
+        }
+
+        [Test]
+        public void Given_ADividedChildWithADivideColour_When_Resolved_Then_TheDivideColourHoldsTheDivider()
+        {
+            // Arrange
+            var expected = TextColourOf("text-blue-500");
+            _mounted = V.Mount(_window.rootVisualElement, V.Div(name: "row",
+                className: "flex flex-row divide-x-2 divide-blue-500 text-red-500", children: new VNode[]
+                {
+                    V.Label(name: "first", text: "A"),
+                    V.Label(name: "second", text: "B"),
+                }));
+            Settled("row");
+
+            // Act
+            var first = Settled("first");
+
+            // Assert
+            Assert.That(first.resolvedStyle.borderRightColor, Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void Given_ALabelWhoseClassRuleSetsABorderWidth_When_Resolved_Then_ItsBorderIsTheTextColour()
+        {
+            // Arrange
+            var expected = TextColourOf("text-red-500");
+
+            // Act
+            var tag = MountLabel("pf-width text-red-500");
+
+            // Assert
+            Assert.That(tag.resolvedStyle.borderTopColor, Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void Given_ALabelWhoseClassRuleSetsABorderWidthAndColour_When_Resolved_Then_TheRuleColourStands()
+        {
+            // Act
+            var tag = MountLabel("pf-width-colored text-red-500");
+
+            // Assert
+            Assert.That(tag.resolvedStyle.borderTopColor, Is.EqualTo(Color.blue));
+        }
+
+        [Test]
+        public void Given_ALabelWhoseIdRuleSetsABorderWidth_When_Resolved_Then_ItsBorderIsTheTextColour()
+        {
+            // Arrange
+            var expected = TextColourOf("text-red-500");
+
+            // Act
+            var tag = MountLabel("text-red-500", "pf-width-id");
+
+            // Assert
+            Assert.That(tag.resolvedStyle.borderTopColor, Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void Given_ALabelWhoseClassRuleSetsNoBorderWidth_When_Resolved_Then_ItIsNotMarked()
+        {
+            // Act
+            var tag = MountLabel("pf-plain text-red-500");
+
+            // Assert
+            Assert.That(tag.ClassListContains(ColorReferenceWatch.MarkerClass), Is.False);
+        }
+
+        [Test]
+        public void Given_AnElementOwningAStylesheet_When_ItsRulesAreAsked_Then_ItsPseudoStatesAreUnchanged()
+        {
+            // Arrange
+            var states = EngineMember.PseudoStates.ResolveProperty()!;
+            var owner = new Label { name = "owner" };
+            owner.styleSheets.Add(UnityEditor.AssetDatabase.LoadAssetAtPath<StyleSheet>(RuleSheet));
+            _window.rootVisualElement.Add(owner);
+            ForcePanelUpdate(owner.panel);
+            var before = (int)states.GetValue(owner);
+
+            // Act
+            BorderPreflight.OnClassesResolved(owner, new[] { "border" }, classesChanged: true);
+
+            // Assert
+            Assert.That((int)states.GetValue(owner), Is.EqualTo(before));
+        }
+
+        [Test]
+        public void Given_ABorderedElementWithAShadow_When_Resolved_Then_TheFaceTakesTheTextColour()
+        {
+            // Arrange
+            var expected = TextColourOf("text-red-500");
+            _mounted = V.Mount(_window.rootVisualElement, V.Div(name: "tag", className: "w-[40px] h-[40px] border shadow-md text-red-500"));
+
+            // Act
+            var tag = Settled("tag");
+            SilhouetteFaceStash.TryReadFace(tag, DivideEdge.Left, out var face, out _);
+
+            // Assert
+            Assert.That(face, Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void Given_ABorderedElementWithAShadow_When_ItsTextColourChanges_Then_TheFaceFollows()
+        {
+            // Arrange
+            _mounted = V.Mount(_window.rootVisualElement, V.Div(name: "tag", className: "w-[40px] h-[40px] border shadow-md text-red-500"));
+            var tag = Settled("tag");
+
+            // Act
+            tag.style.color = new StyleColor(Color.blue);
+            ForcePanelUpdate(tag.panel);
+            SilhouetteFaceStash.TryReadFace(tag, DivideEdge.Left, out var face, out _);
+
+            // Assert
+            Assert.That(face, Is.EqualTo(Color.blue));
+        }
+
+        // GREEN_ON_BASE(characterization): the base shows a colour class on a face edge preflight once coloured.
+        [Test]
+        public void Given_AShadowedLabelPreflightLetGoOf_When_ItTakesABorderColourClass_Then_TheFaceShowsTheClassColour()
+        {
+            // Arrange — divided, the label's sides are preflight's, in its text colour, which the face keeps; undivided,
+            // preflight lets go of the label altogether.
+            VelvetPalette.TryResolveColorToken("blue-500", out var blue);
+            var red = TextColourOf("text-red-500");
+            var tag = MountSwitchable("w-[40px] h-[40px] shadow-md text-red-500");
+            BorderPreflight.SetDivided(tag, true);
+            ForcePanelUpdate(tag.panel);
+            SilhouetteFaceStash.TryReadFace(tag, DivideEdge.Left, out var divided, out _);
+            BorderPreflight.SetDivided(tag, false);
+
+            // Act
+            Patch("w-[40px] h-[40px] border border-blue-500 shadow-md text-red-500");
+            SilhouetteFaceStash.TryReadFace(tag, DivideEdge.Left, out var face, out _);
+
+            // Assert — the text colour the face took while divided is the control.
+            Assert.That(divided == red ? face : Color.clear, Is.EqualTo(blue));
+        }
+
+        [Test]
+        public void Given_ADashedBorderedElement_When_Resolved_Then_TheFaceTakesTheTextColour()
+        {
+            // Arrange
+            var expected = TextColourOf("text-red-500");
+            _mounted = V.Mount(_window.rootVisualElement, V.Div(name: "tag", className: "w-[40px] h-[40px] border border-dashed text-red-500"));
+
+            // Act
+            var tag = Settled("tag");
+            SilhouetteFaceStash.TryReadFace(tag, DivideEdge.Left, out var face, out _);
+
+            // Assert
+            Assert.That(face, Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void Given_ADashedDividerWithoutADivideColour_When_Resolved_Then_TheDashesPaintTheTextColour()
+        {
+            // Arrange
+            var expected = TextColourOf("text-red-500");
+            _mounted = V.Mount(_window.rootVisualElement, V.Div(name: "row",
+                className: "flex flex-row divide-x-2 divide-dashed text-red-500", children: new VNode[]
+                {
+                    V.Label(name: "first", text: "A"),
+                    V.Label(name: "second", text: "B"),
+                }));
+            Settled("row");
+
+            // Act
+            var first = Settled("first");
+
+            // Assert
+            Assert.That(DivideDashPainter.ColorUnderMask(first, DivideEdge.Right), Is.EqualTo(expected));
+        }
+
+        [TestCase("border-s")]
+        [TestCase("border-e-2")]
+        [TestCase("border-bs")]
+        [TestCase("border-be-4")]
+        [TestCase("border-s-[3px]")]
+        public void Given_ALogicalBorderWidthToken_When_AskedWhetherItIsABorderWidth_Then_ItIs(string token)
+        {
+            // Act
+            var isWidth = BorderPreflight.IsBorderWidthToken(token);
+
+            // Assert
+            Assert.That(isWidth, Is.True);
+        }
+
+        [Test]
+        public void Given_ALogicalBorderWidth_When_Resolved_Then_ItsBorderIsTheTextColour()
+        {
+            // Arrange
+            var expected = TextColourOf("text-red-500");
+
+            // Act
+            var tag = MountLabel("border-s-4 text-red-500");
+
+            // Assert
+            Assert.That(tag.resolvedStyle.borderLeftColor, Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void Given_AChildScopedBorderWidth_When_TheChildrenResolve_Then_EachChildsBorderIsTheTextColour()
+        {
+            // Arrange
+            var expected = TextColourOf("text-red-500");
+            _mounted = V.Mount(_window.rootVisualElement, V.Div(name: "row", className: "[&>*]:border text-red-500",
+                children: new VNode[] { V.Label(name: "child", text: "A") }));
+            Settled("row");
+
+            // Act
+            var child = Settled("child");
+
+            // Assert
+            Assert.That(child.resolvedStyle.borderTopColor, Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void Given_AFieldWithABorderWidth_When_Resolved_Then_ItsInputBoxBorderIsItsTextColour()
+        {
+            // Arrange
+            _mounted = V.Mount(_window.rootVisualElement, V.TextField(name: "field", className: "border"));
+            var field = Settled("field");
+            StyleInputBoxSurface.TryGetBox(field, out var box);
+
+            // Act
+            ForcePanelUpdate(field.panel);
+
+            // Assert
+            Assert.That(box.resolvedStyle.borderTopColor, Is.EqualTo(box.resolvedStyle.color));
+        }
+
+        [Test]
+        public void Given_ALabelWhoseHoverRuleSetsABorderWidth_When_ThePointerIsOverIt_Then_ItsBorderIsTheTextColour()
+        {
+            // Arrange
+            var expected = TextColourOf("text-red-500");
+            var tag = MountLabel("pf-hover-width text-red-500");
+
+            // Act
+            SetPseudo(tag, "Hover", true);
+            ForcePanelUpdate(tag.panel);
+
+            // Assert
+            Assert.That(tag.resolvedStyle.borderTopColor, Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void Given_ALabelWhoseDescendantRuleSetsABorderWidth_When_ItsAncestorGainsTheClass_Then_ItsBorderIsTheTextColour()
+        {
+            // Arrange
+            var expected = TextColourOf("text-red-500");
+            _mounted = V.Mount(_window.rootVisualElement, V.Div(name: "outer", children: new VNode[]
+            {
+                V.Label(name: "tag", className: "pf-item text-red-500", text: "Tag"),
+            }));
+            var tag = Settled("tag");
+
+            // Act
+            _window.rootVisualElement.Q<VisualElement>("outer").AddToClassList("pf-open");
+            ForcePanelUpdate(tag.panel);
+
+            // Assert
+            Assert.That(tag.resolvedStyle.borderBottomColor, Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void Given_ALabelWithAGapUtility_When_Resolved_Then_ItIsNotMarked()
+        {
+            // Act
+            var tag = MountLabel("gap-4 text-red-500");
+
+            // Assert
+            Assert.That(tag.ClassListContains(ColorReferenceWatch.MarkerClass), Is.False);
+        }
+
+        [Test]
+        public void Given_ABorderedElement_When_AMotionSlotAsksWhetherAnInlineColourHoldsItsBorder_Then_PreflightDoesNot()
+        {
+            // Arrange
+            var tag = MountLabel("border text-red-500");
+
+            // Act
+            var held = MotionSlotContext.Read(tag, null, null, _ => false).HoldsInlineOutsideSwap(ArbitraryProperty.BorderColor);
+
+            // Assert
+            Assert.That(held, Is.False);
+        }
+
+        private static StateUpdater<string> s_setRow;
+        private static string s_rowClass;
+
+        [Component]
+        private static VNode RenderRow()
+        {
+            var (className, setClass) = Hooks.UseState(s_rowClass);
+            s_setRow = setClass;
+            return V.Div(name: "row", className: className, children: new VNode[]
+            {
+                V.Label(name: "first", text: "A"),
+                V.Label(name: "second", text: "B"),
+            });
+        }
+
+        private VisualElement MountRow(string className)
+        {
+            s_rowClass = className;
+            _mounted = V.Mount(_window.rootVisualElement, V.Component(RenderRow));
+            Settled("row");
+            return Settled("first");
+        }
+
+        [Test]
+        public void Given_ADividedRowWithoutADivideColour_When_ADivideColourIsPatchedIn_Then_TheDivideColourHoldsTheDivider()
+        {
+            // Arrange
+            var expected = TextColourOf("text-blue-500");
+            MountRow("flex flex-row divide-x-2 text-red-500");
+
+            // Act
+            s_setRow.Invoke("flex flex-row divide-x-2 divide-blue-500 text-red-500");
+            _mounted.Root.Reconciler.Context.BatchScheduler.DrainImmediateForTest();
+            var first = Settled("first");
+
+            // Assert
+            Assert.That(first.resolvedStyle.borderRightColor, Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void Given_ADividedRowWithoutADivideColour_When_ItsHoverDivideColourLights_Then_TheDivideColourHoldsTheDivider()
+        {
+            // Arrange
+            var expected = TextColourOf("text-blue-500");
+            var first = MountRow("flex flex-row divide-x-2 hover:divide-blue-500 text-red-500");
+            var row = _window.rootVisualElement.Q<VisualElement>("row");
+
+            // Act
+            SetPseudo(row, "Hover", true);
+            using (var over = PointerOverEvent.GetPooled())
+            {
+                row.SimulateEvent(over);
+            }
+            ForcePanelUpdate(first.panel);
+
+            // Assert
+            Assert.That(first.resolvedStyle.borderRightColor, Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void Given_ABorderedLabelWhoseBracketColourIsPatchedIn_When_AMotionSlotAsksForAnInlineHolder_Then_TheBracketColourIsOne()
+        {
+            // Arrange
+            MountSwitchable("border text-red-500");
+            var tag = Patch("border border-[#ff0000] text-red-500");
+
+            // Act
+            var held = MotionSlotContext.Read(tag, null, null, _ => false).HoldsInlineOutsideSwap(ArbitraryProperty.BorderColor);
+
+            // Assert
+            Assert.That(held, Is.True);
+        }
+
+        [Test]
+        public void Given_TwoOwnersGivingAChildAWidth_When_OneOfThemTakesItBack_Then_TheOtherStillHoldsItsPreflight()
+        {
+            // Arrange
+            var child = MountLabel("text-red-500");
+            var first = new object();
+            var second = new object();
+            BorderPreflight.SetScoped(child, first, true);
+            BorderPreflight.SetScoped(child, second, true);
+
+            // Act
+            BorderPreflight.SetScoped(child, first, false);
+
+            // Assert
+            Assert.That(child.ClassListContains(ColorReferenceWatch.MarkerClass), Is.True);
+        }
+
+        [Test]
+        public void Given_ALabelWhoseClassIsWidenedByADefaultStylesheetOnly_When_Resolved_Then_ItIsNotMarked()
+        {
+            // Act
+            var tag = MountLabel("pf-theme-width text-red-500");
+
+            // Assert
+            Assert.That(tag.ClassListContains(ColorReferenceWatch.MarkerClass), Is.False);
+        }
+
+        [Test]
+        public void Given_ALabelWhoseClassRuleSetsAZeroBorderWidth_When_Resolved_Then_ItIsNotMarked()
+        {
+            // Act
+            var tag = MountLabel("pf-zero text-red-500");
+
+            // Assert
+            Assert.That(tag.ClassListContains(ColorReferenceWatch.MarkerClass), Is.False);
+        }
+
+        // GREEN_ON_BASE(characterization): the base reads a sheet's initial border width as no border.
+        [Test]
+        public void Given_ALabelWhoseClassRuleSetsAnInitialBorderWidth_When_Resolved_Then_ItIsNotMarked()
+        {
+            // Act
+            var tag = MountLabel("pf-initial text-red-500");
+
+            // Assert
+            Assert.That(tag.ClassListContains(ColorReferenceWatch.MarkerClass), Is.False);
+        }
+
+        // GREEN_ON_BASE(characterization): the base forgets the colour it wrote once its class is given up.
+        [Test]
+        public void Given_ABorderColourClassGivenUp_When_CodeWritesTheSameColourInlineAndTheTextColourChanges_Then_TheInlineColourStands()
+        {
+            // Arrange — the class's colour is written inline, and cleared when the class goes.
+            var tag = MountSwitchable("border border-blue-500 text-red-500");
+            var written = tag.style.borderTopColor.value;
+            tag = Patch("border text-red-500");
+
+            // Act
+            tag.style.borderTopColor = new StyleColor(written);
+            ForcePanelUpdate(tag.panel);
+            tag.style.color = new StyleColor(Color.green);
+            ForcePanelUpdate(tag.panel);
+
+            // Assert
+            Assert.That(tag.resolvedStyle.borderTopColor, Is.EqualTo(written));
+        }
+
+        [Test]
+        public void Given_ABorderedLabelWithAColourTransition_When_Mounted_Then_ItsLastSideIsAtOnceTheTextColour()
+        {
+            // Arrange
+            var expected = TextColourOf("text-red-500");
+
+            // Act
+            var tag = MountLabel("border transition-colors duration-1000 text-red-500");
+
+            // Assert
+            Assert.That(tag.resolvedStyle.borderLeftColor, Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void Given_ABorderedLabelWithAColourTransitionWhoseInlineBorderColourCodeClears_When_Settled_Then_TheBorderIsMidwayBackToTheTextColour()
+        {
+            // Arrange — the inline magenta is shown whole before it is cleared. Magenta has no green, the text colour
+            // some, so a green between none and the text colour's is a transition from one toward the other.
+            var expected = TextColourOf("text-red-500");
+            var tag = MountLabel("border transition-colors duration-1000 text-red-500");
+            var now = Time.realtimeSinceStartupAsDouble;
+            EditorPanelTestHelpers.SetPanelTimeFunction(tag.panel, () => now);
+            Tick(tag, 4, 0.4, ref now);
+            tag.style.borderTopColor = new StyleColor(Color.magenta);
+            ForcePanelUpdate(tag.panel);
+            Tick(tag, 4, 0.4, ref now);
+
+            // Act
+            tag.style.borderTopColor = new StyleColor(StyleKeyword.Null);
+            ForcePanelUpdate(tag.panel);
+            Tick(tag, 2, 0.2, ref now);
+
+            // Assert
+            Assert.That(tag.resolvedStyle.borderTopColor.g, Is.InRange(0.01f, expected.g - 0.01f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base reports no lost colour once the cleared side shows it again. Leaving
+        // the side marked as covered once it is shown again reddens this case.
+        [Test]
+        public void Given_ABorderedLabelWhoseInlineBorderColourCodeClears_When_TheColourIsShownAgain_Then_NoColourIsLost()
+        {
+            // Arrange
+            var expected = TextColourOf("text-red-500");
+            var tag = MountLabel("border text-red-500");
+            var now = Time.realtimeSinceStartupAsDouble;
+            EditorPanelTestHelpers.SetPanelTimeFunction(tag.panel, () => now);
+            tag.style.borderTopColor = new StyleColor(Color.magenta);
+            ForcePanelUpdate(tag.panel);
+            Tick(tag, 2, 0.2, ref now);
+
+            // Act
+            tag.style.borderTopColor = new StyleColor(StyleKeyword.Null);
+            ForcePanelUpdate(tag.panel);
+            Tick(tag, 3, 0.2, ref now);
+
+            // Assert — null where the side does not show the text colour again, which false never equals.
+            Assert.That(tag.resolvedStyle.borderTopColor == expected ? BorderPreflight.Lost(tag) : (bool?)null, Is.EqualTo(false));
+        }
+
+        // Advances the panel's clock by step, count times, running its scheduler, its animations and a style pass each time.
+        private static void Tick(VisualElement element, int count, double step, ref double now)
+        {
+            for (var i = 0; i < count; i++)
+            {
+                now += step;
+                EditorPanelTestHelpers.DriveSchedulerOnce(element.panel);
+                EditorPanelTestHelpers.DriveAnimationsOnce(element.panel);
+                ForcePanelUpdate(element.panel);
+            }
+        }
+
+        // GREEN_ON_BASE(characterization): the base hands a shadow face the sheet colour its preflight lets go to.
+        [Test]
+        public void Given_AShadowedLabelWhoseBorderClassGoes_When_ADefaultStylesheetStillGivesItABorder_Then_TheFaceTakesThatSheetsColour()
+        {
+            // Arrange
+            MountSwitchable("w-[40px] h-[40px] border pf-theme pf-theme-width shadow-md text-red-500");
+
+            // Act
+            var tag = Patch("w-[40px] h-[40px] pf-theme pf-theme-width shadow-md text-red-500");
+            SilhouetteFaceStash.TryReadFace(tag, DivideEdge.Left, out var face, out _);
+
+            // Assert
+            Assert.That(face, Is.EqualTo(new Color(1f, 0f, 1f, 1f)));
+        }
+
+        // GREEN_ON_BASE(characterization): the base hands a shadow a dashed face's inline colour as kept; deleting the copy of the side's kept flag from SilhouetteFaceStash.AdoptBorderFace reddens it.
+        [Test]
+        public void Given_ADashedLabelWithAnInlineBorderColourAndADefaultStylesheetColour_When_AShadowTakesTheFace_Then_TheFaceKeepsTheInlineColour()
+        {
+            // Arrange — the theme rule colours the border beneath the inline colour, which a face not keeping the side
+            // paints instead.
+            MountSwitchable("w-[40px] h-[40px] border-dashed border-[#00ff00] pf-theme");
+
+            // Act
+            var tag = Patch("w-[40px] h-[40px] border-dashed border-[#00ff00] pf-theme shadow-md");
+
+            // Assert — clear where no shadow face suppresses the left side.
+            Assert.That(SilhouetteFaceStash.TryReadFace(tag, DivideEdge.Left, out var face, out _) ? face : Color.clear,
+                Is.EqualTo(Color.green));
+        }
+
+        // GREEN_ON_BASE(characterization): the base hands a shadow a dashed face's preflight colour with its preflight flag; deleting the copy of that flag from SilhouetteFaceStash.AdoptBorderFace reddens it.
+        [Test]
+        public void Given_ADashedLabelWhosePreflightFaceAShadowTookOver_When_ItsBorderClassGoes_Then_TheFaceTakesTheDefaultStylesheetsColour()
+        {
+            // Arrange — the dashed face holds preflight's text colour, which the shadow the second render adds takes
+            // over; with `border` gone only the theme sheet widens the label, so preflight lets go of it.
+            var red = TextColourOf("text-red-500");
+            MountSwitchable("w-[40px] h-[40px] border border-dashed pf-theme pf-theme-width text-red-500");
+            var tag = Patch("w-[40px] h-[40px] border border-dashed pf-theme pf-theme-width shadow-md text-red-500");
+            SilhouetteFaceStash.TryReadFace(tag, DivideEdge.Left, out var takenOver, out _);
+
+            // Act
+            tag = Patch("w-[40px] h-[40px] border-dashed pf-theme pf-theme-width shadow-md text-red-500");
+            SilhouetteFaceStash.TryReadFace(tag, DivideEdge.Left, out var face, out _);
+
+            // Assert — clear where the shadow did not take preflight's colour over, which is the control.
+            Assert.That(takenOver == red ? face : Color.clear, Is.EqualTo(new Color(1f, 0f, 1f, 1f)));
+        }
+
+        [Test]
+        public void Given_ALabelListeningForARuleWidth_When_CodeWritesABorderWidthInline_Then_ItsBorderIsTheTextColour()
+        {
+            // Arrange
+            var expected = TextColourOf("text-red-500");
+            var tag = MountLabel("pf-hover-width text-red-500");
+
+            // Act — the write itself raises no restyle, so the next one is what finds it.
+            tag.style.borderTopWidth = 2f;
+            tag.style.color = new StyleColor(Color.blue);
+            ForcePanelUpdate(tag.panel);
+
+            // Assert
+            Assert.That(tag.resolvedStyle.borderTopColor, Is.EqualTo(Color.blue));
+        }
+
+        [Test]
+        public void Given_ALabelWhoseClassARuleAddedLaterNames_When_TheStylesheetIsAddedToTheRoot_Then_ItsBorderIsTheTextColour()
+        {
+            // Arrange
+            var expected = TextColourOf("text-red-500");
+            var tag = MountLabel("pf-late text-red-500");
+
+            // Act
+            _window.rootVisualElement.styleSheets.Add(UnityEditor.AssetDatabase.LoadAssetAtPath<StyleSheet>(
+                "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BorderPreflightLate.uss"));
+            ForcePanelUpdate(tag.panel);
+            System.Threading.Thread.Sleep(50);
+            EditorPanelTestHelpers.DriveSchedulerOnce(tag.panel);
+            ForcePanelUpdate(tag.panel);
+
+            // Assert
+            Assert.That(tag.resolvedStyle.borderTopColor, Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void Given_APreflightLayer_When_ItsKeyIsAskedWhetherItIsUnderAVariant_Then_ItIsNot()
+        {
+            // Assert
+            Assert.That(StyleLayerPriority.UnderVariant(StyleLayerPriority.Preflight), Is.False);
+        }
+
+        [Test]
+        public void Given_APreflightLayer_When_ComparedWithABaseLayer_Then_ItRanksBelow()
+        {
+            // Assert
+            Assert.That(StyleLayerPriority.Preflight, Is.LessThan(StyleLayerPriority.Base));
+        }
+
+        [Test]
+        public void Given_ABorderedLabel_When_AMotionSlotAsksWhetherAVariantHoldsItsBorderColour_Then_NoneDoes()
+        {
+            // Arrange
+            var tag = MountLabel("border text-red-500");
+
+            // Act
+            var held = StyleArbitraryValueResolver.HoldsVariantLayer(tag, ArbitraryProperty.BorderTopColor);
+
+            // Assert
+            Assert.That(held, Is.False);
+        }
+
+        [TestCase("border", true)]
+        [TestCase("border-2", true)]
+        [TestCase("border-3", true)]
+        [TestCase("border-x-4", true)]
+        [TestCase("border-t", true)]
+        [TestCase("hover:border", true)]
+        [TestCase("md:hover:!border-2", true)]
+        [TestCase("border-[3px]", true)]
+        [TestCase("border-y-[0.5rem]", true)]
+        [TestCase("border-0", false)]
+        [TestCase("border-x-0", false)]
+        [TestCase("border-red-500", false)]
+        [TestCase("border-solid", false)]
+        [TestCase("border-top", false)]
+        [TestCase("border-[#fff]", false)]
+        [TestCase("borders", false)]
+        [TestCase("rounded", false)]
+        public void Given_AClassToken_When_AskedWhetherItIsABorderWidth_Then_OnlyAWidthIs(string token, bool expected)
+        {
+            // Act
+            var isWidth = BorderPreflight.IsBorderWidthToken(token);
+
+            // Assert
+            Assert.That(isWidth, Is.EqualTo(expected));
+        }
+    }
+}

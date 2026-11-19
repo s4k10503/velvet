@@ -1,0 +1,208 @@
+#nullable enable
+using System;
+using System.Collections.Generic;
+using UnityEngine.UIElements;
+
+namespace Velvet
+{
+    internal enum IndexedReconcilePhase
+    {
+        // Patch (or replace) each slot the old and new lists share.
+        Common,
+        // Remove the old tail beyond the shared length, from the end inward.
+        Remove,
+        // Create and insert the new tail beyond the shared length.
+        Add,
+        // All phases complete. Terminates the dispatch loop; never parked in
+        // IndexedReconcileState.ResumePhase, which only ever holds a phase that has work left.
+        Done,
+    }
+
+    internal readonly struct IndexedReconcileState
+    {
+        public readonly VisualElement? Parent;
+        public readonly VNode?[] OldNodes;
+        public readonly VNode?[] NewNodes;
+        public readonly IndexedReconcilePhase ResumePhase;
+        public readonly int ResumeIndex;
+        public readonly int SlotStart;
+        // Exclusive end of this fiber's slot range (the next inline sibling's MountSlotStart, or int.MaxValue when
+        // last/only tenant). Bounds the Common-phase desync recovery so it cannot patch a following sibling's row.
+        public readonly int SlotLimit;
+        // Rented from ReconcilerBufferPool when the pass began; the slice that finishes or discards the park returns it.
+        public readonly OldSlotOccupants OldOccupants;
+
+        public IndexedReconcileState(
+            VisualElement? parent,
+            VNode?[] oldNodes,
+            VNode?[] newNodes,
+            IndexedReconcilePhase resumePhase,
+            int resumeIndex,
+            OldSlotOccupants oldOccupants,
+            int slotStart = 0,
+            int slotLimit = int.MaxValue)
+        {
+            Parent = parent;
+            OldNodes = oldNodes;
+            NewNodes = newNodes;
+            ResumePhase = resumePhase;
+            ResumeIndex = resumeIndex;
+            OldOccupants = oldOccupants;
+            SlotStart = slotStart;
+            SlotLimit = slotLimit;
+        }
+    }
+
+    // Suspension phase of keyed reconciliation.
+    // A keyed-children diff could run to completion synchronously, but Velvet yields per VNode
+    // at the ChildReconciler layer, so Pass 2 is also suspendable per VNode.
+    internal enum KeyedReconcilePhase
+    {
+        // Pass 1 linear scan (patch while oldKey == newKey).
+        Pass1Linear,
+        // Pass 1 consumed all old nodes; only tail appends remain.
+        TailAdd,
+        // Pass 1 consumed all new nodes; only tail removals remain.
+        TailRemove,
+        // Pass 2: building the oldKeyMap.
+        Pass2BuildMap,
+        // Pass 2: walking newNodes (patch / create / replace).
+        Pass2Process,
+        // Pass 2: removing unused old entries.
+        Pass2Remove,
+        // Pass 2: re-placing elements after LIS computation.
+        Pass2Reorder,
+        // All phases complete. Terminates the dispatch loop.
+        Done,
+    }
+
+    // Suspended state of keyed reconciliation.
+    // The intermediate buffers used by Pass 2 (OldKeyMap / UsedKeys / ReplacedKeys / NewElements /
+    // OrphanedOldIndices / LisIndices) are rented from ReconcilerBufferPool and owned by this state,
+    // retained while suspended. Returned to the Pool via
+    // ChildReconciler.ReleaseKeyedBuffers on completion or when a new Reconcile begins.
+    internal sealed class KeyedReconcileState
+    {
+        #region Inputs — fixed at construction
+
+        // Parent VE the reconciled children are placed into.
+        public VisualElement? Parent { get; init; }
+        // Child VNode array from the previous render, as the caller supplied it: nulls and fragments are
+        // dropped and expanded during inline expansion, not before this is stored.
+        public VNode?[] OldNodes { get; init; } = null!;
+        // The key each OldNodes entry was emitted under, index-aligned with it, or null on the terms
+        // ChildReconciler.OldKey gives. A copy rather than the caller's rented list, which goes back to the pool
+        // when the pass that parked this state returns.
+        public ChildKey[]? OldKeys { get; init; }
+        // Child VNode array requested by the current render, on the same terms as the previous one above.
+        public VNode?[] NewNodes { get; init; } = null!;
+        // Zero-based slot offset into Parent.children at which this keyed reconcile operates.
+        // Default 0 (Reconcile owns the full children list). Non-zero for wrapper-less fibers that
+        // share a parent VE with sibling slots. Settable so a sibling shift that re-bases this
+        // parked fiber's slot range can update the offset in place (see
+        // ChildReconciler.RebasePendingSlotStart) without re-renting the held buffers.
+        public int SlotStart { get; set; }
+
+        // Exclusive end of this fiber's slot range — the next inline-mount sibling's MountSlotStart, or
+        // int.MaxValue when this fiber is the last/only tenant. Bounds the desync-recovery rebuild so it cannot
+        // delete a following sibling's rows. Captured once at the fresh keyed start (the recovery only runs
+        // there), so it does not need re-basing across resume slices.
+        public int SlotLimit { get; set; }
+
+        #endregion
+
+        #region Cursor — updated as state-machine advances
+
+        public KeyedReconcilePhase Phase;
+        // Exclusive end of the prefix-match range fixed by Pass 1. Also serves as the Pass 2 start index.
+        public int LinearEnd;
+        // Resume index within the current phase. Meaning differs per phase (Pass1: linear scan position, Pass2Remove: tail-remove position, etc.).
+        public int ResumeIndex;
+
+        #endregion
+
+        #region Old instances — rented from ReconcilerBufferPool, released by ReleaseKeyedBuffers
+
+        // Rented once the fresh start has passed the desync recovery, whose rebuild leaves no old instance to name.
+        public OldSlotOccupants? OldOccupants;
+
+        #endregion
+
+        #region Pass 2 Buffers — rented from ReconcilerBufferPool, released by ReleaseKeyedBuffers
+
+        // Map from key to (domIndex, VNode) for old nodes at indices ≥ linearEnd. Built by Pass2BuildMap.
+        public Dictionary<ChildKey, (int index, VNode? node)>? OldKeyMap;
+        // Set of old keys consumed by new nodes during Pass2Process. Used to decide which unused keys to remove.
+        public HashSet<ChildKey>? UsedKeys;
+        // Set of old keys replaced by type swap (CanPatch=false). Identifies elements to remove from the DOM during the removal phase.
+        public HashSet<ChildKey>? ReplacedKeys;
+        // List of (element, isExisting) in the new placement order, built by Pass2Process. Input to the Reorder phase.
+        public List<(VisualElement? element, bool isExisting)>? NewElements;
+        // Set of DOM indices of old nodes orphaned by duplicate-key overwrites. Usually empty.
+        public HashSet<int>? OrphanedOldIndices;
+        // Set of LIS anchor positions (in NewElements indices) computed by ComputeLis. Consulted in Reorder to skip anchors.
+        public HashSet<int>? LisIndices;
+
+        #endregion
+    }
+
+    // Identity key for a child in the keyed reconcile path. A child is identified either by an
+    // explicit key (its own VNode.Key or a Fragment-scoped key) or, when unkeyed, by its slot: the index it
+    // is written at in its child array, under the SlotPath of that array (FiberKeying.WalkPosition). Two
+    // slots at one index whose SlotPaths hash alike match each other, the cost WalkPosition states for Path.
+    // Keeping the two kinds in one type but tagged by kind separates explicit string keys from numeric
+    // implicit indices: an explicit key and a positional index can never compare equal, so a user key
+    // value — including one a Fragment scope composes — cannot collide with an unkeyed sibling's slot.
+    //
+    // The general path also carries the fiber whose output emitted the leaf (OwnedBy), so two components'
+    // leaves never match each other whatever keys they carry. The flat diff never sets one: it is taken only
+    // where the old side reached no descendant fiber, so every leaf on both sides has the same emitter.
+    internal readonly struct ChildKey : IEquatable<ChildKey>
+    {
+        private readonly string? _key;
+        private readonly int _index;
+        private readonly long _slotPath;
+        private readonly bool _isPositional;
+        private readonly ComponentFiber? _owner;
+
+        private ChildKey(string? key, int index, long slotPath, bool isPositional, ComponentFiber? owner)
+        {
+            _key = key;
+            _index = index;
+            _slotPath = slotPath;
+            _isPositional = isPositional;
+            _owner = owner;
+        }
+
+        public static ChildKey Explicit(string key) => new(key, 0, 0, false, null);
+
+        // A slot in a child array no wrapper encloses.
+        public static ChildKey Positional(int index) => Positional(FiberKeying.RootSlotPath, index);
+
+        public static ChildKey Positional(long slotPath, int index) => new(null, index, slotPath, true, null);
+
+        internal ChildKey OwnedBy(ComponentFiber? owner) => new(_key, _index, _slotPath, _isPositional, owner);
+
+        public bool Equals(ChildKey other)
+            => ReferenceEquals(_owner, other._owner)
+                && (_isPositional
+                    ? other._isPositional && _index == other._index && _slotPath == other._slotPath
+                    : !other._isPositional && _key == other._key);
+
+        public override bool Equals(object obj) => obj is ChildKey other && Equals(other);
+
+        // The slot path is hashed with the index: siblings written under separate unkeyed wrappers share
+        // their index, and a table hashing the index alone chains every one of them into one bucket.
+        public override int GetHashCode()
+            => (_isPositional ? unchecked(_index * 397) ^ _slotPath.GetHashCode() : (_key?.GetHashCode() ?? 0))
+                // MUTANT_SURVIVES(equivalent, equality): the owner term only spreads owned keys across buckets.
+                // Either spelling gives equal keys equal hashes, and which keys match is Equals' answer, which
+                // reads the owner.
+                ^ (_owner == null ? 0 : System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(_owner));
+
+        public override string ToString()
+            => _isPositional
+                ? $"position {_index.ToString(System.Globalization.CultureInfo.InvariantCulture)} under slot path {_slotPath.ToString("X16", System.Globalization.CultureInfo.InvariantCulture)}"
+                : $"\"{_key}\"";
+    }
+}
