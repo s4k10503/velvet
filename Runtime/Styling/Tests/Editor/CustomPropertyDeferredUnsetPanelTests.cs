@@ -110,6 +110,38 @@ namespace Velvet.Tests
             Assert.That(read && ResolvedFlagOfFirstReader(card), Is.True);
         }
 
+        // GREEN_ON_BASE(characterization): the base already reads a reader that waited inside the style pass at the next tick.
+        [Test]
+        public void Given_AShadowReaderThatWaitedInsideTheStylePassAndTheVariableContextTheTickPollsIsUnchanged_When_ATickRuns_Then_ItWritesItsUnset()
+        {
+            // Arrange
+            _window.rootVisualElement.styleSheets.Add(UnityEditor.AssetDatabase.LoadAssetAtPath<StyleSheet>(RuleSheet));
+            _mounted = V.Mount(_window.rootVisualElement, V.Div(name: "card", className: "css-var-host"));
+            var card = _window.rootVisualElement.Q<VisualElement>("card");
+            var waited = false;
+            card.RegisterCallback<CustomStyleResolvedEvent>(_ =>
+            {
+                if (waited)
+                {
+                    return;
+                }
+                StyleCustomProperties.Toggle(card, "shadow-[var(--velvet-undeclared)]", true, StyleLayerPriority.Base, 0, Context);
+                waited = !ResolvedFlagOfFirstReader(card);
+                // The poll then finds the context it last read, leaving the scheduled read the only one.
+                var table = typeof(StyleCustomProperties).GetField("s_consumers", Any)!.GetValue(null)!;
+                var args = new object[] { card, null! };
+                table.GetType().GetMethod("TryGetValue")!.Invoke(table, args);
+                args[1].GetType().GetField("Context", Any)!.SetValue(args[1], StyleCustomProperties.ContextOf(card));
+            });
+            EditorPanelTestHelpers.ForcePanelUpdate(card.panel);
+
+            // Act
+            EditorPanelTestHelpers.DriveSchedulerOnce(card.panel);
+
+            // Assert — false where the reader did not wait inside the pass, which the expected value is not.
+            Assert.That(waited && ResolvedFlagOfFirstReader(card), Is.True);
+        }
+
         private static bool ResolvedFlagOfFirstReader(VisualElement element)
         {
             var table = typeof(StyleCustomProperties).GetField("s_consumers", Any)!.GetValue(null)!;
