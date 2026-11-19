@@ -71,7 +71,11 @@ namespace Velvet.Tests
             // Arrange
             var doomed = new VisualElement();
             ChildListWrites.Add(_destination, doomed);
-            _moving.RegisterCallback<DetachFromPanelEvent>(_ => ChildListWrites.Remove(_destination, doomed));
+            // The window closing in TearDown detaches the moved child again, so the handler acts only while doomed is still held.
+            _moving.RegisterCallback<DetachFromPanelEvent>(_ =>
+            {
+                if (doomed.hierarchy.parent == _destination) ChildListWrites.Remove(_destination, doomed);
+            });
             RecordTheMove();
 
             // Act
@@ -92,8 +96,10 @@ namespace Velvet.Tests
             bystander.Add(new VisualElement());
             var foreign = bystander[1];
             var counted = -1;
+            // The window closing in TearDown detaches the moved child again, so the handler acts only while foreign is still held.
             _moving.RegisterCallback<DetachFromPanelEvent>(_ =>
             {
+                if (foreign.hierarchy.parent != bystander) return;
                 ChildListWrites.Remove(bystander, foreign);
                 counted = ChildListWrites.ChildCount(bystander);
             });

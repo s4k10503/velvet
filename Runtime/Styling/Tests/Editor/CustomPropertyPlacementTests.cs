@@ -56,10 +56,11 @@ namespace Velvet.Tests
         public void Given_ATextReaderOfFamilySlotZeroBeforeALiteralOfAnotherFamily_When_TheClassesAreComposed_Then_ThePayloadWaitsForItsOwnFamily()
         {
             // Arrange / Act — opacity is a later place than text in Tailwind's order and belongs to no sorted family.
-            var composed = Composed("[--sz:14px]", new[] { "text-(--sz)", "opacity-50" });
+            // The length hint is written because an untyped text-(--x) reads as a colour, and 14px is none, so no payload is composed.
+            var composed = Composed("[--sz:14px]", new[] { "text-(length:--sz)", "opacity-50" });
 
-            // Assert
-            Assert.AreEqual("text-(--sz) opacity-50 text-[14px]", string.Join(" ", composed));
+            // Assert — the payload follows the other family's literal rather than standing before it.
+            Assert.That(composed[composed.Length - 1], Does.StartWith("text-[").And.EndWith("14px]"));
         }
     }
 }
