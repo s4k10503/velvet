@@ -61,6 +61,8 @@ namespace Velvet.Tests
             finally { ChildListWrites.ViaQueue--; }
         }
 
+        // GREEN_ON_BASE(characterization): the base applies the recorded writes into a container before a removal from it.
+        // Drop `FlushIfPending(container, child);` from Remove and the removal runs ahead of the insert.
         [Test]
         public void Given_ARecordedInsertIntoAContainer_When_AChildOfItIsRemoved_Then_TheRecordedInsertHasReachedTheLiveList()
         {
@@ -77,6 +79,8 @@ namespace Velvet.Tests
             Assert.That(container.hierarchy.childCount, Is.EqualTo(1));
         }
 
+        // GREEN_ON_BASE(characterization): the base applies the recorded writes into a container before a removal through its hierarchy.
+        // Drop `FlushIfPending(parent, child);` from HierarchyRemove and the removal runs ahead of the insert.
         [Test]
         public void Given_ARecordedInsertIntoAContainer_When_AChildOfItIsRemovedFromItsHierarchy_Then_TheRecordedInsertHasReachedTheLiveList()
         {
@@ -93,6 +97,8 @@ namespace Velvet.Tests
             Assert.That(container.hierarchy.childCount, Is.EqualTo(1));
         }
 
+        // GREEN_ON_BASE(characterization): the base applies the recorded writes into a container before it is cleared.
+        // Drop `FlushIfPending(container, null);` from Clear and the insert lands after the clear.
         [Test]
         public void Given_ARecordedInsertAheadOfAChild_When_TheContainerIsCleared_Then_TheInsertedChildIsNotLeftBehind()
         {
@@ -109,6 +115,8 @@ namespace Velvet.Tests
             Assert.That(container.hierarchy.childCount, Is.EqualTo(0));
         }
 
+        // GREEN_ON_BASE(characterization): the base applies the recorded writes into a container before it is sorted.
+        // Drop `FlushIfPending(parent, null);` from HierarchySort and the insert lands after the sort.
         [Test]
         public void Given_ARecordedInsertOfAChildThatSortsFirst_When_TheContainerIsSorted_Then_TheInsertedChildIsFirst()
         {
@@ -126,6 +134,8 @@ namespace Velvet.Tests
             Assert.That(container[0], Is.SameAs(inserted));
         }
 
+        // GREEN_ON_BASE(characterization): the base applies a recording's writes when another pass begins recording.
+        // Drop `if (s_recording) ApplyRecorded();` from BeginRecording and the insert stays recorded.
         [Test]
         public void Given_ARecordingWithAnInsertNotYetApplied_When_AnotherPassBeginsRecording_Then_TheInsertHasReachedTheLiveList()
         {
@@ -141,6 +151,8 @@ namespace Velvet.Tests
             Assert.That(container.hierarchy.childCount, Is.EqualTo(2));
         }
 
+        // GREEN_ON_BASE(characterization): the base forgets the containers a pass created when the next pass begins recording.
+        // Drop `s_created.Clear();` from BeginRecording and the insert is made at once.
         [Test]
         public void Given_AContainerTheFirstPassCreated_When_ASecondPassBeginsRecording_Then_AnInsertIntoItIsRecorded()
         {
@@ -157,6 +169,8 @@ namespace Velvet.Tests
             Assert.That(created.hierarchy.childCount, Is.EqualTo(0));
         }
 
+        // GREEN_ON_BASE(characterization): the base reads a recorded move out of a container from its model, so the moved child is not counted.
+        // Drop `Mark(left);` from RecordInsert and the count reads the live list, which still holds the child.
         [Test]
         public void Given_ARecordedMoveOutOfAContainerWithAModel_When_ItsRecordedCountIsRead_Then_TheMovedChildIsNotCounted()
         {
@@ -173,6 +187,8 @@ namespace Velvet.Tests
             Assert.That(ChildListWrites.ChildCount(source), Is.EqualTo(0));
         }
 
+        // GREEN_ON_BASE(characterization): the base takes a recorded move's child out of the model of the container it leaves.
+        // Drop `leftRows.Remove(child);` from RecordInsert and the model still holds the child.
         [Test]
         public void Given_ARecordedMoveOutOfAContainerWithAModel_When_TheModelIsRead_Then_ItNoLongerHoldsTheMovedChild()
         {
@@ -189,6 +205,8 @@ namespace Velvet.Tests
             Assert.That(RowModelAccess.Peek(source)!.TotalCount, Is.EqualTo(0));
         }
 
+        // GREEN_ON_BASE(characterization): the base removes a child at once for a move where nothing is recording.
+        // Delete the closing `RemoveAt(parent, index);` call of RemoveAtForMove and the child stays.
         [Test]
         public void Given_AChildInAContainerWithNoRecording_When_ItIsRemovedForAMove_Then_TheChildIsGone()
         {
@@ -202,6 +220,8 @@ namespace Velvet.Tests
             Assert.That(container.hierarchy.childCount, Is.EqualTo(0));
         }
 
+        // GREEN_ON_BASE(characterization): the base reads a child whose removal is recorded as having no parent.
+        // Drop `s_pendingParent[element] = null;` from RecordRemoveAt and the live parent answers.
         [Test]
         public void Given_ARecordedRemovalOfAChild_When_ItsParentIsRead_Then_ItHasNone()
         {
@@ -217,6 +237,8 @@ namespace Velvet.Tests
             Assert.That(ChildListWrites.ParentOf(child), Is.Null);
         }
 
+        // GREEN_ON_BASE(characterization): the base drops the model of a container the recorded writes left empty.
+        // Drop `PruneIfEmpty(container);` from the loop in ApplyRecorded's finally and the empty model stays.
         [Test]
         public void Given_ARecordedRemovalOfTheOnlyChild_When_TheRecordedWritesApply_Then_TheContainerKeepsNoModel()
         {
@@ -232,6 +254,9 @@ namespace Velvet.Tests
             Assert.That(RowModelAccess.Peek(container), Is.Null);
         }
 
+        // GREEN_ON_BASE(characterization): the base queues a container for verification again once the writes recorded into it have applied.
+        // Drop `Touch(container);` from the loop in ApplyRecorded's finally and the next verification skips it,
+        // leaving the model at 2.
         [Test]
         public void Given_AVerificationBetweenARecordedInsertAndItsApplication_When_AForeignWriteLeftTheModelBehind_Then_TheNextVerificationRebuildsIt()
         {

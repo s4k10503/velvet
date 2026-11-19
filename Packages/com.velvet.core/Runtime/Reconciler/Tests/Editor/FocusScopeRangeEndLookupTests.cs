@@ -10,6 +10,9 @@ namespace Velvet.Tests
     [TestFixture]
     internal sealed class FocusScopeRangeEndLookupTests
     {
+        // GREEN_ON_BASE(characterization): the base finds no end for a start whose end is not among its siblings.
+        // Widen `i < parent.hierarchy.childCount` to `i <= parent.hierarchy.childCount` in EndOf and the scan reads
+        // one past the last child.
         [Test]
         public void Given_AStartWhoseEndIsNotAmongItsSiblings_When_ItsEndIsLookedUp_Then_NoEndIsFound()
         {
@@ -26,6 +29,9 @@ namespace Velvet.Tests
             Assert.IsNull(end);
         }
 
+        // GREEN_ON_BASE(characterization): the base finds the outer end past a nested start and end.
+        // Drop `depth--;` from the nested-end arm of EndOf and the nested end leaves the depth at one, so the outer
+        // end is passed over.
         [Test]
         public void Given_ANestedStartAndEndBetweenAStartAndItsEnd_When_TheOuterEndIsLookedUp_Then_TheOuterEndIsFound()
         {

@@ -10,7 +10,7 @@ namespace Velvet.Tests
     /// Pins what <c>FiberLayoutReflow</c> answers about a panel it has laid out: whether the panel is as the last pass
     /// left it, that a caller can accept a later write as part of that pass, and that a layout is refused while the
     /// panel is inside its own layout computation or style traversal. The panel's own phase flags are stood in for by
-    /// replacing the delegates the layout reads them through.
+    /// replacing the members the layout reads them through.
     /// </summary>
     [TestFixture]
     internal sealed class FiberLayoutReflowStateTests : PanelTestBase
@@ -22,6 +22,8 @@ namespace Velvet.Tests
             public bool Applying = true;
         }
 
+        // GREEN_ON_BASE(characterization): the base answers a panel the layout just laid out as current.
+        // Change `==` to `!=` in the `_version() == _laidOutVersion` term of IsCurrent and the answer is false.
         [Test]
         public void Given_APanelTheLayoutJustLaidOut_When_AskedWhetherItIsCurrent_Then_ItIs()
         {
@@ -36,6 +38,9 @@ namespace Velvet.Tests
             Assert.That(laidOut && current, Is.True);
         }
 
+        // GREEN_ON_BASE(characterization): the base answers a panel whose version moved since the layout as not current.
+        // Change `&&` to `||` in IsCurrent's `_laidOut && _version() == _laidOutVersion` and a laid-out panel reads
+        // as current whatever its version.
         [Test]
         public void Given_APanelWhoseVersionMovedSinceItWasLaidOut_When_AskedWhetherItIsCurrent_Then_ItIsNot()
         {
@@ -52,6 +57,8 @@ namespace Velvet.Tests
             Assert.That(laidOut ? current : true, Is.False);
         }
 
+        // GREEN_ON_BASE(characterization): the base reads a moved version as current once it is accepted.
+        // Drop `_laidOutVersion = _version();` from Accept and the panel stays stale.
         [Test]
         public void Given_APanelWhoseVersionMovedSinceItWasLaidOut_When_TheMoveIsAccepted_Then_ItIsCurrent()
         {
@@ -69,6 +76,8 @@ namespace Velvet.Tests
             Assert.That(laidOut && staleBefore && FiberLayoutReflow.IsCurrent(root.panel), Is.True);
         }
 
+        // GREEN_ON_BASE(characterization): the base refuses a layout while the panel reports it is inside its own layout computation.
+        // Drop `if (_duringLayout()) return false;` from EnsureLaidOut and the layout runs.
         [Test]
         public void Given_APanelInsideItsOwnLayoutComputation_When_ALayoutIsAskedFor_Then_ItIsRefused()
         {
@@ -86,6 +95,9 @@ namespace Velvet.Tests
             Assert.That(laidOut && refused, Is.True);
         }
 
+        // GREEN_ON_BASE(characterization): the base refuses a layout while the panel is inside its style traversal.
+        // Drop `if ((bool)_applyingStyles.GetValue(_styleUpdater)) return false;` from EnsureLaidOut and the layout
+        // runs.
         [Test]
         public void Given_APanelInsideItsStyleTraversal_When_ALayoutIsAskedFor_Then_ItIsRefused()
         {
