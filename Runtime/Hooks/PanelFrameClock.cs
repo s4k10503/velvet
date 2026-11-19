@@ -74,6 +74,7 @@ namespace Velvet
             public void Dispose()
             {
                 _host.UnregisterCallback(_onAttach);
+                // MUTANT_SURVIVES(equivalent, line removed): the detach callback writes Active = false, and the Unsubscribe that ends Dispose leaves the subscription inactive, so a later detach writes the value it holds; only EnsureSubscribed sets Active, and its one trigger after construction is the attach callback unregistered above.
                 _host.UnregisterCallback(_onDetach);
                 if (_subscription != null) _dispatcher!.Unsubscribe(_subscription);
             }
