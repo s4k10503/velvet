@@ -352,6 +352,7 @@ namespace Velvet
         // own text would offer the slot a value before the var() in it resolves.
         private static string? BoxShadowCoreOf(string cls, out bool important)
         {
+            // MUTANT_SURVIVES(equivalent, literal): the one caller reads important only where a core came back, and StripImportant assigns it before that.
             important = false;
             if (!OpensWithBoxShadowRoot(cls))
             {
@@ -441,8 +442,10 @@ namespace Velvet
         private static bool MixesNonColour(string suffix, string root)
         {
             var slash = StyleColorValueParser.ColorModifierSlashIndex(suffix, 0);
+            // MUTANT_SURVIVES(equivalent, boundary): modifier is read only once slash > 2 holds, so a slash at 0 never reads it.
             var modifier = slash < 0 ? ReadOnlySpan<char>.Empty : suffix.AsSpan(slash + 1);
-            return slash > 2 && suffix[0] == '[' && suffix[slash - 1] == ']'
+            // MUTANT_SURVIVES(equivalent, boundary): a slash at 2 admits only "[]/...", whose empty bracket splits to no hint and an empty value, which is no keyword.
+            return slash > 2&& suffix[0] == '[' && suffix[slash - 1] == ']'
                 && !modifier.IsEmpty && modifier[0] != '(' && modifier.IndexOf("var(".AsSpan()) < 0
                 && StyleArbitraryValueResolver.TrySplitTypeHint(suffix.AsSpan(1, slash - 2), out var hint, out var value)
                 && (hint == null || !StyleColorValueParser.HintSelectsNonColour(root, hint))
