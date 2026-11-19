@@ -12,17 +12,22 @@ namespace Velvet.Tests
     /// </summary>
     internal sealed class CustomPropertyDeferredUnsetOffPanelTests
     {
+        private const string Declaration = "[--x:0_0_5px_#ff0000]";
         private const BindingFlags Any = BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic;
 
-        // The reader's state field after its declaration is taken away, the sentinel where it held none before.
+        // The reader's state field after its declaration is taken away, the sentinel where it held none before. The reader is the
+        // same consumer throughout: the declaration is toggled on its own, where taking its class out of a reconciled list
+        // moves the reader's place and binds it anew.
         private static object ReaderStateAfterTheDeclarationGoes(string field, object sentinel)
         {
             using var scope = new ReconcilerScope();
-            var first = new VNode[] { V.Div(className: "[--x:0_0_5px_#ff0000] shadow-[var(--x)]") };
-            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), first);
+            var context = ReconcilerContextProbe.Of(scope);
+            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), new VNode[] { V.Div() });
             var element = scope.Root[0];
+            StyleCustomProperties.Toggle(element, Declaration, true, StyleLayerPriority.Base, 0, context);
+            StyleCustomProperties.Toggle(element, "shadow-[var(--x)]", true, StyleLayerPriority.Base, 0, context);
             var before = ReaderField(element, field);
-            scope.Reconciler.Reconcile(scope.Root, first, new VNode[] { V.Div(className: "shadow-[var(--x)]") });
+            StyleCustomProperties.Toggle(element, Declaration, false, StyleLayerPriority.Base, 0, context);
             return before == null ? sentinel : ReaderField(element, field);
         }
 
@@ -35,7 +40,8 @@ namespace Velvet.Tests
             return entries[0]!.GetType().GetField(field, Any)!.GetValue(entries[0])!;
         }
 
-        // GREEN_ON_BASE(characterization): the base already forgets the source a reader of a vanished variable resolved from.
+        // GREEN_ON_BASE(characterization): the base already forgets the source a reader of a vanished variable resolved from. Drop
+        // `consumer.Source = null;` from DefersUnset and it stays.
         [Test]
         public void Given_AnOffPanelShadowReaderThatResolved_When_ItsVariableIsNoLongerDeclared_Then_ItKeepsNoSource()
         {
@@ -46,7 +52,8 @@ namespace Velvet.Tests
             Assert.That(source, Is.Null);
         }
 
-        // GREEN_ON_BASE(characterization): the base already withdraws what a reader of a vanished variable had applied.
+        // GREEN_ON_BASE(characterization): the base already withdraws what a reader of a vanished variable had applied. Drop
+        // `Withdraw(target, consumer);` from DefersUnset and it stays.
         [Test]
         public void Given_AnOffPanelShadowReaderThatResolved_When_ItsVariableIsNoLongerDeclared_Then_ItKeepsNothingApplied()
         {
