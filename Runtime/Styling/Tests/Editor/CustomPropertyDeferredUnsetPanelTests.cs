@@ -142,13 +142,84 @@ namespace Velvet.Tests
             Assert.That(waited && ResolvedFlagOfFirstReader(card), Is.True);
         }
 
-        private static bool ResolvedFlagOfFirstReader(VisualElement element)
+        private static bool ResolvedFlagOfFirstReader(VisualElement element) => (bool)ReaderFieldOfFirstReader(element, "Resolved")!;
+
+        private static object? ReaderFieldOfFirstReader(VisualElement element, string field)
         {
             var table = typeof(StyleCustomProperties).GetField("s_consumers", Any)!.GetValue(null)!;
             var args = new object[] { element, null! };
             table.GetType().GetMethod("TryGetValue")!.Invoke(table, args);
             var entries = (System.Collections.IList)args[1].GetType().GetField("Entries", Any)!.GetValue(args[1])!;
-            return (bool)entries[0]!.GetType().GetField("Resolved", Any)!.GetValue(entries[0])!;
+            return entries[0]!.GetType().GetField(field, Any)!.GetValue(entries[0]);
+        }
+
+        // A reader bound where its element is on a panel that has had no style pass, so the variable its stylesheet declares
+        // is unknown until the reader lays the panel out itself.
+        private VisualElement ReaderBoundBeforeTheFirstStylePass()
+        {
+            _window.rootVisualElement.styleSheets.Add(UnityEditor.AssetDatabase.LoadAssetAtPath<StyleSheet>(ReaderSheet));
+            var card = Mount("shadow-var-host", style: false);
+            StyleCustomProperties.Toggle(card, "shadow-[var(--x)]", true, StyleLayerPriority.Base, 0, Context);
+            return card;
+        }
+
+        // GREEN_ON_BASE(characterization): the base reads the variable again once the layout has applied the styles, and keeps the
+        // resolution. Drop `resolved = TryBuild(target, consumer, s_built);` from DefersUnset and the reader keeps none.
+        [Test]
+        public void Given_AShadowReaderBoundBeforeTheFirstStylePassOfItsPanel_When_ItsStylesheetVariableIsKnown_Then_ItHoldsWhatItResolved()
+        {
+            // Act
+            var card = ReaderBoundBeforeTheFirstStylePass();
+
+            // Assert
+            Assert.That(ReaderFieldOfFirstReader(card, "Source"), Is.Not.Null);
+        }
+
+        // GREEN_ON_BASE(characterization): the base builds the resolution into an empty buffer. Drop `s_built.Clear();` before that
+        // read in DefersUnset and what the first read left in the buffer stays ahead of it.
+        [Test]
+        public void Given_AShadowReaderBoundBeforeTheFirstStylePassOfItsPanel_When_ItReadsItsVariableAgain_Then_ItsResolutionHoldsTheUtilityOnce()
+        {
+            // Act
+            var card = ReaderBoundBeforeTheFirstStylePass();
+
+            // Assert
+            var source = (string?)ReaderFieldOfFirstReader(card, "Source") ?? string.Empty;
+            Assert.That(System.Text.RegularExpressions.Regex.Matches(source, @"shadow-\[").Count, Is.LessThanOrEqualTo(1));
+        }
+
+        // The reader's field after the declaration it resolved from is taken away, the sentinel where it held none before.
+        private object? ReaderFieldAfterTheDeclarationGoes(string field, object sentinel)
+        {
+            var card = Mount("ring-2 shadow-[var(--x)]", style: true);
+            StyleCustomProperties.Toggle(card, Declaration, true, StyleLayerPriority.Base, 0, Context);
+            var before = ReaderFieldOfFirstReader(card, field);
+            StyleCustomProperties.Toggle(card, Declaration, false, StyleLayerPriority.Base, 0, Context);
+            return before == null ? sentinel : ReaderFieldOfFirstReader(card, field);
+        }
+
+        // GREEN_ON_BASE(characterization): the base withdraws what a reader on a panel had applied once its variable stops
+        // resolving, whose unset waits for the next read. Drop `Withdraw(target, consumer);` from DefersUnset and it stays applied.
+        [Test]
+        public void Given_AShadowReaderOnAPanelThatResolved_When_ItsDeclarationIsTakenAway_Then_ItKeepsNothingApplied()
+        {
+            // Act
+            var applied = ReaderFieldAfterTheDeclarationGoes("Applied", new string[0]);
+
+            // Assert
+            Assert.That(applied, Is.Null);
+        }
+
+        // GREEN_ON_BASE(characterization): the base forgets the source a reader on a panel resolved from once its variable stops
+        // resolving. Drop `consumer.Source = null;` from DefersUnset and the stale source stays until the next read.
+        [Test]
+        public void Given_AShadowReaderOnAPanelThatResolved_When_ItsDeclarationIsTakenAway_Then_ItKeepsNoSource()
+        {
+            // Act
+            var source = ReaderFieldAfterTheDeclarationGoes("Source", "never resolved");
+
+            // Assert
+            Assert.That(source, Is.Null);
         }
     }
 }
