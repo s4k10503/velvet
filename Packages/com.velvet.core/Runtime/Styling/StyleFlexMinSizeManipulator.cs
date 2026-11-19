@@ -217,8 +217,8 @@ namespace Velvet
 
             if (IsUndrawableFontAsset(resolved))
             {
-                // Not measured: VariantGatedTypographyPassTests fails on the error the engine logs for text set
-                // in a static font asset under the advanced text generator, which does not draw such text.
+                // Neither measured nor written: text in a static font asset under the advanced text generator is
+                // left to the engine.
                 Release(textElement);
                 _hasSignature = false;
                 return;
