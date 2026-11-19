@@ -198,18 +198,22 @@ namespace Velvet.Tests
         // GREEN_ON_BASE(characterization): the base holds one run for an id however many are noted for it. Drop
         // `if (runs[i].Id.Equals(run.Id)) runs.RemoveAt(i);` from NoteRun and the earlier run stays beside the new one.
         [Test]
-        public void Given_ARunNotedForAnId_When_AnotherRunIsNotedForTheSameId_Then_OneRunIsHeld()
+        public void Given_AnOpacityTransitionWhoseRunEventHasArrived_When_ARunIsNotedAgainForTheIdItWasNotedUnder_Then_OneRunIsHeld()
         {
-            // Arrange
-            var id = new object();
-            var runs = new List<(object Id, double StartSec)> { (id, 1.0) };
+            // Arrange — the id is the one the engine's run was noted under, and the start a later transition's would differ in.
+            var element = Started("take-over-ease-in-out", e => e.style.opacity = 0f, e => e.style.opacity = 1f);
+            EditorPanelTestHelpers.DriveAnimationsOnce(element.panel);
+            var runs = NotedRunList(element);
             var noteRun = typeof(StyleEaseCurve).GetMethod("NoteRun", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!;
 
             // Act
-            noteRun.Invoke(null, new object[] { runs, (id, 2.0) });
+            if (runs is { Count: 1 })
+            {
+                noteRun.Invoke(null, new object[] { runs, (runs[0].Id, runs[0].StartSec + 1.0) });
+            }
 
-            // Assert
-            Assert.That(runs.Count, Is.EqualTo(1));
+            // Assert — one where the first run was noted, which the count is not where it was not.
+            Assert.That(runs?.Count ?? -1, Is.EqualTo(1));
         }
 
         // GREEN_ON_BASE(characterization): the base forgets the runs it has seen once the element stops being listened to. Drop
@@ -233,6 +237,14 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(run.GetValue(binding), Is.Null);
+        }
+
+        private static List<(object Id, double StartSec)>? NotedRunList(VisualElement element)
+        {
+            var bindings = typeof(StyleEaseCurve).GetField("s_bindings", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!.GetValue(null)!;
+            var arguments = new object[] { element, null };
+            bindings.GetType().GetMethod("TryGetValue")!.Invoke(bindings, arguments);
+            return arguments[1]?.GetType().GetField("Run")!.GetValue(arguments[1]) as List<(object Id, double StartSec)>;
         }
 
         private static int NotedRuns(VisualElement element)

@@ -67,9 +67,9 @@ namespace Velvet.Tests
             Assert.That(Context.ShadowBindings.ContainsKey(card), Is.True);
         }
 
-        // GREEN_ON_BASE(characterization): the base already takes the panel's layout as current after the unset it writes.
+        // GREEN_ON_BASE(characterization): the base already leaves the panel's layout current after a shadow reader's declaration is taken away.
         [Test]
-        public void Given_APanelLaidOutAsItsLastPassLeftIt_When_AShadowReaderWritesTheUnsetThatDiscardsTheShadow_Then_TheLayoutIsStillCurrent()
+        public void Given_APanelLaidOutAsItsLastPassLeftIt_When_AShadowReadersDeclarationIsTakenAway_Then_TheLayoutIsStillCurrent()
         {
             // Arrange
             var card = Mount("ring-2 shadow-[var(--x)]", style: true);
@@ -185,38 +185,54 @@ namespace Velvet.Tests
 
             // Assert
             var source = (string?)ReaderFieldOfFirstReader(card, "Source") ?? string.Empty;
-            Assert.That(System.Text.RegularExpressions.Regex.Matches(source, @"shadow-\[").Count, Is.LessThanOrEqualTo(1));
+            Assert.That(System.Text.RegularExpressions.Regex.Matches(source, @"shadow-\[").Count, Is.EqualTo(1));
         }
 
-        // The reader's field after the declaration it resolved from is taken away, the sentinel where it held none before.
-        private object? ReaderFieldAfterTheDeclarationGoes(string field, object sentinel)
+        // The reader's field after the declaration it resolved from is taken away inside the style pass, where the panel cannot
+        // be laid out again, the sentinel where it held none before.
+        private object? ReaderFieldAfterTheDeclarationGoesInTheStylePass(string field, object sentinel)
         {
-            var card = Mount("ring-2 shadow-[var(--x)]", style: true);
+            _window.rootVisualElement.styleSheets.Add(UnityEditor.AssetDatabase.LoadAssetAtPath<StyleSheet>(RuleSheet));
+            _mounted = V.Mount(_window.rootVisualElement, V.Div(name: "card", className: "css-var-host"));
+            var card = _window.rootVisualElement.Q<VisualElement>("card");
             StyleCustomProperties.Toggle(card, Declaration, true, StyleLayerPriority.Base, 0, Context);
+            StyleCustomProperties.Toggle(card, "shadow-[var(--x)]", true, StyleLayerPriority.Base, 0, Context);
             var before = ReaderFieldOfFirstReader(card, field);
-            StyleCustomProperties.Toggle(card, Declaration, false, StyleLayerPriority.Base, 0, Context);
-            return before == null ? sentinel : ReaderFieldOfFirstReader(card, field);
+            var after = sentinel;
+            var taken = false;
+            card.RegisterCallback<CustomStyleResolvedEvent>(_ =>
+            {
+                if (taken)
+                {
+                    return;
+                }
+                taken = true;
+                StyleCustomProperties.Toggle(card, Declaration, false, StyleLayerPriority.Base, 0, Context);
+                after = ReaderFieldOfFirstReader(card, field)!;
+            });
+            EditorPanelTestHelpers.ForcePanelUpdate(card.panel);
+            return before == null ? sentinel : after;
         }
 
-        // GREEN_ON_BASE(characterization): the base withdraws what a reader on a panel had applied once its variable stops
-        // resolving, whose unset waits for the next read. Drop `Withdraw(target, consumer);` from DefersUnset and it stays applied.
+        // GREEN_ON_BASE(characterization): the base withdraws what a reader had applied once its variable stops resolving where the
+        // panel cannot be laid out again, and its unset waits for the next read. Drop `Withdraw(target, consumer);` from DefersUnset and it stays applied.
         [Test]
-        public void Given_AShadowReaderOnAPanelThatResolved_When_ItsDeclarationIsTakenAway_Then_ItKeepsNothingApplied()
+        public void Given_AShadowReaderThatResolved_When_ItsDeclarationIsTakenAwayInsideTheStylePass_Then_ItKeepsNothingApplied()
         {
             // Act
-            var applied = ReaderFieldAfterTheDeclarationGoes("Applied", new string[0]);
+            var applied = ReaderFieldAfterTheDeclarationGoesInTheStylePass("Applied", new string[0]);
 
             // Assert
             Assert.That(applied, Is.Null);
         }
 
-        // GREEN_ON_BASE(characterization): the base forgets the source a reader on a panel resolved from once its variable stops
-        // resolving. Drop `consumer.Source = null;` from DefersUnset and the stale source stays until the next read.
+        // GREEN_ON_BASE(characterization): the base forgets the source a reader resolved from once its variable stops resolving where
+        // the panel cannot be laid out again. Drop `consumer.Source = null;` from DefersUnset and the stale source stays until the next read.
         [Test]
-        public void Given_AShadowReaderOnAPanelThatResolved_When_ItsDeclarationIsTakenAway_Then_ItKeepsNoSource()
+        public void Given_AShadowReaderThatResolved_When_ItsDeclarationIsTakenAwayInsideTheStylePass_Then_ItKeepsNoSource()
         {
             // Act
-            var source = ReaderFieldAfterTheDeclarationGoes("Source", "never resolved");
+            var source = ReaderFieldAfterTheDeclarationGoesInTheStylePass("Source", "never resolved");
 
             // Assert
             Assert.That(source, Is.Null);

@@ -243,7 +243,7 @@ namespace Velvet.Tests
             Assert.That(atNatural, Is.False);
         }
 
-        // GREEN_ON_BASE(characterization): the base takes a width equal to the threshold as the natural width. Change `>=` to `>` in the return of
+        // GREEN_ON_BASE(characterization): the base writes no minimum for a label at its text's width. Return `false` from the end of
         // IsAtNaturalWidth and a minimum is written.
         [Test]
         public void Given_ALabelWhoseWidthIsExactlyItsTextsWidthPlusItsFrameLessTheTolerance_When_Resolved_Then_ItsMinWidthIsNotWritten()
@@ -262,30 +262,29 @@ namespace Velvet.Tests
             Assert.That(label.style.minWidth.keyword, Is.EqualTo(StyleKeyword.Null));
         }
 
-        // GREEN_ON_BASE(characterization): the base takes a width equal to the threshold as the natural width, the threshold being built
-        // here from the measured natural width and the frame by the expression IsAtNaturalWidth ends in, so no rounding of a
-        // hand-written sum separates the two. Change `>=` to `>` in the return of IsAtNaturalWidth and a minimum is written.
+        // GREEN_ON_BASE(characterization): the base takes a width equal to the threshold as the natural width. Change `>=` to `>` in the
+        // return of IsAtNaturalWidth and the label is not at it. The inputs are declared: the natural width is the 100 the label is
+        // given, and 100 + 0.01 - 0.01 is 100 in single precision.
         [Test]
-        public void Given_ALabelWhoseWidthIsExactlyTheThresholdItsNaturalWidthIsTakenAt_When_Resolved_Then_ItsMinWidthIsNotWritten()
+        public void Given_ALabelWhoseWidthIsExactlyTheNaturalWidthThreshold_When_ItIsAskedWhetherItIsAtNaturalWidth_Then_ItIs()
         {
             // Arrange
             using var scope = new ReconcilerScope();
             var label = MountLabel(scope, WideRow, "", Sentence);
-            var natural = Read<float>(ManipulatorOf(scope, label), "_natural");
-            var frame = (float)typeof(StyleFlexMinSizeManipulator)
-                .GetMethod("FrameInsets", BindingFlags.NonPublic | BindingFlags.Static)!
-                .Invoke(null, new object[] { label.resolvedStyle, true })!;
-            var threshold = Mathf.Ceil(natural) + frame - 0.01f;
-            label.style.width = threshold;
+            label.style.width = 100f;
+            ForcePanelUpdate(label.panel);
+            var manipulator = ManipulatorOf(scope, label);
+            var type = typeof(StyleFlexMinSizeManipulator);
+            type.GetField("_natural", Private)!.SetValue(manipulator, 100f);
+            type.GetField("_naturalKey", Private)!.SetValue(manipulator, HashCode.Combine(Sentence, label.resolvedStyle.fontSize));
+            type.GetField("_hasNatural", Private)!.SetValue(manipulator, true);
 
             // Act
-            ForcePanelUpdate(label.panel);
-            FireGeometry(label);
-            ForcePanelUpdate(label.panel);
+            var atNatural = (bool)type.GetMethod("IsAtNaturalWidth", Private)!
+                .Invoke(manipulator, new object[] { label, true, Sentence, label.resolvedStyle, 0.01f, false })!;
 
-            // Assert — where the layout did not give the label the threshold, the keyword is one the expected Null cannot equal.
-            var keyword = label.resolvedStyle.width == threshold ? label.style.minWidth.keyword : StyleKeyword.Auto;
-            Assert.That(keyword, Is.EqualTo(StyleKeyword.Null));
+            // Assert — false where the layout did not give the label 100, which the expected value is not.
+            Assert.That(label.resolvedStyle.width == 100f && atNatural, Is.True);
         }
 
         // GREEN_ON_BASE(characterization): the base takes its hub callback off a parent whose last leaf leaves. Drop
