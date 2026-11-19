@@ -1,0 +1,28 @@
+{
+ "detail": "EditMode: 1 failed: Given_AnAnchorScan_When_ItFinishes_Then_TheRowBufferItRentedIsBackInThePool",
+ "file": "02b52c79f98e28df499c3fc86469ff6e73edbc7542f381acfc012419845f7750",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ChildElementPlacementCreationOrderTests.Given_AnAnchorScan_When_ItFinishes_Then_TheRowBufferItRentedIsBackInThePool",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ChildElementPlacementCreationOrderTests.cs": "facdf20d77def2bf34e006bd01b84b80881307139392051dab05e37e2f471462"
+   }
+  }
+ ],
+ "measured_by": "44494804299",
+ "mutant": {
+  "after": ";",
+  "before": "pool.ReturnRowRead(rows);",
+  "column": 20,
+  "line": 110,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ChildElementPlacement.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3295f816af35af66671199afb18cd2254106533a4c9ba969b3366588368706a2",
+ "verdict": "killed"
+}

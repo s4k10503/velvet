@@ -1,0 +1,31 @@
+{
+ "detail": "EditMode: 1 failed among the 14 case(s) that ran the site: Given_AKeywordBehindAModifierThatIsNoColourMix_When_Extracted_Then_TheRingIsDrawn(\"ring-2 ring-[length:unset]/50\")",
+ "file": "7d01e1cf9212e655feb06dadaf80da5690251d09ad3e1d41eb75330255b87420",
+ "killers": [
+  {
+   "case": "Velvet.Tests.BoxShadowCustomPropertyTests.Given_AKeywordBehindAModifierThatIsNoColourMix_When_Extracted_Then_TheRingIsDrawn(\"ring-2 ring-[length:unset]/50\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BoxShadowCustomPropertyTests.cs": "85fbe0bf2fcaae9e2449c3bf1774f738bcb8a1c305690aa883bc6d28bb184a0e",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  }
+ ],
+ "measured_by": "44494804299",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 24,
+  "line": 451,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleRingClass.cs",
+  "shadowed": [
+   "clause removed"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3295f816af35af66671199afb18cd2254106533a4c9ba969b3366588368706a2",
+ "verdict": "killed"
+}

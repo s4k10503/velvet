@@ -1,0 +1,33 @@
+{
+ "detail": "EditMode: 1 failed among the 150 case(s) that ran the site: Given_ADisposedSubscription_When_ItsHostAttachesToThePanelAgain_Then_ItIsNotActive",
+ "file": "f0336b0b0d41d56a2eee1328f283b13fc1f3b578e059b5a2572abe61628c06f8",
+ "killers": [
+  {
+   "case": "Velvet.Tests.PanelFrameClockSubscriptionTests.Given_ADisposedSubscription_When_ItsHostAttachesToThePanelAgain_Then_ItIsNotActive",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/PanelFrameClockSubscriptionTests.cs": "45f20a90ad79751f21a0f6a2323683b11b567a661478693f94ba6e445832caf4",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff",
+    "Packages/com.velvet.core/TestUtilities/UseFrameFakeClockHost.cs": "832e6d1a29eac04e37d6f7a12601c3572a72772621452748e332bb8c2d3d1194"
+   }
+  }
+ ],
+ "measured_by": "44494804299",
+ "mutant": {
+  "after": ";",
+  "before": "_host.UnregisterCallback(_onAttach);",
+  "column": 16,
+  "line": 76,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Hooks/PanelFrameClock.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3295f816af35af66671199afb18cd2254106533a4c9ba969b3366588368706a2",
+ "verdict": "killed"
+}

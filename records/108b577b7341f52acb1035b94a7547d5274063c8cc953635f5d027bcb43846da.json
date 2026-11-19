@@ -1,8 +1,8 @@
 {
- "detail": "EditMode: the editor was killed at 1118s, 1.5 times the baseline's 741s plus 5s, with no readable result",
+ "detail": "EditMode: the editor was killed at 1371s, 1.5 times the baseline's 911s plus 5s, with no readable result",
  "file": "f447024f6b211949f920a018bf2395d63ffd7e6e136c4f743c1cb7e2106fb082",
  "killers": [],
- "measured_by": "44403756371",
+ "measured_by": "44494804299",
  "mutant": {
   "after": ";",
   "before": "ancestor = ChildListWrites.ParentOf(ancestor);",
@@ -16,6 +16,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "cace4f089ea1ff071d65e10fd2e74b9a7ee55cd9ca61d4ac197f98380533d5a9",
+ "tests": "3295f816af35af66671199afb18cd2254106533a4c9ba969b3366588368706a2",
  "verdict": "killed (timed out)"
 }

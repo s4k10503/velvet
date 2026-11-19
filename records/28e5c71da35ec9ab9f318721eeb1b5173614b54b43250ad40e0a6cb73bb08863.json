@@ -1,0 +1,34 @@
+{
+ "detail": "EditMode: 1 failed: Given_AnElementUnderASheetsBackgroundSizeTransition_When_ResetForReuse_Then_NoTransitionStarts",
+ "file": "45ef912cb6f28f0efff7c09a725a5c5de2ea30985aa51a965147b0e2a2499528",
+ "killers": [
+  {
+   "case": "Velvet.Tests.PooledElementStyleGhostTests.Given_AnElementUnderASheetsBackgroundSizeTransition_When_ResetForReuse_Then_NoTransitionStarts",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PooledElementStyleGhostTests.cs": "13d770c0156c1a92710368e8f1fef12ad9cbf14c2069792301208320a8798872",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/VariantCleanupTestsBase.cs": "e292c5a83d0e9576da98c8fede4b3f88e954505b61c1d5f86977cb9746879f11",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  }
+ ],
+ "measured_by": "44494804299",
+ "mutant": {
+  "after": ";",
+  "before": "style.backgroundSize = StyleKeyword.Null;",
+  "column": 12,
+  "line": 235,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberElementPoolReset.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3295f816af35af66671199afb18cd2254106533a4c9ba969b3366588368706a2",
+ "verdict": "killed"
+}

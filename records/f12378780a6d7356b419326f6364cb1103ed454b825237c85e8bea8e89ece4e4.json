@@ -1,0 +1,31 @@
+{
+ "detail": "EditMode: 1 failed among the 69 case(s) that ran the site: Given_AnEmptyValue_When_ReadAsAColour_Then_ItIsNotRejected",
+ "file": "70852aea56e079cf2e1a6c525fd588c85007d6bd2dc0f5ffedbd71779939b76d",
+ "killers": [
+  {
+   "case": "Velvet.Tests.StyleColorValueParserEmptyValueTests.Given_AnEmptyValue_When_ReadAsAColour_Then_ItIsNotRejected",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/StyleColorValueParserEmptyValueTests.cs": "380c0ddad3eb359a1d9f9c42011b43641a67b0b772358b9a3a6ac36bc0725aa9"
+   }
+  }
+ ],
+ "measured_by": "44494804299",
+ "mutant": {
+  "after": ">=",
+  "before": ">",
+  "column": 28,
+  "line": 105,
+  "operator": "boundary",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleColorValueParser.cs",
+  "shadowed": [
+   "clause removed",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3295f816af35af66671199afb18cd2254106533a4c9ba969b3366588368706a2",
+ "verdict": "killed"
+}

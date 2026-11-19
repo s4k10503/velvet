@@ -1,8 +1,15 @@
 {
- "detail": "EditMode survived; PlayMode: -",
+ "detail": "EditMode: 1 failed among the 53 case(s) that ran the site: Given_AnOffPanelElementThatDeferredAUserClass_When_TheDeferralIsReleased_Then_NoAttachCallbackRemains",
  "file": "07b9bed3cc81f9a4787c2871e22617e3c758403aa3d9e930bc519160443837e1",
- "killers": [],
- "measured_by": "44403756371",
+ "killers": [
+  {
+   "case": "Velvet.Tests.StyleUserClassPropertiesReleaseTests.Given_AnOffPanelElementThatDeferredAUserClass_When_TheDeferralIsReleased_Then_NoAttachCallbackRemains",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/StyleUserClassPropertiesReleaseTests.cs": "5897d26edb70408f0c17d64480be8304042b75cdcab6b71de3d2ed6de88be127"
+   }
+  }
+ ],
+ "measured_by": "44494804299",
  "mutant": {
   "after": ";",
   "before": "element.UnregisterCallback(s_onAttach);",
@@ -13,9 +20,9 @@
   "shadowed": []
  },
  "mutator": 10,
- "platform": "PlayMode",
+ "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "cace4f089ea1ff071d65e10fd2e74b9a7ee55cd9ca61d4ac197f98380533d5a9",
- "verdict": "survived"
+ "tests": "3295f816af35af66671199afb18cd2254106533a4c9ba969b3366588368706a2",
+ "verdict": "killed"
 }

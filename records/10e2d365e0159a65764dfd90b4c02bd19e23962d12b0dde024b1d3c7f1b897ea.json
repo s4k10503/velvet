@@ -1,8 +1,15 @@
 {
- "detail": "EditMode survived; PlayMode: -",
+ "detail": "EditMode: 1 failed among the 73 case(s) that ran the site: Given_AMountPointInsideADroppedContainer_When_TheContainersAreSearched_Then_ItIsInsideOne",
  "file": "cf3e81988a5f84463b957d04b1281811b3f8dc282942c7bc261df1c79627ac9a",
- "killers": [],
- "measured_by": "44403756371",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ReconcilerHelperCaseTests.Given_AMountPointInsideADroppedContainer_When_TheContainersAreSearched_Then_ItIsInsideOne",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ReconcilerHelperCaseTests.cs": "0b3cdc988fb0c6144ded9c2358f2a29ec6d99e349250e2bbdbe3e4e22949ffe7"
+   }
+  }
+ ],
+ "measured_by": "44494804299",
  "mutant": {
   "after": "==",
   "before": "!=",
@@ -13,9 +20,9 @@
   "shadowed": []
  },
  "mutator": 10,
- "platform": "PlayMode",
+ "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "cace4f089ea1ff071d65e10fd2e74b9a7ee55cd9ca61d4ac197f98380533d5a9",
- "verdict": "survived"
+ "tests": "3295f816af35af66671199afb18cd2254106533a4c9ba969b3366588368706a2",
+ "verdict": "killed"
 }

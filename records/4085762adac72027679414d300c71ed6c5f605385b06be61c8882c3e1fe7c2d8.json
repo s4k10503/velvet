@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "02b52c79f98e28df499c3fc86469ff6e73edbc7542f381acfc012419845f7750",
+ "killers": [],
+ "measured_by": "44494804299",
+ "mutant": {
+  "after": "+",
+  "before": "-",
+  "column": 52,
+  "line": 101,
+  "operator": "arithmetic",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ChildElementPlacement.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3295f816af35af66671199afb18cd2254106533a4c9ba969b3366588368706a2",
+ "verdict": "survived"
+}

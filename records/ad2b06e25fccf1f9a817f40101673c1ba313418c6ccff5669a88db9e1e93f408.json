@@ -1,0 +1,28 @@
+{
+ "detail": "EditMode: 1 failed among the 350 case(s) that ran the site: Given_AChildListedAheadOfTheOnesBeforeIt_When_TheChildrenAreReordered_Then_TheOrderIsReportedAsOutOfCreationOrder",
+ "file": "02b52c79f98e28df499c3fc86469ff6e73edbc7542f381acfc012419845f7750",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ChildElementPlacementReorderTests.Given_AChildListedAheadOfTheOnesBeforeIt_When_TheChildrenAreReordered_Then_TheOrderIsReportedAsOutOfCreationOrder",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ChildElementPlacementReorderTests.cs": "ee7ce7327602c62b35fb2db5ea0985deced7b91c3db849b8da84e2abc341f475"
+   }
+  }
+ ],
+ "measured_by": "44494804299",
+ "mutant": {
+  "after": ";",
+  "before": "lastKept = position;",
+  "column": 16,
+  "line": 227,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ChildElementPlacement.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3295f816af35af66671199afb18cd2254106533a4c9ba969b3366588368706a2",
+ "verdict": "killed"
+}

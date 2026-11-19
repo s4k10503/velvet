@@ -1,0 +1,43 @@
+{
+ "detail": "EditMode: 3 failed: Given_AMotionWithInitial_When_EnterCompletes_Then_ItRestsAtTheAnimateVariant, Given_AnExitingChild_When_ItsKeyIsReAddedBeforeCompletion_Then_TheExitIsCancelledAndTheSameElementIsRetained, Given_EnterTransition_When_Completed_Then_EnterToClassIsRemoved",
+ "file": "ff2b831b412bd86e9edfd4834ea1a70d848acd718c140b58e992a2a834bba034",
+ "killers": [
+  {
+   "case": "Velvet.Tests.AnimatePresenceAnimationTests.Given_AMotionWithInitial_When_EnterCompletes_Then_ItRestsAtTheAnimateVariant",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/AnimatePresenceAnimationTests.cs": "a7ff95ec31fa180d58adaecff71bbaaaf3f7e0961ca58e218d0a694974b935a8",
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/SimulatedPanelTestBase.cs": "a06149cf212c91277fd1442580aee292a959fef6bf985e77628aabdbb0acacc8"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AnimatePresenceAnimationTests.Given_AnExitingChild_When_ItsKeyIsReAddedBeforeCompletion_Then_TheExitIsCancelledAndTheSameElementIsRetained",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/AnimatePresenceAnimationTests.cs": "a7ff95ec31fa180d58adaecff71bbaaaf3f7e0961ca58e218d0a694974b935a8",
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/SimulatedPanelTestBase.cs": "a06149cf212c91277fd1442580aee292a959fef6bf985e77628aabdbb0acacc8"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AnimatePresenceAnimationTests.Given_EnterTransition_When_Completed_Then_EnterToClassIsRemoved",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/AnimatePresenceAnimationTests.cs": "a7ff95ec31fa180d58adaecff71bbaaaf3f7e0961ca58e218d0a694974b935a8",
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/SimulatedPanelTestBase.cs": "a06149cf212c91277fd1442580aee292a959fef6bf985e77628aabdbb0acacc8"
+   }
+  }
+ ],
+ "measured_by": "44494804299",
+ "mutant": {
+  "after": ";",
+  "before": "RecordInsert(container, index, child, viaHierarchy, caller);",
+  "column": 16,
+  "line": 309,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ChildListWrites.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3295f816af35af66671199afb18cd2254106533a4c9ba969b3366588368706a2",
+ "verdict": "killed"
+}

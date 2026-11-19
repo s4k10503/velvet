@@ -1,0 +1,46 @@
+{
+ "detail": "EditMode: 3 failed among the 8 case(s) that ran the site: Given_AGradientStopLiteralOfAnotherTypeHoldingNoColour_When_Read_Then_ItIsAReader(\"from-[number:5]/50\"), Given_AGradientStopLiteralOfAnotherTypeHoldingNoColour_When_Read_Then_ItIsAReader(\"via-[number:5]/50\"), Given_AGradientStopLiteralOfAnotherTypeHoldingNoColour_When_Read_Then_ItIsAReader(\"to-[number:5]/50\")",
+ "file": "8c6459f11a56c67c25759cb7d9dc3f6b1c83cc7ea458d7e98e7afdbe4f925418",
+ "killers": [
+  {
+   "case": "Velvet.Tests.BoxShadowCustomPropertyTests.Given_AGradientStopLiteralOfAnotherTypeHoldingNoColour_When_Read_Then_ItIsAReader(\"from-[number:5]/50\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BoxShadowCustomPropertyTests.cs": "85fbe0bf2fcaae9e2449c3bf1774f738bcb8a1c305690aa883bc6d28bb184a0e",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  },
+  {
+   "case": "Velvet.Tests.BoxShadowCustomPropertyTests.Given_AGradientStopLiteralOfAnotherTypeHoldingNoColour_When_Read_Then_ItIsAReader(\"to-[number:5]/50\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BoxShadowCustomPropertyTests.cs": "85fbe0bf2fcaae9e2449c3bf1774f738bcb8a1c305690aa883bc6d28bb184a0e",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  },
+  {
+   "case": "Velvet.Tests.BoxShadowCustomPropertyTests.Given_AGradientStopLiteralOfAnotherTypeHoldingNoColour_When_Read_Then_ItIsAReader(\"via-[number:5]/50\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BoxShadowCustomPropertyTests.cs": "85fbe0bf2fcaae9e2449c3bf1774f738bcb8a1c305690aa883bc6d28bb184a0e",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  }
+ ],
+ "measured_by": "44494804299",
+ "mutant": {
+  "after": "==",
+  "before": "!=",
+  "column": 23,
+  "line": 210,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleCustomPropertyClass.cs",
+  "shadowed": [
+   "clause removed",
+   "equality"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3295f816af35af66671199afb18cd2254106533a4c9ba969b3366588368706a2",
+ "verdict": "killed"
+}

@@ -1,0 +1,28 @@
+{
+ "detail": "EditMode: 1 failed among the 8 case(s) that ran the site: Given_AnElementTheMountDidNotCreate_When_AWriteNamesItWhileChildrenAreCreated_Then_TheWriteIsRecordedBehindThePass",
+ "file": "ff2b831b412bd86e9edfd4834ea1a70d848acd718c140b58e992a2a834bba034",
+ "killers": [
+  {
+   "case": "Velvet.Tests.CreatedContainerHierarchyWriteTests.Given_AnElementTheMountDidNotCreate_When_AWriteNamesItWhileChildrenAreCreated_Then_TheWriteIsRecordedBehindThePass",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/CreatedContainerHierarchyWriteTests.cs": "eb362582d4cd53cbd905d84e304140395824f52652ba09ac96b48f2f266c748f"
+   }
+  }
+ ],
+ "measured_by": "44494804299",
+ "mutant": {
+  "after": ";",
+  "before": "FlushIfPending(parent, child);",
+  "column": 12,
+  "line": 361,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ChildListWrites.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3295f816af35af66671199afb18cd2254106533a4c9ba969b3366588368706a2",
+ "verdict": "killed"
+}

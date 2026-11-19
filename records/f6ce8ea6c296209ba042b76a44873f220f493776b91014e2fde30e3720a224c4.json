@@ -1,0 +1,36 @@
+{
+ "detail": "EditMode: 1 failed among the 150 case(s) that ran the site: Given_ALeaveStepTimedByItsPoseAfterTheEnterPlayEnded_When_SixteenFramesOfItRun_Then_TheMotionCoversThatShareOfItsSecond",
+ "file": "f0336b0b0d41d56a2eee1328f283b13fc1f3b578e059b5a2572abe61628c06f8",
+ "killers": [
+  {
+   "case": "Velvet.Tests.AnimationSequenceNativeTweenTests.Given_ALeaveStepTimedByItsPoseAfterTheEnterPlayEnded_When_SixteenFramesOfItRun_Then_TheMotionCoversThatShareOfItsSecond",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/AnimationSequenceNativeTweenTests.cs": "f1769934c7832526a326b8784ce8f562a95a8bc3bb7b01ccfe17063e1f2057de",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/UseFrameFakeClockHost.cs": "832e6d1a29eac04e37d6f7a12601c3572a72772621452748e332bb8c2d3d1194"
+   }
+  }
+ ],
+ "measured_by": "44494804299",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 25,
+  "line": 62,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Hooks/PanelFrameClock.cs",
+  "shadowed": [
+   "guard removed"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3295f816af35af66671199afb18cd2254106533a4c9ba969b3366588368706a2",
+ "verdict": "killed"
+}

@@ -1,0 +1,29 @@
+{
+ "detail": "EditMode: 1 failed among the 84 case(s) that ran the site: Given_ARecordedInsertIntoAContainer_When_AChildOfItIsRemoved_Then_TheRecordedInsertHasReachedTheLiveList",
+ "file": "ff2b831b412bd86e9edfd4834ea1a70d848acd718c140b58e992a2a834bba034",
+ "killers": [
+  {
+   "case": "Velvet.Tests.RecordedChildListWritesTests.Given_ARecordedInsertIntoAContainer_When_AChildOfItIsRemoved_Then_TheRecordedInsertHasReachedTheLiveList",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/RecordedChildListWritesTests.cs": "00cd941eb8ab8fe92344fd4a75972736f3a993fb31d7060f78f44cac85c63eaf",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/RowModelAccess.cs": "c9281ca1bc8930756e7b643acf56772495143054fc02c02792727059325b4674"
+   }
+  }
+ ],
+ "measured_by": "44494804299",
+ "mutant": {
+  "after": ";",
+  "before": "FlushIfPending(container, child);",
+  "column": 12,
+  "line": 345,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ChildListWrites.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3295f816af35af66671199afb18cd2254106533a4c9ba969b3366588368706a2",
+ "verdict": "killed"
+}

@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -; 1 other editor(s) were up",
+ "file": "48f7ca0059649636024d532df25dcfe1052cbebe35b20803055d17e77157904c",
+ "killers": [],
+ "measured_by": "44494804299",
+ "mutant": {
+  "after": "",
+  "before": "if (RadiusWatchSheets.IsWatch(sheet)) return 0;",
+  "column": 16,
+  "line": 283,
+  "operator": "guard removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/BundledClassTransform.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3295f816af35af66671199afb18cd2254106533a4c9ba969b3366588368706a2",
+ "verdict": "survived"
+}

@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "b90712743e65068e95f02a5c3b5b1a689c08e7ce111a84dcbca950e483811aae",
+ "killers": [],
+ "measured_by": "44494804299",
+ "mutant": {
+  "after": "true",
+  "before": "false",
+  "column": 23,
+  "line": 48,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberLayoutReflow.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3295f816af35af66671199afb18cd2254106533a4c9ba969b3366588368706a2",
+ "verdict": "survived"
+}

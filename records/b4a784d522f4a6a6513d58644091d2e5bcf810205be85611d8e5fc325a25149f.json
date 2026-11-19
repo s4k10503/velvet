@@ -1,0 +1,28 @@
+{
+ "detail": "EditMode: 1 failed: Given_AShadowBracketReadingAVariable_When_ItsReaderIsBuiltWithTheDefaultThemedArgument_Then_ItCarriesShadowLayers",
+ "file": "3a97810d6ca79ab8755c95512cd881e3876a04885e4d6a94a59222f0a10adef7",
+ "killers": [
+  {
+   "case": "Velvet.Tests.CustomPropertyConsumerDefaultsTests.Given_AShadowBracketReadingAVariable_When_ItsReaderIsBuiltWithTheDefaultThemedArgument_Then_ItCarriesShadowLayers",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/CustomPropertyConsumerDefaultsTests.cs": "0800a3f40f0be4375ddb6d5e9e908edb7591ed21d78c7852c2105240e48b1811"
+   }
+  }
+ ],
+ "measured_by": "44494804299",
+ "mutant": {
+  "after": "true",
+  "before": "false",
+  "column": 30,
+  "line": 114,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleCustomProperties.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3295f816af35af66671199afb18cd2254106533a4c9ba969b3366588368706a2",
+ "verdict": "killed"
+}
