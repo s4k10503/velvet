@@ -248,8 +248,7 @@ namespace Velvet
                 // This only spares the reflection calls.
                 if (_laidOut && _version() == _laidOutVersion) return true;
                 // A commit made from a measure callback runs inside the panel's own computation, which a second one
-                // would restart under it.
-                // MUTANT_SURVIVES(unreachable): no suite case commits from inside a measure callback.
+                // would restart under it. FiberLayoutReflowStateTests refuses a layout where the panel reports it is in one.
                 if (_duringLayout()) return false;
                 // A CustomStyleResolvedEvent is dispatched from inside the style updater's traversal, which a
                 // second traversal would restart under it.

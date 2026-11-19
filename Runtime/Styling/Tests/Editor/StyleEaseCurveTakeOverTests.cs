@@ -175,5 +175,34 @@ namespace Velvet.Tests
             // Assert
             Assert.That(WhereARunEventHasArrived(opacity), Is.EqualTo(0.3f).Within(1e-2f));
         }
+
+        [Test]
+        public void Given_AnOpacityTransitionWhoseRunEventHasArrived_When_AnotherOpacityTransitionStartsAndItsRunEventArrives_Then_OneRunIsNotedForOpacity()
+        {
+            // Arrange
+            var element = Started("take-over-ease-in-out", e => e.style.opacity = 0f, e => e.style.opacity = 1f);
+            EditorPanelTestHelpers.DriveAnimationsOnce(element.panel);
+            _now = 200.0;
+
+            // Act
+            element.style.opacity = 0f;
+            ForcePanelUpdate(element.panel);
+            EditorPanelTestHelpers.DriveAnimationsOnce(element.panel);
+
+            // Assert — the first run event is carried by the value: where none had arrived, the count is one the expected 1 cannot equal.
+            Assert.That(_ran ? NotedRuns(element) : -1, Is.EqualTo(1));
+        }
+
+        private static int NotedRuns(VisualElement element)
+        {
+            var bindings = typeof(StyleEaseCurve).GetField("s_bindings", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!.GetValue(null)!;
+            var arguments = new object[] { element, null };
+            if (!(bool)bindings.GetType().GetMethod("TryGetValue")!.Invoke(bindings, arguments)!)
+            {
+                return -2;
+            }
+            var runs = arguments[1].GetType().GetField("Run")!.GetValue(arguments[1]) as System.Collections.ICollection;
+            return runs?.Count ?? -3;
+        }
     }
 }
