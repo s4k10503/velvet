@@ -26,6 +26,9 @@ namespace Velvet.Tests
             return parent;
         }
 
+        // GREEN_ON_BASE(characterization): the base does not report kept children that stand in order, with a created one after them, as out of creation order.
+        // Change `position < 0` to `position <= 0` in PlacesOutOfCreationOrder and the kept child at index 0 reads as
+        // created, which puts the next kept one behind a created one.
         [Test]
         public void Given_KeptChildrenInOrderAndACreatedOneAfterThem_When_TheyAreReordered_Then_TheOrderIsNotReportedAsOutOfCreationOrder()
         {
@@ -46,6 +49,9 @@ namespace Velvet.Tests
             Assert.That(outOfCreationOrder, Is.False);
         }
 
+        // GREEN_ON_BASE(characterization): the base does not report one kept child listed twice as out of creation order.
+        // Change `position < lastKept` to `position <= lastKept` in PlacesOutOfCreationOrder and the repeat reads as
+        // ahead of the kept child before it.
         [Test]
         public void Given_TheSameKeptChildListedTwice_When_TheChildrenAreReordered_Then_TheOrderIsNotReportedAsOutOfCreationOrder()
         {
@@ -62,6 +68,8 @@ namespace Velvet.Tests
             Assert.That(outOfCreationOrder, Is.False);
         }
 
+        // GREEN_ON_BASE(characterization): the base returns the row buffer an anchor scan rents to the pool.
+        // Drop `pool.ReturnRowRead(rows);` from ComputeLisAnchors and the next rent hands out a new list.
         [Test]
         public void Given_AnAnchorScan_When_ItFinishes_Then_TheRowBufferItRentedIsBackInThePool()
         {

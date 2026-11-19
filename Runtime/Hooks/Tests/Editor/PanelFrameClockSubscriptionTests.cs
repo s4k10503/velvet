@@ -41,6 +41,9 @@ namespace Velvet.Tests
             EditorPanelTestHelpers.DriveSchedulerOnce(_window.rootVisualElement.panel);
         }
 
+        // GREEN_ON_BASE(characterization): the base hands a panel's frames to a callback whose host is attached when it subscribes.
+        // Drop `_subscription = current.Subscribe(_priority, _onFrame, _clock);` from EnsureSubscribed and no frame
+        // reaches the callback.
         [Test]
         public void Given_AHostAttachedToItsPanel_When_ThePanelTicks_Then_TheCallbackFires()
         {
@@ -55,6 +58,8 @@ namespace Velvet.Tests
             Assert.That(_frames - before, Is.GreaterThan(0));
         }
 
+        // GREEN_ON_BASE(characterization): the base stops a subscription's frames once its host leaves the panel.
+        // Drop `_subscription.Active = false;` from the detach callback and the callback still fires on the tick.
         [Test]
         public void Given_AHostThatLeftItsPanel_When_ThePanelTicks_Then_TheCallbackDoesNotFire()
         {
@@ -71,6 +76,9 @@ namespace Velvet.Tests
             Assert.That(_frames - before, Is.EqualTo(0));
         }
 
+        // GREEN_ON_BASE(characterization): the base leaves a disposed subscription inactive when its host attaches to a panel again.
+        // Drop `_host.UnregisterCallback(_onAttach);` from Dispose and the attach callback sets the subscription
+        // active again.
         [Test]
         public void Given_ADisposedSubscription_When_ItsHostAttachesToThePanelAgain_Then_ItIsNotActive()
         {

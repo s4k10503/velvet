@@ -60,6 +60,8 @@ namespace Velvet.Tests
                 .GetMethod(method, BindingFlags.NonPublic | BindingFlags.Static)!
                 .Invoke(null, arguments)!;
 
+        // GREEN_ON_BASE(characterization): the base moves a replaced host root's chained-ring ownership to its successor.
+        // Drop `ctx.ChainedHostRoots[root] = owner;` from RekeyChainedHost and the successor holds no owner.
         [Test]
         public void Given_APortalChainedHostRootOwnedByAPlaceholder_When_TheRootIsReplaced_Then_TheSuccessorHoldsTheOwner()
         {
@@ -76,6 +78,8 @@ namespace Velvet.Tests
             Assert.That(Context.ChainedHostRoots.TryGetValue(successor, out var held) ? held : null, Is.SameAs(owner));
         }
 
+        // GREEN_ON_BASE(characterization): the base reports focus already inside a scope as taken.
+        // Change `return true;` to `return false;` in the focus-inside branch of AutoFocusFirst and it reports false.
         [Test]
         public void Given_FocusAlreadyInsideTheScope_When_AutoFocusFirstRuns_Then_ItReportsTheFocusAsTaken()
         {
@@ -91,6 +95,8 @@ namespace Velvet.Tests
             Assert.IsTrue(reported);
         }
 
+        // GREEN_ON_BASE(characterization): the base retries an after-styles autoFocus on the next tick of the scheduler when it found no focusable.
+        // Drop the `scope.schedule.Execute(...)` call from TakeAutoFocus and nothing takes focus.
         [Test]
         public void Given_AnAfterStylesAttemptThatFoundNoFocusable_When_AFocusableArrivesBeforeTheNextTick_Then_TheTickFocusesIt()
         {
@@ -107,6 +113,9 @@ namespace Velvet.Tests
             Assert.That(Focused, Is.SameAs(_inner));
         }
 
+        // GREEN_ON_BASE(characterization): the base schedules no retry for an attach-time autoFocus that found no focusable.
+        // Drop `|| !afterStyles` from the condition in TakeAutoFocus and the attempt schedules a retry that takes
+        // focus on the tick.
         [Test]
         public void Given_AnAttachTimeAttemptThatFoundNoFocusable_When_AFocusableArrivesBeforeTheNextTick_Then_NothingTakesFocus()
         {
@@ -123,6 +132,9 @@ namespace Velvet.Tests
             Assert.That(Focused, Is.Null);
         }
 
+        // GREEN_ON_BASE(characterization): the base defers one entry for a hidden scope however often its autoFocus is attempted.
+        // Drop the `!ctx.DeferredAutoFocus.Exists(...)` term from FireAutoFocusOnce and the second attempt adds a
+        // second entry.
         [Test]
         public void Given_AHiddenScopeWhoseAutoFocusIsAttemptedTwice_When_BothAttemptsRun_Then_OneEntryIsDeferred()
         {
@@ -138,6 +150,9 @@ namespace Velvet.Tests
             Assert.AreEqual(1, Context.DeferredAutoFocus.Count);
         }
 
+        // GREEN_ON_BASE(characterization): the base applies the panel's pending styles before a released deferral looks for a focusable.
+        // Drop `FiberLayoutReflow.LayOutFor(ctx, scope, null);` from TakeAutoFocus and the candidate still reads as
+        // hidden, so nothing takes focus.
         [Test]
         public void Given_ADeferredScopeWhoseCandidateWaitsOnAStylePass_When_TheDeferralIsReleased_Then_TheCandidateHoldsFocus()
         {
@@ -156,6 +171,9 @@ namespace Velvet.Tests
             Assert.That(Focused, Is.SameAs(_inner));
         }
 
+        // GREEN_ON_BASE(characterization): the base removes a deferral once it is released.
+        // Drop `ctx.DeferredAutoFocus.Remove(entry);` from FireDeferredAutoFocus and the next release takes focus
+        // back into the scope.
         [Test]
         public void Given_AReleasedDeferral_When_FocusLeftTheScopeAndAnotherCommitReleases_Then_FocusStaysOutside()
         {

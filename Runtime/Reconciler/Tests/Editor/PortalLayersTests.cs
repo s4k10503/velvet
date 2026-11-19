@@ -650,6 +650,9 @@ namespace Velvet.Tests
             Assert.That(docs[0].transform.position, Is.EqualTo(new Vector3(5f, 0f, 0f)));
         }
 
+        // GREEN_ON_BASE(characterization): the base moves a world-space host's children into the root its document built again.
+        // Change `!ReferenceEquals(recorded.Target, target)` to `ReferenceEquals(recorded.Target, target)` in
+        // PatchWorldSpacePre and the retarget does not run.
         [Test]
         public void Given_AWorldSpaceHostWhoseDocumentBuiltANewRoot_When_Repatched_Then_TheChildStandsInTheNewRoot()
         {

@@ -23,6 +23,8 @@ namespace Velvet.Tests
                 .Invoke(childPass, new object?[] { mounted.Root })!;
         }
 
+        // GREEN_ON_BASE(characterization): the base reports no retarget owed by a fiber whose stored portals are all mounted.
+        // Change the closing `return false;` of OwesPortalRetarget to `return true;` and it owes one.
         [Test]
         public void Given_AFiberMarkedAsOwingARetargetWhoseStoredPortalsAreAllMounted_When_ItIsAsked_Then_ItOwesNothing()
         {
@@ -37,6 +39,8 @@ namespace Velvet.Tests
             Assert.That(owes, Is.False);
         }
 
+        // GREEN_ON_BASE(characterization): the base clears the retarget mark of a fiber whose stored portals are all mounted.
+        // Drop `fiber.PortalRetargetOwed = false;` from OwesPortalRetarget and the mark stays.
         [Test]
         public void Given_AFiberMarkedAsOwingARetargetWhoseStoredPortalsAreAllMounted_When_ItIsAsked_Then_TheMarkIsCleared()
         {
@@ -51,6 +55,9 @@ namespace Velvet.Tests
             Assert.That(mounted.Root.PortalRetargetOwed, Is.False);
         }
 
+        // GREEN_ON_BASE(characterization): the base finds a mount point inside a dropped container by walking up its parents.
+        // Change `ve = ChildListWrites.ParentOf(ve)` to `ve = null` in IsInsideOrphan and only the mount point itself
+        // is tested.
         [Test]
         public void Given_AMountPointInsideADroppedContainer_When_TheContainersAreSearched_Then_ItIsInsideOne()
         {
@@ -67,6 +74,8 @@ namespace Velvet.Tests
             Assert.That(inside, Is.True);
         }
 
+        // GREEN_ON_BASE(characterization): the base applies the recorded writes into a layer host before it realigns the host's layout list.
+        // Drop `ChildListWrites.SyncLive(parent);` from Realign and the insert is still recorded.
         [Test]
         public void Given_ALayerHostWithARecordedInsertNotYetApplied_When_ItsChildrenAreNotedReconciled_Then_TheInsertHasReachedTheLiveList()
         {

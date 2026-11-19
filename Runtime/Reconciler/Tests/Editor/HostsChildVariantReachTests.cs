@@ -36,6 +36,8 @@ namespace Velvet.Tests
             return ctx.HostsChildVariant(target);
         }
 
+        // GREEN_ON_BASE(characterization): the base looks four ancestors above a reconcile target for the element whose child container it is.
+        // Change `level < 4` to `level < 3` in HostsChildVariant and the owner four up is not reached.
         [Test]
         public void Given_AnOwnerFourAncestorsAboveTheTarget_When_AskedWhetherTheTargetHostsAChildVariant_Then_ItDoes()
         {
@@ -46,6 +48,8 @@ namespace Velvet.Tests
             Assert.That(hosts, Is.True);
         }
 
+        // GREEN_ON_BASE(characterization): the base does not look five ancestors above a reconcile target for the element whose child container it is.
+        // Change `level < 4` to `level < 5` in HostsChildVariant and the owner five up is reached.
         [Test]
         public void Given_AnOwnerFiveAncestorsAboveTheTarget_When_AskedWhetherTheTargetHostsAChildVariant_Then_ItDoesNot()
         {

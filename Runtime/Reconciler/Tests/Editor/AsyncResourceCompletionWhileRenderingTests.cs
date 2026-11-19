@@ -28,6 +28,9 @@ namespace Velvet.Tests
             return V.Label(text: data);
         }
 
+        // GREEN_ON_BASE(characterization): the base takes up a resource that completes during its fiber's render on a later pass of the panel's scheduler.
+        // Drop the `host.Schedule(...)` statement from the `fiber.IsRendering` branch of NotifyAsyncResourceCompleted
+        // and the completion is lost.
         [Test]
         public void Given_AResourceCompletingWhileItsFiberRenders_When_TheRenderEndsAndThePanelTicks_Then_TheSuspenseRevealsItsContent()
         {

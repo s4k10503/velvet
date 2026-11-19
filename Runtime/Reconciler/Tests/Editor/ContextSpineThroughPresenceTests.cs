@@ -36,6 +36,9 @@ namespace Velvet.Tests
             return V.Label(text: s_observed + tick);
         }
 
+        // GREEN_ON_BASE(characterization): the base lets a reader under a Provider inside an AnimatePresence read that Provider's value when it renders on its own state.
+        // Drop the `case AnimatePresenceNode presence:` arm of PushEnclosingProvidersForNode and the walk falls to
+        // its default arm, so the reader reads the context default.
         [Test]
         public void Given_AReaderUnderAProviderInsideAnAnimatePresence_When_ItRendersOnItsOwnState_Then_ItReadsTheProvidersValue()
         {

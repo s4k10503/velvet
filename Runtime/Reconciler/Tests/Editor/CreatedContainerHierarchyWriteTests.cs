@@ -63,6 +63,9 @@ namespace Velvet.Tests
             s_parentAtWrite = null;
         }
 
+        // GREEN_ON_BASE(characterization): the base makes at once a write that names an element the pass created while its children are created.
+        // Drop `ChildListWrites.MarkCreated(element);` from ReconcileChildrenOfNewElement and the write is recorded
+        // behind the pass, which leaves the parent unset.
         [Test]
         public void Given_AnElementForwardingToItsContent_When_AWriteNamesTheElementWhileItsChildrenAreCreated_Then_TheWriteIsMadeAtOnce()
         {
@@ -76,6 +79,9 @@ namespace Velvet.Tests
             Assert.That(s_parentAtWrite, Is.SameAs(s_target));
         }
 
+        // GREEN_ON_BASE(characterization): the base makes at once a write that names the first link of the chain an element created by the pass forwards through.
+        // Drop `ChildListWrites.MarkCreated(childContainer);` from ReconcileChildrenOfNewElement and the first link
+        // is in neither marked set, so the write is recorded behind the pass.
         [Test]
         public void Given_AnElementForwardingThroughTwoLinks_When_AWriteNamesTheFirstLinkWhileItsChildrenAreCreated_Then_TheWriteIsMadeAtOnce()
         {

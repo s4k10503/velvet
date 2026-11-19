@@ -63,6 +63,8 @@ namespace Velvet.Tests
             finally { ChildListWrites.ViaQueue--; }
         }
 
+        // GREEN_ON_BASE(characterization): the base takes out a child a handler removes while the recorded writes apply.
+        // Drop `op.Child.RemoveFromHierarchy();` from the RemoveChild branch in ApplyRecorded and the child stays.
         [Test]
         public void Given_AHandlerThatRemovesAChildFromTheMovesDetach_When_TheRecordedMoveApplies_Then_TheChildIsRemoved()
         {
@@ -79,6 +81,8 @@ namespace Velvet.Tests
             Assert.That(doomed.hierarchy.parent, Is.Null);
         }
 
+        // GREEN_ON_BASE(characterization): the base answers a count from the live list when a removal the model does not hold is recorded.
+        // Drop `&& rows.Contains(child)` from RecordRemoveChild and the case no longer reads the live count of 2.
         [Test]
         public void Given_AHandlerThatRemovesAChildItsContainersModelDoesNotHold_When_ItsCountIsReadInTheHandler_Then_TheLiveListAnswers()
         {
@@ -115,6 +119,9 @@ namespace Velvet.Tests
             return bystander;
         }
 
+        // GREEN_ON_BASE(characterization): the base rebuilds the model of a container whose change is announced while the recorded writes apply.
+        // Drop `foreach (var nested in s_nested) Settle(nested, full: true);` from ApplyRecorded and the model keeps
+        // the order it had.
         [Test]
         public void Given_AnAnnouncedChangeInsideTheApplicationThatTheProbesDoNotSee_When_TheRecordedMoveApplies_Then_TheModelIsRebuilt()
         {
@@ -129,6 +136,8 @@ namespace Velvet.Tests
             Assert.That(ContainerRowsTests.CompareOrder(bystander, RowModelAccess.Peek(bystander)!), Is.Null);
         }
 
+        // GREEN_ON_BASE(characterization): the base leaves no container queued for comparison once the recorded writes have applied.
+        // Drop `s_nested.Clear();` from ApplyRecorded and the announced container stays queued.
         [Test]
         public void Given_AnAnnouncedChangeInsideTheApplication_When_TheRecordedMoveApplies_Then_NoContainerIsLeftQueuedForComparison()
         {
