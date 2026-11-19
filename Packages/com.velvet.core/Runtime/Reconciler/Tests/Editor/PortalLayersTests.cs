@@ -650,9 +650,9 @@ namespace Velvet.Tests
             Assert.That(docs[0].transform.position, Is.EqualTo(new Vector3(5f, 0f, 0f)));
         }
 
-        // GREEN_ON_BASE(characterization): the base moves a world-space host's children into the root its document built again.
-        // Change `!ReferenceEquals(recorded.Target, target)` to `ReferenceEquals(recorded.Target, target)` in
-        // PatchWorldSpacePre and the retarget does not run.
+        // GREEN_ON_BASE(characterization): the base mounts a world-space host's children into the root its document built again.
+        // The retarget block of PatchWorldSpacePre does not redden it: a replaced root's Portal is patched with its children pending,
+        // so they mount afresh into the new root whether or not the block runs. TheChildLeavesTheOldRoot is the case that observes it.
         [Test]
         public void Given_AWorldSpaceHostWhoseDocumentBuiltANewRoot_When_Repatched_Then_TheChildStandsInTheNewRoot()
         {
@@ -672,7 +672,7 @@ namespace Velvet.Tests
             Assert.That(ReferenceEquals(oldRoot, newRoot) ? null : newRoot.Q<VisualElement>("ws1"), Is.Not.Null);
         }
 
-        // GREEN_ON_BASE(characterization): the base takes a world-space host's children out of the root its document replaced as it moves them to the new one. Remove `_host.ReleasePortalRangeForRetarget(placeholder);` from PatchWorldSpacePre and they stay in the old root, reddening it.
+        // GREEN_ON_BASE(characterization): the base takes a world-space host's children out of the root its document replaced. Change `recorded.Target != null` to `== null`, or remove `_host.ReleasePortalRangeForRetarget(placeholder);`, in PatchWorldSpacePre and the child stays in the old root, which reddens it.
         [Test]
         public void Given_AWorldSpaceHostWhoseDocumentBuiltANewRoot_When_Repatched_Then_TheChildLeavesTheOldRoot()
         {
@@ -688,8 +688,8 @@ namespace Velvet.Tests
             s_setFlag.Invoke(true);
             FlushAndLayout();
 
-            // Assert — a word for where the child stands: only the new root once it moved, and a root that was not
-            // built again holds it in both reads.
+            // Assert — a word for where the child stands: "moved" once only the new root holds it, and a root that
+            // was not built again holds it in both reads.
             var standing = newRoot.Q<VisualElement>("ws1") == null ? "missing"
                 : oldRoot.Q<VisualElement>("ws1") == null ? "moved" : "kept";
             Assert.That(standing, Is.EqualTo("moved"));
