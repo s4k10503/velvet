@@ -195,6 +195,46 @@ namespace Velvet.Tests
             Assert.That(_ran ? NotedRuns(element) : -1, Is.EqualTo(1));
         }
 
+        // GREEN_ON_BASE(characterization): the base holds one run for an id however many are noted for it. Drop
+        // `if (runs[i].Id.Equals(run.Id)) runs.RemoveAt(i);` from NoteRun and the earlier run stays beside the new one.
+        [Test]
+        public void Given_ARunNotedForAnId_When_AnotherRunIsNotedForTheSameId_Then_OneRunIsHeld()
+        {
+            // Arrange
+            var id = new object();
+            var runs = new List<(object Id, double StartSec)> { (id, 1.0) };
+            var noteRun = typeof(StyleEaseCurve).GetMethod("NoteRun", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!;
+
+            // Act
+            noteRun.Invoke(null, new object[] { runs, (id, 2.0) });
+
+            // Assert
+            Assert.That(runs.Count, Is.EqualTo(1));
+        }
+
+        // GREEN_ON_BASE(characterization): the base forgets the runs it has seen once the element stops being listened to. Drop
+        // `binding.Run = null;` from Sync and the list outlives the registration.
+        [Test]
+        public void Given_AListenedToElementThatHasSeenARun_When_ItIsReleased_Then_ItHoldsNoSeenRun()
+        {
+            // Arrange
+            var element = new VisualElement();
+            _window.rootVisualElement.Add(element);
+            StyleEaseCurve.NoteClasses(element, new[] { "transition-all" });
+            var bindings = typeof(StyleEaseCurve).GetField("s_bindings", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!.GetValue(null)!;
+            var arguments = new object[] { element, null };
+            bindings.GetType().GetMethod("TryGetValue")!.Invoke(bindings, arguments);
+            var binding = arguments[1];
+            var run = binding.GetType().GetField("Run")!;
+            run.SetValue(binding, new List<(object Id, double StartSec)> { (new object(), 1.0) });
+
+            // Act
+            StyleEaseCurve.Release(element);
+
+            // Assert
+            Assert.That(run.GetValue(binding), Is.Null);
+        }
+
         private static int NotedRuns(VisualElement element)
         {
             var bindings = typeof(StyleEaseCurve).GetField("s_bindings", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!.GetValue(null)!;

@@ -208,6 +208,7 @@ namespace Velvet
         internal static bool UnsetsLiteralStop(string utility)
             => TryReadNumericModifier(utility, out var root, out var hint) && root is "from" or "via" or "to"
                 && hint != null && hint != "color" && !StyleColorValueParser.HintSelectsNonColour(root, hint)
+                // MUTANT_SURVIVES(equivalent, boundary): the statement reaches this line only where root is `from`, `via` or `to`, which is what utility opens with in both callers (the Consumer constructor and Normalize), so `var(` is never found at index 0.
                 && utility.IndexOf("var(", StringComparison.OrdinalIgnoreCase) < 0
                 && StyleColorValueParser.RejectsAsColour(StyleArbitraryValueResolver.WithoutTypeHint(utility) is { } plain
                     ? plain.Substring(plain.IndexOf('[') + 1, plain.LastIndexOf('/') - plain.IndexOf('[') - 2)

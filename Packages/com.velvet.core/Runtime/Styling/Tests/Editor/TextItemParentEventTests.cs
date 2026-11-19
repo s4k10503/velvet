@@ -262,6 +262,32 @@ namespace Velvet.Tests
             Assert.That(label.style.minWidth.keyword, Is.EqualTo(StyleKeyword.Null));
         }
 
+        // GREEN_ON_BASE(characterization): the base takes a width equal to the threshold as the natural width, the threshold being built
+        // here from the measured natural width and the frame by the expression IsAtNaturalWidth ends in, so no rounding of a
+        // hand-written sum separates the two. Change `>=` to `>` in the return of IsAtNaturalWidth and a minimum is written.
+        [Test]
+        public void Given_ALabelWhoseWidthIsExactlyTheThresholdItsNaturalWidthIsTakenAt_When_Resolved_Then_ItsMinWidthIsNotWritten()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var label = MountLabel(scope, WideRow, "", Sentence);
+            var natural = Read<float>(ManipulatorOf(scope, label), "_natural");
+            var frame = (float)typeof(StyleFlexMinSizeManipulator)
+                .GetMethod("FrameInsets", BindingFlags.NonPublic | BindingFlags.Static)!
+                .Invoke(null, new object[] { label.resolvedStyle, true })!;
+            var threshold = Mathf.Ceil(natural) + frame - 0.01f;
+            label.style.width = threshold;
+
+            // Act
+            ForcePanelUpdate(label.panel);
+            FireGeometry(label);
+            ForcePanelUpdate(label.panel);
+
+            // Assert — where the layout did not give the label the threshold, the keyword is one the expected Null cannot equal.
+            var keyword = label.resolvedStyle.width == threshold ? label.style.minWidth.keyword : StyleKeyword.Auto;
+            Assert.That(keyword, Is.EqualTo(StyleKeyword.Null));
+        }
+
         // GREEN_ON_BASE(characterization): the base takes its hub callback off a parent whose last leaf leaves. Drop
         // `_subscribedParent.UnregisterCallback(s_onParentGeometry);` from SyncParentSubscription and the callback
         // stays.
