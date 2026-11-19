@@ -15,9 +15,8 @@ namespace Velvet.Tests
         private const string Declaration = "[--x:0_0_5px_#ff0000]";
         private const BindingFlags Any = BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic;
 
-        // The reader's state field after its declaration is taken away, the sentinel where it held none before. The reader is the
-        // same consumer throughout: the declaration is toggled on its own, where taking its class out of a reconciled list
-        // moves the reader's place and binds it anew.
+        // The reader's state field after its declaration is taken away, the sentinel where it held none before. The declaration is
+        // toggled on its own, so the reader is the same consumer throughout.
         private static object ReaderStateAfterTheDeclarationGoes(string field, object sentinel)
         {
             using var scope = new ReconcilerScope();
