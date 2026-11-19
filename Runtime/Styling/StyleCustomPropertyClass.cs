@@ -63,7 +63,7 @@ namespace Velvet
         // Whether core, with its important bang removed, is a token Consumer reads. A reader names its custom property as
         // `var(` or as the parenthesised shorthand's `--`, so a token holding neither is none and costs no normalizing.
         internal static bool IsConsumer(string core)
-            // MUTANT_SURVIVES(equivalent, boundary): a core opening with `var(` reads no consumer either way, since a parenthesis outside a bracket at index 2 or less is refused by WithShorthandsExpanded.
+            // MUTANT_SURVIVES(unreachable, boundary): both callers pass a class opening with `font-` or with a box-shadow root, so no core opens with `var(` or `--`. A core opening with `var(` reads none regardless, its parenthesis at index 3 following an `r`, which TryShorthandGroup refuses.
             => (core.IndexOf("var(", StringComparison.OrdinalIgnoreCase) >= 0
                     || core.IndexOf("--", StringComparison.Ordinal) >= 0)
                 && Consumer(core) != null;

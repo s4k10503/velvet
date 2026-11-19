@@ -38,6 +38,8 @@ namespace Velvet.Tests
                 .Invoke(null, new object?[] { inner, classes, tokens, new List<string>(), null })!;
         }
 
+        // GREEN_ON_BASE(characterization): the base places a reader of place zero ahead of a literal of a later place. Change `s_placedAt[i] < 0` to
+        // `<= 0` in ComposePlacedClasses and the payload follows the literal.
         [Test]
         public void Given_APaddingReaderOfPlaceZeroBeforeALiteralOfALaterPlace_When_TheClassesAreComposed_Then_ThePayloadPrecedesTheLiteral()
         {
@@ -48,6 +50,8 @@ namespace Velvet.Tests
             Assert.AreEqual("p-(--pad) p-[20px] pt-[9px]", string.Join(" ", composed));
         }
 
+        // GREEN_ON_BASE(characterization): the base holds a reader of family slot zero back for its own family. Change `s_placedSlot[i] < 0` to `<= 0`
+        // in ComposePlacedClasses and the payload is placed before the other family's literal.
         [Test]
         public void Given_ATextReaderOfFamilySlotZeroBeforeALiteralOfAnotherFamily_When_TheClassesAreComposed_Then_ThePayloadWaitsForItsOwnFamily()
         {

@@ -538,6 +538,8 @@ namespace Velvet.Tests
             Assert.That(IsRelocated(child), Is.False);
         }
 
+        // GREEN_ON_BASE(characterization): the base leaves an element still queued behind its placeholder to the drain. Change `placeholder != null` to
+        // `== null` in the still-queued check of FiberZLayerCoordinator.Settle and the settle runs ahead of the drain.
         [Test]
         public void Given_AZIndexRaisedAtCreationThatAParentsDeclarationUnstacksInTheSameMount_When_Mounted_Then_ItStandsInItsSlot()
         {

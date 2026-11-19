@@ -110,7 +110,6 @@ namespace Velvet
             // another (TrackInherited); null while no inline value stands for it.
             public ArbitraryStyle? Inherited;
 
-            // MUTANT_SURVIVES(equivalent, literal): the one construction site passes `themed` explicitly, so the default is never read.
             public Consumer(string utility, long priority, int declaration, int order, ReconcilerContext? context,
                 bool themed = false)
             {

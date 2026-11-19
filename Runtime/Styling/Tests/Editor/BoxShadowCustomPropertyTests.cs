@@ -667,6 +667,8 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base draws these rings as Chromium does, and the keyword gate must keep them.
+        // For the modifier opening with `var(`: change `modifier.IndexOf("var(".AsSpan()) < 0` to `<= 0` in MixesNonColour
+        // and the ring is discarded.
         [TestCase("ring-2 ring-[length:unset]/50")]
         [TestCase("ring-2 ring-[unset]/(--a)")]
         [TestCase("ring-2 ring-[unset]/var(--a)")]
