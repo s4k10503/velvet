@@ -196,7 +196,7 @@ namespace Velvet.Tests
         // GREEN_ON_BASE(characterization): the base keeps the key of the text and font size it measured. Drop `_naturalKey = key;` from
         // IsAtNaturalWidth and the key stays at its default of zero.
         [Test]
-        public void Given_ALabelInARowNarrowerThanItsText_When_Resolved_Then_ItsNaturalWidthIsKeptForItsTextAndFontSize()
+        public void Given_ALabelInARowNarrowerThanItsText_When_Resolved_Then_ANaturalWidthKeyIsKept()
         {
             // Arrange
             using var scope = new ReconcilerScope();
@@ -205,8 +205,7 @@ namespace Velvet.Tests
             // Act
             var kept = Read<int>(ManipulatorOf(scope, label), "_naturalKey");
 
-            // Assert — only that a key was kept: the hash of the text and font size this case recomputes from the
-            // label afterwards is not the one the derive stored.
+            // Assert
             Assert.That(kept, Is.Not.EqualTo(0));
         }
 
