@@ -391,6 +391,35 @@ namespace Velvet.Tests
             Assert.That(ring, Is.EqualTo("no ring"));
         }
 
+        // A math function coming to a percentage is a percentage, written as a variable's value or as a bracket's.
+        [TestCase("[--a:calc(50%)] ring-2 ring-[red]/(--a)")]
+        [TestCase("[--a:calc(50%)] ring-2 ring-[red]/[var(--a)]")]
+        [TestCase("ring-2 ring-[red]/[calc(50%)]")]
+        public void Given_ARingColourWithAModifierThatIsAMathFunctionComingToAPercentage_When_Mounted_Then_ItIsThatColourAtThatOpacity(
+            string classes)
+        {
+            // Act
+            var colour = RingColour(classes);
+
+            // Assert
+            Assert.That(colour, Is.EqualTo("FF000080"));
+        }
+
+        // GREEN_ON_BASE(characterization): the variable's payload is the literal modifier's text, which the box-shadow readers reject past 0..100%.
+        [TestCase("[--a:150%] ring-2 ring-[red]/(--a)")]
+        [TestCase("[--a:-10%] ring-2 ring-[red]/(--a)")]
+        [TestCase("ring-2 ring-[red]/[150%]")]
+        [TestCase("ring-2 ring-[red]/[-10%]")]
+        public void Given_ARingColourWithAModifierOutsideZeroToOneHundredPercent_When_Mounted_Then_NoRingIsDrawn(string classes)
+        {
+            // Act
+            var control = Ring("[--a:50%] ring-2");
+            var ring = control == 2f ? RingColour(classes) : "control undrawn";
+
+            // Assert
+            Assert.That(ring, Is.EqualTo("no ring"));
+        }
+
         // GREEN_ON_BASE(characterization): the base already draws the text-colour ring, as Chromium does with the variable undeclared.
         [Test]
         public void Given_ARingBracketHoldingNoColourWithAModifierReadingAnUndeclaredProperty_When_Mounted_Then_TheRingIsDrawnInTheTextColour()
