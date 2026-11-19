@@ -319,6 +319,19 @@ namespace Velvet.Tests
             Assert.That(degrees, Is.EqualTo(0f).Within(1e-3f));
         }
 
+        [Test]
+        public void Given_AnElementUnderASheetsBackgroundSizeTransition_When_ResetForReuse_Then_NoTransitionStarts()
+        {
+            // Arrange / Act — Clear removes the inline background size after the inline zero duration, so the
+            // reset clears it itself while the zero still applies; the sheet's size is 50px.
+            var width = ReadHalfASecondAfterResetUnderASheetTransition("layout-id-test-sized",
+                element => element.style.backgroundSize = new BackgroundSize(150f, 150f),
+                element => element.resolvedStyle.backgroundSize.x.value, 150f);
+
+            // Assert — back at the sheet's size, not part-way from the inline one.
+            Assert.That(width, Is.EqualTo(50f).Within(1e-3f));
+        }
+
         // The inline rule a source asset gives an element; no element Velvet builds from C# has one, which is why
         // Clear's source-asset flag changes nothing for the pool. Built by hand here because only a UXML-made
         // element carries one.
