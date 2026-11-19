@@ -231,6 +231,49 @@ namespace Velvet.Tests
             Assert.That(isWatch, Is.True);
         }
 
+        // GREEN_ON_BASE(characterization): the base reads no rule off a watch sheet, and so reads none off one destroyed while an element still holds
+        // it. Drop `if (RadiusWatchSheets.IsWatch(sheet)) return 0;` from the Unread of SheetRules in BundledClassTransform and the read reaches the
+        // destroyed sheet.
+        [Test]
+        public void Given_AnElementHoldingAWatchSheetDestroyedSince_When_ItsBundledClassTransformIsRead_Then_NothingThrows()
+        {
+            // Arrange — the sheet is derived here and read by nothing before it is destroyed, so nothing has cached what the read would ask of it.
+            var watch = RadiusWatchSheets.DerivedOf(Clone());
+            var element = new VisualElement();
+            element.styleSheets.Add(watch);
+            UnityEngine.Object.DestroyImmediate(watch);
+
+            // Act
+            TestDelegate read = () => BundledClassTransform.Observe(element);
+
+            // Assert
+            Assert.DoesNotThrow(read);
+        }
+
+        // GREEN_ON_BASE(characterization): the base derives no watch sheet from rules whose only property is named `border--radius`, which names no
+        // radius. Change `>` to `>=` in the length test of IsRadius and a sheet is derived.
+        [Test]
+        public void Given_ASourceWhoseRulesDeclareOnlyAPropertyNamedBorderDashDashRadius_When_ItsWatchSheetIsDerived_Then_ThereIsNone()
+        {
+            // Arrange
+            var source = Clone();
+            var properties = EngineMember.StyleRuleProperties.ResolveProperty()!;
+            var name = EngineMember.StylePropertyName.ResolveProperty()!;
+            foreach (var rule in (Array)EngineMember.StyleSheetRules.ResolveProperty()!.GetValue(source))
+            {
+                foreach (var property in (Array)properties.GetValue(rule))
+                {
+                    name.SetValue(property, "border--radius");
+                }
+            }
+
+            // Act
+            var watch = RadiusWatchSheets.DerivedOf(source);
+
+            // Assert
+            Assert.That((object)watch, Is.Null);
+        }
+
         // GREEN_ON_BASE(characterization): the base attaches the watch sheets of the sheets a root already holds. Drop
         // `RadiusWatchSheets.EnsureAbove(root);` from VelvetStyleUtilities.AttachTo and the root holds none.
         [Test]

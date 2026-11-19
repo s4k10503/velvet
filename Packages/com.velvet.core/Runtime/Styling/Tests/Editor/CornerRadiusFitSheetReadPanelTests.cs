@@ -143,5 +143,39 @@ namespace Velvet.Tests
             // Assert — the top-right corner is the rule's 30, and reads NaN where the fit has none.
             Assert.That(CornerRadiusFit.Fitted(element, 1)?.value ?? float.NaN, Is.EqualTo(30f).Within(1e-3f));
         }
+
+        // GREEN_ON_BASE(characterization): the base leaves an element holding no radius untracked when a class is written through Velvet. Change
+        // `var held = false;` to `true` in HoldsInlineRadius and the element is watched; so does `> 0f` to `>= 0f` in its loop, which reads an
+        // empty slot as a radius.
+        [Test]
+        public void Given_AnElementOnAPanelHoldingNoRadius_When_AClassIsWrittenThroughVelvet_Then_TheFitDoesNotWatchIt()
+        {
+            // Arrange
+            var element = new SkewPickElement();
+            _window.rootVisualElement.Add(element);
+
+            // Act
+            CornerRadiusFit.NoteClassWrite(element);
+
+            // Assert
+            Assert.That(element.RadiusFitWatches, Is.False);
+        }
+
+        // GREEN_ON_BASE(characterization): the base fits a code-written radius when a class is taken off through Velvet, as when one is put on. Drop
+        // `CornerRadiusFit.NoteClassWrite(element);` from Remove in StyleClassProjection and the fit tracks nothing of the element.
+        [Test]
+        public void Given_AnElementHoldingACodeWrittenRadius_When_AClassIsTakenOffThroughVelvet_Then_TheFitTracksThatRadius()
+        {
+            // Arrange
+            var element = new VisualElement();
+            element.style.borderBottomLeftRadius = 20f;
+            _window.rootVisualElement.Add(element);
+
+            // Act
+            StyleClassProjection.Remove(element, "radius-watch-unrelated", StyleLayerPriority.Base);
+
+            // Assert — an element the fit does not track reads NaN, which no radius equals.
+            Assert.That(CornerRadiusFit.Fitted(element, 3)?.value ?? float.NaN, Is.EqualTo(20f).Within(1e-3f));
+        }
     }
 }
