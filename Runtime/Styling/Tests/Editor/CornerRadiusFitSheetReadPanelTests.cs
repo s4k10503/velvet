@@ -145,13 +145,29 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base leaves an element holding no radius untracked when a class is written through Velvet. Change
-        // `var held = false;` to `true` in HoldsInlineRadius and the element is watched; so does `> 0f` to `>= 0f` in its loop, which reads an
-        // empty slot as a radius.
+        // `var held = false;` to `true` in HoldsInlineRadius and the element is watched.
         [Test]
         public void Given_AnElementOnAPanelHoldingNoRadius_When_AClassIsWrittenThroughVelvet_Then_TheFitDoesNotWatchIt()
         {
             // Arrange
             var element = new SkewPickElement();
+            _window.rootVisualElement.Add(element);
+
+            // Act
+            CornerRadiusFit.NoteClassWrite(element);
+
+            // Assert
+            Assert.That(element.RadiusFitWatches, Is.False);
+        }
+
+        // GREEN_ON_BASE(characterization): the base leaves an element whose inline radius is zero untracked when a class is written through Velvet.
+        // Change `> 0f` to `>= 0f` in the loop of HoldsInlineRadius and a zero radius counts as held, so the element is watched.
+        [Test]
+        public void Given_AnElementOnAPanelHoldingAZeroInlineRadius_When_AClassIsWrittenThroughVelvet_Then_TheFitDoesNotWatchIt()
+        {
+            // Arrange
+            var element = new SkewPickElement();
+            element.style.borderBottomLeftRadius = 0f;
             _window.rootVisualElement.Add(element);
 
             // Act
