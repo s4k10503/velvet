@@ -1,0 +1,37 @@
+{
+ "detail": "EditMode: 1 failed among the 440 case(s) that ran the site: Given_APortalWhoseRegisteredTargetIsMissing_When_ItsPrimarySuspendsAgain_Then_OnlyTheFallbackCommits",
+ "file": "5c38bc1ecfb79d9f80de6ba45529b662189b970821120b85e4f88c20de9718b1",
+ "killers": [
+  {
+   "case": "Velvet.Tests.SuspenseHideCommitOrderEventLogTests(UIToolkit).Given_APortalWhoseRegisteredTargetIsMissing_When_ItsPrimarySuspendsAgain_Then_OnlyTheFallbackCommits",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/SuspenseHideCommitOrderEventLogTests.cs": "9fb0b1f6115ec586c87961d31539aa51b964a2a145f0e50acc4516dc7e180feb",
+    "Packages/com.velvet.core/TestUtilities/EventLog.cs": "e191b8d91d56ab6eb1633a8f37e5282dd11f4cbfd649b59ab27deab3a1e4b490",
+    "Packages/com.velvet.core/TestUtilities/EventLogRenderer.cs": "59fbaf33c955e917c5359940c3d0a0f090fefdc0d2a41b370a75eb6ce7304abe",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921"
+   }
+  }
+ ],
+ "measured_by": "44481515841",
+ "mutant": {
+  "after": "==",
+  "before": "!=",
+  "column": 26,
+  "line": 53,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberElementCleaner.cs",
+  "shadowed": [
+   "clause removed",
+   "guard removed",
+   "literal",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "9fc150c13ceb0d70c5e3efc4e19efe0a7b830e00a531490a163c2f73a3dbef0c",
+ "verdict": "killed"
+}

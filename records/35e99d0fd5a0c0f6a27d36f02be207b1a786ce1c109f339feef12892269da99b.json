@@ -1,5 +1,5 @@
 {
- "detail": "EditMode: 1 failed among the 442 case(s) that ran the site: Given_AnInlineChildInsidePortalContent_When_ThePortalUnmounts_Then_ItsSubscriptionIsReleased",
+ "detail": "EditMode: 1 failed among the 439 case(s) that ran the site: Given_AnInlineChildInsidePortalContent_When_ThePortalUnmounts_Then_ItsSubscriptionIsReleased",
  "file": "5c38bc1ecfb79d9f80de6ba45529b662189b970821120b85e4f88c20de9718b1",
  "killers": [
   {
@@ -14,7 +14,7 @@
    }
   }
  ],
- "measured_by": "44494804299",
+ "measured_by": "44481515841",
  "mutant": {
   "after": "==",
   "before": "!=",
@@ -28,6 +28,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "3295f816af35af66671199afb18cd2254106533a4c9ba969b3366588368706a2",
+ "tests": "9fc150c13ceb0d70c5e3efc4e19efe0a7b830e00a531490a163c2f73a3dbef0c",
  "verdict": "killed"
 }

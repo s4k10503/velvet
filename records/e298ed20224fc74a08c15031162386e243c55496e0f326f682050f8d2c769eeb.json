@@ -1,5 +1,5 @@
 {
- "detail": "EditMode: 3 failed among the 472 case(s) that ran the site: Given_AKeyedElementHoldingAComponentAheadOfAPortalInATreeWithNoRef_When_ItLeavesAListOfElements_Then_TheComponentIsTakenDownFirst, Given_APortalInsideARemovedElement_When_TheElementIsRemoved_Then_ThePortalsChildrenAreTakenDownWhereThePortalSits, Given_APortalInsideARemovedElementAndOneBesideItOnTheSameTarget_When_TheElementIsRemoved_Then_TheOtherPortalsChildrenStay",
+ "detail": "EditMode: 3 failed among the 469 case(s) that ran the site: Given_AKeyedElementHoldingAComponentAheadOfAPortalInATreeWithNoRef_When_ItLeavesAListOfElements_Then_TheComponentIsTakenDownFirst, Given_APortalInsideARemovedElement_When_TheElementIsRemoved_Then_ThePortalsChildrenAreTakenDownWhereThePortalSits, Given_APortalInsideARemovedElementAndOneBesideItOnTheSameTarget_When_TheElementIsRemoved_Then_TheOtherPortalsChildrenStay",
  "file": "659da2ab43fef754c1f60d8ed9d8601767376faaabb29565e5ec538478678840",
  "killers": [
   {
@@ -39,7 +39,7 @@
    }
   }
  ],
- "measured_by": "44494804299",
+ "measured_by": "44481515841",
  "mutant": {
   "after": "==",
   "before": "!=",
@@ -57,6 +57,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "3295f816af35af66671199afb18cd2254106533a4c9ba969b3366588368706a2",
+ "tests": "9fc150c13ceb0d70c5e3efc4e19efe0a7b830e00a531490a163c2f73a3dbef0c",
  "verdict": "killed"
 }

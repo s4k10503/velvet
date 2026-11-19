@@ -1,5 +1,5 @@
 {
- "detail": "EditMode: 1 failed among the 16 case(s) that ran the site: Given_AWorldSpaceChild_When_ItsBreakpointWidthResolves_Then_ItIsTheDeclaringPanels",
+ "detail": "EditMode: 1 failed among the 15 case(s) that ran the site: Given_AWorldSpaceChild_When_ItsBreakpointWidthResolves_Then_ItIsTheDeclaringPanels",
  "file": "bbf8356a61eafe03564f20b22c2703ff5b4abc437c071ed2882c3667bbdf4e78",
  "killers": [
   {
@@ -12,7 +12,7 @@
    }
   }
  ],
- "measured_by": "44494804299",
+ "measured_by": "44481515841",
  "mutant": {
   "after": ";",
   "before": "ApplyRootSetup(record, null, ctx);",
@@ -26,6 +26,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "3295f816af35af66671199afb18cd2254106533a4c9ba969b3366588368706a2",
+ "tests": "9fc150c13ceb0d70c5e3efc4e19efe0a7b830e00a531490a163c2f73a3dbef0c",
  "verdict": "killed"
 }

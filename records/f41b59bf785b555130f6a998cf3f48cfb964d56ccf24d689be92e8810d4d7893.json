@@ -1,5 +1,5 @@
 {
- "detail": "EditMode: 1 failed among the 190 case(s) that ran the site: Given_ALeadWhoseTranslateRunsOnPastItsLandingOnAnEaseOutCurve_When_ItsTranslateChangesAgain_Then_ItRunsAsTheControlsDoes",
+ "detail": "EditMode: 1 failed among the 188 case(s) that ran the site: Given_ALeadWhoseTranslateRunsOnPastItsLandingOnAnEaseOutCurve_When_ItsTranslateChangesAgain_Then_ItRunsAsTheControlsDoes",
  "file": "e26fdcf3f6f0880c8cdda31323e9d9f20d88909f1798c4ecc48bc4af3a56a6a5",
  "killers": [
   {
@@ -14,7 +14,7 @@
    }
   }
  ],
- "measured_by": "44494804299",
+ "measured_by": "44481515841",
  "mutant": {
   "after": "+",
   "before": "-",
@@ -30,6 +30,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "3295f816af35af66671199afb18cd2254106533a4c9ba969b3366588368706a2",
+ "tests": "9fc150c13ceb0d70c5e3efc4e19efe0a7b830e00a531490a163c2f73a3dbef0c",
  "verdict": "killed"
 }

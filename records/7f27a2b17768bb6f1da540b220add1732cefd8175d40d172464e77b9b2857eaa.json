@@ -1,0 +1,94 @@
+{
+ "detail": "EditMode survived; PlayMode: 13 failed: Given_AChainedLayerHostWhosePanelWasReplaced_When_NothingPatchesThePortal_Then_ItsNewRootOwnsTheChainedRing, Given_AnAppendedLayerHostWhosePanelWasReplaced_When_NothingPatchesAndTabDispatchesFromTheHostsLastFocusable_Then_FocusReturnsToTheDeclaringPanel, Given_AChainedLayerHostWhosePanelWasReplaced_When_NothingPatchesAndTabDispatchesFromTheHostsLastFocusable_Then_FocusReturnsToTheDeclaringPanel",
+ "file": "bbf8356a61eafe03564f20b22c2703ff5b4abc437c071ed2882c3667bbdf4e78",
+ "killers": [
+  {
+   "case": "Velvet.Tests.FocusReplacedHostPanelTests.Given_AChainedLayerHostWhosePanelWasReplaced_When_NothingPatchesThePortal_Then_ItsNewRootOwnsTheChainedRing",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/PlayMode/FocusReplacedHostPanelTests.cs": "1327684e4aa2ba7551b25088300124ac055e74c47ea006212940702d26db9323",
+    "Packages/com.velvet.core/TestUtilities/TestPanelSettings.cs": "c7a36f6a4acd48eb54e9b4c339d7caf0c56cbef64dacd018497182f9fadacc29",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.FocusReplacedHostPanelTests.Given_ALayerHostWhosePanelWasReplaced_When_NothingPatchesThePortal_Then_ItsNewPanelAnswersTheDeclaringPanelsViewport",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/PlayMode/FocusReplacedHostPanelTests.cs": "1327684e4aa2ba7551b25088300124ac055e74c47ea006212940702d26db9323",
+    "Packages/com.velvet.core/TestUtilities/TestPanelSettings.cs": "c7a36f6a4acd48eb54e9b4c339d7caf0c56cbef64dacd018497182f9fadacc29",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.FocusReplacedHostPanelTests.Given_ALayerHostWhosePanelWasReplaced_When_NothingPatchesThePortal_Then_ItsNewRootCarriesTheDeclaringPanelsClass",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/PlayMode/FocusReplacedHostPanelTests.cs": "1327684e4aa2ba7551b25088300124ac055e74c47ea006212940702d26db9323",
+    "Packages/com.velvet.core/TestUtilities/TestPanelSettings.cs": "c7a36f6a4acd48eb54e9b4c339d7caf0c56cbef64dacd018497182f9fadacc29",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.FocusReplacedHostPanelTests.Given_ALayerHostWhosePanelWasReplaced_When_NothingPatchesThePortal_Then_ItsNewRootCarriesTheEventBridge",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/PlayMode/FocusReplacedHostPanelTests.cs": "1327684e4aa2ba7551b25088300124ac055e74c47ea006212940702d26db9323",
+    "Packages/com.velvet.core/TestUtilities/TestPanelSettings.cs": "c7a36f6a4acd48eb54e9b4c339d7caf0c56cbef64dacd018497182f9fadacc29",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.FocusReplacedHostPanelTests.Given_ALayerHostWhosePanelWasReplaced_When_NothingPatchesThePortal_Then_ItsNewRootHoldsTheDefaultFamily",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/PlayMode/FocusReplacedHostPanelTests.cs": "1327684e4aa2ba7551b25088300124ac055e74c47ea006212940702d26db9323",
+    "Packages/com.velvet.core/TestUtilities/TestPanelSettings.cs": "c7a36f6a4acd48eb54e9b4c339d7caf0c56cbef64dacd018497182f9fadacc29",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.FocusReplacedHostPanelTests.Given_ALayerHostWhosePanelWasReplaced_When_NothingPatchesThePortal_Then_ItsNewRootHoldsThePortalsChildren",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/PlayMode/FocusReplacedHostPanelTests.cs": "1327684e4aa2ba7551b25088300124ac055e74c47ea006212940702d26db9323",
+    "Packages/com.velvet.core/TestUtilities/TestPanelSettings.cs": "c7a36f6a4acd48eb54e9b4c339d7caf0c56cbef64dacd018497182f9fadacc29",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.FocusReplacedHostPanelTests.Given_ALayerHostWhosePanelWasReplaced_When_NothingPatchesThePortal_Then_ItsOldRootCarriesNoEventBridge",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/PlayMode/FocusReplacedHostPanelTests.cs": "1327684e4aa2ba7551b25088300124ac055e74c47ea006212940702d26db9323",
+    "Packages/com.velvet.core/TestUtilities/TestPanelSettings.cs": "c7a36f6a4acd48eb54e9b4c339d7caf0c56cbef64dacd018497182f9fadacc29",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.FocusReplacedHostPanelTests.Given_ALayerHostWhosePanelWasReplaced_When_ThePortalPatchesAndAPointerDownBubblesToTheNewRoot_Then_TheEnclosingHandlerFires",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/PlayMode/FocusReplacedHostPanelTests.cs": "1327684e4aa2ba7551b25088300124ac055e74c47ea006212940702d26db9323",
+    "Packages/com.velvet.core/TestUtilities/TestPanelSettings.cs": "c7a36f6a4acd48eb54e9b4c339d7caf0c56cbef64dacd018497182f9fadacc29",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.FocusReplacedHostPanelTests.Given_APortalMountedAtTheRootOfATreeWhoseHostPanelWasReplaced_When_NothingPatchesIt_Then_ItsNewRootHoldsThePortalsChildren",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/PlayMode/FocusReplacedHostPanelTests.cs": "1327684e4aa2ba7551b25088300124ac055e74c47ea006212940702d26db9323",
+    "Packages/com.velvet.core/TestUtilities/TestPanelSettings.cs": "c7a36f6a4acd48eb54e9b4c339d7caf0c56cbef64dacd018497182f9fadacc29",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  }
+ ],
+ "measured_by": "44481515841",
+ "mutant": {
+  "after": ";",
+  "before": "PanelHostRootWatch.Watch(record, ctx);",
+  "column": 12,
+  "line": 102,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/PanelHostFactory.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "9fc150c13ceb0d70c5e3efc4e19efe0a7b830e00a531490a163c2f73a3dbef0c",
+ "verdict": "killed"
+}

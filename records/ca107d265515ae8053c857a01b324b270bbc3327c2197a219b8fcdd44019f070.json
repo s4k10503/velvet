@@ -1,5 +1,5 @@
 {
- "detail": "EditMode: 1 failed: Given_AnImmediateDrainThatThrowsInsideATransitionTiersCallbackOnAPanel_When_TheNextPassRuns_Then_OnlyTheTransitionItServedCommits",
+ "detail": "EditMode: 1 failed among the 12 case(s) that ran the site: Given_AnImmediateDrainThatThrowsInsideATransitionTiersCallbackOnAPanel_When_TheNextPassRuns_Then_OnlyTheTransitionItServedCommits",
  "file": "3b6a2b57f870ddc76b3d10310746a685d0c2b19e808cf4057fecfdda1bacc910",
  "killers": [
   {
@@ -7,11 +7,11 @@
    "files": {
     "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/DrainExceptionRecoveryTests.cs": "7e04536445c82ebf523db6b3119ee7b89838784274720918effb695cb6e42339",
     "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
-    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921"
    }
   }
  ],
- "measured_by": "44236587104",
+ "measured_by": "44481515841",
  "mutant": {
   "after": ";",
   "before": "Host.Exit(outer);",
@@ -25,6 +25,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "89cc95d9c8738cab81ac770226734be6e83f0342e85ae603cfeae2ec18ed3d7b",
+ "tests": "9fc150c13ceb0d70c5e3efc4e19efe0a7b830e00a531490a163c2f73a3dbef0c",
  "verdict": "killed"
 }

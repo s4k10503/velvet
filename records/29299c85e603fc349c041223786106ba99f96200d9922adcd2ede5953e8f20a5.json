@@ -1,19 +1,8 @@
 {
- "detail": "EditMode: 1 failed: Given_AnElementHoldingASourceAndItsWatchSheet_When_ItsSheetsAreEnsuredAgain_Then_NoStylePassFollows; 1 other editor(s) were up",
+ "detail": "EditMode survived; PlayMode: -",
  "file": "594dbd85636cc13bc8188946df0304784724a6234951c26ea40ea64c644f4603",
- "killers": [
-  {
-   "case": "Velvet.Tests.RadiusWatchSheetsLifecyclePanelTests.Given_AnElementHoldingASourceAndItsWatchSheet_When_ItsSheetsAreEnsuredAgain_Then_NoStylePassFollows",
-   "files": {
-    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/RadiusWatchSheetsLifecyclePanelTests.cs": "4689c41a9b23a91e5004adf850ac371986785481e6e9038c272c15e8a2feb0f4",
-    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
-    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
-    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
-    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
-   }
-  }
- ],
- "measured_by": "44494804299",
+ "killers": [],
+ "measured_by": "44481515841",
  "mutant": {
   "after": "true",
   "before": "false",
@@ -24,9 +13,9 @@
   "shadowed": []
  },
  "mutator": 10,
- "platform": "EditMode",
+ "platform": "PlayMode",
  "schema": 3,
  "stood": null,
- "tests": "3295f816af35af66671199afb18cd2254106533a4c9ba969b3366588368706a2",
- "verdict": "killed"
+ "tests": "9fc150c13ceb0d70c5e3efc4e19efe0a7b830e00a531490a163c2f73a3dbef0c",
+ "verdict": "survived"
 }

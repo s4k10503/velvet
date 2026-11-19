@@ -1,5 +1,5 @@
 {
- "detail": "EditMode: 1 failed among the 97 case(s) that ran the site: Given_ATweenSwapThatHasSwapped_When_AZeroDurationPoseRepeatingItsOpacityLandsBesideABackgroundChange_Then_TheBackgroundTweens",
+ "detail": "EditMode: 1 failed among the 96 case(s) that ran the site: Given_ATweenSwapThatHasSwapped_When_AZeroDurationPoseRepeatingItsOpacityLandsBesideABackgroundChange_Then_TheBackgroundTweens",
  "file": "e07ce2ecd410d1d9da583f1359b96ba18fd7953f4a3c4be64de83184b92df9a7",
  "killers": [
   {
@@ -12,7 +12,7 @@
    }
   }
  ],
- "measured_by": "44494804299",
+ "measured_by": "44481515841",
  "mutant": {
   "after": "+",
   "before": "-",
@@ -26,6 +26,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "3295f816af35af66671199afb18cd2254106533a4c9ba969b3366588368706a2",
+ "tests": "9fc150c13ceb0d70c5e3efc4e19efe0a7b830e00a531490a163c2f73a3dbef0c",
  "verdict": "killed"
 }

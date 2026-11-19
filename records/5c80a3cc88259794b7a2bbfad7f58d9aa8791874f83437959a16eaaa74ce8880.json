@@ -1,16 +1,8 @@
 {
- "detail": "EditMode: 1 failed among the 7 case(s) that ran the site: Given_AUrlHoldingAStringFollowedByAnUnkeptUnit_When_TheSheetIsRewritten_Then_ItsValueIsQuoted",
+ "detail": "EditMode survived; PlayMode: -",
  "file": "0ddf8435b9549e32944ffd3067a89354248bdf3e2a39711af11f156c647a8b1e",
- "killers": [
-  {
-   "case": "Velvet.Tests.UssCustomPropertyTextUrlStringTests.Given_AUrlHoldingAStringFollowedByAnUnkeptUnit_When_TheSheetIsRewritten_Then_ItsValueIsQuoted",
-   "files": {
-    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/UssCustomPropertyTextTests.cs": "49ea454c41452aae32344501df61a1a076a37b1b016e76742ba52795e74f237a",
-    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/UssCustomPropertyTextUrlStringTests.cs": "cd4d6269cbf0048281f05dc2b1720741e98f0eb6a9c93da1ae7fa864ef69901c"
-   }
-  }
- ],
- "measured_by": "44494804299",
+ "killers": [],
+ "measured_by": "44481515841",
  "mutant": {
   "after": "+",
   "before": "-",
@@ -23,9 +15,9 @@
   ]
  },
  "mutator": 10,
- "platform": "EditMode",
+ "platform": "PlayMode",
  "schema": 3,
  "stood": null,
- "tests": "3295f816af35af66671199afb18cd2254106533a4c9ba969b3366588368706a2",
- "verdict": "killed"
+ "tests": "9fc150c13ceb0d70c5e3efc4e19efe0a7b830e00a531490a163c2f73a3dbef0c",
+ "verdict": "survived"
 }

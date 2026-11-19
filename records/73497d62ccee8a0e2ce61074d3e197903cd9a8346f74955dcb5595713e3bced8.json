@@ -8,11 +8,11 @@
     "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseQueriesTests.cs": "d76f600f2ea006c8efa2fb515454333314945c07af0192345b936e1307a6b878",
     "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
     "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
-    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921"
    }
   }
  ],
- "measured_by": "44320767855",
+ "measured_by": "44481515841",
  "mutant": {
   "after": "",
   "before": " || _changedWhileSyncing",
@@ -28,6 +28,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "ef41634d48c09787bf870d2434d8c43063f0ee140990dd6f4d08dea2351b52ef",
+ "tests": "9fc150c13ceb0d70c5e3efc4e19efe0a7b830e00a531490a163c2f73a3dbef0c",
  "verdict": "killed"
 }

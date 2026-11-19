@@ -1,5 +1,5 @@
 {
- "detail": "EditMode: 2 failed among the 93 case(s) that ran the site: Given_AFollowerMountedWithItsLead_When_ItsBackgroundChanges_Then_TheBackgroundTransitions, Given_AFollowerWhoseOwnRotateTurnsOnATransition_When_TheLeadLeaves_Then_ItsOwnRunsAsTheEngineRunsIt",
+ "detail": "EditMode: 3 failed among the 93 case(s) that ran the site: Given_AFollowerMountedWithItsLead_When_ItsBackgroundChanges_Then_TheBackgroundTransitions, Given_AFollowerWhoseOwnRotateTurnsOnATransition_When_TheLeadLeaves_Then_ItsOwnRunsAsTheEngineRunsIt, Given_AHiddenMemberWhosePulseEnded_When_TheLeadLeaves_Then_ItIsShownAtOnce",
  "file": "2b64f0d24258d913debc67d5541aa38c06f773f8cdd9da1f5a3e86da927d399f",
  "killers": [
   {
@@ -23,9 +23,20 @@
     "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921",
     "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
    }
+  },
+  {
+   "case": "Velvet.Tests.MotionScheduledMechanicsTests.Given_AHiddenMemberWhosePulseEnded_When_TheLeadLeaves_Then_ItIsShownAtOnce",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionScheduledMechanicsTests.cs": "0eb200d8ad7a00fa125d68e44bfecee883562e2071a7a7c7dc0e2efb8e9ec2e6",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionSimulatedPanelTestsBase.cs": "319b26852fbe6c4376e12d0d0c9e76d0ced9d71ce1cae10efb9b3d4871118db3",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/GCAllocationProbe.cs": "492823c099cf4f4de89da0da69c98d45cfc042070d93e2d0c0b95773310ebc2c",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
   }
  ],
- "measured_by": "44494804299",
+ "measured_by": "44481515841",
  "mutant": {
   "after": "<=",
   "before": "<",
@@ -39,6 +50,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "3295f816af35af66671199afb18cd2254106533a4c9ba969b3366588368706a2",
+ "tests": "9fc150c13ceb0d70c5e3efc4e19efe0a7b830e00a531490a163c2f73a3dbef0c",
  "verdict": "killed"
 }

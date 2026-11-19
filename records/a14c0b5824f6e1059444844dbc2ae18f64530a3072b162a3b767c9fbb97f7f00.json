@@ -1,15 +1,8 @@
 {
- "detail": "EditMode: 1 failed among the 18 case(s) that ran the site: Given_ALayerHostWithARecordedInsertNotYetApplied_When_ItsChildrenAreNotedReconciled_Then_TheInsertHasReachedTheLiveList",
+ "detail": "EditMode survived; PlayMode: -",
  "file": "b2202223441d4cba2487f3d5ec8c788e3496ccd500c8320119b6f8fc789a1d5c",
- "killers": [
-  {
-   "case": "Velvet.Tests.ReconcilerHelperCaseTests.Given_ALayerHostWithARecordedInsertNotYetApplied_When_ItsChildrenAreNotedReconciled_Then_TheInsertHasReachedTheLiveList",
-   "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ReconcilerHelperCaseTests.cs": "0b3cdc988fb0c6144ded9c2358f2a29ec6d99e349250e2bbdbe3e4e22949ffe7"
-   }
-  }
- ],
- "measured_by": "44494804299",
+ "killers": [],
+ "measured_by": "44481515841",
  "mutant": {
   "after": ";",
   "before": "ChildListWrites.SyncLive(parent);",
@@ -20,9 +13,9 @@
   "shadowed": []
  },
  "mutator": 10,
- "platform": "EditMode",
+ "platform": "PlayMode",
  "schema": 3,
  "stood": null,
- "tests": "3295f816af35af66671199afb18cd2254106533a4c9ba969b3366588368706a2",
- "verdict": "killed"
+ "tests": "9fc150c13ceb0d70c5e3efc4e19efe0a7b830e00a531490a163c2f73a3dbef0c",
+ "verdict": "survived"
 }

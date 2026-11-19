@@ -1,8 +1,16 @@
 {
- "detail": "EditMode survived; PlayMode: -",
+ "detail": "EditMode: 1 failed: Given_TheSheetAttachedToTheRootsOfPanelsSinceDisposed_When_CollectionRuns_Then_MostOfThoseRootsAreCollected",
  "file": "b6b0ff0cb2f4fd47a83312d24894f481fdd99bc3a1cbaa69dfd5be0a1c17b844",
- "killers": [],
- "measured_by": "44403756371",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ThemeBindingTests.Given_TheSheetAttachedToTheRootsOfPanelsSinceDisposed_When_CollectionRuns_Then_MostOfThoseRootsAreCollected",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ThemeBindingTests.cs": "e3bf98b2b17886cf452e63dcea884f75f0e44272296f2bdad70baf7faaa284c7",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397"
+   }
+  }
+ ],
+ "measured_by": "44481515841",
  "mutant": {
   "after": ";",
   "before": "FlushIfPending(container, null);",
@@ -13,9 +21,9 @@
   "shadowed": []
  },
  "mutator": 10,
- "platform": "PlayMode",
+ "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "cace4f089ea1ff071d65e10fd2e74b9a7ee55cd9ca61d4ac197f98380533d5a9",
- "verdict": "survived"
+ "tests": "9fc150c13ceb0d70c5e3efc4e19efe0a7b830e00a531490a163c2f73a3dbef0c",
+ "verdict": "killed"
 }

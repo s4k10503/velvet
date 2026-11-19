@@ -1,0 +1,43 @@
+{
+ "detail": "EditMode: 3 failed: Given_AKeywordInAShadowColourOrAnInsetRingOrBehindARingModifier_When_Extracted_Then_TheBoxShadowIsDiscarded(\"shadow-md shadow-[color:unset]\"), Given_AKeywordInAShadowColourOrAnInsetRingOrBehindARingModifier_When_Extracted_Then_TheBoxShadowIsDiscarded(\"inset-shadow-sm inset-shadow-[color:inherit]\"), Given_AKeywordInAShadowColourOrAnInsetRingOrBehindARingModifier_When_Extracted_Then_TheBoxShadowIsDiscarded(\"shadow-md shadow-[color:revert-layer]\")",
+ "file": "5a6f7c2f1274dd168d00d3869ddf905eb46a141953b46af490a788c9219dc670",
+ "killers": [
+  {
+   "case": "Velvet.Tests.BoxShadowCustomPropertyTests.Given_AKeywordInAShadowColourOrAnInsetRingOrBehindARingModifier_When_Extracted_Then_TheBoxShadowIsDiscarded(\"inset-shadow-sm inset-shadow-[color:inherit]\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BoxShadowCustomPropertyTests.cs": "d5c618fc46d8a4f9c7a5cdc4ccc7c87950bdaf3a8fef5ab49cb21ab6641d6e18",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  },
+  {
+   "case": "Velvet.Tests.BoxShadowCustomPropertyTests.Given_AKeywordInAShadowColourOrAnInsetRingOrBehindARingModifier_When_Extracted_Then_TheBoxShadowIsDiscarded(\"shadow-md shadow-[color:revert-layer]\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BoxShadowCustomPropertyTests.cs": "d5c618fc46d8a4f9c7a5cdc4ccc7c87950bdaf3a8fef5ab49cb21ab6641d6e18",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  },
+  {
+   "case": "Velvet.Tests.BoxShadowCustomPropertyTests.Given_AKeywordInAShadowColourOrAnInsetRingOrBehindARingModifier_When_Extracted_Then_TheBoxShadowIsDiscarded(\"shadow-md shadow-[color:unset]\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BoxShadowCustomPropertyTests.cs": "d5c618fc46d8a4f9c7a5cdc4ccc7c87950bdaf3a8fef5ab49cb21ab6641d6e18",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  }
+ ],
+ "measured_by": "44481515841",
+ "mutant": {
+  "after": "true",
+  "before": "false",
+  "column": 79,
+  "line": 99,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleColorValueParser.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "9fc150c13ceb0d70c5e3efc4e19efe0a7b830e00a531490a163c2f73a3dbef0c",
+ "verdict": "killed"
+}
