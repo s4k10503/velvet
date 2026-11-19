@@ -14,6 +14,8 @@ namespace Velvet.Tests
     {
         private const string OwnSheet = "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/LayoutIdTestRules.uss";
 
+        // GREEN_ON_BASE(characterization): the base leaves a watch sheet out of the sheets BorderPreflight compares. Drop `&&
+        // !RadiusWatchSheets.IsWatch(sheet)` from SheetsOf and the attached watch sheet moves the count.
         [Test]
         public void Given_AnElementHoldingASource_When_ItsWatchSheetIsAttached_Then_ItsSheetsCompareAsTheyDid()
         {
@@ -31,6 +33,8 @@ namespace Velvet.Tests
             Assert.That(element.styleSheets.count == 2 ? after - before : -1, Is.Zero);
         }
 
+        // GREEN_ON_BASE(characterization): the base reads no class off a snapped sheet. Change the first `||` of the exclusion in WidthNames.Add to
+        // `&&` and the snapped sheet is read.
         [Test]
         public void Given_ASnappedBorderSheet_When_ItsBorderWidthNamesAreRead_Then_ItNamesNoClass()
         {

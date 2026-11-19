@@ -176,6 +176,8 @@ namespace Velvet.Tests
             Assert.That(WhereARunEventHasArrived(opacity), Is.EqualTo(0.3f).Within(1e-2f));
         }
 
+        // GREEN_ON_BASE(characterization): the base notes one run for a property. Drop `if (runs[i].Id.Equals(run.Id)) runs.RemoveAt(i);` from NoteRun
+        // and the earlier run stays beside the new one.
         [Test]
         public void Given_AnOpacityTransitionWhoseRunEventHasArrived_When_AnotherOpacityTransitionStartsAndItsRunEventArrives_Then_OneRunIsNotedForOpacity()
         {

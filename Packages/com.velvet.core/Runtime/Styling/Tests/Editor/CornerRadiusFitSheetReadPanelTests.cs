@@ -52,6 +52,8 @@ namespace Velvet.Tests
             return (bool)known.GetType().GetMethod("TryGetValue")!.Invoke(known, probe)!;
         }
 
+        // GREEN_ON_BASE(characterization): the base watches no element as an ancestor that holds no sheet. Change `element.styleSheets.count > 0` to
+        // `>= 0` in ReadSheetsAbove and the element is watched.
         [Test]
         public void Given_AnElementWithNoStylesheetOfItsOwn_When_ItsSizeEventIsRead_Then_ItIsNotWatchedAsAnAncestor()
         {
@@ -65,6 +67,8 @@ namespace Velvet.Tests
             Assert.That(IsWatchedAsAncestor(first), Is.False);
         }
 
+        // GREEN_ON_BASE(characterization): the base gives the parent of the element whose size event is read its watch sheet. Drop
+        // `RadiusWatchSheets.EnsureAbove(parent);` from ReadSheetsAbove and the parent holds none.
         [Test]
         public void Given_AParentHoldingASheetWithARadiusRule_When_AChildsSizeEventIsRead_Then_TheParentHoldsTheWatchSheet()
         {
@@ -79,6 +83,8 @@ namespace Velvet.Tests
             Assert.That(watch != null && parent.styleSheets.Contains(watch), Is.True);
         }
 
+        // GREEN_ON_BASE(characterization): the base looks at a parent's sheets once. Drop `s_chainsRead.Add(parent, s_chainsRead);` from
+        // ReadSheetsAbove and the sibling's event puts the watch sheet back.
         [Test]
         public void Given_AParentWhoseSheetsWereLookedAtForOneChild_When_ASiblingsSizeEventIsRead_Then_TheyAreNotLookedAtAgain()
         {
@@ -95,6 +101,8 @@ namespace Velvet.Tests
             Assert.That(watch != null && parent.styleSheets.Contains(watch), Is.False);
         }
 
+        // GREEN_ON_BASE(characterization): the base leaves a code-written radius alone when a style pass matches the rules it matched before. Change
+        // `rules != null` to `rules == null` in OnStyleResolved and the second pass fits it again.
         [Test]
         public void Given_ABoxFittedFromItsOwnSheetWhoseCodeWroteAnOverflowingRadius_When_ItsStylePassMatchedTheSameRules_Then_ThatRadiusIsLeftAsWritten()
         {
@@ -114,6 +122,8 @@ namespace Velvet.Tests
                 Is.EqualTo(400f));
         }
 
+        // GREEN_ON_BASE(characterization): the base reads the cascade for a code-written radius at once. Change `state.ReadsCascade = true;` to `false`
+        // in NoteClassWrite and the rule's radius waits for a style pass.
         [Test]
         public void Given_AnElementHoldingACodeWrittenRadius_When_AClassIsWrittenThroughVelvet_Then_ItsRulesRadiusIsReadAtOnce()
         {

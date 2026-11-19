@@ -73,8 +73,11 @@ namespace Velvet.Tests
             throw new MissingFieldException(nameof(StyleFlexMinSizeManipulator), name);
         }
 
+        // GREEN_ON_BASE(characterization): the base leaves a settled label alone on a parent event that moves no direction. Drop `hub.Direction =
+        // direction;` from s_onParentGeometry, or `Settle(signature, text);` after the Write in DeriveCore, and the
+        // label derives for its new text.
         [Test]
-        public void Given_ALabelSettledInARow_When_OnlyItsParentsGeometryEventFiresTwiceAfterItsTextChanged_Then_ItsMinWidthStaysWhereItSettled()
+        public void Given_ALabelSettledInARow_When_ItsTextChangesAndOnlyItsParentsGeometryEventFiresAgain_Then_ItsMinWidthStaysWhereItSettled()
         {
             // Arrange
             using var scope = new ReconcilerScope();
@@ -91,8 +94,10 @@ namespace Velvet.Tests
             Assert.That(label.style.minWidth.value.value, Is.EqualTo(settled));
         }
 
+        // GREEN_ON_BASE(characterization): the base derives again on a parent event for a label holding no signature. Drop `|| !_hasSignature` from
+        // OnParentGeometryChanged and the returned text gets none.
         [Test]
-        public void Given_ALabelThatDerivedForAnEmptyText_When_ItsTextReturnsAndOnlyItsParentsGeometryEventFires_Then_ItGetsAMinWidth()
+        public void Given_ALabelEmptiedAfterMountingWithText_When_ItsTextReturnsAndOnlyItsParentsGeometryEventFires_Then_ItGetsAMinWidth()
         {
             // Arrange
             using var scope = new ReconcilerScope();
@@ -110,6 +115,8 @@ namespace Velvet.Tests
             Assert.That(label.style.minWidth.keyword, Is.Not.EqualTo(StyleKeyword.Null));
         }
 
+        // GREEN_ON_BASE(characterization): the base settles a label that stands down, so a parent event leaves it. Drop `Settle(signature, text);` from
+        // the StandsDown branch of DeriveCore and the event derives it without its clip.
         [Test]
         public void Given_AClippedLabelSettledInARow_When_ItsClipClassLeavesOutsideAPatchAndOnlyItsParentsGeometryEventFires_Then_ItsMinWidthIsLeftAlone()
         {
@@ -127,6 +134,8 @@ namespace Velvet.Tests
             Assert.That(label.style.minWidth.keyword, Is.EqualTo(StyleKeyword.Null));
         }
 
+        // GREEN_ON_BASE(characterization): the base reads an inline percent as one that reads its parent's box. Change `inline.value.unit ==
+        // LengthUnit.Percent` to `!=` in IsPercent and the parent event leaves the label as it was.
         [Test]
         public void Given_ALabelWithAnInlinePercentMaxWidth_When_ItsTextChangesAndOnlyItsParentsGeometryEventFires_Then_ItsMinWidthFollowsTheText()
         {
@@ -146,6 +155,8 @@ namespace Velvet.Tests
             Assert.That(label.style.minWidth.value.value, Is.EqualTo(WidestWordMinimum(label, LongerWord)));
         }
 
+        // GREEN_ON_BASE(characterization): the base measures no natural width for a clipped label. Change `measure: false` to `true` in the first
+        // IsAtNaturalWidth call of DeriveCore and one is measured.
         [Test]
         public void Given_AClippedLabelInARowWithRoomForItsText_When_Resolved_Then_NoNaturalWidthHasBeenMeasuredForIt()
         {
@@ -160,6 +171,8 @@ namespace Velvet.Tests
             Assert.That(measured, Is.False);
         }
 
+        // GREEN_ON_BASE(characterization): the base keeps the key of the text and font size it measured. Drop `_naturalKey = key;` from
+        // IsAtNaturalWidth and the key stays unset.
         [Test]
         public void Given_ALabelInARowNarrowerThanItsText_When_Resolved_Then_ItsNaturalWidthIsKeptForItsTextAndFontSize()
         {
@@ -175,6 +188,8 @@ namespace Velvet.Tests
             Assert.That(kept, Is.EqualTo(expected));
         }
 
+        // GREEN_ON_BASE(characterization): the base keeps the natural width it measured. Change `_hasNatural = true;` to `false` in IsAtNaturalWidth
+        // and nothing is kept.
         [Test]
         public void Given_ALabelInARowNarrowerThanItsText_When_Resolved_Then_ItsNaturalWidthIsKept()
         {
@@ -189,6 +204,8 @@ namespace Velvet.Tests
             Assert.That(kept, Is.True);
         }
 
+        // GREEN_ON_BASE(characterization): the base says a text of no width is not at its natural width. Change the `return false;` after `!(width >
+        // 0f)` in IsAtNaturalWidth to `true` and the label is at it.
         [Test]
         public void Given_ATextThatMeasuresNoWidth_When_ItsNaturalWidthIsAskedFor_Then_TheLabelIsNotAtIt()
         {
@@ -205,6 +222,8 @@ namespace Velvet.Tests
             Assert.That(atNatural, Is.False);
         }
 
+        // GREEN_ON_BASE(characterization): the base takes a width equal to the threshold as the natural width. Change `>=` to `>` in the return of
+        // IsAtNaturalWidth and a minimum is written.
         [Test]
         public void Given_ALabelWhoseWidthIsExactlyItsTextsWidthPlusItsFrameLessTheTolerance_When_Resolved_Then_ItsMinWidthIsNotWritten()
         {
@@ -222,6 +241,9 @@ namespace Velvet.Tests
             Assert.That(label.style.minWidth.keyword, Is.EqualTo(StyleKeyword.Null));
         }
 
+        // GREEN_ON_BASE(characterization): the base takes its hub callback off a parent whose last leaf leaves. Drop
+        // `_subscribedParent.UnregisterCallback(s_onParentGeometry);` from SyncParentSubscription and the callback
+        // stays.
         [Test]
         public void Given_AFlexMinSizeManipulatorOnTheOnlyLeafOfAParent_When_ItIsRemoved_Then_TheParentKeepsNoCallbackOfTheHub()
         {

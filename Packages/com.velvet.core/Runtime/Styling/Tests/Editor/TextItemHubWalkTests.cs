@@ -18,6 +18,8 @@ namespace Velvet.Tests
         // leaf's signature is moved and its shown string owed again: its step then leaves the first parent's hub, and
         // re-resolving the text re-derives the flex-min leaf, which leaves it as well. Both gone, no leaf is left at
         // the index the walk goes on to.
+        // GREEN_ON_BASE(characterization): the base walks past a hub emptied under it. Change `i < hub.Leaves.Count` to `<=` in s_onParentGeometry and
+        // the walk reads an index the list no longer holds.
         [Test]
         public void Given_ABalanceStepThatAlsoTakesTheFlexMinLeafOutOfTheHub_When_TheParentsGeometryEventFires_Then_TheWalkThrowsNothing()
         {

@@ -41,6 +41,10 @@ namespace Velvet.Tests
             _clones.Clear();
             ReportedField().SetValue(null, _reportedBefore);
             var made = (IList)MadeField().GetValue(null);
+            foreach (var entry in made.Cast<object>().Where(entry => !_madeBefore.Contains(entry)))
+            {
+                UnityEngine.Object.DestroyImmediate((StyleSheet)entry.GetType().GetField("Item2")!.GetValue(entry)!);
+            }
             made.Clear();
             foreach (var entry in _madeBefore)
             {
@@ -81,6 +85,8 @@ namespace Velvet.Tests
         private static int WatchSheetsAlive()
             => Resources.FindObjectsOfTypeAll<StyleSheet>().Count(sheet => sheet.name == "velvet-radius-watch");
 
+        // GREEN_ON_BASE(characterization): the base leaves the sheets of an element alone when none is stale. Change `var stale = false;` to `true` in
+        // DropStale and every call rewrites the list.
         [Test]
         public void Given_AnElementHoldingASourceAndItsWatchSheet_When_ItsSheetsAreEnsuredAgain_Then_NoStylePassFollows()
         {
@@ -105,6 +111,8 @@ namespace Velvet.Tests
             Assert.That(passes, Is.Zero);
         }
 
+        // GREEN_ON_BASE(characterization): the base takes off a watch sheet standing first in the list. Change `i >= 0` to `i > 0` in the loop of
+        // DropStale and the first sheet is never read.
         [Test]
         public void Given_AnElementHoldingAWatchSheetOfNoSourceItHolds_When_ItsSheetsAreEnsured_Then_ThatWatchSheetIsTakenOff()
         {
@@ -120,6 +128,8 @@ namespace Velvet.Tests
             Assert.That(element.styleSheets.Contains(watch), Is.False);
         }
 
+        // GREEN_ON_BASE(characterization): the base drops a destroyed sheet from an element. Change `held == null` to `!=` in DropStale and the
+        // destroyed sheet is kept.
         [Test]
         public void Given_AnElementHoldingADestroyedStylesheetOfItsOwn_When_ItsSheetsAreEnsured_Then_ItHoldsNone()
         {
@@ -136,6 +146,8 @@ namespace Velvet.Tests
             Assert.That(element.styleSheets.count, Is.Zero);
         }
 
+        // GREEN_ON_BASE(characterization): the base derives no sheet from a source edited to declare no radius. Drop `derived.Sheet = null;` from the
+        // try of DerivedOf and the earlier sheet is returned.
         [Test]
         public void Given_ASourceEditedInPlaceToDeclareNoRadius_When_ItsWatchSheetIsDerivedAgain_Then_ThereIsNone()
         {
@@ -154,6 +166,8 @@ namespace Velvet.Tests
             Assert.That((object)before != null && (object)after == null, Is.True);
         }
 
+        // GREEN_ON_BASE(characterization): the base destroys a sheet whose build failed. Change `made != null` to `== null` in the catch of DerivedOf
+        // and the sheet is left alive.
         [Test]
         public void Given_ASourceWhoseWatchSheetCannotBeBuilt_When_ItIsAskedFor_Then_ThereIsNoneAndNoSheetIsLeftBehind()
         {
@@ -168,6 +182,8 @@ namespace Velvet.Tests
             Assert.That(WatchSheetsAlive() - before, Is.Zero);
         }
 
+        // GREEN_ON_BASE(characterization): the base logs the warning for the first sheet it cannot build. Drop the `Debug.LogWarning` call from the
+        // catch of DerivedOf and the warning the case expects never arrives.
         [Test]
         public void Given_ASourceWhoseWatchSheetCannotBeBuilt_When_ItIsAskedForAndNoneWasReportedYet_Then_OneIsReported()
         {
@@ -183,6 +199,8 @@ namespace Velvet.Tests
             Assert.That((bool)ReportedField().GetValue(null), Is.True);
         }
 
+        // GREEN_ON_BASE(characterization): the base destroys the only sheet made once its source is gone. Change `i >= 0` to `i > 0` in DestroyOrphans
+        // and the sheet at the first place is kept.
         [Test]
         public void Given_TheOnlyWatchSheetMadeAndItsSourceDestroyed_When_AnElementsSheetsAreEnsured_Then_ItIsDestroyed()
         {
@@ -200,6 +218,8 @@ namespace Velvet.Tests
             Assert.That(made && watch == null, Is.True);
         }
 
+        // GREEN_ON_BASE(characterization): the base names each sheet it makes. Drop `sheet.name = SheetName;` from NewSheet and a sheet known by no
+        // reference is no watch sheet.
         [Test]
         public void Given_AWatchSheetRememberedByNoReference_When_ItIsAskedWhetherItIsOne_Then_ItsNameSaysItIs()
         {
@@ -215,6 +235,8 @@ namespace Velvet.Tests
             Assert.That(isWatch, Is.True);
         }
 
+        // GREEN_ON_BASE(characterization): the base attaches the watch sheets of the sheets a root already holds. Drop
+        // `RadiusWatchSheets.EnsureAbove(root);` from VelvetStyleUtilities.AttachTo and the root holds none.
         [Test]
         public void Given_ASheetOnARootBeforeTheUtilitiesAreAttached_When_TheyAreAttached_Then_TheRootHoldsTheSheetsWatchSheet()
         {
