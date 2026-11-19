@@ -1,0 +1,43 @@
+{
+ "detail": "EditMode: 3 failed among the 3 case(s) that ran the site: Given_ADivideBracketOfAnotherTypeReadingAColourWithAModifierPast100_When_ItsReaderIsRead_Then_TheDividerHasNoColour, Given_ADivideBracketOfAnotherTypeReadingAWordNamingNoColour_When_ItsReaderIsRead_Then_TheDividerHasNoColour, Given_ADivideBracketOfAnotherTypeReadingNoColour_When_ItsReaderIsRead_Then_TheDividerHasNoColour",
+ "file": "eeeeb0e9c0d3c64fcb100836c6978440420698b2bc183878eb936273e252a453",
+ "killers": [
+  {
+   "case": "Velvet.Tests.BoxShadowCustomPropertyTests.Given_ADivideBracketOfAnotherTypeReadingAColourWithAModifierPast100_When_ItsReaderIsRead_Then_TheDividerHasNoColour",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BoxShadowCustomPropertyTests.cs": "d5c618fc46d8a4f9c7a5cdc4ccc7c87950bdaf3a8fef5ab49cb21ab6641d6e18",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  },
+  {
+   "case": "Velvet.Tests.BoxShadowCustomPropertyTests.Given_ADivideBracketOfAnotherTypeReadingAWordNamingNoColour_When_ItsReaderIsRead_Then_TheDividerHasNoColour",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BoxShadowCustomPropertyTests.cs": "d5c618fc46d8a4f9c7a5cdc4ccc7c87950bdaf3a8fef5ab49cb21ab6641d6e18",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  },
+  {
+   "case": "Velvet.Tests.BoxShadowCustomPropertyTests.Given_ADivideBracketOfAnotherTypeReadingNoColour_When_ItsReaderIsRead_Then_TheDividerHasNoColour",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BoxShadowCustomPropertyTests.cs": "d5c618fc46d8a4f9c7a5cdc4ccc7c87950bdaf3a8fef5ab49cb21ab6641d6e18",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  }
+ ],
+ "measured_by": "44403756371",
+ "mutant": {
+  "after": "false",
+  "before": "true",
+  "column": 23,
+  "line": 322,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleDivideClass.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "cace4f089ea1ff071d65e10fd2e74b9a7ee55cd9ca61d4ac197f98380533d5a9",
+ "verdict": "killed"
+}

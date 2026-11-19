@@ -1,8 +1,8 @@
 {
- "detail": "EditMode: Stack overflow in unmanaged: IP: 0x7ba9709e0ae0, fault addr: 0x7ba818c04fe8",
+ "detail": "EditMode: Stack overflow in unmanaged: IP: 0x7236009e0ae0, fault addr: 0x7233df174fe8",
  "file": "0ddf8435b9549e32944ffd3067a89354248bdf3e2a39711af11f156c647a8b1e",
  "killers": [],
- "measured_by": "44320767855",
+ "measured_by": "44403756371",
  "mutant": {
   "after": "-",
   "before": "+",
@@ -18,6 +18,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "ef41634d48c09787bf870d2434d8c43063f0ee140990dd6f4d08dea2351b52ef",
+ "tests": "cace4f089ea1ff071d65e10fd2e74b9a7ee55cd9ca61d4ac197f98380533d5a9",
  "verdict": "killed (the editor crashed)"
 }

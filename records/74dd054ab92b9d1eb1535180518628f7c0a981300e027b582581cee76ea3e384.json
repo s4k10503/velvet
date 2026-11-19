@@ -1,0 +1,23 @@
+{
+ "detail": "EditMode: Stack overflow in unmanaged: IP: 0x745730677dac, fault addr: 0x7fffe3f53d88; 1 other editor(s) were up",
+ "file": "f7b1fdf7946243d23ff565d8d810bbeca20017855ed944142db5d64e0a156817",
+ "killers": [],
+ "measured_by": "44403756371",
+ "mutant": {
+  "after": "+",
+  "before": "-",
+  "column": 54,
+  "line": 36,
+  "operator": "arithmetic",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleCustomProperties.Substitution.cs",
+  "shadowed": [
+   "line removed"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "cace4f089ea1ff071d65e10fd2e74b9a7ee55cd9ca61d4ac197f98380533d5a9",
+ "verdict": "killed (the editor crashed)"
+}

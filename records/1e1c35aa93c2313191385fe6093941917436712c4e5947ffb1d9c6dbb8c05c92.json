@@ -1,0 +1,25 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "6383cc37ccda652e3febf4e465980571ecdaa8f9c8521cf45951649a76dad480",
+ "killers": [],
+ "measured_by": "44403756371",
+ "mutant": {
+  "after": ">=",
+  "before": ">",
+  "column": 24,
+  "line": 445,
+  "operator": "boundary",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleRingClass.cs",
+  "shadowed": [
+   "arithmetic",
+   "clause removed",
+   "equality"
+  ]
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "cace4f089ea1ff071d65e10fd2e74b9a7ee55cd9ca61d4ac197f98380533d5a9",
+ "verdict": "survived"
+}

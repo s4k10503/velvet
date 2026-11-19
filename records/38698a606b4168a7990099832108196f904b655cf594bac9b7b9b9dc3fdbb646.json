@@ -1,0 +1,32 @@
+{
+ "detail": "EditMode: 1 failed among the 59 case(s) that ran the site: Given_ACaretBracketOfAnotherTypeReadingNoColour_When_ItsReaderIsRead_Then_TheCaretInheritsIt",
+ "file": "ec79ca4507692635e6f48eb393b070f89f62de467a59ad341f897cdfbf8a0210",
+ "killers": [
+  {
+   "case": "Velvet.Tests.BoxShadowCustomPropertyTests.Given_ACaretBracketOfAnotherTypeReadingNoColour_When_ItsReaderIsRead_Then_TheCaretInheritsIt",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BoxShadowCustomPropertyTests.cs": "d5c618fc46d8a4f9c7a5cdc4ccc7c87950bdaf3a8fef5ab49cb21ab6641d6e18",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  }
+ ],
+ "measured_by": "44403756371",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 71,
+  "line": 141,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleCustomProperties.cs",
+  "shadowed": [
+   "arithmetic",
+   "equality"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "cace4f089ea1ff071d65e10fd2e74b9a7ee55cd9ca61d4ac197f98380533d5a9",
+ "verdict": "killed"
+}

@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "07b9bed3cc81f9a4787c2871e22617e3c758403aa3d9e930bc519160443837e1",
+ "killers": [],
+ "measured_by": "44403756371",
+ "mutant": {
+  "after": ";",
+  "before": "element.UnregisterCallback(s_onAttach);",
+  "column": 16,
+  "line": 100,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleUserClassProperties.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "cace4f089ea1ff071d65e10fd2e74b9a7ee55cd9ca61d4ac197f98380533d5a9",
+ "verdict": "survived"
+}

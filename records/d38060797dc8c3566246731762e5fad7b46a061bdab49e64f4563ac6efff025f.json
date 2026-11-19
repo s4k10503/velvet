@@ -1,0 +1,28 @@
+{
+ "detail": "EditMode: 1 failed among the 19 case(s) that ran the site: Given_AnEarlierRowReplacedAndALaterOneLosingItsZIndex_When_TheyPatchInOnePass_Then_TheRowsKeepTheirOrder",
+ "file": "b2202223441d4cba2487f3d5ec8c788e3496ccd500c8320119b6f8fc789a1d5c",
+ "killers": [
+  {
+   "case": "Velvet.Tests.RecordedChildListWriteTests.Given_AnEarlierRowReplacedAndALaterOneLosingItsZIndex_When_TheyPatchInOnePass_Then_TheRowsKeepTheirOrder",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/RecordedChildListWriteTests.cs": "3d3b8969ed465478e4792bab5e3e4d522697ed34c4687121c22e800dc921c6b3"
+   }
+  }
+ ],
+ "measured_by": "44403756371",
+ "mutant": {
+  "after": ";",
+  "before": "ChildListWrites.SyncLive(parent);",
+  "column": 12,
+  "line": 789,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberZLayerCoordinator.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "cace4f089ea1ff071d65e10fd2e74b9a7ee55cd9ca61d4ac197f98380533d5a9",
+ "verdict": "killed"
+}

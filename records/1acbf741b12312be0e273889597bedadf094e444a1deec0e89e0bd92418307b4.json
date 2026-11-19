@@ -1,0 +1,29 @@
+{
+ "detail": "EditMode: 1 failed among the 289 case(s) that ran the site: Given_AMotionWithInitial_When_EnterCompletes_Then_ItRestsAtTheAnimateVariant",
+ "file": "3df05d4b757e7d752b7aa5cd09953e5dcc4a0544f85b6e1d1c3f366d5b52269c",
+ "killers": [
+  {
+   "case": "Velvet.Tests.AnimatePresenceAnimationTests.Given_AMotionWithInitial_When_EnterCompletes_Then_ItRestsAtTheAnimateVariant",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/AnimatePresenceAnimationTests.cs": "a7ff95ec31fa180d58adaecff71bbaaaf3f7e0961ca58e218d0a694974b935a8",
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/SimulatedPanelTestBase.cs": "a06149cf212c91277fd1442580aee292a959fef6bf985e77628aabdbb0acacc8"
+   }
+  }
+ ],
+ "measured_by": "44403756371",
+ "mutant": {
+  "after": ";",
+  "before": "element.RegisterCallback(handler, CallbackOptions.Once);",
+  "column": 12,
+  "line": 709,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleAnimationScheduler.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "cace4f089ea1ff071d65e10fd2e74b9a7ee55cd9ca61d4ac197f98380533d5a9",
+ "verdict": "killed"
+}

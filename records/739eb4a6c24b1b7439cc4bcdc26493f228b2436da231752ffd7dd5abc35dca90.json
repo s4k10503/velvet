@@ -1,0 +1,102 @@
+{
+ "detail": "EditMode: 25 failed: Given_ABracketedNegativeSizeModifier_When_AShadowColourIsBeside_Then_TheColourIsWhole, Given_ABracketedNegativeSizeModifier_When_Extracted_Then_ItsOwnColourIsClear, Given_ABracketShadowOrColourWithABracketModifier_When_Reconciled_Then_ItIsDrawnAtTheModifiersAlpha(\"shadow-lg shadow-[#f00]/[50%]\",\"FF000080\")",
+ "file": "fdc0c4beb9c4e06ceb2bfe0a811081e89fc18c8ddc11de0a2fcacebfd7d58745",
+ "killers": [
+  {
+   "case": "Velvet.Tests.BoxShadowDiscardTests.Given_ABracketShadowOrColourWithABracketModifier_When_Reconciled_Then_ItIsDrawnAtTheModifiersAlpha(\"shadow-lg shadow-[#f00]/[50%]\",\"FF000080\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BoxShadowDiscardTests.cs": "fffceff958eaef894998879c09cc485070eec75dbcdc8c2afd187ead6642c07a",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.BoxShadowDiscardTests.Given_ABracketedNegativeSizeModifier_When_AShadowColourIsBeside_Then_TheColourIsWhole",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BoxShadowDiscardTests.cs": "fffceff958eaef894998879c09cc485070eec75dbcdc8c2afd187ead6642c07a",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.BoxShadowDiscardTests.Given_ABracketedNegativeSizeModifier_When_Extracted_Then_ItsOwnColourIsClear",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BoxShadowDiscardTests.cs": "fffceff958eaef894998879c09cc485070eec75dbcdc8c2afd187ead6642c07a",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.BoxShadowDiscardTests.Given_AParentWhoseSizeModifierPast100MixesItsShadowColour_When_AChildInheritsIt_Then_TheChildDrawsNoBoxShadow(\"inset-shadow-sm/150 inset-shadow-red-500\",\"inset-shadow-sm inset-shadow-inherit\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BoxShadowDiscardTests.cs": "fffceff958eaef894998879c09cc485070eec75dbcdc8c2afd187ead6642c07a",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.BoxShadowDiscardTests.Given_AParentWhoseSizeModifierPast100MixesItsShadowColour_When_AChildInheritsIt_Then_TheChildDrawsNoBoxShadow(\"shadow-lg/150 shadow-red-500\",\"shadow-lg shadow-inherit\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BoxShadowDiscardTests.cs": "fffceff958eaef894998879c09cc485070eec75dbcdc8c2afd187ead6642c07a",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.BoxShadowDiscardTests.Given_ASizeModifierAndALaterSizeWithoutOneBesideAShadowColour_When_Reconciled_Then_TheModifierScalesTheColour",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BoxShadowDiscardTests.cs": "fffceff958eaef894998879c09cc485070eec75dbcdc8c2afd187ead6642c07a",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.BoxShadowDiscardTests.Given_ASizeModifierPast100_When_Extracted_Then_ItsOwnColourIsOpaque",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BoxShadowDiscardTests.cs": "fffceff958eaef894998879c09cc485070eec75dbcdc8c2afd187ead6642c07a",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.BoxShadowDiscardTests.Given_AnImportantShadowInitialOverASizeModifierPast100AndAColour_When_Extracted_Then_TheLayersAreOpaqueBlack",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BoxShadowDiscardTests.cs": "fffceff958eaef894998879c09cc485070eec75dbcdc8c2afd187ead6642c07a",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.BoxShadowDiscardTests.Given_AnImportantSizeModifierAndALaterPlainOnePast100BesideAShadowColour_When_Reconciled_Then_TheImportantOneScalesTheColour",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BoxShadowDiscardTests.cs": "fffceff958eaef894998879c09cc485070eec75dbcdc8c2afd187ead6642c07a",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.BoxShadowDiscardTests.Given_HoverShadowInitialAfterAHoverColourTailwindEmitsAfterIt_When_Hovered_Then_TheColourStands",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BoxShadowDiscardTests.cs": "fffceff958eaef894998879c09cc485070eec75dbcdc8c2afd187ead6642c07a",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  }
+ ],
+ "measured_by": "44403756371",
+ "mutant": {
+  "after": "true",
+  "before": "false",
+  "column": 31,
+  "line": 43,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleShadowClass.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "cace4f089ea1ff071d65e10fd2e74b9a7ee55cd9ca61d4ac197f98380533d5a9",
+ "verdict": "killed"
+}

@@ -1,0 +1,29 @@
+{
+ "detail": "EditMode: 1 failed: Given_EnterTransition_When_Completed_Then_EnterToClassIsRemoved",
+ "file": "ba2f2489ecfb3bdc179e8a096b7622147029e23edf0412b085c9af2953c692c1",
+ "killers": [
+  {
+   "case": "Velvet.Tests.AnimatePresenceAnimationTests.Given_EnterTransition_When_Completed_Then_EnterToClassIsRemoved",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/AnimatePresenceAnimationTests.cs": "a7ff95ec31fa180d58adaecff71bbaaaf3f7e0961ca58e218d0a694974b935a8",
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/SimulatedPanelTestBase.cs": "a06149cf212c91277fd1442580aee292a959fef6bf985e77628aabdbb0acacc8"
+   }
+  }
+ ],
+ "measured_by": "44403756371",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 22,
+  "line": 177,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleTextItemManipulator.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "cace4f089ea1ff071d65e10fd2e74b9a7ee55cd9ca61d4ac197f98380533d5a9",
+ "verdict": "killed"
+}
