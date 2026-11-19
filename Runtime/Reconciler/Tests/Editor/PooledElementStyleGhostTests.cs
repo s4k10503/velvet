@@ -319,6 +319,39 @@ namespace Velvet.Tests
             Assert.That(degrees, Is.EqualTo(0f).Within(1e-3f));
         }
 
+        // FiberElementPoolReset.ClearLateClearedStyle leaves the text auto size to IStyle.Clear on the strength of this
+        // case and the next: the engine animates no such property, so its clear needs no zero duration around it.
+        [Test]
+        public void Given_TheEnginesAnimatablePropertySet_When_ItIsReadForTextAutoSize_Then_TextAutoSizeIsNotInIt()
+        {
+            // Arrange
+            var util = typeof(VisualElement).Assembly.GetType("UnityEngine.UIElements.StyleSheets.StylePropertyUtil", throwOnError: true)!;
+            var set = (System.Collections.IEnumerable)util
+                .GetField("s_AnimatableProperties", BindingFlags.NonPublic | BindingFlags.Static)!.GetValue(null)!;
+            var names = new List<string>();
+            foreach (var id in set) names.Add(id.ToString());
+
+            // Act
+            var holdsTextAutoSize = names.Contains("UnityTextAutoSize");
+
+            // Assert — a set that read without opacity was not read, and reports as such rather than as absent.
+            Assert.AreEqual("False", names.Contains("Opacity") ? holdsTextAutoSize.ToString() : "set unread");
+        }
+
+        [Test]
+        public void Given_AnInlineTextAutoSize_When_StyleIsCleared_Then_TheKeywordReadsAsUnset()
+        {
+            // Arrange
+            var element = new VisualElement();
+            element.style.unityTextAutoSize = StyleKeyword.Initial;
+
+            // Act
+            element.style.Clear();
+
+            // Assert
+            Assert.AreEqual(StyleKeyword.Null, element.style.unityTextAutoSize.keyword);
+        }
+
         [Test]
         public void Given_AnElementUnderASheetsBackgroundSizeTransition_When_ResetForReuse_Then_NoTransitionStarts()
         {
