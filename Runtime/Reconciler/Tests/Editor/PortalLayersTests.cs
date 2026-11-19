@@ -672,6 +672,29 @@ namespace Velvet.Tests
             Assert.That(ReferenceEquals(oldRoot, newRoot) ? null : newRoot.Q<VisualElement>("ws1"), Is.Not.Null);
         }
 
+        // GREEN_ON_BASE(characterization): the base takes a world-space host's children out of the root its document replaced as it moves them to the new one. Remove `_host.ReleasePortalRangeForRetarget(placeholder);` from PatchWorldSpacePre and they stay in the old root, reddening it.
+        [Test]
+        public void Given_AWorldSpaceHostWhoseDocumentBuiltANewRoot_When_Repatched_Then_TheChildLeavesTheOldRoot()
+        {
+            // Arrange — disabling and enabling the document builds its root again; the child is in the old one.
+            MountAndLayout(V.Component(MovingWorldSpaceHost, key: "root"));
+            var document = NewDocs()[0];
+            var oldRoot = document.rootVisualElement;
+            document.enabled = false;
+            document.enabled = true;
+            var newRoot = document.rootVisualElement;
+
+            // Act
+            s_setFlag.Invoke(true);
+            FlushAndLayout();
+
+            // Assert — a word for where the child stands: only the new root once it moved, and a root that was not
+            // built again holds it in both reads.
+            var standing = newRoot.Q<VisualElement>("ws1") == null ? "missing"
+                : oldRoot.Q<VisualElement>("ws1") == null ? "moved" : "kept";
+            Assert.That(standing, Is.EqualTo("moved"));
+        }
+
         [Component]
         private static VNode ConditionalWorldSpaceHost()
         {
