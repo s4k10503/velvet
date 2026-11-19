@@ -650,6 +650,25 @@ namespace Velvet.Tests
             Assert.That(docs[0].transform.position, Is.EqualTo(new Vector3(5f, 0f, 0f)));
         }
 
+        [Test]
+        public void Given_AWorldSpaceHostWhoseDocumentBuiltANewRoot_When_Repatched_Then_TheChildStandsInTheNewRoot()
+        {
+            // Arrange — disabling and enabling the document builds its root again; the child is in the old one.
+            MountAndLayout(V.Component(MovingWorldSpaceHost, key: "root"));
+            var document = NewDocs()[0];
+            var oldRoot = document.rootVisualElement;
+            document.enabled = false;
+            document.enabled = true;
+            var newRoot = document.rootVisualElement;
+
+            // Act
+            s_setFlag.Invoke(true);
+            FlushAndLayout();
+
+            // Assert — a root that was not built again reads as no child, which the reading below reports as a failure.
+            Assert.That(ReferenceEquals(oldRoot, newRoot) ? null : newRoot.Q<VisualElement>("ws1"), Is.Not.Null);
+        }
+
         [Component]
         private static VNode ConditionalWorldSpaceHost()
         {
