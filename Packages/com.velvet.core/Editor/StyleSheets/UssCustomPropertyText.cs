@@ -448,6 +448,7 @@ namespace Velvet.Editor
         {
             var bare = TrimEdges(Flatten(written, out _, CommentMark));
             var bang = bare.LastIndexOf('!');
+            // MUTANT_SURVIVES(equivalent, boundary): a value that is only `!important` leaves `!...` or nothing, and HoldsAdjacentStrings answers false for both.
             if (bang >= 0 && !IsEscaped(bare, bang)
                 && string.Equals(bare.Substring(bang + 1).Replace(CommentMark, string.Empty).Trim(), "important",
                     StringComparison.OrdinalIgnoreCase))

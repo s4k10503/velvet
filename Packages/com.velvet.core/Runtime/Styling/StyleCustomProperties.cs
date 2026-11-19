@@ -110,6 +110,7 @@ namespace Velvet
             // another (TrackInherited); null while no inline value stands for it.
             public ArbitraryStyle? Inherited;
 
+            // MUTANT_SURVIVES(equivalent, literal): the one construction site passes `themed` explicitly, so the default is never read.
             public Consumer(string utility, long priority, int declaration, int order, ReconcilerContext? context,
                 bool themed = false)
             {
@@ -121,6 +122,7 @@ namespace Velvet
                 Shape = UtilityShape.Of(utility);
                 RetypesColour = StyleCustomPropertyClass.RetypesColour(utility);
                 ForcesUnset = StyleCustomPropertyClass.UnsetsLiteralStop(utility);
+                // MUTANT_SURVIVES(equivalent, clause removed): a forced-unset stop is a from-, via- or to- utility, which no inline layer parses, so the hint only picks a probe that finds no property either way, and TryBuild, the other reader, is never reached for it.
                 AddedHint = RetypesColour || ForcesUnset ? "color" : DefaultHint(utility, Shape);
                 EffectiveHint = RetypesColour || ForcesUnset ? "color" : Shape.Hint ?? AddedHint;
                 Sides = StyleCustomPropertyClass.SidesOf(utility, Shape);
@@ -137,6 +139,7 @@ namespace Velvet
                 {
                     Property = WrittenProperty(utility, Shape, AddedHint, out _);
                     UnsetUtility = Property != null ? null
+                        // MUTANT_SURVIVES(equivalent, boundary): UtilityShape.Of gives MainOpen as -1 or at least 1, never 0.
                         : Shape.MainOpen > 0
                             ? PaintedUnset(utility.Substring(utility[0] == '-' ? 1 : 0, Shape.MainOpen - (utility[0] == '-' ? 1 : 0)),
                                 EffectiveHint)
@@ -574,6 +577,7 @@ namespace Velvet
             }
             var built = s_built.ToString();
             var slash = StyleColorValueParser.ColorModifierSlashIndex(built, 0);
+            // MUTANT_SURVIVES(equivalent, boundary): built opens with the utility's name, so a modifier's slash is never at index 0.
             if (slash >= 0 && StyleColorValueParser.ModifierOutside(built.AsSpan(slash + 1)))
             {
                 return false;
