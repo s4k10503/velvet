@@ -41,10 +41,6 @@ namespace Velvet.Tests
             _clones.Clear();
             ReportedField().SetValue(null, _reportedBefore);
             var made = (IList)MadeField().GetValue(null);
-            foreach (var entry in made.Cast<object>().Where(entry => !_madeBefore.Contains(entry)))
-            {
-                UnityEngine.Object.DestroyImmediate((StyleSheet)entry.GetType().GetField("Item2")!.GetValue(entry)!);
-            }
             made.Clear();
             foreach (var entry in _madeBefore)
             {
