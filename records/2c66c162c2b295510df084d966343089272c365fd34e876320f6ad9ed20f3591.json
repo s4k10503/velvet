@@ -1,19 +1,8 @@
 {
- "detail": "EditMode: 1 failed among the 1060 case(s) that ran the site: Given_AnElementHoldingACodeWrittenRadius_When_AClassIsTakenOffThroughVelvet_Then_TheFitTracksThatRadius",
+ "detail": "EditMode survived; PlayMode: -",
  "file": "f35f5066be7a0434293583ea9e217f3333fd235ff6c1d2332a202b98ff352565",
- "killers": [
-  {
-   "case": "Velvet.Tests.CornerRadiusFitSheetReadPanelTests.Given_AnElementHoldingACodeWrittenRadius_When_AClassIsTakenOffThroughVelvet_Then_TheFitTracksThatRadius",
-   "files": {
-    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/CornerRadiusFitSheetReadPanelTests.cs": "f8978f393ff5dedfa2a35fab730c11e6102322ac03de371d86c73d527a606afd",
-    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
-    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
-    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
-    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
-   }
-  }
- ],
- "measured_by": "44650983087",
+ "killers": [],
+ "measured_by": "44729146472",
  "mutant": {
   "after": ";",
   "before": "CornerRadiusFit.NoteClassWrite(element);",
@@ -24,9 +13,9 @@
   "shadowed": []
  },
  "mutator": 10,
- "platform": "EditMode",
+ "platform": "PlayMode",
  "schema": 3,
  "stood": null,
- "tests": "fd8bdfe0c1b9ccc1f2cfb573d23a335c640dca2fb1e7c1d93fa8ef7fcb20f096",
- "verdict": "killed"
+ "tests": "9fc150c13ceb0d70c5e3efc4e19efe0a7b830e00a531490a163c2f73a3dbef0c",
+ "verdict": "survived"
 }
