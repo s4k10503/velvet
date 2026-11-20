@@ -164,6 +164,7 @@ namespace Velvet
             var open = utility.IndexOf('[');
             if (open < 2 || slash <= open + 1 || utility[slash - 1] != ']' || utility[open - 1] != '-')
             {
+                // MUTANT_SURVIVES(equivalent, literal): the out values are then an empty root and no hint, and no caller reads that as a numeric modifier: TakesOpacityModifier finds the empty root neither a shadow root nor a colour root, RetypesColour requires a hint, and UnsetsLiteralStop requires a root of from, via or to.
                 return false;
             }
             var number = utility.AsSpan(slash + 1);
