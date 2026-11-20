@@ -308,14 +308,16 @@ namespace Velvet.Tests
         [Test]
         public void Given_ALabelStoodDownForAGridThatStopsSizingIt_When_ItsTextChangesAndOnlyItsParentsGeometryEventFires_Then_ItGetsAMinWidth()
         {
-            // Arrange — the registry entry stands in for a grid: only its key is read, and it is gone again before the scope ends.
+            // Arrange — the first event records the parent's direction and derives nothing new. The registry entry then stands
+            // in for a grid, which the stand-down path reads only by key, and is gone again before any further event and
+            // before the scope ends.
             using var scope = new ReconcilerScope();
             var label = MountLabel(scope, NarrowRow, "", Sentence);
             var parent = label.parent;
+            FireGeometry(parent);
             var grids = ReconcilerContextProbe.Of(scope).GridManipulators;
             grids[parent] = null!;
             ManipulatorOf(scope, label).Rederive();
-            FireGeometry(parent);
             grids.Remove(parent);
             SetTextQuietly(label, Longer);
 
