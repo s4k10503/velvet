@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "24aeb071074fc21b507c4918580f7423b92f9a9806e076b55efd5a852ccf7ff4",
+ "killers": [],
+ "measured_by": "44590076510",
+ "mutant": {
+  "after": ";",
+  "before": "BorderPreflight.WatchSheets(element);",
+  "column": 12,
+  "line": 377,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/CornerRadiusFit.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "9fc150c13ceb0d70c5e3efc4e19efe0a7b830e00a531490a163c2f73a3dbef0c",
+ "verdict": "survived"
+}

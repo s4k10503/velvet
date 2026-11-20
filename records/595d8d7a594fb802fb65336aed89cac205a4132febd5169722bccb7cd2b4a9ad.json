@@ -1,5 +1,5 @@
 {
- "detail": "EditMode: 2 failed among the 77 case(s) that ran the site: Given_ADefaultFamily_When_ALayerPortalRendersALabelWithNoFontClass_Then_TheLabelResolvesTheDefaultFamily, Given_ADefaultFamily_When_AWorldSpacePanelMounts_Then_ItsRootCarriesTheDefaultFamily",
+ "detail": "EditMode: 2 failed among the 76 case(s) that ran the site: Given_ADefaultFamily_When_ALayerPortalRendersALabelWithNoFontClass_Then_TheLabelResolvesTheDefaultFamily, Given_ADefaultFamily_When_AWorldSpacePanelMounts_Then_ItsRootCarriesTheDefaultFamily",
  "file": "bbf8356a61eafe03564f20b22c2703ff5b4abc437c071ed2882c3667bbdf4e78",
  "killers": [
   {
@@ -21,7 +21,7 @@
    }
   }
  ],
- "measured_by": "44563592085",
+ "measured_by": "44590076510",
  "mutant": {
   "after": ";",
   "before": "record.ReleaseBridge += DefaultFamilyRoots.Hold(root).Dispose;",
@@ -35,6 +35,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "3295f816af35af66671199afb18cd2254106533a4c9ba969b3366588368706a2",
+ "tests": "9fc150c13ceb0d70c5e3efc4e19efe0a7b830e00a531490a163c2f73a3dbef0c",
  "verdict": "killed"
 }

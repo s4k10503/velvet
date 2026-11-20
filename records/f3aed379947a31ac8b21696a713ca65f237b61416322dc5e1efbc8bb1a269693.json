@@ -1,20 +1,42 @@
 {
- "detail": "EditMode: 1 failed among the 155 case(s) that ran the site: Given_ADeferredScopeWhoseCandidateWaitsOnAStylePass_When_TheDeferralIsReleased_Then_TheCandidateHoldsFocus",
+ "detail": "EditMode: 3 failed among the 153 case(s) that ran the site: Given_AHiddenPortalFocusScopeAfterAStylePass_When_TheBoundaryReveals_Then_ItsButtonHoldsFocusWithNoTickBetween, Given_APortalFocusScopeMountedUnderAHiddenBoundary_When_TheBoundaryReveals_Then_ItsButtonHoldsFocus, Given_FocusOnAnOutsideButton_When_TheBoundaryRevealsAHiddenPortalFocusScope_Then_TheScopeTakesFocus",
  "file": "7e204b158c45680144063bab0b076b8ddc553ade74e9439e8324d063778af643",
  "killers": [
   {
-   "case": "Velvet.Tests.FocusScopeAutoFocusStepsTests.Given_ADeferredScopeWhoseCandidateWaitsOnAStylePass_When_TheDeferralIsReleased_Then_TheCandidateHoldsFocus",
+   "case": "Velvet.Tests.SuspenseHiddenPortalFocusTests.Given_AHiddenPortalFocusScopeAfterAStylePass_When_TheBoundaryReveals_Then_ItsButtonHoldsFocusWithNoTickBetween",
    "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/FocusScopeAutoFocusStepsTests.cs": "2b72a79f8ac8e37ba342ab2331c7b67a33cdd505edfa966218fa4f5ca377aa3b",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/SuspenseHiddenPortalFocusTests.cs": "ca9e4ae393d18e41514c76358e29674e1cea2b9e70b539caf512873b28a6cd01",
     "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
     "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
-    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
-    "Packages/com.velvet.core/TestUtilities/ReconcilerContextProbe.cs": "ff50974275702aaaf62e00d84d5f39dc9ff1606a93351bee15d28e7ddc87cb83",
-    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26"
+   }
+  },
+  {
+   "case": "Velvet.Tests.SuspenseHiddenPortalFocusTests.Given_APortalFocusScopeMountedUnderAHiddenBoundary_When_TheBoundaryReveals_Then_ItsButtonHoldsFocus",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/SuspenseHiddenPortalFocusTests.cs": "ca9e4ae393d18e41514c76358e29674e1cea2b9e70b539caf512873b28a6cd01",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26"
+   }
+  },
+  {
+   "case": "Velvet.Tests.SuspenseHiddenPortalFocusTests.Given_FocusOnAnOutsideButton_When_TheBoundaryRevealsAHiddenPortalFocusScope_Then_TheScopeTakesFocus",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/SuspenseHiddenPortalFocusTests.cs": "ca9e4ae393d18e41514c76358e29674e1cea2b9e70b539caf512873b28a6cd01",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26"
    }
   }
  ],
- "measured_by": "44563592085",
+ "measured_by": "44590076510",
  "mutant": {
   "after": "!=",
   "before": "==",
@@ -28,6 +50,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "3295f816af35af66671199afb18cd2254106533a4c9ba969b3366588368706a2",
+ "tests": "9fc150c13ceb0d70c5e3efc4e19efe0a7b830e00a531490a163c2f73a3dbef0c",
  "verdict": "killed"
 }

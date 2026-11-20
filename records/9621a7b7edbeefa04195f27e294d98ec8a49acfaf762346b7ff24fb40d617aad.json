@@ -1,5 +1,5 @@
 {
- "detail": "EditMode: 7 failed among the 1805 case(s) that ran the site: Given_AComponentWithNestedComponentsAndRefs_When_ItsParentStopsRenderingIt_Then_EachIsTakenDownInPreOrder, Given_AKeyedElementHoldingAComponent_When_ItLeavesAListOfElements_Then_ItsRefDetachesAheadOfTheComponentInside, Given_AKeyedElementHoldingNestedComponentsWithNoElementBetween_When_ItLeavesAListOfElements_Then_TheOutermostIsTakenDownFirst",
+ "detail": "EditMode: 7 failed among the 1802 case(s) that ran the site: Given_AComponentWithNestedComponentsAndRefs_When_ItsParentStopsRenderingIt_Then_EachIsTakenDownInPreOrder, Given_AKeyedElementHoldingAComponent_When_ItLeavesAListOfElements_Then_ItsRefDetachesAheadOfTheComponentInside, Given_AKeyedElementHoldingNestedComponentsWithNoElementBetween_When_ItLeavesAListOfElements_Then_TheOutermostIsTakenDownFirst",
  "file": "95e0815a402cd3655b73404d5f12de8a3489e3e6e6caf2c75e27e17d138c0fe0",
  "killers": [
   {
@@ -87,7 +87,7 @@
    }
   }
  ],
- "measured_by": "44563592085",
+ "measured_by": "44590076510",
  "mutant": {
   "after": ";",
   "before": "_read.Clear();",
@@ -101,6 +101,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "3295f816af35af66671199afb18cd2254106533a4c9ba969b3366588368706a2",
+ "tests": "9fc150c13ceb0d70c5e3efc4e19efe0a7b830e00a531490a163c2f73a3dbef0c",
  "verdict": "killed"
 }

@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "e8a9841497ad57bb20d85d14eb6f7da5a2d871d3afea722919e198eceec2542e",
+ "killers": [],
+ "measured_by": "44590076510",
+ "mutant": {
+  "after": ";",
+  "before": "CornerRadiusFit.NoteClassWrite(dest);",
+  "column": 16,
+  "line": 184,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleAnimationClassUtils.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "9fc150c13ceb0d70c5e3efc4e19efe0a7b830e00a531490a163c2f73a3dbef0c",
+ "verdict": "survived"
+}

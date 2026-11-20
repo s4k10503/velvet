@@ -1,72 +1,72 @@
 {
- "detail": "EditMode: 9 failed among the 31 case(s) that ran the site: Given_AColourClassBesideALayerWhoseSourceReadsNoColour_When_TheLayerResolves_Then_ItKeepsItsOwnColour(\"shadow-[var(--x)] shadow-blue-500\"), Given_AColourClassBesideALayerWhoseSourceReadsNoColour_When_TheLayerResolves_Then_ItKeepsItsOwnColour(\"shadow-(--x) shadow-blue-500\"), Given_AColourClassBesideALayerWhoseSourceReadsNoColour_When_TheLayerResolves_Then_ItKeepsItsOwnColour(\"shadow-[var(--x)]/50 shadow-blue-500\")",
+ "detail": "EditMode: 9 failed among the 24 case(s) that ran the site: Given_AColourClassBesideALayerWhoseSourceReadsNoColour_When_TheLayerResolves_Then_ItKeepsItsOwnColour(\"shadow-[var(--x)] shadow-blue-500\"), Given_AColourClassBesideALayerWhoseSourceReadsNoColour_When_TheLayerResolves_Then_ItKeepsItsOwnColour(\"shadow-(--x) shadow-blue-500\"), Given_AColourClassBesideALayerWhoseSourceReadsNoColour_When_TheLayerResolves_Then_ItKeepsItsOwnColour(\"shadow-[var(--x)]/50 shadow-blue-500\")",
  "file": "f7b1fdf7946243d23ff565d8d810bbeca20017855ed944142db5d64e0a156817",
  "killers": [
   {
    "case": "Velvet.Tests.BoxShadowCustomPropertyTests.Given_AColourClassBesideALayerWhoseSourceReadsNoColour_When_TheLayerResolves_Then_ItKeepsItsOwnColour(\"shadow-(--x) shadow-blue-500\")",
    "files": {
-    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BoxShadowCustomPropertyTests.cs": "85fbe0bf2fcaae9e2449c3bf1774f738bcb8a1c305690aa883bc6d28bb184a0e",
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BoxShadowCustomPropertyTests.cs": "d5c618fc46d8a4f9c7a5cdc4ccc7c87950bdaf3a8fef5ab49cb21ab6641d6e18",
     "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
    }
   },
   {
    "case": "Velvet.Tests.BoxShadowCustomPropertyTests.Given_AColourClassBesideALayerWhoseSourceReadsNoColour_When_TheLayerResolves_Then_ItKeepsItsOwnColour(\"shadow-[var(--x)] shadow-blue-500\")",
    "files": {
-    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BoxShadowCustomPropertyTests.cs": "85fbe0bf2fcaae9e2449c3bf1774f738bcb8a1c305690aa883bc6d28bb184a0e",
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BoxShadowCustomPropertyTests.cs": "d5c618fc46d8a4f9c7a5cdc4ccc7c87950bdaf3a8fef5ab49cb21ab6641d6e18",
     "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
    }
   },
   {
    "case": "Velvet.Tests.BoxShadowCustomPropertyTests.Given_AColourClassBesideALayerWhoseSourceReadsNoColour_When_TheLayerResolves_Then_ItKeepsItsOwnColour(\"shadow-[var(--x)] shadow-blue-500/50\")",
    "files": {
-    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BoxShadowCustomPropertyTests.cs": "85fbe0bf2fcaae9e2449c3bf1774f738bcb8a1c305690aa883bc6d28bb184a0e",
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BoxShadowCustomPropertyTests.cs": "d5c618fc46d8a4f9c7a5cdc4ccc7c87950bdaf3a8fef5ab49cb21ab6641d6e18",
     "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
    }
   },
   {
    "case": "Velvet.Tests.BoxShadowCustomPropertyTests.Given_AColourClassBesideALayerWhoseSourceReadsNoColour_When_TheLayerResolves_Then_ItKeepsItsOwnColour(\"shadow-[var(--x)]/50 shadow-blue-500\")",
    "files": {
-    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BoxShadowCustomPropertyTests.cs": "85fbe0bf2fcaae9e2449c3bf1774f738bcb8a1c305690aa883bc6d28bb184a0e",
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BoxShadowCustomPropertyTests.cs": "d5c618fc46d8a4f9c7a5cdc4ccc7c87950bdaf3a8fef5ab49cb21ab6641d6e18",
     "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
    }
   },
   {
    "case": "Velvet.Tests.BoxShadowCustomPropertyTests.Given_AColourClassBesideAListWhoseLayersAreEachWritten_When_TheLayersResolve_Then_OnlyTheLayerReadingColourTakesIt",
    "files": {
-    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BoxShadowCustomPropertyTests.cs": "85fbe0bf2fcaae9e2449c3bf1774f738bcb8a1c305690aa883bc6d28bb184a0e",
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BoxShadowCustomPropertyTests.cs": "d5c618fc46d8a4f9c7a5cdc4ccc7c87950bdaf3a8fef5ab49cb21ab6641d6e18",
     "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
    }
   },
   {
    "case": "Velvet.Tests.BoxShadowCustomPropertyTests.Given_AReaderWithANumericModifier_When_ItsPropertyIsDeclared_Then_TheLayerIsDrawn",
    "files": {
-    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BoxShadowCustomPropertyTests.cs": "85fbe0bf2fcaae9e2449c3bf1774f738bcb8a1c305690aa883bc6d28bb184a0e",
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BoxShadowCustomPropertyTests.cs": "d5c618fc46d8a4f9c7a5cdc4ccc7c87950bdaf3a8fef5ab49cb21ab6641d6e18",
     "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
    }
   },
   {
    "case": "Velvet.Tests.BoxShadowCustomPropertyTests.Given_ARejectedColourClassBesideALayerWhoseSourceReadsNoColour_When_TheLayerResolves_Then_TheLayerIsDrawn",
    "files": {
-    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BoxShadowCustomPropertyTests.cs": "85fbe0bf2fcaae9e2449c3bf1774f738bcb8a1c305690aa883bc6d28bb184a0e",
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BoxShadowCustomPropertyTests.cs": "d5c618fc46d8a4f9c7a5cdc4ccc7c87950bdaf3a8fef5ab49cb21ab6641d6e18",
     "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
    }
   },
   {
    "case": "Velvet.Tests.BoxShadowCustomPropertyTests.Given_ARejectedColourClassBesideALayerWhoseSourceReadsNoColour_When_TheLayerResolves_Then_TheRingIsDrawn",
    "files": {
-    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BoxShadowCustomPropertyTests.cs": "85fbe0bf2fcaae9e2449c3bf1774f738bcb8a1c305690aa883bc6d28bb184a0e",
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BoxShadowCustomPropertyTests.cs": "d5c618fc46d8a4f9c7a5cdc4ccc7c87950bdaf3a8fef5ab49cb21ab6641d6e18",
     "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
    }
   },
   {
    "case": "Velvet.Tests.BoxShadowCustomPropertyTests.Given_AVariableHoldingAListOfLayers_When_ItsSourceReadsNoColour_Then_EveryLayerKeepsItsOwnColour",
    "files": {
-    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BoxShadowCustomPropertyTests.cs": "85fbe0bf2fcaae9e2449c3bf1774f738bcb8a1c305690aa883bc6d28bb184a0e",
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BoxShadowCustomPropertyTests.cs": "d5c618fc46d8a4f9c7a5cdc4ccc7c87950bdaf3a8fef5ab49cb21ab6641d6e18",
     "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
    }
   }
  ],
- "measured_by": "44494804299",
+ "measured_by": "44590076510",
  "mutant": {
   "after": ";",
   "before": "into.Append(StyleShadowClass.FixedLayerMark);",
@@ -80,6 +80,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "3295f816af35af66671199afb18cd2254106533a4c9ba969b3366588368706a2",
+ "tests": "9fc150c13ceb0d70c5e3efc4e19efe0a7b830e00a531490a163c2f73a3dbef0c",
  "verdict": "killed"
 }

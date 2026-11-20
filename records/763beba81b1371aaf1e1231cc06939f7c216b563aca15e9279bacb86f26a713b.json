@@ -1,5 +1,5 @@
 {
- "detail": "EditMode: 2 failed among the 98 case(s) that ran the site: Given_AParkedTransitionPassOnAPanel_When_ThePanelSchedulerTicks_Then_TheResumeCommitsMoreOfTheList, Given_ResumeSlicesThatLeftWorkPending_When_ThePanelSchedulerTicks_Then_TheNextSliceCommitsMoreOfTheList",
+ "detail": "EditMode: 2 failed: Given_AParkedTransitionPassOnAPanel_When_ThePanelSchedulerTicks_Then_TheResumeCommitsMoreOfTheList, Given_ResumeSlicesThatLeftWorkPending_When_ThePanelSchedulerTicks_Then_TheNextSliceCommitsMoreOfTheList",
  "file": "d8ba7768204fc24d687ff1fd450a907fc1d5d77c68a91d355c59becf8e8df6a7",
  "killers": [
   {
@@ -25,7 +25,7 @@
    }
   }
  ],
- "measured_by": "44563592085",
+ "measured_by": "44590076510",
  "mutant": {
   "after": ";",
   "before": "host.Schedule(fiber.MountPoint, () => host.Run(fiber.MountPoint, fiber, FiberWorkLoop.ContinueReconcile));",
@@ -39,6 +39,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "3295f816af35af66671199afb18cd2254106533a4c9ba969b3366588368706a2",
+ "tests": "9fc150c13ceb0d70c5e3efc4e19efe0a7b830e00a531490a163c2f73a3dbef0c",
  "verdict": "killed"
 }

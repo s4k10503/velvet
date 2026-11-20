@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "a472d1923dbf4ee29fe0177fd8c481704194d398aed1504e8ffda2a9de81a14f",
+ "killers": [],
+ "measured_by": "44590076510",
+ "mutant": {
+  "after": "false",
+  "before": "true",
+  "column": 39,
+  "line": 97,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleFlexMinSizeManipulator.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "9fc150c13ceb0d70c5e3efc4e19efe0a7b830e00a531490a163c2f73a3dbef0c",
+ "verdict": "survived"
+}

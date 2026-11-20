@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "7711600fe81786cc52c4be0afd4ea7a09661065c60073bdf2ccfba3d95014550",
+ "killers": [],
+ "measured_by": "44590076510",
+ "mutant": {
+  "after": ";",
+  "before": "RebaseRangeOnto(placeholder, target);",
+  "column": 16,
+  "line": 1472,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberNodePatcher.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "9fc150c13ceb0d70c5e3efc4e19efe0a7b830e00a531490a163c2f73a3dbef0c",
+ "verdict": "survived"
+}

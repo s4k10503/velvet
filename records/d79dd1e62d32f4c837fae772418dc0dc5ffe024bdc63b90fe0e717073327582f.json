@@ -1,11 +1,11 @@
 {
- "detail": "EditMode: 5 failed among the 57 case(s) that ran the site: Given_AnElementHoldingAWatchSheetOfNoSourceItHolds_When_ItsSheetsAreEnsured_Then_ThatWatchSheetIsTakenOff, Given_ASourceEditedInPlaceToDeclareNoRadius_When_ItsWatchSheetIsDerivedAgain_Then_ThereIsNone, Given_ASourceWhoseWatchSheetCannotBeBuilt_When_ItIsAskedForAndNoneWasReportedYet_Then_OneIsReported",
+ "detail": "EditMode: 5 failed among the 51 case(s) that ran the site: Given_AnAttachedSource_When_ItIsRemovedFromTheRootAndThePanelsWatchTicks_Then_ItsWatchSheetIsTakenOff, Given_AnAttachedSourceEditedInPlace_When_ItsWatchSheetIsDerivedAgain_Then_NoRuleOfTheNewOneCountsAsDeclaringAVariable, Given_AnAttachedSourceEditedInPlace_When_ThePanelsWatchTicks_Then_ItsNewWatchSheetReplacesTheOld",
  "file": "594dbd85636cc13bc8188946df0304784724a6234951c26ea40ea64c644f4603",
  "killers": [
   {
-   "case": "Velvet.Tests.RadiusWatchSheetsLifecyclePanelTests.Given_ASourceEditedInPlaceToDeclareNoRadius_When_ItsWatchSheetIsDerivedAgain_Then_ThereIsNone",
+   "case": "Velvet.Tests.RadiusWatchSheetsPanelTests.Given_ASourceDestroyedWhileItsWatchSheetIsAttached_When_TheRootIsReadAndThePanelsWatchTicks_Then_ThatWatchSheetIsNoLongerListed",
    "files": {
-    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/RadiusWatchSheetsLifecyclePanelTests.cs": "4689c41a9b23a91e5004adf850ac371986785481e6e9038c272c15e8a2feb0f4",
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/RadiusWatchSheetsPanelTests.cs": "dbc40d83f09f295e3c12012874d7c0f0b83df061d0b6965b112645a129345e80",
     "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
     "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
     "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
@@ -13,9 +13,9 @@
    }
   },
   {
-   "case": "Velvet.Tests.RadiusWatchSheetsLifecyclePanelTests.Given_ASourceWhoseWatchSheetCannotBeBuilt_When_ItIsAskedForAndNoneWasReportedYet_Then_OneIsReported",
+   "case": "Velvet.Tests.RadiusWatchSheetsPanelTests.Given_AWatchSheetDestroyedSinceItWasMade_When_ItIsAskedWhetherItIsOne_Then_ItIsOne",
    "files": {
-    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/RadiusWatchSheetsLifecyclePanelTests.cs": "4689c41a9b23a91e5004adf850ac371986785481e6e9038c272c15e8a2feb0f4",
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/RadiusWatchSheetsPanelTests.cs": "dbc40d83f09f295e3c12012874d7c0f0b83df061d0b6965b112645a129345e80",
     "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
     "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
     "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
@@ -23,9 +23,9 @@
    }
   },
   {
-   "case": "Velvet.Tests.RadiusWatchSheetsLifecyclePanelTests.Given_AWatchSheetRememberedByNoReference_When_ItIsAskedWhetherItIsOne_Then_ItsNameSaysItIs",
+   "case": "Velvet.Tests.RadiusWatchSheetsPanelTests.Given_AnAttachedSourceEditedInPlace_When_ItsWatchSheetIsDerivedAgain_Then_NoRuleOfTheNewOneCountsAsDeclaringAVariable",
    "files": {
-    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/RadiusWatchSheetsLifecyclePanelTests.cs": "4689c41a9b23a91e5004adf850ac371986785481e6e9038c272c15e8a2feb0f4",
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/RadiusWatchSheetsPanelTests.cs": "dbc40d83f09f295e3c12012874d7c0f0b83df061d0b6965b112645a129345e80",
     "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
     "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
     "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
@@ -33,9 +33,9 @@
    }
   },
   {
-   "case": "Velvet.Tests.RadiusWatchSheetsLifecyclePanelTests.Given_AnElementHoldingAWatchSheetOfNoSourceItHolds_When_ItsSheetsAreEnsured_Then_ThatWatchSheetIsTakenOff",
+   "case": "Velvet.Tests.RadiusWatchSheetsPanelTests.Given_AnAttachedSourceEditedInPlace_When_ThePanelsWatchTicks_Then_ItsNewWatchSheetReplacesTheOld",
    "files": {
-    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/RadiusWatchSheetsLifecyclePanelTests.cs": "4689c41a9b23a91e5004adf850ac371986785481e6e9038c272c15e8a2feb0f4",
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/RadiusWatchSheetsPanelTests.cs": "dbc40d83f09f295e3c12012874d7c0f0b83df061d0b6965b112645a129345e80",
     "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
     "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
     "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
@@ -43,9 +43,9 @@
    }
   },
   {
-   "case": "Velvet.Tests.RadiusWatchSheetsLifecyclePanelTests.Given_TheOnlyWatchSheetMadeAndItsSourceDestroyed_When_AnElementsSheetsAreEnsured_Then_ItIsDestroyed",
+   "case": "Velvet.Tests.RadiusWatchSheetsPanelTests.Given_AnAttachedSource_When_ItIsRemovedFromTheRootAndThePanelsWatchTicks_Then_ItsWatchSheetIsTakenOff",
    "files": {
-    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/RadiusWatchSheetsLifecyclePanelTests.cs": "4689c41a9b23a91e5004adf850ac371986785481e6e9038c272c15e8a2feb0f4",
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/RadiusWatchSheetsPanelTests.cs": "dbc40d83f09f295e3c12012874d7c0f0b83df061d0b6965b112645a129345e80",
     "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
     "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
     "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
@@ -53,7 +53,7 @@
    }
   }
  ],
- "measured_by": "44563592085",
+ "measured_by": "44590076510",
  "mutant": {
   "after": "&&",
   "before": "||",
@@ -69,6 +69,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "3295f816af35af66671199afb18cd2254106533a4c9ba969b3366588368706a2",
+ "tests": "9fc150c13ceb0d70c5e3efc4e19efe0a7b830e00a531490a163c2f73a3dbef0c",
  "verdict": "killed"
 }

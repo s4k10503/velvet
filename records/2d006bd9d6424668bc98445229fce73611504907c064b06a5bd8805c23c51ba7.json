@@ -1,5 +1,5 @@
 {
- "detail": "EditMode: 1 failed: Given_AListWhoseOutputHoldsNoProvider_When_ARowUpdates_Then_TheListFiberHoldsItsOutputAsFreeOfContext",
+ "detail": "EditMode: 1 failed: Given_AListWhoseOutputHoldsNoProvider_When_ARowUpdates_Then_TheListFiberHoldsItsOutputAsFreeOfContext; 1 other editor(s) were up",
  "file": "8701e85eea454704d2dd239c8db1db1d0a16f7899263ed28b688e7b5f71a1a3a",
  "killers": [
   {
@@ -12,7 +12,7 @@
    }
   }
  ],
- "measured_by": "44563592085",
+ "measured_by": "44590076510",
  "mutant": {
   "after": "false",
   "before": "true",
@@ -26,6 +26,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "3295f816af35af66671199afb18cd2254106533a4c9ba969b3366588368706a2",
+ "tests": "9fc150c13ceb0d70c5e3efc4e19efe0a7b830e00a531490a163c2f73a3dbef0c",
  "verdict": "killed"
 }

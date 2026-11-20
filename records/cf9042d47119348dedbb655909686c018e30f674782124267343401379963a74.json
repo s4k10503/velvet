@@ -1,5 +1,5 @@
 {
- "detail": "EditMode: 8 failed: Given_ALaidOutBoxFittedFromAClassOfItsOwn_When_AnAnimationChannelRemovesItWithNoSizeChange_Then_TheFittedSlotsAreGivenBack, Given_ALaidOutBoxFittedFromAClassOfItsOwn_When_CodeRemovesThatClassDirectly_Then_TheFittedSlotsAreGivenBack, Given_ALaidOutBoxFittedFromAClassOfItsOwn_When_ThatClassIsRemovedWithNoSizeChange_Then_TheFittedSlotsAreGivenBack; 1 other editor(s) were up",
+ "detail": "EditMode: 8 failed: Given_ALaidOutBoxFittedFromAClassOfItsOwn_When_AnAnimationChannelRemovesItWithNoSizeChange_Then_TheFittedSlotsAreGivenBack, Given_ALaidOutBoxFittedFromAClassOfItsOwn_When_CodeRemovesThatClassDirectly_Then_TheFittedSlotsAreGivenBack, Given_ALaidOutBoxFittedFromAClassOfItsOwn_When_ThatClassIsRemovedWithNoSizeChange_Then_TheFittedSlotsAreGivenBack",
  "file": "594dbd85636cc13bc8188946df0304784724a6234951c26ea40ea64c644f4603",
  "killers": [
   {
@@ -99,7 +99,7 @@
    }
   }
  ],
- "measured_by": "44563592085",
+ "measured_by": "44590076510",
  "mutant": {
   "after": ";",
   "before": "EnsureOn(element);",
@@ -113,6 +113,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "3295f816af35af66671199afb18cd2254106533a4c9ba969b3366588368706a2",
+ "tests": "9fc150c13ceb0d70c5e3efc4e19efe0a7b830e00a531490a163c2f73a3dbef0c",
  "verdict": "killed"
 }
