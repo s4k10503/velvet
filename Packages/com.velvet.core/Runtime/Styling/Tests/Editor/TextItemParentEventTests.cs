@@ -287,6 +287,61 @@ namespace Velvet.Tests
             Assert.That(label.resolvedStyle.width == 100f && atNatural, Is.True);
         }
 
+        // GREEN_ON_BASE(characterization): the base derives a settled label again for a text the patch changed, with its classes as they were. Change `==` to `!=` in the early return of Refresh and the label is left as it settled.
+        [Test]
+        public void Given_ALabelSettledInARow_When_ItsTextChangesAndItIsRefreshedWithTheClassesItHad_Then_ItsMinWidthFollowsTheText()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var label = MountLabel(scope, NarrowRow, "", Sentence);
+            var manipulator = ManipulatorOf(scope, label);
+            SetTextQuietly(label, Longer);
+
+            // Act
+            manipulator.Refresh(Read<string[]>(manipulator, "_lastClassNames"));
+
+            // Assert
+            Assert.That(label.style.minWidth.value.value, Is.EqualTo(WidestWordMinimum(label, LongerWord)));
+        }
+
+        // GREEN_ON_BASE(characterization): the base derives a label a grid stopped sizing on its parent's next event, though the direction stayed. Drop `|| IsSizedByGridParent(parent)` from the stand-down branch of DeriveCore and the event leaves it.
+        [Test]
+        public void Given_ALabelSettledUnderAGridThatStopsSizingIt_When_ItsTextChangesAndOnlyItsParentsGeometryEventFires_Then_ItGetsAMinWidth()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var label = MountLabel(scope, "grid grid-cols-2 w-[20px]", "", Sentence);
+            var parent = label.parent;
+            FireGeometry(parent);
+            ReconcilerContextProbe.Of(scope).GridManipulators.Remove(parent);
+            SetTextQuietly(label, Longer);
+
+            // Act
+            FireGeometry(parent);
+
+            // Assert
+            Assert.That(label.style.minWidth.keyword, Is.Not.EqualTo(StyleKeyword.Null));
+        }
+
+        // GREEN_ON_BASE(characterization): the base reads a text whose widest run is as wide as the whole text as one a minimum can reach. Change `>=` to `>` in MinimumCanReach and the equal widths no longer do.
+        [Test]
+        public void Given_ATextWithABreakInItWhoseWidestRunIsItsWholeWidth_When_AskedWhetherTheMinimumCanReachIt_Then_ItCan()
+        {
+            // Arrange — two runs and a line break, with the whole width given as what the widest run measures.
+            using var scope = new ReconcilerScope();
+            var label = MountLabel(scope, WideRow, "", Sentence);
+            const string text = "aa bb\ncc";
+            var widest = (float)typeof(StyleFlexMinSizeManipulator).GetMethod("MeasureMinContentWidth", BindingFlags.NonPublic | BindingFlags.Static)!
+                .Invoke(null, new object[] { label, text, WhiteSpace.Normal })!;
+            var method = typeof(StyleFlexMinSizeManipulator).GetMethod("MinimumCanReach", BindingFlags.NonPublic | BindingFlags.Static)!;
+
+            // Act
+            var canReach = (bool)method.Invoke(null, new object[] { label, text, WhiteSpace.Normal, widest })!;
+
+            // Assert
+            Assert.That(canReach, Is.True);
+        }
+
         // GREEN_ON_BASE(characterization): the base takes its hub callback off a parent whose last leaf leaves. Drop
         // `_subscribedParent.UnregisterCallback(s_onParentGeometry);` from SyncParentSubscription and the callback
         // stays.
