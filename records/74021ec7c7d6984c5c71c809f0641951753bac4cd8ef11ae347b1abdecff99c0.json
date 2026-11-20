@@ -1,11 +1,11 @@
 {
- "detail": "EditMode: 1 failed among the 2 case(s) that ran the site: Given_AShadowReaderThatWaitedInsideTheStylePassAndTheVariableContextTheTickPollsIsUnchanged_When_ATickRuns_Then_ItWritesItsUnset",
+ "detail": "EditMode: 1 failed among the 4 case(s) that ran the site: Given_AShadowReaderThatWaitedInsideTheStylePassAndTheVariableContextTheTickPollsIsUnchanged_When_ATickRuns_Then_ItWritesItsUnset",
  "file": "3a97810d6ca79ab8755c95512cd881e3876a04885e4d6a94a59222f0a10adef7",
  "killers": [
   {
    "case": "Velvet.Tests.CustomPropertyDeferredUnsetPanelTests.Given_AShadowReaderThatWaitedInsideTheStylePassAndTheVariableContextTheTickPollsIsUnchanged_When_ATickRuns_Then_ItWritesItsUnset",
    "files": {
-    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/CustomPropertyDeferredUnsetPanelTests.cs": "cef4b8dc193878f090d87b1d33cc349721b974c4263ff21559d87f213e632b9a",
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/CustomPropertyDeferredUnsetPanelTests.cs": "fa033b6dcd96834a358ae37ff3b18808558153ea6db0d74fccb54c305636e0f8",
     "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
     "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
     "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
@@ -13,7 +13,7 @@
    }
   }
  ],
- "measured_by": "44494804299",
+ "measured_by": "44650983087",
  "mutant": {
   "after": ";",
   "before": "target.schedule.Execute(() => ReresolveAll(target));",
@@ -27,6 +27,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "3295f816af35af66671199afb18cd2254106533a4c9ba969b3366588368706a2",
+ "tests": "fd8bdfe0c1b9ccc1f2cfb573d23a335c640dca2fb1e7c1d93fa8ef7fcb20f096",
  "verdict": "killed"
 }

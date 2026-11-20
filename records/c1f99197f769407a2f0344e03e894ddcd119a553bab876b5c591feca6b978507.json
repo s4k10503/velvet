@@ -1,61 +1,11 @@
 {
- "detail": "EditMode: 6 failed: Given_AContainerWhoseChildLaidOutBeforeItWasReleased_When_ItHoldsASheetAndAChildLaysOutAgain_Then_ItHoldsTheWatchSheet, Given_ALeafHoldingASheetOfItsOwn_When_ItLaysOut_Then_ItHoldsTheWatchSheet, Given_AMountedTree_When_ASheetWithARadiusRuleIsAttachedToItsRootAfterwards_Then_ThePanelsWatchAttachesItsWatchSheet",
+ "detail": "EditMode: 1 failed: Given_AParentHoldingASheetWithARadiusRule_When_AChildsSizeEventIsRead_Then_TheParentHoldsTheWatchSheet",
  "file": "594dbd85636cc13bc8188946df0304784724a6234951c26ea40ea64c644f4603",
  "killers": [
   {
-   "case": "Velvet.Tests.RadiusWatchSheetsPanelTests.Given_AContainerWhoseChildLaidOutBeforeItWasReleased_When_ItHoldsASheetAndAChildLaysOutAgain_Then_ItHoldsTheWatchSheet",
+   "case": "Velvet.Tests.CornerRadiusFitSheetReadPanelTests.Given_AParentHoldingASheetWithARadiusRule_When_AChildsSizeEventIsRead_Then_TheParentHoldsTheWatchSheet",
    "files": {
-    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/RadiusWatchSheetsPanelTests.cs": "dbc40d83f09f295e3c12012874d7c0f0b83df061d0b6965b112645a129345e80",
-    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
-    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
-    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
-    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
-   }
-  },
-  {
-   "case": "Velvet.Tests.RadiusWatchSheetsPanelTests.Given_ALeafHoldingASheetOfItsOwn_When_ItLaysOut_Then_ItHoldsTheWatchSheet",
-   "files": {
-    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/RadiusWatchSheetsPanelTests.cs": "dbc40d83f09f295e3c12012874d7c0f0b83df061d0b6965b112645a129345e80",
-    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
-    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
-    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
-    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
-   }
-  },
-  {
-   "case": "Velvet.Tests.RadiusWatchSheetsPanelTests.Given_AMountedTree_When_ASheetWithARadiusRuleIsAttachedToItsRootAfterwards_Then_ThePanelsWatchAttachesItsWatchSheet",
-   "files": {
-    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/RadiusWatchSheetsPanelTests.cs": "dbc40d83f09f295e3c12012874d7c0f0b83df061d0b6965b112645a129345e80",
-    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
-    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
-    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
-    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
-   }
-  },
-  {
-   "case": "Velvet.Tests.RadiusWatchSheetsPanelTests.Given_ASheetAttachedToAnElementInsideTheTree_When_ThePanelsWatchTicks_Then_ThatElementHoldsItsWatchSheet",
-   "files": {
-    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/RadiusWatchSheetsPanelTests.cs": "dbc40d83f09f295e3c12012874d7c0f0b83df061d0b6965b112645a129345e80",
-    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
-    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
-    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
-    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
-   }
-  },
-  {
-   "case": "Velvet.Tests.RadiusWatchSheetsPanelTests.Given_AUserSheetAboveAMount_When_TheTreeMounts_Then_TheRootHoldsItsWatchSheetWithARulePerRadiusRule",
-   "files": {
-    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/RadiusWatchSheetsPanelTests.cs": "dbc40d83f09f295e3c12012874d7c0f0b83df061d0b6965b112645a129345e80",
-    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
-    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
-    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
-    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
-   }
-  },
-  {
-   "case": "Velvet.Tests.RadiusWatchSheetsPanelTests.Given_AnAttachedSourceEditedInPlace_When_ThePanelsWatchTicks_Then_ItsNewWatchSheetReplacesTheOld",
-   "files": {
-    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/RadiusWatchSheetsPanelTests.cs": "dbc40d83f09f295e3c12012874d7c0f0b83df061d0b6965b112645a129345e80",
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/CornerRadiusFitSheetReadPanelTests.cs": "f8978f393ff5dedfa2a35fab730c11e6102322ac03de371d86c73d527a606afd",
     "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
     "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
     "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
@@ -63,7 +13,7 @@
    }
   }
  ],
- "measured_by": "44590076510",
+ "measured_by": "44650983087",
  "mutant": {
   "after": "!=",
   "before": "==",
@@ -80,6 +30,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "9fc150c13ceb0d70c5e3efc4e19efe0a7b830e00a531490a163c2f73a3dbef0c",
+ "tests": "fd8bdfe0c1b9ccc1f2cfb573d23a335c640dca2fb1e7c1d93fa8ef7fcb20f096",
  "verdict": "killed"
 }

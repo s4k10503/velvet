@@ -5,54 +5,54 @@
   {
    "case": "Velvet.Tests.BoxShadowCustomPropertyTests.Given_ADivideBracketOfAnotherTypeHoldingAColourWithAModifier_When_Extracted_Then_ItIsThatColourAtThatOpacity",
    "files": {
-    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BoxShadowCustomPropertyTests.cs": "85fbe0bf2fcaae9e2449c3bf1774f738bcb8a1c305690aa883bc6d28bb184a0e",
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BoxShadowCustomPropertyTests.cs": "9533c546827dd0f3c3c00ecc48c99772a1a82e7c11f32731fb9da89d439d4523",
     "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
    }
   },
   {
    "case": "Velvet.Tests.BoxShadowCustomPropertyTests.Given_ADivideBracketOfAnotherTypeReadingAColour_When_ItsReaderIsRead_Then_ItIsThatColourAtThatOpacity",
    "files": {
-    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BoxShadowCustomPropertyTests.cs": "85fbe0bf2fcaae9e2449c3bf1774f738bcb8a1c305690aa883bc6d28bb184a0e",
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BoxShadowCustomPropertyTests.cs": "9533c546827dd0f3c3c00ecc48c99772a1a82e7c11f32731fb9da89d439d4523",
     "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
    }
   },
   {
    "case": "Velvet.Tests.BoxShadowCustomPropertyTests.Given_ADividePaletteNameWithAModifier_When_Extracted_Then_ItIsThatColourAtThatOpacity",
    "files": {
-    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BoxShadowCustomPropertyTests.cs": "85fbe0bf2fcaae9e2449c3bf1774f738bcb8a1c305690aa883bc6d28bb184a0e",
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BoxShadowCustomPropertyTests.cs": "9533c546827dd0f3c3c00ecc48c99772a1a82e7c11f32731fb9da89d439d4523",
     "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
    }
   },
   {
    "case": "Velvet.Tests.BoxShadowCustomPropertyTests.Given_AStopBracketOfAnotherTypeHoldingAColourWithAModifier_When_Extracted_Then_ItIsThatColourAtThatOpacity",
    "files": {
-    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BoxShadowCustomPropertyTests.cs": "85fbe0bf2fcaae9e2449c3bf1774f738bcb8a1c305690aa883bc6d28bb184a0e",
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BoxShadowCustomPropertyTests.cs": "9533c546827dd0f3c3c00ecc48c99772a1a82e7c11f32731fb9da89d439d4523",
     "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
    }
   },
   {
    "case": "Velvet.Tests.BoxShadowCustomPropertyTests.Given_AStopBracketOfAnotherTypeReadingAColour_When_ItsReaderIsRead_Then_ItIsThatColourAtThatOpacity",
    "files": {
-    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BoxShadowCustomPropertyTests.cs": "85fbe0bf2fcaae9e2449c3bf1774f738bcb8a1c305690aa883bc6d28bb184a0e",
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BoxShadowCustomPropertyTests.cs": "9533c546827dd0f3c3c00ecc48c99772a1a82e7c11f32731fb9da89d439d4523",
     "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
    }
   },
   {
    "case": "Velvet.Tests.BoxShadowCustomPropertyTests.Given_AStopLiteralWithAModifierPast100_When_Extracted_Then_TheStopIsTransparent",
    "files": {
-    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BoxShadowCustomPropertyTests.cs": "85fbe0bf2fcaae9e2449c3bf1774f738bcb8a1c305690aa883bc6d28bb184a0e",
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BoxShadowCustomPropertyTests.cs": "9533c546827dd0f3c3c00ecc48c99772a1a82e7c11f32731fb9da89d439d4523",
     "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
    }
   },
   {
    "case": "Velvet.Tests.BoxShadowCustomPropertyTests.Given_AStopPaletteNameWithAModifier_When_Extracted_Then_ItIsThatColourAtThatOpacity",
    "files": {
-    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BoxShadowCustomPropertyTests.cs": "85fbe0bf2fcaae9e2449c3bf1774f738bcb8a1c305690aa883bc6d28bb184a0e",
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BoxShadowCustomPropertyTests.cs": "9533c546827dd0f3c3c00ecc48c99772a1a82e7c11f32731fb9da89d439d4523",
     "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
    }
   }
  ],
- "measured_by": "44563592085",
+ "measured_by": "44650983087",
  "mutant": {
   "after": "&&",
   "before": "||",
@@ -66,6 +66,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "3295f816af35af66671199afb18cd2254106533a4c9ba969b3366588368706a2",
+ "tests": "fd8bdfe0c1b9ccc1f2cfb573d23a335c640dca2fb1e7c1d93fa8ef7fcb20f096",
  "verdict": "killed"
 }

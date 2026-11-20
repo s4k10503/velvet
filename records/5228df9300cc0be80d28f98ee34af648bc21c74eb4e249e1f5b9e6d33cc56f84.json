@@ -1,0 +1,28 @@
+{
+ "detail": "EditMode: 1 failed: Given_ATextBracketTypedAsALengthReadingAVariableWithANumericModifier_When_Asked_Then_ItIsNotReadAsAColour",
+ "file": "4f45f46f077012192fe5f7f623fbfa746d3fdf82b18d9eae4695f96456aa8458",
+ "killers": [
+  {
+   "case": "Velvet.Tests.RetypesColourLengthModifierTests.Given_ATextBracketTypedAsALengthReadingAVariableWithANumericModifier_When_Asked_Then_ItIsNotReadAsAColour",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/RetypesColourLengthModifierTests.cs": "ddc0ec8f6bf28d450be435b71b4196540b17ed3218727c1ac1a3797c304f0240"
+   }
+  }
+ ],
+ "measured_by": "44650983087",
+ "mutant": {
+  "after": "",
+  "before": " && TakesOpacityModifier(root, hint)",
+  "column": 15,
+  "line": 203,
+  "operator": "clause removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleCustomPropertyClass.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "fd8bdfe0c1b9ccc1f2cfb573d23a335c640dca2fb1e7c1d93fa8ef7fcb20f096",
+ "verdict": "killed"
+}

@@ -1,11 +1,11 @@
 {
- "detail": "EditMode: 1 failed among the 58 case(s) that ran the site: Given_ALabelInARowNarrowerThanItsText_When_Resolved_Then_ANaturalWidthKeyIsKept",
+ "detail": "EditMode: 1 failed among the 59 case(s) that ran the site: Given_ALabelInARowNarrowerThanItsText_When_Resolved_Then_ANaturalWidthKeyIsKept",
  "file": "d8e27d0f795401d6e3dea7627d9d0959ff17abac9ce930eef9c2b54a6d48c27d",
  "killers": [
   {
    "case": "Velvet.Tests.TextItemParentEventTests.Given_ALabelInARowNarrowerThanItsText_When_Resolved_Then_ANaturalWidthKeyIsKept",
    "files": {
-    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/TextItemParentEventTests.cs": "4e130629e500bca10cba89e1bac61a3d99729ae1c0ba1901f871024dac3e16f8",
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/TextItemParentEventTests.cs": "f4aeed85c9016eed6f867aa3627503cdb49dfb780493c0425101bd61a458800d",
     "Packages/com.velvet.core/TestUtilities/CallbackRegistryProbe.cs": "0bf11bf8f5b161e389e815cf4be1a5f33269e05d2fed160868b58bb1f3629b46",
     "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
     "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
@@ -17,7 +17,7 @@
    }
   }
  ],
- "measured_by": "44494804299",
+ "measured_by": "44650983087",
  "mutant": {
   "after": ";",
   "before": "_naturalKey = key;",
@@ -31,6 +31,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "3295f816af35af66671199afb18cd2254106533a4c9ba969b3366588368706a2",
+ "tests": "fd8bdfe0c1b9ccc1f2cfb573d23a335c640dca2fb1e7c1d93fa8ef7fcb20f096",
  "verdict": "killed"
 }
