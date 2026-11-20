@@ -1,11 +1,11 @@
 {
- "detail": "EditMode: 1 failed among the 618 case(s) that ran the site: Given_AnAttachCallbackThatThrows_When_ADeferredZPlacementLandsInThePassThatEmptiedTheBackBand_Then_TheDepartedElementIsStillRemoved",
+ "detail": "EditMode: 1 failed among the 621 case(s) that ran the site: Given_AnAttachCallbackThatThrows_When_ADeferredZPlacementLandsInThePassThatEmptiedTheBackBand_Then_TheDepartedElementIsStillRemoved",
  "file": "b2202223441d4cba2487f3d5ec8c788e3496ccd500c8320119b6f8fc789a1d5c",
  "killers": [
   {
    "case": "Velvet.Tests.PortalLayersTests.Given_AnAttachCallbackThatThrows_When_ADeferredZPlacementLandsInThePassThatEmptiedTheBackBand_Then_TheDepartedElementIsStillRemoved",
    "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PortalLayersTests.cs": "d6825e259bde27d156632b13a103256ac51a83d91ffa5fa9a08a681158b9ee75",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PortalLayersTests.cs": "198986640aca9273a21e8604ba83ef73e929ad0d65a285f41f1e266cbdec681b",
     "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
     "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
     "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
@@ -16,7 +16,7 @@
    }
   }
  ],
- "measured_by": "44729146472",
+ "measured_by": "44810141121",
  "mutant": {
   "after": "",
   "before": " && !ReferenceEquals(ChildListWrites.ParentOf(real), parent)",
@@ -32,6 +32,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "9fc150c13ceb0d70c5e3efc4e19efe0a7b830e00a531490a163c2f73a3dbef0c",
+ "tests": "710a6fac8ca49c9d16c6dc413a3f6a4e0586bf4a48b23be0f8706949a13a7c56",
  "verdict": "killed"
 }
