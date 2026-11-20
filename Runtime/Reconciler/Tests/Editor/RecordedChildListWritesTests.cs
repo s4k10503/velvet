@@ -237,6 +237,84 @@ namespace Velvet.Tests
             Assert.That(ChildListWrites.ParentOf(child), Is.Null);
         }
 
+        // GREEN_ON_BASE(characterization): the base leaves a child whose recorded insert names an index past the end with
+        // the parent it has. Change `var held = false;` in RecordInsert to true and the model names the container.
+        [Test]
+        public void Given_ARecordedInsertPastTheEndOfAContainer_When_TheChildsParentIsRead_Then_ItHasNone()
+        {
+            // Arrange
+            var container = Holding(new VisualElement());
+            var child = new VisualElement();
+            ChildListWrites.BeginRecording();
+            RecordedInsert(container, 5, child);
+
+            // Act
+            var parent = ChildListWrites.ParentOf(child);
+            try { ChildListWrites.EndRecording(); }
+            catch (ArgumentOutOfRangeException) { }
+
+            // Assert
+            Assert.That(parent, Is.Null);
+        }
+
+        // GREEN_ON_BASE(characterization): the base lets a write made while the recorded ones apply nest without
+        // applying them again. Delete `if (s_applying) return;` from ApplyRecorded and the nested apply puts the first
+        // insert back in front.
+        [Test]
+        public void Given_AWriteThatAppliesTheRecordedWritesWhileTheyApply_When_TheyApply_Then_TheyLandInTheOrderMade()
+        {
+            // Arrange
+            var container = new ApplyingContainer();
+            var first = new VisualElement();
+            var second = new VisualElement();
+            ChildListWrites.BeginRecording();
+            RecordedInsert(container, 0, first);
+            RecordedInsert(container, 0, second);
+            container.ApplyOnNextRead = true;
+
+            // Act
+            ChildListWrites.EndRecording();
+
+            // Assert
+            Assert.That(container.hierarchy[0], Is.SameAs(second));
+        }
+
+        // The container's content read is where the first live insert of the apply passes through.
+        private sealed class ApplyingContainer : VisualElement
+        {
+            internal bool ApplyOnNextRead;
+
+            public override VisualElement contentContainer
+            {
+                get
+                {
+                    if (ApplyOnNextRead)
+                    {
+                        ApplyOnNextRead = false;
+                        ChildListWrites.ApplyRecorded();
+                    }
+                    return this;
+                }
+            }
+        }
+
+        // GREEN_ON_BASE(characterization): the base lets go of the containers a pass created when it ends, so none is
+        // held after it. Drop `s_created.Clear();` from EndRecording and the set still holds the container.
+        [Test]
+        public void Given_AContainerAPassCreated_When_ThePassEnds_Then_NoCreatedContainerIsHeld()
+        {
+            // Arrange
+            ChildListWrites.BeginRecording();
+            ChildListWrites.MarkCreated(new VisualElement());
+
+            // Act
+            ChildListWrites.EndRecording();
+
+            // Assert
+            var created = Writes.GetField("s_created", BindingFlags.NonPublic | BindingFlags.Static)!.GetValue(null)!;
+            Assert.That(created.GetType().GetProperty("Count")!.GetValue(created), Is.EqualTo(0));
+        }
+
         // GREEN_ON_BASE(characterization): the base drops the model of a container the recorded writes left empty.
         // Drop `PruneIfEmpty(container);` from the loop in ApplyRecorded's finally and the empty model stays.
         [Test]

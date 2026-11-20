@@ -2640,6 +2640,27 @@ namespace Velvet.Tests
                 Is.EqualTo((true, true)));
         }
 
+        // GREEN_ON_BASE(characterization): the base answers a relocated element at its declared slot with the element
+        // itself rather than the placeholder holding the slot. Change `held.Role == Role.Slot` in LastDeclaredChild to
+        // `!=` and the placeholder answers.
+        [Test]
+        public void Given_ALastChildRelocatedOutOfItsSlot_When_TheLastDeclaredChildIsRead_Then_ItIsTheRelocatedElement()
+        {
+            // Arrange
+            var root = new VisualElement();
+            using var mounted = V.Mount(root, V.Div(name: "parent", className: "relative", children: new VNode[]
+            {
+                V.Div(name: "ordinary"),
+                V.Div(name: "zlast", className: "absolute z-10"),
+            }));
+
+            // Act
+            var last = FiberZLayerCoordinator.LastDeclaredChild(root.Q<VisualElement>("parent"));
+
+            // Assert
+            Assert.That(last, Is.SameAs(root.Q<VisualElement>("zlast")));
+        }
+
         #endregion
 
         #region What the coordinator keeps for the elements it stops holding
