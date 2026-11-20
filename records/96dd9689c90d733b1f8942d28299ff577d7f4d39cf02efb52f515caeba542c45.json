@@ -1,0 +1,33 @@
+{
+ "detail": "EditMode: 1 failed among the 22 case(s) that ran the site: Given_AnOffPanelShadowReaderThatResolved_When_ItsVariableIsNoLongerDeclared_Then_ItKeepsNothingApplied",
+ "file": "b4ce6221e1149fe0ae7a45c44c6160e8c1442b65c6afccbf0987f72128d0f109",
+ "killers": [
+  {
+   "case": "Velvet.Tests.CustomPropertyDeferredUnsetOffPanelTests.Given_AnOffPanelShadowReaderThatResolved_When_ItsVariableIsNoLongerDeclared_Then_ItKeepsNothingApplied",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/CustomPropertyDeferredUnsetOffPanelTests.cs": "080886dfcddaf667712ee14360f5ec6fccc708b2c0dc09f6a0eefba4c85b438b",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerContextProbe.cs": "ff50974275702aaaf62e00d84d5f39dc9ff1606a93351bee15d28e7ddc87cb83",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  }
+ ],
+ "measured_by": "44725745628",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 90,
+  "line": 611,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleCustomProperties.cs",
+  "shadowed": [
+   "clause removed",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "710a6fac8ca49c9d16c6dc413a3f6a4e0586bf4a48b23be0f8706949a13a7c56",
+ "verdict": "killed"
+}

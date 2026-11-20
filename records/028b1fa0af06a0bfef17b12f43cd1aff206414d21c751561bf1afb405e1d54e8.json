@@ -1,0 +1,70 @@
+{
+ "detail": "EditMode: 4 failed among the 6 case(s) that ran the site: Given_FourKeyedRowsWithARing_When_TheyAreReversed_Then_EachBandStandsAfterItsRow, Given_OutlinedRowsInAHostWhoseReorderAddsTwoRowsAheadOfThem_When_TheyReorder_Then_TheOutlineNodesFollowTheTreeOrderOfTheirRows, Given_RingAndFaceBorderRowsOfAList_When_TheFirstRowMovesToTheEnd_Then_EachRowIsFollowedByItsFaceBorderAndBand",
+ "file": "ff2b831b412bd86e9edfd4834ea1a70d848acd718c140b58e992a2a834bba034",
+ "killers": [
+  {
+   "case": "Velvet.Tests.OverlayRowMoveOrderTests.Given_FourKeyedRowsWithARing_When_TheyAreReversed_Then_EachBandStandsAfterItsRow",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/OverlayRowMoveOrderTests.cs": "e590b6f7b71b1d4ace31b47d197f54b12506e8b8d114750a4c09d5e754c27a16",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  },
+  {
+   "case": "Velvet.Tests.OverlayRowMoveOrderTests.Given_OutlinedRowsInAHostWhoseReorderAddsTwoRowsAheadOfThem_When_TheyReorder_Then_TheOutlineNodesFollowTheTreeOrderOfTheirRows",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/OverlayRowMoveOrderTests.cs": "e590b6f7b71b1d4ace31b47d197f54b12506e8b8d114750a4c09d5e754c27a16",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  },
+  {
+   "case": "Velvet.Tests.OverlayRowMoveOrderTests.Given_RingAndFaceBorderRowsOfAList_When_TheFirstRowMovesToTheEnd_Then_EachRowIsFollowedByItsFaceBorderAndBand",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/OverlayRowMoveOrderTests.cs": "e590b6f7b71b1d4ace31b47d197f54b12506e8b8d114750a4c09d5e754c27a16",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  },
+  {
+   "case": "Velvet.Tests.OverlayRowMoveOrderTests.Given_RingRowsWhoseReorderAddsTwoRowsAheadOfThem_When_TheyReorder_Then_EachBandStandsAfterItsRowWithoutALayoutPass",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/OverlayRowMoveOrderTests.cs": "e590b6f7b71b1d4ace31b47d197f54b12506e8b8d114750a4c09d5e754c27a16",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  }
+ ],
+ "measured_by": "44725745628",
+ "mutant": {
+  "after": ";",
+  "before": "rows.Remove(child);",
+  "column": 16,
+  "line": 590,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ChildListWrites.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "710a6fac8ca49c9d16c6dc413a3f6a4e0586bf4a48b23be0f8706949a13a7c56",
+ "verdict": "killed"
+}

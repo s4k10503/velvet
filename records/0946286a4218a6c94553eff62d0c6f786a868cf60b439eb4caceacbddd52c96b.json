@@ -1,0 +1,36 @@
+{
+ "detail": "EditMode: 2 failed among the 6 case(s) that ran the site: Given_ARecordedMoveOutOfAContainerWithAModel_When_ItsRecordedCountIsRead_Then_TheMovedChildIsNotCounted, Given_ARecordedMoveOutOfAContainerWithAModel_When_TheModelIsRead_Then_ItNoLongerHoldsTheMovedChild",
+ "file": "ff2b831b412bd86e9edfd4834ea1a70d848acd718c140b58e992a2a834bba034",
+ "killers": [
+  {
+   "case": "Velvet.Tests.RecordedChildListWritesTests.Given_ARecordedMoveOutOfAContainerWithAModel_When_ItsRecordedCountIsRead_Then_TheMovedChildIsNotCounted",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/RecordedChildListWritesTests.cs": "4757df65a8e7c1a7640295c59f2cb9506e4c2bae354ff6844fe70d9b1b49a7fb",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/RowModelAccess.cs": "c9281ca1bc8930756e7b643acf56772495143054fc02c02792727059325b4674"
+   }
+  },
+  {
+   "case": "Velvet.Tests.RecordedChildListWritesTests.Given_ARecordedMoveOutOfAContainerWithAModel_When_TheModelIsRead_Then_ItNoLongerHoldsTheMovedChild",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/RecordedChildListWritesTests.cs": "4757df65a8e7c1a7640295c59f2cb9506e4c2bae354ff6844fe70d9b1b49a7fb",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/RowModelAccess.cs": "c9281ca1bc8930756e7b643acf56772495143054fc02c02792727059325b4674"
+   }
+  }
+ ],
+ "measured_by": "44725745628",
+ "mutant": {
+  "after": ";",
+  "before": "leftRows.Remove(child);",
+  "column": 24,
+  "line": 541,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ChildListWrites.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "710a6fac8ca49c9d16c6dc413a3f6a4e0586bf4a48b23be0f8706949a13a7c56",
+ "verdict": "killed"
+}

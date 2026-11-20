@@ -1,0 +1,36 @@
+{
+ "detail": "EditMode: 2 failed among the 78 case(s) that ran the site: Given_ABackgroundBracketOfAnotherTypeReadingAWordNamingNoColour_When_ItsReaderIsRead_Then_TheBackgroundIsInitial, Given_ACaretBracketOfAnotherTypeReadingAColour_When_ItsReaderIsRead_Then_ItIsTheColourAtTheModifiersAlpha",
+ "file": "0e0c26b7bbebf3260ab5eb4971db62c7a32282f7d2bf8bbe42ebd605492e76f0",
+ "killers": [
+  {
+   "case": "Velvet.Tests.BoxShadowCustomPropertyTests.Given_ABackgroundBracketOfAnotherTypeReadingAWordNamingNoColour_When_ItsReaderIsRead_Then_TheBackgroundIsInitial",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BoxShadowCustomPropertyTests.cs": "9533c546827dd0f3c3c00ecc48c99772a1a82e7c11f32731fb9da89d439d4523",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  },
+  {
+   "case": "Velvet.Tests.BoxShadowCustomPropertyTests.Given_ACaretBracketOfAnotherTypeReadingAColour_When_ItsReaderIsRead_Then_ItIsTheColourAtTheModifiersAlpha",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BoxShadowCustomPropertyTests.cs": "9533c546827dd0f3c3c00ecc48c99772a1a82e7c11f32731fb9da89d439d4523",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  }
+ ],
+ "measured_by": "44725745628",
+ "mutant": {
+  "after": "false",
+  "before": "true",
+  "column": 19,
+  "line": 177,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleCustomPropertyClass.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "710a6fac8ca49c9d16c6dc413a3f6a4e0586bf4a48b23be0f8706949a13a7c56",
+ "verdict": "killed"
+}

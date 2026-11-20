@@ -1,8 +1,19 @@
 {
- "detail": "EditMode survived; PlayMode: -",
+ "detail": "EditMode survived; PlayMode: 1 failed: Given_AClippingChildInheritingAnInvalidShadowColour_When_Rendered_Then_ItsSpreadIsNotPainted",
  "file": "31200ad68e79a8a151da77ed95b73eafdf5d8f7541f9b4be37adfe2f9798ba37",
- "killers": [],
- "measured_by": "44590076510",
+ "killers": [
+  {
+   "case": "Velvet.Tests.InheritedShadowDiscardPlaybackTests.Given_AClippingChildInheritingAnInvalidShadowColour_When_Rendered_Then_ItsSpreadIsNotPainted",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/PlayMode/InheritedShadowDiscardPlaybackTests.cs": "9062e56725bb9f069c40c44cd288a91e94974c9eb1b67444a05c09ba715183e7",
+    "Packages/com.velvet.core/TestUtilities/RenderTexturePanelHost.cs": "194e0d5bc1138e5ae5cdeeae94298ce65a10fe077c4a75c73599e7abfa531bb6",
+    "Packages/com.velvet.core/TestUtilities/TargetFrameRateScope.cs": "2a2bdd5a934388428380fda4fcf82e2ec5df7d1ab86930011f6dbb3f772ae50c",
+    "Packages/com.velvet.core/TestUtilities/TestPanelSettings.cs": "c7a36f6a4acd48eb54e9b4c339d7caf0c56cbef64dacd018497182f9fadacc29",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  }
+ ],
+ "measured_by": "44725745628",
  "mutant": {
   "after": "",
   "before": " || RadiusWatchSheets.IsWatch(sheet)",
@@ -20,6 +31,6 @@
  "platform": "PlayMode",
  "schema": 3,
  "stood": null,
- "tests": "9fc150c13ceb0d70c5e3efc4e19efe0a7b830e00a531490a163c2f73a3dbef0c",
- "verdict": "survived"
+ "tests": "710a6fac8ca49c9d16c6dc413a3f6a4e0586bf4a48b23be0f8706949a13a7c56",
+ "verdict": "killed"
 }

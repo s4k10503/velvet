@@ -1,0 +1,29 @@
+{
+ "detail": "EditMode: 1 failed: Given_ExitingElement_When_ExitTransitionCompletes_Then_ElementIsRemovedFromDom",
+ "file": "fa133d8616c55d25e864281097cdb93103812e1f276974ca73c205ded48722d4",
+ "killers": [
+  {
+   "case": "Velvet.Tests.AnimatePresenceAnimationTests.Given_ExitingElement_When_ExitTransitionCompletes_Then_ElementIsRemovedFromDom",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/AnimatePresenceAnimationTests.cs": "a7ff95ec31fa180d58adaecff71bbaaaf3f7e0961ca58e218d0a694974b935a8",
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/SimulatedPanelTestBase.cs": "a06149cf212c91277fd1442580aee292a959fef6bf985e77628aabdbb0acacc8"
+   }
+  }
+ ],
+ "measured_by": "44725745628",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 23,
+  "line": 21,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberElementCleaner.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "710a6fac8ca49c9d16c6dc413a3f6a4e0586bf4a48b23be0f8706949a13a7c56",
+ "verdict": "killed"
+}

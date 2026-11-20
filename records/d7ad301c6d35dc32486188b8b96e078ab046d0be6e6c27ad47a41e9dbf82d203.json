@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed among the 413 case(s) that ran the site: Given_ATokenAnotherPassOwns_When_ClassesAreApplied_Then_NoClassIsAdded(\"w-(--w)\")",
+ "file": "0e0c26b7bbebf3260ab5eb4971db62c7a32282f7d2bf8bbe42ebd605492e76f0",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ApplyClassNamesTokenOwnershipTests.Given_ATokenAnotherPassOwns_When_ClassesAreApplied_Then_NoClassIsAdded(\"w-(--w)\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ApplyClassNamesTokenOwnershipTests.cs": "b0128ef5396e785feb3cda09c8c657fcb5afe3ecb0e934ed3465dfeb34121b44"
+   }
+  }
+ ],
+ "measured_by": "44725745628",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 42,
+  "line": 155,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleCustomPropertyClass.cs",
+  "shadowed": [
+   "arithmetic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "710a6fac8ca49c9d16c6dc413a3f6a4e0586bf4a48b23be0f8706949a13a7c56",
+ "verdict": "killed"
+}

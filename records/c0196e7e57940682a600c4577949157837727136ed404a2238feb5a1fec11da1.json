@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed among the 24 case(s) that ran the site: Given_AScrollViewWrittenThroughItsHierarchy_When_ThePlacedChildIsLookedUp_Then_ItsHierarchyIndexIsAnswered",
+ "file": "ff2b831b412bd86e9edfd4834ea1a70d848acd718c140b58e992a2a834bba034",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ContainerRowsTests.Given_AScrollViewWrittenThroughItsHierarchy_When_ThePlacedChildIsLookedUp_Then_ItsHierarchyIndexIsAnswered",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ContainerRowsTests.cs": "2fed29c68b879f55293f95667cfed193691e8cdf98a29d08786239a9a4c8cae9",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/RowModelAccess.cs": "c9281ca1bc8930756e7b643acf56772495143054fc02c02792727059325b4674",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  }
+ ],
+ "measured_by": "44725745628",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 33,
+  "line": 228,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ChildListWrites.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "710a6fac8ca49c9d16c6dc413a3f6a4e0586bf4a48b23be0f8706949a13a7c56",
+ "verdict": "killed"
+}

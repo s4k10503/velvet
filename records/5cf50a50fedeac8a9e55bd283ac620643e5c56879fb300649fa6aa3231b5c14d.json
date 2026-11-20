@@ -1,11 +1,11 @@
 {
- "detail": "EditMode: 2 failed among the 90 case(s) that ran the site: Given_AnArbitraryPaddingBesideALiteralTop_When_Mounted_Then_TheLiteralTopWins, Given_AnArbitraryPaddingOfTwoValues_When_Mounted_Then_EachSideTakesItsValue",
+ "detail": "EditMode: 2 failed among the 94 case(s) that ran the site: Given_AnArbitraryPaddingBesideALiteralTop_When_Mounted_Then_TheLiteralTopWins, Given_AnArbitraryPaddingOfTwoValues_When_Mounted_Then_EachSideTakesItsValue",
  "file": "f7b1fdf7946243d23ff565d8d810bbeca20017855ed944142db5d64e0a156817",
  "killers": [
   {
    "case": "Velvet.Tests.CustomPropertyTests.Given_AnArbitraryPaddingBesideALiteralTop_When_Mounted_Then_TheLiteralTopWins",
    "files": {
-    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/CustomPropertyTests.cs": "6c344c5a9fc0c00810eeab25fe2b38c8a65d36e206119c81b2653525c54d0c71",
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/CustomPropertyTests.cs": "9be133a4f441ed0e56da6fd5e979582205494a538aad0e8527815252466d33a6",
     "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
     "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
     "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
@@ -18,7 +18,7 @@
   {
    "case": "Velvet.Tests.CustomPropertyTests.Given_AnArbitraryPaddingOfTwoValues_When_Mounted_Then_EachSideTakesItsValue",
    "files": {
-    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/CustomPropertyTests.cs": "6c344c5a9fc0c00810eeab25fe2b38c8a65d36e206119c81b2653525c54d0c71",
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/CustomPropertyTests.cs": "9be133a4f441ed0e56da6fd5e979582205494a538aad0e8527815252466d33a6",
     "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
     "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
     "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
@@ -29,7 +29,7 @@
    }
   }
  ],
- "measured_by": "44590076510",
+ "measured_by": "44725745628",
  "mutant": {
   "after": "false",
   "before": "true",
@@ -43,6 +43,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "9fc150c13ceb0d70c5e3efc4e19efe0a7b830e00a531490a163c2f73a3dbef0c",
+ "tests": "710a6fac8ca49c9d16c6dc413a3f6a4e0586bf4a48b23be0f8706949a13a7c56",
  "verdict": "killed"
 }

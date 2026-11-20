@@ -1,11 +1,11 @@
 {
- "detail": "EditMode: 1 failed among the 417 case(s) that ran the site: Given_ALabelWithAnInlinePercentMaxWidth_When_ItsTextChangesAndOnlyItsParentsGeometryEventFires_Then_ItsMinWidthFollowsTheText",
+ "detail": "EditMode: 1 failed among the 420 case(s) that ran the site: Given_ALabelWithAnInlinePercentMaxWidth_When_ItsTextChangesAndOnlyItsParentsGeometryEventFires_Then_ItsMinWidthFollowsTheText",
  "file": "d8e27d0f795401d6e3dea7627d9d0959ff17abac9ce930eef9c2b54a6d48c27d",
  "killers": [
   {
    "case": "Velvet.Tests.TextItemParentEventTests.Given_ALabelWithAnInlinePercentMaxWidth_When_ItsTextChangesAndOnlyItsParentsGeometryEventFires_Then_ItsMinWidthFollowsTheText",
    "files": {
-    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/TextItemParentEventTests.cs": "f4aeed85c9016eed6f867aa3627503cdb49dfb780493c0425101bd61a458800d",
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/TextItemParentEventTests.cs": "e3b7ff81e7f8e38bf1c6b5f6301b145b2500877149ea03686fd781cf128ccb91",
     "Packages/com.velvet.core/TestUtilities/CallbackRegistryProbe.cs": "0bf11bf8f5b161e389e815cf4be1a5f33269e05d2fed160868b58bb1f3629b46",
     "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
     "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
@@ -17,7 +17,7 @@
    }
   }
  ],
- "measured_by": "44650983087",
+ "measured_by": "44725745628",
  "mutant": {
   "after": "&&",
   "before": "||",
@@ -31,6 +31,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "fd8bdfe0c1b9ccc1f2cfb573d23a335c640dca2fb1e7c1d93fa8ef7fcb20f096",
+ "tests": "710a6fac8ca49c9d16c6dc413a3f6a4e0586bf4a48b23be0f8706949a13a7c56",
  "verdict": "killed"
 }

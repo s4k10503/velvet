@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed among the 838 case(s) that ran the site: Given_OnlyABackBandElement_When_ResolvingTheAppendPosition_Then_ItLandsAfterIt",
+ "file": "ff2b831b412bd86e9edfd4834ea1a70d848acd718c140b58e992a2a834bba034",
+ "killers": [
+  {
+   "case": "Velvet.Tests.LogicalChildSlotTests.Given_OnlyABackBandElement_When_ResolvingTheAppendPosition_Then_ItLandsAfterIt",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/LogicalChildSlotTests.cs": "55047119490562fb8254691fb18ba7b30e56f814563092fc45f8cc1eaa648273",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/ZBandProbe.cs": "89b5305bd9e43f72156f5a3d8c6f121f5ebcbee121486fdbb8e4b04b315feaaa"
+   }
+  }
+ ],
+ "measured_by": "44725745628",
+ "mutant": {
+  "after": "",
+  "before": "if (LogicalChildSlots.StaysFirst(element)) return RowKind.LeadingInvisible;",
+  "column": 12,
+  "line": 33,
+  "operator": "guard removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ChildListWrites.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "710a6fac8ca49c9d16c6dc413a3f6a4e0586bf4a48b23be0f8706949a13a7c56",
+ "verdict": "killed"
+}

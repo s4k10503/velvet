@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "b18cd378eae2d8cff013b11bc5106aceaa1641653dc5bc8b4e5ab7bbee706dbb",
+ "killers": [],
+ "measured_by": "44725745628",
+ "mutant": {
+  "after": ";",
+  "before": "_slotRows.Clear();",
+  "column": 12,
+  "line": 622,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberVirtualListController.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "710a6fac8ca49c9d16c6dc413a3f6a4e0586bf4a48b23be0f8706949a13a7c56",
+ "verdict": "survived"
+}

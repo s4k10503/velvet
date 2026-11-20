@@ -1,8 +1,16 @@
 {
- "detail": "EditMode survived; PlayMode: -",
+ "detail": "EditMode: 1 failed: Given_AWriteThatAppliesTheRecordedWritesWhileTheyApply_When_TheyApply_Then_TheyLandInTheOrderMade",
  "file": "ff2b831b412bd86e9edfd4834ea1a70d848acd718c140b58e992a2a834bba034",
- "killers": [],
- "measured_by": "44650983087",
+ "killers": [
+  {
+   "case": "Velvet.Tests.RecordedChildListWritesTests.Given_AWriteThatAppliesTheRecordedWritesWhileTheyApply_When_TheyApply_Then_TheyLandInTheOrderMade",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/RecordedChildListWritesTests.cs": "4757df65a8e7c1a7640295c59f2cb9506e4c2bae354ff6844fe70d9b1b49a7fb",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/RowModelAccess.cs": "c9281ca1bc8930756e7b643acf56772495143054fc02c02792727059325b4674"
+   }
+  }
+ ],
+ "measured_by": "44725745628",
  "mutant": {
   "after": "",
   "before": "if (s_applying) return;",
@@ -13,9 +21,9 @@
   "shadowed": []
  },
  "mutator": 10,
- "platform": "PlayMode",
+ "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "fd8bdfe0c1b9ccc1f2cfb573d23a335c640dca2fb1e7c1d93fa8ef7fcb20f096",
- "verdict": "survived"
+ "tests": "710a6fac8ca49c9d16c6dc413a3f6a4e0586bf4a48b23be0f8706949a13a7c56",
+ "verdict": "killed"
 }

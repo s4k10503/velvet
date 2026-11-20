@@ -1,8 +1,27 @@
 {
- "detail": "EditMode survived; PlayMode: -",
+ "detail": "EditMode: 3 failed: 0f), 0f), 0f)",
  "file": "13a1e761db53414f85b8fb2a34e17128e0ee453f5e4c68dbfb66f87fcd650c21",
- "killers": [],
- "measured_by": "44729146472",
+ "killers": [
+  {
+   "case": "Velvet.Tests.StyleLengthExpressionTests.Given_AContainerMaxLength_When_Evaluated_Then_ItIsTheLargerOfTheContainersWidthAndThePanelsHeight(300.0f,300.0f)",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/StyleLengthExpressionTests.cs": "987b22f459ee1a0f1dcfb715783d7431db50cd02dd5c2c3210d6e15bf7d64044"
+   }
+  },
+  {
+   "case": "Velvet.Tests.StyleLengthExpressionTests.Given_AContainerMaxLength_When_Evaluated_Then_ItIsTheLargerOfTheContainersWidthAndThePanelsHeight(700.0f,350.0f)",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/StyleLengthExpressionTests.cs": "987b22f459ee1a0f1dcfb715783d7431db50cd02dd5c2c3210d6e15bf7d64044"
+   }
+  },
+  {
+   "case": "Velvet.Tests.StyleLengthExpressionTests.Given_AContainerMaxLength_When_Evaluated_Then_ItIsTheLargerOfTheContainersWidthAndThePanelsHeight(float.NaN,400.0f)",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/StyleLengthExpressionTests.cs": "987b22f459ee1a0f1dcfb715783d7431db50cd02dd5c2c3210d6e15bf7d64044"
+   }
+  }
+ ],
+ "measured_by": "44725745628",
  "mutant": {
   "after": ";",
   "before": "units[\"cqmax\"] = (b => Math.Max(b.InlineSize, b.ViewportHeight) / 100d, ReadsElement | ReadsViewportBit, CalcType.Length);",
@@ -13,9 +32,9 @@
   "shadowed": []
  },
  "mutator": 10,
- "platform": "PlayMode",
+ "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "9fc150c13ceb0d70c5e3efc4e19efe0a7b830e00a531490a163c2f73a3dbef0c",
- "verdict": "survived"
+ "tests": "710a6fac8ca49c9d16c6dc413a3f6a4e0586bf4a48b23be0f8706949a13a7c56",
+ "verdict": "killed"
 }

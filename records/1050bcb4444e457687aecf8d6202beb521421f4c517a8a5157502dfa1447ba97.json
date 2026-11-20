@@ -5,12 +5,12 @@
   {
    "case": "Velvet.Tests.RecordedChildListWritesTests.Given_ARecordedRemovalOfAChild_When_ItsParentIsRead_Then_ItHasNone",
    "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/RecordedChildListWritesTests.cs": "00cd941eb8ab8fe92344fd4a75972736f3a993fb31d7060f78f44cac85c63eaf",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/RecordedChildListWritesTests.cs": "4757df65a8e7c1a7640295c59f2cb9506e4c2bae354ff6844fe70d9b1b49a7fb",
     "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/RowModelAccess.cs": "c9281ca1bc8930756e7b643acf56772495143054fc02c02792727059325b4674"
    }
   }
  ],
- "measured_by": "44494804299",
+ "measured_by": "44725745628",
  "mutant": {
   "after": ";",
   "before": "s_pendingParent[element] = null;",
@@ -24,6 +24,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "3295f816af35af66671199afb18cd2254106533a4c9ba969b3366588368706a2",
+ "tests": "710a6fac8ca49c9d16c6dc413a3f6a4e0586bf4a48b23be0f8706949a13a7c56",
  "verdict": "killed"
 }

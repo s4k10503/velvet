@@ -6,7 +6,7 @@
    "case": "Velvet.Tests.ZIndexStackingTests.Given_AFaceBorderOverlayBesideAZMember_When_TheMemberResortsAheadOfOthers_Then_TheOverlayStaysDirectlyAfterIt",
    "files": {
     "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ButtonChildPoolReuseTests.cs": "0531a5fe43bec4ffe1998b02b1fb81e990435f1ea72a803dd14610afcab1aa51",
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ZIndexStackingTests.cs": "3b2da7493c323ed22902b01ae0c6ca971cc2ccd0d2bf91e5edf18acbfc06d596",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ZIndexStackingTests.cs": "b73202487c05f5fc766335fde75ae54207f2cb15a90ab6d0dbf1435796d20ac9",
     "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
     "Packages/com.velvet.core/TestUtilities/GCAllocationProbe.cs": "492823c099cf4f4de89da0da69c98d45cfc042070d93e2d0c0b95773310ebc2c",
     "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
@@ -18,7 +18,7 @@
    }
   }
  ],
- "measured_by": "44590076510",
+ "measured_by": "44725745628",
  "mutant": {
   "after": "-",
   "before": "+",
@@ -34,6 +34,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "9fc150c13ceb0d70c5e3efc4e19efe0a7b830e00a531490a163c2f73a3dbef0c",
+ "tests": "710a6fac8ca49c9d16c6dc413a3f6a4e0586bf4a48b23be0f8706949a13a7c56",
  "verdict": "killed"
 }

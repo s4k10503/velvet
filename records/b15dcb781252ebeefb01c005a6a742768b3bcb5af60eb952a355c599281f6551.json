@@ -1,0 +1,39 @@
+{
+ "detail": "EditMode: 2 failed among the 50 case(s) that ran the site: Given_AFontReadingACustomProperty_When_ItsPayloadSetsTheWeight_Then_NoFamilyIsNamed(\"font-[var(--w)]\"), Given_AFontReadingACustomProperty_When_ItsPayloadSetsTheWeight_Then_NoFamilyIsNamed(\"font-(--w)\")",
+ "file": "0e0c26b7bbebf3260ab5eb4971db62c7a32282f7d2bf8bbe42ebd605492e76f0",
+ "killers": [
+  {
+   "case": "Velvet.Tests.StyleFontTests.Given_AFontReadingACustomProperty_When_ItsPayloadSetsTheWeight_Then_NoFamilyIsNamed(\"font-(--w)\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/StyleFontTests.cs": "e38385cc978240633f83f38cfc44374fce294c092f2d22455e24f8ffcee97552",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.StyleFontTests.Given_AFontReadingACustomProperty_When_ItsPayloadSetsTheWeight_Then_NoFamilyIsNamed(\"font-[var(--w)]\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/StyleFontTests.cs": "e38385cc978240633f83f38cfc44374fce294c092f2d22455e24f8ffcee97552",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  }
+ ],
+ "measured_by": "44725745628",
+ "mutant": {
+  "after": "==",
+  "before": "!=",
+  "column": 33,
+  "line": 69,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleCustomPropertyClass.cs",
+  "shadowed": [
+   "clause removed",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "710a6fac8ca49c9d16c6dc413a3f6a4e0586bf4a48b23be0f8706949a13a7c56",
+ "verdict": "killed"
+}
