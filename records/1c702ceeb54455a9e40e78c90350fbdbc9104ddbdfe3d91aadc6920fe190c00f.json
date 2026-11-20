@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "31200ad68e79a8a151da77ed95b73eafdf5d8f7541f9b4be37adfe2f9798ba37",
+ "killers": [],
+ "measured_by": "44563592085",
+ "mutant": {
+  "after": "",
+  "before": "if (RadiusWatchSheets.IsWatch(sheet)) return stamp;",
+  "column": 12,
+  "line": 394,
+  "operator": "guard removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/VelvetStyleUtilities.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3295f816af35af66671199afb18cd2254106533a4c9ba969b3366588368706a2",
+ "verdict": "survived"
+}

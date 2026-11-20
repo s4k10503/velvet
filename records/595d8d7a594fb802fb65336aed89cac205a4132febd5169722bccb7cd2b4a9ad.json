@@ -1,0 +1,40 @@
+{
+ "detail": "EditMode: 2 failed among the 77 case(s) that ran the site: Given_ADefaultFamily_When_ALayerPortalRendersALabelWithNoFontClass_Then_TheLabelResolvesTheDefaultFamily, Given_ADefaultFamily_When_AWorldSpacePanelMounts_Then_ItsRootCarriesTheDefaultFamily",
+ "file": "bbf8356a61eafe03564f20b22c2703ff5b4abc437c071ed2882c3667bbdf4e78",
+ "killers": [
+  {
+   "case": "Velvet.Tests.DefaultFamilyScopePanelTests.Given_ADefaultFamily_When_ALayerPortalRendersALabelWithNoFontClass_Then_TheLabelResolvesTheDefaultFamily",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/DefaultFamilyScopePanelTests.cs": "d82d0c9ba183556265e727ef466b98e0f3eecb0c0a64e96408296c4f0367cdc5",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26"
+   }
+  },
+  {
+   "case": "Velvet.Tests.DefaultFamilyScopePanelTests.Given_ADefaultFamily_When_AWorldSpacePanelMounts_Then_ItsRootCarriesTheDefaultFamily",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/DefaultFamilyScopePanelTests.cs": "d82d0c9ba183556265e727ef466b98e0f3eecb0c0a64e96408296c4f0367cdc5",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26"
+   }
+  }
+ ],
+ "measured_by": "44563592085",
+ "mutant": {
+  "after": ";",
+  "before": "record.ReleaseBridge += DefaultFamilyRoots.Hold(root).Dispose;",
+  "column": 12,
+  "line": 153,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/PanelHostFactory.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3295f816af35af66671199afb18cd2254106533a4c9ba969b3366588368706a2",
+ "verdict": "killed"
+}

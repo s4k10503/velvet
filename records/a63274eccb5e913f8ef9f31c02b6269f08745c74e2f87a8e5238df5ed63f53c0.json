@@ -1,0 +1,23 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "b9d0bb679f4c03a2813958f9ad5bb3bd36c5566e475310b59970320f03f9074b",
+ "killers": [],
+ "measured_by": "44563592085",
+ "mutant": {
+  "after": ">",
+  "before": ">=",
+  "column": 21,
+  "line": 824,
+  "operator": "boundary",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleGradientClass.cs",
+  "shadowed": [
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3295f816af35af66671199afb18cd2254106533a4c9ba969b3366588368706a2",
+ "verdict": "survived"
+}

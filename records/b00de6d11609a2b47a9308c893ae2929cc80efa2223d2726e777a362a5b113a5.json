@@ -1,0 +1,28 @@
+{
+ "detail": "EditMode: 1 failed among the 2 case(s) that ran the site: Given_ANestedStartAndEndBetweenAStartAndItsEnd_When_TheOuterEndIsLookedUp_Then_TheOuterEndIsFound",
+ "file": "0757ce9921ee374eaa9ff2e78d2c9549c02397de54bdeb04fd2f06cadcb7f97f",
+ "killers": [
+  {
+   "case": "Velvet.Tests.FocusScopeRangeEndLookupTests.Given_ANestedStartAndEndBetweenAStartAndItsEnd_When_TheOuterEndIsLookedUp_Then_TheOuterEndIsFound",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/FocusScopeRangeEndLookupTests.cs": "ec85ed55f803dd2b0c61802c899fa3c273d781e808ec34048b4d1f90670622de"
+   }
+  }
+ ],
+ "measured_by": "44563592085",
+ "mutant": {
+  "after": ";",
+  "before": "depth++;",
+  "column": 24,
+  "line": 98,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FocusScopeRange.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3295f816af35af66671199afb18cd2254106533a4c9ba969b3366588368706a2",
+ "verdict": "killed"
+}

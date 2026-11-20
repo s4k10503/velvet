@@ -1,0 +1,37 @@
+{
+ "detail": "EditMode: 1 failed among the 9 case(s) that ran the site: Given_ABlendLayerAlreadyAtItsIndex_When_TheTickArrangesTwice_Then_ItIsNeverTakenOffThePanel",
+ "file": "bbec960058262a20b63cd18bad3e683f5b4654f23075cff46010ed71e7ba52cf",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ParticlesBlendLayerTests.Given_ABlendLayerAlreadyAtItsIndex_When_TheTickArrangesTwice_Then_ItIsNeverTakenOffThePanel",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ParticlesBlendLayerTests.cs": "b498db2b0ea1b6fe6d2623b9a2f02a2b4f679be94cf48167ba5ed3195a2d66b4",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26"
+   }
+  }
+ ],
+ "measured_by": "44563592085",
+ "mutant": {
+  "after": "==",
+  "before": "!=",
+  "column": 36,
+  "line": 798,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Component/ParticlesDriver.cs",
+  "shadowed": [
+   "clause removed",
+   "equality",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3295f816af35af66671199afb18cd2254106533a4c9ba969b3366588368706a2",
+ "verdict": "killed"
+}

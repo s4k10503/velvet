@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed among the 19 case(s) that ran the site: Given_AComponentMountedWhileItsPrimaryIsHiddenWithARefdPortalChild_When_TheBoundaryReveals_Then_ItsInsertionEffectRunsOnlyThen",
+ "file": "f447024f6b211949f920a018bf2395d63ffd7e6e136c4f743c1cb7e2106fb082",
+ "killers": [
+  {
+   "case": "Velvet.Tests.SuspenseHiddenInsertionEffectTests.Given_AComponentMountedWhileItsPrimaryIsHiddenWithARefdPortalChild_When_TheBoundaryReveals_Then_ItsInsertionEffectRunsOnlyThen",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/SuspenseHiddenInsertionEffectTests.cs": "4e10c17ec899b241d099d00f514bcc3340f5a8eb48a77cfd574de1ef03ededc8",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921"
+   }
+  }
+ ],
+ "measured_by": "44563592085",
+ "mutant": {
+  "after": "<=",
+  "before": "<",
+  "column": 29,
+  "line": 2299,
+  "operator": "boundary",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ReconcilerContext.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3295f816af35af66671199afb18cd2254106533a4c9ba969b3366588368706a2",
+ "verdict": "killed"
+}

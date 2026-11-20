@@ -1,0 +1,33 @@
+{
+ "detail": "EditMode: 1 failed: Given_AnOverlayPortaledOutOfAnEditorPanelMount_When_Mounted_Then_ItsChildrenStayInThePortal",
+ "file": "ff2b831b412bd86e9edfd4834ea1a70d848acd718c140b58e992a2a834bba034",
+ "killers": [
+  {
+   "case": "Velvet.Tests.DragOverlayHostTests.Given_AnOverlayPortaledOutOfAnEditorPanelMount_When_Mounted_Then_ItsChildrenStayInThePortal",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/DragOverlayHostTests.cs": "d6b379db19247d5cf977c0ad5961d7f7c6bb91424d9b4f7c23dd761ca6856436",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921"
+   }
+  }
+ ],
+ "measured_by": "44563592085",
+ "mutant": {
+  "after": "true",
+  "before": "false",
+  "column": 26,
+  "line": 663,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ChildListWrites.cs",
+  "shadowed": [
+   "line removed"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3295f816af35af66671199afb18cd2254106533a4c9ba969b3366588368706a2",
+ "verdict": "killed"
+}

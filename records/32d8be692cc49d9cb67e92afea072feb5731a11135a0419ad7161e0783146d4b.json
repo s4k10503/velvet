@@ -1,0 +1,34 @@
+{
+ "detail": "EditMode: 2 failed: Given_AnElementForwardingThroughTwoLinks_When_AWriteNamesTheFirstLinkWhileItsChildrenAreCreated_Then_TheWriteIsMadeAtOnce, Given_AnElementForwardingToItsContent_When_AWriteNamesTheElementWhileItsChildrenAreCreated_Then_TheWriteIsMadeAtOnce",
+ "file": "ff2b831b412bd86e9edfd4834ea1a70d848acd718c140b58e992a2a834bba034",
+ "killers": [
+  {
+   "case": "Velvet.Tests.CreatedContainerHierarchyWriteTests.Given_AnElementForwardingThroughTwoLinks_When_AWriteNamesTheFirstLinkWhileItsChildrenAreCreated_Then_TheWriteIsMadeAtOnce",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/CreatedContainerHierarchyWriteTests.cs": "eb362582d4cd53cbd905d84e304140395824f52652ba09ac96b48f2f266c748f"
+   }
+  },
+  {
+   "case": "Velvet.Tests.CreatedContainerHierarchyWriteTests.Given_AnElementForwardingToItsContent_When_AWriteNamesTheElementWhileItsChildrenAreCreated_Then_TheWriteIsMadeAtOnce",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/CreatedContainerHierarchyWriteTests.cs": "eb362582d4cd53cbd905d84e304140395824f52652ba09ac96b48f2f266c748f"
+   }
+  }
+ ],
+ "measured_by": "44563592085",
+ "mutant": {
+  "after": ";",
+  "before": "s_created.Add(element);",
+  "column": 12,
+  "line": 490,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ChildListWrites.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3295f816af35af66671199afb18cd2254106533a4c9ba969b3366588368706a2",
+ "verdict": "killed"
+}

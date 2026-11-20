@@ -1,0 +1,34 @@
+{
+ "detail": "EditMode: 2 failed: Given_KeptChildrenInOrderAndACreatedOneAfterThem_When_TheyAreReordered_Then_TheOrderIsNotReportedAsOutOfCreationOrder, Given_TheSameKeptChildListedTwice_When_TheChildrenAreReordered_Then_TheOrderIsNotReportedAsOutOfCreationOrder",
+ "file": "02b52c79f98e28df499c3fc86469ff6e73edbc7542f381acfc012419845f7750",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ChildElementPlacementCreationOrderTests.Given_KeptChildrenInOrderAndACreatedOneAfterThem_When_TheyAreReordered_Then_TheOrderIsNotReportedAsOutOfCreationOrder",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ChildElementPlacementCreationOrderTests.cs": "facdf20d77def2bf34e006bd01b84b80881307139392051dab05e37e2f471462"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ChildElementPlacementCreationOrderTests.Given_TheSameKeptChildListedTwice_When_TheChildrenAreReordered_Then_TheOrderIsNotReportedAsOutOfCreationOrder",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ChildElementPlacementCreationOrderTests.cs": "facdf20d77def2bf34e006bd01b84b80881307139392051dab05e37e2f471462"
+   }
+  }
+ ],
+ "measured_by": "44563592085",
+ "mutant": {
+  "after": "true",
+  "before": "false",
+  "column": 19,
+  "line": 229,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ChildElementPlacement.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3295f816af35af66671199afb18cd2254106533a4c9ba969b3366588368706a2",
+ "verdict": "killed"
+}

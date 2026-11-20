@@ -1,0 +1,44 @@
+{
+ "detail": "EditMode: 2 failed among the 109 case(s) that ran the site: Given_AnInsetRingedLayoutIdMotionDrawnScaledDifferentlyOnEachAxis_When_ItsBandIsRepainted_Then_ItsCornersAreTheElementsOwn, Given_ARingedLayoutIdMotionDrawnScaledDifferentlyOnEachAxis_When_ItIsTornDown_Then_NeitherItNorItsBandKeepsAFaceCallback",
+ "file": "ff2b831b412bd86e9edfd4834ea1a70d848acd718c140b58e992a2a834bba034",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ProjectedCornerFaceLifecycleTests.Given_ARingedLayoutIdMotionDrawnScaledDifferentlyOnEachAxis_When_ItIsTornDown_Then_NeitherItNorItsBandKeepsAFaceCallback",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionSimulatedPanelTestsBase.cs": "319b26852fbe6c4376e12d0d0c9e76d0ced9d71ce1cae10efb9b3d4871118db3",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ProjectedCornerFaceLifecycleTests.cs": "3880974ca16d862c04990418ded3d5cac1dcf713f73d87e0913e4b17fe4243ec",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/GCAllocationProbe.cs": "492823c099cf4f4de89da0da69c98d45cfc042070d93e2d0c0b95773310ebc2c",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ProjectedCornerFaceLifecycleTests.Given_AnInsetRingedLayoutIdMotionDrawnScaledDifferentlyOnEachAxis_When_ItsBandIsRepainted_Then_ItsCornersAreTheElementsOwn",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionSimulatedPanelTestsBase.cs": "319b26852fbe6c4376e12d0d0c9e76d0ced9d71ce1cae10efb9b3d4871118db3",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ProjectedCornerFaceLifecycleTests.cs": "3880974ca16d862c04990418ded3d5cac1dcf713f73d87e0913e4b17fe4243ec",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/GCAllocationProbe.cs": "492823c099cf4f4de89da0da69c98d45cfc042070d93e2d0c0b95773310ebc2c",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921"
+   }
+  }
+ ],
+ "measured_by": "44563592085",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 25,
+  "line": 587,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ChildListWrites.cs",
+  "shadowed": [
+   "guard removed"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3295f816af35af66671199afb18cd2254106533a4c9ba969b3366588368706a2",
+ "verdict": "killed"
+}

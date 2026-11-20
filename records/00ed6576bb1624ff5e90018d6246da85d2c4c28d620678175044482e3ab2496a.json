@@ -1,0 +1,60 @@
+{
+ "detail": "EditMode: 4 failed among the 197 case(s) that ran the site: Given_AChildBearingToggleWasUnmounted_When_APlainToggleMounts_Then_TheRecycledElementCarriesNoLeftoverChild, Given_ASliderCarryingAForeignChild_When_ItIsRentedBackFromThePool_Then_ItHoldsOnlyItsOwnInput, Given_ATextFieldCarryingAForeignChild_When_ItIsRentedBackFromThePool_Then_ItHoldsOnlyItsOwnInput",
+ "file": "45ef912cb6f28f0efff7c09a725a5c5de2ea30985aa51a965147b0e2a2499528",
+ "killers": [
+  {
+   "case": "Velvet.Tests.CompositeFieldChildPoolReuseTests.Given_AChildBearingToggleWasUnmounted_When_APlainToggleMounts_Then_TheRecycledElementCarriesNoLeftoverChild",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/CompositeFieldChildPoolReuseTests.cs": "cfe800be4dbeae85bd8c3938aef34f450eabd94b6829de91f82082d447e824ae",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921",
+    "Packages/com.velvet.core/TestUtilities/VNodePoolTestAccess.cs": "0b34227c0501b0b06aafcc9acba0c02b9136f4cc2959498d5f22b3db63a22681"
+   }
+  },
+  {
+   "case": "Velvet.Tests.CompositeFieldChildPoolReuseTests.Given_ASliderCarryingAForeignChild_When_ItIsRentedBackFromThePool_Then_ItHoldsOnlyItsOwnInput",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/CompositeFieldChildPoolReuseTests.cs": "cfe800be4dbeae85bd8c3938aef34f450eabd94b6829de91f82082d447e824ae",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921",
+    "Packages/com.velvet.core/TestUtilities/VNodePoolTestAccess.cs": "0b34227c0501b0b06aafcc9acba0c02b9136f4cc2959498d5f22b3db63a22681"
+   }
+  },
+  {
+   "case": "Velvet.Tests.CompositeFieldChildPoolReuseTests.Given_ATextFieldCarryingAForeignChild_When_ItIsRentedBackFromThePool_Then_ItHoldsOnlyItsOwnInput",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/CompositeFieldChildPoolReuseTests.cs": "cfe800be4dbeae85bd8c3938aef34f450eabd94b6829de91f82082d447e824ae",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921",
+    "Packages/com.velvet.core/TestUtilities/VNodePoolTestAccess.cs": "0b34227c0501b0b06aafcc9acba0c02b9136f4cc2959498d5f22b3db63a22681"
+   }
+  },
+  {
+   "case": "Velvet.Tests.CompositeFieldChildPoolReuseTests.Given_AToggleCarryingAForeignChild_When_ItIsRentedBackFromThePool_Then_ItHoldsOnlyItsOwnInput",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/CompositeFieldChildPoolReuseTests.cs": "cfe800be4dbeae85bd8c3938aef34f450eabd94b6829de91f82082d447e824ae",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921",
+    "Packages/com.velvet.core/TestUtilities/VNodePoolTestAccess.cs": "0b34227c0501b0b06aafcc9acba0c02b9136f4cc2959498d5f22b3db63a22681"
+   }
+  }
+ ],
+ "measured_by": "44563592085",
+ "mutant": {
+  "after": ">",
+  "before": ">=",
+  "column": 69,
+  "line": 82,
+  "operator": "boundary",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberElementPoolReset.cs",
+  "shadowed": [
+   "arithmetic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3295f816af35af66671199afb18cd2254106533a4c9ba969b3366588368706a2",
+ "verdict": "killed"
+}

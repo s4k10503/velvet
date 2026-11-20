@@ -1,5 +1,5 @@
 {
- "detail": "EditMode: 2 failed among the 720 case(s) that ran the site: Given_OutlinedRowsInAHostOfAList_When_ARowIsAppended_Then_TheRowStaysAheadOfTheOutlineNodes, Given_OutlinedRowsInAHostWhoseReorderAddsTwoRowsAheadOfThem_When_TheyReorder_Then_TheOutlineNodesFollowTheTreeOrderOfTheirRows",
+ "detail": "EditMode: 2 failed among the 726 case(s) that ran the site: Given_OutlinedRowsInAHostOfAList_When_ARowIsAppended_Then_TheRowStaysAheadOfTheOutlineNodes, Given_OutlinedRowsInAHostWhoseReorderAddsTwoRowsAheadOfThem_When_TheyReorder_Then_TheOutlineNodesFollowTheTreeOrderOfTheirRows",
  "file": "44fda641986adb35d4a382e46a1804e9a07532e52ae515f62db83dc131ef66eb",
  "killers": [
   {
@@ -27,7 +27,7 @@
    }
   }
  ],
- "measured_by": "44481515841",
+ "measured_by": "44563592085",
  "mutant": {
   "after": "",
   "before": " && !child.ClassListContains(RingOverlay.OutlineMarkerClass)",
@@ -43,6 +43,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "9fc150c13ceb0d70c5e3efc4e19efe0a7b830e00a531490a163c2f73a3dbef0c",
+ "tests": "3295f816af35af66671199afb18cd2254106533a4c9ba969b3366588368706a2",
  "verdict": "killed"
 }

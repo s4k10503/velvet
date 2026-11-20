@@ -1,0 +1,28 @@
+{
+ "detail": "EditMode: 1 failed among the 7 case(s) that ran the site: Given_AnEarlierRowReplacedAndALaterOneLosingItsClipPath_When_TheyPatchInOnePass_Then_TheRowsKeepTheirOrder",
+ "file": "c40e4f53b53d470bf38f555a20f315f73ad6253c97ab144a313bcdf5487c135e",
+ "killers": [
+  {
+   "case": "Velvet.Tests.RecordedChildListWriteTests.Given_AnEarlierRowReplacedAndALaterOneLosingItsClipPath_When_TheyPatchInOnePass_Then_TheRowsKeepTheirOrder",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/RecordedChildListWriteTests.cs": "3d3b8969ed465478e4792bab5e3e4d522697ed34c4687121c22e800dc921c6b3"
+   }
+  }
+ ],
+ "measured_by": "44563592085",
+ "mutant": {
+  "after": ";",
+  "before": "ChildListWrites.SyncLive(parent);",
+  "column": 12,
+  "line": 70,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/WrapperInfrastructure.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3295f816af35af66671199afb18cd2254106533a4c9ba969b3366588368706a2",
+ "verdict": "killed"
+}
