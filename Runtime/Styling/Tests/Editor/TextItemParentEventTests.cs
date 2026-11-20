@@ -306,14 +306,17 @@ namespace Velvet.Tests
 
         // GREEN_ON_BASE(characterization): the base derives a label a grid stopped sizing on its parent's next event, though the direction stayed. Drop `|| IsSizedByGridParent(parent)` from the stand-down branch of DeriveCore and the event leaves it.
         [Test]
-        public void Given_ALabelSettledUnderAGridThatStopsSizingIt_When_ItsTextChangesAndOnlyItsParentsGeometryEventFires_Then_ItGetsAMinWidth()
+        public void Given_ALabelStoodDownForAGridThatStopsSizingIt_When_ItsTextChangesAndOnlyItsParentsGeometryEventFires_Then_ItGetsAMinWidth()
         {
-            // Arrange
+            // Arrange — the registry entry stands in for a grid: only its key is read, and it is gone again before the scope ends.
             using var scope = new ReconcilerScope();
-            var label = MountLabel(scope, "grid grid-cols-2 w-[20px]", "", Sentence);
+            var label = MountLabel(scope, NarrowRow, "", Sentence);
             var parent = label.parent;
+            var grids = ReconcilerContextProbe.Of(scope).GridManipulators;
+            grids[parent] = null!;
+            ManipulatorOf(scope, label).Rederive();
             FireGeometry(parent);
-            ReconcilerContextProbe.Of(scope).GridManipulators.Remove(parent);
+            grids.Remove(parent);
             SetTextQuietly(label, Longer);
 
             // Act
