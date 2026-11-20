@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "ba2f2489ecfb3bdc179e8a096b7622147029e23edf0412b085c9af2953c692c1",
+ "killers": [],
+ "measured_by": "44674652344",
+ "mutant": {
+  "after": ";",
+  "before": "Apply();",
+  "column": 16,
+  "line": 159,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleTextItemManipulator.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "9fc150c13ceb0d70c5e3efc4e19efe0a7b830e00a531490a163c2f73a3dbef0c",
+ "verdict": "survived"
+}

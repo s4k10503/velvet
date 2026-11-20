@@ -1,0 +1,42 @@
+{
+ "detail": "EditMode: 2 failed: Given_AContainerUnitWithNoContainerAbove_When_Measured_Then_ItIsTheSmallViewportUnit(\"cqw\"), Given_ALayerWithAContainerUnitAndAModifier_When_InsideAContainer_Then_ItIsDrawnAtTheModifiersAlpha",
+ "file": "13a1e761db53414f85b8fb2a34e17128e0ee453f5e4c68dbfb66f87fcd650c21",
+ "killers": [
+  {
+   "case": "Velvet.Tests.BoxShadowContainerUnitPanelTests.Given_AContainerUnitWithNoContainerAbove_When_Measured_Then_ItIsTheSmallViewportUnit(\"cqw\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BoxShadowContainerUnitPanelTests.cs": "6f0e84e4012529a302e0ef07caeb760558feac5a0ececa4d43f427072991b28d",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  },
+  {
+   "case": "Velvet.Tests.BoxShadowContainerUnitPanelTests.Given_ALayerWithAContainerUnitAndAModifier_When_InsideAContainer_Then_ItIsDrawnAtTheModifiersAlpha",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BoxShadowContainerUnitPanelTests.cs": "6f0e84e4012529a302e0ef07caeb760558feac5a0ececa4d43f427072991b28d",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  }
+ ],
+ "measured_by": "44674652344",
+ "mutant": {
+  "after": ";",
+  "before": "units[\"cqw\"] = (b => b.InlineSize / 100d, ReadsElement | ReadsViewportBit, CalcType.Length);",
+  "column": 12,
+  "line": 373,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleLengthExpression.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "9fc150c13ceb0d70c5e3efc4e19efe0a7b830e00a531490a163c2f73a3dbef0c",
+ "verdict": "killed"
+}

@@ -1,5 +1,5 @@
 {
- "detail": "EditMode: 1 failed among the 85 case(s) that ran the site: Given_ABoundaryInsideAnElementOfAShownPrimary_When_AnUpdateThatSuspendsThePrimaryCaughtThereAndTheResourceResolves_Then_ItRendersItsChildren",
+ "detail": "EditMode: 1 failed among the 92 case(s) that ran the site: Given_ABoundaryInsideAnElementOfAShownPrimary_When_AnUpdateThatSuspendsThePrimaryCaughtThereAndTheResourceResolves_Then_ItRendersItsChildren",
  "file": "cf3e81988a5f84463b957d04b1281811b3f8dc282942c7bc261df1c79627ac9a",
  "killers": [
   {
@@ -8,11 +8,11 @@
     "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/StickyBoundaryTests.cs": "5917c0e71f7c1dba044af7cdbc153fbdec18381e49fec524b9030ba8cfcc781c",
     "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
     "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
-    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921"
    }
   }
  ],
- "measured_by": "44245775120",
+ "measured_by": "44674652344",
  "mutant": {
   "after": "==",
   "before": "!=",
@@ -26,6 +26,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "299a5fa564965fed4c51ec90d330a92976c1974b488c628bd74f7b6be8bc072a",
+ "tests": "9fc150c13ceb0d70c5e3efc4e19efe0a7b830e00a531490a163c2f73a3dbef0c",
  "verdict": "killed"
 }

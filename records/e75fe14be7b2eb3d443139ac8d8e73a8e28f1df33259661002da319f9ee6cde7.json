@@ -1,0 +1,106 @@
+{
+ "detail": "EditMode: 7 failed: Given_ALabelWithInlineLetterSpacing_When_ResetForReuse_Then_LetterSpacingIsCleared, Given_AnAttachedElementWithATransitionedOpacity_When_ResetForReuse_Then_TheOpacityIsAlreadyBack, Given_AnElementUnderASheetsOpacityTransition_When_ResetForReuse_Then_NoTransitionStarts",
+ "file": "f3750da93fa2c917f4bcfe0f8e10bbc4e156c907f2e65a1aa40b780dcbe658f4",
+ "killers": [
+  {
+   "case": "Velvet.Tests.PooledElementStyleGhostTests.Given_ALabelWithInlineLetterSpacing_When_ResetForReuse_Then_LetterSpacingIsCleared",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PooledElementStyleGhostTests.cs": "c1c87eede467f925d93c9428d223f8eecce1b5000e23d07f3595b3b412102428",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/VariantCleanupTestsBase.cs": "e292c5a83d0e9576da98c8fede4b3f88e954505b61c1d5f86977cb9746879f11",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  },
+  {
+   "case": "Velvet.Tests.PooledElementStyleGhostTests.Given_ASlicedLabelWasRemoved_When_APlainLabelIsRecreatedFromThePool_Then_ItHasNoStaleSliceInset",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PooledElementStyleGhostTests.cs": "c1c87eede467f925d93c9428d223f8eecce1b5000e23d07f3595b3b412102428",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/VariantCleanupTestsBase.cs": "e292c5a83d0e9576da98c8fede4b3f88e954505b61c1d5f86977cb9746879f11",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  },
+  {
+   "case": "Velvet.Tests.PooledElementStyleGhostTests.Given_ATrackingStyledLabelWasRemoved_When_APlainLabelIsRecreatedFromThePool_Then_ItHasNoStaleLetterSpacing",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PooledElementStyleGhostTests.cs": "c1c87eede467f925d93c9428d223f8eecce1b5000e23d07f3595b3b412102428",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/VariantCleanupTestsBase.cs": "e292c5a83d0e9576da98c8fede4b3f88e954505b61c1d5f86977cb9746879f11",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  },
+  {
+   "case": "Velvet.Tests.PooledElementStyleGhostTests.Given_AWidthSizedLabelWasRemoved_When_APlainLabelIsRecreatedFromThePool_Then_ItHasNoStaleWidth",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PooledElementStyleGhostTests.cs": "c1c87eede467f925d93c9428d223f8eecce1b5000e23d07f3595b3b412102428",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/VariantCleanupTestsBase.cs": "e292c5a83d0e9576da98c8fede4b3f88e954505b61c1d5f86977cb9746879f11",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  },
+  {
+   "case": "Velvet.Tests.PooledElementStyleGhostTests.Given_AnAttachedElementWithATransitionedOpacity_When_ResetForReuse_Then_TheOpacityIsAlreadyBack",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PooledElementStyleGhostTests.cs": "c1c87eede467f925d93c9428d223f8eecce1b5000e23d07f3595b3b412102428",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/VariantCleanupTestsBase.cs": "e292c5a83d0e9576da98c8fede4b3f88e954505b61c1d5f86977cb9746879f11",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  },
+  {
+   "case": "Velvet.Tests.PooledElementStyleGhostTests.Given_AnElementUnderASheetsOpacityTransition_When_ResetForReuse_Then_NoTransitionStarts",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PooledElementStyleGhostTests.cs": "c1c87eede467f925d93c9428d223f8eecce1b5000e23d07f3595b3b412102428",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/VariantCleanupTestsBase.cs": "e292c5a83d0e9576da98c8fede4b3f88e954505b61c1d5f86977cb9746879f11",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  },
+  {
+   "case": "Velvet.Tests.PooledElementStyleGhostTests.Given_EveryInlineStylePropertyWritten_When_ResetForReuse_Then_EveryPropertyReadsAsFresh",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PooledElementStyleGhostTests.cs": "c1c87eede467f925d93c9428d223f8eecce1b5000e23d07f3595b3b412102428",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/VariantCleanupTestsBase.cs": "e292c5a83d0e9576da98c8fede4b3f88e954505b61c1d5f86977cb9746879f11",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  }
+ ],
+ "measured_by": "44674652344",
+ "mutant": {
+  "after": ";",
+  "before": "element.style.Clear();",
+  "column": 12,
+  "line": 155,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberElementPoolReset.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "9fc150c13ceb0d70c5e3efc4e19efe0a7b830e00a531490a163c2f73a3dbef0c",
+ "verdict": "killed"
+}

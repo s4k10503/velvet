@@ -8,11 +8,11 @@
     "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ContextSpineRowUpdateAllocationTests.cs": "8ae2d7d01ce5d5ec7451d36f425e96f4b3352fcf069090358b34bb4b7367aee5",
     "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
     "Packages/com.velvet.core/TestUtilities/GCAllocationProbe.cs": "492823c099cf4f4de89da0da69c98d45cfc042070d93e2d0c0b95773310ebc2c",
-    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921"
    }
   }
  ],
- "measured_by": "44245775120",
+ "measured_by": "44674652344",
  "mutant": {
   "after": ";",
   "before": "ancestor.ContextFreeOutput = tree;",
@@ -26,6 +26,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "299a5fa564965fed4c51ec90d330a92976c1974b488c628bd74f7b6be8bc072a",
+ "tests": "9fc150c13ceb0d70c5e3efc4e19efe0a7b830e00a531490a163c2f73a3dbef0c",
  "verdict": "killed"
 }
