@@ -187,7 +187,7 @@ namespace Velvet
             if (utility != null && on)
             {
                 s_themeUtilities[core] = utility;
-                // MUTANT_SURVIVES(equivalent, boundary): a core with `[` or `(` at index 0 is never bound here. One opening with `[` is an arbitrary property, whose utility no entry of s_propertyUtilities writes as a shadow, the only utility themed gates; one opening with `(` reads nothing, as WithShorthandsExpanded refuses a parenthesis at index 0.
+                // MUTANT_SURVIVES(equivalent, boundary): themed gates only a shadow utility. A core opening with `[` is an arbitrary property, whose utility no entry of s_propertyUtilities writes as a shadow; one opening with `(` is never bound, as WithShorthandsExpanded refuses a parenthesis at index 0.
                 var themed = core.IndexOf('[') < 0 && core.IndexOf('(') < 0;
                 Bind(target, new Consumer(utility, priority, declaration, order, context, themed: themed));
             }
