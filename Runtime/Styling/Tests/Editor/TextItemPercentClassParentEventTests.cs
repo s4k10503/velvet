@@ -58,8 +58,7 @@ namespace Velvet.Tests
         public void Given_ALabelWithAPercentMaxWidthClass_When_ItsTextChangesAndOnlyItsParentsGeometryEventFires_Then_ItsMinWidthFollowsTheText()
         {
             // Arrange — in a row this wide the class's cap stays above either text's widest word, and shrink-0 keeps
-            // a label with room for its text measured, so the minimum is the widest word of the text last derived. The
-            // first parent event records the row's direction, so the one under Act finds it unmoved.
+            // a label with room for its text measured, so the minimum is the widest word of the text last derived.
             using var scope = new ReconcilerScope();
             var label = MountLabel(scope, WideRow, "shrink-0 max-w-full", Sentence);
             var parent = label.parent;
