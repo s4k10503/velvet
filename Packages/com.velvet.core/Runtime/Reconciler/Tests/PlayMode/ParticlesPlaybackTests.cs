@@ -1166,26 +1166,59 @@ namespace Velvet.Tests
             Assert.That(clone.aliveParticleCount, Is.GreaterThan(0));
         }
 
-        [UnityTest]
-        public IEnumerator Given_AVisualEffectWithAQuadUnderItAndASceneQuadInFront_When_FramesAdvance_Then_OnlyItsQuadRendersWithTheElementShowingAroundIt()
+        // A VisualEffect with no graph, and a red unit quad under it standing in for what a graph draws.
+        private void MountQuadEffect()
         {
-            // Arrange — a VisualEffect with no graph, and a red unit quad under it standing in for what a graph draws;
-            // the element's green background is what the texture must leave showing around the quad. A blue scene
-            // quad on the Default layer stands between the effect and its camera, which renders the clone's layer
-            // alone.
             _effectGo = new GameObject("fx-vfx");
             var effect = _effectGo.AddComponent<VisualEffect>();
             UnlitQuad(Color.red).transform.SetParent(_effectGo.transform, false);
-            UnlitQuad(Color.blue).transform.position = new Vector3(0f, 0f, -1f);
             _host = new RenderTexturePanelHost("ParticlesPanel", 300, 300);
             _mounted = V.Mount(_host.Root, V.Particles(effect, className: "w-[300px] h-[300px] bg-[#00ff00]"));
+        }
+
+        // Bounded in frames rather than seconds: the effect's texture reaches the element only once a repaint tick has
+        // rendered it, and how many frames a span of seconds holds is the runner's.
+        private IEnumerator WaitUntilTheCoreIsRed()
+        {
+            yield return WaitFramesDraining(1, _host.TargetTexture);
+            for (var frame = 1; frame < 600 && CountRed(Core) <= 5000; frame++)
+            {
+                yield return WaitFramesDraining(1, _host.TargetTexture);
+            }
+        }
+
+        // GREEN_ON_BASE(characterization): the base's effect camera leaves out a scene quad on the Default layer in front of the clone.
+        // Drop `camera.cullingMask = 1 << layer;` from ParticlesEffectView.CreateCamera and this reddens.
+        [UnityTest]
+        public IEnumerator Given_AVisualEffectWithAQuadUnderItAndASceneQuadInFront_When_FramesAdvance_Then_OnlyItsQuadRenders()
+        {
+            // Arrange — a blue scene quad on the Default layer stands between the effect and its camera, which renders
+            // the clone's layer alone.
+            UnlitQuad(Color.blue).transform.position = new Vector3(0f, 0f, -1f);
+            MountQuadEffect();
 
             // Act
-            yield return WaitRealtimeDraining(0.5, _host.TargetTexture);
+            yield return WaitUntilTheCoreIsRed();
 
-            // Assert — the corner lies outside the 100px quad at the element's center.
-            Assert.That((CountRed(Core) > 5000, CountWhere(new RectInt(10, 10, 60, 60), IsGreen) > 3000),
-                Is.EqualTo((true, true)));
+            // Assert
+            Assert.That(CountRed(Core), Is.GreaterThan(5000));
+        }
+
+        // GREEN_ON_BASE(characterization): the base leaves the element's background showing where the effect's camera draws nothing.
+        // Set `camera.backgroundColor = Color.black;` in ParticlesEffectView.CreateCamera and this reddens.
+        [UnityTest]
+        public IEnumerator Given_AVisualEffectWithAQuadUnderIt_When_FramesAdvance_Then_TheElementShowsAroundTheQuad()
+        {
+            // Arrange
+            MountQuadEffect();
+
+            // Act
+            yield return WaitUntilTheCoreIsRed();
+
+            // Assert — the corner lies outside the 100px quad at the element's center; a core the quad never reached
+            // reads -1, which fails the bound whatever the corner holds.
+            Assert.That(CountRed(Core) > 5000 ? CountWhere(new RectInt(10, 10, 60, 60), IsGreen) : -1,
+                Is.GreaterThan(3000));
         }
 
         [UnityTest]
