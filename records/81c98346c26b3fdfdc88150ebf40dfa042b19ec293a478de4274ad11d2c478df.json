@@ -1,23 +1,23 @@
 {
- "detail": "EditMode: 2 failed among the 23 case(s) that ran the site: Given_ARejectedColourClassBesideALayerWhoseSourceReadsNoColour_When_TheLayerResolves_Then_TheLayerIsDrawn, Given_ARejectedColourClassBesideALayerWhoseSourceReadsNoColour_When_TheLayerResolves_Then_TheRingIsDrawn",
+ "detail": "EditMode: 2 failed among the 26 case(s) that ran the site: Given_ARejectedColourClassBesideALayerWhoseSourceReadsNoColour_When_TheLayerResolves_Then_TheLayerIsDrawn, Given_ARejectedColourClassBesideALayerWhoseSourceReadsNoColour_When_TheLayerResolves_Then_TheRingIsDrawn",
  "file": "fdc0c4beb9c4e06ceb2bfe0a811081e89fc18c8ddc11de0a2fcacebfd7d58745",
  "killers": [
   {
    "case": "Velvet.Tests.BoxShadowCustomPropertyTests.Given_ARejectedColourClassBesideALayerWhoseSourceReadsNoColour_When_TheLayerResolves_Then_TheLayerIsDrawn",
    "files": {
-    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BoxShadowCustomPropertyTests.cs": "d5c618fc46d8a4f9c7a5cdc4ccc7c87950bdaf3a8fef5ab49cb21ab6641d6e18",
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BoxShadowCustomPropertyTests.cs": "9533c546827dd0f3c3c00ecc48c99772a1a82e7c11f32731fb9da89d439d4523",
     "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
    }
   },
   {
    "case": "Velvet.Tests.BoxShadowCustomPropertyTests.Given_ARejectedColourClassBesideALayerWhoseSourceReadsNoColour_When_TheLayerResolves_Then_TheRingIsDrawn",
    "files": {
-    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BoxShadowCustomPropertyTests.cs": "d5c618fc46d8a4f9c7a5cdc4ccc7c87950bdaf3a8fef5ab49cb21ab6641d6e18",
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BoxShadowCustomPropertyTests.cs": "9533c546827dd0f3c3c00ecc48c99772a1a82e7c11f32731fb9da89d439d4523",
     "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
    }
   }
  ],
- "measured_by": "44821894526",
+ "measured_by": "44881049514",
  "mutant": {
   "after": "true",
   "before": "false",
@@ -31,6 +31,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "9fc150c13ceb0d70c5e3efc4e19efe0a7b830e00a531490a163c2f73a3dbef0c",
+ "tests": "5f1fb22d375d12b0244c01f62523f5a64017e898c8e44a87cbebf71c6b6ecba6",
  "verdict": "killed"
 }

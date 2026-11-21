@@ -1,8 +1,19 @@
 {
- "detail": "EditMode survived; PlayMode: -",
+ "detail": "EditMode: 1 failed: Given_ASheetWithRadiusRulesAttachedAndReadOnce_When_TheScopeIsReadAgain_Then_TheMountIsToldNothingChanged",
  "file": "f5d9bada18706cc0370b36780693a2adeb94aa15529c28f573f5d846c13e23d9",
- "killers": [],
- "measured_by": "44821894526",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ThemeTokenWatchSheetSignatureTests.Given_ASheetWithRadiusRulesAttachedAndReadOnce_When_TheScopeIsReadAgain_Then_TheMountIsToldNothingChanged",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ThemeTokenWatchSheetSignatureTests.cs": "f7fa722c42ee6769b1b4b2d2709e63b3ca27dcdbcfca4f97a7cf0f5f605a6366",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  }
+ ],
+ "measured_by": "44881049514",
  "mutant": {
   "after": ";",
   "before": "RadiusWatchSheets.EnsureAbove(ctx.ThemeRoot);",
@@ -13,9 +24,9 @@
   "shadowed": []
  },
  "mutator": 10,
- "platform": "PlayMode",
+ "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "9fc150c13ceb0d70c5e3efc4e19efe0a7b830e00a531490a163c2f73a3dbef0c",
- "verdict": "survived"
+ "tests": "5f1fb22d375d12b0244c01f62523f5a64017e898c8e44a87cbebf71c6b6ecba6",
+ "verdict": "killed"
 }
