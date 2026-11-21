@@ -1,22 +1,8 @@
 {
- "detail": "EditMode: 1 failed among the 1 case(s) that ran the site: Given_AResourceCompletingWhileItsFiberRenders_When_TheRenderEndsAndThePanelTicks_Then_TheSuspenseRevealsItsContent",
+ "detail": "EditMode survived; PlayMode: -",
  "file": "d1a04ea06b11289829fdc2cae1dfaa006c04920f839d8d56c3047ce8f53c69a8",
- "killers": [
-  {
-   "case": "Velvet.Tests.AsyncResourceCompletionWhileRenderingTests.Given_AResourceCompletingWhileItsFiberRenders_When_TheRenderEndsAndThePanelTicks_Then_TheSuspenseRevealsItsContent",
-   "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/AsyncResourceCompletionWhileRenderingTests.cs": "b48e236b81f7d9a0f4ef764081418403c697469e5ec856aa85b6b408b66575d9",
-    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
-    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
-    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921",
-    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
-    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
-    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff",
-    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
-   }
-  }
- ],
- "measured_by": "44810141121",
+ "killers": [],
+ "measured_by": "44896906052",
  "mutant": {
   "after": "!=",
   "before": "==",
@@ -29,9 +15,9 @@
   ]
  },
  "mutator": 10,
- "platform": "EditMode",
+ "platform": "PlayMode",
  "schema": 3,
  "stood": null,
- "tests": "710a6fac8ca49c9d16c6dc413a3f6a4e0586bf4a48b23be0f8706949a13a7c56",
- "verdict": "killed"
+ "tests": "9fc150c13ceb0d70c5e3efc4e19efe0a7b830e00a531490a163c2f73a3dbef0c",
+ "verdict": "survived"
 }

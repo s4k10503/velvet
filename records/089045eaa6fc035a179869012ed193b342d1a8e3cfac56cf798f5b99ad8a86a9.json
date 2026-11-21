@@ -1,15 +1,8 @@
 {
- "detail": "EditMode: 1 failed: Given_AnElementForwardingToItsContent_When_AWriteNamesTheElementWhileItsChildrenAreCreated_Then_TheWriteIsMadeAtOnce; 1 other editor(s) were up",
+ "detail": "EditMode survived; PlayMode: -",
  "file": "2d96316571cbdb5e56225446ad6cea63e01882220cc9832a3ff5fae1e727b8be",
- "killers": [
-  {
-   "case": "Velvet.Tests.CreatedContainerHierarchyWriteTests.Given_AnElementForwardingToItsContent_When_AWriteNamesTheElementWhileItsChildrenAreCreated_Then_TheWriteIsMadeAtOnce",
-   "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/CreatedContainerHierarchyWriteTests.cs": "eb362582d4cd53cbd905d84e304140395824f52652ba09ac96b48f2f266c748f"
-   }
-  }
- ],
- "measured_by": "44810141121",
+ "killers": [],
+ "measured_by": "44896906052",
  "mutant": {
   "after": ";",
   "before": "ChildListWrites.MarkCreated(element);",
@@ -20,9 +13,9 @@
   "shadowed": []
  },
  "mutator": 10,
- "platform": "EditMode",
+ "platform": "PlayMode",
  "schema": 3,
  "stood": null,
- "tests": "710a6fac8ca49c9d16c6dc413a3f6a4e0586bf4a48b23be0f8706949a13a7c56",
- "verdict": "killed"
+ "tests": "9fc150c13ceb0d70c5e3efc4e19efe0a7b830e00a531490a163c2f73a3dbef0c",
+ "verdict": "survived"
 }

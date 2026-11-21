@@ -1,15 +1,8 @@
 {
- "detail": "EditMode: 1 failed among the 2 case(s) that ran the site: Given_ANestedStartAndEndBetweenAStartAndItsEnd_When_TheOuterEndIsLookedUp_Then_TheOuterEndIsFound",
+ "detail": "EditMode survived; PlayMode: -",
  "file": "0757ce9921ee374eaa9ff2e78d2c9549c02397de54bdeb04fd2f06cadcb7f97f",
- "killers": [
-  {
-   "case": "Velvet.Tests.FocusScopeRangeEndLookupTests.Given_ANestedStartAndEndBetweenAStartAndItsEnd_When_TheOuterEndIsLookedUp_Then_TheOuterEndIsFound",
-   "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/FocusScopeRangeEndLookupTests.cs": "ec85ed55f803dd2b0c61802c899fa3c273d781e808ec34048b4d1f90670622de"
-   }
-  }
- ],
- "measured_by": "44810141121",
+ "killers": [],
+ "measured_by": "44896906052",
  "mutant": {
   "after": ";",
   "before": "depth--;",
@@ -20,9 +13,9 @@
   "shadowed": []
  },
  "mutator": 10,
- "platform": "EditMode",
+ "platform": "PlayMode",
  "schema": 3,
  "stood": null,
- "tests": "710a6fac8ca49c9d16c6dc413a3f6a4e0586bf4a48b23be0f8706949a13a7c56",
- "verdict": "killed"
+ "tests": "9fc150c13ceb0d70c5e3efc4e19efe0a7b830e00a531490a163c2f73a3dbef0c",
+ "verdict": "survived"
 }

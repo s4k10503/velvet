@@ -2,7 +2,7 @@
  "detail": "EditMode survived; PlayMode: -",
  "file": "651199c4598ac24a78ae6331ca23f222b65a56cf2b2d5eb9aeafc1a43a24f71a",
  "killers": [],
- "measured_by": "44895180756",
+ "measured_by": "44896906052",
  "mutant": {
   "after": ";",
   "before": "host.Schedule(mountPoint, () => host.Run(fiber.MountPoint, fiber, RunEffects));",
@@ -16,6 +16,6 @@
  "platform": "PlayMode",
  "schema": 3,
  "stood": null,
- "tests": "be17b28dd2884eaf5e5b7939850c48e8eea8b246f10c9784aeeb3898e3be5005",
+ "tests": "9fc150c13ceb0d70c5e3efc4e19efe0a7b830e00a531490a163c2f73a3dbef0c",
  "verdict": "survived"
 }
