@@ -1,5 +1,0 @@
-/* Rules BoxShadowUnresolvedPanelTests reads: two custom properties a stylesheet declares, which a shadow and a ring width read. */
-.shadow-var-host {
-    --w: 3px;
-    --x: 0 0 5px rgb(255, 0, 0);
-}

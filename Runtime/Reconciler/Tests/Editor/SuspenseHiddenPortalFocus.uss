@@ -1,4 +1,0 @@
-/* The rule SuspenseHiddenPortalFocusTests hides a scope candidate with. */
-.portal-focus-stylesheet-hidden {
-    display: none;
-}

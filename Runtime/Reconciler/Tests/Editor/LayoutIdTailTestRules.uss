@@ -1,5 +1,0 @@
-.layout-id-test-turn-fade {
-    transition-property: rotate, opacity;
-    transition-duration: 1s;
-    transition-timing-function: linear;
-}

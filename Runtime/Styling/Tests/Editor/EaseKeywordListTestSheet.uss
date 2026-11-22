@@ -1,7 +1,0 @@
-/* A rule whose timing function gives each of its properties its own keyword, which StyleEaseCurveTransitionTests runs a
-   width transition by. */
-.ease-in-then-out-test {
-    transition-property: height, width;
-    transition-duration: 1s;
-    transition-timing-function: ease-in, ease-out;
-}

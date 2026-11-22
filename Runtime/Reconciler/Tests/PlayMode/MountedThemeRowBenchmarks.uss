@@ -1,9 +1,0 @@
-/* Tokens the mounted row benchmarks run under: a palette colour, a text size with its paired line height, and breakpoints. */
-:root {
-    --color-brandbench: rgb(255, 0, 102);
-    --text-sizebench: 20px;
-    --text-sizebench--line-height: 1.5;
-    --text-sm--line-height: 2;
-    --breakpoint-xsbench: 480px;
-    --breakpoint-sm: 800px;
-}
