@@ -1087,68 +1087,6 @@ namespace Velvet.Tests
             return effect;
         }
 
-        private int NotGreen() => CountWhere(new RectInt(0, 0, 300, 300), p => !IsGreen(p));
-
-        private ParticlesElement MountManualLoop()
-        {
-            var effect = CreateLoopEffect();
-            _host = new RenderTexturePanelHost("ParticlesPanel", 300, 300);
-            _mounted = V.Mount(_host.Root,
-                V.Particles(effect, className: "w-[300px] h-[300px] bg-[#00ff00]", playOn: PlayTrigger.Manual));
-            return _host.Root.Q<ParticlesElement>();
-        }
-
-        // Plays the element and waits, in frames, until the graph's pixels have reached it. The capability reading
-        // stays in the failure message of the case that asserts on it.
-        private IEnumerator PlayAndWaitUntilItDraws(ParticlesElement element, System.Action<string> report)
-        {
-            element.Play();
-            var clone = _mounted.Root.Reconciler.Context.ParticlesBindings[element].EffectHost;
-            yield return VfxGraphCapability.IgnoreIfCannotDraw(clone, report);
-            yield return WaitFramesDraining(1, _host.TargetTexture);
-            for (var frame = 1; frame < 600 && NotGreen() <= 50; frame++)
-            {
-                yield return WaitFramesDraining(1, _host.TargetTexture);
-            }
-        }
-
-        // GREEN_ON_BASE(characterization): the base's Play starts the Manual clone, whose pixels reach the element. Make ParticlesEffectView.Play do nothing and this reddens.
-        [UnityTest]
-        public IEnumerator Given_AManualVisualEffectGraph_When_Played_Then_ItDraws()
-        {
-            // Arrange
-            var element = MountManualLoop();
-            var capability = "";
-
-            // Act
-            yield return PlayAndWaitUntilItDraws(element, reading => capability = reading);
-
-            // Assert
-            Assert.That(NotGreen(), Is.GreaterThan(50), capability);
-        }
-
-        // GREEN_ON_BASE(characterization): the base's Stop clears the clone's particles, so the element shows its background again. Drop `host.Reinit();` from ParticlesEffectView.Stop and this reddens.
-        [UnityTest]
-        public IEnumerator Given_AManualVisualEffectGraphDrawing_When_Stopped_Then_ItDrawsNothing()
-        {
-            // Arrange
-            var element = MountManualLoop();
-            var capability = "";
-            yield return PlayAndWaitUntilItDraws(element, reading => capability = reading);
-            var drawing = NotGreen() > 50;
-
-            // Act
-            element.Stop();
-            yield return WaitFramesDraining(1, _host.TargetTexture);
-            for (var frame = 1; frame < 600 && NotGreen() > 0; frame++)
-            {
-                yield return WaitFramesDraining(1, _host.TargetTexture);
-            }
-
-            // Assert — a graph that never drew while playing reads -1, which no cleared element does
-            Assert.That(drawing ? NotGreen() : -1, Is.EqualTo(0), capability);
-        }
-
         private VisualEffect MountedClone() => _mounted.Root.Reconciler.Context.ParticlesBindings[_host.Root.Q<ParticlesElement>()].EffectHost;
 
         // Bounded in frames rather than seconds, so the frames this fixture's remarks say stall on a GPU-less runner
@@ -1179,6 +1117,49 @@ namespace Velvet.Tests
 
             // Assert — a count that never rose once played reads as int.MaxValue, which no unplayed count is under
             Assert.That(clone.aliveParticleCount > 0 ? unplayed : int.MaxValue, Is.LessThanOrEqualTo(0));
+        }
+
+        // GREEN_ON_BASE(characterization): the base's Play starts a Manual clone, which then holds live particles. Make ParticlesEffectView.Play do nothing and this reddens.
+        [UnityTest]
+        public IEnumerator Given_AManualVisualEffectGraph_When_Played_Then_TheCloneHoldsLiveParticles()
+        {
+            // Arrange
+            var effect = CreateLoopEffect();
+            _host = new RenderTexturePanelHost("ParticlesPanel", 300, 300);
+            _mounted = V.Mount(_host.Root, V.Particles(effect, className: "w-[300px] h-[300px]", playOn: PlayTrigger.Manual));
+            var clone = MountedClone();
+
+            // Act
+            _host.Root.Q<ParticlesElement>().Play();
+            yield return WaitUntilParticlesAreAlive(clone);
+
+            // Assert
+            Assert.That(clone.aliveParticleCount, Is.GreaterThan(0));
+        }
+
+        // GREEN_ON_BASE(characterization): the base's Stop clears a playing clone's particles. The template spawns at a constant rate with an infinite loop, so drop `host.Reinit();` from ParticlesEffectView.Stop and the clone keeps spawning and this reddens.
+        [UnityTest]
+        public IEnumerator Given_AManualVisualEffectGraphWithLiveParticles_When_Stopped_Then_TheCloneHoldsNoLiveParticle()
+        {
+            // Arrange
+            var effect = CreateLoopEffect();
+            _host = new RenderTexturePanelHost("ParticlesPanel", 300, 300);
+            _mounted = V.Mount(_host.Root, V.Particles(effect, className: "w-[300px] h-[300px]", playOn: PlayTrigger.Manual));
+            var element = _host.Root.Q<ParticlesElement>();
+            var clone = MountedClone();
+            element.Play();
+            yield return WaitUntilParticlesAreAlive(clone);
+            var played = clone.aliveParticleCount > 0;
+
+            // Act
+            element.Stop();
+            for (var frame = 0; frame < 600 && (frame == 0 || clone.aliveParticleCount > 0); frame++)
+            {
+                yield return WaitFramesDraining(1, _host.TargetTexture);
+            }
+
+            // Assert — a clone that never held a live particle reads as int.MaxValue, which no cleared count equals
+            Assert.That(played ? clone.aliveParticleCount : int.MaxValue, Is.EqualTo(0));
         }
 
         // GREEN_ON_BASE(characterization): flipping a Manual clone to Mount already starts it from the source's initial event.
