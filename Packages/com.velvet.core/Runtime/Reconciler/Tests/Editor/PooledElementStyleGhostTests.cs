@@ -262,6 +262,7 @@ namespace Velvet.Tests
         }
 
         private const string FadeSheet = "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/LayoutIdTestRules.uss";
+        private const string SizedSheet = "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PooledElementSizedTransitionRules.uss";
 
         // The inline value `write` gives the element settles under the sheet's one-second linear transition, the
         // reset runs, and half a second later `read` is returned. NaN where the value never settled at `settled`,
@@ -273,6 +274,7 @@ namespace Velvet.Tests
             var now = 100.0;
             EditorPanelTestHelpers.SetPanelTimeFunction(host.Panel, () => now);
             host.Root.styleSheets.Add(UnityEditor.AssetDatabase.LoadAssetAtPath<StyleSheet>(FadeSheet));
+            host.Root.styleSheets.Add(UnityEditor.AssetDatabase.LoadAssetAtPath<StyleSheet>(SizedSheet));
             var element = new VisualElement();
             element.AddToClassList(transitionClass);
             host.Root.Add(element);
