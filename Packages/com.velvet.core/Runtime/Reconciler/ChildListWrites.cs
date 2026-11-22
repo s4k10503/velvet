@@ -610,7 +610,8 @@ namespace Velvet
             }
         }
 
-        // Puts the recorded writes on the live lists in the order they were made and ends recording.
+        // Puts the recorded writes on the live lists in the order they were made. Recording goes on: only EndRecording
+        // ends it, and a flush made mid-pass applies what is recorded while the pass keeps recording.
         internal static void ApplyRecorded()
         {
             if (s_applying) return;

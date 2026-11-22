@@ -121,6 +121,7 @@ namespace Velvet
                 Shape = UtilityShape.Of(utility);
                 RetypesColour = StyleCustomPropertyClass.RetypesColour(utility);
                 ForcesUnset = StyleCustomPropertyClass.UnsetsLiteralStop(utility);
+                // MUTANT_SURVIVES(equivalent, clause removed): a forced-unset stop is a from-, via- or to- utility, which no inline layer parses, so the hint only picks a probe that finds no property either way, and TryBuild, the other reader, is never reached for it.
                 AddedHint = RetypesColour || ForcesUnset ? "color" : DefaultHint(utility, Shape);
                 EffectiveHint = RetypesColour || ForcesUnset ? "color" : Shape.Hint ?? AddedHint;
                 Sides = StyleCustomPropertyClass.SidesOf(utility, Shape);
@@ -137,6 +138,7 @@ namespace Velvet
                 {
                     Property = WrittenProperty(utility, Shape, AddedHint, out _);
                     UnsetUtility = Property != null ? null
+                        // MUTANT_SURVIVES(equivalent, boundary): UtilityShape.Of gives MainOpen as -1 or at least 1, never 0.
                         : Shape.MainOpen > 0
                             ? PaintedUnset(utility.Substring(utility[0] == '-' ? 1 : 0, Shape.MainOpen - (utility[0] == '-' ? 1 : 0)),
                                 EffectiveHint)
@@ -185,8 +187,9 @@ namespace Velvet
             if (utility != null && on)
             {
                 s_themeUtilities[core] = utility;
-                Bind(target, new Consumer(utility, priority, declaration, order, context,
-                    themed: core.IndexOf('[') < 0 && core.IndexOf('(') < 0));
+                // MUTANT_SURVIVES(equivalent, boundary): themed gates only a shadow utility. A core opening with `[` is an arbitrary property, whose utility no entry of s_propertyUtilities writes as a shadow; one opening with `(` is never bound, as WithShorthandsExpanded refuses a parenthesis at index 0.
+                var themed = core.IndexOf('[') < 0 && core.IndexOf('(') < 0;
+                Bind(target, new Consumer(utility, priority, declaration, order, context, themed: themed));
             }
             else if (!on && (utility ?? (s_themeUtilities.TryGetValue(core, out var last) ? last : null)) is { } leaving)
             {
@@ -574,6 +577,7 @@ namespace Velvet
             }
             var built = s_built.ToString();
             var slash = StyleColorValueParser.ColorModifierSlashIndex(built, 0);
+            // MUTANT_SURVIVES(equivalent, boundary): built opens with the utility's name, so a modifier's slash is never at index 0.
             if (slash >= 0 && StyleColorValueParser.ModifierOutside(built.AsSpan(slash + 1)))
             {
                 return false;

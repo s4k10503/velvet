@@ -289,6 +289,19 @@ namespace Velvet.Tests
             Assert.That(reader, Is.Null);
         }
 
+        // GREEN_ON_BASE(characterization): the base reads neither, whose modifier after the bracket is no number. Removing the
+        // `!number.TrimStart("0123456789.".AsSpan()).IsEmpty` clause from TryReadNumericModifier reads both as a reader.
+        [TestCase("shadow-[var(--x)]/half")]
+        [TestCase("inset-shadow-[var(--x)]/50x")]
+        public void Given_AModifierThatIsNoNumberAfterABracketOfAShadow_When_Read_Then_ItIsNoReader(string cls)
+        {
+            // Act
+            var reader = StyleCustomPropertyClass.Consumer(cls);
+
+            // Assert
+            Assert.That(reader, Is.Null);
+        }
+
         // Tailwind mixes the value of a ring bracket into a colour when it has an opacity modifier, a value that is none being
         // invalid where the box-shadow reads it (Chromium computes no box-shadow for `ring-2 ring-[number:5px]/50`).
         [TestCase("ring-2 ring-[number:5px]/50")]
@@ -667,8 +680,11 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base draws these rings as Chromium does, and the keyword gate must keep them.
+        // For the modifier opening with `var(`: change `modifier.IndexOf("var(".AsSpan()) < 0` to `<= 0` in MixesNonColour
+        // and the ring is discarded.
         [TestCase("ring-2 ring-[length:unset]/50")]
         [TestCase("ring-2 ring-[unset]/(--a)")]
+        [TestCase("ring-2 ring-[unset]/var(--a)")]
         public void Given_AKeywordBehindAModifierThatIsNoColourMix_When_Extracted_Then_TheRingIsDrawn(string classes)
         {
             // Act

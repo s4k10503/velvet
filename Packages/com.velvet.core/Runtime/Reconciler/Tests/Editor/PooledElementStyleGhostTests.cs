@@ -262,6 +262,7 @@ namespace Velvet.Tests
         }
 
         private const string FadeSheet = "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/LayoutIdTestRules.uss";
+        private const string SizedSheet = "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PooledElementSizedTransitionRules.uss";
 
         // The inline value `write` gives the element settles under the sheet's one-second linear transition, the
         // reset runs, and half a second later `read` is returned. NaN where the value never settled at `settled`,
@@ -273,6 +274,7 @@ namespace Velvet.Tests
             var now = 100.0;
             EditorPanelTestHelpers.SetPanelTimeFunction(host.Panel, () => now);
             host.Root.styleSheets.Add(UnityEditor.AssetDatabase.LoadAssetAtPath<StyleSheet>(FadeSheet));
+            host.Root.styleSheets.Add(UnityEditor.AssetDatabase.LoadAssetAtPath<StyleSheet>(SizedSheet));
             var element = new VisualElement();
             element.AddToClassList(transitionClass);
             host.Root.Add(element);
@@ -317,6 +319,61 @@ namespace Velvet.Tests
 
             // Assert — fully back to no rotation, not part-way back.
             Assert.That(degrees, Is.EqualTo(0f).Within(1e-3f));
+        }
+
+        // FiberElementPoolReset.ClearLateClearedStyle leaves the text auto size to IStyle.Clear on the strength of this
+        // case and the next: the engine animates no such property, so its clear needs no zero duration around it.
+        // GREEN_ON_BASE(characterization): the engine's animatable property set holds no text auto size, which is the fact the base's reset leans on.
+        // No cut of this repository reddens it, since it reads only the engine; it reddens when an editor update adds
+        // the property to that set.
+        [Test]
+        public void Given_TheEnginesAnimatablePropertySet_When_ItIsReadForTextAutoSize_Then_TextAutoSizeIsNotInIt()
+        {
+            // Arrange
+            var util = typeof(VisualElement).Assembly.GetType("UnityEngine.UIElements.StyleSheets.StylePropertyUtil", throwOnError: true)!;
+            var set = (System.Collections.IEnumerable)util
+                .GetField("s_AnimatableProperties", BindingFlags.NonPublic | BindingFlags.Static)!.GetValue(null)!;
+            var names = new List<string>();
+            foreach (var id in set) names.Add(id.ToString());
+
+            // Act
+            var holdsTextAutoSize = names.Contains("UnityTextAutoSize");
+
+            // Assert — a set that read without opacity was not read, and reports as such rather than as absent.
+            Assert.AreEqual("False", names.Contains("Opacity") ? holdsTextAutoSize.ToString() : "set unread");
+        }
+
+        // GREEN_ON_BASE(characterization): the engine's Clear removes an inline text auto size, which is the fact the base's reset leans on.
+        // No cut of this repository reddens it, since it reads only the engine; it reddens when an editor update
+        // stops Clear removing the property.
+        [Test]
+        public void Given_AnInlineTextAutoSize_When_StyleIsCleared_Then_TheKeywordReadsAsUnset()
+        {
+            // Arrange
+            var element = new VisualElement();
+            element.style.unityTextAutoSize = StyleKeyword.Initial;
+
+            // Act
+            element.style.Clear();
+
+            // Assert
+            Assert.AreEqual(StyleKeyword.Null, element.style.unityTextAutoSize.keyword);
+        }
+
+        // GREEN_ON_BASE(characterization): the base clears an inline background size while the reset's zero transition duration still applies.
+        // Drop `style.backgroundSize = StyleKeyword.Null;` from ClearLateClearedStyle and Clear removes it after the
+        // duration, so the sheet's transition runs.
+        [Test]
+        public void Given_AnElementUnderASheetsBackgroundSizeTransition_When_ResetForReuse_Then_NoTransitionStarts()
+        {
+            // Arrange / Act — Clear removes the inline background size after the inline zero duration, so the
+            // reset clears it itself while the zero still applies; the sheet's size is 50px.
+            var width = ReadHalfASecondAfterResetUnderASheetTransition("layout-id-test-sized",
+                element => element.style.backgroundSize = new BackgroundSize(150f, 150f),
+                element => element.resolvedStyle.backgroundSize.x.value, 150f);
+
+            // Assert — back at the sheet's size, not part-way from the inline one.
+            Assert.That(width, Is.EqualTo(50f).Within(1e-3f));
         }
 
         // The inline rule a source asset gives an element; no element Velvet builds from C# has one, which is why
