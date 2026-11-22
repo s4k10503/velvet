@@ -28,7 +28,8 @@ whose required workflows last failed on push, a head behind the base's newest re
 head on another repository, a long-lived head, and what `scripts/pr/maintenance_line.py` refuses;
 `merge_without_branch_deletion.py` for the flag;
 `merge_branch_held_by_worktree.py` for a branch git will refuse to delete;
-`merge_onto_unpublished_release.py` for a base holding a release nobody dispatched.
+`merge_onto_unpublished_release.py` for a base holding a release nobody dispatched;
+`merge_off_milestone.py` for a milestone that does not hold.
 `scripts/pr/settle.py` reports these together with the ones its own docstring names as having no
 hook, and that reporting is the convenience; these are what hold when nobody runs it.
 """

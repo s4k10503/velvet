@@ -2,6 +2,7 @@ Packages/com.velvet.core/CodeGen/CompilerWeaver.Plan.cs	2
 Packages/com.velvet.core/CodeGen/CompilerWeaver.cs	13
 Packages/com.velvet.core/CodeGen/MetadataRegistrationWeaver.cs	3
 Packages/com.velvet.core/CodeGen/ReactiveScopeRegions.Dependencies.cs	5
+Packages/com.velvet.core/Editor/StyleSheets/UssCustomPropertyText.cs	1
 Packages/com.velvet.core/Runtime/Component/ClassNameParseCache.cs	2
 Packages/com.velvet.core/Runtime/Component/ComponentFiber.cs	1
 Packages/com.velvet.core/Runtime/Component/ComponentMethodRegistry.cs	2
@@ -11,6 +12,7 @@ Packages/com.velvet.core/Runtime/Component/V.Mount.cs	1
 Packages/com.velvet.core/Runtime/Component/V.cs	1
 Packages/com.velvet.core/Runtime/EngineMember.cs	3
 Packages/com.velvet.core/Runtime/Hooks/FocusManager.cs	1
+Packages/com.velvet.core/Runtime/Hooks/HookQueries.cs	1
 Packages/com.velvet.core/Runtime/Hooks/HookQuery.cs	1
 Packages/com.velvet.core/Runtime/Hooks/Hooks.cs	4
 Packages/com.velvet.core/Runtime/Hooks/MutationCache.cs	5
@@ -28,10 +30,11 @@ Packages/com.velvet.core/Runtime/Reconciler/FiberBoxShadowApplier.cs	1
 Packages/com.velvet.core/Runtime/Reconciler/FiberClipPathApplier.cs	2
 Packages/com.velvet.core/Runtime/Reconciler/FiberElementCleaner.cs	1
 Packages/com.velvet.core/Runtime/Reconciler/FiberEventBindingManager.cs	2
-Packages/com.velvet.core/Runtime/Reconciler/FiberFocusNavigator.cs	14
+Packages/com.velvet.core/Runtime/Reconciler/FiberFocusNavigator.cs	17
 Packages/com.velvet.core/Runtime/Reconciler/FiberGestureApplier.cs	1
 Packages/com.velvet.core/Runtime/Reconciler/FiberGradientApplier.cs	1
 Packages/com.velvet.core/Runtime/Reconciler/FiberKeying.cs	1
+Packages/com.velvet.core/Runtime/Reconciler/FiberLayoutReflow.cs	2
 Packages/com.velvet.core/Runtime/Reconciler/FiberNodePatcher.cs	15
 Packages/com.velvet.core/Runtime/Reconciler/FiberOutletScope.cs	1
 Packages/com.velvet.core/Runtime/Reconciler/FiberPaintLeases.cs	5
@@ -86,12 +89,13 @@ Packages/com.velvet.core/Runtime/Styling/StyleContainerVariantManipulator.cs	1
 Packages/com.velvet.core/Runtime/Styling/StyleCustomProperties.Stylesheet.cs	7
 Packages/com.velvet.core/Runtime/Styling/StyleCustomProperties.Substitution.cs	2
 Packages/com.velvet.core/Runtime/Styling/StyleCustomProperties.cs	17
-Packages/com.velvet.core/Runtime/Styling/StyleCustomPropertyClass.cs	1
+Packages/com.velvet.core/Runtime/Styling/StyleCustomPropertyClass.cs	9
 Packages/com.velvet.core/Runtime/Styling/StyleDivideManipulator.cs	2
-Packages/com.velvet.core/Runtime/Styling/StyleEaseCurve.cs	7
+Packages/com.velvet.core/Runtime/Styling/StyleEaseCurve.cs	8
 Packages/com.velvet.core/Runtime/Styling/StyleFamilyOrder.cs	3
 Packages/com.velvet.core/Runtime/Styling/StyleFilterEngineWrite.cs	4
 Packages/com.velvet.core/Runtime/Styling/StyleFilterValueParser.cs	4
+Packages/com.velvet.core/Runtime/Styling/StyleFlexMinSizeManipulator.cs	2
 Packages/com.velvet.core/Runtime/Styling/StyleFontUnits.cs	5
 Packages/com.velvet.core/Runtime/Styling/StyleGradientClass.cs	20
 Packages/com.velvet.core/Runtime/Styling/StyleGridClass.cs	2
@@ -102,7 +106,7 @@ Packages/com.velvet.core/Runtime/Styling/StyleIntegerUtility.cs	1
 Packages/com.velvet.core/Runtime/Styling/StyleLengthExpression.cs	6
 Packages/com.velvet.core/Runtime/Styling/StyleNamedTextSize.cs	5
 Packages/com.velvet.core/Runtime/Styling/StyleRelativeLengths.cs	3
-Packages/com.velvet.core/Runtime/Styling/StyleRingClass.cs	15
+Packages/com.velvet.core/Runtime/Styling/StyleRingClass.cs	21
 Packages/com.velvet.core/Runtime/Styling/StyleRuleOrder.cs	2
 Packages/com.velvet.core/Runtime/Styling/StyleShadowClass.cs	10
 Packages/com.velvet.core/Runtime/Styling/StyleSlotRecipe.cs	1
@@ -111,6 +115,7 @@ Packages/com.velvet.core/Runtime/Styling/StyleStackedVariantManipulator.cs	1
 Packages/com.velvet.core/Runtime/Styling/StyleTextBalanceManipulator.cs	3
 Packages/com.velvet.core/Runtime/Styling/StyleTextEffectClass.cs	1
 Packages/com.velvet.core/Runtime/Styling/StyleTextEffectResolver.cs	4
+Packages/com.velvet.core/Runtime/Styling/StyleTextItemManipulator.cs	3
 Packages/com.velvet.core/Runtime/Styling/StyleThemeClass.cs	8
 Packages/com.velvet.core/Runtime/Styling/StyleThemeTokens.cs	7
 Packages/com.velvet.core/Runtime/Styling/StyleTransformValueParser.cs	6

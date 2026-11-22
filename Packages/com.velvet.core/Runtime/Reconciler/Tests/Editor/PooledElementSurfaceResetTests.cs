@@ -59,7 +59,7 @@ namespace Velvet.Tests
         // Get-only handles the walk does not descend into. Each is somebody else's subject.
         private static readonly Dictionary<string, string> NotDescended = new()
         {
-            ["style"] = "the inline scrub is enumerated in FiberElementPoolReset.ResetInlineStyle and pinned by PooledElementStyleGhostTests",
+            ["style"] = "the inline style is cleared by FiberElementPoolReset.ResetCommonState and pinned by PooledElementStyleGhostTests",
             ["schedule"] = "a handle onto items a pool return does not reach, which FiberElementPoolReset's limitations state",
             ["experimental"] = "reaches the same animation and style surfaces from a second direction",
         };
@@ -90,6 +90,7 @@ namespace Velvet.Tests
             public Action<VisualElement, object> Write;
         }
 
+        // GREEN_ON_BASE(refactor): every widget's non-style surface reads back fresh, which the switch to Clear keeps.
         // The floors are the measured slot count of each widget, and they are tight on purpose. Twice now a
         // narrowing went unnoticed because the number below had room in it: once when the walk stopped at
         // VisualElement, and once when these were left behind after it began descending into handles. A
