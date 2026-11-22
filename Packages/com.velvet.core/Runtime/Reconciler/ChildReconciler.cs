@@ -988,10 +988,25 @@ namespace Velvet
 
         // Skipping a node the parent handed back by instance leaves every component in its subtree unreached, which
         // drops the render this pass owes one with work pending. Where the reconciling fiber is marked
-        // (FiberPendingWork), this reconcile skips only a node nothing below can be rendered by a fiber, and patches
-        // every other.
+        // (FiberPendingWork), or owes a Portal its retarget (OwesPortalRetarget), this reconcile skips
+        // only a node nothing below can be rendered by a fiber, and patches every other.
         private bool SkipsIdentical(VNode? node)
-            => _ctx.FiberStack.Current is not { PendingWorkBelow: true } || !FiberPendingWork.MayHoldFiber(node);
+            => !FiberPendingWork.MayHoldFiber(node)
+                || _ctx.FiberStack.Current is not { PendingWorkBelow: true } && !OwesPortalRetarget(_ctx.FiberStack.Current);
+
+        // Read from the Portal entries, which clear ChildrenPending where the patch that mounts the children completes,
+        // so a parked, aborted or subsumed reconcile of the fiber keeps patching until then. A fiber none of whose
+        // Portals is pending any longer, a Portal it stopped returning included, drops the mark here.
+        private bool OwesPortalRetarget(ComponentFiber? fiber)
+        {
+            if (fiber is not { PortalRetargetOwed: true }) return false;
+            foreach (var entry in _ctx.PortalState.Stored.Values)
+            {
+                if (entry.ChildrenPending && ReferenceEquals(entry.DeclaringFiber, fiber)) return true;
+            }
+            fiber.PortalRetargetOwed = false;
+            return false;
+        }
 
         // Returns false only on a yield (this phase parked its resume point); true when the phase is done
         // with the range — including when an abort cut it short, which the dispatcher detects separately.

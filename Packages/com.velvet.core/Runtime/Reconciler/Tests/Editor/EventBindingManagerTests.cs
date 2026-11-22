@@ -454,6 +454,34 @@ namespace Velvet.Tests
             Assert.DoesNotThrow(() => _manager.UnbindAll(element));
         }
 
+        // GREEN_ON_BASE(characterization): pins an engine refusal that UnbindAll's comment relies on; this branch
+        // changes none of it.
+        [Test]
+        public void Given_ARemovableCallback_When_ItsOwnHandlerUnregistersAllRemovableCallbacks_Then_TheEngineRefusesWithInvalidOperation()
+        {
+            // Arrange
+            var element = new VisualElement();
+            Exception caught = null;
+            element.RegisterCallback<ClickEvent>(_ =>
+            {
+                try
+                {
+                    element.UnregisterAllRemovableCallbacks();
+                }
+                catch (Exception thrown)
+                {
+                    caught = thrown;
+                }
+            }, CallbackOptions.Removable);
+
+            // Act
+            using var click = ClickEvent.GetPooled();
+            element.SimulateEvent(click);
+
+            // Assert
+            Assert.That(caught, Is.InstanceOf<InvalidOperationException>());
+        }
+
         [TestCaseSource(nameof(SameDelegateCases))]
         public void Given_TypedEventBindingSameDelegate_When_Compared_Then_HasSameBindings(FiberEventBinding first, FiberEventBinding second)
         {

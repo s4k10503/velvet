@@ -128,6 +128,17 @@ def main():
         sys.stdout.write(json.dumps([{"type": "required_status_checks", "parameters": {
             "required_status_checks": [{"context": context} for context in REQUIRED[branch]]}}]))
         return 0
+    if argv[0] == "api" and "/milestones?" in argv[-1]:
+        sys.stdout.write(os.environ.get("VELVET_BASE_CHECK_MILESTONES") or json.dumps(
+            [{"number": 7, "title": "Infrastructure", "state": "open"}]))
+        return 0
+    if argv[0] == "api" and "/pulls/" in argv[-1] and "/files?" in argv[-1]:
+        number = argv[-1].split("/pulls/", 1)[1].split("/", 1)[0]
+        if number not in BY_NUMBER:
+            return unmodelled()
+        first = argv[-1].endswith("page=1")
+        sys.stdout.write(json.dumps(BY_NUMBER[number].get("files", []) if first else []))
+        return 0
     if argv[0] == "api" and "/pulls/" in argv[1]:
         path = selected(argv)
         number = argv[1].rsplit("/", 1)[1]
@@ -245,7 +256,9 @@ def at(project, head, base):
     sha = tip(project, head)
     return {"number": 1, "draft": False, "mergeable_state": "clean",
             "head": {"ref": head, "sha": sha, "repo": {"full_name": "s4k10503/velvet"}},
-            "base": {"ref": base, "repo": {"full_name": "s4k10503/velvet"}}}
+            "base": {"ref": base, "repo": {"full_name": "s4k10503/velvet"}},
+            "milestone": {"number": 7, "title": "Infrastructure", "state": "open"},
+            "changed_files": 0, "files": []}
 
 
 def tip(project, branch):

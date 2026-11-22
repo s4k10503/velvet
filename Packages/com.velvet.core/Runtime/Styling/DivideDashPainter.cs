@@ -107,7 +107,7 @@ namespace Velvet
         public static void Detach(VisualElement child, DivideDashChildBinding binding)
         {
             binding.Detached = true;
-            FaceBorderOverlay.RemoveLater(child);
+            FaceBorderOverlay.RemoveLater(child, FaceBorderOverlay.Layer.Divider);
             child.generateVisualContent -= binding.OnGenerate;
             // MUTANT_SURVIVES(equivalent, line removed): a callback left registered only asks the element for a
             // repaint.
@@ -401,7 +401,8 @@ namespace Velvet
             // outside (styling-variants.md's hidden-overflow table), and CSS clips neither, so such a child's dash
             // is painted on a sibling over it (FaceBorderOverlay), settled outside the paint as it writes the
             // hierarchy.
-            if (!FaceBorderOverlay.ClipsAndSettle(child, ref binding.OverlayPending, binding, SettleOverlay))
+            if (!FaceBorderOverlay.ClipsAndSettle(child, ref binding.OverlayPending, binding, SettleOverlay,
+                    FaceBorderOverlay.Layer.Divider))
             {
                 PaintEdge(mgc, child, binding);
             }
@@ -414,7 +415,8 @@ namespace Velvet
             {
                 return;
             }
-            FaceBorderOverlay.Sync(child, StyleCascade.ClipsOverflow(child), (mgc, _, _) => PaintEdge(mgc, child, binding));
+            FaceBorderOverlay.Sync(child, StyleCascade.ClipsOverflow(child), (mgc, _, _) => PaintEdge(mgc, child, binding),
+                FaceBorderOverlay.Layer.Divider);
         }
 
         private static void PaintEdge(MeshGenerationContext mgc, VisualElement child, DivideDashChildBinding binding)

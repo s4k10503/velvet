@@ -92,6 +92,17 @@ namespace Velvet.Tests
             Assert.That(StyleFontClass.IsArbitraryFontClass(className), Is.EqualTo(expected));
         }
 
+        [TestCase("font-[var(--w)]")]
+        [TestCase("font-(--w)")]
+        public void Given_AFontReadingACustomProperty_When_ItsPayloadSetsTheWeight_Then_NoFamilyIsNamed(string reader)
+        {
+            // Act — the payload a reader resolves to is the weight the variable holds.
+            StyleFontClass.TryExtract(new[] { reader, "font-[weight:700]" }, out var intent);
+
+            // Assert
+            Assert.That(intent.HasFamily, Is.False);
+        }
+
         #endregion
 
         #region StyleFontClass — extraction

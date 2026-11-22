@@ -44,7 +44,8 @@ def reasons(before=GREEN, after=GREEN, results=None, branch="topic", base="main"
             held_by_worktree=False, unpublished_release=None, draft=False, merge_state="clean",
             fork=False, failing_runs=(), behind_release=None, long_lived_head=False, runs_unfinished=(),
             runs_failed=(), required=(), stack_below=(), stack_settings=None, stack_tangles=(),
-            line_pull_request=(), line_head=(), line_squash=()):
+            line_pull_request=(), line_head=(), line_squash=(), milestone_pull_request=(),
+            milestone_head=()):
     if results is None:
         results = [{"name": "Required checks (Unity)", "bucket": "pass"}]
     return settle.reasons_from(before, after, results, branch, base,
@@ -56,7 +57,9 @@ def reasons(before=GREEN, after=GREEN, results=None, branch="topic", base="main"
                                required=required, stack_below=stack_below,
                                stack_settings=stack_settings, stack_tangles=stack_tangles,
                                line_pull_request=line_pull_request, line_head=line_head,
-                               line_squash=line_squash)
+                               line_squash=line_squash,
+                               milestone_pull_request=milestone_pull_request,
+                               milestone_head=milestone_head)
 
 
 def failing(workflow="test.yml", sha=BROKE):
@@ -212,7 +215,7 @@ class MergeDecisionTests(unittest.TestCase):
 Fabricated = collections.namedtuple(
     "Fabricated",
     "sha after branch base draft merge_state results holds held fork labels runs state jobs stack "
-    "tangled title line carried")
+    "tangled title line carried milestone change")
 
 PASSING = [{"name": "Required checks (Unity)", "bucket": "pass"}]
 
@@ -266,14 +269,34 @@ RELEASING = "3.x"
 # answer for it.
 REQUIRED = ("Required checks (Unity)",)
 
+INFRASTRUCTURE = "Infrastructure"
+
+# A pull request's milestone readings answering as nothing to report: an Infrastructure milestone over
+# no file, for the scaffolds below that patch beneath the readings rather than at a table.
+MILESTONE_FIELDS = {"milestone": INFRASTRUCTURE, "milestone_state": "open"}
+NO_MILESTONE_READINGS = (("milestone_change", lambda *_: settle.milestone.NOTHING),
+                         ("milestone_state", lambda *_: MILESTONES))
+
+# The milestones every table below is read against: main builds 3, v3.0.1 is the newest release, and
+# v3.0.2 is the next version main publishes.
+MILESTONES = types.SimpleNamespace(
+    open=[types.SimpleNamespace(number=5, title="v3.0.2"),
+          types.SimpleNamespace(number=2, title="v3.1.0"),
+          types.SimpleNamespace(number=7, title=INFRASTRUCTURE)],
+    published={"3.0.0", "3.0.1"}, series=3, closed=[])
+
 
 def fabricate(number, results=PASSING, draft=False, merge_state="clean", holds=(),
               held=False, moved=False, fork=False, base="main", branch=None, labels=(), runs=(),
               state="open", jobs=None, stack=None, tangled=None, title="fix(velvet): a fix",
-              line=None, carried=()):
+              line=None, carried=(), milestone=INFRASTRUCTURE, change=None):
     """`line` is what `settle.line_reading` answers for the head, a line taking all of it unless a
     case says otherwise, and `carried` what `settle.line_carried` answers, no line's commits unless a
-    case says otherwise."""
+    case says otherwise. `milestone` is the title the pull request carries, open, and `change` what
+    `settle.milestone_change` answers, None for no change:
+    Infrastructure over no change, which every base in the tables below takes, unless a case says
+    otherwise. The change is resolved where it is read rather than here, so a table built at class
+    definition does not reach settle's milestone reading."""
     sha = str(number).rjust(40, "0")
     return Fabricated(sha=sha, after=MOVED if moved else sha, branch=branch or f"topic-{number}",
                       base=base,
@@ -281,7 +304,7 @@ def fabricate(number, results=PASSING, draft=False, merge_state="clean", holds=(
                       held=held, fork=fork, labels=frozenset(labels), runs=list(runs), state=state,
                       jobs=jobs or {}, stack=stack, tangled=tangled, title=title,
                       line=line or settle.maintenance_line.Reading([], [], []),
-                      carried=list(carried))
+                      carried=list(carried), milestone=milestone, change=change)
 
 
 def base_state(held, base, red=(RED,), releasing=(RELEASING,), required=None):
@@ -295,7 +318,8 @@ def base_state(held, base, red=(RED,), releasing=(RELEASING,), required=None):
     return types.SimpleNamespace(held=held, unpublished_release=None,
                                  red=[failing()] if base in red else [],
                                  release=(RELEASED, "2.1.0") if base in releasing else None,
-                                 required=(required or {}).get(base, REQUIRED))
+                                 required=(required or {}).get(base, REQUIRED),
+                                 milestones=MILESTONES)
 
 
 def holder(state):
@@ -372,7 +396,11 @@ def fabricated_readings(states, red=(RED,), releasing=(RELEASING,), required=Non
                 sha=states[number].sha, branch=states[number].branch, base=states[number].base,
                 draft=states[number].draft, merge_state=states[number].merge_state,
                 fork=states[number].fork, labels=states[number].labels, state=states[number].state,
-                stack=states[number].stack, title=states[number].title)),
+                stack=states[number].stack, title=states[number].title,
+                milestone=states[number].milestone,
+                milestone_state="open" if states[number].milestone else None)),
+            ("milestone_change", lambda _project, _number, _base, sha, _fork, _versions:
+                by_sha[sha].change or settle.milestone.NOTHING),
             ("line_reading", lambda _project, _line, sha: by_sha[sha].line),
             ("line_carried", lambda _project, _base, sha: by_sha[sha].carried),
             ("line_main_state", lambda _project: maintained),
@@ -664,6 +692,9 @@ class ExpectedCheckTests(unittest.TestCase):
         # Act / Assert
         self.assertEqual(polled(table), set())
 
+    # GREEN_ON_BASE(refactor): the contexts a base's rulesets require, read as before. The milestone
+    # readings `project_state` now takes are answered as nothing to report, which the base does not
+    # take.
     def test_Given_ABase_When_ItsStateIsRead_Then_ItCarriesWhatItsRulesetsRequire(self):
         # Arrange — answered for 2.x alone, so a reading that asks about another base raises.
         rules = [{"type": "pull_request", "parameters": {}},
@@ -677,8 +708,9 @@ class ExpectedCheckTests(unittest.TestCase):
                                  ("worktrees", lambda *_: {}),
                                  ("rest_json", lambda path: answers[path] if "/rules/" in path
                                   else {"workflow_runs": []}),
-                                 ("release_commit", lambda *_: None)):
-                stack.enter_context(mock.patch.object(settle, name, answer))
+                                 ("release_commit", lambda *_: None),
+                                 *NO_MILESTONE_READINGS):
+                stack.enter_context(mock.patch.object(settle, name, answer, create=True))
             stack.enter_context(mock.patch.object(settle.published_check, "unpublished_reason",
                                                   lambda *_, **__: None))
 
@@ -1161,7 +1193,8 @@ def rest_readings(check_runs, workflow_runs, labels=(AUTOMERGE,), statuses=None)
     """
     state = types.SimpleNamespace(sha=GREEN, branch="topic", base="main", draft=False,
                                   merge_state="clean", fork=False, labels=frozenset(labels),
-                                  state="open", stack=None, title="fix(velvet): a fix")
+                                  state="open", stack=None, title="fix(velvet): a fix",
+                                  **MILESTONE_FIELDS)
     answers = {"/check-runs": {"total_count": len(check_runs), "check_runs": check_runs},
                "/status": NO_STATUSES if statuses is None else statuses,
                "/jobs": {"total_count": 0, "jobs": []},
@@ -1174,8 +1207,9 @@ def rest_readings(check_runs, workflow_runs, labels=(AUTOMERGE,), statuses=None)
             ("line_carried", lambda *_: []),
             ("project_state", lambda _project, base: base_state({}, base)),
             ("rest_json", lambda path: next(value for key, value in answers.items() if key in path)),
+            *NO_MILESTONE_READINGS,
         ):
-            stack.enter_context(mock.patch.object(settle, name, answer))
+            stack.enter_context(mock.patch.object(settle, name, answer, create=True))
         yield stack
 
 
@@ -2085,14 +2119,15 @@ class RedBaseMergeTests(unittest.TestCase):
         self.assertEqual(decided, [RED_REASON])
 
     # GREEN_ON_BASE(refactor): an unlabelled head behind a green base still merges.
-    # The pull request it arranges now carries a title, and the case answers which lines the head
-    # carries, neither of which the base reads.
+    # The pull request it arranges now carries a title and a milestone, and the case answers which
+    # lines the head carries and its milestone readings, none of which the base reads.
     def test_Given_ABranchBehindAGreenBase_When_TheMergeIsDecided_Then_NothingBlocksIt(self):
         # Arrange — `gh_git` answers that the branch is behind: the merge-base is not the base's tip.
         # That is what `contains_base` reads, so a decision asking it is told the branch is behind.
         state = types.SimpleNamespace(sha=GREEN, branch="topic", base="main", draft=False,
                                       merge_state="clean", fork=False, labels=frozenset(),
-                                      state="open", stack=None, title="fix(velvet): a fix")
+                                      state="open", stack=None, title="fix(velvet): a fix",
+                                      **MILESTONE_FIELDS)
         answers = {"merge-base": MOVED, "rev-parse": BROKE}
         with contextlib.ExitStack() as stack:
             for name, answer in (
@@ -2105,6 +2140,7 @@ class RedBaseMergeTests(unittest.TestCase):
                 ("line_carried", lambda *_: []),
                 ("project_state", lambda _project, base: base_state({}, base)),
                 ("gh_git", lambda _project, command, *_: answers[command]),
+                *NO_MILESTONE_READINGS,
             ):
                 stack.enter_context(mock.patch.object(settle, name, answer, create=True))
 
@@ -2115,7 +2151,8 @@ class RedBaseMergeTests(unittest.TestCase):
         self.assertEqual(decided, [])
 
     # GREEN_ON_BASE(characterization): the base keeps the one failing workflow as well.
-    # Its listing now answers the rules reading too, which the base does not take.
+    # Its listing now answers the rules reading too, and the milestone readings are answered as
+    # nothing to report, neither of which the base takes.
     def test_Given_OneRequiredWorkflowFailedOnTheBase_When_ItsStateIsRead_Then_ThatOneIsKept(self):
         # Arrange — a base other than main, so a reading that asks about main answers wrong here.
         payloads = {"test.yml": {"workflow_runs": [workflow_run(1, "success", GREEN)]},
@@ -2135,8 +2172,9 @@ class RedBaseMergeTests(unittest.TestCase):
             for name, answer in (("gh_git", lambda *_: ""),
                                  ("repository", lambda *_: "owner/name"),
                                  ("worktrees", lambda *_: {}),
-                                 ("rest_json", listing)):
-                stack.enter_context(mock.patch.object(settle, name, answer))
+                                 ("rest_json", listing),
+                                 *NO_MILESTONE_READINGS):
+                stack.enter_context(mock.patch.object(settle, name, answer, create=True))
             stack.enter_context(mock.patch.object(settle.published_check, "unpublished_reason",
                                                   lambda *_, **__: None))
             stack.enter_context(mock.patch.object(settle, "release_commit", lambda *_: None))
@@ -2156,12 +2194,84 @@ def project_readings(release_commit):
                              ("repository", lambda *_: "owner/name"),
                              ("worktrees", lambda *_: {}),
                              ("rest_json", lambda path: [] if "/rules/branches/" in path
-                              else {"workflow_runs": []})):
-            stack.enter_context(mock.patch.object(settle, name, answer))
+                              else {"workflow_runs": []}),
+                             *NO_MILESTONE_READINGS):
+            stack.enter_context(mock.patch.object(settle, name, answer, create=True))
         stack.enter_context(mock.patch.object(settle.published_check, "unpublished_reason",
                                               lambda *_, **__: None))
         stack.enter_context(mock.patch.object(settle, "release_commit", release_commit))
         yield
+
+
+class MilestoneMergeTests(unittest.TestCase):
+    """The milestone a merge is held to, read through `milestone.py` against `MILESTONES`."""
+
+    @staticmethod
+    def package(bump="patch"):
+        """A change to the package whose additions `next_version.derive` reads as `bump`."""
+        breaking = ["- A break."] if bump == "major" else []
+        return settle.milestone.Change(True, (), settle.milestone.next_version.derive(
+            "0.0.0", breaking, [], []))
+
+    def decided(self, **fields):
+        with fabricated_readings({1: fabricate(1, **fields)}):
+            return settle.blocking_reasons(Path("."), 1).reasons
+
+    def test_Given_APullRequestCarryingNoMilestone_When_TheMergeIsDecided_Then_ItIsRefused(self):
+        # Act
+        decided = self.decided(milestone=None)
+
+        # Assert
+        self.assertIn("it carries no milestone, and every pull request merges under one: set it "
+                      "with `gh pr edit 1 --milestone Infrastructure`", decided[0] if decided else "")
+
+    def test_Given_APackageChangeUnderALaterVersion_When_TheMergeIsDecided_Then_TheNextIsNamed(self):
+        # Act
+        decided = self.decided(milestone="v3.1.0", change=self.package())
+
+        # Assert
+        self.assertIn("the next version main publishes is v3.0.2", decided[0] if decided else "")
+
+    def test_Given_APackageChangeUnderTheNextVersion_When_TheMergeIsDecided_Then_NothingBlocks(self):
+        # Act / Assert
+        self.assertEqual(self.decided(milestone="v3.0.2", change=self.package()), [])
+
+    def test_Given_ABreakingChangeUnderAPatchMilestone_When_TheMergeIsDecided_Then_TheMajorIsNamed(self):
+        # Act
+        decided = self.decided(milestone="v3.0.2", change=self.package("major"))
+
+        # Assert
+        self.assertIn("carry v4.0.0 with `gh pr edit 1 --milestone v4.0.0`",
+                      decided[0] if decided else "")
+
+    def test_Given_AFork_When_ItsChangeIsRead_Then_ItsPullRequestsRefIsFetchedFirst(self):
+        # Arrange — origin's branches do not hold a fork's head.
+        fetched = []
+        with mock.patch.object(settle, "gh_git", lambda _project, *args: fetched.append(args)), \
+                mock.patch.object(settle.milestone, "change", lambda *_: None):
+            # Act
+            settle.milestone_change(Path("."), 7, "main", GREEN, True, set())
+
+        # Assert
+        self.assertEqual(fetched, [("fetch", "--quiet", "origin", "pull/7/head")])
+
+    def test_Given_APullRequestCarryingNoMilestone_When_Polled_Then_ItIsNotRecordedReady(self):
+        # Act / Assert — every other reading is green, so the milestone is what keeps it out.
+        self.assertEqual(polled({1: fabricate(1, milestone=None)}), set())
+
+    def test_Given_AMissingMilestoneOnAHeadThatMoved_When_Decided_Then_ItIsStillReported(self):
+        # Arrange — about the pull request rather than its head, as a draft is.
+        decided = reasons(after=MOVED, milestone_pull_request=["no milestone"])
+
+        # Act / Assert
+        self.assertIn("no milestone", decided)
+
+    def test_Given_AMilestoneReasonAboutTheHeadOnAHeadThatMoved_When_Decided_Then_ItIsLeftOut(self):
+        # Arrange — read off the head's tree, which may not be the moved head's.
+        decided = reasons(after=MOVED, milestone_head=["not the next version"])
+
+        # Act / Assert
+        self.assertNotIn("not the next version", decided)
 
 
 class ReleaseCommitMergeTests(unittest.TestCase):
