@@ -1,8 +1,29 @@
 {
- "detail": "EditMode survived; PlayMode: -",
+ "detail": "EditMode: 2 failed: Given_AnElementHoldingADestroyedStylesheetOfItsOwn_When_ItsSheetsAreEnsured_Then_ItHoldsNone, Given_AnElementHoldingAWatchSheetOfNoSourceItHolds_When_ItsSheetsAreEnsured_Then_ThatWatchSheetIsTakenOff",
  "file": "594dbd85636cc13bc8188946df0304784724a6234951c26ea40ea64c644f4603",
- "killers": [],
- "measured_by": "44939660362",
+ "killers": [
+  {
+   "case": "Velvet.Tests.RadiusWatchSheetsLifecyclePanelTests.Given_AnElementHoldingADestroyedStylesheetOfItsOwn_When_ItsSheetsAreEnsured_Then_ItHoldsNone",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/RadiusWatchSheetsLifecyclePanelTests.cs": "1cc9f781061428845da579439bb69b3f18c684c8939b549913cebbab25f6a637",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  },
+  {
+   "case": "Velvet.Tests.RadiusWatchSheetsLifecyclePanelTests.Given_AnElementHoldingAWatchSheetOfNoSourceItHolds_When_ItsSheetsAreEnsured_Then_ThatWatchSheetIsTakenOff",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/RadiusWatchSheetsLifecyclePanelTests.cs": "1cc9f781061428845da579439bb69b3f18c684c8939b549913cebbab25f6a637",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  }
+ ],
+ "measured_by": "44984305405",
  "mutant": {
   "after": ">",
   "before": ">=",
@@ -17,9 +38,9 @@
   ]
  },
  "mutator": 10,
- "platform": "PlayMode",
+ "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "9fc150c13ceb0d70c5e3efc4e19efe0a7b830e00a531490a163c2f73a3dbef0c",
- "verdict": "survived"
+ "tests": "80d232a3ff24c7904a49a4b9605c9abbf86517070f88f0a30c248c0c5ed56a20",
+ "verdict": "killed"
 }

@@ -1,18 +1,18 @@
 {
- "detail": "EditMode: 1 failed among the 15 case(s) that ran the site: Given_AWorldSpaceChild_When_ItsBreakpointWidthResolves_Then_ItIsTheDeclaringPanels",
+ "detail": "EditMode: 1 failed among the 17 case(s) that ran the site: Given_AWorldSpaceChild_When_ItsBreakpointWidthResolves_Then_ItIsTheDeclaringPanels",
  "file": "bbf8356a61eafe03564f20b22c2703ff5b4abc437c071ed2882c3667bbdf4e78",
  "killers": [
   {
    "case": "Velvet.Tests.PortalHostBreakpointTests.Given_AWorldSpaceChild_When_ItsBreakpointWidthResolves_Then_ItIsTheDeclaringPanels",
    "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PortalHostBreakpointTests.cs": "e353c3a47a539fc36e2ce4ca65155aa7167c501d29151da7a21d8dc2e4b0b7dc",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PortalHostBreakpointTests.cs": "6067ea393aca6955cf32a0ea2824d3c4371e209d61b5209f513af2e5dd909efc",
     "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
     "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
     "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921"
    }
   }
  ],
- "measured_by": "44896906052",
+ "measured_by": "44984305405",
  "mutant": {
   "after": ";",
   "before": "ApplyRootSetup(record, null, ctx);",
@@ -26,6 +26,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "9fc150c13ceb0d70c5e3efc4e19efe0a7b830e00a531490a163c2f73a3dbef0c",
+ "tests": "80d232a3ff24c7904a49a4b9605c9abbf86517070f88f0a30c248c0c5ed56a20",
  "verdict": "killed"
 }

@@ -1,8 +1,15 @@
 {
- "detail": "EditMode survived; PlayMode: -",
+ "detail": "EditMode: 1 failed among the 26 case(s) that ran the site: Given_AStartWhoseEndIsNotAmongItsSiblings_When_ItsEndIsLookedUp_Then_NoEndIsFound",
  "file": "0757ce9921ee374eaa9ff2e78d2c9549c02397de54bdeb04fd2f06cadcb7f97f",
- "killers": [],
- "measured_by": "44939660362",
+ "killers": [
+  {
+   "case": "Velvet.Tests.FocusScopeRangeEndLookupTests.Given_AStartWhoseEndIsNotAmongItsSiblings_When_ItsEndIsLookedUp_Then_NoEndIsFound",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/FocusScopeRangeEndLookupTests.cs": "ec85ed55f803dd2b0c61802c899fa3c273d781e808ec34048b4d1f90670622de"
+   }
+  }
+ ],
+ "measured_by": "44984305405",
  "mutant": {
   "after": "<=",
   "before": "<",
@@ -18,9 +25,9 @@
   ]
  },
  "mutator": 10,
- "platform": "PlayMode",
+ "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "9fc150c13ceb0d70c5e3efc4e19efe0a7b830e00a531490a163c2f73a3dbef0c",
- "verdict": "survived"
+ "tests": "80d232a3ff24c7904a49a4b9605c9abbf86517070f88f0a30c248c0c5ed56a20",
+ "verdict": "killed"
 }

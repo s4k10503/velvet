@@ -1,8 +1,15 @@
 {
- "detail": "EditMode survived; PlayMode: -",
+ "detail": "EditMode: 1 failed among the 2 case(s) that ran the site: Given_AFiberMarkedAsOwingARetargetWhoseStoredPortalsAreAllMounted_When_ItIsAsked_Then_TheMarkIsCleared",
  "file": "f9b3ac14fdd632ae999ea70d8ed7613495c2af9ccac7b48d55ce0c456b8c876b",
- "killers": [],
- "measured_by": "44896906052",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ReconcilerHelperCaseTests.Given_AFiberMarkedAsOwingARetargetWhoseStoredPortalsAreAllMounted_When_ItIsAsked_Then_TheMarkIsCleared",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ReconcilerHelperCaseTests.cs": "0b3cdc988fb0c6144ded9c2358f2a29ec6d99e349250e2bbdbe3e4e22949ffe7"
+   }
+  }
+ ],
+ "measured_by": "44984305405",
  "mutant": {
   "after": "true",
   "before": "false",
@@ -15,9 +22,9 @@
   ]
  },
  "mutator": 10,
- "platform": "PlayMode",
+ "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "9fc150c13ceb0d70c5e3efc4e19efe0a7b830e00a531490a163c2f73a3dbef0c",
- "verdict": "survived"
+ "tests": "80d232a3ff24c7904a49a4b9605c9abbf86517070f88f0a30c248c0c5ed56a20",
+ "verdict": "killed"
 }
