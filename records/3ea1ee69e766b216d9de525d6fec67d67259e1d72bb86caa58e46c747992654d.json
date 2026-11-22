@@ -1,51 +1,8 @@
 {
- "detail": "EditMode: 3 failed among the 542 case(s) that ran the site: Given_ALabelEmptiedAfterMountingWithText_When_ItsTextReturnsAndOnlyItsParentsGeometryEventFires_Then_ItGetsAMinWidth, Given_ALabelStoodDownForAGridThatStopsSizingIt_When_ItsTextChangesAndOnlyItsParentsGeometryEventFires_Then_ItGetsAMinWidth, Given_ALabelWithAnInlinePercentMaxWidth_When_ItsTextChangesAndOnlyItsParentsGeometryEventFires_Then_ItsMinWidthFollowsTheText",
+ "detail": "EditMode survived; PlayMode: -",
  "file": "ba2f2489ecfb3bdc179e8a096b7622147029e23edf0412b085c9af2953c692c1",
- "killers": [
-  {
-   "case": "Velvet.Tests.TextItemParentEventTests.Given_ALabelEmptiedAfterMountingWithText_When_ItsTextReturnsAndOnlyItsParentsGeometryEventFires_Then_ItGetsAMinWidth",
-   "files": {
-    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/TextItemParentEventTests.cs": "e3b7ff81e7f8e38bf1c6b5f6301b145b2500877149ea03686fd781cf128ccb91",
-    "Packages/com.velvet.core/TestUtilities/CallbackRegistryProbe.cs": "0bf11bf8f5b161e389e815cf4be1a5f33269e05d2fed160868b58bb1f3629b46",
-    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
-    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
-    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
-    "Packages/com.velvet.core/TestUtilities/ReconcilerContextProbe.cs": "ff50974275702aaaf62e00d84d5f39dc9ff1606a93351bee15d28e7ddc87cb83",
-    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
-    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff",
-    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
-   }
-  },
-  {
-   "case": "Velvet.Tests.TextItemParentEventTests.Given_ALabelStoodDownForAGridThatStopsSizingIt_When_ItsTextChangesAndOnlyItsParentsGeometryEventFires_Then_ItGetsAMinWidth",
-   "files": {
-    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/TextItemParentEventTests.cs": "e3b7ff81e7f8e38bf1c6b5f6301b145b2500877149ea03686fd781cf128ccb91",
-    "Packages/com.velvet.core/TestUtilities/CallbackRegistryProbe.cs": "0bf11bf8f5b161e389e815cf4be1a5f33269e05d2fed160868b58bb1f3629b46",
-    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
-    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
-    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
-    "Packages/com.velvet.core/TestUtilities/ReconcilerContextProbe.cs": "ff50974275702aaaf62e00d84d5f39dc9ff1606a93351bee15d28e7ddc87cb83",
-    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
-    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff",
-    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
-   }
-  },
-  {
-   "case": "Velvet.Tests.TextItemParentEventTests.Given_ALabelWithAnInlinePercentMaxWidth_When_ItsTextChangesAndOnlyItsParentsGeometryEventFires_Then_ItsMinWidthFollowsTheText",
-   "files": {
-    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/TextItemParentEventTests.cs": "e3b7ff81e7f8e38bf1c6b5f6301b145b2500877149ea03686fd781cf128ccb91",
-    "Packages/com.velvet.core/TestUtilities/CallbackRegistryProbe.cs": "0bf11bf8f5b161e389e815cf4be1a5f33269e05d2fed160868b58bb1f3629b46",
-    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
-    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
-    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
-    "Packages/com.velvet.core/TestUtilities/ReconcilerContextProbe.cs": "ff50974275702aaaf62e00d84d5f39dc9ff1606a93351bee15d28e7ddc87cb83",
-    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
-    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff",
-    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
-   }
-  }
- ],
- "measured_by": "44984305405",
+ "killers": [],
+ "measured_by": "45069559525",
  "mutant": {
   "after": ";",
   "before": "Apply();",
@@ -56,9 +13,9 @@
   "shadowed": []
  },
  "mutator": 10,
- "platform": "EditMode",
+ "platform": "PlayMode",
  "schema": 3,
  "stood": null,
- "tests": "80d232a3ff24c7904a49a4b9605c9abbf86517070f88f0a30c248c0c5ed56a20",
- "verdict": "killed"
+ "tests": "9fc150c13ceb0d70c5e3efc4e19efe0a7b830e00a531490a163c2f73a3dbef0c",
+ "verdict": "survived"
 }
