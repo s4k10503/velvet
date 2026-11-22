@@ -1158,8 +1158,8 @@ namespace Velvet.Tests
                 yield return WaitFramesDraining(1, _host.TargetTexture);
             }
 
-            // Assert — a clone that never held a live particle reads as int.MaxValue, which no cleared count equals
-            Assert.That(played ? clone.aliveParticleCount : int.MaxValue, Is.EqualTo(0));
+            // Assert — a clone that never held a live particle reads as int.MaxValue, which no cleared count reaches
+            Assert.That(played ? clone.aliveParticleCount : int.MaxValue, Is.AtMost(0));
         }
 
         // GREEN_ON_BASE(characterization): flipping a Manual clone to Mount already starts it from the source's initial event.
