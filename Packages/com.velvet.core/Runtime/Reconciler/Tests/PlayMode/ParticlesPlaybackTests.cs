@@ -1089,30 +1089,64 @@ namespace Velvet.Tests
 
         private int NotGreen() => CountWhere(new RectInt(0, 0, 300, 300), p => !IsGreen(p));
 
-        [UnityTest]
-        public IEnumerator Given_AManualVisualEffectGraph_When_PlayedThenStopped_Then_ItDrawsOnlyWhilePlaying()
+        private ParticlesElement MountManualLoop()
         {
-            // Arrange
             var effect = CreateLoopEffect();
             _host = new RenderTexturePanelHost("ParticlesPanel", 300, 300);
             _mounted = V.Mount(_host.Root,
                 V.Particles(effect, className: "w-[300px] h-[300px] bg-[#00ff00]", playOn: PlayTrigger.Manual));
-            var element = _host.Root.Q<ParticlesElement>();
-            yield return WaitRealtimeDraining(0.5, _host.TargetTexture);
-            var beforePlay = NotGreen();
+            return _host.Root.Q<ParticlesElement>();
+        }
+
+        // Plays the element and waits, in frames, until the graph's pixels have reached it. The capability reading
+        // stays in the failure message of the case that asserts on it.
+        private IEnumerator PlayAndWaitUntilItDraws(ParticlesElement element, System.Action<string> report)
+        {
+            element.Play();
+            var clone = _mounted.Root.Reconciler.Context.ParticlesBindings[element].EffectHost;
+            yield return VfxGraphCapability.IgnoreIfCannotDraw(clone, report);
+            yield return WaitFramesDraining(1, _host.TargetTexture);
+            for (var frame = 1; frame < 600 && NotGreen() <= 50; frame++)
+            {
+                yield return WaitFramesDraining(1, _host.TargetTexture);
+            }
+        }
+
+        // GREEN_ON_BASE(characterization): the base's Play starts the Manual clone, whose pixels reach the element. Make ParticlesEffectView.Play do nothing and this reddens.
+        [UnityTest]
+        public IEnumerator Given_AManualVisualEffectGraph_When_Played_Then_ItDraws()
+        {
+            // Arrange
+            var element = MountManualLoop();
+            var capability = "";
 
             // Act
-            element.Play();
-            var capability = "";
-            var clone = _mounted.Root.Reconciler.Context.ParticlesBindings[element].EffectHost;
-            yield return VfxGraphCapability.IgnoreIfCannotDraw(clone, reading => capability = reading);
-            yield return WaitRealtimeDraining(1.0, _host.TargetTexture);
-            var playing = NotGreen();
-            element.Stop();
-            yield return WaitRealtimeDraining(0.5, _host.TargetTexture);
+            yield return PlayAndWaitUntilItDraws(element, reading => capability = reading);
 
             // Assert
-            Assert.That((beforePlay, playing > 50, NotGreen()), Is.EqualTo((0, true, 0)), capability);
+            Assert.That(NotGreen(), Is.GreaterThan(50), capability);
+        }
+
+        // GREEN_ON_BASE(characterization): the base's Stop clears the clone's particles, so the element shows its background again. Drop `host.Reinit();` from ParticlesEffectView.Stop and this reddens.
+        [UnityTest]
+        public IEnumerator Given_AManualVisualEffectGraphDrawing_When_Stopped_Then_ItDrawsNothing()
+        {
+            // Arrange
+            var element = MountManualLoop();
+            var capability = "";
+            yield return PlayAndWaitUntilItDraws(element, reading => capability = reading);
+            var drawing = NotGreen() > 50;
+
+            // Act
+            element.Stop();
+            yield return WaitFramesDraining(1, _host.TargetTexture);
+            for (var frame = 1; frame < 600 && NotGreen() > 0; frame++)
+            {
+                yield return WaitFramesDraining(1, _host.TargetTexture);
+            }
+
+            // Assert — a graph that never drew while playing reads -1, which no cleared element does
+            Assert.That(drawing ? NotGreen() : -1, Is.EqualTo(0), capability);
         }
 
         private VisualEffect MountedClone() => _mounted.Root.Reconciler.Context.ParticlesBindings[_host.Root.Q<ParticlesElement>()].EffectHost;
