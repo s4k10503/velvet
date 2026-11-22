@@ -2,7 +2,7 @@
  "detail": "EditMode survived; PlayMode: -",
  "file": "13a1e761db53414f85b8fb2a34e17128e0ee453f5e4c68dbfb66f87fcd650c21",
  "killers": [],
- "measured_by": "44984305405",
+ "measured_by": "45031195476",
  "mutant": {
   "after": ";",
   "before": "units[\"cqmin\"] = (b => Math.Min(b.InlineSize, b.ViewportHeight) / 100d, ReadsElement | ReadsViewportBit, CalcType.Length);",
@@ -16,6 +16,6 @@
  "platform": "PlayMode",
  "schema": 3,
  "stood": null,
- "tests": "80d232a3ff24c7904a49a4b9605c9abbf86517070f88f0a30c248c0c5ed56a20",
+ "tests": "9fc150c13ceb0d70c5e3efc4e19efe0a7b830e00a531490a163c2f73a3dbef0c",
  "verdict": "survived"
 }

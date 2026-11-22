@@ -1,17 +1,8 @@
 {
- "detail": "EditMode: 1 failed among the 3 case(s) that ran the site: Given_AReaderUnderAProviderInsideAnAnimatePresence_When_ItRendersOnItsOwnState_Then_ItReadsTheProvidersValue",
+ "detail": "EditMode survived; PlayMode: -",
  "file": "8701e85eea454704d2dd239c8db1db1d0a16f7899263ed28b688e7b5f71a1a3a",
- "killers": [
-  {
-   "case": "Velvet.Tests.ContextSpineThroughPresenceTests.Given_AReaderUnderAProviderInsideAnAnimatePresence_When_ItRendersOnItsOwnState_Then_ItReadsTheProvidersValue",
-   "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ContextSpineThroughPresenceTests.cs": "7e3ddcf69d0454d732b9d54510c8be00b9016aec785d0a009bfb766bd303edee",
-    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
-    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921"
-   }
-  }
- ],
- "measured_by": "44984305405",
+ "killers": [],
+ "measured_by": "45031195476",
  "mutant": {
   "after": "true",
   "before": "false",
@@ -24,9 +15,9 @@
   ]
  },
  "mutator": 10,
- "platform": "EditMode",
+ "platform": "PlayMode",
  "schema": 3,
  "stood": null,
- "tests": "80d232a3ff24c7904a49a4b9605c9abbf86517070f88f0a30c248c0c5ed56a20",
- "verdict": "killed"
+ "tests": "9fc150c13ceb0d70c5e3efc4e19efe0a7b830e00a531490a163c2f73a3dbef0c",
+ "verdict": "survived"
 }

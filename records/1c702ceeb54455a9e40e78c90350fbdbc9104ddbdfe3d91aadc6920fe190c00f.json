@@ -1,8 +1,21 @@
 {
- "detail": "EditMode survived; PlayMode: -",
+ "detail": "EditMode: 1 failed: Given_EveryPayloadFamily_When_WrittenBehindEachVariantCategory_Then_ItReachesWhatTheBareFormReaches; 1 other editor(s) were up",
  "file": "31200ad68e79a8a151da77ed95b73eafdf5d8f7541f9b4be37adfe2f9798ba37",
- "killers": [],
- "measured_by": "44984305405",
+ "killers": [
+  {
+   "case": "Velvet.Tests.VariantReachesEveryFamilyTests.Given_EveryPayloadFamily_When_WrittenBehindEachVariantCategory_Then_ItReachesWhatTheBareFormReaches",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/VariantReachesEveryFamilyTests.cs": "ea6575f106735b6ead941c8187c84d2a6e7fa610814c849b659221c0d7e717f8",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/RenderedTextProbe.cs": "1eb2072fc3aef248a139379b3ca65d395e5e267af058df5603edf70feaab20f8",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  }
+ ],
+ "measured_by": "45031195476",
  "mutant": {
   "after": "",
   "before": "if (RadiusWatchSheets.IsWatch(sheet)) return stamp;",
@@ -13,9 +26,9 @@
   "shadowed": []
  },
  "mutator": 10,
- "platform": "PlayMode",
+ "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "80d232a3ff24c7904a49a4b9605c9abbf86517070f88f0a30c248c0c5ed56a20",
- "verdict": "survived"
+ "tests": "9fc150c13ceb0d70c5e3efc4e19efe0a7b830e00a531490a163c2f73a3dbef0c",
+ "verdict": "killed"
 }

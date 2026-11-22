@@ -1,15 +1,8 @@
 {
- "detail": "EditMode: 1 failed among the 185 case(s) that ran the site: Given_AValueThatIsOnlyImportant_When_ItsCommentsAreTakenOut_Then_NothingIsLeft",
+ "detail": "EditMode survived; PlayMode: -",
  "file": "0ddf8435b9549e32944ffd3067a89354248bdf3e2a39711af11f156c647a8b1e",
- "killers": [
-  {
-   "case": "Velvet.Tests.UssCustomPropertyTextBangTests.Given_AValueThatIsOnlyImportant_When_ItsCommentsAreTakenOut_Then_NothingIsLeft",
-   "files": {
-    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/UssCustomPropertyTextBangTests.cs": "96ea791ef1b6207a6b8a5c6a18db3c4dbd9805e70a61831da08b32c884a48e1b"
-   }
-  }
- ],
- "measured_by": "44984305405",
+ "killers": [],
+ "measured_by": "45031195476",
  "mutant": {
   "after": ">",
   "before": ">=",
@@ -22,9 +15,9 @@
   ]
  },
  "mutator": 10,
- "platform": "EditMode",
+ "platform": "PlayMode",
  "schema": 3,
  "stood": null,
- "tests": "80d232a3ff24c7904a49a4b9605c9abbf86517070f88f0a30c248c0c5ed56a20",
- "verdict": "killed"
+ "tests": "9fc150c13ceb0d70c5e3efc4e19efe0a7b830e00a531490a163c2f73a3dbef0c",
+ "verdict": "survived"
 }
