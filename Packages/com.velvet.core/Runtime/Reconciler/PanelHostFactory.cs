@@ -151,6 +151,7 @@ namespace Velvet
             record.ReleaseBridge?.Invoke();
             record.ReleaseBridge = FiberCrossPanelEventDispatcher.AttachBridge(root, ctx);
             record.ReleaseBridge += DefaultFamilyRoots.Hold(root).Dispose;
+            record.ReleaseBridge += StyleTransitionBehavior.Hold(root).Dispose;
             FiberFocusNavigator.EnsureAttached(root, ctx);
             if (previousRoot != null)
             {

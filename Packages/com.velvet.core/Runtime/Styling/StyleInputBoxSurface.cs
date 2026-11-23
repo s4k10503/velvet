@@ -160,7 +160,7 @@ namespace Velvet
         public static bool TryGetSharedBox(VisualElement target, string core, out VisualElement box)
         {
             box = null!;
-            return PlacementOfCore(core) == Placement.Both && IsControl(target) && TryGetBox(target, out box);
+            return PlacementOf(core) == Placement.Both && IsControl(target) && TryGetBox(target, out box);
         }
 
         // The element inside a box that draws its text, which a text-overflow utility lands on as well: CSS
@@ -229,8 +229,12 @@ namespace Velvet
             {
                 leaf = next!;
             }
-            return PlacementOfCore(StyleArbitraryValueResolver.StripImportant(leaf, out _));
+            return PlacementOf(StyleArbitraryValueResolver.StripImportant(leaf, out _));
         }
+
+        // transition-behavior goes where transition-property does, and declares no longhand to say so.
+        private static Placement PlacementOf(string core)
+            => StyleTransitionBehavior.IsBehaviourClass(core) ? Placement.Both : PlacementOfCore(core);
 
         private static Placement PlacementOfCore(string core)
         {

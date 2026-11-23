@@ -134,7 +134,8 @@ V.Div(name: "row", className: "flex flex-row gap-x-2", children: new VNode[]
   again, unless `initial: false` still withholds that key's enter (below).
 - **What an exit animates:** under the default Tween driver, any USS-transitionable property the
   pose swap changed animates — `transition-property: all` picks up the whole class delta, not a
-  fixed channel set. Spring and cubic-bezier exits drive the channels they can resolve a number
+  fixed channel set; *Discrete properties* below says which of those properties land instead.
+  Spring and cubic-bezier exits drive the channels they can resolve a number
   for out of the class strings; *Driven channels* below is the single list of what that covers and
   what it deliberately leaves out. A `skew-x-*` / `skew-y-*` angle animates on every driver: a Tween that
   moves one runs on the Bezier driver, which draws the angle, since UI Toolkit's transition cannot.
@@ -516,7 +517,8 @@ missing or cannot be invoked, the play uses the ordinary inline or resolved star
   in. `transition-filter` names `filter`, which no driver writes, so it never triggers a
   suspension. With none of those utilities present, a `duration-*` class — or the inline
   `duration-[…]` form — leaves `transition-property` at UI Toolkit's default of `all`, so those
-  elements transition *everything* natively and a play on them always suspends; with no duration
+  elements transition *everything* natively but what *Discrete properties* lands, and a play on them
+  always suspends; with no duration
   either, the element transitions nothing and nothing suspends. A play suspends only where its own
   channels intersect the resolved set — a `transition-colors` element running a fade/slide keeps
   its hover fade, while the same play on a `transition-transform` or `transition-all` element
@@ -534,6 +536,23 @@ missing or cannot be invoked, the play uses the ordinary inline or resolved star
   each hold their own claim, so the first to finish cannot release the second's, and the narrowing lifts as soon
   as the last one settles or is cancelled. Reach for `Tween` on the default clock, on no sequence's playback and repeating nothing, when you want the
   class's own transition to do the work instead; any other `Tween` is driven (*Clocks* below).
+
+## Discrete properties (`transition-discrete`)
+
+UI Toolkit transitions a property it can only switch from one value to the other, such as `flex-direction`,
+`justify-content`, `position`, `white-space`, `-unity-text-align` or `background-image`, by switching it partway
+through, where CSS's default `transition-behavior: normal` changes it at once. On an element Velvet renders, such a
+transition is cancelled at the panel's next animation update, which lands the new value, whatever gave the element
+the transition: `transition-all`, a `duration-*` alone, a stylesheet's own `transition-property`, an inline write or
+a `Tween` variant swap UI Toolkit's own transition runs (*Clocks*). An element Velvet renders is one under the element
+a tree is mounted on, a layer or world-space panel's root, or a row a portal puts in its target. `visibility`,
+`background-position` and the font properties keep switching partway through.
+
+`transition-discrete` (`transition-behavior: allow-discrete`) leaves UI Toolkit's transition running, so the
+property switches to the new value partway through, as CSS switches a discrete property; `transition-normal` takes
+that back. Of the two, the one that ranks later wins, as of two utilities writing one property: a variant's over the
+element's own, either way round (`transition-discrete md:transition-normal`), and a play's while it shows one. On a
+`V.TextField` both go to the input as well as to the field, as the `transition-*` utilities do.
 
 ## Cubic-bezier easing
 
@@ -691,7 +710,8 @@ V.Motion(layoutId: "card-3", className: expanded ? "absolute left-[0px] top-[0px
   on each frame, as UI Toolkit draws it, rather than transitioning towards a new pixel value when the size
   changes. A change of either axis of the translate, or of the scale, starts both axes over on the
   transition, as UI Toolkit runs each as one value. While the tween runs, the transitions the element's classes
-  declare go on running for every property but the ones the tween writes, as Framer leaves the CSS
+  declare go on running for every property but the ones the tween writes and those *Discrete properties* lands, as
+  Framer leaves the CSS
   transitions of what a layout animation does not animate, and take a change of those classes as it comes.
   A Motion that leaves its panel without being unmounted has its tween ended on its panel's next frame.
 - Works across a same-key type flip or a move to a different parent, not just an in-place resize:

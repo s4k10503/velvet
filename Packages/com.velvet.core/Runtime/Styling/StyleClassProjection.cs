@@ -782,6 +782,21 @@ namespace Velvet
                 return -1;
             }
 
+            // A play's ranking-only entries count: each holds its class at the play's key.
+            public long? HighestKey(string cls)
+            {
+                long? highest = null;
+                foreach (var entry in _entries)
+                {
+                    // MUTANT_SURVIVES(equivalent, boundary): at an equal key the reassignment leaves the same value.
+                    if (entry.Class == cls && (highest == null || entry.Priority > highest))
+                    {
+                        highest = entry.Priority;
+                    }
+                }
+                return highest;
+            }
+
             // A payload's or the className's slot, never a play's ranking-only entry at the same key.
             private int IndexOf(string cls, long priority)
             {

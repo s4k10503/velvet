@@ -1922,9 +1922,9 @@ namespace Velvet
             });
         }
 
-        // The rows a same-panel portal has in its target, each held for the default family (DefaultFamilyRoots) in
-        // place of the target, which other code owns along with its other children, as createPortal leaves body's
-        // alone.
+        // The rows a same-panel portal has in its target, each held for the default family (DefaultFamilyRoots) and
+        // for transition-behavior (StyleTransitionBehavior) in place of the target, which other code owns along with
+        // its other children, as createPortal leaves body's alone.
         private readonly Dictionary<VisualElement, System.IDisposable> _portalRowFamilies = new();
         private readonly HashSet<VisualElement> _portalRows = new();
         private readonly List<VisualElement> _portalRowsLeft = new();
@@ -1964,7 +1964,25 @@ namespace Velvet
             }
             foreach (var row in _portalRows)
             {
-                if (!_portalRowFamilies.ContainsKey(row)) _portalRowFamilies[row] = DefaultFamilyRoots.Hold(row);
+                if (!_portalRowFamilies.ContainsKey(row)) _portalRowFamilies[row] = new RowHolds(row);
+            }
+        }
+
+        private sealed class RowHolds : System.IDisposable
+        {
+            private readonly System.IDisposable _family;
+            private readonly System.IDisposable _transitionBehavior;
+
+            public RowHolds(VisualElement row)
+            {
+                _family = DefaultFamilyRoots.Hold(row);
+                _transitionBehavior = StyleTransitionBehavior.Hold(row);
+            }
+
+            public void Dispose()
+            {
+                _family.Dispose();
+                _transitionBehavior.Dispose();
             }
         }
 
