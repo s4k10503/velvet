@@ -36,7 +36,9 @@ namespace Velvet.Tests
         private HeadlessEditorPanelHost _host;
         private VisualElement _mountPoint;
         private readonly List<string> _reports = new();
+        private readonly List<MountedTree> _kept = new();
         private static int s_detached;
+        private static bool s_armed;
         private static MountedTree s_disposedByAnotherRoot;
 
         [SetUp]
@@ -46,17 +48,31 @@ namespace Velvet.Tests
             _mountPoint = new VisualElement();
             _host.Root.Add(_mountPoint);
             _reports.Clear();
+            _kept.Clear();
             s_detached = 0;
+            s_armed = true;
             s_disposedByAnotherRoot = null;
         }
 
+        // Disarms the throwers first: where a case leaves one on the panel, as a failing case can, the disposals and the
+        // host's closing below detach it, and a throw there would fail the case for something it does not assert.
         [TearDown]
         public void TearDown()
         {
+            s_armed = false;
+            foreach (var mounted in _kept) mounted.Dispose();
+            _kept.Clear();
             s_disposedByAnotherRoot = null;
             _host?.Dispose();
             _host = null;
             VNodePoolTestAccess.ClearButtonPoolForTest();
+        }
+
+        // A handle the teardown disposes, once the throwers are disarmed.
+        private MountedTree Kept(MountedTree mounted)
+        {
+            _kept.Add(mounted);
+            return mounted;
         }
 
         // Stands in for a V.Custom<T> whose element registers a panel-detach callback, which throws on every call. Its
@@ -80,6 +96,7 @@ namespace Velvet.Tests
                 });
                 RegisterCallback<DetachFromPanelEvent>(_ =>
                 {
+                    if (!s_armed) return;
                     s_detached++;
                     _calls++;
                     throw new InvalidOperationException("detach:" + name + _arranged + (_calls > 1 ? "#" + _calls : ""));
@@ -147,7 +164,10 @@ namespace Velvet.Tests
         // Registers a detach callback that throws on every call, as an application's ref callback can.
         private static readonly Func<VisualElement, Action> s_registersAThrowingDetach = element =>
         {
-            element.RegisterCallback<DetachFromPanelEvent>(_ => throw new InvalidOperationException("detach:" + element.name));
+            element.RegisterCallback<DetachFromPanelEvent>(_ =>
+            {
+                if (s_armed) throw new InvalidOperationException("detach:" + element.name);
+            });
             return () => { };
         };
 
@@ -341,7 +361,7 @@ namespace Velvet.Tests
                 new MountOptions { OnUncaughtError = (error, _) => _reports.Add(error.Message) });
 
             // Act
-            using var other = V.Mount(new VisualElement(), V.Component(DisposesAnotherRoot));
+            Kept(V.Mount(new VisualElement(), V.Component(DisposesAnotherRoot)));
 
             // Assert
             Assert.That(string.Join(" / ", _reports), Is.EqualTo("detach:X"));
@@ -369,8 +389,8 @@ namespace Velvet.Tests
         {
             // Arrange
             var log = new EventLog();
-            using var mounted = V.Mount(_mountPoint, log.Provide(V.Component(FirstBoundary,
-                new Holds(V.Component(RemovesAZPlacedThrower, key: "r")), key: "b1")), log.ReportingErrors());
+            var mounted = Kept(V.Mount(_mountPoint, log.Provide(V.Component(FirstBoundary,
+                new Holds(V.Component(RemovesAZPlacedThrower, key: "r")), key: "b1")), log.ReportingErrors()));
             log.Clear();
 
             // Act
@@ -386,8 +406,8 @@ namespace Velvet.Tests
         {
             // Arrange
             var log = new EventLog();
-            using var mounted = V.Mount(_mountPoint, log.Provide(V.Component(FirstBoundary,
-                new Holds(V.Component(RemovesAZPlacedThrowerFromItsList, key: "l")), key: "b1")), log.ReportingErrors());
+            var mounted = Kept(V.Mount(_mountPoint, log.Provide(V.Component(FirstBoundary,
+                new Holds(V.Component(RemovesAZPlacedThrowerFromItsList, key: "l")), key: "b1")), log.ReportingErrors()));
             log.Clear();
 
             // Act
@@ -405,10 +425,10 @@ namespace Velvet.Tests
         {
             // Arrange
             var log = new EventLog();
-            using var mounted = V.Mount(_mountPoint, log.Provide(V.Fragment(
+            var mounted = Kept(V.Mount(_mountPoint, log.Provide(V.Fragment(
                 V.Component(FirstBoundary, new Holds(V.Component(RemovesAZPlacedThrower, key: "r")), key: "b1"),
                 V.Component(SecondBoundary, new Holds(V.Component(RendersAgain, key: "t")), key: "b2"))),
-                log.ReportingErrors());
+                log.ReportingErrors()));
             log.Clear();
 
             // Act
@@ -528,8 +548,8 @@ namespace Velvet.Tests
         {
             // Arrange
             var log = new EventLog();
-            using var mounted = V.Mount(_mountPoint, log.Provide(V.Component(FirstBoundary,
-                new Holds(V.Component(RemovesAWrappedThrower, key: "w")), key: "b1")), log.ReportingErrors());
+            var mounted = Kept(V.Mount(_mountPoint, log.Provide(V.Component(FirstBoundary,
+                new Holds(V.Component(RemovesAWrappedThrower, key: "w")), key: "b1")), log.ReportingErrors()));
             log.Clear();
 
             // Act
@@ -547,8 +567,8 @@ namespace Velvet.Tests
             // Arrange
             VNodePoolTestAccess.ClearButtonPoolForTest();
             var log = new EventLog();
-            using var mounted = V.Mount(_mountPoint, log.Provide(V.Component(FirstBoundary,
-                new Holds(V.Component(RemovesTwoButtons, key: "p")), key: "b1")), log.ReportingErrors());
+            var mounted = Kept(V.Mount(_mountPoint, log.Provide(V.Component(FirstBoundary,
+                new Holds(V.Component(RemovesTwoButtons, key: "p")), key: "b1")), log.ReportingErrors()));
 
             // Act
             log.Setter<bool>("P").Invoke(false);
@@ -580,8 +600,8 @@ namespace Velvet.Tests
         {
             // Arrange
             var log = new EventLog();
-            using var mounted = V.Mount(_mountPoint, log.Provide(V.Component(FirstBoundary,
-                new Holds(V.Component(RemovesAListOfThrowers, key: "v")), key: "b1")), log.ReportingErrors());
+            var mounted = Kept(V.Mount(_mountPoint, log.Provide(V.Component(FirstBoundary,
+                new Holds(V.Component(RemovesAListOfThrowers, key: "v")), key: "b1")), log.ReportingErrors()));
             ShowTheListsRows(mounted, rows: 2);
             log.Clear();
 
@@ -705,11 +725,11 @@ namespace Velvet.Tests
             PoolAZPlacedButton();
 
             // Act
-            using var mounted = V.Mount(_mountPoint, V.Div(key: "row", children: new VNode[]
+            var mounted = Kept(V.Mount(_mountPoint, V.Div(key: "row", children: new VNode[]
             {
                 V.Button(key: "rented", name: "rented"),
                 V.Button(key: "fresh", name: "fresh"),
-            }));
+            })));
 
             // Assert
             Assert.That(CallbackRegistryProbe.TrickleDownCallbackCount(_mountPoint.Q<Button>("rented")),
