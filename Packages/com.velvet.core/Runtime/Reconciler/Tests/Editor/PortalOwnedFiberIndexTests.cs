@@ -208,6 +208,13 @@ namespace Velvet.Tests
             Assert.That(IndexedUnder(registry, second), Is.EqualTo(1));
         }
 
+        private static ComponentFiber[] OwnedBy(ComponentRegistry registry, VisualElement placeholder)
+        {
+            var index = IndexOf(registry);
+            if (index == null || !index.Contains(placeholder)) return null;
+            return ((IEnumerable)index[placeholder]).Cast<ComponentFiber>().ToArray();
+        }
+
         private static int NodesHeld(ComponentRegistry registry)
             => ((IDictionary)typeof(ComponentRegistry)
                 .GetField("_portalIndexNodes", BindingFlags.Instance | BindingFlags.NonPublic)?.GetValue(registry))?.Count ?? -1;
@@ -263,7 +270,6 @@ namespace Velvet.Tests
             Assert.That(NodesHeld(registry), Is.EqualTo(1));
         }
 
-        // GREEN_ON_BASE(characterization): the base lists the fibers a placeholder owns in the order they were stamped, and so does the list a node leaves.
         [Test]
         public void Given_ThreeFibersIndexedUnderOnePlaceholder_When_TheFirstIsRestampedAway_Then_TheOtherTwoStayInStampOrder()
         {
@@ -277,7 +283,7 @@ namespace Velvet.Tests
             Restamp(registry, first, new VisualElement());
 
             // Assert
-            Assert.That(((IEnumerable)IndexOf(registry)[placeholder]).Cast<ComponentFiber>(), Is.EqualTo(new[] { second, third }));
+            Assert.That(OwnedBy(registry, placeholder), Is.EqualTo(new[] { second, third }));
         }
     }
 }
