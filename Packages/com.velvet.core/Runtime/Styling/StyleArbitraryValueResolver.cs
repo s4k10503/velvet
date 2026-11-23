@@ -3290,11 +3290,27 @@ namespace Velvet
             map?.Watchers?.Remove(watcher);
         }
 
-        internal static float? UniformScaleClassFallback(VisualElement element)
+        // UniformScaleClassFallback and TryGetProjection read one element's layer map, so a caller needing both
+        // reads the table once.
+        internal static StyleClassProjection.Model? TryGetProjection(VisualElement element, out float? uniformScale)
         {
-            return s_layers.TryGetValue(element, out var map)
+            if (!s_layers.TryGetValue(element, out var map))
+            {
+                uniformScale = null;
+                return null;
+            }
+            uniformScale = UniformScaleClassFallback(element, map);
+            return map.Projection;
+        }
+
+        internal static float? UniformScaleClassFallback(VisualElement element)
+            => s_layers.TryGetValue(element, out var map) ? UniformScaleClassFallback(element, map) : null;
+
+        private static float? UniformScaleClassFallback(VisualElement element, LayerMap map)
+        {
+            return
                 // MUTANT_SURVIVES(equivalent, clause removed): removing the outer axis-presence clause leaves writes unchanged: the three current callers add no axis before refresh, which rejects that capture.
-                && (map.ContainsKey(ArbitraryProperty.ScaleX) || map.ContainsKey(ArbitraryProperty.ScaleY))
+                (map.ContainsKey(ArbitraryProperty.ScaleX) || map.ContainsKey(ArbitraryProperty.ScaleY))
                 ? UniformScaleFromClasses(element)
                 : null;
         }

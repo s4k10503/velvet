@@ -795,7 +795,6 @@ namespace Velvet
                     // MUTANT_SURVIVES(equivalent): the cache only skips assigning the material the layer already holds, so without it every Arrange assigns the same material again, which costs a style write per tick on a layer the tick already marks for repaint and changes nothing drawn.
                     binding.LayerBlends[i] = blend;
                 }
-                // MUTANT_SURVIVES(equivalent, equality): flipping the parent clause re-inserts a layer at the index it already holds, and a layer that is not a child of the element still fails the index clause; the layer registers no callback but its paint, so the re-insert costs a hierarchy change and nothing a caller can see.
                 if (layers[i].parent != element || ChildListWrites.PhysicalIndexOf(element, layers[i]) != i)
                 {
                     ChildListWrites.Insert(element, i, layers[i]);
