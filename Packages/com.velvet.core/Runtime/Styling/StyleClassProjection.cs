@@ -33,15 +33,14 @@ namespace Velvet
         // nothing.
         public static void Add(VisualElement element, string cls, long priority)
         {
-            var previousUniform = StyleArbitraryValueResolver.UniformScaleClassFallback(element);
-            AddToModel(element, cls, priority);
+            var model = StyleArbitraryValueResolver.TryGetProjection(element, out var previousUniform);
+            AddToModel(element, cls, priority, model);
             StyleArbitraryValueResolver.NotifyClassesChanged(element, previousUniform);
         }
 
-        private static void AddToModel(VisualElement element, string cls, long priority)
+        private static void AddToModel(VisualElement element, string cls, long priority, Model? model)
         {
             CornerRadiusFit.TrackClass(element, cls);
-            var model = StyleArbitraryValueResolver.TryGetProjection(element);
             if (model == null)
             {
                 if (priority == StyleLayerPriority.Base)
@@ -57,15 +56,14 @@ namespace Velvet
 
         public static void Remove(VisualElement element, string cls, long priority)
         {
-            var previousUniform = StyleArbitraryValueResolver.UniformScaleClassFallback(element);
-            RemoveFromModel(element, cls, priority);
+            var model = StyleArbitraryValueResolver.TryGetProjection(element, out var previousUniform);
+            RemoveFromModel(element, cls, priority, model);
             CornerRadiusFit.NoteClassWrite(element);
             StyleArbitraryValueResolver.NotifyClassesChanged(element, previousUniform);
         }
 
-        private static void RemoveFromModel(VisualElement element, string cls, long priority)
+        private static void RemoveFromModel(VisualElement element, string cls, long priority, Model? model)
         {
-            var model = StyleArbitraryValueResolver.TryGetProjection(element);
             if (model != null)
             {
                 model.Remove(element, cls, priority);

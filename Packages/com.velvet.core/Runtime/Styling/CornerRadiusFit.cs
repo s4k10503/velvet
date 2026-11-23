@@ -162,6 +162,7 @@ namespace Velvet
         private static bool HoldsInlineRadius(IStyle style)
         {
             var held = false;
+            // MUTANT_SURVIVES(equivalent, boundary): InlineCorner maps an index past the last corner to the bottom-left slot, so the extra pass ORs a slot already read.
             for (var i = 0; i < CornerCount; i++)
             {
                 var slot = InlineCorner(style, i);

@@ -63,6 +63,7 @@ namespace Velvet
         // Whether core, with its important bang removed, is a token Consumer reads. A reader names its custom property as
         // `var(` or as the parenthesised shorthand's `--`, so a token holding neither is none and costs no normalizing.
         internal static bool IsConsumer(string core)
+            // MUTANT_SURVIVES(unreachable, boundary): both callers pass a class opening with `font-` or with a box-shadow root, so no core opens with `var(` or `--`. A core opening with `var(` reads none regardless, its parenthesis at index 3 following an `r`, which TryShorthandGroup refuses.
             => (core.IndexOf("var(", StringComparison.OrdinalIgnoreCase) >= 0
                     || core.IndexOf("--", StringComparison.Ordinal) >= 0)
                 && Consumer(core) != null;
@@ -100,6 +101,7 @@ namespace Velvet
             {
                 return null;
             }
+            // MUTANT_SURVIVES(equivalent, boundary): a core opening with `(` reads nothing either way, since WithShorthandsExpanded refuses a parenthesis at index 0 and StyleThemeClass.Normalize refuses any core holding one.
             if (core[0] != '[' && core.IndexOf('(') < 0 && core.IndexOf('_') < 0 && core.IndexOf("]/", StringComparison.Ordinal) < 0)
             {
                 return StyleThemeClass.Normalize(core);
@@ -139,6 +141,7 @@ namespace Velvet
                 return null;
             }
             var shape = UtilityShape.Of(expanded);
+            // MUTANT_SURVIVES(equivalent, boundary): the character at `open` is the bracket, so `var(` cannot begin there.
             return expanded.IndexOf("var(", open, StringComparison.OrdinalIgnoreCase) > open || UnsetsLiteralStop(expanded)
                 || (SidesOf(expanded, shape) != null && HoldsSeveralValues(expanded, shape))
                 ? expanded
@@ -161,6 +164,7 @@ namespace Velvet
             var open = utility.IndexOf('[');
             if (open < 2 || slash <= open + 1 || utility[slash - 1] != ']' || utility[open - 1] != '-')
             {
+                // MUTANT_SURVIVES(equivalent, literal): the out values are then an empty root and no hint, and no caller reads that as a numeric modifier: TakesOpacityModifier finds the empty root neither a shadow root nor a colour root, RetypesColour requires a hint, and UnsetsLiteralStop requires a root of from, via or to.
                 return false;
             }
             var number = utility.AsSpan(slash + 1);
@@ -193,6 +197,7 @@ namespace Velvet
         // colour is the value's to say, and the reader is read as a colour (a ring's, which discards the box-shadow where it
         // is none, are read as they are: StyleRingClass.ReadBoxShadowPart).
         internal static bool RetypesColour(string utility)
+            // MUTANT_SURVIVES(equivalent, boundary): its only caller is the Consumer constructor, whose utility never opens with `var(`, as Normalize refuses a core that does.
             => utility.IndexOf("var(", StringComparison.OrdinalIgnoreCase) >= 0
                 && TryReadNumericModifier(utility, out var root, out var hint) && hint != null && hint != "color"
                 && !(root is "ring" or "ring-offset" or "inset-ring") && !s_shadowModifierRoots.Contains(root)
@@ -204,6 +209,7 @@ namespace Velvet
         internal static bool UnsetsLiteralStop(string utility)
             => TryReadNumericModifier(utility, out var root, out var hint) && root is "from" or "via" or "to"
                 && hint != null && hint != "color" && !StyleColorValueParser.HintSelectsNonColour(root, hint)
+                // MUTANT_SURVIVES(equivalent, boundary): root is the prefix of utility before its bracket, and the statement reaches this line only where it is `from`, `via` or `to`, so utility opens with one of them and `var(` is never found at index 0.
                 && utility.IndexOf("var(", StringComparison.OrdinalIgnoreCase) < 0
                 && StyleColorValueParser.RejectsAsColour(StyleArbitraryValueResolver.WithoutTypeHint(utility) is { } plain
                     ? plain.Substring(plain.IndexOf('[') + 1, plain.LastIndexOf('/') - plain.IndexOf('[') - 2)

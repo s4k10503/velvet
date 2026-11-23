@@ -226,6 +226,7 @@ namespace Velvet
         {
             style.cursor = StyleKeyword.Null;
             style.textShadow = StyleKeyword.Null;
+            // MUTANT_SURVIVES(equivalent, line removed): PooledElementStyleGhostTests holds that the engine does not animate this property and that Clear nulls it, so the line changes no outcome.
             style.unityTextAutoSize = StyleKeyword.Null;
             style.transformOrigin = StyleKeyword.Null;
             style.translate = StyleKeyword.Null;
