@@ -19,9 +19,11 @@ namespace Velvet.Tests
     /// once each element has left. An element whose removal threw is neither removed again nor pooled, so a callback in a
     /// clip-path wrapper or a pooled button runs once and is reported once, and a pooled button whose own callback threw
     /// stays out of the pool. A <c>z-*</c> element in a row whose removal threw is removed again only where that throw
-    /// came ahead of its own detach, so its callback runs once either way. A <c>V.VirtualList</c>'s row is reported the
-    /// same way where the disposal or a drain's update removes the list, as is an element beside a list of components,
-    /// and a host that disposes its root as it detaches is left without the root's <c>z-*</c> element.
+    /// came ahead of its own detach, so its callback runs once either way, a pooled one rented again included, and a
+    /// <c>z-*</c> button a healthy removal of its row took still goes back to the pool. A <c>V.VirtualList</c>'s row is
+    /// reported the same way where the disposal or a drain's update removes the list, as is an element beside a list of
+    /// components; under a reconciler no root owns, the first of two rows' errors is thrown once both have detached. A
+    /// host that disposes its root as it detaches is left without the root's <c>z-*</c> element.
     /// </summary>
     /// <remarks>
     /// The tree mounts on a real panel, which is what runs a detach callback.
@@ -640,6 +642,31 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(VNodePoolTestAccess.ButtonPoolCountForTest, Is.EqualTo(1));
+        }
+
+        // The button the second tree rents is the one the first tree's row took off the panel and pooled, which has
+        // attached again since.
+        [Test]
+        public void Given_APooledZPlacedButtonRentedAgainBehindAnElementThatThrowsAsItDetaches_When_TheSecondHandleIsDisposed_Then_TheButtonsCallbackRunsAndBothAreReported()
+        {
+            // Arrange
+            VNodePoolTestAccess.ClearButtonPoolForTest();
+            V.Mount(_mountPoint, V.Div(className: "relative", key: "row", children: new VNode[]
+            {
+                V.Button(className: "absolute z-10", key: "z"),
+            })).Dispose();
+            var mounted = V.Mount(_mountPoint, V.Div(className: "relative", key: "row", children: new VNode[]
+                {
+                    V.Custom<DetachThrower>(name: "X", key: "x"),
+                    V.Button(className: "absolute z-10", key: "z", name: "P", refCallback: s_registersAThrowingDetach),
+                }),
+                new MountOptions { OnUncaughtError = (error, _) => _reports.Add(error.Message) });
+
+            // Act
+            RecordingWhatItThrows(mounted.Dispose, _reports.Add);
+
+            // Assert
+            Assert.That(string.Join(" / ", _reports), Is.EqualTo("detach:X / detach:P"));
         }
 
         // GREEN_ON_BASE(characterization): the base removes the z-* element from a host its own detach disposes the root in.
