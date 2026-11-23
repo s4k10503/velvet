@@ -211,7 +211,7 @@ namespace Velvet
                 return;
             }
 
-            if (StandsDown(textElement, parent, horizontal, clipped))
+            if (StandsDown(textElement, horizontal, clipped, sizedByGrid))
             {
                 Release(textElement);
                 Settle(signature, text);
@@ -311,13 +311,11 @@ namespace Velvet
         // A bracket length such as `max-w-[calc(50%+10px)]` is written inline as pixels, so the percentage it
         // reads shows only in the layer that holds it.
         private static bool ReadsPercentageLayer(TextElement textElement, bool horizontal)
-            => horizontal
-                ? StyleArbitraryValueResolver.WinningLayerReadsPercentage(textElement, ArbitraryProperty.Width)
-                    || StyleArbitraryValueResolver.WinningLayerReadsPercentage(textElement, ArbitraryProperty.MaxWidth)
-                    || StyleArbitraryValueResolver.WinningLayerReadsPercentage(textElement, ArbitraryProperty.Size)
-                : StyleArbitraryValueResolver.WinningLayerReadsPercentage(textElement, ArbitraryProperty.Height)
-                    || StyleArbitraryValueResolver.WinningLayerReadsPercentage(textElement, ArbitraryProperty.MaxHeight)
-                    || StyleArbitraryValueResolver.WinningLayerReadsPercentage(textElement, ArbitraryProperty.Size);
+            => StyleArbitraryValueResolver.TryWinningPercentageExpression(
+                    textElement, horizontal ? ArbitraryProperty.Width : ArbitraryProperty.Height, out _)
+                || StyleArbitraryValueResolver.TryWinningPercentageExpression(
+                    textElement, horizontal ? ArbitraryProperty.MaxWidth : ArbitraryProperty.MaxHeight, out _)
+                || StyleArbitraryValueResolver.TryWinningPercentageExpression(textElement, ArbitraryProperty.Size, out _);
 
         // Where ResolveLength takes the parent's content box into the length.
         private static bool IsPercent(StyleLength inline, Dim? fromClass)
@@ -361,14 +359,40 @@ namespace Velvet
                     - resolved.borderLeftWidth - resolved.borderRightWidth;
 
         private float? SpecifiedLength(TextElement textElement, bool horizontal, float parentContent)
-            => ResolveLength(
-                horizontal ? textElement.style.width : textElement.style.height,
-                horizontal ? _specifiedWidth : _specifiedHeight, parentContent);
+            => TryLayerLength(textElement, horizontal, horizontal ? ArbitraryProperty.Width : ArbitraryProperty.Height,
+                    out var fromLayer)
+                ? fromLayer
+                : ResolveLength(
+                    horizontal ? textElement.style.width : textElement.style.height,
+                    horizontal ? _specifiedWidth : _specifiedHeight, parentContent);
 
         private float? MaximumLength(TextElement textElement, bool horizontal, float parentContent)
-            => ResolveLength(
-                horizontal ? textElement.style.maxWidth : textElement.style.maxHeight,
-                horizontal ? _maxWidth : _maxHeight, parentContent);
+            => TryLayerLength(textElement, horizontal, horizontal ? ArbitraryProperty.MaxWidth : ArbitraryProperty.MaxHeight,
+                    out var fromLayer)
+                ? fromLayer
+                : ResolveLength(
+                    horizontal ? textElement.style.maxWidth : textElement.style.maxHeight,
+                    horizontal ? _maxWidth : _maxHeight, parentContent);
+
+        // A bracket length that reads a percentage is resolved against the parent's box as it is now: what the
+        // layer last wrote inline is the poll's, which runs after the layout that moved the box. Null while the
+        // element is not laid out or the percentage is of an indefinite size.
+        private static bool TryLayerLength(TextElement textElement, bool horizontal, ArbitraryProperty own, out float? length)
+        {
+            length = null;
+            if (!StyleArbitraryValueResolver.TryWinningPercentageExpression(textElement, own, out var expression)
+                && !StyleArbitraryValueResolver.TryWinningPercentageExpression(textElement, ArbitraryProperty.Size, out expression))
+            {
+                return false;
+            }
+            if (StyleRelativeLengths.TryResolve(
+                    textElement, expression, horizontal ? RelativeLengthAxis.Width : RelativeLengthAxis.Height,
+                    StyleKeyword.None, out var resolved) && resolved.keyword == StyleKeyword.Undefined)
+            {
+                length = resolved.value.value;
+            }
+            return true;
+        }
 
         private static float MeasureContentMinimum(
             TextElement textElement, bool horizontal, string text, WhiteSpace whiteSpace, float crossContent)
@@ -395,7 +419,7 @@ namespace Velvet
             => element.resolvedStyle.position != Position.Absolute
                 && element.resolvedStyle.display != DisplayStyle.None;
 
-        private bool StandsDown(TextElement textElement, VisualElement parent, bool horizontal, bool clipped)
+        private bool StandsDown(TextElement textElement, bool horizontal, bool clipped, bool sizedByGrid)
         {
             if (clipped)
             {
@@ -421,7 +445,7 @@ namespace Velvet
             {
                 return true;
             }
-            return IsSizedByGridParent(parent);
+            return sizedByGrid;
         }
 
         private static bool IsInlineOverflowHidden(VisualElement element)

@@ -21,6 +21,8 @@ namespace Velvet.Tests
         private const string Longer = LongerWord + " is long";
         private const string NarrowRow = "flex flex-row w-[20px]";
         private const string WideRow = "flex flex-row w-[2000px]";
+        private const string RowParent = WideRow;
+        private const string ColumnParent = "flex flex-col w-[300px] h-[2000px]";
 
         private const BindingFlags Private = BindingFlags.NonPublic | BindingFlags.Instance;
 
@@ -356,19 +358,20 @@ namespace Velvet.Tests
             // Arrange
             using var scope = new ReconcilerScope();
             var label = MountLabel(scope, NarrowRow, "", Sentence);
+            var written = label.style.minWidth.keyword == StyleKeyword.Undefined;
             label.style.overflow = Overflow.Hidden;
 
             // Act
             FireGeometry(label);
 
-            // Assert
-            Assert.That(label.style.minWidth.keyword, Is.EqualTo(StyleKeyword.Null));
+            // Assert — a keyword the expected one is not where no minimum was written to release.
+            Assert.That(written ? label.style.minWidth.keyword : StyleKeyword.Undefined, Is.EqualTo(StyleKeyword.Null));
         }
 
         [Test]
         public void Given_ALabelStoodDownForInlineOverflowHidden_When_ThatInlineValueIsClearedAndItsOwnGeometryEventFires_Then_ItGetsAMinWidth()
         {
-            // Arrange — the label is stood down by a derive of its own, the leaf having been given a new signature.
+            // Arrange — Rederive drops the settled signature, so the derive it runs stands the label down on the inline value.
             using var scope = new ReconcilerScope();
             var label = MountLabel(scope, NarrowRow, "", Sentence);
             label.style.overflow = Overflow.Hidden;
@@ -382,21 +385,122 @@ namespace Velvet.Tests
             Assert.That(label.style.minWidth.keyword, Is.Not.EqualTo(StyleKeyword.Null));
         }
 
-        [Test]
-        public void Given_ALabelWithABracketCalcPercentMaxWidth_When_ItsTextChangesAndOnlyItsParentsGeometryEventFires_Then_ItsMinWidthFollowsTheText()
+        // The parent takes a size on its main axis that makes `calc(50%+2px)` of it 3px or 4px, with a layout pass and
+        // then only the parent's own geometry event: no scheduler tick runs, so a pixel value a length layer wrote
+        // inline stays what it was before the resize.
+        private static void ResizeParent(VisualElement parent, bool row)
         {
-            // Arrange — as the inline percent case above: the cap stays above either text's widest word.
+            if (row)
+            {
+                parent.style.width = 4f;
+            }
+            else
+            {
+                parent.style.height = 2f;
+            }
+            ForcePanelUpdate(parent.panel);
+        }
+
+        [Test]
+        public void Given_ALabelWithABracketCalcPercentMaxWidth_When_ItsParentShrinksAndOnlyItsParentsGeometryEventFires_Then_ItsMinWidthFollowsTheCap()
+        {
+            // Arrange
             using var scope = new ReconcilerScope();
-            var label = MountLabel(scope, WideRow, "shrink-0 max-w-[calc(50%+10px)]", Sentence);
+            var label = MountLabel(scope, RowParent, "shrink-0 max-w-[calc(50%+2px)]", Sentence);
             var parent = label.parent;
             FireGeometry(parent);
-            SetTextQuietly(label, Longer);
 
             // Act
+            ResizeParent(parent, true);
             FireGeometry(parent);
 
             // Assert
-            Assert.That(label.style.minWidth.value.value, Is.EqualTo(WidestWordMinimum(label, LongerWord)));
+            Assert.That(label.style.minWidth.value.value, Is.EqualTo(4f).Within(0.01f));
+        }
+
+        [Test]
+        public void Given_ALabelWithABracketCalcPercentWidth_When_ItsParentShrinksAndOnlyItsParentsGeometryEventFires_Then_ItsMinWidthFollowsTheWidth()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var label = MountLabel(scope, RowParent, "shrink-0 w-[calc(50%+2px)]", Sentence);
+            var parent = label.parent;
+            FireGeometry(parent);
+
+            // Act
+            ResizeParent(parent, true);
+            FireGeometry(parent);
+
+            // Assert
+            Assert.That(label.style.minWidth.value.value, Is.EqualTo(4f).Within(0.01f));
+        }
+
+        [Test]
+        public void Given_ALabelWithABracketCalcPercentSizeInARow_When_ItsParentShrinksAndOnlyItsParentsGeometryEventFires_Then_ItsMinWidthFollowsTheSize()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var label = MountLabel(scope, RowParent, "shrink-0 size-[calc(50%+2px)]", Sentence);
+            var parent = label.parent;
+            FireGeometry(parent);
+
+            // Act
+            ResizeParent(parent, true);
+            FireGeometry(parent);
+
+            // Assert
+            Assert.That(label.style.minWidth.value.value, Is.EqualTo(4f).Within(0.01f));
+        }
+
+        [Test]
+        public void Given_ALabelWithABracketCalcPercentMaxHeight_When_ItsParentShrinksAndOnlyItsParentsGeometryEventFires_Then_ItsMinHeightFollowsTheCap()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var label = MountLabel(scope, ColumnParent, "max-h-[calc(50%+2px)]", Sentence);
+            var parent = label.parent;
+            FireGeometry(parent);
+
+            // Act
+            ResizeParent(parent, false);
+            FireGeometry(parent);
+
+            // Assert
+            Assert.That(label.style.minHeight.value.value, Is.EqualTo(3f).Within(0.01f));
+        }
+
+        [Test]
+        public void Given_ALabelWithABracketCalcPercentHeight_When_ItsParentShrinksAndOnlyItsParentsGeometryEventFires_Then_ItsMinHeightFollowsTheHeight()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var label = MountLabel(scope, ColumnParent, "h-[calc(50%+2px)]", Sentence);
+            var parent = label.parent;
+            FireGeometry(parent);
+
+            // Act
+            ResizeParent(parent, false);
+            FireGeometry(parent);
+
+            // Assert
+            Assert.That(label.style.minHeight.value.value, Is.EqualTo(3f).Within(0.01f));
+        }
+
+        [Test]
+        public void Given_ALabelWithABracketCalcPercentSizeInAColumn_When_ItsParentShrinksAndOnlyItsParentsGeometryEventFires_Then_ItsMinHeightFollowsTheSize()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var label = MountLabel(scope, ColumnParent, "size-[calc(50%+2px)]", Sentence);
+            var parent = label.parent;
+            FireGeometry(parent);
+
+            // Act
+            ResizeParent(parent, false);
+            FireGeometry(parent);
+
+            // Assert
+            Assert.That(label.style.minHeight.value.value, Is.EqualTo(3f).Within(0.01f));
         }
 
         // GREEN_ON_BASE(characterization): the base reads a text whose widest run is as wide as the whole text as one a minimum can reach. Change `>=` to `>` in MinimumCanReach and the equal widths no longer do.

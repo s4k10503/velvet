@@ -3445,13 +3445,23 @@ namespace Velvet
             return !AutoLayerWins(element, property);
         }
 
-        // Whether the layer that holds property over the element's classes is a length expression reading a
-        // percentage, which is resolved against the parent's box again as that box moves.
-        internal static bool WinningLayerReadsPercentage(VisualElement element, ArbitraryProperty property)
-            => s_layers.TryGetValue(element, out var map)
-                && TryWinningLayer(map, property, out var winner)
-                && winner.Expression != null
-                && winner.Expression.ReadsPercentage;
+        // The layer that holds property over the element's classes, when it is a length expression reading a
+        // percentage: the pixels written inline are the last tick's of it, so a reader that needs the current
+        // ones resolves the expression itself (StyleRelativeLengths.TryResolve).
+        internal static bool TryWinningPercentageExpression(
+            VisualElement element, ArbitraryProperty property, out StyleLengthExpression expression)
+        {
+            expression = null!;
+            if (!s_layers.TryGetValue(element, out var map)
+                || !TryWinningLayer(map, property, out var winner)
+                || winner.Expression == null
+                || !winner.Expression.ReadsPercentage)
+            {
+                return false;
+            }
+            expression = winner.Expression;
+            return true;
+        }
 
         // Whether the layer that holds property over the element's classes is the `auto` keyword.
         internal static bool AutoLayerWins(VisualElement element, ArbitraryProperty property)
