@@ -46,7 +46,8 @@ namespace Velvet
     internal sealed class FiberFontScope
     {
         // What an inheritor was last resolved against. Named is the family a font-<name> ancestor names and kept; Seen and
-        // SeenLegacy the font and the legacy font its parent resolved to then. Wait is the number of reads left after a
+        // SeenLegacy the font and the legacy font its parent resolved to then, SeenFar and SeenFarLegacy those of the ancestor
+        // that declares one (InheritSource). Wait is the number of reads left after a
         // registry change before it is resolved again whether or not anything moved. Rules is the key the engine held
         // the element's matched rules under, Own the font the author gave the element inline and RuleKey the fonts its
         // rules and parent gave it, read only where a stylesheet other than a default one is attached above it. Family,
@@ -63,11 +64,14 @@ namespace Velvet
             public bool Foreign;
             public int? RuleKey;
             public UnityEngine.Object? SeenLegacy;
+            public UnityEngine.Object? SeenFar;
+            public UnityEngine.Object? SeenFarLegacy;
             public UnityEngine.Font? Legacy;
 
             public Inheritor(FontIntent intent, string? named, UnityEngine.Object? seen, int wait, long? rules = null,
                 UnityEngine.Object? own = null, string? family = null, bool foreign = false, int? ruleKey = null,
-                UnityEngine.Object? seenLegacy = null, UnityEngine.Font? legacy = null)
+                UnityEngine.Object? seenLegacy = null, UnityEngine.Font? legacy = null, UnityEngine.Object? seenFar = null,
+                UnityEngine.Object? seenFarLegacy = null)
             {
                 Intent = intent;
                 Named = named;
@@ -79,6 +83,8 @@ namespace Velvet
                 Foreign = foreign;
                 RuleKey = ruleKey;
                 SeenLegacy = seenLegacy;
+                SeenFar = seenFar;
+                SeenFarLegacy = seenFarLegacy;
                 Legacy = legacy;
             }
 
@@ -234,51 +240,12 @@ namespace Velvet
                 && !StyleFilterTransitionDriver.TryFindTransition(element, "-unity-font-definition", "-unity-font",
                     out _, out _, out _);
 
-        // The fonts the rules matching an element set, by the key the engine caches the element's style under, which moves
-        // with the rules and the inherited style above it. Read where a frame finds the reads disagree, which would
-        // otherwise ask the matcher, and allocate, on each frame an element with a rule font of its own stays so.
-        private static readonly Dictionary<long, bool> s_ruleFont = new();
-
-        private static bool RuleSetsFont(VisualElement element)
+        // The nearest ancestor of the element that declares a font inline or runs a transition of it, which is where a font
+        // written inline above the element is current whatever sits between; the top ancestor where none does.
+        private static VisualElement? InheritSource(VisualElement element)
         {
-            var key = StyleCascade.RulesHash(element) ?? 0;
-            var known = false;
-            if (key != 0 && s_ruleFont.TryGetValue(key, out known))
-            {
-                return known;
-            }
-
-            var sets = (BorderPreflight.RuleFonts(element) ?? 0) != 0;
-            if (key != 0)
-            {
-                if (s_ruleFont.Count >= 512)
-                {
-                    s_ruleFont.Clear();
-                }
-
-                s_ruleFont[key] = sets;
-            }
-
-            return sets;
-        }
-
-        // The font the element's parent gives it as of now. An element that inherits its font shows it from the style
-        // pass of its panel, so a write of Velvet's or an author's above it is read off the nearest ancestor that
-        // declares a font instead, unless a rule of any stylesheet gives one in between, which is read where it is given.
-        // Where the two reads agree, nothing is asked of the matcher; where it cannot be built, only inline fonts are
-        // read. A frame that leaves the reads agreeing costs each inheritor a walk up past the elements that inherit.
-        // Given_AClasslessElementBetweenABoldElementAndABoldLabel_When_TheContainersFamilyChanges_Then_TheLabelFollowsAtOnce
-        // fails when the read stops at the parent.
-        private static UnityEngine.Object? InheritedPeek(VisualElement element)
-        {
-            var parent = ChildListWrites.ParentOf(element);
-            if (parent == null)
-            {
-                return null;
-            }
-
-            var source = parent;
-            while (Inherits(source))
+            var source = ChildListWrites.ParentOf(element);
+            while (source != null && Inherits(source))
             {
                 var up = ChildListWrites.ParentOf(source);
                 if (up == null)
@@ -289,21 +256,57 @@ namespace Velvet
                 source = up;
             }
 
+            return source;
+        }
+
+        private static UnityEngine.Object? FarPeek(VisualElement element)
+        {
+            var source = InheritSource(element);
+            return source == null ? null : Peek(source);
+        }
+
+        private static UnityEngine.Object? FarLegacy(VisualElement element)
+            => InheritSource(element)?.resolvedStyle.unityFont;
+
+        // The font the element's parent gives it as of now. A font written inline above an element that inherits its own
+        // reaches that element's resolved style only at the style pass of its panel, so it is read off the declaring
+        // ancestor (InheritSource) instead, unless a rule of any stylesheet gives an element in between a font, which is read
+        // where it is given. Where the two reads agree, or the parent has none resolved yet, nothing is asked of the
+        // matcher; where it cannot be built, only inline fonts are read. Only a resolve asks it: the poll compares the two
+        // reads against the ones recorded (Moved).
+        // Given_AClasslessElementBetweenABoldElementAndABoldLabel_When_TheContainersFamilyChanges_Then_TheLabelFollowsAtOnce
+        // fails when the read stops at the parent.
+        private static UnityEngine.Object? InheritedPeek(VisualElement element)
+        {
+            var parent = ChildListWrites.ParentOf(element);
+            var source = InheritSource(element);
+            if (parent == null || source == null)
+            {
+                return null;
+            }
+
             var far = Peek(source);
-            if (far == Peek(parent))
+            var near = Peek(parent);
+            if (far == near || near == null)
             {
                 return far;
             }
 
             for (var ancestor = parent; ancestor != source; ancestor = ChildListWrites.ParentOf(ancestor)!)
             {
-                if (RuleSetsFont(ancestor))
+                if ((BorderPreflight.RuleFonts(ancestor) ?? 0) != 0)
                 {
                     return Peek(ancestor);
                 }
             }
 
             return far;
+        }
+
+        private static UnityEngine.Object? ParentPeek(VisualElement element)
+        {
+            var parent = ChildListWrites.ParentOf(element);
+            return parent == null ? null : Peek(parent);
         }
 
         private static FontAsset? AssetOfPeek(VisualElement element, UnityEngine.Object? peek)
@@ -399,9 +402,16 @@ namespace Velvet
 
         // The legacy font an author gives the nearest ancestor that sets one, inline or by a rule, below the one naming a
         // family. The walk stops at an ancestor that is a family member or an inheritor, or that has a definition of the
-        // author's, since that definition decides instead. It is made only where the parent resolves a definition, which
+        // author's, since that definition decides instead. It is made only where the parent, or the ancestor that declares a font above it, resolves a definition, which
         // the engine draws ahead of a legacy font, and a legacy font. An ancestor's rules are asked of the matcher once,
         // and only where a stylesheet other than a default one is attached.
+        private static bool ResolvesDefinitionAndLegacy(VisualElement element)
+        {
+            var resolved = element.resolvedStyle;
+            var definition = resolved.unityFontDefinition;
+            return resolved.unityFont != null && (definition.fontAsset != null || definition.font != null);
+        }
+
         private UnityEngine.Font? AncestorLegacy(VisualElement element, VisualElement? named, bool sheeted)
         {
             var parent = ChildListWrites.ParentOf(element);
@@ -410,9 +420,7 @@ namespace Velvet
                 return null;
             }
 
-            var resolved = parent.resolvedStyle;
-            var definition = resolved.unityFontDefinition;
-            if (resolved.unityFont == null || (definition.fontAsset == null && definition.font == null))
+            if (!ResolvesDefinitionAndLegacy(parent) && !ResolvesDefinitionAndLegacy(InheritSource(element)!))
             {
                 return null;
             }
@@ -463,8 +471,12 @@ namespace Velvet
         // Whether what the element's font was resolved from has moved, short of its matched rules: the parent's font and
         // the author's inline font on the element.
         private static bool Moved(VisualElement element, in Inheritor entry)
-            => InheritedPeek(element) != entry.Seen || InlineFontLedger.AuthorFont(element) != entry.Own
-                || ParentLegacy(element) != entry.SeenLegacy;
+            => PeekMoved(element, entry) || InlineFontLedger.AuthorFont(element) != entry.Own
+                || ParentLegacy(element) != entry.SeenLegacy || FarLegacy(element) != entry.SeenFarLegacy;
+
+        // Whether either read InheritedPeek compares has moved, without the matcher it asks.
+        private static bool PeekMoved(VisualElement element, in Inheritor entry)
+            => ParentPeek(element) != entry.Seen || FarPeek(element) != entry.SeenFar;
 
         private static UnityEngine.Object? ParentLegacy(VisualElement element)
             => ChildListWrites.ParentOf(element)?.resolvedStyle.unityFont;
@@ -517,8 +529,9 @@ namespace Velvet
             }
 
             int? ruleKey = BorderPreflight.HasAuthorSheet(element) == true ? RuleKeyOf(element) : null;
-            Inheritors[element] = new Inheritor(intent, found.Named, InheritedPeek(element), 0, StyleCascade.RulesHash(element),
-                InlineFontLedger.AuthorFont(element), family, foreign, ruleKey, ParentLegacy(element), legacy);
+            Inheritors[element] = new Inheritor(intent, found.Named, ParentPeek(element), 0, StyleCascade.RulesHash(element),
+                InlineFontLedger.AuthorFont(element), family, foreign, ruleKey, ParentLegacy(element), legacy, FarPeek(element),
+                FarLegacy(element));
             _wantsFollow = true;
             return hadPrior && moved;
         }
@@ -656,7 +669,7 @@ namespace Velvet
                 var child = parent.hierarchy[i];
                 if (Inheritors.TryGetValue(child, out var entry))
                 {
-                    if (moved || InheritedPeek(child) != entry.Seen)
+                    if (moved || PeekMoved(child, entry))
                     {
                         ResolveDown(child, entry.Intent, false);
                     }

@@ -714,6 +714,29 @@ namespace Velvet.Tests
             Assert.That(Target(root).style.unityFontDefinition.value.font, Is.Not.Null.And.SameAs(legacy));
         }
 
+        [Test]
+        public void Given_AClasslessElementBetweenAnElementGainingAnInlineLegacyFontAndABoldLabel_When_TheFontIsSet_Then_TheLabelsDefinitionIsThatLegacyFontBeforeTheStylesAreUpdated()
+        {
+            // Arrange
+            VelvetFonts.DefaultFamily = "sans";
+            var legacy = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            var root = new VisualElement();
+            _host.Root.Add(root);
+            _mounted = V.Mount(root, V.Div(name: "above", children: new[]
+            {
+                V.Div(children: new[] { BoldTarget() }),
+            }));
+            RunAFrame();
+            RunAFrame();
+
+            // Act
+            root.Q("above").style.unityFont = legacy;
+            EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
+
+            // Assert
+            Assert.That(Target(root).style.unityFontDefinition.value.font, Is.Not.Null.And.SameAs(legacy));
+        }
+
         // GREEN_ON_BASE(characterization): the base takes its write off with the class whatever copies it. Leave
         // `LineBoxFont.SourceOf(shown.fontAsset)` out of WrittenFont in the ledger and the copy of the legacy write reads as
         // the author's, which the removal then leaves on the label.

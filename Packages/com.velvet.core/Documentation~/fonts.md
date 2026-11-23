@@ -158,9 +158,10 @@ panel, so a change to any of them reaches the label within the next updates of t
 a font Velvet wrote above the element, the named family stands. Pending elements settle ancestor first, so an element
 between a container and a label is given its font before the label reads it. An element between them that declares no
 font (no inline font, no rule of any stylesheet setting one) and runs no transition of it is read through to the
-nearest ancestor that does, so a label under one follows a change to that ancestor's font in the update that makes it
-rather than the next, whether Velvet or an author wrote it. A label under an element that does transition its font follows
-it as it shows it. Where the rule matcher cannot be built, only inline fonts are read there, as for an element's own rules. An author rule of the element itself is read through the
+nearest ancestor that does, so a label under one follows a font written inline on that ancestor, Velvet's or an
+author's, a definition or a legacy `-unity-font`, in the update that writes it rather than the next. A label under an
+element that does transition its font follows it as it shows it. Where the rule matcher cannot be built, only inline
+fonts are read there, as for an element's own rules. An author rule of the element itself is read through the
 engine's rule matcher, only where a stylesheet other than a default one is attached above it; where the matcher cannot be
 built (an editor whose internals moved; `EngineMemberResolutionTests` fails when a member it reads stops resolving), only
 inline fonts are read.
