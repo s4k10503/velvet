@@ -11,7 +11,7 @@ namespace Velvet.Tests
     /// commit unless a flush of the pass's writes reaches it sooner, as react-reconciler 19.1 runs a deleted fiber's
     /// destroys in the mutation phase of the commit rather than while it renders. A cleanup's error is captured for the
     /// boundary above the deletion, which renders its fallback in a follow-up commit (<c>captureCommitPhaseError</c>)
-    /// and does not stop the render under way. The rows of a container that holds no component are removed in the walk.
+    /// and does not stop the render under way. The rows of a container whose children are all host elements are removed in the walk.
     /// </summary>
     [TestFixtureSource(typeof(EventLogRenderer), nameof(EventLogRenderer.All))]
     internal sealed class DeletionTeardownAtApplyTests
