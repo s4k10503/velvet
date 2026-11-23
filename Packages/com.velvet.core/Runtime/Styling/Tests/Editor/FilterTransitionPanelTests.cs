@@ -1311,12 +1311,15 @@ namespace Velvet.Tests
             Assert.That(element.style.filter.value[0].GetParameter(0).floatValue, Is.EqualTo(12f));
         }
 
+        // GREEN_ON_BASE(characterization): the base's engine animates both rows' writes as this change's engine does.
+        // Only the control's precondition changed, to read transition-all's list where the base read `all`.
         [TestCase(false)]
         [TestCase(true)]
         public void Given_AnEngineTransition_When_AnInlineValueChanges_Then_ThePaintUsesTheDurationAtTheFinalWrite(bool classDiff)
         {
-            // Arrange — retain the whole-property filter engine control. The class-diff row starts with
-            // a resolved native-only leaf and a one-second padding transition, before any inline tokens.
+            // Arrange — retain the filter engine control, which transition-all's list gives the engine by timing filter
+            // as it times background-size. The class-diff row starts with a resolved native-only leaf and a one-second
+            // padding transition, before any inline tokens.
             using var reconciler = new Reconciler();
             var root = _window.rootVisualElement;
             var oldTree = new[] { V.Div(name: "card", className: "relative") };
@@ -1334,8 +1337,8 @@ namespace Velvet.Tests
             {
                 element = MountResolved("transition-all duration-300");
             }
-            var wholeProperty = !element.resolvedStyle.transitionProperty
-                .Select(p => p.ToString()).Contains("filter");
+            var engineRuns = !element.resolvedStyle.transitionProperty.Select(p => p.ToString()).Contains("filter")
+                || StyleFilterTransitionDriver.EngineTimesFilterWrites(element);
             // Half way along Tailwind's --default-transition-timing-function, on which transition-all's ease-in-out runs
             // from its first frame (StyleEaseCurve).
             var filterMidpoint = 12f * CubicBezierEvaluator.Evaluate(0.4f, 0f, 0.2f, 1f, 0.5f);
@@ -1364,7 +1367,7 @@ namespace Velvet.Tests
                 : element.style.filter.value[0].GetParameter(0).floatValue;
             var duration = classDiff ? element.style.transitionDuration.value[0].value
                 : element.resolvedStyle.transitionDuration.First().value;
-            var actual = new[] { wholeProperty ? midpoint : float.NaN, end, target, duration };
+            var actual = new[] { engineRuns ? midpoint : float.NaN, end, target, duration };
             TestContext.WriteLine($"classDiff={classDiff}; midpoint={midpoint}; end={end}; target={target}; duration={duration}");
 
             // Assert — paint distinguishes the two runs while their inline target and settled paint agree.

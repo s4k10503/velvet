@@ -535,6 +535,18 @@ missing or cannot be invoked, the play uses the ordinary inline or resolved star
   as the last one settles or is cancelled. Reach for `Tween` on the default clock, on no sequence's playback and repeating nothing, when you want the
   class's own transition to do the work instead; any other `Tween` is driven (*Clocks* below).
 
+## Discrete properties (`transition-discrete`)
+
+As under CSS's default `transition-behavior: normal`, `transition-all` leaves out the properties UI Toolkit can only
+switch from one value to the other, such as `flex-direction`, `justify-content`, `position`, `white-space`,
+`-unity-text-align`, `-unity-font-definition` and `background-image`: a class or an inline write changes one of them at
+once while the element's other properties transition. `visibility` and `background-position`, which CSS transitions
+by default, stay in.
+`transition-discrete` (`transition-behavior: allow-discrete`) transitions them too, each switching to the new value
+partway through, as CSS switches a discrete property; `transition-normal` takes them back out, as in
+`transition-discrete md:transition-normal`. The other `transition-*` utilities name none of these properties, so the
+two classes change what `transition-all` transitions and nothing else.
+
 ## Cubic-bezier easing
 
 `TransitionType.Bezier` is Spring's other non-CSS sibling: instead of `EasingMode`'s fixed set of

@@ -52,9 +52,26 @@
  *
  * The family runs in Tailwind's order, `transition-none` last because it writes `transition-property` alone.
  * Of two of them, the one Tailwind emits later holds the property.
+ *
+ * transition-all lists the longhands UI Toolkit interpolates instead of naming `all`, so that one the engine can only
+ * switch, not interpolate, changes at once, as under CSS's default transition-behavior; transition-discrete gives
+ * those back (_preflight.uss). visibility and background-position-x/y are listed although the engine only switches
+ * them: CSS transitions both under that default, which leaving them out would stop. TransitionDiscretePanelTests
+ * derives the list from the engine and fails when this one differs.
  */
 .transition-all {
-    transition-property: all;
+    transition-property:
+        -unity-background-image-tint-color, -unity-material, -unity-paragraph-spacing, -unity-slice-bottom,
+        -unity-slice-left, -unity-slice-right, -unity-slice-scale, -unity-slice-top, -unity-text-outline-color,
+        -unity-text-outline-width, aspect-ratio, background-color, background-position-x,
+        background-position-y, background-size, border-bottom-color, border-bottom-left-radius,
+        border-bottom-right-radius, border-bottom-width, border-left-color, border-left-width,
+        border-right-color, border-right-width, border-top-color, border-top-left-radius,
+        border-top-right-radius, border-top-width, bottom, color, filter, flex-basis, flex-grow, flex-shrink,
+        font-size, height, left, letter-spacing, margin-bottom, margin-left, margin-right, margin-top,
+        max-height, max-width, min-height, min-width, opacity, padding-bottom, padding-left, padding-right,
+        padding-top, right, rotate, scale, text-shadow, top, transform-origin, translate, visibility, width,
+        word-spacing;
     transition-duration: var(--duration-normal);
     transition-timing-function: ease-in-out;
 }
