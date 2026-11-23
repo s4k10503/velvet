@@ -1641,6 +1641,10 @@ namespace Velvet
         // the reason PendingZLayerRemovals waits.
         internal List<(VisualElement Real, VisualElement Poolable)> PendingZLayerDeadReals { get; } = new();
 
+        // Removed rows FiberElementCleaner has taken down and not yet reset: they go back to their pools once the pass's
+        // recorded removals have landed, in the order the rows were taken down.
+        internal Queue<(VisualElement Removed, VisualElement Poolable)> PendingPoolReturns { get; } = new();
+
         // The element FiberElementCleaner.RemoveElement is tearing down while nothing pools it afterwards: it and
         // everything below it are left to the collector. Null for every other teardown.
         internal VisualElement? DiscardedSubtreeRoot { get; set; }
