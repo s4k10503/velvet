@@ -1,7 +1,11 @@
+using System;
+using System.Reflection;
 using NUnit.Framework;
+using UnityEditor;
 using UnityEngine;
 using UnityEngine.TextCore.Text;
 using UnityEngine.UIElements;
+using Velvet.Editor;
 using Velvet.TestUtilities;
 
 namespace Velvet.Tests
@@ -9,7 +13,8 @@ namespace Velvet.Tests
     /// <summary>
     /// Specifies which face a weight class resolves on a panel: the family of a font an author's inline style gives
     /// an element above the tree rather than <see cref="VelvetFonts.DefaultFamily"/>, that font alone where no family
-    /// holds it, and the asset a changed registry gives each element whose font a class resolved. Reads the asset
+    /// holds it, the family of a font an author's rule gives the element itself or an element between it and an ancestor
+    /// naming a family, and the asset a changed registry gives each element whose font a class resolved. Reads the asset
     /// Velvet wrote inline on the label. GWT, one assert per case.
     /// </summary>
     [TestFixture]
@@ -51,6 +56,44 @@ namespace Velvet.Tests
             _host?.Dispose();
             _host = null;
             VelvetFonts.Clear();
+            if (_ruledSheet != null)
+            {
+                UnityEngine.Object.DestroyImmediate(_ruledSheet);
+                _ruledSheet = null;
+            }
+
+            AssetDatabase.DeleteAsset(RuledPath);
+        }
+
+        private const string RuledPath = "Assets/VelvetFontFamilyFacesRuled.asset";
+        private StyleSheet _ruledSheet;
+
+        // Registers a family "ruled" whose normal font is saved where a sheet can name it, and attaches a sheet of the
+        // app's own, imported as the editor imports a .uss file, whose .ruled rule gives that font. Returns the family's bold.
+        private FontAsset AttachSheetGivingTheRuledFont()
+        {
+            var ruled = NewAsset();
+            var ruledBold = NewAsset();
+            AssetDatabase.CreateAsset(ruled, RuledPath);
+            AssetDatabase.AddObjectToAsset(ruled.atlasTexture, ruled);
+            AssetDatabase.AddObjectToAsset(ruled.material, ruled);
+            VelvetFonts.Register(Family("ruled", ruled, ruledBold));
+            _ruledSheet = ScriptableObject.CreateInstance<StyleSheet>();
+            var impl = Activator.CreateInstance(StockStyleSheetImport.Impl!, true)!;
+            try
+            {
+                StockStyleSheetImport.Import!.Invoke(impl, new object[]
+                {
+                    _ruledSheet, ".ruled { -unity-font-definition: url(\"project://database/" + RuledPath + "\"); }",
+                });
+            }
+            catch (TargetInvocationException)
+            {
+                // The importer reports through its context, which this instance has none of; what it stored is used.
+            }
+
+            _host.Root.styleSheets.Add(_ruledSheet);
+            return ruledBold;
         }
 
         private static FontAsset NewAsset() =>
@@ -206,6 +249,43 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(Target(root).style.unityFontDefinition.value.fontAsset, Is.SameAs(s_sansBold));
+        }
+
+        [Test]
+        public void Given_ABoldLabelWhoseOwnRuleGivesItAFont_When_ItMounts_Then_TheLabelResolvesThatFontsFamilysBold()
+        {
+            // Arrange
+            VelvetFonts.DefaultFamily = "sans";
+            var ruledBold = AttachSheetGivingTheRuledFont();
+            var root = new VisualElement();
+            _host.Root.Add(root);
+
+            // Act
+            _mounted = V.Mount(root, BoldLabel("ruled font-bold"));
+            RunAFrame();
+
+            // Assert
+            Assert.That(Target(root).style.unityFontDefinition.value.fontAsset, Is.SameAs(ruledBold));
+        }
+
+        [Test]
+        public void Given_AFamilyContainerWithARuledElementBetweenItAndABoldLabel_When_TheLabelMounts_Then_TheRulesFamilyDecides()
+        {
+            // Arrange
+            var ruledBold = AttachSheetGivingTheRuledFont();
+            var root = new VisualElement();
+            _host.Root.Add(root);
+            var tree = V.Div(className: "font-serif", children: new[]
+            {
+                V.Div(className: "ruled", children: new[] { V.Label(className: "font-bold", text: "target", name: "target") }),
+            });
+
+            // Act
+            _mounted = V.Mount(root, tree);
+            RunAFrame();
+
+            // Assert
+            Assert.That(Target(root).style.unityFontDefinition.value.fontAsset, Is.SameAs(ruledBold));
         }
     }
 }

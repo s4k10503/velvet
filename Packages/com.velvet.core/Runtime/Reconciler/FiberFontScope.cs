@@ -8,7 +8,10 @@ namespace Velvet
     // Lets a weight or italic class with no family class of its own resolve against the family it inherits,
     // the way CSS keeps an inherited font-family under a weight change. The family an element inherits is the
     // one named by the nearest ancestor carrying a font-<name> class, and only that class names it: an
-    // ancestor that merely has a weight class contributes nothing, so a lookup skips it.
+    // ancestor that merely has a weight class contributes nothing, so a lookup skips it. A font an author declares
+    // (a rule of a stylesheet other than a default one, or inline) on the element itself or on an element between
+    // it and that ancestor comes first instead, as the nearest declaration does in CSS: the family is then the one
+    // that holds that font, read the way a parent's font is below.
     //
     // Resolution order is the constraint. A parent's font layer runs after its children are created, and a
     // created element is parented only afterwards, so a lookup made while an element resolves can come back
@@ -16,11 +19,12 @@ namespace Velvet
     // boundary, where an element created in the pass has its final parent (the same point RingOverlay.DrainPendingPlacements
     // runs). A change to an ancestor's family outside creation queues the inheritors under it the same way.
     //
-    // With no font-<name> ancestor, an inheritor takes the family that holds the font its parent resolves to, and
-    // that font alone where no family holds it: a font an author's stylesheet or inline style gives an element above
-    // it is what a weight or italic class keeps. That font is read from the parent's resolvedStyle, so it is read
-    // again at every update of the panel (Tick) for as long as an inheritor with no named family exists, there being no
-    // event of its own for a stylesheet giving an ancestor one.
+    // With no named family, an inheritor takes the family that holds the font an author's rule gives the element itself,
+    // else the one its parent resolves to, and that font alone where no family holds it: a font an author's stylesheet or
+    // inline style gives an element above it is what a weight or italic class keeps. The parent's font is read from its
+    // resolvedStyle, so it is read again at every update of the panel (Tick) for as long as an inheritor with no named
+    // family exists, there being no event of its own for a stylesheet giving an ancestor one; the element's own rule font
+    // is read again when the key its matched rules are held under moves.
     //
     // A change to the registry resolves every element the tables hold again: one naming a family, or inheriting a
     // named one, at once; one inheriting its parent's font once that font has been read again.
@@ -31,20 +35,24 @@ namespace Velvet
     {
         // What an inheritor was last resolved against: the family a font-<name> ancestor names, or else the font its
         // parent resolved to then. Wait is the number of reads left after a registry change before the inheritor is
-        // resolved again whether or not the parent's font has moved.
+        // resolved again whether or not the parent's font has moved. Rules is the key the engine held the element's
+        // matched rules under then, null where it was not read; a font an author's rule gives the element itself is
+        // read again when it moves.
         internal readonly struct Inheritor
         {
             public readonly FontIntent Intent;
             public readonly string? Named;
             public readonly FontAsset? Seen;
             public readonly int Wait;
+            public readonly long? Rules;
 
-            public Inheritor(FontIntent intent, string? named, FontAsset? seen, int wait)
+            public Inheritor(FontIntent intent, string? named, FontAsset? seen, int wait, long? rules = null)
             {
                 Intent = intent;
                 Named = named;
                 Seen = seen;
                 Wait = wait;
+                Rules = rules;
             }
         }
 
@@ -55,6 +63,8 @@ namespace Velvet
         internal Dictionary<VisualElement, Inheritor> Inheritors { get; } = new();
 
         private const int ChangeWait = 2;
+
+        private static readonly string[] s_definition = { "-unity-font-definition" };
 
         // Weak, so a scope nobody disposed is not kept alive by the registry's event.
         private static readonly List<System.WeakReference<FiberFontScope>> s_scopes = new();
@@ -109,7 +119,7 @@ namespace Velvet
                 }
                 else
                 {
-                    Inheritors[element] = new Inheritor(entry.Intent, null, entry.Seen, ChangeWait);
+                    Inheritors[element] = new Inheritor(entry.Intent, null, entry.Seen, ChangeWait, entry.Rules);
                     _wantsFollow = true;
                 }
             }
@@ -117,9 +127,12 @@ namespace Velvet
             Follow();
         }
 
+        // The family the nearest ancestor carrying a font-<name> class names, or null where there is none or where a font
+        // an author declares comes first: on the element itself, or on an element between it and that ancestor. Such a
+        // font is what the element inherits, and its family is read from the font itself.
         internal string? InheritedFamily(VisualElement element)
         {
-            if (Families.Count == 0)
+            if (Families.Count == 0 || DeclaresFont(element, own: true))
             {
                 return null;
             }
@@ -130,10 +143,46 @@ namespace Velvet
                 {
                     return named.Family;
                 }
+
+                if (DeclaresFont(ancestor, own: false))
+                {
+                    return null;
+                }
             }
 
             return null;
         }
+
+        // Whether a font is declared on element by a rule of a stylesheet other than a default one, or inline. The
+        // inline font of the element a font is being resolved for, of an inheritor and of a root the default family is
+        // written on is Velvet's own write, not a declaration.
+        private bool DeclaresFont(VisualElement element, bool own)
+        {
+            if (BorderPreflight.AuthorRuleSets(element, s_definition) == true)
+            {
+                return true;
+            }
+
+            return !own && !Inheritors.ContainsKey(element) && !DefaultFamilyRoots.IsRoot(element)
+                && element.style.unityFontDefinition.keyword != StyleKeyword.Null;
+        }
+
+        // The font an author's rule gives element itself, as the engine holds it once the panel has resolved the
+        // element's styles; null where none does or before then.
+        private static FontAsset? OwnRuleFont(VisualElement element)
+        {
+            if (element.panel == null || BorderPreflight.AuthorRuleSets(element, s_definition) != true)
+            {
+                return null;
+            }
+
+            var asset = StyleCascade.RulesFontDefinition(element)?.fontAsset;
+            return LineBoxFont.SourceOf(asset) ?? asset;
+        }
+
+        private static bool Moved(VisualElement element, in Inheritor entry)
+            => ParentFont(element) != entry.Seen
+                || (entry.Rules is { } rules && StyleCascade.RulesHash(element) != rules);
 
         // The font the element's parent resolves to; null before the panel has resolved one.
         private static FontAsset? ParentFont(VisualElement element)
@@ -146,10 +195,11 @@ namespace Velvet
         {
             var named = InheritedFamily(element);
             var seen = named == null ? ParentFont(element) : null;
-            var family = named ?? VelvetFonts.FamilyOf(seen);
-            var foreign = named == null && seen != null && family == null;
+            var source = named == null ? OwnRuleFont(element) ?? seen : null;
+            var family = named ?? VelvetFonts.FamilyOf(source);
+            var foreign = named == null && source != null && family == null;
             StyleFontResolver.ApplyResolved(element, intent, family, foreign);
-            Inheritors[element] = new Inheritor(intent, named, seen, 0);
+            Inheritors[element] = new Inheritor(intent, named, seen, 0, named == null ? StyleCascade.RulesHash(element) : null);
             _wantsFollow |= named == null;
         }
 
@@ -245,7 +295,7 @@ namespace Velvet
                 }
 
                 unnamed = true;
-                if (entry.Wait != 0 || ParentFont(pair.Key) != entry.Seen)
+                if (entry.Wait != 0 || Moved(pair.Key, entry))
                 {
                     _buffer.Add(pair.Key);
                 }
@@ -261,13 +311,13 @@ namespace Velvet
             foreach (var element in _buffer)
             {
                 var entry = Inheritors[element];
-                if (entry.Wait == 1 || ParentFont(element) != entry.Seen)
+                if (entry.Wait == 1 || Moved(element, entry))
                 {
                     ResolveDown(element, entry.Intent);
                 }
                 else if (entry.Wait != 0)
                 {
-                    Inheritors[element] = new Inheritor(entry.Intent, null, entry.Seen, entry.Wait - 1);
+                    Inheritors[element] = new Inheritor(entry.Intent, null, entry.Seen, entry.Wait - 1, entry.Rules);
                 }
             }
         }

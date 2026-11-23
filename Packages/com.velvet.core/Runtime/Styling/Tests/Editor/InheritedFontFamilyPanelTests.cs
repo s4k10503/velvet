@@ -24,14 +24,15 @@ namespace Velvet.Tests
         private FontAsset _sansBold;
         private FontAsset _serifBold;
         private FontAsset _monoBold;
+        private FontAsset _monoNormal;
 
         [SetUp]
         public void SetUp()
         {
             VelvetFonts.Clear();
-            _sansBold = Register("sans");
-            _serifBold = Register("serif");
-            _monoBold = Register("mono");
+            _sansBold = Register("sans", out _);
+            _serifBold = Register("serif", out _);
+            _monoBold = Register("mono", out _monoNormal);
             VelvetFonts.DefaultFamily = "sans";
             _host = new HeadlessEditorPanelHost();
         }
@@ -53,9 +54,9 @@ namespace Velvet.Tests
         }
 
         // Registers a family with a Normal and a Bold entry and returns the Bold asset.
-        private FontAsset Register(string name)
+        private FontAsset Register(string name, out FontAsset normal)
         {
-            var normal = NewAsset();
+            normal = NewAsset();
             var bold = NewAsset();
             VelvetFonts.Register(new VelvetFontFamily(name,
                 new VelvetFontWeightEntry { weight = VelvetFontWeight.Normal, upright = normal },
@@ -215,6 +216,35 @@ namespace Velvet.Tests
                 .GetValue(_mounted.Root.Reconciler.Context.FontScope);
             var asset = detachedRoot.Q<Label>("target").style.unityFontDefinition.value.fontAsset;
             Assert.That((ReferenceEquals(asset, _serifBold), pending.Count), Is.EqualTo((true, 0)));
+        }
+
+        // The panel updates its styles, then runs its scheduler once, as one frame does.
+        private void RunAFrame()
+        {
+            EditorPanelTestHelpers.ForcePanelUpdate(_host.Panel);
+            EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
+        }
+
+        private static VNode FamilyContainerWithAnAuthoredMiddle(string labelClass) =>
+            V.Div(className: "font-sans", children: new[]
+            {
+                V.Div(name: "mid", children: new[] { Target(labelClass) }),
+            });
+
+        [Test]
+        public void Given_AnInlineMonoFontOnAnElementBetweenASansContainerAndALabel_When_TheLabelBecomesBold_Then_TheLabelResolvesMonosBold()
+        {
+            // Arrange
+            _mounted = V.Mount(_host.Root, FamilyContainerWithAnAuthoredMiddle("font-normal"));
+            _host.Root.Q("mid").style.unityFontDefinition = FontDefinition.FromSDFFont(_monoNormal);
+            RunAFrame();
+
+            // Act
+            _mounted.Render(FamilyContainerWithAnAuthoredMiddle("font-bold"));
+            RunAFrame();
+
+            // Assert
+            Assert.That(TargetAsset(), Is.SameAs(_monoBold));
         }
 
         // GREEN_ON_BASE(characterization): the family a label names itself still wins over an ancestor's.

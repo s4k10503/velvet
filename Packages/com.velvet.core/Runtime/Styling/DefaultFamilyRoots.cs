@@ -85,6 +85,9 @@ namespace Velvet
             Decide(element, root, DefaultAsset());
         }
 
+        // Whether the default family is written on element, which is Velvet's own inline font and not an author's.
+        internal static bool IsRoot(VisualElement element) => s_roots.TryGetValue(element, out _);
+
         internal static IDisposable Hold(VisualElement element)
         {
             if (!s_roots.TryGetValue(element, out var root))
