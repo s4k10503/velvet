@@ -45,14 +45,16 @@ namespace Velvet.Tests
             return element;
         }
 
-        // A quarter of the way into the one-second transitions the cases declare.
-        private void RunAQuarterSecond(VisualElement element)
+        private void RunFor(VisualElement element, double seconds)
         {
             ForcePanelUpdate(element.panel);
-            _now += 0.25;
+            _now += seconds;
             EditorPanelTestHelpers.DriveAnimationsOnce(element.panel);
             ForcePanelUpdate(element.panel);
         }
+
+        // A quarter of the way into the one-second transitions the cases declare.
+        private void RunAQuarterSecond(VisualElement element) => RunFor(element, 0.25);
 
         private void Swap(VisualElement element, string from, string to)
         {
@@ -150,13 +152,15 @@ namespace Velvet.Tests
         // GREEN_ON_BASE(characterization): the base transitions opacity under transition-all as this change does.
         // Taking `opacity` out of transition-all's list in _effects.uss reddens this case.
         [Test]
-        public void Given_AnElementTransitioningAll_When_ItsOpacityClassChanges_Then_AQuarterSecondInItIsAQuarterOfTheWay()
+        public void Given_AnElementTransitioningAllOnItsOwnDuration_When_ItsOpacityClassChanges_Then_AQuarterOfTheWayInItIsAQuarterOfTheWay()
         {
-            // Arrange
-            var element = Resolved("transition-all duration-1000 ease-linear opacity-100");
+            // Arrange — transition-all's own duration, the sheet's 0.15s, so that nothing else gives the element one.
+            var element = Resolved("transition-all ease-linear opacity-100");
+            element.RemoveFromClassList("opacity-100");
+            element.AddToClassList("opacity-0");
 
             // Act
-            Swap(element, "opacity-100", "opacity-0");
+            RunFor(element, 0.15 / 4);
 
             // Assert
             Assert.That(element.resolvedStyle.opacity, Is.EqualTo(0.75f).Within(0.01f));
@@ -189,9 +193,7 @@ namespace Velvet.Tests
             RunAQuarterSecond(element);
 
             // Act
-            _now += 0.5;
-            EditorPanelTestHelpers.DriveAnimationsOnce(element.panel);
-            ForcePanelUpdate(element.panel);
+            RunFor(element, 0.5);
 
             // Assert
             Assert.That(element.resolvedStyle.justifyContent, Is.EqualTo(Justify.FlexEnd));
