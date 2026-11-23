@@ -14,7 +14,9 @@ namespace Velvet.Tests
     /// cleanup's, and so is one thrown where the disposal waited for another root's commit to end. A boundary the
     /// disposal tears down catches none of them. A <c>z-*</c> element, which leaves its parent once the pass's writes have
     /// applied, is reported the same way where the disposal removes it, each of two, and where a drain's update removes
-    /// it, the boundary above the component whose render removed it catches it.
+    /// it, whichever walk cleans it up, the boundary above the component whose render removed it catches it, though a
+    /// later render of the same drain records behind it. Under a reconciler no root owns, the first such error is thrown
+    /// once each element has left.
     /// </summary>
     /// <remarks>
     /// The tree mounts on a real panel, which is what runs a detach callback.
@@ -75,6 +77,7 @@ namespace Velvet.Tests
                 {
                     if (_thrown) return;
                     _thrown = true;
+                    s_detached++;
                     throw new InvalidOperationException("detach:" + name + (_relocated ? ":z" : ""));
                 });
             }
@@ -114,11 +117,40 @@ namespace Velvet.Tests
             });
         }
 
-        [Component(Compiler = false, IsErrorBoundary = true, DisplayName = "B")]
-        private static VNode CatchesAroundARemoval()
+        // Removes the element through the fast path, which cleans it up as the walk removes it; RemovesAZPlacedThrower's
+        // null child takes the general walk instead, which leaves that to the pass's apply.
+        [Component(Compiler = false)]
+        private static VNode RemovesAZPlacedThrowerFromItsList()
         {
-            Hooks.UseFallback(_ => V.Label(text: "fallback"));
-            return V.Component(RemovesAZPlacedThrower, key: "r");
+            var (shown, _) = EventLog.UseState("L", true);
+            EventLog.UseRender("L");
+            return V.Div(className: "relative", children: shown
+                ? new VNode[] { V.Custom<ZPlacedDetachThrower>(className: "absolute z-10", name: "Z", key: "thrower") }
+                : Array.Empty<VNode>());
+        }
+
+        [Component(Compiler = false)]
+        private static VNode RendersAgain()
+        {
+            var (tick, _) = EventLog.UseState("T", 0);
+            EventLog.UseRender("T", tick);
+            return V.Div();
+        }
+
+        private sealed record Holds(VNode Child);
+
+        [Component(Compiler = false, IsErrorBoundary = true, DisplayName = "B1")]
+        private static VNode FirstBoundary(Holds props)
+        {
+            Hooks.UseFallback(_ => V.Label(text: "fallback-1"));
+            return props.Child;
+        }
+
+        [Component(Compiler = false, IsErrorBoundary = true, DisplayName = "B2")]
+        private static VNode SecondBoundary(Holds props)
+        {
+            Hooks.UseFallback(_ => V.Label(text: "fallback-2"));
+            return props.Child;
         }
 
         [Component(Compiler = false)]
@@ -248,8 +280,8 @@ namespace Velvet.Tests
         {
             // Arrange
             var log = new EventLog();
-            using var mounted = V.Mount(_mountPoint, log.Provide(V.Component(CatchesAroundARemoval, key: "b")),
-                log.ReportingErrors());
+            using var mounted = V.Mount(_mountPoint, log.Provide(V.Component(FirstBoundary,
+                new Holds(V.Component(RemovesAZPlacedThrower, key: "r")), key: "b1")), log.ReportingErrors());
             log.Clear();
 
             // Act
@@ -257,7 +289,68 @@ namespace Velvet.Tests
             RecordingWhatItThrows(mounted.GetSchedulerForTest().DrainImmediateForTest, log.Add);
 
             // Assert
-            Assert.That(log.ToString(), Is.EqualTo("render:R caught:B:detach:Z:z"));
+            Assert.That(log.ToString(), Is.EqualTo("render:R caught:B1:detach:Z:z"));
+        }
+
+        [Test]
+        public void Given_ABoundaryAboveAComponentWhoseZPlacedElementThrowsAsItDetaches_When_ADrainRemovesTheElementFromAListOfHostElements_Then_TheBoundaryReportsTheError()
+        {
+            // Arrange
+            var log = new EventLog();
+            using var mounted = V.Mount(_mountPoint, log.Provide(V.Component(FirstBoundary,
+                new Holds(V.Component(RemovesAZPlacedThrowerFromItsList, key: "l")), key: "b1")), log.ReportingErrors());
+            log.Clear();
+
+            // Act
+            log.Setter<bool>("L").Invoke(false);
+            RecordingWhatItThrows(mounted.GetSchedulerForTest().DrainImmediateForTest, log.Add);
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("render:L caught:B1:detach:Z:z"));
+        }
+
+        // The drain renders the two in tree order, so the run of the component that removes the element is not the
+        // last one the pass records.
+        [Test]
+        public void Given_TwoComponentsUnderBoundariesOfTheirOwnThatOneDrainRenders_When_TheFirstRemovesAZPlacedElementThatThrowsAsItDetaches_Then_TheFirstsBoundaryReportsIt()
+        {
+            // Arrange
+            var log = new EventLog();
+            using var mounted = V.Mount(_mountPoint, log.Provide(V.Fragment(
+                V.Component(FirstBoundary, new Holds(V.Component(RemovesAZPlacedThrower, key: "r")), key: "b1"),
+                V.Component(SecondBoundary, new Holds(V.Component(RendersAgain, key: "t")), key: "b2"))),
+                log.ReportingErrors());
+            log.Clear();
+
+            // Act
+            log.Setter<bool>("R").Invoke(false);
+            log.Setter<int>("T").Invoke(1);
+            RecordingWhatItThrows(mounted.GetSchedulerForTest().DrainImmediateForTest, log.Add);
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("render:R render:T=1 caught:B1:detach:Z:z"));
+        }
+
+        // Both elements carry one name: which of the two fails first is not what this pins.
+        [Test]
+        public void Given_TwoZPlacedElementsThatThrowAsTheyDetachUnderAReconcilerNoRootOwns_When_AReconcileRemovesBoth_Then_TheFirstErrorIsThrownOnceBothHaveDetached()
+        {
+            // Arrange — the entry carries how many detach callbacks had run when the error reached the case
+            using var scope = new ReconcilerScope();
+            _host.Root.Add(scope.Root);
+            var before = new VNode[]
+            {
+                V.Custom<ZPlacedDetachThrower>(className: "absolute z-10", name: "Y", key: "first"),
+                V.Custom<ZPlacedDetachThrower>(className: "absolute z-10", name: "Y", key: "second"),
+            };
+            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), before);
+
+            // Act
+            RecordingWhatItThrows(() => scope.Reconciler.Reconcile(scope.Root, before, Array.Empty<VNode>()),
+                entry => _reports.Add(entry + "@" + s_detached));
+
+            // Assert
+            Assert.That(string.Join(" / ", _reports), Is.EqualTo("threw:detach:Y:z@2"));
         }
     }
 }

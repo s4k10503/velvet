@@ -829,11 +829,10 @@ namespace Velvet
             return true;
         }
 
-        // The root of the run the pass is applying or recording, which a removal decided now belongs to. Null where the
-        // pass is not the current one, or no wave owns it.
+        // The root of the run a removal decided now belongs to, as Apply reads runs: that of the op the pass is applying,
+        // and otherwise that of the op it would record next. Null where no wave owns the pass.
         internal static ComponentFiber? RunRootOf(ReconcilePass pass)
         {
-            if (!ReferenceEquals(s_current, pass)) return null;
             if (pass.Applying) return pass.ApplyingRoot;
             return pass.Segments.Count > 0 ? pass.Segments[^1].Root : null;
         }
