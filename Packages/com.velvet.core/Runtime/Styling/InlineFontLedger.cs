@@ -15,6 +15,7 @@ namespace Velvet
         private sealed class Entry
         {
             public FontAsset? Written;
+            public UnityEngine.Font? WrittenFont;
             public UnityEngine.Object? Replaced;
         }
 
@@ -25,8 +26,33 @@ namespace Velvet
         {
             var entry = s_entries.GetValue(element, static _ => new Entry());
             entry.Written = written;
+            entry.WrittenFont = null;
             entry.Replaced = replaced;
         }
+
+        // A write of a legacy font as the definition, which the engine then draws over a definition inherited from above.
+        internal static void WroteFont(VisualElement element, UnityEngine.Font font, UnityEngine.Object? replaced)
+        {
+            var entry = s_entries.GetValue(element, static _ => new Entry());
+            entry.Written = null;
+            entry.WrittenFont = font;
+            entry.Replaced = replaced;
+        }
+
+        // The font of Velvet's last write of a legacy font, while the inline definition still shows it; null otherwise.
+        internal static UnityEngine.Font? WrittenFont(VisualElement element)
+        {
+            if (!s_entries.TryGetValue(element, out var entry) || entry.WrittenFont == null)
+            {
+                return null;
+            }
+
+            var shown = element.style.unityFontDefinition.value;
+            return shown.fontAsset == null && shown.font == entry.WrittenFont ? entry.WrittenFont : null;
+        }
+
+        // Whether the inline definition is one Velvet wrote.
+        internal static bool Owns(VisualElement element) => Written(element) != null || WrittenFont(element) != null;
 
         // A write that leaves what an earlier one replaced as it was.
         internal static void Wrote(VisualElement element, FontAsset? written)
@@ -66,7 +92,7 @@ namespace Velvet
             var value = definition.value;
             if (value.fontAsset == null)
             {
-                return value.font;
+                return WrittenFont(element) != null ? Replaced(element) : value.font;
             }
 
             if (Written(element) != null)
@@ -81,6 +107,9 @@ namespace Velvet
 
             return LineBoxFont.SourceOf(value.fontAsset) ?? value.fontAsset;
         }
+
+        private static UnityEngine.Object? Replaced(VisualElement element)
+            => s_entries.TryGetValue(element, out var entry) ? entry.Replaced : null;
 
         // AuthorDefinition, else the legacy font the author gave element inline, which Velvet never writes.
         internal static UnityEngine.Object? AuthorFont(VisualElement element)
@@ -104,9 +133,9 @@ namespace Velvet
         // there was none. An inline definition that is not Velvet's write is left as it is.
         internal static void TakeOff(VisualElement element)
         {
-            if (Written(element) != null)
+            if (Owns(element))
             {
-                var replaced = s_entries.TryGetValue(element, out var entry) ? entry.Replaced : null;
+                var replaced = Replaced(element);
                 element.style.unityFontDefinition = replaced == null ? new StyleFontDefinition(StyleKeyword.Null) : DefinitionOf(replaced);
             }
 

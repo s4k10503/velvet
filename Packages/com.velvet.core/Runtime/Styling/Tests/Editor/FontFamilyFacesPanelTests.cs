@@ -365,10 +365,14 @@ namespace Velvet.Tests
             Assert.That(Target(root).style.unityFontDefinition.keyword, Is.EqualTo(StyleKeyword.Null));
         }
 
+        // The label's own legacy -unity-font rule loses to the definition the default family writes on the mount root, which
+        // the engine draws ahead of a legacy font; CSS gives the element its own declaration, so the font is written as
+        // the label's definition. The asserted font is the one the engine resolves the rule to, and null fails the assertion.
         [Test]
-        public void Given_ABoldLabelWhoseOwnRuleGivesItALegacyFont_When_ItMountsWithNoDefaultFamily_Then_TheLabelWritesNoFontOfItsOwn()
+        public void Given_ABoldLabelWhoseOwnRuleGivesItALegacyFont_When_ItMountsUnderADefaultFamily_Then_TheLabelsDefinitionIsThatLegacyFont()
         {
             // Arrange
+            VelvetFonts.DefaultFamily = "sans";
             AttachSheet(".legacy { -unity-font: " + EngineFont + "; }");
             var root = new VisualElement();
             _host.Root.Add(root);
@@ -378,7 +382,29 @@ namespace Velvet.Tests
             RunAFrame();
 
             // Assert
-            Assert.That(Target(root).style.unityFontDefinition.keyword, Is.EqualTo(StyleKeyword.Null));
+            Assert.That(Target(root).style.unityFontDefinition.value.font,
+                Is.Not.Null.And.SameAs(Target(root).resolvedStyle.unityFont));
+        }
+
+        [Test]
+        public void Given_ABoldLabelUnderAnAncestorWhoseRuleGivesALegacyFont_When_ItMountsUnderADefaultFamily_Then_TheLabelsDefinitionIsThatLegacyFont()
+        {
+            // Arrange
+            VelvetFonts.DefaultFamily = "sans";
+            AttachSheet(".legacy { -unity-font: " + EngineFont + "; }");
+            var root = new VisualElement();
+            _host.Root.Add(root);
+
+            // Act
+            _mounted = V.Mount(root, V.Div(className: "legacy", children: new[]
+            {
+                V.Label(className: "font-bold", text: "target", name: "target"),
+            }));
+            RunAFrame();
+
+            // Assert
+            Assert.That(Target(root).style.unityFontDefinition.value.font,
+                Is.Not.Null.And.SameAs(Target(root).resolvedStyle.unityFont));
         }
 
         [Test]

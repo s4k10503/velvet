@@ -192,9 +192,11 @@ namespace Velvet
         // inherited is the family an ancestor names or an inherited font belongs to, read only when the request names
         // none of its own. foreign is an inherited font no family holds, which a weight or italic request then
         // emulates on that font where DefaultFamily would otherwise have been chosen. Where no asset is written, the inline
-        // definition is Velvet's earlier write taken off, and an inline font the author gave the element stays.
+        // definition is Velvet's earlier write taken off, and an inline font the author gave the element stays. legacy is
+        // a legacy font an author's rule gave the element or an ancestor that no family holds, written as the definition so
+        // that the engine draws it ahead of a definition inherited from above.
         internal static void ApplyResolved(VisualElement element, in FontIntent intent, string? inherited,
-            bool foreign)
+            bool foreign, UnityEngine.Font? legacy = null)
         {
             var weight = intent.HasWeight ? intent.Weight : VelvetFontWeight.Normal;
             var family = intent.HasFamily ? intent.Family : inherited;
@@ -238,14 +240,27 @@ namespace Velvet
             }
             else
             {
-                if (InlineFontLedger.Written(element) != null)
+                if (legacy != null)
                 {
-                    element.style.unityFontDefinition = author == null
-                        ? new StyleFontDefinition(StyleKeyword.Null)
-                        : InlineFontLedger.DefinitionOf(author);
+                    if (InlineFontLedger.WrittenFont(element) != legacy)
+                    {
+                        element.style.unityFontDefinition = new StyleFontDefinition(FontDefinition.FromFont(legacy));
+                    }
+
+                    InlineFontLedger.WroteFont(element, legacy, author);
+                }
+                else
+                {
+                    if (InlineFontLedger.Owns(element))
+                    {
+                        element.style.unityFontDefinition = author == null
+                            ? new StyleFontDefinition(StyleKeyword.Null)
+                            : InlineFontLedger.DefinitionOf(author);
+                    }
+
+                    InlineFontLedger.Wrote(element, null, null);
                 }
 
-                InlineFontLedger.Wrote(element, null, null);
                 bold = intent.HasWeight && (int)weight >= 600;
                 ital = intent.Italic;
                 needStyle = intent.HasWeight || intent.HasItalic;
