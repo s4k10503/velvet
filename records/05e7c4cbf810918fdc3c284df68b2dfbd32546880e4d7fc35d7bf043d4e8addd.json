@@ -1,0 +1,28 @@
+{
+ "detail": "EditMode: 1 failed: Given_AMotionWithAHasClassVariant_When_AChildGainsTheClassWithNoInsert_Then_TheMotionHoldsThePayload",
+ "file": "3591726a6682a2c8177f7e249450f754e2c29e3bdbcf8fa71d708cb0e7c62208",
+ "killers": [
+  {
+   "case": "Velvet.Tests.PatchReadBackTests.Given_AMotionWithAHasClassVariant_When_AChildGainsTheClassWithNoInsert_Then_TheMotionHoldsThePayload",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PatchReadBackTests.cs": "7b11a49c5c7ea7c3f38e7074a32050c1fd786de9a2ecd7f23abe691965fc2f97"
+   }
+  }
+ ],
+ "measured_by": "45108297201",
+ "mutant": {
+  "after": ";",
+  "before": "ChildListWrites.ApplyPendingPatches();",
+  "column": 12,
+  "line": 547,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberNodePatcher.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "e1037260202c9d323bdcdc7b99428ec8b6a187aa9cb9279269b89263de5d1714",
+ "verdict": "killed"
+}

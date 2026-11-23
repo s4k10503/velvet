@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "66a4c495da952aa55809052dc369ee0f8f1f8a1f707779d9c9e0865f0f5094ba",
+ "killers": [],
+ "measured_by": "45108297201",
+ "mutant": {
+  "after": ";",
+  "before": "ShowTextSet(ctx, element);",
+  "column": 12,
+  "line": 156,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleTextEffectResolver.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "e1037260202c9d323bdcdc7b99428ec8b6a187aa9cb9279269b89263de5d1714",
+ "verdict": "survived"
+}

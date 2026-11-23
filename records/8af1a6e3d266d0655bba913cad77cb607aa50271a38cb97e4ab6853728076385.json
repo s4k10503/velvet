@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "544239129152f620586a17f3d93b93193efbec15b86058f45967ef809cb25ab4",
+ "killers": [],
+ "measured_by": "45108297201",
+ "mutant": {
+  "after": ">=",
+  "before": ">",
+  "column": 31,
+  "line": 630,
+  "operator": "boundary",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ChildListWrites.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "e1037260202c9d323bdcdc7b99428ec8b6a187aa9cb9279269b89263de5d1714",
+ "verdict": "survived"
+}

@@ -1,0 +1,29 @@
+{
+ "detail": "EditMode: 1 failed among the 14 case(s) that ran the site: Given_ALabelWhoseTextChanges_When_TheReconcileReturns_Then_TheLabelShowsTheNewText",
+ "file": "3591726a6682a2c8177f7e249450f754e2c29e3bdbcf8fa71d708cb0e7c62208",
+ "killers": [
+  {
+   "case": "Velvet.Tests.RecordedChildListWriteTests.Given_ALabelWhoseTextChanges_When_TheReconcileReturns_Then_TheLabelShowsTheNewText",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/RecordedChildListWriteTests.cs": "e097de086d08a088ac10bcf599d5eb025775dabc00966d2d7280dd6325d3fa70",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/RowModelAccess.cs": "c9281ca1bc8930756e7b643acf56772495143054fc02c02792727059325b4674"
+   }
+  }
+ ],
+ "measured_by": "45108297201",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 28,
+  "line": 621,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberNodePatcher.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "e1037260202c9d323bdcdc7b99428ec8b6a187aa9cb9279269b89263de5d1714",
+ "verdict": "killed"
+}

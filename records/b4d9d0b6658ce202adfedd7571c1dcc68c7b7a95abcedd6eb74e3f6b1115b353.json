@@ -1,0 +1,46 @@
+{
+ "detail": "EditMode: 2 failed: Given_ADraggingClassThatGainsAPaintOnARerender_When_ItIsDragged_Then_ItPaints, Given_AnOverClassThatArrivesWithAPaintOnARerender_When_TheItemIsOverIt_Then_ItPaints",
+ "file": "544239129152f620586a17f3d93b93193efbec15b86058f45967ef809cb25ab4",
+ "killers": [
+  {
+   "case": "Velvet.Tests.DndInteractionTests.Given_ADraggingClassThatGainsAPaintOnARerender_When_ItIsDragged_Then_ItPaints",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/DndInteractionTests.cs": "2978fc80a5e02bbfe383fd3b1f55354c3b38a7702186f1164996a6631621468e",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.DndInteractionTests.Given_AnOverClassThatArrivesWithAPaintOnARerender_When_TheItemIsOverIt_Then_ItPaints",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/DndInteractionTests.cs": "2978fc80a5e02bbfe383fd3b1f55354c3b38a7702186f1164996a6631621468e",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  }
+ ],
+ "measured_by": "45108297201",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 27,
+  "line": 701,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ChildListWrites.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "e1037260202c9d323bdcdc7b99428ec8b6a187aa9cb9279269b89263de5d1714",
+ "verdict": "killed"
+}
