@@ -439,8 +439,9 @@ namespace Velvet
             InlineExplicitPositionKeyBoxes[cacheKey] = (entry.box, entry.registrations - 1);
         }
 
-        private void UnregisterFiber(ComponentFiber fiber)
+        private void DisposeFiber(ComponentFiber fiber)
         {
+            FiberRenderer.Dispose(fiber);
             // A wrapper-less Suspense makes the fiber rendering it the boundary. When that fiber
             // unmounts while still suspended, prune its boundary state so no dangling fiber
             // reference survives in the context-level Suspense registries (they are keyed by the
@@ -450,7 +451,11 @@ namespace Velvet
             // its presence state, so prune it when the fiber unmounts (e.g. while a child is exiting).
             _ctx.PrunePresenceBoundaryState(fiber);
             _ctx.FiberMemoCache.Forget(fiber);
+        }
 
+        // Hiding before the fiber's own cascade waits for Unmount to stop reconciling its rows during the walk.
+        private void Hide(ComponentFiber fiber)
+        {
             if (_inlineFiberToKey.TryGetValue(fiber, out var key))
             {
                 RemoveFromOwningPortalIndex(fiber);
@@ -491,8 +496,8 @@ namespace Velvet
         private void DisposeFiberInternal(ComponentFiber fiber)
         {
             if (fiber.IsInlineMounted) fiber.PreviousTree = null;
-            FiberRenderer.Dispose(fiber);
-            UnregisterFiber(fiber);
+            DisposeFiber(fiber);
+            Hide(fiber);
         }
 
         // The children of parent that a Suspense keeps offscreen. FiberErrorBoundary.TakeQueuedReset owns the call.
@@ -823,8 +828,8 @@ namespace Velvet
             if (!_wrapperFiberInfo.TryGetValue(fiber, out var info)) return false;
             if (Equals(info.identity, newIdentity)) return false;
 
-            FiberRenderer.Dispose(fiber);
-            UnregisterFiber(fiber);
+            DisposeFiber(fiber);
+            Hide(fiber);
             return true;
         }
 
@@ -837,8 +842,8 @@ namespace Velvet
         {
             if (_wrapperIndex.TryGetValue(wrapper, out var wrapperFiber))
             {
-                FiberRenderer.Dispose(wrapperFiber);
-                UnregisterFiber(wrapperFiber);
+                DisposeFiber(wrapperFiber);
+                Hide(wrapperFiber);
             }
         }
 
