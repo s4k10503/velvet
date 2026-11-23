@@ -24,8 +24,10 @@ namespace Velvet.Tests
     /// the fallback's layout effects run in that same commit when the catch came from a passive effect, a frame
     /// callback, or a <see cref="V.VirtualList{T}"/> range rendered outside a reconcile pass, and after the
     /// layout effects of an unrelated component the same drain re-rendered. A boundary that an outer boundary
-    /// replaces before its fallback commits reports nothing, including one an earlier sibling's layout effect
-    /// has replaced by the time its own place in the commit comes, and no report of such a boundary is kept.
+    /// replaces before its fallback commits reports nothing, and no report of such a boundary is kept: where
+    /// two nested boundaries each capture a layout effect's error in one commit, only the outer one renders.
+    /// A boundary that caught a render error in a commit still reports in that commit when an earlier sibling's
+    /// layout effect throws into an outer boundary, which reports in the follow-up commit.
     /// A report waits for its fallback's layout effects when a commit scoped to a new VirtualList item runs
     /// first, and a drain's commit that shows a fallback commits it before the drain returns.</item>
     /// <item>Boundaries reporting in one commit report in tree order, whatever order they caught in, each after
@@ -35,7 +37,9 @@ namespace Velvet.Tests
     /// parked pass mounted is held with the pass, so its error is caught only once the pass has completed.</item>
     /// <item>A chain of follow-up commits stops at React's nested-update limit of 50 with a "Maximum update depth
     /// exceeded" exception. Once it has, the next entry neither runs the chain again nor delivers the report it
-    /// left, and a parked transition still runs the layout effects it held.</item>
+    /// left, and a parked transition still runs the layout effects it held. A chain of fallbacks whose layout
+    /// effects throw back into their boundary is stopped by the immediate drain that renders it, which reads the
+    /// same limit.</item>
     /// <item>A resource that faults below an error boundary inside a Suspense has the Suspense reveal that error
     /// boundary's fallback, reported once.</item>
     /// </list>
@@ -163,8 +167,11 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AChildWhoseEffectCleanupThrows_When_TheBoundaryCatches_Then_TheHandlerRunsOnce()
+        public void Given_AChildWhoseEffectCleanupThrows_When_TheBoundaryCatches_Then_TheHandlerRunsOncePerThrownCleanup()
         {
+            // React captures each error a commit throws and reports each once. The update's setup returns a cleanup that
+            // throws as well, and the fallback's commit runs it as it deletes the child, which captures that error for
+            // the boundary in turn, so it reports a second time from the commit after.
             // Arrange
             using var mounted = Mount(() => V.Component(ThrowInCleanupRender, key: "child"));
 
@@ -173,7 +180,7 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
 
             // Assert
-            Assert.That(Outcome(), Is.EqualTo(Reported));
+            Assert.That(Outcome(), Is.EqualTo("boom, boom | fallback"));
         }
 
         [Test]
@@ -416,6 +423,8 @@ namespace Velvet.Tests
         [Test]
         public void Given_SiblingBoundariesCatchingInReverseTreeOrderInOnePassiveDrain_When_TheirFallbacksCommit_Then_TheReportsFollowTreeOrderAndEachFallbacksLayoutEffects()
         {
+            // The second "two" is the cleanup the update's setup returned, which the fallback's commit runs as it deletes
+            // the child, and which React captures and reports in turn.
             // Arrange — the second boundary's child throws from its effect's cleanup, which the drain runs
             // before the first child's throwing setup.
             _mounted = V.Mount(
@@ -431,7 +440,7 @@ namespace Velvet.Tests
             _mounted.FlushEffectsForTest();
 
             // Assert
-            Assert.That(string.Join(", ", s_order), Is.EqualTo("one, fallback, two"));
+            Assert.That(string.Join(", ", s_order), Is.EqualTo("one, fallback, two, two"));
         }
 
         [Test]
@@ -595,8 +604,10 @@ namespace Velvet.Tests
             Assert.That(outcome, Is.EqualTo("Maximum update depth exceeded"));
         }
 
+        // GREEN_ON_BASE(characterization): the base's chain stops at the follow-up bound, whose message begins as the
+        // immediate drain's does, so the prefix this case now reads is the base's too.
         [Test]
-        public void Given_AFallbackWhoseLayoutEffectThrowsIntoItsOwnBoundaryOnEveryMount_When_TheFollowUpBoundStopsTheChain_Then_TheNextEntryNeitherRunsItAgainNorDeliversItsReport()
+        public void Given_AFallbackWhoseLayoutEffectThrowsIntoItsOwnBoundaryOnEveryMount_When_TheUpdateLimitStopsTheChain_Then_TheNextEntryNeitherRunsItAgainNorDeliversItsReport()
         {
             // Arrange
             _mounted = V.Mount(_root, V.Component(RefallingHostRender, key: "host"), CountingReports);
@@ -605,7 +616,7 @@ namespace Velvet.Tests
             {
                 _mounted.FlushEffectsForTest();
             }
-            catch (InvalidOperationException exception) when (exception.Message.Contains("follow-up"))
+            catch (InvalidOperationException exception) when (exception.Message.StartsWith("Maximum update depth exceeded"))
             {
                 bounded = true;
             }
@@ -630,11 +641,39 @@ namespace Velvet.Tests
                 Is.EqualTo("True | nothing thrown | 0 reported"));
         }
 
-        // GREEN_ON_BASE(characterization): the base keeps the row's layout effect across the bound's drop the same way.
+        [Test]
+        public void Given_AFallbackWhoseLayoutEffectThrowsIntoItsOwnBoundaryOnEveryMount_When_TheUpdateLimitStopsTheChain_Then_NoCaptureIsLeftOwed()
+        {
+            // Arrange
+            _mounted = V.Mount(_root, V.Component(RefallingHostRender, key: "host"), CountingReports);
+
+            // Act
+            try
+            {
+                _mounted.FlushEffectsForTest();
+            }
+            catch (InvalidOperationException)
+            {
+            }
+
+            // Assert — a context with no such field reads -1, so a tree without it disagrees with the assertion
+            // instead of raising out of the helper.
+            Assert.That(OwedCaptureBoundaries(), Is.EqualTo(0));
+        }
+
+        private int OwedCaptureBoundaries()
+        {
+            var field = typeof(ReconcilerContext)
+                .GetField("BoundariesOwedCaptures", BindingFlags.NonPublic | BindingFlags.Instance);
+            return field == null ? -1 : ((ICollection)field.GetValue(_mounted.Root.Reconciler.Context)).Count;
+        }
+
+        // GREEN_ON_BASE(characterization): the update limit, not the follow-up bound, now stops the chain, and the base
+        // keeps the row's layout effect across that drop the same way.
         // The chain starts from an effect the boundary's child stages by its own commit after the pass parks, since
         // one the mount left pending now runs, and reaches the bound, before the transition renders at all.
         [Test]
-        public void Given_AParkedTransitionHoldingARowsLayoutEffect_When_TheFollowUpBoundStopsAChainElsewhere_Then_TheRowsLayoutEffectRunsWhenThePassCompletes()
+        public void Given_AParkedTransitionHoldingARowsLayoutEffect_When_TheUpdateLimitStopsAChainElsewhere_Then_TheRowsLayoutEffectRunsWhenThePassCompletes()
         {
             // Arrange
             _mounted = V.Mount(_root, V.Component(RefallingOnUpdateBesideASlowListRender, key: "host"), CaughtErrors.Unlogged);
@@ -649,7 +688,7 @@ namespace Velvet.Tests
             {
                 _mounted.FlushEffectsForTest();
             }
-            catch (InvalidOperationException exception) when (exception.Message.Contains("follow-up"))
+            catch (InvalidOperationException exception) when (exception.Message.StartsWith("Maximum update depth exceeded"))
             {
                 bounded = true;
             }
@@ -680,10 +719,12 @@ namespace Velvet.Tests
         // GREEN_ON_BASE(refactor): only how this case spells its MountOptions changed.
         // OnCaughtError is now set as the init property the options take, which the base's record accepts too.
         [Test]
-        public void Given_ABoundaryHoldingAReportFromARender_When_AnEarlierSiblingsLayoutEffectThrowsIntoAnOuterBoundaryInTheSameCommit_Then_OnlyTheOuterBoundaryReports()
+        public void Given_ABoundaryHoldingAReportFromARender_When_AnEarlierSiblingsLayoutEffectThrowsIntoAnOuterBoundaryInTheSameCommit_Then_TheInnerReportsInThatCommitAndTheOuterInTheFollowUp()
         {
             // Arrange — the inner boundary catches while the mount renders, so its report is due in the mount's
-            // commit, and the sibling ahead of it in that commit throws first.
+            // commit, and the sibling ahead of it in that commit throws first. React reports the inner catch from
+            // the commit that shows its fallback, and the outer catch, which that throw only queues, from the
+            // follow-up commit that renders it: the inner boundary is not replaced while its commit runs.
             s_child = () => V.Component(ThrowOnRender, new InvalidOperationException("one"), key: "child");
 
             // Act
@@ -693,20 +734,21 @@ namespace Velvet.Tests
                 new MountOptions { OnCaughtError = (exception, _) => _calls.Add(exception.Message) });
 
             // Assert
-            Assert.That(string.Join(", ", _calls), Is.EqualTo("two"));
+            Assert.That(string.Join(", ", _calls), Is.EqualTo("one, two"));
         }
 
         [Test]
-        public void Given_ABoundaryThatAnOuterBoundaryReplacedBeforeItsReportWasDelivered_When_TheCommitsEnd_Then_TheContextKeepsNoReportForIt()
+        public void Given_AnInnerBoundaryAnOuterBoundaryReplacesBeforeItRenders_When_TheCommitsEnd_Then_OnlyTheOuterCaughtAndTheContextKeepsNoReport()
         {
             // Act
             _mounted = V.Mount(_root, V.Component(OuterBoundaryRender, key: "outer"), CaughtErrors.Unlogged);
 
-            // Assert — the catch count is read beside the kept count, because an inner boundary that never
-            // caught leaves nothing to keep either.
+            // Assert — the catch count is read beside the kept count, because a context that caught nothing
+            // keeps nothing either. Both boundaries capture an error in the mount's commit, and the outer one
+            // renders first and replaces the inner, which as in React never renders its fallback.
             Assert.That(
                 $"{CatchesSoFar()} caught | {ReportsKept()} kept",
-                Is.EqualTo("2 caught | 0 kept"));
+                Is.EqualTo("1 caught | 0 kept"));
         }
 
         [Test]
@@ -774,6 +816,8 @@ namespace Velvet.Tests
         [Test]
         public void Given_SiblingBoundariesWhoseFallbacksBothHaveLayoutEffectsCatchingInReverseTreeOrder_When_TheirFallbacksCommit_Then_EachReportFollowsItsOwnFallbacksLayoutEffect()
         {
+            // The last "two" is the cleanup the update's setup returned, which the fallback's commit runs as it deletes
+            // the child, and which React captures and reports in turn.
             // Arrange — the second boundary catches first, so its fallback is pushed ahead of the first's.
             _mounted = V.Mount(
                 _root,
@@ -788,7 +832,7 @@ namespace Velvet.Tests
             _mounted.FlushEffectsForTest();
 
             // Assert
-            Assert.That(string.Join(", ", s_order), Is.EqualTo("fallback one, one, fallback two, two"));
+            Assert.That(string.Join(", ", s_order), Is.EqualTo("fallback one, one, fallback two, two, two"));
         }
 
         // GREEN_ON_BASE(refactor): only how this case spells its MountOptions changed.

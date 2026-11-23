@@ -2300,6 +2300,24 @@ namespace Velvet
         // FiberErrorBoundary.RecordCatch queues behind the report of the error the swap is for.
         internal readonly List<(ComponentFiber Boundary, System.Exception Error, ErrorInfo Info)> ErrorsDuringFallbackSwap = new();
 
+        // The boundaries holding errors a commit captured (CommitErrors.Capture) that no render has taken yet, and the
+        // sequence the next capture takes. FlushingCaptures is raised while FiberEffects.CommitStrandedLayoutWork
+        // renders them, so the commits that render ends leave the loop to its caller.
+        internal readonly List<ComponentFiber> BoundariesOwedCaptures = new();
+        internal long NextCaptureSequence;
+        internal bool FlushingCaptures;
+
+        internal void DropAllCaptures()
+        {
+            for (var i = BoundariesOwedCaptures.Count - 1; i >= 0; i--) DropCapturesOf(BoundariesOwedCaptures[i]);
+        }
+
+        internal void DropCapturesOf(ComponentFiber boundary)
+        {
+            boundary.PendingCaptures = null;
+            BoundariesOwedCaptures.Remove(boundary);
+        }
+
         // Errors the root took while MountedTree.Dispose unmounted its tree, which it reports once the unmount is done.
         internal readonly List<(System.Exception Error, ErrorInfo Info)> ErrorsDuringRootDisposal = new();
 
@@ -2311,6 +2329,10 @@ namespace Velvet
         internal int PassiveDrainDepth;
 
         internal bool InLayoutCommit => EffectCommitDepth > PassiveDrainDepth;
+
+        // Whether a layout or passive commit is running, where an error an effect or a ref callback throws is captured
+        // for its boundary rather than caught at once (ComponentBoundarySearch.PropagateFrom).
+        internal bool InCommitPhase => EffectCommitDepth > 0;
 
         // Fibers with pending passive (UseEffect) effects awaiting the next post-paint drain. Unlike
         // layout effects (committed synchronously, bottom-up, before paint) passive effects fire

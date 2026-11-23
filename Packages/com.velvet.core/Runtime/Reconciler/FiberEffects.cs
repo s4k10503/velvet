@@ -165,16 +165,20 @@ namespace Velvet
         // where no commit of a live root reaches it. A boundary's catch calls it as well, which is what commits a
         // fallback shown from a frame callback. With a render, a reconcile, a batch drain, an effect commit or a
         // ref-setup drain on the stack it does nothing, and the call at the end of what encloses it does the work.
-        // What a parked time-sliced pass pushed stays on the stack for the commit that completes the pass.
+        // What a parked time-sliced pass pushed stays on the stack for the commit that completes the pass. An error a
+        // commit captured (CommitErrors.Capture) is rendered here as well, once the commit that threw is over.
         internal static void CommitStrandedLayoutWork(ReconcilerContext ctx)
         {
             if (IsCommitOnTheStack(ctx)) return;
             var commits = 0;
-            while (HasStrandedWork(ctx))
+            while (true)
             {
-                // Bounded at React's nested-update limit, so a chain that never settles — a fallback whose layout
-                // effect throws back into its own boundary on every commit — ends in this exception, as React's does,
-                // rather than a hang.
+                var stranded = HasStrandedWork(ctx);
+                if (!stranded && !CanFlushCaptures(ctx)) break;
+                // Bounded at React's nested-update limit, so a chain of stranded layout work that never settles ends in
+                // this exception, as React's does, rather than a hang. A fallback whose layout effect throws back into
+                // its own boundary is not such a chain: the immediate drain that renders the captured error stops it at
+                // the same limit.
                 if (commits++ == MaxFollowUpCommits)
                 {
                     DropStrandedWork(ctx);
@@ -183,7 +187,8 @@ namespace Velvet
                         + $"{MaxFollowUpCommits} follow-up commits in a row. Velvet limits them, as React limits "
                         + "nested updates, to prevent infinite loops.");
                 }
-                CommitLayoutBatch(ctx, null, s_noRoots);
+                if (stranded) CommitLayoutBatch(ctx, null, s_noRoots);
+                else if (!FlushCaptures(ctx)) break;
             }
             // Completions a pass left until its refs attach (Reconciler.FinishTopLevelPass): an enter that
             // played nothing completes here, an exit stages for the passive flush.
@@ -192,6 +197,36 @@ namespace Velvet
             // delivers.
             ctx.PendingCaughtErrorReports.RemoveAll(static report => !report.Boundary.IsMounted);
             ctx.ErrorsDuringFallbackSwap.RemoveAll(static taken => !taken.Boundary.IsMounted);
+            CommitErrors.DropUnmounted(ctx);
+        }
+
+        // Errors a commit captured wait for the render of their boundary, which this renders as the commit that threw
+        // is over. Inside a drain the drain's own passes render it, and a boundary the flush could not render stays
+        // owed for the scheduler.
+        private static bool CanFlushCaptures(ReconcilerContext ctx)
+            => CommitErrors.OldestOwed(ctx) != long.MaxValue && ctx.BatchScheduler.CanFlushImmediate;
+
+        // False where no capture was taken, which a flush the scheduler holds back (a boundary hidden under a Suspense,
+        // or in a detached host) leaves as it was.
+        private static bool FlushCaptures(ReconcilerContext ctx)
+        {
+            var oldest = CommitErrors.OldestOwed(ctx);
+            // A render a commit's own user code started left its boundary's captures where they were, with the
+            // boundary no longer queued.
+            foreach (var boundary in ctx.BoundariesOwedCaptures)
+            {
+                if (!boundary.IsDirty) FiberWorkLoop.ScheduleRerender(boundary, FiberUpdatePriority.Urgent);
+            }
+            ctx.FlushingCaptures = true;
+            try
+            {
+                ctx.BatchScheduler.FlushImmediate();
+            }
+            finally
+            {
+                ctx.FlushingCaptures = false;
+            }
+            return CommitErrors.OldestOwed(ctx) != oldest;
         }
 
         private const int MaxFollowUpCommits = 50;
@@ -204,7 +239,8 @@ namespace Velvet
                 || ctx.DeferDrainLayoutEffects
                 || ctx.HeldRowLayoutEffects.Count > 0
                 || ctx.EffectCommitDepth > 0
-                || ctx.IsDrainingRefAttaches;
+                || ctx.IsDrainingRefAttaches
+                || ctx.FlushingCaptures;
 
         private static bool HasStrandedWork(ReconcilerContext ctx)
         {
@@ -235,6 +271,7 @@ namespace Velvet
             }
             for (var i = held.Count - 1; i >= 0; i--) stack.Push(held[i]);
             ctx.PendingCaughtErrorReports.RemoveAll(report => IsDue(ctx, report, null));
+            ctx.DropAllCaptures();
         }
 
         // A parked pass holds back what it pushed, as DrainRefAttaches holds back the ref setups it queued: its

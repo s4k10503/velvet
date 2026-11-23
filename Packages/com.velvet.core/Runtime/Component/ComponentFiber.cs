@@ -1159,6 +1159,7 @@ namespace Velvet
             {
                 _caughtError = value;
                 if (value != null) return;
+                CarriedEarlierCaptures = null;
                 CatchUnreported = false;
                 CatchReportedFromCarry = false;
             }
@@ -1171,10 +1172,17 @@ namespace Velvet
         // CaughtError clears it.
         internal bool CatchUnreported { get; set; }
 
+        // The captures taken with the one CaughtError holds, which FiberErrorBoundary.ReportCarriedCatch reports ahead of it.
+        internal List<(Exception Error, ErrorInfo Info)>? CarriedEarlierCaptures { get; set; }
+
         // Set once ReportCarriedCatch has queued the report, until the commit delivers it: a Suspense whose primary
         // suspends discards the report, and the boundary then owes it again rather than forgetting the catch
         // (GeneralPathReconciler.ForgetCatchesOfTheDiscardedPrimary).
         internal bool CatchReportedFromCarry { get; set; }
+
+        // Errors a commit's effects and refs threw below this boundary, queued by CommitErrors.Capture and taken by
+        // the boundary's next render (FiberErrorBoundary.OutputOf), in the order they were captured.
+        internal List<(Exception Error, ErrorInfo Info, long Sequence)>? PendingCaptures { get; set; }
 
         // What made the boundary's swap to its fallback fail, where reconciling the fallback threw rather than a
         // render inside it: the error the boundary above is handed (FiberErrorBoundary.TryCatch).
