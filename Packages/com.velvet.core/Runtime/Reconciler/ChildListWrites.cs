@@ -792,10 +792,10 @@ namespace Velvet
                     catch (Exception exception)
                     {
                         var op = pass.Ops[i];
-                        if (op.Kind is ReconcilePass.OpKind.RemoveAt or ReconcilePass.OpKind.RemoveChild && op.Child != null)
-                        {
-                            NoteRemovalThrew(op.Child);
-                        }
+                        var removed = op.Kind == ReconcilePass.OpKind.RemoveAt || op.Kind == ReconcilePass.OpKind.RemoveChild
+                            ? op.Child
+                            : null;
+                        if (removed != null) NoteRemovalThrew(removed);
                         var added = op.Kind == ReconcilePass.OpKind.Insert ? op.Child : null;
                         if (!FileFailure(pass, added, exception))
                         {
@@ -877,7 +877,8 @@ namespace Velvet
         private static bool FileRemovalFailure(VisualElement element, Exception exception)
         {
             NoteRemovalThrew(element);
-            return s_current is { } pass && FileUnderTheRun(pass, RunRootOf(pass), null, exception);
+            var pass = s_current;
+            return pass != null && FileUnderTheRun(pass, RunRootOf(pass), null, exception);
         }
 
         // The elements a removal of which threw, which FiberElementCleaner's pool returns and z-* release read.
