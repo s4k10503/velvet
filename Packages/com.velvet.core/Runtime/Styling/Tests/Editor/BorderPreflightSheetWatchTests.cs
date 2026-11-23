@@ -14,8 +14,19 @@ namespace Velvet.Tests
     {
         private const BindingFlags Statics = BindingFlags.NonPublic | BindingFlags.Static;
 
+        // Each optional parameter takes its default, so the call reads the same on a base without them.
         private static void WatchSheets(VisualElement element)
-            => typeof(BorderPreflight).GetMethod("WatchSheets", Statics).Invoke(null, new object[] { element });
+        {
+            var method = typeof(BorderPreflight).GetMethod("WatchSheets", Statics);
+            var parameters = method.GetParameters();
+            var arguments = new object[parameters.Length];
+            arguments[0] = element;
+            for (var i = 1; i < arguments.Length; i++)
+            {
+                arguments[i] = parameters[i].DefaultValue;
+            }
+            method.Invoke(null, arguments);
+        }
 
         private static object WatchOf(IPanel panel)
         {
@@ -42,6 +53,7 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base watches each ancestor of the preflight's elements once.
+        // The watch's new optional parameter, called at its default, leaves that as it was.
         [Test]
         public void Given_AWatchedElement_When_ASiblingIsWatched_Then_NoAncestorIsWatchedTwice()
         {
@@ -62,6 +74,7 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base stops watching an ancestor that left its panel.
+        // The watch's new optional parameter, called at its default, leaves that as it was.
         [Test]
         public void Given_AWatchedAncestor_When_ItLeavesThePanelAndTheWatchTicks_Then_ItIsNoLongerWatched()
         {

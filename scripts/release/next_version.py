@@ -94,6 +94,22 @@ def bumped(previous, bump):
             "patch": f"{major}.{minor}.{patch + 1}"}[bump]
 
 
+BUMPS = ("patch", "minor", "major")
+
+
+def successors(previous):
+    """The versions a release after `previous` may take, in the order `BUMPS` names them."""
+    return [bumped(previous, bump) for bump in BUMPS]
+
+
+def skipped_from(published, version):
+    """The newest of the `published` versions below `version` where `version` is not one of its
+    `successors`, and None where it is or nothing below it was published."""
+    below = [named for named in published if parse_version(named) < parse_version(version)]
+    previous = max(below, key=parse_version, default=None)
+    return previous if previous is not None and version not in successors(previous) else None
+
+
 def first_line(entry):
     return entry.splitlines()[0]
 

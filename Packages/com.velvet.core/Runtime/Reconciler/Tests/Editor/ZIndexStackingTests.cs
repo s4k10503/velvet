@@ -1309,6 +1309,33 @@ namespace Velvet.Tests
             Assert.That(Names(Band(root.Q<VisualElement>("parent"), front: true)), Is.EqualTo(expected));
         }
 
+        // GREEN_ON_BASE(characterization): the base leaves an element still queued behind its placeholder to the drain. Change `placeholder != null` to `== null` in the still-queued check of FiberZLayerCoordinator.Settle and the settle exchanges a placeholder with an element that stands in no parent, which throws.
+        [Test]
+        public void Given_AStackedElementQueuedBehindItsPlaceholder_When_ItsFactsUnstackItBeforeTheDrain_Then_ThePlaceholderStillHoldsItsSlot()
+        {
+            // Arrange — the placeholder stands in the parent, the element is not placed until the queue drains.
+            var root = new VisualElement();
+            using var mounted = V.Mount(root, V.Div(name: "parent", className: "relative", children: new VNode[]
+            {
+                V.Div(name: "a"),
+            }));
+            var ctx = mounted.Root.Reconciler.Context;
+            var parent = root.Q<VisualElement>("parent");
+            var queued = new VisualElement { name = "queued" };
+            queued.AddToClassList("absolute");
+            queued.AddToClassList("z-10");
+            var stacked = new[] { "absolute", "z-10" };
+            var placeholder = FiberZLayerCoordinator.OnCreated(ctx, queued, queued, stacked, stacked, anchored: false);
+            ChildListWrites.HierarchyAdd(parent, placeholder);
+            var unstacked = new[] { "absolute" };
+
+            // Act
+            FiberZLayerCoordinator.OnResolved(ctx, queued, queued, unstacked, unstacked, anchored: false);
+
+            // Assert — a placeholder that was never created is no key of the table, which reads false
+            Assert.That(ctx.ZLayerPlaceholders.ContainsKey(placeholder), Is.True);
+        }
+
         #endregion
 
         #region Relational variants across a relocation
@@ -2611,6 +2638,27 @@ namespace Velvet.Tests
             Assert.That(
                 (IsZManaged(ctx, zlast), zlast != null && zlast.ClassListContains("bg-mark")),
                 Is.EqualTo((true, true)));
+        }
+
+        // GREEN_ON_BASE(characterization): the base answers a relocated element at its declared slot with the element
+        // itself rather than the placeholder holding the slot. Change `held.Role == Role.Slot` in LastDeclaredChild to
+        // `!=` and the placeholder answers.
+        [Test]
+        public void Given_ALastChildRelocatedOutOfItsSlot_When_TheLastDeclaredChildIsRead_Then_ItIsTheRelocatedElement()
+        {
+            // Arrange
+            var root = new VisualElement();
+            using var mounted = V.Mount(root, V.Div(name: "parent", className: "relative", children: new VNode[]
+            {
+                V.Div(name: "ordinary"),
+                V.Div(name: "zlast", className: "absolute z-10"),
+            }));
+
+            // Act
+            var last = FiberZLayerCoordinator.LastDeclaredChild(root.Q<VisualElement>("parent"));
+
+            // Assert
+            Assert.That(last, Is.SameAs(root.Q<VisualElement>("zlast")));
         }
 
         #endregion

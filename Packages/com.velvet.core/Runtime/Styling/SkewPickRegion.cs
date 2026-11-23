@@ -58,7 +58,7 @@ namespace Velvet
         public override bool ContainsPoint(Vector2 localPoint)
             => PickRegion != null ? PickRegion.Contains(this, localPoint) : base.ContainsPoint(localPoint);
 
-        [EventInterest(typeof(GeometryChangedEvent))]
+        [EventInterest(typeof(GeometryChangedEvent), typeof(CustomStyleResolvedEvent))]
         protected override void HandleEventBubbleUp(EventBase evt)
         {
             if (RadiusFitWatches)

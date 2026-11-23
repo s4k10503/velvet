@@ -685,6 +685,8 @@
 [Velvet] method Velvet.NullStoreLogger.LogWarning(System.String): System.Void
 [Velvet] method Velvet.ParticlesElement.Play(): System.Void
 [Velvet] method Velvet.ParticlesElement.Stop(): System.Void
+[Velvet] method Velvet.PropsComparerRegistry.Register(System.Type, System.Func`3[System.Object, System.Object, System.Boolean]): System.Void
+[Velvet] method Velvet.PropsComparerRegistry.ValueEquals(System.Object?, System.Object?): System.Boolean
 [Velvet] method Velvet.Query.Cancel(System.Boolean, System.Boolean): Velvet.VelvetTask
 [Velvet] method Velvet.Query.Fetch(System.Boolean): Velvet.VelvetTask`1[System.Object?]
 [Velvet] method Velvet.Query.GetObserversCount(): System.Int32
@@ -2069,6 +2071,7 @@
 [Velvet] type Velvet.PointerMoveBinding
 [Velvet] type Velvet.PointerUpBinding
 [Velvet] type Velvet.PortalNode
+[Velvet] type Velvet.PropsComparerRegistry
 [Velvet] type Velvet.Query
 [Velvet] type Velvet.QueryActionType
 [Velvet] type Velvet.QueryCache
