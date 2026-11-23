@@ -21,7 +21,7 @@ namespace Velvet.Tests
 
         public override void TearDown()
         {
-            ChildListWrites.EndRecording();
+            ChildListWrites.EndRecording(_reconciler.Context.Pass);
             _reconciler?.Dispose();
             base.TearDown();
         }
@@ -42,11 +42,11 @@ namespace Velvet.Tests
             var seen = "unset";
             label.RegisterCallback<DetachFromPanelEvent>(_ => seen = label.text);
             first.RegisterCallback<DetachFromPanelEvent>(_ => _reconciler.Context.HostCommit.Remove(host, label));
-            ChildListWrites.BeginRecording();
+            ChildListWrites.BeginRecording(_reconciler.Context.Pass);
             _reconciler.Context.HostCommit.Remove(host, first);
 
             // Act
-            ChildListWrites.EndRecording();
+            ChildListWrites.EndRecording(_reconciler.Context.Pass);
 
             // Assert
             Assert.That(seen, Is.EqualTo("kept text"));

@@ -83,14 +83,11 @@ namespace Velvet.Tests
             using var reconciler = new Reconciler();
             var host = new VisualElement();
             reconciler.Context.ZLayerHosts[host] = new ZLayerHostRecord { Swapped = true };
-            ChildListWrites.ViaQueue = 0;
-            ChildListWrites.EndRecording();
-            ChildListWrites.BeginRecording();
+            var pass = reconciler.Context.Pass;
+            ChildListWrites.BeginRecording(pass);
             try
             {
-                ChildListWrites.ViaQueue++;
-                try { ChildListWrites.Insert(host, 0, new VisualElement()); }
-                finally { ChildListWrites.ViaQueue--; }
+                using (ChildListWrites.QueueWrite()) ChildListWrites.Insert(host, 0, new VisualElement());
 
                 // Act
                 FiberZLayerCoordinator.NoteChildrenReconciled(reconciler.Context, host);
@@ -100,7 +97,7 @@ namespace Velvet.Tests
             }
             finally
             {
-                ChildListWrites.EndRecording();
+                ChildListWrites.EndRecording(pass);
             }
         }
     }

@@ -304,9 +304,9 @@ namespace Velvet
         private static void InsertCore(VisualElement container, int index, VisualElement child, bool viaHierarchy,
             VisualElement caller)
         {
-            if (ShouldRecord(container, child))
+            if (RecordingPass(container, child) is { } pass)
             {
-                RecordInsert(container, index, child, viaHierarchy, caller);
+                RecordInsert(pass, container, index, child, viaHierarchy, caller);
                 return;
             }
             FlushIfPending(container, child);
@@ -336,9 +336,9 @@ namespace Velvet
 
         internal static void Remove(VisualElement parent, VisualElement child)
         {
-            if (s_applying)
+            if (s_current is { Applying: true } applying)
             {
-                RecordRemoveChild(child);
+                RecordRemoveChild(applying, child);
                 return;
             }
             var container = ContentOf(parent);
@@ -375,9 +375,9 @@ namespace Velvet
         internal static void RemoveAt(VisualElement parent, int index)
         {
             var container = ContentOf(parent);
-            if (s_applying)
+            if (s_current is { Applying: true } applying)
             {
-                RecordRemoveAt(container, parent, index);
+                RecordRemoveAt(applying, container, parent, index);
                 return;
             }
             FlushIfPending(container, null);
@@ -396,9 +396,9 @@ namespace Velvet
 
         internal static void RemoveFromHierarchy(VisualElement child)
         {
-            if (s_applying)
+            if (s_current is { Applying: true } applying)
             {
-                RecordRemoveChild(child);
+                RecordRemoveChild(applying, child);
                 return;
             }
             FlushIfPending(null, child);
@@ -448,64 +448,81 @@ namespace Velvet
         //
         // Inside a pass, an insert, a move or a removal the walk makes through HostCommitQueue into a container the pass
         // did not create updates the model and is recorded; the live list takes it no later than where FinishPass starts
-        // (ApplyRecorded), in the order recorded. A node's patch halves are recorded in the same list (PatchPre and
+        // (EndRecording), in the order recorded. A node's patch halves are recorded in the same list (PatchPre and
         // PatchPost, the children's ops between them); they name no container, so a reader of the element's parent does
         // not apply them, and the post-children passes of an element patched at once apply
         // every recorded op first (ApplyPendingPatches). The readers the walk has moved to the model (ParentOf, ChildCount, ElementAtPhysical and
         // the reads above) answer from it meanwhile, and a container with a recorded write is skipped by the checks that
         // compare the model with the live list. Any other write into such a container applies the recorded ones first,
         // except one made while they apply, which is recorded behind them.
-        private enum OpKind : byte { Insert, RemoveAt, RemoveChild, PatchPre, PatchPost }
+        //
+        // The list, and the parents it leaves pending, belong to the ReconcilePass that recorded them, and s_current is
+        // the one that is recording or applying, innermost first. Outside every pass nothing is recorded: ParentOf
+        // answers from the live tree, a write is made at once, and SyncLive and ApplyPendingPatches have nothing to
+        // apply. The model of a container (s_rows) belongs to the container, whichever pass writes it, and the readers
+        // of the model answer from the container's own Pending count, which each pass raises by what it marks and
+        // takes off by the same amount where it applies.
+        private static ReconcilePass? s_current;
 
-        private struct Op
+        // Raised around the writes HostCommitQueue makes, which are the ones recorded.
+        internal readonly struct QueueWriteScope : IDisposable
         {
-            internal VisualElement Container;
-            internal VisualElement Caller;
-            internal VisualElement Child;
-            // The index into s_patches of a PatchPre or a PatchPost.
-            internal int Index;
-            internal OpKind Kind;
-            internal bool ViaHierarchy;
+            private readonly ReconcilePass? _pass;
+
+            internal QueueWriteScope(ReconcilePass? pass)
+            {
+                _pass = pass;
+                if (pass != null) pass.ViaQueue++;
+            }
+
+            public void Dispose()
+            {
+                if (_pass != null) _pass.ViaQueue--;
+            }
         }
 
-        private static readonly List<Op> s_ops = new();
-        private static readonly List<PendingPatch> s_patches = new();
-        // Where the model holds each child a recorded write touched; null where the write took it out.
-        private static readonly Dictionary<VisualElement, VisualElement?> s_pendingParent = new();
-        private static readonly HashSet<VisualElement> s_pendingContainers = new();
-        private static readonly HashSet<VisualElement> s_created = new();
-        private static bool s_recording;
-        private static bool s_applying;
+        internal static QueueWriteScope QueueWrite() => new(s_current);
 
-        // Raised by HostCommitQueue around the writes it makes, which are the ones recorded.
-        internal static int ViaQueue;
+        // Whether a pass is recording or its recorded writes are applying, whatever it has recorded. Where passes of two
+        // contexts are open at once this answers for the innermost.
+        internal static bool PassIsOpen => s_current is { Recording: true } or { Applying: true };
 
-        // Whether a pass is recording or its recorded writes are applying, whatever it has recorded. The flag belongs to
-        // the process and not to one context, so another context's pass raises it too.
-        internal static bool PassIsOpen => s_recording || s_applying;
-
-        // A pass starting where another is still recording applies the other's writes first.
-        internal static void BeginRecording()
+        // A pass that starts while another is open applies the other's recorded writes first, so it reads a live list
+        // where they would otherwise be pending. Where the other is applying them already, they are left to that apply
+        // and the new pass records into a list of its own.
+        internal static void BeginRecording(ReconcilePass pass)
         {
-            if (s_recording) ApplyRecorded();
-            s_created.Clear();
-            s_recording = true;
+            var open = s_current;
+            if (open != null) Apply(open);
+            // MUTANT_SURVIVES(equivalent, line removed): EndRecording clears the set as every pass ends, so it is empty when the next one begins.
+            pass.Created.Clear();
+            pass.Recording = true;
+            if (pass.Depth++ == 0)
+            {
+                pass.Enclosing = open;
+                s_current = pass;
+            }
         }
 
         // A container the pass creates takes its children at once.
         internal static void MarkCreated(VisualElement element)
         {
-            if (!s_recording) return;
-            s_created.Add(element);
-            s_created.Add(ContentOf(element));
+            if (s_current is not { Recording: true } pass) return;
+            pass.Created.Add(element);
+            pass.Created.Add(ContentOf(element));
         }
 
-        // A write made while the recorded ones apply (a child attaching to the panel places the layer it hosts beside
-        // itself) is recorded behind them, since the model already holds the rows still to apply and the live list
-        // does not.
-        private static bool ShouldRecord(VisualElement container, VisualElement child)
-            => s_applying
-               || (s_recording && ViaQueue > 0 && (!s_created.Contains(container) || s_pendingParent.ContainsKey(child)));
+        // The pass that records a write into the container: one made while the recorded ones apply (a child attaching to
+        // the panel places the layer it hosts beside itself) is recorded behind them, since the model already holds the
+        // rows still to apply and the live list does not. Null where the write is made at once.
+        private static ReconcilePass? RecordingPass(VisualElement container, VisualElement child)
+        {
+            var pass = s_current;
+            if (pass == null) return null;
+            if (pass.Applying) return pass;
+            return pass.Recording && pass.ViaQueue > 0
+                && (!pass.Created.Contains(container) || pass.PendingParent.ContainsKey(child)) ? pass : null;
+        }
 
         internal static int ChildCount(VisualElement container) => CountOf(ContentOf(container));
 
@@ -518,7 +535,11 @@ namespace Velvet
             => s_rows.TryGetValue(element, out var rows) && rows.Pending > 0 ? rows.ElementAt(index) : element.hierarchy[index];
 
         internal static VisualElement? ParentOf(VisualElement element)
-            => s_pendingParent.TryGetValue(element, out var parent) ? parent : element.hierarchy.parent;
+        {
+            var pass = s_current;
+            if (pass == null) return element.hierarchy.parent;
+            return pass.PendingParent.TryGetValue(element, out var parent) ? parent : element.hierarchy.parent;
+        }
 
         // The child at the physical index of the container's model, which is the live list where nothing is recorded.
         internal static VisualElement? ElementAtPhysical(VisualElement container, int physical)
@@ -527,14 +548,20 @@ namespace Velvet
             return physical < 0 || physical >= CountOf(content) ? null : Synced(content, physical).ElementAt(physical);
         }
 
-        private static void Mark(VisualElement container)
+        private static void Mark(ReconcilePass pass, VisualElement container)
         {
-            if (s_rows.TryGetValue(container, out var rows)) rows.Pending++;
-            s_pendingContainers.Add(container);
+            var marked = 0;
+            if (s_rows.TryGetValue(container, out var rows))
+            {
+                rows.Pending++;
+                marked = 1;
+            }
+            pass.PendingContainers.TryGetValue(container, out var already);
+            pass.PendingContainers[container] = already + marked;
         }
 
-        private static void RecordInsert(VisualElement container, int index, VisualElement child, bool viaHierarchy,
-            VisualElement caller)
+        private static void RecordInsert(ReconcilePass pass, VisualElement container, int index, VisualElement child,
+            bool viaHierarchy, VisualElement caller)
         {
             var left = ParentOf(child);
             var rows = Synced(container, -1);
@@ -548,17 +575,17 @@ namespace Velvet
                     if (leftRows != null && leftRows.Contains(child))
                     {
                         leftRows.Remove(child);
-                        Mark(left);
+                        Mark(pass, left);
                     }
                 }
                 rows.Insert(Math.Min(index, rows.TotalCount), child, Classify(child));
                 held = true;
             }
-            Mark(container);
-            if (held) s_pendingParent[child] = container;
-            s_ops.Add(new Op
+            Mark(pass, container);
+            if (held) pass.PendingParent[child] = container;
+            pass.Ops.Add(new ReconcilePass.Op
             {
-                Container = container, Caller = caller, Child = child, Index = index, Kind = OpKind.Insert,
+                Container = container, Caller = caller, Child = child, Index = index, Kind = ReconcilePass.OpKind.Insert,
                 ViaHierarchy = viaHierarchy,
             });
             Touch(container);
@@ -572,8 +599,7 @@ namespace Velvet
         {
             var at = PhysicalIndexOf(parent, element);
             if (at < 0) return;
-            var container = ContentOf(parent);
-            if (ShouldRecord(container, element)) RecordRemoveAt(container, parent, at);
+            if (RecordingPass(ContentOf(parent), element) is { } pass) RecordRemoveAt(pass, ContentOf(parent), parent, at);
             else RemoveAt(parent, at);
         }
 
@@ -581,72 +607,78 @@ namespace Velvet
         internal static void RemoveAtForMove(VisualElement parent, int index)
         {
             var container = ContentOf(parent);
-            if (s_applying || (s_recording && ViaQueue > 0 && !s_created.Contains(container)))
+            var pass = s_current;
+            if (pass != null && (pass.Applying || (pass.Recording && pass.ViaQueue > 0 && !pass.Created.Contains(container))))
             {
-                RecordRemoveAt(container, parent, index);
+                RecordRemoveAt(pass, container, parent, index);
                 return;
             }
             RemoveAt(parent, index);
         }
 
-        private static void RecordRemoveAt(VisualElement container, VisualElement caller, int index)
+        private static void RecordRemoveAt(ReconcilePass pass, VisualElement container, VisualElement caller, int index)
         {
             var rows = Synced(container, -1);
             if (index >= 0 && index < rows.TotalCount)
             {
                 var element = rows.ElementAt(index);
                 rows.Remove(element);
-                s_pendingParent[element] = null;
+                pass.PendingParent[element] = null;
             }
-            Mark(container);
-            s_ops.Add(new Op { Container = container, Caller = caller, Index = index, Kind = OpKind.RemoveAt });
+            Mark(pass, container);
+            pass.Ops.Add(new ReconcilePass.Op
+            {
+                Container = container, Caller = caller, Index = index, Kind = ReconcilePass.OpKind.RemoveAt,
+            });
             Touch(container);
         }
 
-        private static void RecordRemoveChild(VisualElement child)
+        private static void RecordRemoveChild(ReconcilePass pass, VisualElement child)
         {
             var container = ParentOf(child);
             if (container == null) return;
             if (s_rows.TryGetValue(container, out var rows) && rows.Contains(child))
             {
                 rows.Remove(child);
-                Mark(container);
+                Mark(pass, container);
                 Touch(container);
             }
-            s_pendingParent[child] = null;
-            s_ops.Add(new Op { Container = container, Child = child, Kind = OpKind.RemoveChild });
+            pass.PendingParent[child] = null;
+            pass.Ops.Add(new ReconcilePass.Op { Container = container, Child = child, Kind = ReconcilePass.OpKind.RemoveChild });
         }
 
         // Whether a pass is recording writes it has not applied yet.
-        internal static bool IsRecording => s_recording && !s_applying;
+        internal static bool IsRecording => s_current is { Recording: true, Applying: false };
 
         // Whether the recorded writes are being applied.
-        internal static bool IsApplying => s_applying;
+        internal static bool IsApplying => s_current is { Applying: true };
 
         // Whether a patch of element waits for the pass to end: one made where a pass records, to an element that has a
         // live or a recorded parent. An element with neither is written at once.
         internal static bool StagesPatch(VisualElement element)
-            => s_recording && !s_applying && ParentOf(element) != null;
+            => s_current is { Recording: true, Applying: false } && ParentOf(element) != null;
 
         // Records the first half of a patch behind every op recorded so far, to commit where the recorded ops apply.
-        internal static void RecordPatchPre(in PendingPatch patch) => RecordPatch(OpKind.PatchPre, patch);
+        internal static void RecordPatchPre(in PendingPatch patch) => RecordPatch(ReconcilePass.OpKind.PatchPre, patch);
 
         // Records the second half, behind the ops of the children the walk reconciled between the two.
-        internal static void RecordPatchPost(in PendingPatch patch) => RecordPatch(OpKind.PatchPost, patch);
+        internal static void RecordPatchPost(in PendingPatch patch) => RecordPatch(ReconcilePass.OpKind.PatchPost, patch);
 
-        private static void RecordPatch(OpKind kind, in PendingPatch patch)
+        private static void RecordPatch(ReconcilePass.OpKind kind, in PendingPatch patch)
         {
-            s_patches.Add(patch);
-            s_ops.Add(new Op { Index = s_patches.Count - 1, Kind = kind });
+            var pass = s_current!;
+            pass.Patches.Add(patch);
+            pass.Ops.Add(new ReconcilePass.Op { Index = pass.Patches.Count - 1, Kind = kind });
         }
 
         // For the post-children passes of an element patched at once, which read its descendants' live state while their
         // patch halves are still recorded: every recorded op applies first, in the order recorded.
         internal static void ApplyPendingPatches()
         {
-            if (s_patches.Count > 0)
+            var pass = s_current;
+            if (pass != null && pass.Patches.Count > 0)
             {
-                ApplyRecorded();
+                Apply(pass);
             }
         }
 
@@ -656,12 +688,13 @@ namespace Velvet
 
         private static void FlushIfPending(VisualElement? container, VisualElement? child)
         {
-            if (s_ops.Count == 0 || s_applying) return;
-            if ((container != null && s_pendingContainers.Contains(container))
-                || (child != null && (s_pendingParent.ContainsKey(child)
-                    || (child.hierarchy.parent is { } live && s_pendingContainers.Contains(live)))))
+            var pass = s_current;
+            if (pass == null || pass.Ops.Count == 0 || pass.Applying) return;
+            if ((container != null && pass.PendingContainers.ContainsKey(container))
+                || (child != null && (pass.PendingParent.ContainsKey(child)
+                    || (child.hierarchy.parent is { } live && pass.PendingContainers.ContainsKey(live)))))
             {
-                ApplyRecorded();
+                Apply(pass);
             }
         }
 
@@ -669,18 +702,18 @@ namespace Velvet
         // ends it, and a flush made mid-pass applies what is recorded while the pass keeps recording. An op that throws
         // does not stop the ones behind it: the walk has moved on from each of them, so the live tree has to take every
         // one, and the first exception is rethrown once they have.
-        internal static void ApplyRecorded()
+        private static void Apply(ReconcilePass pass)
         {
-            if (s_applying) return;
-            s_applying = true;
+            if (pass.Applying) return;
+            pass.Applying = true;
             System.Runtime.ExceptionServices.ExceptionDispatchInfo? first = null;
             try
             {
-                for (var i = 0; i < s_ops.Count; i++)
+                for (var i = 0; i < pass.Ops.Count; i++)
                 {
                     try
                     {
-                        ApplyOp(s_ops[i]);
+                        ApplyOp(pass, pass.Ops[i]);
                     }
                     catch (Exception exception)
                     {
@@ -690,32 +723,32 @@ namespace Velvet
             }
             finally
             {
-                s_applying = false;
-                s_ops.Clear();
-                s_patches.Clear();
-                s_pendingParent.Clear();
-                foreach (var container in s_pendingContainers)
+                pass.Applying = false;
+                pass.Ops.Clear();
+                pass.Patches.Clear();
+                pass.PendingParent.Clear();
+                foreach (var (container, marked) in pass.PendingContainers)
                 {
-                    if (s_rows.TryGetValue(container, out var rows)) rows.Pending = 0;
+                    if (s_rows.TryGetValue(container, out var rows)) rows.Pending = Math.Max(0, rows.Pending - marked);
                 }
-                foreach (var container in s_pendingContainers)
+                foreach (var container in pass.PendingContainers.Keys)
                 {
                     Touch(container);
                     PruneIfEmpty(container);
                 }
-                s_pendingContainers.Clear();
+                pass.PendingContainers.Clear();
                 foreach (var nested in s_nested) Settle(nested, full: true);
                 s_nested.Clear();
             }
             first?.Throw();
         }
 
-        private static void ApplyOp(Op op)
+        private static void ApplyOp(ReconcilePass pass, ReconcilePass.Op op)
         {
-            if (op.Kind >= OpKind.PatchPre)
+            if (op.Kind >= ReconcilePass.OpKind.PatchPre)
             {
-                var patch = s_patches[op.Index];
-                if (op.Kind == OpKind.PatchPre) patch.Patcher.CommitPre(patch);
+                var patch = pass.Patches[op.Index];
+                if (op.Kind == ReconcilePass.OpKind.PatchPre) patch.Patcher.CommitPre(patch);
                 else patch.Patcher.CommitPost(patch);
                 return;
             }
@@ -723,8 +756,8 @@ namespace Velvet
             s_flight.Add(op.Container);
             try
             {
-                if (op.Kind == OpKind.RemoveChild) op.Child.RemoveFromHierarchy();
-                else if (op.Kind == OpKind.RemoveAt) op.Caller.RemoveAt(op.Index);
+                if (op.Kind == ReconcilePass.OpKind.RemoveChild) op.Child.RemoveFromHierarchy();
+                else if (op.Kind == ReconcilePass.OpKind.RemoveAt) op.Caller.RemoveAt(op.Index);
                 else if (op.ViaHierarchy) op.Container.hierarchy.Insert(op.Index, op.Child);
                 else op.Caller.Insert(op.Index, op.Child);
             }
@@ -735,12 +768,31 @@ namespace Velvet
             }
         }
 
-        // Ends recording and applies what it recorded.
-        internal static void EndRecording()
+        // Ends the pass's recording, applies what it recorded and makes the pass that was current when it began current
+        // again. Nothing is done where the pass is not the current one, as for FinishPass of a range rendered outside
+        // any pass, or while the pass is applying, which is an end asked for from inside the apply.
+        internal static void EndRecording(ReconcilePass pass)
         {
-            s_recording = false;
-            ApplyRecorded();
-            s_created.Clear();
+            if (!ReferenceEquals(s_current, pass) || pass.Applying) return;
+            pass.Recording = false;
+            try
+            {
+                Apply(pass);
+            }
+            finally
+            {
+                pass.Created.Clear();
+                if (--pass.Depth == 0)
+                {
+                    s_current = pass.Enclosing;
+                    // MUTANT_SURVIVES(equivalent, line removed): BeginRecording assigns Enclosing before anything reads it.
+                    pass.Enclosing = null;
+                }
+                else
+                {
+                    pass.Recording = true;
+                }
+            }
         }
 
         // A container with no children keeps no model.

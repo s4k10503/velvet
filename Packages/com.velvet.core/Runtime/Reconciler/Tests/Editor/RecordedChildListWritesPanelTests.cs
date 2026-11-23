@@ -19,12 +19,12 @@ namespace Velvet.Tests
         private VisualElement _source = null!;
         private VisualElement _destination = null!;
         private VisualElement _moving = null!;
+        private ReconcilePass _pass = null!;
 
         public override void SetUp()
         {
             base.SetUp();
-            ChildListWrites.ViaQueue = 0;
-            ChildListWrites.EndRecording();
+            _pass = new ReconcilePass();
             ClearStatic("s_nested");
             var root = _window.rootVisualElement;
             _source = new VisualElement();
@@ -37,8 +37,7 @@ namespace Velvet.Tests
 
         public override void TearDown()
         {
-            ChildListWrites.ViaQueue = 0;
-            ChildListWrites.EndRecording();
+            for (var i = _pass.Depth; i > 0; i--) ChildListWrites.EndRecording(_pass);
             base.TearDown();
         }
 
@@ -57,14 +56,12 @@ namespace Velvet.Tests
         // Records the move of _moving into _destination, which applies where EndRecording is called.
         private void RecordTheMove()
         {
-            ChildListWrites.BeginRecording();
-            ChildListWrites.ViaQueue++;
-            try { ChildListWrites.Insert(_destination, 0, _moving); }
-            finally { ChildListWrites.ViaQueue--; }
+            ChildListWrites.BeginRecording(_pass);
+            using (ChildListWrites.QueueWrite()) ChildListWrites.Insert(_destination, 0, _moving);
         }
 
         // GREEN_ON_BASE(characterization): the base takes out a child a handler removes while the recorded writes apply.
-        // Drop `op.Child.RemoveFromHierarchy();` from the RemoveChild branch in ApplyRecorded and the child stays.
+        // Drop `op.Child.RemoveFromHierarchy();` from the RemoveChild branch in ApplyOp and the child stays.
         [Test]
         public void Given_AHandlerThatRemovesAChildFromTheMovesDetach_When_TheRecordedMoveApplies_Then_TheChildIsRemoved()
         {
@@ -79,7 +76,7 @@ namespace Velvet.Tests
             RecordTheMove();
 
             // Act
-            ChildListWrites.EndRecording();
+            ChildListWrites.EndRecording(_pass);
 
             // Assert
             Assert.That(doomed.hierarchy.parent, Is.Null);
@@ -106,7 +103,7 @@ namespace Velvet.Tests
             RecordTheMove();
 
             // Act
-            ChildListWrites.EndRecording();
+            ChildListWrites.EndRecording(_pass);
 
             // Assert
             Assert.That(counted, Is.EqualTo(2));
@@ -126,7 +123,7 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base rebuilds the model of a container whose change is announced while the recorded writes apply.
-        // Drop `foreach (var nested in s_nested) Settle(nested, full: true);` from ApplyRecorded and the model keeps
+        // Drop `foreach (var nested in s_nested) Settle(nested, full: true);` from Apply and the model keeps
         // the order it had.
         [Test]
         public void Given_AnAnnouncedChangeInsideTheApplicationThatTheProbesDoNotSee_When_TheRecordedMoveApplies_Then_TheModelIsRebuilt()
@@ -136,14 +133,14 @@ namespace Velvet.Tests
             RecordTheMove();
 
             // Act
-            ChildListWrites.EndRecording();
+            ChildListWrites.EndRecording(_pass);
 
             // Assert
             Assert.That(ContainerRowsTests.CompareOrder(bystander, RowModelAccess.Peek(bystander)!), Is.Null);
         }
 
         // GREEN_ON_BASE(characterization): the base leaves no container queued for comparison once the recorded writes have applied.
-        // Drop `s_nested.Clear();` from ApplyRecorded and the announced container stays queued.
+        // Drop `s_nested.Clear();` from Apply and the announced container stays queued.
         [Test]
         public void Given_AnAnnouncedChangeInsideTheApplication_When_TheRecordedMoveApplies_Then_NoContainerIsLeftQueuedForComparison()
         {
@@ -152,7 +149,7 @@ namespace Velvet.Tests
             RecordTheMove();
 
             // Act
-            ChildListWrites.EndRecording();
+            ChildListWrites.EndRecording(_pass);
 
             // Assert
             Assert.That(NestedCount(), Is.EqualTo(0));
