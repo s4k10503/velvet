@@ -1994,7 +1994,7 @@ namespace Velvet
         private void SetPrimaryHidden(
             InlineWalk walk, GeneralCommitState commit, int from, int to, ComponentFiber? boundaryFiber, bool hidden)
         {
-            var portals = new PortalsByAncestor(_ctx);
+            var portals = new PortalsUnder(_ctx);
             var roots = portals.Roots;
             for (var i = from; i < to; i++)
             {
@@ -2004,7 +2004,7 @@ namespace Velvet
                 if (!hidden && walk.HiddenPrimaryElements.Contains(row)) continue;
                 AddWithPortalChildren(row, i, commit, walk, hidden, portals);
             }
-            foreach (var (fiber, placeholder) in HeldFibers(roots))
+            foreach (var (fiber, placeholder) in HeldFibers(portals))
             {
                 if (hidden)
                 {
@@ -2031,33 +2031,52 @@ namespace Velvet
             }
         }
 
-        // Each element a placed Portal's placeholder is under, itself included, to the placeholders under it in
-        // PortalState order, so a root finds the Portals it holds without reading every Portal's state.
-        private sealed class PortalsByAncestor
+        // The Portal placeholders at or under an element, read off the element's subtree in the order their ranges were
+        // recorded, so a hide or a reveal costs what the elements it holds are rather than every Portal placed.
+        private sealed class PortalsUnder
         {
-            private readonly Dictionary<VisualElement, List<VisualElement>> _under = new();
+            private readonly ReconcilerContext _ctx;
+            private readonly HashSet<VisualElement> _met = new();
 
             internal HashSet<VisualElement> Roots { get; } = new();
 
-            internal PortalsByAncestor(ReconcilerContext ctx)
+            internal PortalsUnder(ReconcilerContext ctx) => _ctx = ctx;
+
+            // The placed ones, which are the ones whose rows a hide reaches.
+            internal List<VisualElement>? Under(VisualElement element)
             {
-                foreach (var (placeholder, slots) in ctx.PortalState)
-                {
-                    if (slots.Target == null) continue;
-                    for (var ve = placeholder; ve != null; ve = ChildListWrites.ParentOf(ve))
-                    {
-                        if (!_under.TryGetValue(ve, out var under)) _under[ve] = under = new List<VisualElement>();
-                        under.Add(placeholder);
-                    }
-                }
+                if (_ctx.PortalState.Count == 0) return null;
+                List<VisualElement>? under = null;
+                Meet(element, ref under);
+                under?.Sort(_ctx.PortalState.Stored.ByRecordedOrder);
+                return under;
             }
 
-            internal List<VisualElement>? Under(VisualElement element)
-                => _under.TryGetValue(element, out var under) ? under : null;
+            // Every placeholder Under has met, placed or not, which is what the fibers a Portal owns are found by.
+            internal List<VisualElement> Met()
+            {
+                var met = new List<VisualElement>(_met);
+                met.Sort(_ctx.PortalState.Stored.ByRecordedOrder);
+                return met;
+            }
+
+            private void Meet(VisualElement element, ref List<VisualElement>? under)
+            {
+                if (_ctx.PortalState.TryGetValue(element, out var slots))
+                {
+                    _met.Add(element);
+                    if (slots.Target != null) (under ??= new List<VisualElement>()).Add(element);
+                }
+                var count = ChildListWrites.HierarchyCount(element);
+                for (var i = 0; i < count; i++)
+                {
+                    Meet(ChildListWrites.HierarchyChild(element, i), ref under);
+                }
+            }
         }
 
         private void AddWithPortalChildren(VisualElement element, int row,
-            GeneralCommitState commit, InlineWalk walk, bool hidden, PortalsByAncestor portals)
+            GeneralCommitState commit, InlineWalk walk, bool hidden, PortalsUnder portals)
         {
             var roots = portals.Roots;
             roots.Add(element);
@@ -2115,8 +2134,9 @@ namespace Velvet
         // The fibers the roots hold: those mounted inside them, and those mounted at a Portal's target by a Portal
         // among them, which sit beside the portal's elements rather than inside them. Each of the second kind comes
         // with its placeholder, which is what the hide records it under.
-        private List<(ComponentFiber Fiber, VisualElement? Placeholder)> HeldFibers(HashSet<VisualElement> roots)
+        private List<(ComponentFiber Fiber, VisualElement? Placeholder)> HeldFibers(PortalsUnder portals)
         {
+            var roots = portals.Roots;
             var held = new List<(ComponentFiber, VisualElement?)>();
             var seen = new HashSet<ComponentFiber>();
             List<ComponentFiber>? found = null;
@@ -2128,13 +2148,10 @@ namespace Velvet
                     if (seen.Add(fiber)) held.Add((fiber, null));
                 }
             }
-            // MUTANT_SURVIVES(equivalent, boundary): the loop visits no placeholder over an empty table.
-            if (_ctx.PortalState.Count > 0)
+            // Under met each one at or under a root, whichever element of the roots it sits under.
+            foreach (var placeholder in portals.Met())
             {
-                foreach (var placeholder in _ctx.PortalState.Keys)
-                {
-                    if (IsAtOrUnder(placeholder, roots)) AddOwnedBy(placeholder);
-                }
+                AddOwnedBy(placeholder);
             }
             return held;
 

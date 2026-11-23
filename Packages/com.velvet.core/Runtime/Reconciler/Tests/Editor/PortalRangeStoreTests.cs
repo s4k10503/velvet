@@ -9,7 +9,9 @@ namespace Velvet.Tests
     /// Specifies the end of the last range on a target that <see cref="PortalRangeStore"/> keeps beside the ranges,
     /// which <see cref="PortalSlotTracker.RowsBehindRanges"/> reads in place of every range: it follows a range that
     /// grows, shrinks, leaves its target or is removed, and answers null for a target no range is on. Each case
-    /// reads the end once before the write, so a stale answer is one the store kept rather than computed afresh.
+    /// reads the end once before the write, so a stale answer is one the store kept rather than computed afresh. It
+    /// also specifies what the store answers without reading the ranges: whether a target lies below an element, and
+    /// the order the ranges were first recorded in.
     /// </summary>
     [TestFixture]
     internal sealed class PortalRangeStoreTests
@@ -166,6 +168,148 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(counted, Is.EqualTo(2));
+        }
+
+        [Test]
+        public void Given_ARangeOnATargetBelowARoot_When_TheRootIsAsked_Then_ATargetIsBelowIt()
+        {
+            // Arrange
+            var store = new PortalRangeStore();
+            var root = new VisualElement();
+            var between = new VisualElement();
+            var target = new VisualElement();
+            root.Add(between);
+            between.Add(target);
+            store[new VisualElement()] = Range(target, 0, 1);
+
+            // Act
+            var below = store.HasTargetBelow(root);
+
+            // Assert
+            Assert.That(below, Is.True);
+        }
+
+        [Test]
+        public void Given_ARangeOnTheRootItself_When_TheRootIsAsked_Then_NoTargetIsBelowIt()
+        {
+            // Arrange
+            var store = new PortalRangeStore();
+            var root = new VisualElement();
+            store[new VisualElement()] = Range(root, 0, 1);
+
+            // Act
+            var below = store.HasTargetBelow(root);
+
+            // Assert
+            Assert.That(below, Is.False);
+        }
+
+        [Test]
+        public void Given_RangesOnTargetsOutsideTheRoot_When_TheRootIsAsked_Then_NoTargetIsBelowIt()
+        {
+            // Arrange
+            var store = new PortalRangeStore();
+            var parent = new VisualElement();
+            var root = new VisualElement();
+            var beside = new VisualElement();
+            parent.Add(root);
+            parent.Add(beside);
+            store[new VisualElement()] = Range(beside, 0, 1);
+            store[new VisualElement()] = Range(parent, 1, 1);
+
+            // Act
+            var below = store.HasTargetBelow(root);
+
+            // Assert
+            Assert.That(below, Is.False);
+        }
+
+        [Test]
+        public void Given_TheOnlyRangeOnATargetBelowTheRootRemoved_When_TheRootIsAsked_Then_NoTargetIsBelowIt()
+        {
+            // Arrange
+            var store = new PortalRangeStore();
+            var root = new VisualElement();
+            var target = new VisualElement();
+            var placeholder = new VisualElement();
+            root.Add(target);
+            store[placeholder] = Range(target, 0, 1);
+            store.Remove(placeholder);
+
+            // Act
+            var below = store.HasTargetBelow(root);
+
+            // Assert
+            Assert.That(below, Is.False);
+        }
+
+        [Test]
+        public void Given_TheFirstRangeRemovedAndAnotherRecorded_When_TheRecordedOrderIsRead_Then_TheNewerOneIsLast()
+        {
+            // Arrange
+            var store = new PortalRangeStore();
+            var target = new VisualElement();
+            var first = new VisualElement();
+            var second = new VisualElement();
+            var third = new VisualElement();
+            store[first] = Range(target, 0, 1);
+            store[second] = Range(target, 1, 1);
+            store.Remove(first);
+            store[third] = Range(target, 2, 1);
+
+            // Act
+            var order = store.ByRecordedOrder(second, third);
+
+            // Assert
+            Assert.That(order, Is.LessThan(0));
+        }
+
+        [Test]
+        public void Given_TwoRangesRecorded_When_TheEarlierIsRewritten_Then_ItStaysBeforeTheLater()
+        {
+            // Arrange
+            var store = new PortalRangeStore();
+            var target = new VisualElement();
+            var first = new VisualElement();
+            var second = new VisualElement();
+            store[first] = Range(target, 0, 1);
+            store[second] = Range(target, 1, 1);
+            store[first] = Range(target, 0, 4);
+
+            // Act
+            var order = store.ByRecordedOrder(first, second);
+
+            // Assert
+            Assert.That(order, Is.LessThan(0));
+        }
+
+        [Test]
+        public void Given_TwoRangesOnATarget_When_OneIsRemoved_Then_ARangeIsStillOnTheTarget()
+        {
+            // Arrange
+            var (store, target, first, _) = TwoRanges();
+            store.Remove(first);
+
+            // Act
+            var held = store.HasRangeOn(target);
+
+            // Assert
+            Assert.That(held, Is.True);
+        }
+
+        [Test]
+        public void Given_TwoRangesOnATarget_When_BothAreRemoved_Then_NoRangeIsOnTheTarget()
+        {
+            // Arrange
+            var (store, target, first, second) = TwoRanges();
+            store.Remove(first);
+            store.Remove(second);
+
+            // Act
+            var held = store.HasRangeOn(target);
+
+            // Assert
+            Assert.That(held, Is.False);
         }
     }
 }
