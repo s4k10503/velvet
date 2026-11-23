@@ -796,12 +796,10 @@ namespace Velvet
             first?.Throw();
         }
 
-        // Where a wave recorded the ops, keeps a failure for the wave to route (ReconcilePass.Failures): an insert of an
-        // element the wave created under the component that rendered it, its search starting where React's commit starts
-        // a placement's (ComponentBoundarySearch.PlacementSearchStart), at the place the element's walk ended at, and any
-        // other op under the root of its run, at the op's. In a pass no wave owns, the root MountedTree.Dispose is
-        // unmounting takes it (CommitErrors.Capture), as React's root.unmount() captures what a removal throws at the
-        // root. False where there is neither.
+        // Files the failure of an insert of an element a wave created under the component that rendered it, for the wave
+        // to route (ReconcilePass.Failures), its search starting where React's commit starts a placement's
+        // (ComponentBoundarySearch.PlacementSearchStart), at the place the element's walk ended at, and that of any other
+        // op as FileUnderTheRun files it, at the op's place.
         private static bool FileFailure(ReconcilePass pass, VisualElement? added, Exception exception)
         {
             if (added != null)
@@ -813,12 +811,31 @@ namespace Velvet
                     return true;
                 }
             }
-            if (pass.ApplyingRoot == null)
+            return FileUnderTheRun(pass, pass.ApplyingRoot, added, exception);
+        }
+
+        // With root, the root of the run of a wave's pass the failure belongs to, keeps it for the wave to route
+        // (ReconcilePass.Failures) at the place the pass meets now. Without one, the root MountedTree.Dispose is unmounting
+        // takes it (CommitErrors.Capture), as React's root.unmount() captures what a removal throws at the root. False
+        // where there is neither.
+        internal static bool FileUnderTheRun(ReconcilePass pass, ComponentFiber? root, VisualElement? element,
+            Exception exception)
+        {
+            if (root == null)
             {
                 return pass.DisposingRoot != null && CommitErrors.Capture(pass.DisposingRoot, null, exception);
             }
-            pass.Fail(pass.ApplyingRoot, pass.ApplyingRoot, exception, added, pass.PlaceNow);
+            pass.Fail(root, root, exception, element, pass.PlaceNow);
             return true;
+        }
+
+        // The root of the run the pass is applying or recording, which a removal decided now belongs to. Null where the
+        // pass is not the current one, or no wave owns it.
+        internal static ComponentFiber? RunRootOf(ReconcilePass pass)
+        {
+            if (!ReferenceEquals(s_current, pass)) return null;
+            if (pass.Applying) return pass.ApplyingRoot;
+            return pass.Segments.Count > 0 ? pass.Segments[^1].Root : null;
         }
 
         // Records where a turn begins among the ops, for the teardowns attached to the anchor to run at (RecordTeardown).

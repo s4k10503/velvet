@@ -824,14 +824,16 @@ namespace Velvet
             CleanupElement(real, element.panel, discardedRoot: null, plan);
             if (stillPlaced)
             {
-                _ctx.PendingZLayerDeadReals.Add((real, poolable));
+                _ctx.PendingZLayerDeadReals.Add((real, poolable, ChildListWrites.RunRootOf(_ctx.Pass)));
                 return;
             }
             ReturnOccupantToPool(real, poolable);
         }
 
-        // Removes and pools the relocated elements CleanupZLayerPlaceholder left standing. Runs from
-        // Reconciler.FinishTopLevelPass, where no diff holds a physical index into their parents.
+        // Removes and pools the relocated elements CleanupZLayerPlaceholder left standing. Runs from Reconciler.FinishPass,
+        // where no diff holds a physical index into their parents. A removal that throws does not stop the ones behind
+        // it; its failure is filed under the run that retired the element (ChildListWrites.FileUnderTheRun), and the
+        // first one nothing files is rethrown once every removal has run.
         internal void ReleaseRetiredZLayerReals()
         {
             if (_ctx.PendingZLayerDeadReals.Count == 0)
@@ -840,12 +842,24 @@ namespace Velvet
             }
             var retired = _ctx.PendingZLayerDeadReals.ToArray();
             _ctx.PendingZLayerDeadReals.Clear();
-            foreach (var (real, poolable) in retired)
+            ExceptionDispatchInfo? first = null;
+            foreach (var (real, poolable, root) in retired)
             {
                 FiberZLayerCoordinator.ForgetRetired(real);
-                ChildListWrites.RemoveFromHierarchy(real);
+                try
+                {
+                    ChildListWrites.RemoveFromHierarchy(real);
+                }
+                catch (Exception exception)
+                {
+                    if (!ChildListWrites.FileUnderTheRun(_ctx.Pass, root, null, exception))
+                    {
+                        first ??= ExceptionDispatchInfo.Capture(exception);
+                    }
+                }
                 ReturnOccupantNow(real, poolable);
             }
+            first?.Throw();
         }
 
         // Recursively cleans up the descendants of an element. DOM operations are the caller's

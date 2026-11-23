@@ -12,7 +12,9 @@ namespace Velvet.Tests
     /// <c>Dispose</c> returning, as React's <c>root.unmount()</c> captures what a removal throws at the root and reports
     /// it after the unmount commits. Two elements' errors are each reported, as are an element's and an effect
     /// cleanup's, and so is one thrown where the disposal waited for another root's commit to end. A boundary the
-    /// disposal tears down catches none of them.
+    /// disposal tears down catches none of them. A <c>z-*</c> element, which leaves its parent once the pass's writes have
+    /// applied, is reported the same way where the disposal removes it, each of two, and where a drain's update removes
+    /// it, the boundary above the component whose render removed it catches it.
     /// </summary>
     /// <remarks>
     /// The tree mounts on a real panel, which is what runs a detach callback.
@@ -58,6 +60,26 @@ namespace Velvet.Tests
             }
         }
 
+        // As DetachThrower, saying in its message whether it attached as a relocated z-* element, so a case about one
+        // fails where the arrangement stops making one, and throwing from its first detach alone, so a removal after the
+        // case's own does not throw.
+        internal sealed class ZPlacedDetachThrower : VisualElement
+        {
+            private bool _relocated;
+            private bool _thrown;
+
+            public ZPlacedDetachThrower()
+            {
+                RegisterCallback<AttachToPanelEvent>(_ => _relocated = FiberZLayerCoordinator.IsRelocatedReal(this));
+                RegisterCallback<DetachFromPanelEvent>(_ =>
+                {
+                    if (_thrown) return;
+                    _thrown = true;
+                    throw new InvalidOperationException("detach:" + name + (_relocated ? ":z" : ""));
+                });
+            }
+        }
+
         [Component(Compiler = false)]
         private static VNode LogsItsCleanup()
         {
@@ -82,6 +104,24 @@ namespace Velvet.Tests
         }
 
         [Component(Compiler = false)]
+        private static VNode RemovesAZPlacedThrower()
+        {
+            var (shown, _) = EventLog.UseState("R", true);
+            EventLog.UseRender("R");
+            return V.Div(className: "relative", children: new VNode[]
+            {
+                shown ? V.Custom<ZPlacedDetachThrower>(className: "absolute z-10", name: "Z", key: "thrower") : null,
+            });
+        }
+
+        [Component(Compiler = false, IsErrorBoundary = true, DisplayName = "B")]
+        private static VNode CatchesAroundARemoval()
+        {
+            Hooks.UseFallback(_ => V.Label(text: "fallback"));
+            return V.Component(RemovesAZPlacedThrower, key: "r");
+        }
+
+        [Component(Compiler = false)]
         private static VNode DisposesAnotherRoot()
         {
             Hooks.UseLayoutEffect(() =>
@@ -92,12 +132,12 @@ namespace Velvet.Tests
             return V.Div();
         }
 
-        // What Dispose throws is recorded as an entry, so a throw fails the case at its one assertion.
-        private static void DisposeRecordingWhatItThrows(MountedTree mounted, Action<string> record)
+        // What the act throws is recorded as an entry, so a throw fails the case at its one assertion.
+        private static void RecordingWhatItThrows(Action act, Action<string> record)
         {
             try
             {
-                mounted.Dispose();
+                act();
             }
             catch (Exception exception)
             {
@@ -116,7 +156,7 @@ namespace Velvet.Tests
             mounted.FlushEffectsForTest();
 
             // Act
-            DisposeRecordingWhatItThrows(mounted, log.Add);
+            RecordingWhatItThrows(mounted.Dispose, log.Add);
 
             // Assert
             Assert.That(log.ToString(), Is.EqualTo("eff-x:C uncaught:detach:X"));
@@ -133,7 +173,7 @@ namespace Velvet.Tests
                 new MountOptions { OnUncaughtError = (error, _) => _reports.Add(error.Message + "@" + s_detached) });
 
             // Act
-            DisposeRecordingWhatItThrows(mounted, _reports.Add);
+            RecordingWhatItThrows(mounted.Dispose, _reports.Add);
 
             // Assert
             Assert.That(_reports, Is.EquivalentTo(new[] { "detach:X@2", "detach:Y@2" }));
@@ -151,7 +191,7 @@ namespace Velvet.Tests
             mounted.FlushEffectsForTest();
 
             // Act
-            DisposeRecordingWhatItThrows(mounted, _reports.Add);
+            RecordingWhatItThrows(mounted.Dispose, _reports.Add);
 
             // Assert
             Assert.That(_reports, Is.EquivalentTo(new[] { "cleanup:C", "detach:X" }));
@@ -166,7 +206,7 @@ namespace Velvet.Tests
                 log.ReportingErrors());
 
             // Act
-            DisposeRecordingWhatItThrows(mounted, log.Add);
+            RecordingWhatItThrows(mounted.Dispose, log.Add);
 
             // Assert
             Assert.That(log.ToString(), Is.EqualTo("uncaught:detach:X"));
@@ -184,6 +224,40 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(string.Join(" / ", _reports), Is.EqualTo("detach:X"));
+        }
+
+        // Equivalent rather than equal: which of the two elements leaves first is not what this pins.
+        [Test]
+        public void Given_TwoZPlacedElementsInTheMountTargetThatThrowAsTheyDetach_When_TheHandleIsDisposed_Then_EachErrorIsReported()
+        {
+            // Arrange
+            var mounted = V.Mount(_mountPoint, V.Fragment(
+                    V.Custom<ZPlacedDetachThrower>(className: "absolute z-10", name: "Y", key: "y"),
+                    V.Custom<ZPlacedDetachThrower>(className: "absolute z-10", name: "Z", key: "z")),
+                new MountOptions { OnUncaughtError = (error, _) => _reports.Add(error.Message) });
+
+            // Act
+            RecordingWhatItThrows(mounted.Dispose, _reports.Add);
+
+            // Assert
+            Assert.That(_reports, Is.EquivalentTo(new[] { "detach:Y:z", "detach:Z:z" }));
+        }
+
+        [Test]
+        public void Given_ABoundaryAboveAComponentWhoseZPlacedElementThrowsAsItDetaches_When_ADrainRemovesTheElement_Then_TheBoundaryReportsTheError()
+        {
+            // Arrange
+            var log = new EventLog();
+            using var mounted = V.Mount(_mountPoint, log.Provide(V.Component(CatchesAroundARemoval, key: "b")),
+                log.ReportingErrors());
+            log.Clear();
+
+            // Act
+            log.Setter<bool>("R").Invoke(false);
+            RecordingWhatItThrows(mounted.GetSchedulerForTest().DrainImmediateForTest, log.Add);
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("render:R caught:B:detach:Z:z"));
         }
     }
 }
