@@ -100,6 +100,38 @@ namespace Velvet.Tests
             Assert.That((widthAboveMd, leaf.style.width.value.value), Is.EqualTo((20f, 10f)));
         }
 
+        // GREEN_ON_BASE(characterization): the base reads the width the md class holds, 40px, as the inline value and the
+        // class's, since a class claiming only the width clears it from the size layer's write (ClearClaimedLonghands). A
+        // width taken from the size layer's percentage instead caps the minimum at 1002.
+        [Test]
+        public void Given_APercentSizeLayerBesideAnMdWidthClass_When_WiderThanMd_Then_ThePartiallyClaimedWidthCapsTheMinWidthAtTheClass()
+        {
+            // Arrange — the sheet is attached because `flex-row` and `shrink-0` come from it: without it the parent is a
+            // column, which writes a minimum height, and the label shrinks to its text, which writes none.
+            VelvetStyleUtilities.AttachTo(_window.rootVisualElement);
+            _window.position = new Rect(0, 0, 1000f, 600f);
+            _mounted = V.Mount(_window.rootVisualElement,
+                V.Div("flex flex-row shrink-0 w-[2000px] h-[2000px]",
+                    V.Label(name: "leaf", className: "shrink-0 size-[calc(50%+2px)] md:w-10", text: "internationalization is long")));
+            var leaf = _window.rootVisualElement.Q<Label>("leaf");
+            ResolveAt(1000f, leaf);
+            EditorPanelTestHelpers.DriveRelativeLengthPoll(leaf.panel);
+            using (var evt = EventBase<GeometryChangedEvent>.GetPooled())
+            {
+                leaf.SimulateEvent(evt);
+            }
+
+            // Act — NaN where the poll never wrote the size layer's height, 50% of the parent's declared 2000px and 2px,
+            // which no class could then have claimed the width from.
+            var minimum = leaf.style.height.keyword == StyleKeyword.Undefined
+                && Mathf.Abs(leaf.style.height.value.value - 1002f) < 0.01f
+                ? leaf.style.minWidth.value.value
+                : float.NaN;
+
+            // Assert
+            Assert.That(minimum, Is.EqualTo(40f).Within(0.01f));
+        }
+
         // GREEN_ON_BASE(characterization): the base clears the floored top and writes no shorthand back over it.
         // What reddens it is dropping `ClearClaimedLonghands(element, map, style.Property, key, writers)` from
         // ResolveSharedLonghands, which lets p-[12px] write the top again.
