@@ -380,20 +380,22 @@ namespace Velvet.Tests
             Assert.That(string.Join(" / ", _reports), Is.EqualTo("threw:detach:Y:z@2"));
         }
 
-        // GREEN_ON_BASE(characterization): UI Toolkit leaves an element whose detach callback threw naming its panel.
-        // FiberElementCleaner.StoppedPartway reads that, and an engine that clears the panel anyway reddens this.
+        // GREEN_ON_BASE(characterization): UI Toolkit leaves a removed container naming its panel when a child's detach throws.
+        // FiberElementCleaner.StoppedPartway reads that of the element a removal took, which need not be the one whose
+        // callback threw; an engine that clears the panel anyway reddens this.
         [Test]
-        public void Given_AnElementWhoseDetachCallbackThrows_When_ItIsRemovedFromItsPanel_Then_ItStillNamesThatPanel()
+        public void Given_AContainerHoldingAnElementWhoseDetachCallbackThrows_When_TheContainerIsRemovedFromItsPanel_Then_TheContainerStillNamesThatPanel()
         {
             // Arrange
-            var element = new DetachThrower();
-            _mountPoint.Add(element);
+            var container = new VisualElement();
+            container.Add(new DetachThrower());
+            _mountPoint.Add(container);
 
             // Act
-            RecordingWhatItThrows(() => _mountPoint.Remove(element), _reports.Add);
+            RecordingWhatItThrows(() => _mountPoint.Remove(container), _reports.Add);
 
             // Assert
-            Assert.That(element.panel, Is.SameAs(_host.Panel));
+            Assert.That(container.panel, Is.SameAs(_host.Panel));
         }
 
         [Test]

@@ -90,9 +90,9 @@ namespace Velvet
         }
 
         // Whether element is out of the tree it was removed from yet still names that tree's panel, as a removal whose
-        // DetachFromPanelEvent callback threw leaves every element it took (DisposeDetachErrorTests' engine case pins
-        // that). Such an element is neither removed again nor pooled: either hands it to UI Toolkit as though it were
-        // still on the panel.
+        // DetachFromPanelEvent callback threw leaves the element it took (DisposeDetachErrorTests' engine case pins that).
+        // Such an element is neither removed again nor pooled: either hands it to UI Toolkit as though it were still on
+        // the panel.
         private static bool StoppedPartway(VisualElement element)
         {
             var panel = element.panel;
