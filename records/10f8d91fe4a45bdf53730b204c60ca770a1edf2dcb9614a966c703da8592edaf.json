@@ -1,0 +1,142 @@
+{
+ "detail": "EditMode: 15 failed among the 66 case(s) that ran the site: Given_AHostWhosePassMountsAComponentAheadOfAVirtualListItem_When_TheItemCommitsItsOwnSubtree_Then_TheComponentsLayoutEffectWaitsForItsRef, Given_AKeySelectorReturningNullForOneItem_When_ARangeChangeKeepsThatRowInRange_Then_TheRowKeepsItsState, Given_AKeySelectorReturningNullForOneItem_When_TheListIsUpdatedOverTheSameWindow_Then_TheRowKeepsItsState",
+ "file": "bdaef190823e33aaa242e340367d04074e5fff80a22f2b349e2ffb45e2bde29e",
+ "killers": [
+  {
+   "case": "Velvet.Tests.VirtualListTests.Given_AHostWhosePassMountsAComponentAheadOfAVirtualListItem_When_TheItemCommitsItsOwnSubtree_Then_TheComponentsLayoutEffectWaitsForItsRef",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/PublicApiSurfaceTests.cs": "047f093054d47bed7fe15f75060d6c41bed15da284c22b5ea31fd014c737fb54",
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/VirtualListTests.cs": "859bee6bec173819e6100b0a1b4ae6195b3031bf6182ee370312d01359132c0b",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921",
+    "Packages/com.velvet.core/TestUtilities/NullableAnnotationProbe.cs": "6f277d399cd33f1aabb4032f6fed2da4549d84671aacf822d7473dfde74f390c",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  },
+  {
+   "case": "Velvet.Tests.VirtualListTests.Given_AKeySelectorReturningNullForOneItem_When_ARangeChangeKeepsThatRowInRange_Then_TheRowKeepsItsState",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/PublicApiSurfaceTests.cs": "047f093054d47bed7fe15f75060d6c41bed15da284c22b5ea31fd014c737fb54",
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/VirtualListTests.cs": "859bee6bec173819e6100b0a1b4ae6195b3031bf6182ee370312d01359132c0b",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921",
+    "Packages/com.velvet.core/TestUtilities/NullableAnnotationProbe.cs": "6f277d399cd33f1aabb4032f6fed2da4549d84671aacf822d7473dfde74f390c",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  },
+  {
+   "case": "Velvet.Tests.VirtualListTests.Given_AKeySelectorReturningNullForOneItem_When_TheListIsUpdatedOverTheSameWindow_Then_TheRowKeepsItsState",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/PublicApiSurfaceTests.cs": "047f093054d47bed7fe15f75060d6c41bed15da284c22b5ea31fd014c737fb54",
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/VirtualListTests.cs": "859bee6bec173819e6100b0a1b4ae6195b3031bf6182ee370312d01359132c0b",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921",
+    "Packages/com.velvet.core/TestUtilities/NullableAnnotationProbe.cs": "6f277d399cd33f1aabb4032f6fed2da4549d84671aacf822d7473dfde74f390c",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  },
+  {
+   "case": "Velvet.Tests.VirtualListTests.Given_ARendererKeyingItsOwnNode_When_ARangeChangeKeepsTheRowInRange_Then_TheRowKeepsItsState",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/PublicApiSurfaceTests.cs": "047f093054d47bed7fe15f75060d6c41bed15da284c22b5ea31fd014c737fb54",
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/VirtualListTests.cs": "859bee6bec173819e6100b0a1b4ae6195b3031bf6182ee370312d01359132c0b",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921",
+    "Packages/com.velvet.core/TestUtilities/NullableAnnotationProbe.cs": "6f277d399cd33f1aabb4032f6fed2da4549d84671aacf822d7473dfde74f390c",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  },
+  {
+   "case": "Velvet.Tests.VirtualListTests.Given_ARendererLeavingTheKeyAlone_When_ARangeChangeKeepsTheRowInRange_Then_TheRowKeepsItsState",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/PublicApiSurfaceTests.cs": "047f093054d47bed7fe15f75060d6c41bed15da284c22b5ea31fd014c737fb54",
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/VirtualListTests.cs": "859bee6bec173819e6100b0a1b4ae6195b3031bf6182ee370312d01359132c0b",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921",
+    "Packages/com.velvet.core/TestUtilities/NullableAnnotationProbe.cs": "6f277d399cd33f1aabb4032f6fed2da4549d84671aacf822d7473dfde74f390c",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  },
+  {
+   "case": "Velvet.Tests.VirtualListTests.Given_ARowBelowABoundaryWhosePassItIs_When_TheRowsChildThrowsInThatPass_Then_NothingLaterInThePassRenders",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/PublicApiSurfaceTests.cs": "047f093054d47bed7fe15f75060d6c41bed15da284c22b5ea31fd014c737fb54",
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/VirtualListTests.cs": "859bee6bec173819e6100b0a1b4ae6195b3031bf6182ee370312d01359132c0b",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921",
+    "Packages/com.velvet.core/TestUtilities/NullableAnnotationProbe.cs": "6f277d399cd33f1aabb4032f6fed2da4549d84671aacf822d7473dfde74f390c",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  },
+  {
+   "case": "Velvet.Tests.VirtualListTests.Given_ARowBoundaryWhoseFallbackCannotBeCreated_When_ItMountsUnderABoundaryInItsHostsPass_Then_ThatBoundaryCatchesAndTheRestOfThePassCommits",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/PublicApiSurfaceTests.cs": "047f093054d47bed7fe15f75060d6c41bed15da284c22b5ea31fd014c737fb54",
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/VirtualListTests.cs": "859bee6bec173819e6100b0a1b4ae6195b3031bf6182ee370312d01359132c0b",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921",
+    "Packages/com.velvet.core/TestUtilities/NullableAnnotationProbe.cs": "6f277d399cd33f1aabb4032f6fed2da4549d84671aacf822d7473dfde74f390c",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  },
+  {
+   "case": "Velvet.Tests.VirtualListTests.Given_ARowThatIsAnErrorBoundary_When_ItCatchesItsChildsRenderInItsHostsPass_Then_TheRestOfThatPassCommits",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/PublicApiSurfaceTests.cs": "047f093054d47bed7fe15f75060d6c41bed15da284c22b5ea31fd014c737fb54",
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/VirtualListTests.cs": "859bee6bec173819e6100b0a1b4ae6195b3031bf6182ee370312d01359132c0b",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921",
+    "Packages/com.velvet.core/TestUtilities/NullableAnnotationProbe.cs": "6f277d399cd33f1aabb4032f6fed2da4549d84671aacf822d7473dfde74f390c",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  },
+  {
+   "case": "Velvet.Tests.VirtualListTests.Given_AnErrorBoundaryAboveTheList_When_ARowsRenderThrowsIntoItDuringARangeUpdate_Then_NoLaterRowRenders",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/PublicApiSurfaceTests.cs": "047f093054d47bed7fe15f75060d6c41bed15da284c22b5ea31fd014c737fb54",
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/VirtualListTests.cs": "859bee6bec173819e6100b0a1b4ae6195b3031bf6182ee370312d01359132c0b",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921",
+    "Packages/com.velvet.core/TestUtilities/NullableAnnotationProbe.cs": "6f277d399cd33f1aabb4032f6fed2da4549d84671aacf822d7473dfde74f390c",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  },
+  {
+   "case": "Velvet.Tests.VirtualListTests.Given_AnErrorBoundaryAboveTheList_When_ARowsRenderThrowsIntoItDuringARangeUpdate_Then_NoRowIsLeftMounted",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/PublicApiSurfaceTests.cs": "047f093054d47bed7fe15f75060d6c41bed15da284c22b5ea31fd014c737fb54",
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/VirtualListTests.cs": "859bee6bec173819e6100b0a1b4ae6195b3031bf6182ee370312d01359132c0b",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921",
+    "Packages/com.velvet.core/TestUtilities/NullableAnnotationProbe.cs": "6f277d399cd33f1aabb4032f6fed2da4549d84671aacf822d7473dfde74f390c",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  }
+ ],
+ "measured_by": "45199843515",
+ "mutant": {
+  "after": ";",
+  "before": "RenderMountedWork(fiber);",
+  "column": 12,
+  "line": 77,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberRenderer.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "75aa5e777f60caf8d1dcee6850e99a3441f60400a702e0372fbab264963ade25",
+ "verdict": "killed"
+}

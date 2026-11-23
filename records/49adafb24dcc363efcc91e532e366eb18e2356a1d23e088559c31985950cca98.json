@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed among the 79 case(s) that ran the site: Given_PropsComponentCallingAHookFromItsRefCallback_When_ItReRenders_Then_TheGuardNamesTheComponent",
+ "file": "00dbed370d0a27514d9dde2741499a351adc425bdfb2643c76199908b6e05e0b",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ComponentDisplayNameTests.Given_PropsComponentCallingAHookFromItsRefCallback_When_ItReRenders_Then_TheGuardNamesTheComponent",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/ComponentDisplayNameTests.cs": "b868828f80d29a6dbc22a8e1048f0b156a0a04765dabac9c9d40eb41a2b62893",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921"
+   }
+  }
+ ],
+ "measured_by": "45199843515",
+ "mutant": {
+  "after": ";",
+  "before": "boundary.PendingCaptures = null;",
+  "column": 12,
+  "line": 2322,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ReconcilerContext.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "75aa5e777f60caf8d1dcee6850e99a3441f60400a702e0372fbab264963ade25",
+ "verdict": "killed"
+}

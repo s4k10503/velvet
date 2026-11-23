@@ -1,0 +1,32 @@
+{
+ "detail": "EditMode: 1 failed among the 262 case(s) that ran the site: Given_AnInnerPresenceInsideAPortal_When_TheOuterKeyIsRemoved_Then_TheChildIsHeldUntilTheInnerExitCompletes",
+ "file": "dca0d44b971aaabb014c6caefa217b32f9bbffeca4c57090094b5151bf38fb64",
+ "killers": [
+  {
+   "case": "Velvet.Tests.AnimatePresencePropagateTests.Given_AnInnerPresenceInsideAPortal_When_TheOuterKeyIsRemoved_Then_TheChildIsHeldUntilTheInnerExitCompletes",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/AnimatePresencePropagateTests.cs": "dce4a40e97215e5879b28f2da1fef059618e8a6a93b058269ebb35e7aa27ef27",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921"
+   }
+  }
+ ],
+ "measured_by": "45199843515",
+ "mutant": {
+  "after": ">",
+  "before": ">=",
+  "column": 78,
+  "line": 120,
+  "operator": "boundary",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/DeletionCommit.cs",
+  "shadowed": [
+   "arithmetic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "75aa5e777f60caf8d1dcee6850e99a3441f60400a702e0372fbab264963ade25",
+ "verdict": "killed"
+}

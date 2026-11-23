@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "0874cc096a7dc6e2d76088cedb02c720f3a79b56be5bf89291d85f0a30045559",
+ "killers": [],
+ "measured_by": "45199843515",
+ "mutant": {
+  "after": "true",
+  "before": "false",
+  "column": 25,
+  "line": 54,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/PendingPatch.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "75aa5e777f60caf8d1dcee6850e99a3441f60400a702e0372fbab264963ade25",
+ "verdict": "survived"
+}

@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed: Given_ATransitionWhoseFirstSliceParkedBeforeItsPortalChildSuspended_When_TheScheduledResumeRunsAndTheResourceResolves_Then_TheHostsEffectRunsOncePerTick",
+ "file": "bdaef190823e33aaa242e340367d04074e5fff80a22f2b349e2ffb45e2bde29e",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ParkedTransitionPassSuspendTests.Given_ATransitionWhoseFirstSliceParkedBeforeItsPortalChildSuspended_When_TheScheduledResumeRunsAndTheResourceResolves_Then_TheHostsEffectRunsOncePerTick",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ParkedTransitionPassSuspendTests.cs": "d2ef24dc44d6e7070af5309965f7ba6f99192a313865a87b8807ce86cf22b862",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921"
+   }
+  }
+ ],
+ "measured_by": "45199843515",
+ "mutant": {
+  "after": "==",
+  "before": "!=",
+  "column": 29,
+  "line": 560,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberRenderer.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "75aa5e777f60caf8d1dcee6850e99a3441f60400a702e0372fbab264963ade25",
+ "verdict": "killed"
+}

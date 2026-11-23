@@ -1,0 +1,28 @@
+{
+ "detail": "EditMode: 1 failed among the 59 case(s) that ran the site: Given_AWrapperMountedFiber_When_TheRegistryRemovesItByWrapper_Then_TheWrapperNoLongerIndexesIt",
+ "file": "e43293b8f264cbd6fc8714a7011b9934666f6732613fb8e5d8b42d2288c9e0cd",
+ "killers": [
+  {
+   "case": "Velvet.Tests.HiddenFiberPairingTests.Given_AWrapperMountedFiber_When_TheRegistryRemovesItByWrapper_Then_TheWrapperNoLongerIndexesIt",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/HiddenFiberPairingTests.cs": "2b330843929beccf7d0791518ebdc69aa706cbb1c1efb25a078dc7fe4d9888ed"
+   }
+  }
+ ],
+ "measured_by": "45199843515",
+ "mutant": {
+  "after": ";",
+  "before": "Hide(wrapperFiber);",
+  "column": 16,
+  "line": 853,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Component/ComponentRegistry.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "75aa5e777f60caf8d1dcee6850e99a3441f60400a702e0372fbab264963ade25",
+ "verdict": "killed"
+}

@@ -1,0 +1,49 @@
+{
+ "detail": "EditMode: 3 failed among the 18 case(s) that ran the site: Given_AParkedComponentDrainedInsideItsHoldersRerender_When_TheComponentBehindRerenders_Then_ItRewritesItsOwnRows, Given_APortalsPatchDrainedAParkedComponentAheadOfAnotherPortal_When_TheSecondPortalsChildRerenders_Then_ItRewritesItsOwnRow, Given_AWalkDrainsAParkedComponentAheadOfABoundary_When_TheBoundaryCatches_Then_ItsFallbackReplacesItsOwnRow",
+ "file": "3ae1e64f6ef747db499e3c16887a5f5e4b88bb5afe6f7780e3766c8b8857c891",
+ "killers": [
+  {
+   "case": "Velvet.Tests.InlineSlotStartTests.Given_AParkedComponentDrainedInsideItsHoldersRerender_When_TheComponentBehindRerenders_Then_ItRewritesItsOwnRows",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/InlineSlotStartTests.cs": "826965e82071b5985a6dcb45bd23d18c1868cbf15eae3225194c48f1eb8fd046",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921"
+   }
+  },
+  {
+   "case": "Velvet.Tests.InlineSlotStartTests.Given_APortalsPatchDrainedAParkedComponentAheadOfAnotherPortal_When_TheSecondPortalsChildRerenders_Then_ItRewritesItsOwnRow",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/InlineSlotStartTests.cs": "826965e82071b5985a6dcb45bd23d18c1868cbf15eae3225194c48f1eb8fd046",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921"
+   }
+  },
+  {
+   "case": "Velvet.Tests.InlineSlotStartTests.Given_AWalkDrainsAParkedComponentAheadOfABoundary_When_TheBoundaryCatches_Then_ItsFallbackReplacesItsOwnRow",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/InlineSlotStartTests.cs": "826965e82071b5985a6dcb45bd23d18c1868cbf15eae3225194c48f1eb8fd046",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921"
+   }
+  }
+ ],
+ "measured_by": "45199843515",
+ "mutant": {
+  "after": ";",
+  "before": "fiber.Reconciler.ContinueReconcileWork(frameBudgetMs: 0);",
+  "column": 16,
+  "line": 331,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberCommitWork.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "75aa5e777f60caf8d1dcee6850e99a3441f60400a702e0372fbab264963ade25",
+ "verdict": "killed"
+}

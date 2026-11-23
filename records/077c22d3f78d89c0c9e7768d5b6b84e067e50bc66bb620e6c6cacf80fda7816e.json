@@ -1,0 +1,33 @@
+{
+ "detail": "EditMode: 1 failed among the 247 case(s) that ran the site: Given_ADeletedRowHoldingAPortalOfAHoveredElement_When_ThePassEnds_Then_TheElementHoldsFewerCallbacks",
+ "file": "7c766ded0441d96074c558bca6536e129f8d9294ce282fbc7edb621199b9e36c",
+ "killers": [
+  {
+   "case": "Velvet.Tests.PortalDeletionAtApplyTests.Given_ADeletedRowHoldingAPortalOfAHoveredElement_When_ThePassEnds_Then_TheElementHoldsFewerCallbacks",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PortalDeletionAtApplyTests.cs": "db5a6c840a634a4be7e2f13329a2078e28aeb96daabd7f63ad5631643de91e83",
+    "Packages/com.velvet.core/TestUtilities/CallbackRegistryProbe.cs": "0bf11bf8f5b161e389e815cf4be1a5f33269e05d2fed160868b58bb1f3629b46",
+    "Packages/com.velvet.core/TestUtilities/EventLog.cs": "e191b8d91d56ab6eb1633a8f37e5282dd11f4cbfd649b59ab27deab3a1e4b490",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921"
+   }
+  }
+ ],
+ "measured_by": "45199843515",
+ "mutant": {
+  "after": ";",
+  "before": "CleanupElement(child, child.panel, discardedRoot: null, plan);",
+  "column": 16,
+  "line": 748,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberElementCleaner.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "75aa5e777f60caf8d1dcee6850e99a3441f60400a702e0372fbab264963ade25",
+ "verdict": "killed"
+}

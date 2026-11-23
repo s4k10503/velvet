@@ -1,0 +1,96 @@
+{
+ "detail": "EditMode: 8 failed among the 12 case(s) that ran the site: Given_AComponentMountedLaterIntoAContainerAheadOfItsSiblings_When_BothAreSetInReverseTreeOrder_Then_TheComponentInTheEarlierContainerRendersFirst, Given_AComponentRenderingNothingAfterAContainerASiblingMountedLaterInto_When_BothAreSetInReverseTreeOrder_Then_TheSiblingInTheContainerRendersFirst, Given_AComponentRenderingNothingAheadOfTheElementASiblingRendersInto_When_BothAreSetInReverseTreeOrder_Then_TheComponentRenderingNothingRendersFirst",
+ "file": "7b1baa0fcb866d175a8459641b97363cc667f5a79ad9a353a12e290f39b0e52e",
+ "killers": [
+  {
+   "case": "Velvet.Tests.DrainTreeOrderTests.Given_AComponentMountedLaterIntoAContainerAheadOfItsSiblings_When_BothAreSetInReverseTreeOrder_Then_TheComponentInTheEarlierContainerRendersFirst",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/DrainTreeOrderTests.cs": "8868c94779509f3adfe5556c2883ea3be26b15c60a24e343f249060b95133b23",
+    "Packages/com.velvet.core/TestUtilities/EventLog.cs": "e191b8d91d56ab6eb1633a8f37e5282dd11f4cbfd649b59ab27deab3a1e4b490",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921"
+   }
+  },
+  {
+   "case": "Velvet.Tests.DrainTreeOrderTests.Given_AComponentRenderingNothingAfterAContainerASiblingMountedLaterInto_When_BothAreSetInReverseTreeOrder_Then_TheSiblingInTheContainerRendersFirst",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/DrainTreeOrderTests.cs": "8868c94779509f3adfe5556c2883ea3be26b15c60a24e343f249060b95133b23",
+    "Packages/com.velvet.core/TestUtilities/EventLog.cs": "e191b8d91d56ab6eb1633a8f37e5282dd11f4cbfd649b59ab27deab3a1e4b490",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921"
+   }
+  },
+  {
+   "case": "Velvet.Tests.DrainTreeOrderTests.Given_AComponentRenderingNothingAheadOfTheElementASiblingRendersInto_When_BothAreSetInReverseTreeOrder_Then_TheComponentRenderingNothingRendersFirst",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/DrainTreeOrderTests.cs": "8868c94779509f3adfe5556c2883ea3be26b15c60a24e343f249060b95133b23",
+    "Packages/com.velvet.core/TestUtilities/EventLog.cs": "e191b8d91d56ab6eb1633a8f37e5282dd11f4cbfd649b59ab27deab3a1e4b490",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921"
+   }
+  },
+  {
+   "case": "Velvet.Tests.DrainTreeOrderTests.Given_APortalChildAndASiblingAfterThePortalSetInReverseTreeOrder_When_OneDrainRendersThem_Then_ThePortalChildRendersFirst",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/DrainTreeOrderTests.cs": "8868c94779509f3adfe5556c2883ea3be26b15c60a24e343f249060b95133b23",
+    "Packages/com.velvet.core/TestUtilities/EventLog.cs": "e191b8d91d56ab6eb1633a8f37e5282dd11f4cbfd649b59ab27deab3a1e4b490",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921"
+   }
+  },
+  {
+   "case": "Velvet.Tests.DrainTreeOrderTests.Given_APortalChildRenderingNothingAheadOfASiblingAndAnotherPortalIntoTheSameTarget_When_BothAreSetInReverseTreeOrder_Then_ThePortalChildRendersFirst",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/DrainTreeOrderTests.cs": "8868c94779509f3adfe5556c2883ea3be26b15c60a24e343f249060b95133b23",
+    "Packages/com.velvet.core/TestUtilities/EventLog.cs": "e191b8d91d56ab6eb1633a8f37e5282dd11f4cbfd649b59ab27deab3a1e4b490",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921"
+   }
+  },
+  {
+   "case": "Velvet.Tests.DrainTreeOrderTests.Given_TwoVirtualListHostsEachReorderingItsRowsInOneBatch_When_OneDrainRendersThem_Then_EachHostsRowsRenderInItsNewOrder",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/DrainTreeOrderTests.cs": "8868c94779509f3adfe5556c2883ea3be26b15c60a24e343f249060b95133b23",
+    "Packages/com.velvet.core/TestUtilities/EventLog.cs": "e191b8d91d56ab6eb1633a8f37e5282dd11f4cbfd649b59ab27deab3a1e4b490",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921"
+   }
+  },
+  {
+   "case": "Velvet.Tests.DrainTreeOrderTests.Given_TwoVirtualListRowsAndTheirHostReorderingThemInOneBatch_When_OneDrainRendersThem_Then_TheRowsRenderInTheHostsNewOrder",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/DrainTreeOrderTests.cs": "8868c94779509f3adfe5556c2883ea3be26b15c60a24e343f249060b95133b23",
+    "Packages/com.velvet.core/TestUtilities/EventLog.cs": "e191b8d91d56ab6eb1633a8f37e5282dd11f4cbfd649b59ab27deab3a1e4b490",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921"
+   }
+  },
+  {
+   "case": "Velvet.Tests.DrainTreeOrderTests.Given_VirtualListRowsAndAParentWhoseRenderRendersTheirHostReorderingThem_When_OneDrainRendersThem_Then_TheRowsRenderInTheHostsNewOrder",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/DrainTreeOrderTests.cs": "8868c94779509f3adfe5556c2883ea3be26b15c60a24e343f249060b95133b23",
+    "Packages/com.velvet.core/TestUtilities/EventLog.cs": "e191b8d91d56ab6eb1633a8f37e5282dd11f4cbfd649b59ab27deab3a1e4b490",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921"
+   }
+  }
+ ],
+ "measured_by": "45199843515",
+ "mutant": {
+  "after": "-",
+  "before": "+",
+  "column": 26,
+  "line": 860,
+  "operator": "arithmetic",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberBatchScheduler.cs",
+  "shadowed": [
+   "line removed"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "75aa5e777f60caf8d1dcee6850e99a3441f60400a702e0372fbab264963ade25",
+ "verdict": "killed"
+}

@@ -1,0 +1,34 @@
+{
+ "detail": "EditMode: 1 failed: Given_ADesyncedKeyedRangeWhoseRebuiltRowCatchesInside_When_ItRebuilds_Then_TheRowIsPlacedWithItsRef; 1 other editor(s) were up",
+ "file": "1d4f258072ba84e6d906b97928bc00f7e8f0fa8b17d12f676e20597c472c8515",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ElementCreationFailureTests.Given_ADesyncedKeyedRangeWhoseRebuiltRowCatchesInside_When_ItRebuilds_Then_TheRowIsPlacedWithItsRef",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ElementCreationFailureTests.cs": "3c99acac697e54838c8c8f9fb341ec905dd7542a6484f6e15ec4f18c4e9033e1",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/VNodePoolTestAccess.cs": "0b34227c0501b0b06aafcc9acba0c02b9136f4cc2959498d5f22b3db63a22681",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  }
+ ],
+ "measured_by": "45199843515",
+ "mutant": {
+  "after": "+",
+  "before": "-",
+  "column": 108,
+  "line": 749,
+  "operator": "arithmetic",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ChildListWrites.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "75aa5e777f60caf8d1dcee6850e99a3441f60400a702e0372fbab264963ade25",
+ "verdict": "killed"
+}

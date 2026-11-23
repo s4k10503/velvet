@@ -1,0 +1,25 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "d4c894f195f0f39e1fcbffd2a887e4bb4492628ae5a0d04fe4d8838a1af63db6",
+ "killers": [],
+ "measured_by": "45199843515",
+ "mutant": {
+  "after": "==",
+  "before": "!=",
+  "column": 29,
+  "line": 421,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberWorkLoop.cs",
+  "shadowed": [
+   "clause removed",
+   "guard removed",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "75aa5e777f60caf8d1dcee6850e99a3441f60400a702e0372fbab264963ade25",
+ "verdict": "survived"
+}

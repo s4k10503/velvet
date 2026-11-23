@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "2a78641a316e9c9542387351cc2a2d8a1023db0425de402fdb42872e98cf8bc2",
+ "killers": [],
+ "measured_by": "45199843515",
+ "mutant": {
+  "after": ";",
+  "before": "ClearAndTrim(steps);",
+  "column": 12,
+  "line": 59,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/PreOrderTeardown.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "75aa5e777f60caf8d1dcee6850e99a3441f60400a702e0372fbab264963ade25",
+ "verdict": "survived"
+}

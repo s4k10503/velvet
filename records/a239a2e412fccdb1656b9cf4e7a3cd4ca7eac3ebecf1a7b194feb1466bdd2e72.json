@@ -1,0 +1,31 @@
+{
+ "detail": "EditMode: 1 failed: Given_AResetKeyThatChangesInTheRenderInWhichAChildThrows_When_ItsParentRendersAgain_Then_TheBoundaryKeepsItsFallback; 1 other editor(s) were up",
+ "file": "249943bafa1d7fa559757121a42aa38f03c1d099fb15d813311dcba022a4679f",
+ "killers": [
+  {
+   "case": "Velvet.Tests.UseErrorBoundaryResetTests.Given_AResetKeyThatChangesInTheRenderInWhichAChildThrows_When_ItsParentRendersAgain_Then_TheBoundaryKeepsItsFallback",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseErrorBoundaryResetTests.cs": "2412ed6c0edd4df37398202945f39a168ad253da7d3ec5e93d54c135582739e2",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921"
+   }
+  }
+ ],
+ "measured_by": "45199843515",
+ "mutant": {
+  "after": ";",
+  "before": "if (!_ctx.IsAborted) MarkPatchedOldLeaves(commit);",
+  "column": 12,
+  "line": 630,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/GeneralPathReconciler.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "75aa5e777f60caf8d1dcee6850e99a3441f60400a702e0372fbab264963ade25",
+ "verdict": "killed"
+}

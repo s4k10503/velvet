@@ -1,0 +1,141 @@
+{
+ "detail": "EditMode: 123 failed in Velvet.Tests.Reconciler.Editor: Given_AFallbackWithALayoutEffect_When_ABoundaryAboveAVirtualListCatchesAnItemsRefErrorInARangeRenderedOutsideAPass_Then_TheFallbacksLayoutEffectRunsAndTheReportFollowsIt, Given_AFallbackWithALayoutEffect_When_ABoundaryAboveAVirtualListCatchesARenderErrorInsideAnItemInARangeRenderedOutsideAPass_Then_TheFallbacksLayoutEffectRunsAndTheReportFollowsIt, Given_AMemoizedBoundaryInAPatchedVirtualListItemCatchingAChildsRender_When_ANewItemCommitsItsOwnSubtree_Then_TheReportWaitsForTheFallbacksLayoutEffect",
+ "file": "1d4f258072ba84e6d906b97928bc00f7e8f0fa8b17d12f676e20597c472c8515",
+ "killers": [
+  {
+   "case": "Velvet.Tests.CaughtErrorHandlerTests.Given_AFallbackWithALayoutEffect_When_ABoundaryAboveAVirtualListCatchesARenderErrorInsideAnItemInARangeRenderedOutsideAPass_Then_TheFallbacksLayoutEffectRunsAndTheReportFollowsIt",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/CaughtErrorHandlerTests.cs": "d56720df0c9c82afe047d9a96701d9ec750b113d650922901cc2a0b1bab40f53",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "18b6b404187836003ea0db593918596c4ed3d84ab35733a088284926133a8987",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/UseFrameFakeClockHost.cs": "832e6d1a29eac04e37d6f7a12601c3572a72772621452748e332bb8c2d3d1194",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.CaughtErrorHandlerTests.Given_AFallbackWithALayoutEffect_When_ABoundaryAboveAVirtualListCatchesAnItemsRefErrorInARangeRenderedOutsideAPass_Then_TheFallbacksLayoutEffectRunsAndTheReportFollowsIt",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/CaughtErrorHandlerTests.cs": "d56720df0c9c82afe047d9a96701d9ec750b113d650922901cc2a0b1bab40f53",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "18b6b404187836003ea0db593918596c4ed3d84ab35733a088284926133a8987",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/UseFrameFakeClockHost.cs": "832e6d1a29eac04e37d6f7a12601c3572a72772621452748e332bb8c2d3d1194",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.CaughtErrorHandlerTests.Given_AMemoizedBoundaryInAPatchedVirtualListItemCatchingAChildsRender_When_ANewItemCommitsItsOwnSubtree_Then_TheReportWaitsForTheFallbacksLayoutEffect",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/CaughtErrorHandlerTests.cs": "d56720df0c9c82afe047d9a96701d9ec750b113d650922901cc2a0b1bab40f53",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "18b6b404187836003ea0db593918596c4ed3d84ab35733a088284926133a8987",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/UseFrameFakeClockHost.cs": "832e6d1a29eac04e37d6f7a12601c3572a72772621452748e332bb8c2d3d1194",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ClipPathLayoutParityPanelTests.Given_AClippedVirtualListRow_When_LaidOut_Then_ItIsAsTallAsItsUnclippedTwin",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ClipPathLayoutParityPanelTests.cs": "5b594a2a7cdef9cc61531a4be4512ec91c556c1f5dc2e6bec1c8af201149a0bf",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "18b6b404187836003ea0db593918596c4ed3d84ab35733a088284926133a8987",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.DeletionAtOwnerTurnTests(UIToolkit).Given_AComponentDeletedAheadOfAListWhoseRowCannotWait_When_BothAreDeleted_Then_TheComponentsDeletionRunsFirst",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/DeletionAtOwnerTurnTests.cs": "dff6a41b26e1563d12ad8b3c8f827a8bfca54af01e90e8c328ce98dd3d57347d",
+    "Packages/com.velvet.core/TestUtilities/DeletionCommitPool.cs": "9906a3a5111d0c9012dd0a9c09d66ad2b0ff04b7b25056cafe11b88de750ec7e",
+    "Packages/com.velvet.core/TestUtilities/EventLog.cs": "e191b8d91d56ab6eb1633a8f37e5282dd11f4cbfd649b59ab27deab3a1e4b490",
+    "Packages/com.velvet.core/TestUtilities/EventLogRenderer.cs": "59fbaf33c955e917c5359940c3d0a0f090fefdc0d2a41b370a75eb6ce7304abe",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921",
+    "Packages/com.velvet.core/TestUtilities/ReconcilePassProbe.cs": "31d08bc5710956ffa909637efd0d79f3b4b525d7b1a268b0892422012abd8c1a",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.DeletionAtOwnerTurnTests(UIToolkit).Given_AComponentRenderingNothingDeletedAheadOfAListWhoseRowCannotWait_When_BothAreDeleted_Then_TheComponentsDeletionRunsFirst",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/DeletionAtOwnerTurnTests.cs": "dff6a41b26e1563d12ad8b3c8f827a8bfca54af01e90e8c328ce98dd3d57347d",
+    "Packages/com.velvet.core/TestUtilities/DeletionCommitPool.cs": "9906a3a5111d0c9012dd0a9c09d66ad2b0ff04b7b25056cafe11b88de750ec7e",
+    "Packages/com.velvet.core/TestUtilities/EventLog.cs": "e191b8d91d56ab6eb1633a8f37e5282dd11f4cbfd649b59ab27deab3a1e4b490",
+    "Packages/com.velvet.core/TestUtilities/EventLogRenderer.cs": "59fbaf33c955e917c5359940c3d0a0f090fefdc0d2a41b370a75eb6ce7304abe",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921",
+    "Packages/com.velvet.core/TestUtilities/ReconcilePassProbe.cs": "31d08bc5710956ffa909637efd0d79f3b4b525d7b1a268b0892422012abd8c1a",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.DeletionCommitOrderEventLogTests+UIToolkitOnlyDeletions.Given_APortalChildHoldingAPortalOfAList_When_TheElementAroundTheOuterPortalIsRemoved_Then_TheListsRowIsTakenDownWhereItsPortalSits",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/DeletionCommitOrderEventLogTests.cs": "9e03decc21e31a7079265a2b8507d2ab3aba91d4f9b2607a861e73b64ec65995",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/EventLog.cs": "e191b8d91d56ab6eb1633a8f37e5282dd11f4cbfd649b59ab27deab3a1e4b490",
+    "Packages/com.velvet.core/TestUtilities/EventLogRenderer.cs": "59fbaf33c955e917c5359940c3d0a0f090fefdc0d2a41b370a75eb6ce7304abe",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921",
+    "Packages/com.velvet.core/TestUtilities/RuntimeStateProbe.cs": "f5d4ec6298d8c5f2eb33b23fa83fc5788fc9c99583dc56c3cdc4243476aa9fce"
+   }
+  },
+  {
+   "case": "Velvet.Tests.DetachedItemPortalStampTests.Given_AListInAPortalRenderedOutsideAPass_When_AListNoComponentHostsRendersAfterIt_Then_ItsRowNamesNoPortal",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/DetachedItemPortalStampTests.cs": "20bcb02c9956ad7f70b9e24439b1687910512e9b34210903d0bc2343a5a6c371"
+   }
+  },
+  {
+   "case": "Velvet.Tests.DrainTreeOrderTests.Given_TwoVirtualListHostsEachReorderingItsRowsInOneBatch_When_OneDrainRendersThem_Then_EachHostsRowsRenderInItsNewOrder",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/DrainTreeOrderTests.cs": "8868c94779509f3adfe5556c2883ea3be26b15c60a24e343f249060b95133b23",
+    "Packages/com.velvet.core/TestUtilities/EventLog.cs": "e191b8d91d56ab6eb1633a8f37e5282dd11f4cbfd649b59ab27deab3a1e4b490",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921"
+   }
+  },
+  {
+   "case": "Velvet.Tests.DrainTreeOrderTests.Given_TwoVirtualListRowsAndTheirHostReorderingThemInOneBatch_When_OneDrainRendersThem_Then_TheRowsRenderInTheHostsNewOrder",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/DrainTreeOrderTests.cs": "8868c94779509f3adfe5556c2883ea3be26b15c60a24e343f249060b95133b23",
+    "Packages/com.velvet.core/TestUtilities/EventLog.cs": "e191b8d91d56ab6eb1633a8f37e5282dd11f4cbfd649b59ab27deab3a1e4b490",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921"
+   }
+  }
+ ],
+ "measured_by": "45199843515",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 46,
+  "line": 851,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ChildListWrites.cs",
+  "shadowed": [
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "75aa5e777f60caf8d1dcee6850e99a3441f60400a702e0372fbab264963ade25",
+ "verdict": "killed"
+}

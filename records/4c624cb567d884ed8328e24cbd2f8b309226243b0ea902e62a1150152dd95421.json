@@ -1,0 +1,32 @@
+{
+ "detail": "EditMode: 1 failed among the 6 case(s) that ran the site: Given_AnErrorBoundaryWhoseFallbackSuspends_When_TheFailedChildsCleanupThrowsAtTheSwap_Then_TheCatchIsReportedAheadOfTheCleanupsError",
+ "file": "d434b3c583d7f77d99a37351e5abfca8c7835bd99459c2edd3ec335858e7f790",
+ "killers": [
+  {
+   "case": "Velvet.Tests.FallbackSuspendEventLogTests(UIToolkit).Given_AnErrorBoundaryWhoseFallbackSuspends_When_TheFailedChildsCleanupThrowsAtTheSwap_Then_TheCatchIsReportedAheadOfTheCleanupsError",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/FallbackSuspendEventLogTests.cs": "d2cc9700f40ca6a7d863e72c49d0cb0ce755630c52e1f2f5974d682a859f38f3",
+    "Packages/com.velvet.core/TestUtilities/EventLog.cs": "e191b8d91d56ab6eb1633a8f37e5282dd11f4cbfd649b59ab27deab3a1e4b490",
+    "Packages/com.velvet.core/TestUtilities/EventLogRenderer.cs": "59fbaf33c955e917c5359940c3d0a0f090fefdc0d2a41b370a75eb6ce7304abe",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921"
+   }
+  }
+ ],
+ "measured_by": "45199843515",
+ "mutant": {
+  "after": ";",
+  "before": "FiberWorkLoop.ScheduleRerender(fiber, FiberUpdatePriority.Urgent);",
+  "column": 16,
+  "line": 484,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberErrorBoundary.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "75aa5e777f60caf8d1dcee6850e99a3441f60400a702e0372fbab264963ade25",
+ "verdict": "killed"
+}

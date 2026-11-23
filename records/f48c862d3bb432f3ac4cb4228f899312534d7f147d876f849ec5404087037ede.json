@@ -1,0 +1,96 @@
+{
+ "detail": "EditMode: 786 failed: Given_AKeySpelledLikeARepeatsKeyAheadOfTheRepeat_When_InitialRender_Then_AllThreeCommit, Given_ARepeatAndALaterKeySpelledLikeTheRepeatsKey_When_InitialRender_Then_AllThreeCommit, Given_AutoKeyedChildren_When_OrderReversed_Then_PositionKeyTreatsItAsContentChange",
+ "file": "dca0d44b971aaabb014c6caefa217b32f9bbffeca4c57090094b5151bf38fb64",
+ "killers": [
+  {
+   "case": "Velvet.Tests.AncestorDescendantStoreRerenderTests.Given_AncestorReExpandsKeyedChild_When_BusyClearedWithMessage_Then_NestedEmptyFragmentListItemDoesNotDuplicate",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/AncestorDescendantStoreRerenderTests.cs": "adc1876ff0d9b96323088d1a025f0dfd35e5cbe43a88fa4f6fec70d68d5d997b",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AncestorDescendantStoreRerenderTests.Given_AncestorReExpandsKeyedChild_When_FirstToggleRunsInADiscreteEvent_Then_NestedEmptyFragmentListItemDoesNotDuplicate",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/AncestorDescendantStoreRerenderTests.cs": "adc1876ff0d9b96323088d1a025f0dfd35e5cbe43a88fa4f6fec70d68d5d997b",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AncestorDescendantStoreRerenderTests.Given_AncestorReExpandsKeyedChild_When_FullBusyMessageCycleCompletes_Then_NestedEmptyFragmentListItemDoesNotDuplicate",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/AncestorDescendantStoreRerenderTests.cs": "adc1876ff0d9b96323088d1a025f0dfd35e5cbe43a88fa4f6fec70d68d5d997b",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AncestorDescendantStoreRerenderTests.Given_AncestorReExpandsKeyedChild_When_TheClickResultCycleRepeats_Then_NestedEmptyFragmentListItemDoesNotDuplicate",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/AncestorDescendantStoreRerenderTests.cs": "adc1876ff0d9b96323088d1a025f0dfd35e5cbe43a88fa4f6fec70d68d5d997b",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AnimatePresenceTests.Given_AKeySpelledLikeARepeatsKeyAheadOfTheRepeat_When_InitialRender_Then_AllThreeCommit",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/AnimatePresenceTests.cs": "d68149d8e0f54e7a243f0b25f02b8add378a811d56dc3e6d820bd9b1a3cd8c2a",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AnimatePresenceTests.Given_ARepeatAndALaterKeySpelledLikeTheRepeatsKey_When_InitialRender_Then_AllThreeCommit",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/AnimatePresenceTests.cs": "d68149d8e0f54e7a243f0b25f02b8add378a811d56dc3e6d820bd9b1a3cd8c2a",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AnimatePresenceTests.Given_AutoKeyedChildren_When_OrderReversed_Then_PositionKeyTreatsItAsContentChange",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/AnimatePresenceTests.cs": "d68149d8e0f54e7a243f0b25f02b8add378a811d56dc3e6d820bd9b1a3cd8c2a",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AnimatePresenceTests.Given_DuplicateKeys_When_InitialRender_Then_BothChildrenCommit",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/AnimatePresenceTests.cs": "d68149d8e0f54e7a243f0b25f02b8add378a811d56dc3e6d820bd9b1a3cd8c2a",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AnimatePresenceTests.Given_DuplicateKeys_When_TheRepeatIsRemoved_Then_ItLeavesAtOnceWithoutAnExit",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/AnimatePresenceTests.cs": "d68149d8e0f54e7a243f0b25f02b8add378a811d56dc3e6d820bd9b1a3cd8c2a",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AnimatePresenceTests.Given_DuplicateKeys_When_UpdatedInTheSameOrder_Then_BothChildrenShowTheNewText",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/AnimatePresenceTests.cs": "d68149d8e0f54e7a243f0b25f02b8add378a811d56dc3e6d820bd9b1a3cd8c2a",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  }
+ ],
+ "measured_by": "45199843515",
+ "mutant": {
+  "after": ";",
+  "before": "_cleanups.Clear();",
+  "column": 12,
+  "line": 490,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/DeletionCommit.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "75aa5e777f60caf8d1dcee6850e99a3441f60400a702e0372fbab264963ade25",
+ "verdict": "killed"
+}

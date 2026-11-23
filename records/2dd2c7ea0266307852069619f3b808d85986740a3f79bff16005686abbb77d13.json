@@ -1,0 +1,42 @@
+{
+ "detail": "EditMode: 2 failed among the 200 case(s) that ran the site: Given_APortalsOwnChildrenGrewAheadOfItsComponent_When_ThatComponentRerenders_Then_ItRewritesItsOwnRow, Given_APortalsPatchDrainedAParkedComponentAheadOfAnotherPortal_When_TheSecondPortalsChildRerenders_Then_ItRewritesItsOwnRow",
+ "file": "97d4f7108837adb19ce4ef8725e9de05d72f15fc541a5db0aaf96426af8ac819",
+ "killers": [
+  {
+   "case": "Velvet.Tests.InlineSlotStartTests.Given_APortalsOwnChildrenGrewAheadOfItsComponent_When_ThatComponentRerenders_Then_ItRewritesItsOwnRow",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/InlineSlotStartTests.cs": "826965e82071b5985a6dcb45bd23d18c1868cbf15eae3225194c48f1eb8fd046",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921"
+   }
+  },
+  {
+   "case": "Velvet.Tests.InlineSlotStartTests.Given_APortalsPatchDrainedAParkedComponentAheadOfAnotherPortal_When_TheSecondPortalsChildRerenders_Then_ItRewritesItsOwnRow",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/InlineSlotStartTests.cs": "826965e82071b5985a6dcb45bd23d18c1868cbf15eae3225194c48f1eb8fd046",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921"
+   }
+  }
+ ],
+ "measured_by": "45199843515",
+ "mutant": {
+  "after": "+",
+  "before": "-",
+  "column": 63,
+  "line": 1745,
+  "operator": "arithmetic",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberNodePatcher.cs",
+  "shadowed": [
+   "arithmetic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "75aa5e777f60caf8d1dcee6850e99a3441f60400a702e0372fbab264963ade25",
+ "verdict": "killed"
+}

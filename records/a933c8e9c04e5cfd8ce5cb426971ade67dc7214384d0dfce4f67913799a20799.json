@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "0f5ce343d25c41ed2da93364dd8f69d411599b2e45a077f4a768d08840277110",
+ "killers": [],
+ "measured_by": "45199843515",
+ "mutant": {
+  "after": ";",
+  "before": "if (!owed[i].IsMounted) ctx.DropCapturesOf(owed[i]);",
+  "column": 16,
+  "line": 42,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/CommitErrors.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "75aa5e777f60caf8d1dcee6850e99a3441f60400a702e0372fbab264963ade25",
+ "verdict": "survived"
+}

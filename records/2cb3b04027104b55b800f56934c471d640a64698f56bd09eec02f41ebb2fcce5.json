@@ -1,0 +1,34 @@
+{
+ "detail": "EditMode: 2 failed: Given_MountedComponent_When_Disposed_Then_ChildFiberIsDetached, Given_MountedComponent_When_Disposed_Then_RenderedDomIsCleared",
+ "file": "47307c22de0d6138d51f124db91a9a13a0380b6bf8498a62fe911a8662303f2b",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ComponentFiberTests.Given_MountedComponent_When_Disposed_Then_ChildFiberIsDetached",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/ComponentFiberTests.cs": "c1889db3a28b06c7f011c496ad02eef6166d3bb7f6b42b60600c5fe461a156d9"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ComponentFiberTests.Given_MountedComponent_When_Disposed_Then_RenderedDomIsCleared",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/ComponentFiberTests.cs": "c1889db3a28b06c7f011c496ad02eef6166d3bb7f6b42b60600c5fe461a156d9"
+   }
+  }
+ ],
+ "measured_by": "45199843515",
+ "mutant": {
+  "after": ";",
+  "before": "FiberRenderer.DisposeWork(state.Tree.Root);",
+  "column": 16,
+  "line": 202,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Component/V.Mount.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "75aa5e777f60caf8d1dcee6850e99a3441f60400a702e0372fbab264963ade25",
+ "verdict": "killed"
+}

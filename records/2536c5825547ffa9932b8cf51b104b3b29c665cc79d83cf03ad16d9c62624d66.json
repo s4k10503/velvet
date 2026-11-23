@@ -1,0 +1,110 @@
+{
+ "detail": "EditMode: 8 failed in Velvet.Tests.Reconciler.Editor: Given_AHoverZClass_When_HoverStartsAndEnds_Then_TheElementRestacksBothWays, AZChangeWithinTheBandIsResorted, AnArrivalFromTheBackBandGoesAfterItsEqualZ",
+ "file": "455470135ecaac2877fb6006e75e49c8fc67024370648718c8544113e8855559",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ZIndexStackingTests.Given_AHoverZClass_When_HoverStartsAndEnds_Then_TheElementRestacksBothWays",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ButtonChildPoolReuseTests.cs": "0531a5fe43bec4ffe1998b02b1fb81e990435f1ea72a803dd14610afcab1aa51",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ZIndexStackingTests.cs": "b73202487c05f5fc766335fde75ae54207f2cb15a90ab6d0dbf1435796d20ac9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/GCAllocationProbe.cs": "492823c099cf4f4de89da0da69c98d45cfc042070d93e2d0c0b95773310ebc2c",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/VNodePoolTestAccess.cs": "0b34227c0501b0b06aafcc9acba0c02b9136f4cc2959498d5f22b3db63a22681",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c",
+    "Packages/com.velvet.core/TestUtilities/ZBandProbe.cs": "89b5305bd9e43f72156f5a3d8c6f121f5ebcbee121486fdbb8e4b04b315feaaa"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ZIndexStackingTests.Given_AParkedKeyedReorderOverAHoveredRow_When_TheHoverEndsBeforeTheResume_Then_TheRowsAreTheDeclaredOnes",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ButtonChildPoolReuseTests.cs": "0531a5fe43bec4ffe1998b02b1fb81e990435f1ea72a803dd14610afcab1aa51",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ZIndexStackingTests.cs": "b73202487c05f5fc766335fde75ae54207f2cb15a90ab6d0dbf1435796d20ac9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/GCAllocationProbe.cs": "492823c099cf4f4de89da0da69c98d45cfc042070d93e2d0c0b95773310ebc2c",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/VNodePoolTestAccess.cs": "0b34227c0501b0b06aafcc9acba0c02b9136f4cc2959498d5f22b3db63a22681",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c",
+    "Packages/com.velvet.core/TestUtilities/ZBandProbe.cs": "89b5305bd9e43f72156f5a3d8c6f121f5ebcbee121486fdbb8e4b04b315feaaa"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ZIndexStackingTests.Given_AParkedKeyedReorderOverAnUnhoveredRow_When_TheHoverStartsBeforeTheResume_Then_ItsPlaceholderLeadsTheRows",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ButtonChildPoolReuseTests.cs": "0531a5fe43bec4ffe1998b02b1fb81e990435f1ea72a803dd14610afcab1aa51",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ZIndexStackingTests.cs": "b73202487c05f5fc766335fde75ae54207f2cb15a90ab6d0dbf1435796d20ac9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/GCAllocationProbe.cs": "492823c099cf4f4de89da0da69c98d45cfc042070d93e2d0c0b95773310ebc2c",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/VNodePoolTestAccess.cs": "0b34227c0501b0b06aafcc9acba0c02b9136f4cc2959498d5f22b3db63a22681",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c",
+    "Packages/com.velvet.core/TestUtilities/ZBandProbe.cs": "89b5305bd9e43f72156f5a3d8c6f121f5ebcbee121486fdbb8e4b04b315feaaa"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ZIndexStackingTests.Given_AParkedKeyedReorderThatTookAHoveredRow_When_TheHoverEndsBeforeTheReorder_Then_TheRowsAreTheDeclaredOnes",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ButtonChildPoolReuseTests.cs": "0531a5fe43bec4ffe1998b02b1fb81e990435f1ea72a803dd14610afcab1aa51",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ZIndexStackingTests.cs": "b73202487c05f5fc766335fde75ae54207f2cb15a90ab6d0dbf1435796d20ac9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/GCAllocationProbe.cs": "492823c099cf4f4de89da0da69c98d45cfc042070d93e2d0c0b95773310ebc2c",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/VNodePoolTestAccess.cs": "0b34227c0501b0b06aafcc9acba0c02b9136f4cc2959498d5f22b3db63a22681",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c",
+    "Packages/com.velvet.core/TestUtilities/ZBandProbe.cs": "89b5305bd9e43f72156f5a3d8c6f121f5ebcbee121486fdbb8e4b04b315feaaa"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ZIndexStackingTests.Given_AParkedPassOverAHoveredRow_When_TheHoverEndsBeforeTheResume_Then_TheResumedSlicePatchesTheRow",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ButtonChildPoolReuseTests.cs": "0531a5fe43bec4ffe1998b02b1fb81e990435f1ea72a803dd14610afcab1aa51",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ZIndexStackingTests.cs": "b73202487c05f5fc766335fde75ae54207f2cb15a90ab6d0dbf1435796d20ac9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/GCAllocationProbe.cs": "492823c099cf4f4de89da0da69c98d45cfc042070d93e2d0c0b95773310ebc2c",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/VNodePoolTestAccess.cs": "0b34227c0501b0b06aafcc9acba0c02b9136f4cc2959498d5f22b3db63a22681",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c",
+    "Packages/com.velvet.core/TestUtilities/ZBandProbe.cs": "89b5305bd9e43f72156f5a3d8c6f121f5ebcbee121486fdbb8e4b04b315feaaa"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ZIndexWrapElementSlotTests.Given_AWrapElementButtonWithAHoverZClass_When_HoverStarts_Then_TheWrapperPaintsAfterItsSibling",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ZIndexWrapElementSlotTests.cs": "f3a1d617bfe3d921759fdeba676aa66ef15ecec1b90d6d9aa9a37fb7bee22928",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "18b6b404187836003ea0db593918596c4ed3d84ab35733a088284926133a8987",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c",
+    "Packages/com.velvet.core/TestUtilities/ZBandProbe.cs": "89b5305bd9e43f72156f5a3d8c6f121f5ebcbee121486fdbb8e4b04b315feaaa"
+   }
+  }
+ ],
+ "measured_by": "45199843515",
+ "mutant": {
+  "after": ";",
+  "before": "SettleNow(ctx, real, facts);",
+  "column": 12,
+  "line": 525,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberZLayerCoordinator.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "75aa5e777f60caf8d1dcee6850e99a3441f60400a702e0372fbab264963ade25",
+ "verdict": "killed"
+}
