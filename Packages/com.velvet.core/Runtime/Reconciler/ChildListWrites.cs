@@ -848,6 +848,8 @@ namespace Velvet
         // pass as well, which has nothing to apply: a pass records only while it is current.
         internal static void EndRecording(ReconcilePass pass)
         {
+            UnityEngine.Debug.Assert(s_current == null || ReferenceEquals(s_current, pass),
+                "A pass ended while another was recording or applying.");
             pass.Recording = false;
             try
             {
