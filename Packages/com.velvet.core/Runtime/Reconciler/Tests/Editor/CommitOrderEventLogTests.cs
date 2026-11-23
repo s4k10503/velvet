@@ -63,6 +63,36 @@ namespace Velvet.Tests
             return V.Div(refCallback: EventLog.UseRefCallback<VisualElement>(props.Name));
         }
 
+        // Re-renders on its own state, which its effects take as a dependency.
+        [Component]
+        private static VNode SetsItself(Named props)
+        {
+            var (dep, _) = EventLog.UseState(props.Name, 0);
+            EventLog.UseInsertionAndLayoutEffects(props.Name, new object[] { dep });
+            return V.Div();
+        }
+
+        [Component]
+        private static VNode SetsItselfAboveAChild(Named props)
+        {
+            var (dep, _) = EventLog.UseState(props.Name, 0);
+            EventLog.UseInsertionAndLayoutEffects(props.Name, new object[] { dep });
+            return V.Div(children: new VNode[] { V.Component(Leaf2, new LeafProps("C", dep), key: "c") });
+        }
+
+        [Component]
+        private static VNode Leaf2(LeafProps props)
+        {
+            EventLog.UseInsertionAndLayoutEffects(props.Name, new object[] { props.Dep });
+            return V.Div();
+        }
+
+        [Component]
+        private static VNode TwoSiblingRoots()
+            => V.Fragment(
+                V.Component(SetsItself, new Named("A"), key: "a"),
+                V.Component(SetsItselfAboveAChild, new Named("B"), key: "b"));
+
         [Component]
         private static VNode Thrower() => throw new InvalidOperationException("thrown by the probe");
 
@@ -158,6 +188,27 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(log.ToString(), Is.EqualTo("ins:F ref:F lay:F eff:F"));
+        }
+
+        // GREEN_ON_BASE(characterization): one commit takes the drain's roots in tree order, which is React's: the base
+        // places the root that was set last ahead of the entries it precedes.
+        [Test]
+        public void Given_TwoSiblingRootsWithAChildBelowTheSecond_When_TheSecondIsSetBeforeTheFirstInOneDrain_Then_CleanupsRunInTreeOrder()
+        {
+            // Arrange
+            var log = new EventLog();
+            using var mounted = _renderer.Mount(log.Provide(V.Component(TwoSiblingRoots)));
+            mounted.DrainForTest();
+            log.Clear();
+
+            // Act
+            log.Setter<int>("B").Invoke(1);
+            log.Setter<int>("A").Invoke(1);
+            mounted.DrainForTest();
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo(
+                "ins-x:A ins:A lay-x:A ins-x:C ins:C lay-x:C ins-x:B ins:B lay-x:B lay:A lay:C lay:B"));
         }
     }
 }

@@ -116,6 +116,8 @@ namespace Velvet.Tests.Performance
             Assert.That(blocks, Is.Zero);
         }
 
+        // GREEN_ON_BASE(refactor): the base records and applies the same op without allocating; the case now ends the pass
+        // to apply it, where it asked for the apply of the recorded patches.
         [Test]
         public void Given_AWarmQueue_When_APatchOpOfACleanedLabelIsRecordedAndApplied_Then_NothingIsAllocated()
         {
@@ -128,11 +130,17 @@ namespace Velvet.Tests.Performance
             // Cleaned since it was recorded, so the op's body is skipped and the case measures the queue alone.
             _reconciler.Context.CleanedElements[label] = 1;
             ChildListWrites.BeginRecording(_reconciler.Context.Pass);
-            Action reset = () => ChildListWrites.ApplyPendingPatches();
+            var pass = _reconciler.Context.Pass;
+            Action reset = () =>
+            {
+                ChildListWrites.EndRecording(pass);
+                ChildListWrites.BeginRecording(pass);
+            };
             Action recordAndApply = () =>
             {
                 ChildListWrites.RecordPatchPre(pending);
-                ChildListWrites.ApplyPendingPatches();
+                ChildListWrites.EndRecording(pass);
+                ChildListWrites.BeginRecording(pass);
             };
             recordAndApply();
 

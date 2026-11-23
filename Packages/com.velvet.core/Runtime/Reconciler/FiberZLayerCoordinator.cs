@@ -389,19 +389,18 @@ namespace Velvet
 
         // Patch-time entry: real (the slot's element, read through its placeholder) was patched to declared /
         // resolved. Explicit facts relocate it and their loss returns it to its slot, where the pass's recorded writes
-        // have applied; a relocation its siblings decide waits for the end of the pass (Arrange). Outside a recording
-        // pass the settle runs at once.
+        // have applied; a relocation its siblings decide waits for the end of the pass (Arrange). While the pass records
+        // or applies the settle waits for that apply, and outside a pass it runs at once.
         internal static void OnPatched(ReconcilerContext ctx, VisualElement real, VisualElement classElement,
             string[] declared, string[] resolved, bool anchored)
         {
-            var facts = Record(ctx, real, classElement, declared, resolved, anchored);
-            if (ChildListWrites.IsRecording)
-            {
-                ctx.PendingSettles.Add(new ReconcilerContext.QueuedSettle(real, null, null, false, 0));
-                return;
-            }
-            Settle(ctx, real, facts);
+            Settle(ctx, real, Record(ctx, real, classElement, declared, resolved, anchored));
         }
+
+        // OnPatched for the settle of a patch whose passes have applied, which is made at once.
+        internal static void OnSettled(ReconcilerContext ctx, VisualElement real, VisualElement classElement,
+            string[] declared, string[] resolved, bool anchored)
+            => SettleNow(ctx, real, Record(ctx, real, classElement, declared, resolved, anchored));
 
         // Decides the stacking of what a pass patched, once its recorded writes have applied: the patch returned the
         // occupant its slot held before, which this swaps for the placeholder or the element itself where the facts say
@@ -420,7 +419,7 @@ namespace Velvet
                     continue;
                 }
                 var real = entry.Real;
-                Settle(ctx, real, ctx.StackingFacts.TryGetValue(real, out var facts) ? facts : null);
+                SettleNow(ctx, real, ctx.StackingFacts.TryGetValue(real, out var facts) ? facts : null);
             }
             pending.Clear();
         }
@@ -511,6 +510,22 @@ namespace Velvet
             => ctx.SharedReconcileDepth == 0 && !ChildListWrites.IsApplying;
 
         private static void Settle(ReconcilerContext ctx, VisualElement real, StackingFacts? facts)
+        {
+            // Returning an element to its slot exchanges it with its placeholder by a sort of the live list, which writes
+            // recorded behind it, or ops still to apply, would find changed. A settle asked for while this context's pass
+            // records or applies is made where the pass has applied what it recorded (SettlePatched), from the facts held
+            // then, and from the queue of the context that asked for it.
+            if (ctx.Pass.Recording || ctx.Pass.Applying)
+            {
+                // MUTANT_SURVIVES(equivalent, literal): an entry with no patcher is settled from the facts held for its
+                // real element, so the anchored flag it carries is never read.
+                ctx.PendingSettles.Add(new ReconcilerContext.QueuedSettle(real, null, null, false, 0));
+                return;
+            }
+            SettleNow(ctx, real, facts);
+        }
+
+        private static void SettleNow(ReconcilerContext ctx, VisualElement real, StackingFacts? facts)
         {
             if (facts == null && !s_held.TryGetValue(real, out _))
             {
@@ -804,7 +819,6 @@ namespace Velvet
             {
                 return;
             }
-            ChildListWrites.SyncLive(parent);
             var children = s_layout;
             children.Clear();
             for (var i = 0; i < parent.hierarchy.childCount; i++)
@@ -819,7 +833,6 @@ namespace Velvet
         // Moves a to b's index and b to a's, leaving every other child where it is.
         private static void Exchange(VisualElement parent, VisualElement a, VisualElement b)
         {
-            ChildListWrites.SyncLive(parent);
             var rank = new Dictionary<VisualElement, int>(parent.hierarchy.childCount);
             for (var i = 0; i < parent.hierarchy.childCount; i++)
             {

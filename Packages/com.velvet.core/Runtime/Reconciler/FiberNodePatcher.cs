@@ -423,9 +423,6 @@ namespace Velvet
             // parent surgery the walk's return value reports, and that the pass records writes for.
             patch.Staged = ReferenceEquals(patch.Self, element) && ReferenceEquals(patch.Slot, element)
                 && !_ctx.ClipPathBindings.ContainsKey(element) && !StyleClipPathClass.WantsClipWrapper(newNode.ClassNames)
-                // A delayed text field commits its uncommitted edit through the notifying setter when the flag comes off,
-                // which runs the app's handler: that is written where the walk is.
-                && element is not TextField { isDelayed: true }
                 && ChildListWrites.StagesPatch(element);
             PatchBaseElement(ref patch, oldNode, newNode, oldNode.ClassNames, newNode.ClassNames);
         }
@@ -444,6 +441,14 @@ namespace Velvet
             }
             PatchElementPost(classElement, oldNode, newNode);
             var real = OuterOfPatched(patch.Slot, patch.Element, classElement);
+            if (ChildListWrites.IsRecording)
+            {
+                // The class source is composed from the tables the applied passes leave, which the tail of this element's
+                // own has not written yet.
+                _ctx.PendingSettles.Add(new ReconcilerContext.QueuedSettle(real, this, newNode.ClassNames,
+                    newNode.Props?.Anchored != null, _ctx.CleanupSerial, classElement));
+                return real;
+            }
             var resolved = ResolveGateClasses(classElement, newNode.ClassNames);
             if (NoteHeldZ(classElement, resolved))
             {
@@ -484,6 +489,12 @@ namespace Velvet
             PatchMotionPost(patch, oldNode, newNode);
             var applied = RestingClassSet(motion, newNode.ClassNames).Merged;
             var real = OuterOfPatched(patch.Slot, patch.Element, motion);
+            if (ChildListWrites.IsRecording)
+            {
+                _ctx.PendingSettles.Add(new ReconcilerContext.QueuedSettle(real, this, applied,
+                    newNode.Props?.Anchored != null, _ctx.CleanupSerial, motion));
+                return real;
+            }
             var resolved = ResolveGateClasses(motion, applied);
             if (NoteHeldZ(motion, resolved))
             {
@@ -542,10 +553,35 @@ namespace Velvet
             string[] newClassNames, bool clipActive)
         {
             // The has-variant scans and the gap and child-variant manipulators configured below read the live state of the
-            // element's descendants, whose patch halves may still be recorded: an element patched at once (a Motion, a
-            // relocated or wrapped element) reaches here while they wait.
-            ChildListWrites.ApplyPendingPatches();
-            ChildListWrites.SyncLive(element);
+            // element's descendants, whose patch halves are recorded while the pass records: an element patched at once
+            // (a Motion, a relocated or wrapped element) reaches here then, and its passes are recorded behind theirs.
+            if (ChildListWrites.IsRecording)
+            {
+                ChildListWrites.RecordPatchTail(new PendingPatch(this, element, oldClassNames, newClassNames, clipActive,
+                    _ctx.CleanupSerial));
+                return;
+            }
+            RunPostChildrenClassPasses(element, oldClassNames, newClassNames, clipActive);
+        }
+
+        // The writes a recorded PatchTail makes where the pass applies its ops.
+        internal void CommitTail(in PendingPatch patch)
+        {
+            if (CleanedSince(patch))
+            {
+                return;
+            }
+            if (patch.LayoutId != null)
+            {
+                MotionLayoutIdDriver.OnPatched(patch.Element, patch.LayoutId, patch.Timing, _ctx);
+                return;
+            }
+            RunPostChildrenClassPasses(patch.Element, patch.OldClasses!, patch.NewClasses!, patch.ClipActive);
+        }
+
+        private void RunPostChildrenClassPasses(VisualElement element, string[] oldClassNames,
+            string[] newClassNames, bool clipActive)
+        {
             (oldClassNames, newClassNames) = (AsWritten(element, oldClassNames), AsWritten(element, newClassNames));
             // Before gap / divide / grid: on a SHARED style property ([&>*]:ml-[2px] alongside gap-x-4) those
             // three own the edge and must win, exactly as they already win over a child's own explicit margin
@@ -683,12 +719,13 @@ namespace Velvet
             {
                 return;
             }
-            var resolved = ResolveGateClasses(entry.Real, entry.Declared!);
-            if (NoteHeldZ(entry.Real, resolved))
+            var classElement = entry.ClassElement ?? entry.Real;
+            var resolved = ResolveGateClasses(classElement, entry.Declared!);
+            if (NoteHeldZ(classElement, resolved))
             {
                 return;
             }
-            FiberZLayerCoordinator.OnPatched(_ctx, entry.Real, entry.Real, entry.Declared!, resolved, entry.Anchored);
+            FiberZLayerCoordinator.OnSettled(_ctx, entry.Real, classElement, entry.Declared!, resolved, entry.Anchored);
         }
 
         private void RebindEvents(VisualElement element, FiberEventBinding[] newEvents)
@@ -919,7 +956,17 @@ namespace Velvet
             ReconcileLayoutIdCorrection(element, newNode, appliedNew);
             if (newNode.LayoutId != null)
             {
-                MotionLayoutIdDriver.OnPatched(element, newNode.LayoutId, LayoutIdTiming.From(newNode.LayoutTransition), _ctx);
+                // Behind the post-children passes where those are recorded, since the class list it observes has their
+                // payload on it only once they have run.
+                var timing = LayoutIdTiming.From(newNode.LayoutTransition);
+                if (ChildListWrites.IsRecording)
+                {
+                    ChildListWrites.RecordPatchTail(new PendingPatch(this, element, newNode.LayoutId, timing, _ctx.CleanupSerial));
+                }
+                else
+                {
+                    MotionLayoutIdDriver.OnPatched(element, newNode.LayoutId, timing, _ctx);
+                }
             }
             else
             {

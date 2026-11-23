@@ -8,8 +8,8 @@ namespace Velvet.Tests
     /// <summary>
     /// Pins where a container's deletion of components runs its take-downs: where the pass applies the writes it
     /// recorded (<see cref="DeletionCommit.Teardown"/>), which is after the renders of the walk ahead of the layout
-    /// commit unless a flush of the pass's writes reaches it sooner, as react-reconciler 19.1 runs a deleted fiber's
-    /// destroys in the mutation phase of the commit rather than while it renders. A cleanup's error is captured for the
+    /// commit, as react-reconciler 19.1 runs a deleted fiber's destroys in the mutation phase of the commit rather
+    /// than while it renders. A cleanup's error is captured for the
     /// boundary above the deletion, which renders its fallback in a follow-up commit (<c>captureCommitPhaseError</c>)
     /// and does not stop the render under way. The rows of a container whose children are all host elements are removed in the walk.
     /// </summary>
@@ -38,7 +38,7 @@ namespace Velvet.Tests
         }
 
         // The deleted component and the watcher sit in elements of their own, so the watcher's render comes in a walk of
-        // a container after the one that decides the deletion, and no row between them is patched at once.
+        // a container after the one that decides the deletion.
         [Component]
         private static VNode DeletionBesideAWatcher()
         {
