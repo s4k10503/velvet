@@ -89,11 +89,14 @@ namespace Velvet.Tests
         // .ruled rule gives that font. Returns the family's bold.
         private FontAsset AttachSheetGivingTheRuledFont()
         {
-            var ruled = NewAsset();
+            // Built from the font the panel draws a label in, as TextLineBoxPanelTests builds the one it saves.
+            var probe = new Label("a");
+            _host.Root.Add(probe);
+            EditorPanelTestHelpers.ForcePanelUpdate(_host.Panel);
+            var source = StyleFontUnits.AssetOf(probe)!.sourceFontFile;
+            _host.Root.Remove(probe);
+            var ruled = FontAsset.CreateFontAsset(source);
             var ruledBold = NewAsset();
-            // Made from the built-in font, the asset is given the operating system's fonts as fallbacks, built for one editor
-            // session and not saved with an asset; the asset database refuses to save one flagged so.
-            ruled.fallbackFontAssetTable?.Clear();
             AssetDatabase.CreateAsset(ruled, RuledPath);
             AssetDatabase.AddObjectToAsset(ruled.atlasTexture, ruled);
             AssetDatabase.AddObjectToAsset(ruled.material, ruled);
