@@ -9,9 +9,9 @@ using Velvet.TestUtilities;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Pins what a deletion lets go of once it has ended: a row it registered for its removal
-    /// (<c>ReconcilerContext.RemovalsTakenDown</c>) where an abort kept the removal from running, and what its pooled
-    /// walk (<see cref="DeletionCommit"/>) held in each field a case names.
+    /// Pins what a deletion lets go of once it has ended: the roots its plan (<see cref="DeletionPlan"/>) kept where an
+    /// abort kept the removals from running, and what its pooled walk (<see cref="DeletionCommit"/>) and pooled plan
+    /// held in each field a case names.
     /// </summary>
     [TestFixture]
     internal sealed class DeletionCommitStateTests
@@ -89,6 +89,18 @@ namespace Velvet.Tests
             return entries;
         }
 
+        // What the plans the pool holds still keep in one of their fields.
+        private static int EntriesLeftInPooledPlans(string field)
+        {
+            var entries = 0;
+            foreach (var plan in PooledPlans())
+            {
+                var value = FieldPathValue(plan, field);
+                entries += (int)value.GetType().GetProperty("Count")!.GetValue(value);
+            }
+            return entries;
+        }
+
         // What the lists one of their fields keeps for reuse still hold, over the walks the pool holds.
         private static int EntriesLeftInListsOfPooledWalks(string field)
         {
@@ -99,6 +111,10 @@ namespace Velvet.Tests
             }
             return entries;
         }
+
+        private static Stack<DeletionPlan> PooledPlans()
+            => (Stack<DeletionPlan>)typeof(DeletionPlan)
+                .GetField("s_pool", BindingFlags.NonPublic | BindingFlags.Static)!.GetValue(null);
 
         private static Stack<DeletionCommit> PooledWalks()
             => (Stack<DeletionCommit>)typeof(DeletionCommit)
@@ -119,25 +135,23 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ADeletionWhoseLayoutCleanupThrowsIntoABoundaryAboveItsElement_When_TheBoundaryFallsBack_Then_NoRowStaysRegisteredAsTakenDown()
+        public void Given_ADeletionWhoseLayoutCleanupThrowsIntoABoundaryAboveItsElement_When_TheBoundaryFallsBack_Then_NoPooledPlanKeepsARoot()
         {
             // Arrange
             var root = new VisualElement();
             using var mounted = V.Mount(root, V.Component(AbortingHost), CaughtErrors.Unlogged);
             mounted.DrainForTest();
-            var context = mounted.Root.Reconciler!.Context;
 
             // Act
             s_setTick.Invoke(1);
             mounted.DrainForTest();
 
             // Assert — a boundary that never fell back aborted nothing, so that reading is a sentinel.
-            Assert.That(root.FindLabelByText("fallback") != null ? context.RemovalsTakenDown.Count : -1, Is.EqualTo(0));
+            Assert.That(root.FindLabelByText("fallback") != null ? EntriesLeftInPooledPlans("Roots") : -1, Is.EqualTo(0));
         }
 
         [TestCase("_removedRows")]
         [TestCase("_orphanRows")]
-        [TestCase("_roots")]
         [TestCase("_portalsUnderRoots")]
         [TestCase("_orphans")]
         [TestCase("_collected")]
@@ -159,6 +173,26 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(EntriesLeftInPooledWalks(field), Is.EqualTo(0));
+        }
+
+        [Test]
+        public void Given_ADeletionRunTwice_When_TheSecondHasEnded_Then_TheSecondReturnedTheOnePlanItRented()
+        {
+            // Arrange
+            using var mounted = V.Mount(new VisualElement(), V.Component(PortalHolderHost, new Target(new VisualElement())));
+            mounted.DrainForTest();
+            s_setShown.Invoke(false);
+            mounted.DrainForTest();
+            var pooledAfterFirst = PooledPlans().Count;
+            s_setShown.Invoke(true);
+            mounted.DrainForTest();
+
+            // Act
+            s_setShown.Invoke(false);
+            mounted.DrainForTest();
+
+            // Assert — a first deletion that returned nothing leaves no pool to compare
+            Assert.That(pooledAfterFirst > 0 ? PooledPlans().Count - pooledAfterFirst : -1, Is.EqualTo(0));
         }
 
         [TestCase("_childrenAtDepth")]

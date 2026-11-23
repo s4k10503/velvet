@@ -16,7 +16,8 @@ namespace Velvet
             _ctx = ctx;
         }
 
-        public void RemoveElement(VisualElement parent, int index)
+        // `plan` is the deletion that took the element down ahead of its removal, where one did.
+        public void RemoveElement(VisualElement parent, int index, DeletionPlan? plan = null)
         {
             var element = ChildListWrites.ElementAtPhysical(parent, index);
             if (element == null)
@@ -24,8 +25,8 @@ namespace Velvet
                 return;
             }
 
-            var poolable = PoolableOccupantOf(element);
-            CleanupElement(element, element.panel, IsDiscardedAfterCleanup(element, poolable) ? element : null);
+            var poolable = plan?.PoolableOf(element) ?? PoolableOccupantOf(element);
+            CleanupElement(element, element.panel, IsDiscardedAfterCleanup(element, poolable) ? element : null, plan);
             RemoveCleaned(parent, element);
             ReturnOccupantToPool(element, poolable);
         }
@@ -45,7 +46,7 @@ namespace Velvet
         // Resolves the poolable occupant of a slot: a clip-path-* leaf sits inside a
         // structural wrapper, and the wrapper — not the widget — is the slot's element. Must run
         // BEFORE CleanupElement, which consumes the wrapper map entry.
-        private VisualElement PoolableOccupantOf(VisualElement element)
+        internal VisualElement PoolableOccupantOf(VisualElement element)
             => _ctx.WrapperToInnerMap.TryGetValue(element, out var inner) ? inner : element;
 
         // Reclaims the slot's poolable occupant after cleanup. An open pass keeps the element until FinishPass has
@@ -205,24 +206,23 @@ namespace Velvet
         }
 
         // DOM operations (RemoveAt / RemoveFromHierarchy) are performed by the caller.
-        public void CleanupElement(VisualElement element) => CleanupElement(element, element.panel, discardedRoot: null);
+        public void CleanupElement(VisualElement element)
+            => CleanupElement(element, element.panel, discardedRoot: null, plan: null);
 
         // `panel` is the one `element` is leaving, passed separately for a caller that has already detached it.
         // `discardedRoot` is ReconcilerContext.DiscardedSubtreeRoot for the span of this teardown; a teardown
         // nested in it (a portal's children, a relocated element) names its own, so none inherits it.
-        private void CleanupElement(VisualElement element, IPanel? panel, VisualElement? discardedRoot)
+        private void CleanupElement(VisualElement element, IPanel? panel, VisualElement? discardedRoot, DeletionPlan? plan)
         {
             // A row a container's deletion took down already has nothing of it left to reach.
-            if (!_ctx.RemovalsTakenDown.Remove(element, out var mounted))
-            {
-                mounted = DeletionCommit.TakeDownLeaving(_ctx, this, element);
-            }
+            var planned = plan?.Take(element);
+            var mounted = planned.HasValue ? planned.Value.Mounted : DeletionCommit.TakeDownLeaving(_ctx, this, element);
             var enclosingRoot = _ctx.DiscardedSubtreeRoot;
             _ctx.DiscardedSubtreeRoot = discardedRoot;
             try
             {
                 // Same wrapper → resources → portal → descendants teardown as the recursive descendant pass.
-                CleanupElementCore(element);
+                CleanupElementCore(element, plan);
             }
             finally
             {
@@ -633,7 +633,7 @@ namespace Velvet
         // (slotStart .. slotStart + slotLength), preserving children placed by other
         // Portals sharing the same target. Entry removal happens before target mutation to prevent double
         // processing via CleanupDescendants recursion.
-        private void CleanupPortal(VisualElement element)
+        private void CleanupPortal(VisualElement element, DeletionPlan? plan)
         {
             _ctx.PendingHostPlaceholders.Remove(element);
             if (!_ctx.PortalState.TryGetValue(element, out var portalInfo))
@@ -688,7 +688,7 @@ namespace Velvet
                     continue;
                 }
                 var poolable = PoolableOccupantOf(child);
-                CleanupElement(child);
+                CleanupElement(child, child.panel, discardedRoot: null, plan);
                 var left = new PortalSlotInfo(
                     target, LogicalChildSlots.ToLogical(target, ChildListWrites.PhysicalIndexOf(target, child)), 1);
                 RemoveCleaned(target, child);
@@ -722,7 +722,7 @@ namespace Velvet
             }
             // The departing children are a deletion's, taken down in its order before CleanupPortal releases them.
             DeletionCommit.TakeDownLeaving(_ctx, this, placeholder);
-            CleanupPortal(placeholder);
+            CleanupPortal(placeholder, plan: null);
             _ctx.PortalState[placeholder] = info with { Target = null, SlotStart = 0, SlotLength = 0, First = null, Last = null };
         }
 
@@ -771,7 +771,7 @@ namespace Velvet
         // element is not (or no longer) a z-layer placeholder. One still standing in the parent is left there until
         // the pass ends (FiberZLayerCoordinator.TakeReal says why) and released by ReleaseRetiredZLayerReals, since
         // a pooled element can be handed out again within the pass.
-        private void CleanupZLayerPlaceholder(VisualElement element)
+        private void CleanupZLayerPlaceholder(VisualElement element, DeletionPlan? plan)
         {
             var real = FiberZLayerCoordinator.TakeReal(_ctx, element, out var stillPlaced);
             if (real == null)
@@ -780,7 +780,7 @@ namespace Velvet
             }
             var poolable = PoolableOccupantOf(real);
             // The real element shares its placeholder's panel.
-            CleanupElement(real, element.panel, discardedRoot: null);
+            CleanupElement(real, element.panel, discardedRoot: null, plan);
             if (stillPlaced)
             {
                 _ctx.PendingZLayerDeadReals.Add((real, poolable));
@@ -815,7 +815,7 @@ namespace Velvet
         // Child element to skip. Specified to prevent double cleanup of the inner element when the
         // wrapper pattern places the inner as a direct child of element. When null,
         // all children are processed.
-        private void CleanupDescendants(VisualElement element, VisualElement? excluded = null)
+        private void CleanupDescendants(VisualElement element, VisualElement? excluded = null, DeletionPlan? plan = null)
         {
             var content = element.contentContainer;
             for (var i = 0; i < ChildListWrites.HierarchyCount(content); i++)
@@ -835,7 +835,7 @@ namespace Velvet
                     continue;
                 }
 
-                CleanupElementCore(child);
+                CleanupElementCore(child, plan);
             }
         }
 
@@ -852,13 +852,13 @@ namespace Velvet
         // Descendant elements are NOT returned to VNodePool here because the descendant DOM remove is bulk
         // (parent.RemoveAt) and individual children are not surfaced. Pool return is limited to the top-level
         // element of RemoveElement and CleanupPortal.
-        private void CleanupElementCore(VisualElement element)
+        private void CleanupElementCore(VisualElement element, DeletionPlan? plan = null)
         {
             var isWrapper = _ctx.WrapperToInnerMap.TryGetValue(element, out var innerElement);
             if (isWrapper)
             {
                 CleanupElementResources(innerElement);
-                CleanupDescendants(innerElement);
+                CleanupDescendants(innerElement, plan: plan);
                 _ctx.WrapperToInnerMap.Remove(element);
             }
 
@@ -868,10 +868,10 @@ namespace Velvet
             // target.RemoveAt(i) triggers below — checking for a focused element after that point
             // always observes null.
             RescueFocusFromWorldSpaceHost(element);
-            CleanupPortal(element);
+            CleanupPortal(element, plan);
             CleanupWorldSpaceHost(element);
-            CleanupZLayerPlaceholder(element);
-            CleanupDescendants(element, innerElement);
+            CleanupZLayerPlaceholder(element, plan);
+            CleanupDescendants(element, innerElement, plan);
         }
 
         // If element is a world-space placeholder whose host panel currently holds focus, hands focus
