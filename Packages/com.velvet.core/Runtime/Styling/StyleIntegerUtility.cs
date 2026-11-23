@@ -7,7 +7,6 @@ namespace Velvet
     // integer bare or bracketed, with the cascade's important-beats-plain, later-beats-earlier winner.
     internal static class StyleIntegerUtility
     {
-        // Whether core, with its important bang stripped, is `prefix` or `-prefix` followed by anything.
         internal static bool IsToken(ReadOnlySpan<char> core, string prefix)
             => core.Slice(core.Length > 0 && core[0] == '-' ? 1 : 0).StartsWith(prefix.AsSpan(), StringComparison.Ordinal);
 

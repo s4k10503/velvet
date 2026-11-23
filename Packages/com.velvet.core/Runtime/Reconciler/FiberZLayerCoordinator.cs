@@ -1,5 +1,4 @@
 #nullable enable
-using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using UnityEngine.UIElements;
@@ -216,14 +215,15 @@ namespace Velvet
                 return false;
             }
             var core = StyleArbitraryValueResolver.ImportantCore(UtilityOf(cls));
-            return core.SequenceEqual("absolute".AsSpan()) || core.SequenceEqual("relative".AsSpan())
+            return System.MemoryExtensions.SequenceEqual(core, "absolute")
+                || System.MemoryExtensions.SequenceEqual(core, "relative")
                 || StyleOrderClass.IsOrderToken(core)
-                || core.StartsWith("z-".AsSpan(), StringComparison.Ordinal)
-                || core.StartsWith("-z-".AsSpan(), StringComparison.Ordinal);
+                || System.MemoryExtensions.StartsWith(core, "z-", System.StringComparison.Ordinal)
+                || System.MemoryExtensions.StartsWith(core, "-z-", System.StringComparison.Ordinal);
         }
 
         // The utility after cls's last variant separator outside brackets and parentheses.
-        private static ReadOnlySpan<char> UtilityOf(string cls)
+        private static System.ReadOnlySpan<char> UtilityOf(string cls)
         {
             var depth = 0;
             var start = 0;
@@ -242,7 +242,7 @@ namespace Velvet
                         break;
                 }
             }
-            return cls.AsSpan(start);
+            return System.MemoryExtensions.AsSpan(cls, start);
         }
 
         // Records the z and flex order resolved — the class source the element's passes read, with whatever variant

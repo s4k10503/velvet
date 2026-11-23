@@ -56,7 +56,6 @@ namespace Velvet
         public static bool IsSkewClass(string? cls)
             => OpensSkew(StyleArbitraryValueResolver.ImportantCore(cls.AsSpan()));
 
-        // Whether core, a class without its important modifier, opens with skew- after an optional sign.
         private static bool OpensSkew(ReadOnlySpan<char> core)
             => core.Length != 0
                 && core.Slice(core[0] == '-' ? 1 : 0).StartsWith(BothPrefix.AsSpan(), StringComparison.Ordinal);
