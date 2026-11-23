@@ -576,5 +576,37 @@ namespace Velvet.Tests
             // Assert
             Assert.That(Listed(element), Is.EqualTo(new[] { "all" }));
         }
+
+        private static object s_sink;
+
+        // A class no rule names, on and off, each change matched again by a style pass; nothing it changes transitions.
+        private static Action Toggled(VisualElement element)
+        {
+            var applyStyles = (Action)Delegate.CreateDelegate(typeof(Action), element.panel,
+                element.panel.GetType().GetMethod("ApplyStyles", Internal, null, Type.EmptyTypes, null)!);
+            return () =>
+            {
+                element.AddToClassList("app-marker");
+                applyStyles();
+                element.RemoveFromClassList("app-marker");
+                applyStyles();
+            };
+        }
+
+        // GREEN_ON_BASE(characterization): the base's transition-all adds no allocation to a style pass changing nothing.
+        [Test]
+        public void Given_ATransitionAllElementAndAPlainOne_When_AClassNoRuleNamesToggles_Then_TheirStylePassesAllocateAlike()
+        {
+            // Arrange
+            var transitioning = Toggled(Resolved("transition-all"));
+            var plain = Toggled(Resolved("app-plain"));
+            var canary = GCAllocationProbe.MedianBlocksDuring(() => s_sink = new object());
+
+            // Act
+            var extra = GCAllocationProbe.MedianBlocksDuring(transitioning) - GCAllocationProbe.MedianBlocksDuring(plain);
+
+            // Assert
+            Assert.That(canary > 0 ? extra : -1, Is.EqualTo(0));
+        }
     }
 }
