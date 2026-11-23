@@ -194,11 +194,24 @@ namespace Velvet
         // The slot path is hashed with the index: siblings written under separate unkeyed wrappers share
         // their index, and a table hashing the index alone chains every one of them into one bucket.
         public override int GetHashCode()
-            => (_isPositional ? unchecked(_index * 397) ^ _slotPath.GetHashCode() : (_key?.GetHashCode() ?? 0))
+            => (_isPositional ? unchecked(_index * 397) ^ _slotPath.GetHashCode() : HashOf(_key))
                 // MUTANT_SURVIVES(equivalent, equality): the owner term only spreads owned keys across buckets.
                 // Either spelling gives equal keys equal hashes, and which keys match is Equals' answer, which
                 // reads the owner.
                 ^ (_owner == null ? 0 : System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(_owner));
+
+        // Not string.GetHashCode: keys that differ only after the NUL FiberKeying.LeafScope joins a scope and a key with
+        // hash alike under it (ChildKeyHashTests), which put the siblings of one scope in one bucket.
+        private static int HashOf(string? key)
+        {
+            if (key == null) return 0;
+            unchecked
+            {
+                var hash = (int)2166136261;
+                for (var i = 0; i < key.Length; i++) hash = (hash ^ key[i]) * 16777619;
+                return hash;
+            }
+        }
 
         public override string ToString()
             => _isPositional
