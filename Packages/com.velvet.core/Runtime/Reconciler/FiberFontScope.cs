@@ -216,14 +216,8 @@ namespace Velvet
             return up;
         }
 
-        // The font the element's parent resolves to, as the object the engine holds: null before the panel has resolved
-        // one. A legacy font counts only where the definition names none.
-        private static UnityEngine.Object? ParentPeek(VisualElement element)
-        {
-            var parent = ChildListWrites.ParentOf(element);
-            return parent == null ? null : Peek(parent);
-        }
-
+        // The font an element resolves to, as the object the engine holds: null before the panel has resolved one. A legacy
+        // font counts only where the definition names none.
         private static UnityEngine.Object? Peek(VisualElement source)
         {
             var resolved = source.resolvedStyle;
@@ -240,10 +234,39 @@ namespace Velvet
                 && !StyleFilterTransitionDriver.TryFindTransition(element, "-unity-font-definition", "-unity-font",
                     out _, out _, out _);
 
+        // The fonts the rules matching an element set, by the key the engine caches the element's style under, which moves
+        // with the rules and the inherited style above it. Read where a frame finds the reads disagree, which would
+        // otherwise ask the matcher, and allocate, on each frame an element with a rule font of its own stays so.
+        private static readonly Dictionary<long, bool> s_ruleFont = new();
+
+        private static bool RuleSetsFont(VisualElement element)
+        {
+            var key = StyleCascade.RulesHash(element) ?? 0;
+            var known = false;
+            if (key != 0 && s_ruleFont.TryGetValue(key, out known))
+            {
+                return known;
+            }
+
+            var sets = (BorderPreflight.RuleFonts(element) ?? 0) != 0;
+            if (key != 0)
+            {
+                if (s_ruleFont.Count >= 512)
+                {
+                    s_ruleFont.Clear();
+                }
+
+                s_ruleFont[key] = sets;
+            }
+
+            return sets;
+        }
+
         // The font the element's parent gives it as of now. An element that inherits its font shows it from the style
         // pass of its panel, so a write of Velvet's or an author's above it is read off the nearest ancestor that
-        // declares a font instead, unless a rule of an author's stylesheet gives one in between, which is read where
-        // it is given. Where the two reads agree, nothing is asked of the matcher.
+        // declares a font instead, unless a rule of any stylesheet gives one in between, which is read where it is given.
+        // Where the two reads agree, nothing is asked of the matcher; where it cannot be built, only inline fonts are
+        // read. A frame that leaves the reads agreeing costs each inheritor a walk up past the elements that inherit.
         // Given_AClasslessElementBetweenABoldElementAndABoldLabel_When_TheContainersFamilyChanges_Then_TheLabelFollowsAtOnce
         // fails when the read stops at the parent.
         private static UnityEngine.Object? InheritedPeek(VisualElement element)
@@ -266,23 +289,15 @@ namespace Velvet
                 source = up;
             }
 
-            var near = Peek(parent);
             var far = Peek(source);
-            if (far == near)
+            if (far == Peek(parent))
             {
                 return far;
             }
 
-            // Where the matcher cannot be built, a rule in between cannot be told from a font not computed yet, and the
-            // engine's own read of the parent stands.
-            if (BorderPreflight.HasAuthorSheet(parent) is not { } sheeted)
+            for (var ancestor = parent; ancestor != source; ancestor = ChildListWrites.ParentOf(ancestor)!)
             {
-                return near;
-            }
-
-            for (var ancestor = parent; sheeted && ancestor != source; ancestor = ChildListWrites.ParentOf(ancestor)!)
-            {
-                if ((BorderPreflight.AuthorRuleFonts(ancestor) ?? 0) != 0)
+                if (RuleSetsFont(ancestor))
                 {
                     return Peek(ancestor);
                 }
@@ -448,7 +463,7 @@ namespace Velvet
         // Whether what the element's font was resolved from has moved, short of its matched rules: the parent's font and
         // the author's inline font on the element.
         private static bool Moved(VisualElement element, in Inheritor entry)
-            => ParentPeek(element) != entry.Seen || InlineFontLedger.AuthorFont(element) != entry.Own
+            => InheritedPeek(element) != entry.Seen || InlineFontLedger.AuthorFont(element) != entry.Own
                 || ParentLegacy(element) != entry.SeenLegacy;
 
         private static UnityEngine.Object? ParentLegacy(VisualElement element)
@@ -502,7 +517,7 @@ namespace Velvet
             }
 
             int? ruleKey = BorderPreflight.HasAuthorSheet(element) == true ? RuleKeyOf(element) : null;
-            Inheritors[element] = new Inheritor(intent, found.Named, ParentPeek(element), 0, StyleCascade.RulesHash(element),
+            Inheritors[element] = new Inheritor(intent, found.Named, InheritedPeek(element), 0, StyleCascade.RulesHash(element),
                 InlineFontLedger.AuthorFont(element), family, foreign, ruleKey, ParentLegacy(element), legacy);
             _wantsFollow = true;
             return hadPrior && moved;
@@ -627,14 +642,13 @@ namespace Velvet
         }
 
         // A child reads its font off its parent, so each inheritor under one resolved here is read again straight after
-        // it, in this Tick rather than the next: one directly under it where the font it shows has moved, and one with
-        // only elements that inherit their font in between where the family it resolved to has.
+        // it, in this Tick rather than the next: where the font it reads has moved, or the family it resolved to has.
         private void ResolveDown(VisualElement element, in FontIntent intent, bool force)
         {
-            ResolveBelow(element, Resolve(element, intent, force), direct: true);
+            ResolveBelow(element, Resolve(element, intent, force));
         }
 
-        private void ResolveBelow(VisualElement parent, bool moved, bool direct)
+        private void ResolveBelow(VisualElement parent, bool moved)
         {
             var count = parent.hierarchy.childCount;
             for (var i = 0; i < count; i++)
@@ -642,14 +656,14 @@ namespace Velvet
                 var child = parent.hierarchy[i];
                 if (Inheritors.TryGetValue(child, out var entry))
                 {
-                    if (direct ? ParentPeek(child) != entry.Seen : moved)
+                    if (moved || InheritedPeek(child) != entry.Seen)
                     {
                         ResolveDown(child, entry.Intent, false);
                     }
                 }
                 else if (moved && !Families.ContainsKey(child) && Inherits(child))
                 {
-                    ResolveBelow(child, true, false);
+                    ResolveBelow(child, true);
                 }
             }
         }

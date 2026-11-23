@@ -1020,10 +1020,30 @@ namespace Velvet
             return found;
         }
 
-        // Each property of each rule of a non-default stylesheet matching element, with the sheet the rule sits in and
-        // the property's name. The matcher is cleared again however the walk ends.
+        // AuthorRuleFonts over the rules of every stylesheet, a default one's included.
+        internal static int? RuleFonts(VisualElement element)
+        {
+            if (s_extractor == null) return null;
+
+            var found = 0;
+            foreach (var (_, _, name) in AuthorProperties(element, includeDefault: true))
+            {
+                if (name == "-unity-font-definition")
+                {
+                    found |= 1;
+                }
+                else if (name == "-unity-font")
+                {
+                    found |= 2;
+                }
+            }
+            return found;
+        }
+
+        // Each property of each rule of a non-default stylesheet matching element (of any, where includeDefault), with the
+        // sheet the rule sits in and the property's name. The matcher is cleared again however the walk ends.
         private static System.Collections.Generic.IEnumerable<(object Sheet, object Property, string Name)>
-            AuthorProperties(VisualElement element)
+            AuthorProperties(VisualElement element, bool includeDefault = false)
         {
             s_clear!.Invoke(s_extractor, null);
             s_find!.Invoke(s_extractor, new object[] { element });
@@ -1032,7 +1052,7 @@ namespace Velvet
                 foreach (var record in (IList)s_records!.GetValue(s_extractor))
                 {
                     var sheet = s_recordSheet!.GetValue(record);
-                    if ((bool)s_isDefault!.GetValue(sheet))
+                    if (!includeDefault && (bool)s_isDefault!.GetValue(sheet))
                     {
                         continue;
                     }
