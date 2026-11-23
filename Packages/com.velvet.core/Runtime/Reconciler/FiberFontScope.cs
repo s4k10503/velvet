@@ -103,7 +103,6 @@ namespace Velvet
         private static readonly List<System.WeakReference<FiberFontScope>> s_scopes = new();
 
         private readonly HashSet<VisualElement> _pending = new();
-        private readonly List<(int Depth, VisualElement Element)> _order = new();
         private readonly System.Predicate<VisualElement> _settle;
         private readonly List<VisualElement> _buffer = new();
         private VisualElement? _mountRoot;
@@ -144,7 +143,7 @@ namespace Velvet
                 StyleFontResolver.ApplyResolved(element, Families[element].Intent, null, foreign: false);
             }
 
-            foreach (var element in new List<VisualElement>(Inheritors.Keys))
+            foreach (var element in InTreeOrder(Inheritors.Keys))
             {
                 var entry = Inheritors[element];
                 if (entry.Named != null || InheritedFamily(element) != null)
@@ -474,12 +473,12 @@ namespace Velvet
             }
         }
 
-        // An element reads the font its parent has just been given, so each ancestor settles before what is under it,
-        // whatever order the set holds them in.
-        private void SettleInTreeOrder()
+        // An element reads the font its parent has just been given, so each ancestor goes before what is under it,
+        // whatever order the collection holds them in.
+        private static List<VisualElement> InTreeOrder(IEnumerable<VisualElement> elements)
         {
-            _order.Clear();
-            foreach (var element in _pending)
+            var keyed = new List<(int Depth, VisualElement Element)>();
+            foreach (var element in elements)
             {
                 var depth = 0;
                 for (var up = ChildListWrites.ParentOf(element); up != null; up = ChildListWrites.ParentOf(up))
@@ -487,11 +486,16 @@ namespace Velvet
                     depth++;
                 }
 
-                _order.Add((depth, element));
+                keyed.Add((depth, element));
             }
 
-            _order.Sort(static (left, right) => left.Depth.CompareTo(right.Depth));
-            foreach (var (_, element) in _order)
+            keyed.Sort(static (left, right) => left.Depth.CompareTo(right.Depth));
+            return keyed.ConvertAll(static pair => pair.Element);
+        }
+
+        private void SettleInTreeOrder()
+        {
+            foreach (var element in InTreeOrder(_pending))
             {
                 if (_settle(element))
                 {

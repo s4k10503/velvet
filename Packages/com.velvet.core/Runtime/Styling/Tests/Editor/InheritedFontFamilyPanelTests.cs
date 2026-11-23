@@ -537,25 +537,78 @@ namespace Velvet.Tests
         }
 
 
+        // A tree whose label is in the scope's tables before the element between it and the container: the element
+        // gains its weight class in a patch after the label already inherits.
+        private void MountLabelBeforeMiddleIsAnInheritor(string containerClass)
+        {
+            VNode Tree(string container, string middle) => V.Div(className: container, children: new VNode[]
+            {
+                V.Div(className: middle, children: new[] { Target("font-bold") }),
+            });
+            _mounted = V.Mount(_host.Root, Tree(containerClass, string.Empty));
+            RunAFrame();
+            _mounted.Render(Tree(containerClass, "font-normal"));
+            RunAFrame();
+        }
+
         // GREEN_ON_BASE(characterization): the base resolves a bold label under a font-<name> ancestor the moment that
         // class changes, with a weight element between them. Settle the pending inheritors in `_pending`'s own order
-        // instead of SettleInTreeOrder and the label can settle before the element between and read its old font.
+        // instead of SettleInTreeOrder and the label, which entered the set before the element, settles first and reads
+        // the element's old font.
         [Test]
         public void Given_AWeightElementBetweenAFamilyContainerAndABoldLabel_When_TheContainersFamilyChanges_Then_TheLabelFollowsAtOnce()
         {
             // Arrange
+            MountLabelBeforeMiddleIsAnInheritor("font-serif");
             VNode Tree(string containerClass) => V.Div(className: containerClass, children: new VNode[]
             {
                 V.Div(className: "font-normal", children: new[] { Target("font-bold") }),
             });
-            _mounted = V.Mount(_host.Root, Tree("font-serif"));
-            RunAFrame();
 
             // Act
             _mounted.Render(Tree("font-mono"));
 
             // Assert
             Assert.That(TargetAsset(), Is.SameAs(_monoBold));
+        }
+
+        // GREEN_ON_BASE(characterization): the base writes the re-registered family's Bold on the label at once. Walk
+        // `Inheritors.Keys` in its own order in Refresh instead of InTreeOrder and the label, which entered the table
+        // before the element between it and the container, resolves first against that element's old face.
+        [Test]
+        public void Given_AWeightElementBetweenAFamilyContainerAndABoldLabel_When_TheContainersFamilyIsRegisteredAgain_Then_TheLabelResolvesTheNewBoldAtOnce()
+        {
+            // Arrange
+            MountLabelBeforeMiddleIsAnInheritor("font-serif");
+            var replacement = NewAsset();
+
+            // Act
+            VelvetFonts.Register(new VelvetFontFamily("serif",
+                new VelvetFontWeightEntry { weight = VelvetFontWeight.Normal, upright = NewAsset() },
+                new VelvetFontWeightEntry { weight = VelvetFontWeight.Bold, upright = replacement }));
+
+            // Assert
+            Assert.That(TargetAsset(), Is.SameAs(replacement));
+        }
+
+        // GREEN_ON_BASE(characterization): the base keeps the list a container names for the label under it. Read the list
+        // as a single name in `VelvetFonts.NamedHolds` and the label's resolve takes the family of the container's font,
+        // which appends no fallback to the Bold it writes.
+        [Test]
+        public void Given_AContainerNamingAFontListWhoseFirstNameHoldsNoFont_When_ItsLabelsWeightChanges_Then_TheLabelKeepsTheListsFallbacks()
+        {
+            // Arrange
+            VNode Tree(string labelClass) => V.Div(className: "font-[ghost,mono,serif]", children: new[] { Target(labelClass) });
+            _mounted = V.Mount(_host.Root, Tree("font-bold"));
+            RunAFrame();
+            _monoBold.fallbackFontAssetTable?.Clear();
+
+            // Act
+            _mounted.Render(Tree("font-black"));
+            RunAFrame();
+
+            // Assert
+            Assert.That(_monoBold.fallbackFontAssetTable, Does.Contain(_serifBold));
         }
 
         // GREEN_ON_BASE(characterization): the base writes no asset for a family nothing is registered under. Drop
