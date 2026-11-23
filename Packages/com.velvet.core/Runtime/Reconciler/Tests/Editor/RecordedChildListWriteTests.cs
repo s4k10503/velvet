@@ -190,6 +190,50 @@ namespace Velvet.Tests
             Assert.That(_root[0].name, Is.EqualTo("first"));
         }
 
+        [Test]
+        public void Given_AnEarlierRowReplacedAndALaterOneGivenAClipPath_When_AThirdRowIsCreated_Then_TheLiveListStillHoldsTheOldFirstRow()
+        {
+            // Arrange
+            var oldTree = new VNode[] { V.Div(name: "first"), V.Div(name: "second") };
+            _reconciler.Reconcile(_root, Array.Empty<VNode>(), oldTree);
+            var oldFirst = _root[0];
+            var seen = -1;
+            var newTree = new VNode[]
+            {
+                V.Label(text: "x", name: "first"),
+                V.Div(name: "second", className: "clip-path-[circle(50%)]"),
+                V.Div(name: "third", children: new VNode[] { V.ScrollView(onCreated: _ => seen = ReferenceEquals(_root[0], oldFirst) ? 1 : 0) }),
+            };
+
+            // Act
+            _reconciler.Reconcile(_root, oldTree, newTree);
+
+            // Assert
+            Assert.That(seen, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_AnEarlierRowReplacedAndALaterOneLosingItsClipPath_When_AThirdRowIsCreated_Then_TheLiveListStillHoldsTheOldFirstRow()
+        {
+            // Arrange
+            var oldTree = new VNode[] { V.Div(name: "first"), V.Div(name: "second", className: "clip-path-[circle(50%)]") };
+            _reconciler.Reconcile(_root, Array.Empty<VNode>(), oldTree);
+            var oldFirst = _root[0];
+            var seen = -1;
+            var newTree = new VNode[]
+            {
+                V.Label(text: "x", name: "first"),
+                V.Div(name: "second"),
+                V.Div(name: "third", children: new VNode[] { V.ScrollView(onCreated: _ => seen = ReferenceEquals(_root[0], oldFirst) ? 1 : 0) }),
+            };
+
+            // Act
+            _reconciler.Reconcile(_root, oldTree, newTree);
+
+            // Assert
+            Assert.That(seen, Is.EqualTo(1));
+        }
+
         // GREEN_ON_BASE(refactor): the base inserts the replaced row at once, so the rank the exchange builds already
         // holds it there.
         [Test]
