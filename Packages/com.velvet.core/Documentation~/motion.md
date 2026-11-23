@@ -132,9 +132,10 @@ V.Div(name: "row", className: "flex flex-row gap-x-2", children: new VNode[]
   including inline geometry the pose had overwritten.
 - A key whose Motion is created again while the key stays, as an `elementType` change does, enters
   again, unless `initial: false` still withholds that key's enter (below).
-- **What an exit animates:** under the default Tween driver, the pose swap's class delta transitions
-  over what `transition-all` transitions on the element (*Discrete properties*), not a fixed channel
-  set. Spring and cubic-bezier exits drive the channels they can resolve a number
+- **What an exit animates:** under the default Tween driver, any USS-transitionable property the
+  pose swap changed animates — `transition-property: all` picks up the whole class delta, not a
+  fixed channel set; *Discrete properties* below says which of those properties land instead.
+  Spring and cubic-bezier exits drive the channels they can resolve a number
   for out of the class strings; *Driven channels* below is the single list of what that covers and
   what it deliberately leaves out. A `skew-x-*` / `skew-y-*` angle animates on every driver: a Tween that
   moves one runs on the Bezier driver, which draws the angle, since UI Toolkit's transition cannot.
@@ -313,8 +314,7 @@ the entry's delay and once whatever the play repeats. A `Tween` holding such an 
 `DurationSec` is 0 holding an entry that animates, plays on the per-frame driver a `Bezier` plays on, the play's own
 curve landing at once. Where an entry's delay is shorter than the play's, the entry's value starts then and the rest
 wait out the play's own; a `Spring`'s or `Bezier`'s reversal starts every value at once. A property no override names animates on the
-enclosing config's timing where `transition-all` would transition it (*Discrete properties*), and an entry named
-`"all"` stands for those properties.
+enclosing config's timing.
 Completion is sized off the **slowest** of those, so a long override finishes instead
 of being snapped when the top-level duration elapses. A `Tween`, a `Bezier` and a `Spring` read them on every variant swap:
 mount enters, label changes and exits.
@@ -509,8 +509,7 @@ missing or cannot be invoked, the play uses the ordinary inline or resolved star
   that applies is decided from the element's **class list**, resolved the way the cascade resolves
   it: `transition-property` holds one value, so the utilities that set it do not combine — the
   **last-declared** one present on the element wins outright and the rest contribute nothing. The
-  bundled order is Tailwind's: `transition-all` (with the `transition-all-discrete` Velvet puts beside it under
-  `transition-discrete`, *Discrete properties*), `transition-colors`, `transition-colors-scale`,
+  bundled order is Tailwind's: `transition-all`, `transition-colors`, `transition-colors-scale`,
   `transition-colors-scale-opacity`, `transition-filter`, `transition-opacity`,
   `transition-transform`, `transition-none`, then the scheduler-applied `anim-*` presets. So
   `transition-all transition-colors` transitions the colours only, and
@@ -518,7 +517,8 @@ missing or cannot be invoked, the play uses the ordinary inline or resolved star
   in. `transition-filter` names `filter`, which no driver writes, so it never triggers a
   suspension. With none of those utilities present, a `duration-*` class — or the inline
   `duration-[…]` form — leaves `transition-property` at UI Toolkit's default of `all`, so those
-  elements transition *everything* natively and a play on them always suspends; with no duration
+  elements transition *everything* natively but what *Discrete properties* lands, and a play on them
+  always suspends; with no duration
   either, the element transitions nothing and nothing suspends. A play suspends only where its own
   channels intersect the resolved set — a `transition-colors` element running a fade/slide keeps
   its hover fade, while the same play on a `transition-transform` or `transition-all` element
@@ -539,18 +539,20 @@ missing or cannot be invoked, the play uses the ordinary inline or resolved star
 
 ## Discrete properties (`transition-discrete`)
 
-As under CSS's default `transition-behavior: normal`, `transition-all` leaves out properties UI Toolkit can only
-switch from one value to the other, such as `flex-direction`, `justify-content`, `position`, `white-space`,
-`-unity-text-align` and `background-image`: a class or an inline write changes one of them at once while the
-element's other properties transition. `visibility`, `background-position` and the font properties stay in.
-`transition-discrete` (`transition-behavior: allow-discrete`) transitions them too, each switching to the new value
-partway through, as CSS switches a discrete property; `transition-normal` takes them back out. Of the two, the one
-that ranks later wins, as of two utilities writing one property: a variant's over the element's own, either way
-round (`transition-discrete md:transition-normal`), and a pose's while a play shows it. A `Tween` variant swap UI
-Toolkit's own transition runs (*Clocks*) transitions what `transition-all` would on its element. `transition-colors`,
-`transition-colors-scale`, `transition-colors-scale-opacity`, `transition-filter`, `transition-opacity`,
-`transition-transform` and `transition-none` name none of these properties, so the two classes change what
-`transition-all` and such a swap transition, and nothing else.
+UI Toolkit transitions a property it can only switch from one value to the other, such as `flex-direction`,
+`justify-content`, `position`, `white-space`, `-unity-text-align` or `background-image`, by switching it partway
+through, where CSS's default `transition-behavior: normal` changes it at once. On an element Velvet renders, such a
+transition is cancelled at the panel's next animation update, which lands the new value, whatever gave the element
+the transition: `transition-all`, a `duration-*` alone, a stylesheet's own `transition-property`, an inline write or
+a `Tween` variant swap UI Toolkit's own transition runs (*Clocks*). An element Velvet renders is one under the element
+a tree is mounted on, a layer or world-space panel's root, or a row a portal puts in its target. `visibility`,
+`background-position` and the font properties keep switching partway through.
+
+`transition-discrete` (`transition-behavior: allow-discrete`) leaves UI Toolkit's transition running, so the
+property switches to the new value partway through, as CSS switches a discrete property; `transition-normal` takes
+that back. Of the two, the one that ranks later wins, as of two utilities writing one property: a variant's over the
+element's own, either way round (`transition-discrete md:transition-normal`), and a play's while it shows one. On a
+`V.TextField` both go to the input as well as to the field, as the `transition-*` utilities do.
 
 ## Cubic-bezier easing
 
@@ -708,7 +710,8 @@ V.Motion(layoutId: "card-3", className: expanded ? "absolute left-[0px] top-[0px
   on each frame, as UI Toolkit draws it, rather than transitioning towards a new pixel value when the size
   changes. A change of either axis of the translate, or of the scale, starts both axes over on the
   transition, as UI Toolkit runs each as one value. While the tween runs, the transitions the element's classes
-  declare go on running for every property but the ones the tween writes, as Framer leaves the CSS
+  declare go on running for every property but the ones the tween writes and those *Discrete properties* lands, as
+  Framer leaves the CSS
   transitions of what a layout animation does not animate, and take a change of those classes as it comes.
   A Motion that leaves its panel without being unmounted has its tween ended on its panel's next frame.
 - Works across a same-key type flip or a move to a different parent, not just an in-place resize:

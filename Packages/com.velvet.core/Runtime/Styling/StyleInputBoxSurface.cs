@@ -160,7 +160,7 @@ namespace Velvet
         public static bool TryGetSharedBox(VisualElement target, string core, out VisualElement box)
         {
             box = null!;
-            return PlacementOfCore(core) == Placement.Both && IsControl(target) && TryGetBox(target, out box);
+            return PlacementOf(core) == Placement.Both && IsControl(target) && TryGetBox(target, out box);
         }
 
         // The element inside a box that draws its text, which a text-overflow utility lands on as well: CSS
@@ -229,36 +229,16 @@ namespace Velvet
             {
                 leaf = next!;
             }
-            return PlacementOfCore(StyleArbitraryValueResolver.StripImportant(leaf, out _));
+            return PlacementOf(StyleArbitraryValueResolver.StripImportant(leaf, out _));
         }
+
+        // transition-behavior goes where transition-property does, and declares no longhand to say so.
+        private static Placement PlacementOf(string core)
+            => StyleTransitionBehavior.IsBehaviourClass(core) ? Placement.Both : PlacementOfCore(core);
 
         private static Placement PlacementOfCore(string core)
         {
-            if (IsBoxFamily(core))
-            {
-                return Placement.Box;
-            }
-            // transition-behavior goes where transition-property does, and declares no longhand to say so.
-            if (StyleTransitionBehavior.IsBehaviourClass(core))
-            {
-                return Placement.Both;
-            }
-            var longhands = LonghandsOf(core);
-            if (longhands.IsEmpty)
-            {
-                return Placement.Control;
-            }
-            if (longhands.Union(s_boxLonghands) == s_boxLonghands)
-            {
-                return Placement.Box;
-            }
-            return longhands.Union(s_transitionLonghands) == s_transitionLonghands
-                ? Placement.Both
-                : Placement.Control;
-        }
-
-        private static bool IsBoxFamily(string core)
-            => core.StartsWith("bg-", StringComparison.Ordinal)
+            if (core.StartsWith("bg-", StringComparison.Ordinal)
                 // The nine-slice utilities follow the background image bg-[addr:…] puts on the box.
                 || core.StartsWith("slice-", StringComparison.Ordinal)
                 || core == "border" || core.StartsWith("border-", StringComparison.Ordinal)
@@ -275,7 +255,23 @@ namespace Velvet
                 || StyleSkewClass.IsSkewClass(core)
                 || StyleAnimateClass.IsAnimateClass(core)
                 || core.StartsWith("caret-", StringComparison.Ordinal)
-                || core.StartsWith("selection:", StringComparison.Ordinal);
+                || core.StartsWith("selection:", StringComparison.Ordinal))
+            {
+                return Placement.Box;
+            }
+            var longhands = LonghandsOf(core);
+            if (longhands.IsEmpty)
+            {
+                return Placement.Control;
+            }
+            if (longhands.Union(s_boxLonghands) == s_boxLonghands)
+            {
+                return Placement.Box;
+            }
+            return longhands.Union(s_transitionLonghands) == s_transitionLonghands
+                ? Placement.Both
+                : Placement.Control;
+        }
 
         private static bool IsShadowOrRingToken(string core)
             => StyleShadowClass.IsShadowClass(core)

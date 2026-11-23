@@ -1,5 +1,4 @@
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -12,41 +11,20 @@ using Velvet.TestUtilities;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Pins CSS's transition-behavior on the bundled transition utilities: <c>transition-all</c>'s list, the
-    /// <c>transition-discrete</c> and <c>transition-normal</c> classes <c>StyleTransitionBehavior</c> resolves,
-    /// and the list a variant tween takes.
+    /// Pins CSS's transition-behavior on what Velvet renders: a transition UI Toolkit starts for justify-content, which
+    /// it can only switch, lands the new value by the panel's next animation update, whatever gave the element its
+    /// transition, unless transition-discrete outranks transition-normal on the element.
     /// </summary>
     internal sealed class TransitionDiscretePanelTests : PanelTestBase
     {
         private const BindingFlags Internal = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static
             | BindingFlags.Instance;
 
-        // CSS transitions these under transition-behavior: normal: visibility keeps its visible end for the whole
-        // transition, and background-position interpolates.
-        private static readonly HashSet<string> s_cssTransitionsByDefault = new(StringComparer.Ordinal)
-        {
-            "visibility", "background-position-x", "background-position-y",
-        };
+        private const string OneSecond = "duration-1000 ease-linear";
 
-        // Kept in transition-all's list beside them as well (_effects.uss says why).
-        private static readonly HashSet<string> s_fontProperties = new(StringComparer.Ordinal)
-        {
-            "-unity-font", "-unity-font-definition", "-unity-font-style",
-        };
-
-        private sealed class ClassNames : Store<string>
-        {
-            public ClassNames(string initial) : base(initial) { }
-
-            public void Set(string value) => SetState(_ => value);
-
-            protected override void ResetCore() => SetState(_ => string.Empty);
-        }
-
-        private static ClassNames s_classNames;
-
-        [Component]
-        private static VNode Leaf() => V.Div(name: "leaf", className: Hooks.UseStore(s_classNames, x => x));
+        // Where no transition of justify-content ran, so that a change nothing transitioned cannot pass for one
+        // landed or held back.
+        private const Justify NoneRan = (Justify)(-1);
 
         private readonly List<MountedTree> _mounts = new();
         private StyleSheet _sheet;
@@ -70,32 +48,38 @@ namespace Velvet.Tests
             base.TearDown();
         }
 
-        // An element carrying classNames as a plain class list, which no Velvet class handling reads.
-        private VisualElement Resolved(string classNames)
+        // An element of its own under the window's root, for a tree to be mounted on or a portal to render into.
+        private VisualElement NewRoot()
+        {
+            var root = new VisualElement();
+            _window.rootVisualElement.Add(root);
+            return root;
+        }
+
+        private void Mount(VisualElement root, VNode tree) => _mounts.Add(V.Mount(root, tree));
+
+        // An element a className gives classNames, in a tree mounted on an element of its own.
+        private VisualElement Mounted(string classNames)
+        {
+            var root = NewRoot();
+            Mount(root, V.Div(name: "leaf", className: classNames));
+            return Attached(root.Q<VisualElement>("leaf"));
+        }
+
+        // An element carrying classNames on its class list, under an element no tree is mounted on.
+        private VisualElement Unmounted(string classNames, VisualElement root)
         {
             var element = new VisualElement();
             foreach (var className in classNames.Split(' '))
             {
                 element.AddToClassList(className);
             }
+            root.Add(element);
             return Attached(element);
-        }
-
-        // An element a className gives classNames, through the class projection.
-        private VisualElement Mounted(string classNames)
-        {
-            var root = new VisualElement();
-            _window.rootVisualElement.Add(root);
-            _mounts.Add(V.Mount(root, V.Div(name: "leaf", className: classNames)));
-            return Attached(root.Q<VisualElement>("leaf"));
         }
 
         private VisualElement Attached(VisualElement element)
         {
-            if (element.panel == null)
-            {
-                _window.rootVisualElement.Add(element);
-            }
             _now = 100.0;
             EditorPanelTestHelpers.SetPanelTimeFunction(element.panel, () => _now);
             ForcePanelUpdate(element.panel);
@@ -114,72 +98,30 @@ namespace Velvet.Tests
         // A quarter of the way into the one-second transitions the cases declare.
         private void RunAQuarterSecond(VisualElement element) => RunFor(element, 0.25);
 
-        private void Swap(VisualElement element, string from, string to)
+        private static void Swap(VisualElement element, string from, string to)
         {
             element.RemoveFromClassList(from);
             element.AddToClassList(to);
-            RunAQuarterSecond(element);
         }
 
-        private static string[] Listed(VisualElement element)
-            => element.resolvedStyle.transitionProperty.Select(property => property.ToString()).ToArray();
-
-        private static string[] ListedWithADuration(VisualElement element)
-            => element.resolvedStyle.transitionDuration.Any(time => time.value > 0f)
-                ? Listed(element)
-                : new[] { "(no duration)" };
-
-        private static string[] WrittenInline(VisualElement element)
+        private static bool Runs(VisualElement element)
         {
-            var property = element.style.transitionProperty;
-            return property.keyword == StyleKeyword.Null
-                ? new[] { "(unset)" }
-                : property.value.Select(name => name.ToString()).ToArray();
+            var id = EngineMember.StylePropertyNameId.ResolveProperty()!.GetValue(new StylePropertyName("justify-content"));
+            return (bool)EngineMember.HasRunningStyleAnimation.ResolveMethod()!.Invoke(element, new[] { id });
         }
 
-        private static string[] Sorted(IEnumerable<string> names) => names.OrderBy(name => name, StringComparer.Ordinal).ToArray();
-
-        // The longhands UI Toolkit animates whose transitions it interpolates, and those it only switches that
-        // transition-all keeps, sorted. Each animatable property is started between the element's own values, which
-        // records the Values class its longhands dispatch to.
-        private static string[] InterpolatedOrTransitionedByCss(VisualElement element)
+        // The resolved justify-content after the style pass that starts the transitions a change asks for and the
+        // panel's animation update after it, with the clock where it was; NoneRan where that pass started none.
+        private static Justify AfterTheNextAnimationUpdate(VisualElement element)
         {
-            var engine = typeof(VisualElement).Assembly;
-            var util = engine.GetType("UnityEngine.UIElements.StyleSheets.StylePropertyUtil", throwOnError: true);
-            var animatable = (IEnumerable)util.GetField("s_AnimatableProperties", Internal)!.GetValue(null);
-            var names = (IDictionary)util.GetField("s_IdToName", Internal)!.GetValue(null);
-            var start = engine.GetType("UnityEngine.UIElements.ComputedStyle", throwOnError: true)
-                .GetMethod("StartAnimation", Internal)!;
-            var style = typeof(VisualElement).GetField("m_Style", Internal)!.GetValue(element);
-            Func<float, float> linear = t => t;
-            foreach (var id in animatable)
-            {
-                start.Invoke(null, new object[] { element, id, style, style, 1000, 0, linear });
-            }
-            var system = typeof(VisualElement).GetMethod("GetStylePropertyAnimationSystem", Internal)!
-                .Invoke(element, null);
-            var dispatched = (IDictionary)system.GetType().GetField("m_PropertyToValues", Internal)!.GetValue(system);
-            var listed = new List<string>();
-            foreach (DictionaryEntry entry in dispatched)
-            {
-                var name = (string)names[entry.Key];
-                if (!OnlySwitches(entry.Value.GetType()) || s_cssTransitionsByDefault.Contains(name)
-                    || s_fontProperties.Contains(name))
-                {
-                    listed.Add(name);
-                }
-            }
-            return Sorted(listed);
+            ForcePanelUpdate(element.panel);
+            var started = Runs(element);
+            EditorPanelTestHelpers.DriveAnimationsOnce(element.panel);
+            return started ? element.resolvedStyle.justifyContent : NoneRan;
         }
 
-        private static bool OnlySwitches(Type values)
-        {
-            for (var type = values; type != null; type = type.BaseType)
-            {
-                if (type.IsGenericType && type.GetGenericTypeDefinition().Name == "ValuesDiscrete`1") return true;
-            }
-            return false;
-        }
+        private static Justify WhileItsTransitionRuns(VisualElement element)
+            => Runs(element) ? element.resolvedStyle.justifyContent : NoneRan;
 
         // A stylesheet of the application's own, attached after the bundled one.
         private void AttachSheet(string uss)
@@ -198,55 +140,62 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_TransitionAll_When_Resolved_Then_ItListsWhatTheEngineInterpolatesAndWhatItKeeps()
+        public void Given_AnElementTransitioningAll_When_ItsJustifyContentClassChanges_Then_TheNextAnimationUpdateLandsTheNewValue()
         {
             // Arrange
-            var element = Resolved("transition-all");
-            var expected = InterpolatedOrTransitionedByCss(element);
-
-            // Act
-            var listed = Sorted(Listed(element));
-
-            // Assert
-            Assert.That(listed, Is.EqualTo(expected));
-        }
-
-        [Test]
-        public void Given_TransitionDiscreteAndTransitionNormalOnOneRank_When_TransitionAllResolves_Then_ItKeepsItsOwnList()
-        {
-            // Arrange
-            var element = Mounted("transition-all transition-discrete transition-normal");
-            var expected = InterpolatedOrTransitionedByCss(element);
-
-            // Act
-            var listed = Sorted(Listed(element));
-
-            // Assert
-            Assert.That(listed, Is.EqualTo(expected));
-        }
-
-        [Test]
-        public void Given_AnElementTransitioningAll_When_ItsJustifyContentClassChanges_Then_ItTakesTheNewValueAtOnce()
-        {
-            // Arrange
-            var element = Resolved("transition-all duration-1000 ease-linear justify-start");
-
-            // Act
+            var element = Mounted("transition-all justify-start " + OneSecond);
             Swap(element, "justify-start", "justify-end");
+            ForcePanelUpdate(element.panel);
+            var started = Runs(element);
+            TestContext.WriteLine($"After the style pass, before the animation update: {element.resolvedStyle.justifyContent}");
+
+            // Act
+            EditorPanelTestHelpers.DriveAnimationsOnce(element.panel);
 
             // Assert
-            Assert.That(element.resolvedStyle.justifyContent, Is.EqualTo(Justify.FlexEnd));
+            Assert.That(started ? element.resolvedStyle.justifyContent : NoneRan, Is.EqualTo(Justify.FlexEnd));
+        }
+
+        [Test]
+        public void Given_AnElementTransitioningAll_When_ItsJustifyContentIsWrittenInline_Then_TheNextAnimationUpdateLandsTheNewValue()
+        {
+            // Arrange
+            var element = Mounted("transition-all " + OneSecond);
+            element.style.justifyContent = Justify.FlexEnd;
+
+            // Act
+            var landed = AfterTheNextAnimationUpdate(element);
+
+            // Assert
+            Assert.That(landed, Is.EqualTo(Justify.FlexEnd));
+        }
+
+        [Test]
+        public void Given_ATweenSwappingJustifyContent_When_ItsSwapHasStartedTheTransition_Then_TheNextAnimationUpdateLandsTheNewValue()
+        {
+            // Arrange — the frame the tween swaps its classes in, up to the scheduler tick that swaps them.
+            var element = Mounted("justify-start");
+            new StyleAnimationScheduler().PlayVariantEnter(element, new[] { "justify-start" }, new[] { "justify-end" },
+                durationSec: 1f, easing: EasingMode.Linear, delaySec: 0f);
+            ForcePanelUpdate(element.panel);
+            _now += 0.016;
+            EditorPanelTestHelpers.DriveSchedulerOnce(element.panel);
+
+            // Act
+            var landed = AfterTheNextAnimationUpdate(element);
+
+            // Assert
+            Assert.That(landed, Is.EqualTo(Justify.FlexEnd));
         }
 
         // GREEN_ON_BASE(characterization): the base transitions opacity under transition-all as this change does.
-        // Taking `opacity` out of transition-all's list in _effects.uss reddens this case.
+        // Adding `opacity` to StyleTransitionBehavior.LandedAtOnce reddens this case.
         [Test]
         public void Given_AnElementTransitioningAllOnItsOwnDuration_When_ItsOpacityClassChanges_Then_AQuarterOfTheWayInItIsAQuarterOfTheWay()
         {
             // Arrange — transition-all's own duration, the sheet's 0.15s, so that nothing else gives the element one.
-            var element = Resolved("transition-all ease-linear opacity-100");
-            element.RemoveFromClassList("opacity-100");
-            element.AddToClassList("opacity-0");
+            var element = Mounted("transition-all ease-linear opacity-100");
+            Swap(element, "opacity-100", "opacity-0");
 
             // Act
             RunFor(element, 0.15 / 4);
@@ -255,87 +204,29 @@ namespace Velvet.Tests
             Assert.That(element.resolvedStyle.opacity, Is.EqualTo(0.75f).Within(0.01f));
         }
 
-        // GREEN_ON_BASE(characterization): the base hands transition-all's switching properties to the engine anyway.
-        // Routing only transition-all through StyleTransitionBehavior in StyleClassProjection.Add reddens this case.
+        // GREEN_ON_BASE(characterization): the base cancels no transition UI Toolkit runs of justify-content.
+        // Dropping `!AllowsDiscrete(element)` from StyleTransitionBehavior.OnRun reddens this case.
         [Test]
-        public void Given_AnElementTransitioningAllWithTransitionDiscrete_When_ItsJustifyContentIsWritten_Then_AQuarterSecondInItKeepsTheOldValue()
+        public void Given_TransitionAllWithTransitionDiscrete_When_JustifyContentIsWrittenInline_Then_AQuarterSecondInItKeepsTheOldValue()
         {
             // Arrange
-            var element = Mounted("transition-all transition-discrete duration-1000 ease-linear");
+            var element = Mounted("transition-all transition-discrete " + OneSecond);
 
             // Act
             element.style.justifyContent = Justify.FlexEnd;
             RunAQuarterSecond(element);
 
             // Assert
-            Assert.That(element.resolvedStyle.justifyContent, Is.EqualTo(Justify.FlexStart));
-        }
-
-        // GREEN_ON_BASE(characterization): the base hands transition-all's switching properties to the engine anyway.
-        // Routing only transition-discrete and transition-normal through StyleTransitionBehavior in
-        // StyleClassProjection.Add reddens this case.
-        [Test]
-        public void Given_TransitionDiscreteWrittenBeforeTransitionAll_When_ItsJustifyContentIsWritten_Then_AQuarterSecondInItKeepsTheOldValue()
-        {
-            // Arrange
-            var element = Mounted("transition-discrete transition-all duration-1000 ease-linear");
-
-            // Act
-            element.style.justifyContent = Justify.FlexEnd;
-            RunAQuarterSecond(element);
-
-            // Assert
-            Assert.That(element.resolvedStyle.justifyContent, Is.EqualTo(Justify.FlexStart));
-        }
-
-        [Test]
-        public void Given_TransitionAllWithTransitionDiscrete_When_ARenderDropsTransitionDiscrete_Then_TransitionAllKeepsItsOwnList()
-        {
-            // Arrange
-            s_classNames = new ClassNames("transition-all transition-discrete");
-            var root = new VisualElement();
-            _window.rootVisualElement.Add(root);
-            _mounted = V.Mount(root, V.Component(Leaf, key: "root"));
-            var element = Attached(root.Q<VisualElement>("leaf"));
-            var expected = InterpolatedOrTransitionedByCss(element);
-
-            // Act
-            s_classNames.Set("transition-all");
-            _mounted.FlushStateForTest();
-            ForcePanelUpdate(element.panel);
-
-            // Assert
-            Assert.That(Sorted(Listed(element)), Is.EqualTo(expected));
-        }
-
-        // GREEN_ON_BASE(characterization): on the base transition-discrete alone gives the element no duration.
-        // Leaving transition-all-discrete on when StyleTransitionBehavior.Remove takes transition-all off reddens this case.
-        [Test]
-        public void Given_TransitionAllWithTransitionDiscrete_When_ARenderDropsTransitionAll_Then_NothingGivesTheElementADuration()
-        {
-            // Arrange
-            s_classNames = new ClassNames("transition-all transition-discrete");
-            var root = new VisualElement();
-            _window.rootVisualElement.Add(root);
-            _mounted = V.Mount(root, V.Component(Leaf, key: "root"));
-            var element = Attached(root.Q<VisualElement>("leaf"));
-
-            // Act
-            s_classNames.Set("transition-discrete");
-            _mounted.FlushStateForTest();
-            ForcePanelUpdate(element.panel);
-
-            // Assert
-            Assert.That(element.resolvedStyle.transitionDuration.Select(time => time.value).ToArray(), Is.EqualTo(new[] { 0f }));
+            Assert.That(WhileItsTransitionRuns(element), Is.EqualTo(Justify.FlexStart));
         }
 
         // GREEN_ON_BASE(characterization): the engine switches a property it cannot interpolate before its end, on the base too.
         // Nothing in Velvet reddens this case: it fails when the engine stops switching by three quarters of the way.
         [Test]
-        public void Given_AnElementTransitioningAllWithTransitionDiscrete_When_ItsJustifyContentIsWritten_Then_ThreeQuartersInItHoldsTheNewValue()
+        public void Given_TransitionAllWithTransitionDiscrete_When_JustifyContentIsWrittenInline_Then_ThreeQuartersInItHoldsTheNewValue()
         {
             // Arrange
-            var element = Mounted("transition-all transition-discrete duration-1000 ease-linear");
+            var element = Mounted("transition-all transition-discrete " + OneSecond);
             element.style.justifyContent = Justify.FlexEnd;
             RunAQuarterSecond(element);
 
@@ -346,248 +237,192 @@ namespace Velvet.Tests
             Assert.That(element.resolvedStyle.justifyContent, Is.EqualTo(Justify.FlexEnd));
         }
 
-        // GREEN_ON_BASE(characterization): the base lists `all` for transition-all whatever ranks the behaviours.
-        // Ranking transition-normal over transition-discrete whatever their keys, as compound selectors did, reddens this.
         [Test]
-        public void Given_TransitionNormalAndADarkTransitionDiscrete_When_TheThemeTurnsDark_Then_TransitionAllListsAll()
+        public void Given_TransitionDiscreteAndTransitionNormalOnOneRank_When_JustifyContentIsWrittenInline_Then_TheNextAnimationUpdateLandsTheNewValue()
         {
             // Arrange
-            var element = Mounted("transition-all transition-normal dark:transition-discrete");
+            var element = Mounted("transition-all transition-discrete transition-normal " + OneSecond);
+            element.style.justifyContent = Justify.FlexEnd;
 
             // Act
+            var landed = AfterTheNextAnimationUpdate(element);
+
+            // Assert — the tie is only one where transition-discrete is on the element.
+            Assert.That(element.ClassListContains("transition-discrete") ? landed : NoneRan, Is.EqualTo(Justify.FlexEnd));
+        }
+
+        // GREEN_ON_BASE(characterization): the base cancels no transition UI Toolkit runs of justify-content.
+        // Ranking transition-normal over transition-discrete whatever their keys reddens this case.
+        [Test]
+        public void Given_TransitionNormalAndADarkTransitionDiscrete_When_TheThemeIsDark_Then_AQuarterSecondIntoAWriteKeepsTheOldValue()
+        {
+            // Arrange
+            var element = Mounted("transition-all transition-normal dark:transition-discrete " + OneSecond);
             VelvetTheme.IsDark = true;
             ForcePanelUpdate(element.panel);
 
+            // Act
+            element.style.justifyContent = Justify.FlexEnd;
+            RunAQuarterSecond(element);
+
             // Assert
-            Assert.That(ListedWithADuration(element), Is.EqualTo(new[] { "all" }));
+            Assert.That(WhileItsTransitionRuns(element), Is.EqualTo(Justify.FlexStart));
         }
 
         [Test]
-        public void Given_TransitionDiscreteAndADarkTransitionNormal_When_TheThemeTurnsDark_Then_TransitionAllKeepsItsOwnList()
+        public void Given_TransitionDiscreteAndADarkTransitionNormal_When_TheThemeIsDark_Then_TheNextAnimationUpdateLandsAWrite()
         {
             // Arrange
-            var element = Mounted("transition-all transition-discrete dark:transition-normal");
-            var expected = InterpolatedOrTransitionedByCss(element);
-
-            // Act
+            var element = Mounted("transition-all transition-discrete dark:transition-normal " + OneSecond);
             VelvetTheme.IsDark = true;
             ForcePanelUpdate(element.panel);
+            element.style.justifyContent = Justify.FlexEnd;
+
+            // Act
+            var landed = AfterTheNextAnimationUpdate(element);
 
             // Assert
-            Assert.That(Sorted(Listed(element)), Is.EqualTo(expected));
+            Assert.That(landed, Is.EqualTo(Justify.FlexEnd));
         }
 
-        // GREEN_ON_BASE(characterization): on the base a rule of the application's own sheet outranks transition-all.
-        // A selector raising transition-discrete above single-class rules, as `.transition-all.transition-discrete` did,
-        // reddens this case.
+        // GREEN_ON_BASE(characterization): the base cancels no transition UI Toolkit runs of justify-content.
+        // Leaving a play's ranking-only entries out of StyleClassProjection.Model.HighestKey reddens this case.
         [Test]
-        public void Given_AnApplicationRuleListingOpacity_When_TransitionAllAndTransitionDiscreteJoinIt_Then_TheRuleHoldsTheProperty()
+        public void Given_TransitionAllUnderADarkTransitionNormal_When_APlayShowsTransitionDiscrete_Then_AQuarterSecondIntoAWriteKeepsTheOldValue()
         {
-            // Arrange
-            AttachSheet(".app-list { transition-property: opacity; }");
-
-            // Act
-            var element = Mounted("transition-all transition-discrete app-list");
-
-            // Assert
-            Assert.That(Listed(element), Is.EqualTo(new[] { "opacity" }));
-        }
-
-        // GREEN_ON_BASE(characterization): on the base a rule selecting `.transition-all` applies as it does here.
-        // Taking `transition-all` off the live list where transition-all-discrete goes on reddens this case.
-        [Test]
-        public void Given_AnApplicationRuleSelectingTransitionAll_When_TransitionDiscreteJoinsIt_Then_TheRuleStillApplies()
-        {
-            // Arrange
-            AttachSheet(".transition-all.app-slow { transition-duration: 2s; }");
-
-            // Act
-            var element = Mounted("transition-all transition-discrete app-slow");
-
-            // Assert
-            Assert.That(element.resolvedStyle.transitionDuration.Select(time => time.value).ToArray(),
-                Is.EqualTo(new[] { 2f }));
-        }
-
-        // Every utility declaring transition-property after transition-all, in cascade order.
-        private static IEnumerable<string> UtilitiesDeclaredAfterTransitionAll()
-        {
-            var table = (IDictionary)typeof(StyleTransitionUtilities).GetField("ByClassName", Internal)!.GetValue(null);
-            StyleTransitionUtilities.TryGet("transition-all", out var transitionAll, out _);
-            return table.Keys.Cast<string>()
-                .Select(name => (Name: name, Position: StyleTransitionUtilities.TryGet(name, out var position, out _) ? position : -1))
-                .Where(utility => utility.Position > transitionAll && utility.Name != "transition-all-discrete")
-                .OrderBy(utility => utility.Position)
-                .Select(utility => utility.Name);
-        }
-
-        // GREEN_ON_BASE(characterization): on the base each of these outranks transition-all, as it does here.
-        // Declaring `.transition-all-discrete` after a utility in _effects.uss reddens that utility's case.
-        [TestCaseSource(nameof(UtilitiesDeclaredAfterTransitionAll))]
-        public void Given_AUtilityDeclaredAfterTransitionAll_When_TransitionAllAndTransitionDiscreteJoinIt_Then_ItListsWhatItListsAlone(
-            string utility)
-        {
-            // Arrange
-            var alone = Listed(Mounted(utility));
-
-            // Act
-            var joined = Listed(Mounted("transition-all transition-discrete " + utility));
-
-            // Assert
-            Assert.That(joined, Is.EqualTo(alone));
-        }
-
-        [Test]
-        public void Given_AVariantTween_When_ItStarts_Then_ItListsWhatTheEngineInterpolatesAndWhatTransitionAllKeeps()
-        {
-            // Arrange
-            var element = Attached(new VisualElement());
-            var expected = InterpolatedOrTransitionedByCss(element);
-
-            // Act
-            new StyleAnimationScheduler().PlayVariantEnter(element, Array.Empty<string>(), Array.Empty<string>(),
-                durationSec: 1f, easing: EasingMode.Linear, delaySec: 0f);
+            // Arrange — the dark payload builds the element's projection model before the play shows anything.
+            var element = Mounted("transition-all dark:transition-normal " + OneSecond);
+            VelvetTheme.IsDark = true;
             ForcePanelUpdate(element.panel);
-
-            // Assert
-            Assert.That(Sorted(Listed(element)), Is.EqualTo(expected));
-        }
-
-        // GREEN_ON_BASE(characterization): the base's variant tween lists `all` on every element.
-        // Passing `false` for AllowsDiscrete in StyleAnimationScheduler.ApplyTransitionStyles reddens this case.
-        [Test]
-        public void Given_AVariantTweenOnAnElementWithTransitionDiscrete_When_ItStarts_Then_ItListsAll()
-        {
-            // Arrange
-            var element = Mounted("transition-discrete");
-
-            // Act
-            new StyleAnimationScheduler().PlayVariantEnter(element, Array.Empty<string>(), Array.Empty<string>(),
-                durationSec: 1f, easing: EasingMode.Linear, delaySec: 0f);
-            ForcePanelUpdate(element.panel);
-
-            // Assert
-            Assert.That(WrittenInline(element), Is.EqualTo(new[] { "all" }));
-        }
-
-        [Test]
-        public void Given_AVariantTweenWithAnOverrideNamingAll_When_ItStarts_Then_TheOverrideListsWhatTheEngineInterpolatesAndWhatTransitionAllKeeps()
-        {
-            // Arrange
-            var element = Attached(new VisualElement());
-            var expected = InterpolatedOrTransitionedByCss(element);
-            var overrides = new[] { new StylePropertyTransition("all", durationSec: 0.5f) };
-
-            // Act
-            new StyleAnimationScheduler().PlayVariantEnter(element, Array.Empty<string>(), Array.Empty<string>(),
-                durationSec: 1f, easing: EasingMode.Linear, delaySec: 0f, propertyOverrides: overrides);
-            ForcePanelUpdate(element.panel);
-
-            // Assert
-            Assert.That(Sorted(Listed(element).Skip(expected.Length)), Is.EqualTo(expected));
-        }
-
-        // GREEN_ON_BASE(characterization): the base lists `all` then the override on every element.
-        // Choosing transition-all's own list for the names under transition-discrete, leaving the timing on `all`'s,
-        // reddens this case.
-        [Test]
-        public void Given_AVariantTweenWithAnOverrideOnAnElementWithTransitionDiscrete_When_ItStarts_Then_TheOverrideFollowsAll()
-        {
-            // Arrange
-            var element = Mounted("transition-discrete");
-            var overrides = new[] { new StylePropertyTransition("opacity", durationSec: 0.15f) };
-
-            // Act
-            new StyleAnimationScheduler().PlayVariantEnter(element, Array.Empty<string>(), Array.Empty<string>(),
-                durationSec: 0.3f, easing: EasingMode.Linear, delaySec: 0f, propertyOverrides: overrides);
-            ForcePanelUpdate(element.panel);
-
-            // Assert
-            var durationsMs = element.resolvedStyle.transitionDuration.Select(time => time.value).ToArray();
-            Assert.That(string.Join(",", Listed(element)) == "all,opacity" ? durationsMs : new[] { float.NaN },
-                Is.EqualTo(new[] { 300f, 150f }).Within(1e-3f));
-        }
-
-        // GREEN_ON_BASE(characterization): the base's variant tween lists `all` whatever its pose shows.
-        // Dropping PoseClasses from the TweenSpec StyleAnimationScheduler.PlayEnterInternal builds reddens this case.
-        [Test]
-        public void Given_AVariantTweenWhosePoseShowsTransitionDiscrete_When_ItStarts_Then_ItListsAll()
-        {
-            // Arrange
-            var element = Attached(new VisualElement());
-
-            // Act
-            new StyleAnimationScheduler().PlayVariantEnter(element, Array.Empty<string>(), new[] { "transition-discrete" },
-                durationSec: 1f, easing: EasingMode.Linear, delaySec: 0f);
-            ForcePanelUpdate(element.panel);
-
-            // Assert
-            Assert.That(WrittenInline(element), Is.EqualTo(new[] { "all" }));
-        }
-
-        // GREEN_ON_BASE(characterization): the base lists `all` for transition-all whatever a play shows.
-        // Dropping the PlayChanged of StyleClassProjection.RawAdded reddens this case.
-        [Test]
-        public void Given_TransitionAll_When_APlayShowsTransitionDiscrete_Then_TransitionAllListsAll()
-        {
-            // Arrange
-            var element = Mounted("transition-all");
-
-            // Act
             StyleAnimationClassUtils.AddClasses(element, new[] { "transition-discrete" }, StyleLayerPriority.Animation);
             ForcePanelUpdate(element.panel);
 
-            // Assert
-            Assert.That(ListedWithADuration(element), Is.EqualTo(new[] { "all" }));
+            // Act
+            element.style.justifyContent = Justify.FlexEnd;
+            RunAQuarterSecond(element);
+
+            // Assert — the play outranks a transition-normal only where the dark payload put one on.
+            Assert.That(element.ClassListContains("transition-normal") ? WhileItsTransitionRuns(element) : NoneRan,
+                Is.EqualTo(Justify.FlexStart));
         }
 
         [Test]
-        public void Given_TransitionAllUnderADarkTransitionDiscrete_When_APlayShowsTransitionNormal_Then_TransitionAllKeepsItsOwnList()
+        public void Given_TransitionAllUnderADarkTransitionDiscrete_When_APlayShowsTransitionNormal_Then_TheNextAnimationUpdateLandsAWrite()
         {
             // Arrange
-            var element = Mounted("transition-all dark:transition-discrete");
+            var element = Mounted("transition-all dark:transition-discrete " + OneSecond);
             VelvetTheme.IsDark = true;
-            var expected = InterpolatedOrTransitionedByCss(element);
-
-            // Act
+            ForcePanelUpdate(element.panel);
             StyleAnimationClassUtils.AddClasses(element, new[] { "transition-normal" }, StyleLayerPriority.Animation);
             ForcePanelUpdate(element.panel);
+            element.style.justifyContent = Justify.FlexEnd;
 
-            // Assert
-            Assert.That(Sorted(Listed(element)), Is.EqualTo(expected));
+            // Act
+            var landed = AfterTheNextAnimationUpdate(element);
+
+            // Assert — the play outranks a transition-discrete only where the dark payload put one on.
+            Assert.That(element.ClassListContains("transition-discrete") ? landed : NoneRan, Is.EqualTo(Justify.FlexEnd));
         }
 
         [Test]
-        public void Given_TransitionAllWhileAPlayShowsTransitionDiscrete_When_ThePlayTakesItOff_Then_TransitionAllKeepsItsOwnList()
+        public void Given_ADurationWithNoTransitionUtility_When_TheJustifyContentClassChanges_Then_TheNextAnimationUpdateLandsTheNewValue()
+        {
+            // Arrange — no rule names a transition-property, so UI Toolkit's initial `all` stands.
+            var element = Mounted("justify-start " + OneSecond);
+            Swap(element, "justify-start", "justify-end");
+
+            // Act
+            var landed = AfterTheNextAnimationUpdate(element);
+
+            // Assert
+            Assert.That(landed, Is.EqualTo(Justify.FlexEnd));
+        }
+
+        [Test]
+        public void Given_AnApplicationRuleListingJustifyContent_When_TheJustifyContentClassChanges_Then_TheNextAnimationUpdateLandsTheNewValue()
         {
             // Arrange
-            var element = Mounted("transition-all");
-            StyleAnimationClassUtils.AddClasses(element, new[] { "transition-discrete" }, StyleLayerPriority.Animation);
-            var expected = InterpolatedOrTransitionedByCss(element);
+            AttachSheet(".app-justify { transition-property: justify-content; transition-duration: 1s; }");
+            var element = Mounted("app-justify justify-start");
+            Swap(element, "justify-start", "justify-end");
 
             // Act
-            StyleAnimationClassUtils.RemoveClasses(element, new[] { "transition-discrete" });
-            ForcePanelUpdate(element.panel);
+            var landed = AfterTheNextAnimationUpdate(element);
 
             // Assert
-            Assert.That(Sorted(Listed(element)), Is.EqualTo(expected));
+            Assert.That(landed, Is.EqualTo(Justify.FlexEnd));
         }
 
-        // GREEN_ON_BASE(characterization): the base lists `all` for transition-all whatever ranks the behaviours.
-        // Reading transition-all's keys without a play's in StyleTransitionBehavior.Resync reddens this case.
         [Test]
-        public void Given_TransitionDiscrete_When_APlayShowsTransitionAll_Then_ItListsAll()
+        public void Given_ARowAPortalRendersOutsideTheMount_When_ItsJustifyContentClassChanges_Then_TheNextAnimationUpdateLandsTheNewValue()
         {
-            // Arrange — a dark payload builds the element's projection model before the play shows anything.
-            var element = Mounted("transition-discrete dark:opacity-50");
-            VelvetTheme.IsDark = true;
+            // Arrange
+            var container = NewRoot();
+            Mount(NewRoot(), V.Div(children: new VNode[]
+            {
+                V.Portal(container, new VNode[] { V.Div(name: "ported", className: "transition-all justify-start " + OneSecond) }),
+            }));
+            var element = Attached(container.Q<VisualElement>("ported"));
+            Swap(element, "justify-start", "justify-end");
 
             // Act
-            StyleAnimationClassUtils.AddClasses(element, new[] { "transition-all" }, StyleLayerPriority.Animation);
-            ForcePanelUpdate(element.panel);
+            var landed = AfterTheNextAnimationUpdate(element);
 
             // Assert
-            Assert.That(ListedWithADuration(element), Is.EqualTo(new[] { "all" }));
+            Assert.That(landed, Is.EqualTo(Justify.FlexEnd));
+        }
+
+        [Test]
+        public void Given_AnElementALayerPortalRenders_When_ItsJustifyContentIsWrittenInline_Then_TheNextAnimationUpdateLandsTheNewValue()
+        {
+            // Arrange — a transition given inline, which needs no stylesheet on the layer's panel.
+            Mount(NewRoot(), V.Portal(UILayer.Overlay, new VNode[] { V.Div(name: "overlaid") }));
+            var element = Resources.FindObjectsOfTypeAll<UIDocument>()
+                .Select(document => document.rootVisualElement?.Q<VisualElement>("overlaid"))
+                .First(found => found != null);
+            element.style.transitionDuration = new List<TimeValue> { new(1f, TimeUnit.Second) };
+            Attached(element);
+            element.style.justifyContent = Justify.FlexEnd;
+
+            // Act
+            var landed = AfterTheNextAnimationUpdate(element);
+
+            // Assert
+            Assert.That(landed, Is.EqualTo(Justify.FlexEnd));
+        }
+
+        // GREEN_ON_BASE(characterization): the base cancels no transition UI Toolkit runs of justify-content.
+        // Holding StyleTransitionBehavior on the panel's root rather than on what Velvet renders into reddens this case.
+        [Test]
+        public void Given_AnElementUnderNoMount_When_ItsJustifyContentClassChanges_Then_UIToolkitRunsItsTransition()
+        {
+            // Arrange
+            var element = Unmounted("transition-all justify-start " + OneSecond, NewRoot());
+            Swap(element, "justify-start", "justify-end");
+
+            // Act
+            var after = AfterTheNextAnimationUpdate(element);
+
+            // Assert
+            Assert.That(after, Is.EqualTo(Justify.FlexStart));
+        }
+
+        // GREEN_ON_BASE(characterization): the base cancels no transition UI Toolkit runs of justify-content.
+        // Leaving out MountedTree.Dispose's release of its StyleTransitionBehavior hold reddens this case.
+        [Test]
+        public void Given_ATreeUnmountedFromAnElement_When_AnElementAddedUnderItChangesJustifyContent_Then_UIToolkitRunsItsTransition()
+        {
+            // Arrange
+            var root = NewRoot();
+            V.Mount(root, V.Div()).Dispose();
+            var element = Unmounted("transition-all justify-start " + OneSecond, root);
+            Swap(element, "justify-start", "justify-end");
+
+            // Act
+            var after = AfterTheNextAnimationUpdate(element);
+
+            // Assert
+            Assert.That(after, Is.EqualTo(Justify.FlexStart));
         }
 
         private static object s_sink;
@@ -607,12 +442,13 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base's transition-all adds no allocation to a style pass changing nothing.
+        // Listing transition-all's longhands in _effects.uss in place of `all` reddens this case.
         [Test]
-        public void Given_ATransitionAllElementAndAPlainOne_When_AClassNoRuleNamesToggles_Then_TheirStylePassesAllocateAlike()
+        public void Given_ATransitionAllElementAndAPlainOneUnderAMount_When_AClassNoRuleNamesToggles_Then_TheirStylePassesAllocateAlike()
         {
             // Arrange
-            var transitioning = Toggled(Resolved("transition-all"));
-            var plain = Toggled(Resolved("app-plain"));
+            var transitioning = Toggled(Mounted("transition-all"));
+            var plain = Toggled(Mounted("app-plain"));
             var canary = GCAllocationProbe.MedianBlocksDuring(() => s_sink = new object());
 
             // Act

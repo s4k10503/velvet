@@ -238,20 +238,18 @@ namespace Velvet
         // the last remaining entry naming the property, its shorthand or `all` runs. Times are whole milliseconds,
         // rounded as the engine rounds them.
         internal static bool TryFindTransition(VisualElement element, string property, string? shorthand,
-            out int durationMs, out int delayMs, out EasingMode easing, bool throughTransitionAll = false)
+            out int durationMs, out int delayMs, out EasingMode easing)
         {
             var resolved = element.resolvedStyle;
             var lists = new TransitionLists(AsList(resolved.transitionProperty), AsList(resolved.transitionDuration),
                 AsList(resolved.transitionDelay), AsList(resolved.transitionTimingFunction));
-            return TryFindTransition(lists, property, shorthand, out durationMs, out delayMs, out easing,
-                throughTransitionAll);
+            return TryFindTransition(lists, property, shorthand, out durationMs, out delayMs, out easing);
         }
 
         // The same entry, read off lists given here: an element's inline lists or the ones its rules cascade to
-        // (MotionOpacity). throughTransitionAll, for a property UI Toolkit has no name for, has the last entry of
-        // transition-all's list stand for it as `all` does, as transition-all covers it in CSS.
+        // (MotionOpacity).
         internal static bool TryFindTransition(TransitionLists lists, string property, string? shorthand,
-            out int durationMs, out int delayMs, out EasingMode easing, bool throughTransitionAll = false)
+            out int durationMs, out int delayMs, out EasingMode easing)
         {
             var (properties, durations, delays, curves) = (lists.Properties, lists.Durations, lists.Delays, lists.Curves);
             for (var i = properties.Count - 1; i >= 0; i--)
@@ -260,8 +258,7 @@ namespace Velvet
                 // A name UI Toolkit does not know, `none` among them, reads back as null, which a null shorthand would
                 // otherwise match.
                 if (name == null) continue;
-                if (name != property && name != shorthand && name != "all"
-                    && !(throughTransitionAll && StyleTransitionBehavior.EndsTransitionAllList(properties, i)))
+                if (name != property && name != shorthand && name != "all")
                 {
                     continue;
                 }

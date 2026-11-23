@@ -737,7 +737,7 @@ namespace Velvet.Tests
         [Test]
         public void Given_ATransformOnlyPlayOnATransitionAllElement_When_Started_Then_TheNativeTransitionIsSuspended()
         {
-            // Arrange — .transition-all names opacity, which this play drives.
+            // Arrange — .transition-all names every animatable property, so it covers whatever a play drives.
             var element = new VisualElement();
             element.AddToClassList("transition-all");
 

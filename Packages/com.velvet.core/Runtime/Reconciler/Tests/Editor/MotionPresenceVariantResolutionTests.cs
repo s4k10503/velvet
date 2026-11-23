@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using System.Linq;
 using NUnit.Framework;
 using UnityEditor;
 using UnityEngine;
@@ -460,7 +459,7 @@ namespace Velvet.Tests
         }
 
         // A VARIANT exit cancels the in-flight enter, applies its from-classes — the resting
-        // variants[animate] — and sets transition-all's list inline on its target, all
+        // variants[animate] — and sets transition-property: all inline on its target, all
         // synchronously (only the swap to variants[exit] is scheduler-driven). The INNER element
         // resting at variants[animate] with the initial classes gone AND carrying the variant swap's
         // transition-property is the observable evidence the exit resolved the declared variants and
@@ -468,11 +467,11 @@ namespace Velvet.Tests
         // at the enter's variants[initial] pose (or, with no enter fix either, resting with no
         // transition-property at all).
 
-        private static (bool op0, bool op100, bool tpList) VariantExitEvidence(VisualElement inner, string[] swapList)
+        private static (bool op0, bool op100, bool tpAll) VariantExitEvidence(VisualElement inner)
         {
             var tp = inner.style.transitionProperty;
-            var tpList = tp.keyword != StyleKeyword.Null && tp.value.Select(p => p.ToString()).SequenceEqual(swapList);
-            return (inner.ClassListContains("opacity-0"), inner.ClassListContains("opacity-100"), tpList);
+            var tpAll = tp.keyword != StyleKeyword.Null && tp.value.Count > 0 && tp.value[0].ToString() == "all";
+            return (inner.ClassListContains("opacity-0"), inner.ClassListContains("opacity-100"), tpAll);
         }
 
         [Test]
@@ -489,8 +488,7 @@ namespace Velvet.Tests
             scheduler.DrainImmediateForTest();
 
             // Assert
-            Assert.AreEqual((false, true, true),
-                VariantExitEvidence(_root.Q<VisualElement>("inner-a"), StyleUtilityTableProbe.TransitionAllLonghands()),
+            Assert.AreEqual((false, true, true), VariantExitEvidence(_root.Q<VisualElement>("inner-a")),
                 "The z-wrapped Motion's variant exit resolves against its own element");
         }
 
@@ -508,8 +506,7 @@ namespace Velvet.Tests
             scheduler.DrainImmediateForTest();
 
             // Assert
-            Assert.AreEqual((false, true, true),
-                VariantExitEvidence(_root.Q<VisualElement>("inner-a"), StyleUtilityTableProbe.TransitionAllLonghands()),
+            Assert.AreEqual((false, true, true), VariantExitEvidence(_root.Q<VisualElement>("inner-a")),
                 "The Provider-wrapped Motion's variant exit resolves against its own element");
         }
 

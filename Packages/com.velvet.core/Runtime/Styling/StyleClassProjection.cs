@@ -34,18 +34,11 @@ namespace Velvet
         public static void Add(VisualElement element, string cls, long priority)
         {
             var model = StyleArbitraryValueResolver.TryGetProjection(element, out var previousUniform);
-            if (StyleTransitionBehavior.Owns(cls))
-            {
-                StyleTransitionBehavior.Add(element, cls, priority);
-            }
-            else
-            {
-                AddToModel(element, cls, priority, model);
-            }
+            AddToModel(element, cls, priority, model);
             StyleArbitraryValueResolver.NotifyClassesChanged(element, previousUniform);
         }
 
-        internal static void AddToModel(VisualElement element, string cls, long priority, Model? model)
+        private static void AddToModel(VisualElement element, string cls, long priority, Model? model)
         {
             CornerRadiusFit.TrackClass(element, cls);
             if (model == null)
@@ -64,19 +57,12 @@ namespace Velvet
         public static void Remove(VisualElement element, string cls, long priority)
         {
             var model = StyleArbitraryValueResolver.TryGetProjection(element, out var previousUniform);
-            if (StyleTransitionBehavior.Owns(cls))
-            {
-                StyleTransitionBehavior.Remove(element, cls, priority);
-            }
-            else
-            {
-                RemoveFromModel(element, cls, priority, model);
-            }
+            RemoveFromModel(element, cls, priority, model);
             CornerRadiusFit.NoteClassWrite(element);
             StyleArbitraryValueResolver.NotifyClassesChanged(element, previousUniform);
         }
 
-        internal static void RemoveFromModel(VisualElement element, string cls, long priority, Model? model)
+        private static void RemoveFromModel(VisualElement element, string cls, long priority, Model? model)
         {
             if (model != null)
             {
@@ -111,7 +97,6 @@ namespace Velvet
             {
                 if (priority == StyleLayerPriority.Base)
                 {
-                    StyleTransitionBehavior.PlayChanged(element, cls);
                     return;
                 }
                 model = StyleArbitraryValueResolver.GetOrCreateProjection(element);
@@ -119,7 +104,6 @@ namespace Velvet
             }
             model.RawAdded(element, cls, priority);
             AuthoredTransform.Resync(element);
-            StyleTransitionBehavior.PlayChanged(element, cls);
         }
 
         // The removal half of RawAdded. It also forgets the class at the base priority, where a seed adopted it
@@ -128,7 +112,6 @@ namespace Velvet
         {
             StyleArbitraryValueResolver.TryGetProjection(element)?.RawRemoved(element, cls);
             AuthoredTransform.Resync(element);
-            StyleTransitionBehavior.PlayChanged(element, cls);
         }
 
         // The writer's removal of a class a variant payload in force still holds, which stays on the list: only
@@ -137,7 +120,6 @@ namespace Velvet
         {
             StyleArbitraryValueResolver.TryGetProjection(element)?.RawReleased(element, cls);
             AuthoredTransform.Resync(element);
-            StyleTransitionBehavior.PlayChanged(element, cls);
         }
 
         // Ranks a class a play ranked above the base as the element's own from now on. A class the play's rank no
@@ -146,7 +128,6 @@ namespace Velvet
         {
             StyleArbitraryValueResolver.TryGetProjection(element)?.RawRested(element, cls);
             AuthoredTransform.Resync(element);
-            StyleTransitionBehavior.PlayChanged(element, cls);
         }
 
         // Whether cls is element's own while the projection keeps it off the live class list: declared by its
@@ -801,16 +782,19 @@ namespace Velvet
                 return -1;
             }
 
-            // The keys cls is held at, a play's ranking-only entries among them where withPlays.
-            public void Keys(string cls, List<long> into, bool withPlays)
+            // A play's ranking-only entries count: each holds its class at the play's key.
+            public long? HighestKey(string cls)
             {
+                long? highest = null;
                 foreach (var entry in _entries)
                 {
-                    if (entry.Class == cls && (withPlays || !entry.RankOnly))
+                    // MUTANT_SURVIVES(equivalent, boundary): at an equal key the reassignment leaves the same value.
+                    if (entry.Class == cls && (highest == null || entry.Priority > highest))
                     {
-                        into.Add(entry.Priority);
+                        highest = entry.Priority;
                     }
                 }
+                return highest;
             }
 
             // A payload's or the className's slot, never a play's ranking-only entry at the same key.

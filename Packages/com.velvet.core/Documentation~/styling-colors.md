@@ -134,7 +134,7 @@ The other namespaces read are `--radius-*` (`rounded-pill`, and the per-corner a
 `jump-both`, or `start` or `end`; `step-start` and `step-end` too), or one of CSS's easing keywords, and
 `ease-[cubic-bezier(…)]` and `ease-[steps(…)]` take it in place. `ease-in`, `ease-out` and `ease-in-out`, behind a
 variant or not, run along Tailwind v4's curves (`cubic-bezier(0.4, 0, 1, 1)`, `(0, 0, 0.2, 1)` and `(0.4, 0, 0.2, 1)`),
-as does the `ease-in-out` each `transition-*` utility naming properties bundles
+as does the `ease-in-out` each `transition-*` utility but `transition-none` bundles
 (`--default-transition-timing-function`); a project's `--ease-in`, `--ease-out` or `--ease-in-out` replaces its
 curve. UI Toolkit's `transition-timing-function` takes an
 `EasingMode` keyword and no cubic-bezier, so the element carries the keyword nearest the function, and Velvet has the

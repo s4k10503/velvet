@@ -24,11 +24,11 @@ namespace Velvet.SourceGenerators.Tests
     /// </remarks>
     public sealed class BundledStyleSheetCensusTests
     {
-        private const int SurveyedRuleCount = 2414;
-        private const int SurveyedSingleClassRuleCount = 2376;
+        private const int SurveyedRuleCount = 2413;
+        private const int SurveyedSingleClassRuleCount = 2375;
         private const int SurveyedDistinctPropertyNameCount = 65;
-        private const int SurveyedUtilityClassCount = 2300;
-        private const int SurveyedTransitionUtilityCount = 37;
+        private const int SurveyedUtilityClassCount = 2299;
+        private const int SurveyedTransitionUtilityCount = 36;
 
         private static readonly Census Surveyed = Census.OfBundledStyleSheets();
 
@@ -168,7 +168,7 @@ namespace Velvet.SourceGenerators.Tests
             Assert.Equal(
                 new[]
                 {
-                    "transition-all", "transition-all-discrete", "transition-colors", "transition-colors-scale",
+                    "transition-all", "transition-colors", "transition-colors-scale",
                     "transition-colors-scale-opacity", "transition-filter", "transition-opacity",
                     "transition-transform", "transition-none",
                 },
@@ -296,7 +296,7 @@ namespace Velvet.SourceGenerators.Tests
             // Arrange
             var expected = new Dictionary<SelectorShape, int>
             {
-                [SelectorShape.SingleClass] = 2376,
+                [SelectorShape.SingleClass] = 2375,
                 [SelectorShape.ClassWithPseudoClass] = 32,
                 [SelectorShape.ClassWithStateMarker] = 3,
                 [SelectorShape.Root] = 2,

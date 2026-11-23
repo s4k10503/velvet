@@ -93,10 +93,11 @@ namespace Velvet
             var sheetWatch = VelvetStyleUtilities.WatchForMissingSheet(target);
             var focusScrub = PanelFocusMemory.ForgetWhenLeaving(target);
             var defaultFamily = DefaultFamilyRoots.Hold(target);
+            var transitionBehavior = StyleTransitionBehavior.Hold(target);
 #if UNITY_EDITOR
             DevTools.VelvetDevToolsRegistry.Register(rootFiber, ResolveDevToolsLabel(tree, target));
 #endif
-            return new MountedTree(rootFiber, root, sheetWatch, focusScrub, defaultFamily);
+            return new MountedTree(rootFiber, root, sheetWatch, focusScrub, defaultFamily, transitionBehavior);
         }
 
         internal sealed class RootTree
@@ -144,16 +145,18 @@ namespace Velvet
         private readonly IDisposable _sheetWatch;
         private readonly IDisposable _focusScrub;
         private readonly IDisposable _defaultFamily;
+        private readonly IDisposable _transitionBehavior;
         private bool _disposed;
 
         internal MountedTree(ComponentFiber root, V.RootTree tree, IDisposable sheetWatch, IDisposable focusScrub,
-            IDisposable defaultFamily)
+            IDisposable defaultFamily, IDisposable transitionBehavior)
         {
             Root = root ?? throw new ArgumentNullException(nameof(root));
             _tree = tree;
             _sheetWatch = sheetWatch;
             _focusScrub = focusScrub;
             _defaultFamily = defaultFamily;
+            _transitionBehavior = transitionBehavior;
         }
 
         // React's root.render(element): the new tree is reconciled against the committed one, so a component
@@ -181,6 +184,7 @@ namespace Velvet
             _sheetWatch.Dispose();
             _focusScrub.Dispose();
             _defaultFamily.Dispose();
+            _transitionBehavior.Dispose();
             // Unmounting a root is terminal — subsequent hook setters / async
             // continuations must not resurrect the tree. FiberRenderer.Dispose sets IsDisposed
             // before unmounting so IsDisposed-gated closures (UseMutation continuations,

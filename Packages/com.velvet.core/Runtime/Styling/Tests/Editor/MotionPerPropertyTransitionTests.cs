@@ -11,8 +11,8 @@ namespace Velvet.Tests
 {
     /// <summary>
     /// Pins <see cref="StyleTransitionConfig.PropertyOverrides"/>: a variant-swap transition (the only place the
-    /// scheduler sets transition-all's list — PlayVariantEnter / a variant-driven PlayExit) with per-property
-    /// overrides keeps that list on the top-level timing and follows it with the overridden properties, in
+    /// scheduler sets transition-property: all — PlayVariantEnter / a variant-driven PlayExit) with per-property
+    /// overrides keeps that "all" entry on the top-level timing and follows it with the overridden properties, in
     /// declaration order, with duration / easing / delay built as positionally-matched lists — a null override
     /// field falls back to the top-level DurationSec / Easing / DelaySec. The resolving cases use a
     /// real EditorWindow panel so resolvedStyle reflects the scheduler's inline styles; the cancel case is
@@ -34,10 +34,6 @@ namespace Velvet.Tests
             }
         }
 
-        // The top-level value once per entry of transition-all's list, then the overrides' own.
-        private static float[] LeadingThen(float leading, params float[] overrides)
-            => Enumerable.Repeat(leading, StyleUtilityTableProbe.TransitionAllLonghands().Length).Concat(overrides).ToArray();
-
         private VisualElement MountOnRealPanel()
         {
             TestGraphics.IgnoreIfHeadless("an EditorWindow panel");
@@ -49,7 +45,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AVariantEnterWithTwoPropertyOverrides_When_Resolved_Then_TransitionPropertyIsTransitionAllsListThenThoseTwoWithMatchingDurations()
+        public void Given_AVariantEnterWithTwoPropertyOverrides_When_Resolved_Then_TransitionPropertyIsAllThenThoseTwoWithMatchingDurations()
         {
             // Arrange — a variant enter (the allProperties path) whose transition carries two per-property
             // overrides with different durations.
@@ -67,8 +63,7 @@ namespace Velvet.Tests
                 durationSec: 0.3f, easing: EasingMode.EaseOut, delaySec: 0f, propertyOverrides: overrides);
             EditorPanelTestHelpers.ForcePanelUpdate(element.panel);
 
-            // Assert — transition-property is transition-all's list then opacity and scale, the list on the top-level
-            // 0.3f and each override
+            // Assert — transition-property is [all, opacity, scale], "all" on the top-level 0.3f and each override
             // POSITIONALLY paired with its OWN duration. The scheduler authors
             // TimeValue entries in milliseconds (TimeUnit.Millisecond), and resolvedStyle reports them back in
             // that same unit (unlike a USS duration-* utility, which is parsed straight to seconds). NUnit walks
@@ -77,9 +72,8 @@ namespace Velvet.Tests
             // over an array of durations the tolerance still reaches.
             var props = string.Join(",", element.resolvedStyle.transitionProperty.Select(p => p.ToString()));
             var durationsMs = element.resolvedStyle.transitionDuration.Select(t => t.value).ToArray();
-            var listed = string.Join(",", StyleUtilityTableProbe.TransitionAllLonghands());
-            Assert.That(props == listed + ",opacity,scale" ? durationsMs : new[] { float.NaN },
-                Is.EqualTo(LeadingThen(300f, 150f, 500f)).Within(1e-3f));
+            Assert.That(props == "all,opacity,scale" ? durationsMs : new[] { float.NaN },
+                Is.EqualTo(new[] { 300f, 150f, 500f }).Within(1e-3f));
         }
 
         [Test]
@@ -100,16 +94,17 @@ namespace Velvet.Tests
                 durationSec: 0.4f, easing: EasingMode.EaseOut, delaySec: 0f, propertyOverrides: overrides);
             EditorPanelTestHelpers.ForcePanelUpdate(element.panel);
 
-            // Assert — "scale" names no duration and runs 300ms rather than the top-level 400ms the leading entries
-            // carry, as a value's own transition replaces the enclosing one in Framer.
+            // Assert — "scale" names no duration and runs 300ms rather than the top-level 400ms the "all" entry
+            // carries, as a value's own transition replaces the enclosing one in Framer.
             var durationsMs = element.resolvedStyle.transitionDuration.Select(t => t.value).ToArray();
-            Assert.That(durationsMs, Is.EqualTo(LeadingThen(400f, 150f, 300f)).Within(1e-3f));
+            Assert.That(durationsMs, Is.EqualTo(new[] { 400f, 150f, 300f }).Within(1e-3f));
         }
 
+        // GREEN_ON_BASE(characterization): the base gives each override's entry the easing it names.
         [Test]
         public void Given_PropertyOverridesNamingTheirOwnEasings_When_Resolved_Then_EachEntryRunsItsOwn()
         {
-            // Arrange — each override's easing differs from the top-level one the leading entries carry.
+            // Arrange — each override's easing differs from the top-level one the "all" entry carries.
             var element = MountOnRealPanel();
             var scheduler = new StyleAnimationScheduler();
             var overrides = new[]
@@ -125,15 +120,16 @@ namespace Velvet.Tests
 
             // Assert
             var easings = string.Join(",", element.resolvedStyle.transitionTimingFunction.Select(e => e.mode.ToString()));
-            var leading = Enumerable.Repeat("EaseOut", StyleUtilityTableProbe.TransitionAllLonghands().Length);
-            Assert.That(easings, Is.EqualTo(string.Join(",", leading.Concat(new[] { "Linear", "EaseIn" }))));
+            Assert.That(easings, Is.EqualTo("EaseOut,Linear,EaseIn"));
         }
 
+        // GREEN_ON_BASE(characterization): the native transition list this case reads, kept by naming a duration
+        // on an entry that would otherwise run its value on Framer's default transition off that list.
         [Test]
-        public void Given_ATopLevelDelayAndAnOverrideWithNoDelay_When_Resolved_Then_TheLeadingEntriesKeepTheTopLevelDelay()
+        public void Given_ATopLevelDelayAndAnOverrideWithNoDelay_When_Resolved_Then_TheAllEntryKeepsTheTopLevelDelay()
         {
             // Arrange — the only override names a zero delay of its own, so the top-level delay reaches nothing but
-            // the leading entries.
+            // the "all" entry.
             var element = MountOnRealPanel();
             var scheduler = new StyleAnimationScheduler();
             var overrides = new[] { new StylePropertyTransition("opacity", durationSec: 0.4f, delaySec: 0f) };
@@ -146,7 +142,7 @@ namespace Velvet.Tests
 
             // Assert
             var delaysMs = element.resolvedStyle.transitionDelay.Select(t => t.value).ToArray();
-            Assert.That(delaysMs, Is.EqualTo(LeadingThen(200f, 0f)).Within(1e-3f));
+            Assert.That(delaysMs, Is.EqualTo(new[] { 200f, 0f }).Within(1e-3f));
         }
 
         [Test]
@@ -197,7 +193,7 @@ namespace Velvet.Tests
             now += 0.1;
             EditorPanelTestHelpers.DriveAnimationsOnce(host.Panel);
 
-            // Assert — landed, where the leading entries' second-long timing would still have it most of the way up.
+            // Assert — landed, where the second-long "all" entry would still have it most of the way up.
             Assert.That(element.resolvedStyle.opacity, Is.EqualTo(0f).Within(1e-3f));
         }
 
@@ -217,11 +213,11 @@ namespace Velvet.Tests
 
             // Assert
             var durationsMs = element.resolvedStyle.transitionDuration.Select(t => t.value).ToArray();
-            Assert.That(durationsMs, Is.EqualTo(LeadingThen(300f, 0f)).Within(1e-3f));
+            Assert.That(durationsMs, Is.EqualTo(new[] { 300f, 0f }).Within(1e-3f));
         }
 
         // GREEN_ON_BASE(characterization): UI Toolkit's own resolution of an inline transition list, which the
-        // override path's leading entries rely on to leave each overridden property its own timing.
+        // override path's leading "all" entry relies on to leave each overridden property its own timing.
         [Test]
         public void Given_AnAllEntryFollowedByAnOpacityEntry_When_OpacityChanges_Then_TheLaterEntrysTimingApplies()
         {
