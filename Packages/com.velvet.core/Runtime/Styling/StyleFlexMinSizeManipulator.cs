@@ -194,12 +194,17 @@ namespace Velvet
             }
 
             var parentContent = horizontal ? parent.contentRect.width : parent.contentRect.height;
-            var specified = SpecifiedLength(textElement, horizontal, parentContent);
-            var maximum = MaximumLength(textElement, horizontal, parentContent);
-            _readsParentBox = ReadsPercent(textElement, horizontal);
+            var written = StyleArbitraryValueResolver.WrittenSizeExpressions(textElement, horizontal);
+            var specified = SpecifiedLength(textElement, horizontal, parentContent, written);
+            var maximum = MaximumLength(textElement, horizontal, parentContent, written);
+            var sizedByGrid = IsSizedByGridParent(parent);
+            _readsParentBox = ReadsPercent(textElement, horizontal, written) || sizedByGrid;
             var clipped = IsClipped(textElement);
+            // StandsDown reads the inline overflow and the grid parent, and no other term here carries either, so a
+            // pass that finds one moved is not taken for a repeat.
             var baseSignature = System.HashCode.Combine(
-                ComputeSignature(horizontal, text, resolved, crossContent, specified, maximum), clipped);
+                ComputeSignature(horizontal, text, resolved, crossContent, specified, maximum), clipped,
+                IsInlineOverflowHidden(textElement), sizedByGrid);
             var atNaturalWidth = IsAtNaturalWidth(textElement, horizontal, text, resolved, frame, measure: false);
             var signature = System.HashCode.Combine(baseSignature, atNaturalWidth);
             if (_hasSignature && signature == _lastSignature)
@@ -207,9 +212,8 @@ namespace Velvet
                 return;
             }
 
-            if (StandsDown(textElement, parent, horizontal, clipped))
+            if (StandsDown(textElement, horizontal, clipped, sizedByGrid))
             {
-                _readsParentBox = _readsParentBox || IsSizedByGridParent(parent);
                 Release(textElement);
                 Settle(signature, text);
                 return;
@@ -298,11 +302,13 @@ namespace Velvet
                     && Mathf.Ceil(MeasureMinContentWidth(textElement, text, whiteSpace)) >= Mathf.Ceil(whole));
         }
 
-        private bool ReadsPercent(TextElement textElement, bool horizontal)
+        private bool ReadsPercent(
+            TextElement textElement, bool horizontal, StyleArbitraryValueResolver.SizeExpressions written)
             => IsPercent(horizontal ? textElement.style.width : textElement.style.height,
                     horizontal ? _specifiedWidth : _specifiedHeight)
                 || IsPercent(horizontal ? textElement.style.maxWidth : textElement.style.maxHeight,
-                    horizontal ? _maxWidth : _maxHeight);
+                    horizontal ? _maxWidth : _maxHeight)
+                || written.ReadsPercentage;
 
         // Where ResolveLength takes the parent's content box into the length.
         private static bool IsPercent(StyleLength inline, Dim? fromClass)
@@ -345,15 +351,37 @@ namespace Velvet
                 : resolved.width - resolved.paddingLeft - resolved.paddingRight
                     - resolved.borderLeftWidth - resolved.borderRightWidth;
 
-        private float? SpecifiedLength(TextElement textElement, bool horizontal, float parentContent)
+        private float? SpecifiedLength(
+            TextElement textElement, bool horizontal, float parentContent, StyleArbitraryValueResolver.SizeExpressions written)
             => ResolveLength(
                 horizontal ? textElement.style.width : textElement.style.height,
-                horizontal ? _specifiedWidth : _specifiedHeight, parentContent);
+                horizontal ? _specifiedWidth : _specifiedHeight, parentContent,
+                textElement, horizontal, written.Specified);
 
-        private float? MaximumLength(TextElement textElement, bool horizontal, float parentContent)
+        private float? MaximumLength(
+            TextElement textElement, bool horizontal, float parentContent, StyleArbitraryValueResolver.SizeExpressions written)
             => ResolveLength(
                 horizontal ? textElement.style.maxWidth : textElement.style.maxHeight,
-                horizontal ? _maxWidth : _maxHeight, parentContent);
+                horizontal ? _maxWidth : _maxHeight, parentContent,
+                textElement, horizontal, written.Maximum);
+
+        // A bracket length that reads a percentage is written inline as pixels by a layer that a later tick rewrites,
+        // so it is resolved from the expression the resolver last wrote into the slot, against the parent's box as
+        // it is now. Null while the element is not laid out or the percentage is of an indefinite size.
+        private static float? ResolveLength(
+            StyleLength inline, Dim? fromClass, float parentContent,
+            TextElement textElement, bool horizontal, StyleLengthExpression? written)
+        {
+            if (written == null || !written.ReadsPercentage)
+            {
+                return ResolveLength(inline, fromClass, parentContent);
+            }
+            return StyleRelativeLengths.TryResolve(
+                    textElement, written, horizontal ? RelativeLengthAxis.Width : RelativeLengthAxis.Height,
+                    StyleKeyword.None, out var resolved) && resolved.keyword == StyleKeyword.Undefined
+                ? resolved.value.value
+                : null;
+        }
 
         private static float MeasureContentMinimum(
             TextElement textElement, bool horizontal, string text, WhiteSpace whiteSpace, float crossContent)
@@ -380,7 +408,7 @@ namespace Velvet
             => element.resolvedStyle.position != Position.Absolute
                 && element.resolvedStyle.display != DisplayStyle.None;
 
-        private bool StandsDown(TextElement textElement, VisualElement parent, bool horizontal, bool clipped)
+        private bool StandsDown(TextElement textElement, bool horizontal, bool clipped, bool sizedByGrid)
         {
             if (clipped)
             {
@@ -392,8 +420,7 @@ namespace Velvet
             {
                 return true;
             }
-            if (textElement.style.overflow.keyword == StyleKeyword.Undefined
-                && textElement.style.overflow.value == Overflow.Hidden)
+            if (IsInlineOverflowHidden(textElement))
             {
                 return true;
             }
@@ -407,8 +434,12 @@ namespace Velvet
             {
                 return true;
             }
-            return IsSizedByGridParent(parent);
+            return sizedByGrid;
         }
+
+        private static bool IsInlineOverflowHidden(VisualElement element)
+            => element.style.overflow.keyword == StyleKeyword.Undefined
+                && element.style.overflow.value == Overflow.Hidden;
 
         private static readonly string[] s_clipClasses = { OverflowHiddenClass, TruncateClass, OverflowVisibleClass };
 
