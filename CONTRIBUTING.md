@@ -580,7 +580,7 @@ stopped at its own run's baseline times `TIMEOUT_FACTOR` plus `TIMEOUT_CONSTANT`
 of the baseline it charges.
 
 Each `docker run` of the editor image that a workflow spells out to run a suite (`mutation.yml`'s two
-measuring steps, `kill-set.yml`'s and `per-case-coverage.yml`'s) is given a memory limit, with swap at
+measuring steps, `kill-set.yml`'s, `per-case-coverage.yml`'s and `player-benchmarks.yml`'s) is given a memory limit, with swap at
 the same figure, and a process limit, so that an editor outgrowing the limit loses a process inside the
 container. `mutation_check.py` records a campaign's launch that does as `killed (the editor crashed)` ([`Generators~/README.md`](Packages/com.velvet.core/Generators~/README.md) owns the reading), and
 `RunnerLimitTests` holds the limits on every such launch and the memory below a hosted runner's.
@@ -605,7 +605,12 @@ mutants the campaign places, and says nothing of a line where it places none.
 `.github/workflows/per-case-coverage.yml` runs both suites with each case's coverage recorded on its
 own, and its report job runs `scripts/test_quality/unique_coverage.py` over them: for each fixture, the
 lines no other fixture's cases reach, with the tests `group` names taken out of their fixtures and
-reported as one unit. Measure the tree that still holds the cases, the pull request's base, naming them
+reported as one unit. One editor over a whole suite was killed with SIGKILL after 223 EditMode cases and
+232 PlayMode ones, under a 12g memory limit, so the EditMode suite runs as several shard jobs and every
+editor takes a bounded number of cases; `scripts/ci/per_case_coverage.py` owns how. A dispatch holds a job
+per shard for hours, which counts against the account's concurrent-job cap: a dispatch beside a mutation campaign
+leaves one slot of the cap, so a pull request's CI queues behind both.
+Measure the tree that still holds the cases, the pull request's base, naming them
 in `group`:
 
 ```bash
@@ -1407,6 +1412,12 @@ benchmark that throws fails the run like any other test. No job fails on a numbe
 - `trend-pull-request` compares a labelled head with the latest entry on `main` in the job summary and
   writes nothing.
 
+`.github/workflows/player-benchmarks.yml`, dispatched by hand with a `ref` and a `filter` (the keyed benchmarks
+by default), builds those fixtures into an IL2CPP StandaloneLinux64 player with the full counts and prints each
+benchmark's median to the job summary, so a change to what IL2CPP compiles differently from Mono is read from
+two dispatches, one on the commit before and one on the commit after. The backend and the counts are set by
+`BenchmarkPlayerBuild` for that build alone, where the workflow gives the editor `VELVET_PLAYER_BENCHMARKS=1`.
+
 The numbers are for comparing runs with each other, not absolute ones: the editor runs them with
 `-debugCodeOptimization` and the code-coverage recorder on, because game-ci passes both whatever the
 workflow asks for (`test.yml` says so beside its coverage options), and GitHub runs them on several
@@ -1521,6 +1532,13 @@ come in that time or is neither merged nor failed, are reported as a merge reque
 outcome unknown: settle leaves the branch where it is and exits 0, so read the pull request before
 asking again. `gh stack merge` typed by hand merges every member up to the one it is given and is
 held to none of this, so `refuse/stack_merge_by_hand.py` refuses it.
+
+**A pull request merges under a milestone**: for a change to `Packages/com.velvet.core/` onto
+`main` or a maintenance line, the next version that branch publishes, at least the bump
+[Releasing](#releasing) derives; otherwise the Infrastructure milestone or a version.
+`settle.py merge`, `refuse/merge_off_milestone.py` and the milestone step of
+`Source generators ▸ repository-settings` refuse anything else, each naming its way out, and
+[`scripts/pr/milestone.py`](scripts/pr/milestone.py) owns the rule.
 
 No merge waits on a mutation campaign. A campaign dispatched onto a pull request's
 branch runs on its head like any other workflow, and `settle.py merge`, the automerge runs through it, and
@@ -1701,6 +1719,11 @@ directory.
 2. Merge to `main` (the `upm` branch is updated automatically).
 3. Run the **UPM** workflow via *Actions ▸ UPM ▸ Run workflow*, entering the same version.
    This tags `vX.Y.Z` on the `upm` (package-at-root) commit and publishes a GitHub release.
+
+**A release publishes the next version and skips none**: one following the newest release below
+it, and the lowest open version milestone of its branch, which the dispatch closes once the release
+is published. [`scripts/pr/milestone.py`](scripts/pr/milestone.py) owns the rule; ask it before
+closing the version with `python3 scripts/pr/milestone.py release --version X.Y.Z`.
 
 **A release is gated on the mutation record and on `main`'s CI.** The dispatch promotes the commit it
 runs on, which CI has already measured, the way

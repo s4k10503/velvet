@@ -73,18 +73,12 @@ namespace Velvet
             => mode == EasingMode.EaseInOutBack || mode == EasingMode.EaseInOutCirc ? EasingMode.EaseOut : mode;
 
         // The curve a transition UI Toolkit runs on its own curve for one of the modes above eases by instead, null where
-        // that is the engine's own. That curve is told by its values at two points against UssEasing's, which
-        // UssEasingTests holds within 1e-6 of the engine's for every mode: a curve within 1e-5 of one of those modes at
-        // both is taken for it, and any other gets null.
+        // that is the engine's own or the curve is taken for none of them (UssEasing.Is).
         internal static Func<float, float>? InPlaceOfEngineCurve(Func<float, float> engineCurve, bool accelerated)
         {
             foreach (var (mode, curve, acceleratedCurve) in s_named)
             {
-                var distance = Math.Max(Math.Abs(engineCurve(0.3f) - UssEasing.Evaluate(mode, 0.3f)),
-                    Math.Abs(engineCurve(0.7f) - UssEasing.Evaluate(mode, 0.7f)));
-                // MUTANT_SURVIVES(equivalent, boundary): the engine's curve for the mode lies within 1e-6 of
-                // UssEasing's, so whether a distance of exactly 1e-5 matches decides nothing for it.
-                if (distance < 1e-5f)
+                if (UssEasing.Is(engineCurve, mode))
                 {
                     return accelerated ? acceleratedCurve : curve;
                 }

@@ -449,7 +449,7 @@ namespace Velvet
             // Re-placing on every sync, not just when the host changes: an insert or a keyed move among the
             // siblings shifts the element without notifying this binding.
             // A face border overlay (FaceBorderOverlay) sits between the element and its band.
-            var after = FaceBorderOverlay.Has(element) ? 2 : 1;
+            var after = FaceBorderOverlay.HasOverlay(element) ? 2 : 1;
             if (ChildListWrites.PhysicalIndexOf(host, binding.Overlay) != ChildListWrites.PhysicalIndexOf(host, element) + after)
             {
                 // Re-read the element's index AFTER the removal — an overlay currently sitting before it

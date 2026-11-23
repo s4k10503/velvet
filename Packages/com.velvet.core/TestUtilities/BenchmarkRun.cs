@@ -13,7 +13,13 @@ namespace Velvet.TestUtilities
     {
         public const string FullFlag = "-velvetBenchmarkFull";
 
+#if VELVET_BENCHMARK_FULL
+        // Defined by BenchmarkPlayerBuild for the player the benchmark workflow builds, which has no editor
+        // command line to carry the flag.
+        private static readonly bool s_full = true;
+#else
         private static readonly bool s_full = IsFull(Environment.GetCommandLineArgs());
+#endif
 
         public static bool IsFull(string[] commandLineArgs) =>
             Array.IndexOf(commandLineArgs, FullFlag) >= 0;

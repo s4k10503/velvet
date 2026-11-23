@@ -62,7 +62,9 @@ long-form entry below fails the same script, because the note would then say the
 
 Bump `version` in `Packages/com.velvet.core/package.json` to match. Do not pick the number: run
 `python3 scripts/release/next_version.py` before closing the changelog and use the version it
-prints, and `published_check.py` refuses a closing change that names another.
+prints, and `published_check.py` refuses a closing change that names another. Then
+`python3 scripts/pr/milestone.py release --version X.Y.Z` asks what the dispatch will: that the
+version skips none and is the lowest open version milestone, which the release pull request carries.
 
 Give the new version a row in `SECURITY.md`'s supported-versions table, and mark there what happens to
 the series it succeeds. `supported_versions_check.py` refuses a release the table does not cover with
