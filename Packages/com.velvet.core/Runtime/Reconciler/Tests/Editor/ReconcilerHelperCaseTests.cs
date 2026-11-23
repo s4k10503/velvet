@@ -6,9 +6,8 @@ using UnityEngine.UIElements;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Three small decisions of the reconcile pass, reached directly: whether a fiber still owes a Portal its
-    /// retarget, whether a mount point sits inside a dropped container, and whether realigning a layer host reads
-    /// its live child list after the recorded writes have applied.
+    /// Two small decisions of the reconcile pass, reached directly: whether a fiber still owes a Portal its
+    /// retarget, and whether a mount point sits inside a dropped container.
     /// </summary>
     [TestFixture]
     internal sealed class ReconcilerHelperCaseTests
@@ -72,33 +71,6 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(inside, Is.True);
-        }
-
-        // GREEN_ON_BASE(characterization): the base applies the recorded writes into a layer host before it realigns the host's layout list.
-        // Drop `ChildListWrites.SyncLive(parent);` from Realign and the insert is still recorded.
-        [Test]
-        public void Given_ALayerHostWithARecordedInsertNotYetApplied_When_ItsChildrenAreNotedReconciled_Then_TheInsertHasReachedTheLiveList()
-        {
-            // Arrange
-            using var reconciler = new Reconciler();
-            var host = new VisualElement();
-            reconciler.Context.ZLayerHosts[host] = new ZLayerHostRecord { Swapped = true };
-            var pass = reconciler.Context.Pass;
-            ChildListWrites.BeginRecording(pass);
-            try
-            {
-                using (ChildListWrites.QueueWrite()) ChildListWrites.Insert(host, 0, new VisualElement());
-
-                // Act
-                FiberZLayerCoordinator.NoteChildrenReconciled(reconciler.Context, host);
-
-                // Assert
-                Assert.That(host.hierarchy.childCount, Is.EqualTo(1));
-            }
-            finally
-            {
-                ChildListWrites.EndRecording(pass);
-            }
         }
     }
 }

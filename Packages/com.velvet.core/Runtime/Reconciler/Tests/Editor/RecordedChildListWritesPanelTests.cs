@@ -37,7 +37,7 @@ namespace Velvet.Tests
 
         public override void TearDown()
         {
-            for (var i = _pass.Depth; i > 0; i--) ChildListWrites.EndRecording(_pass);
+            if (_pass.Recording) ChildListWrites.EndRecording(_pass);
             base.TearDown();
         }
 
