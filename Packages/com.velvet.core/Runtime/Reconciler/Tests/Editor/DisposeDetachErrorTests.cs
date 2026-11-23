@@ -11,7 +11,8 @@ namespace Velvet.Tests
     /// removes the tree's rows: to <see cref="MountOptions.OnUncaughtError"/> once the unmount is done, with
     /// <c>Dispose</c> returning, as React's <c>root.unmount()</c> captures what a removal throws at the root and reports
     /// it after the unmount commits. Two elements' errors are each reported, as are an element's and an effect
-    /// cleanup's, and so is one thrown where the disposal waited for another root's commit to end.
+    /// cleanup's, and so is one thrown where the disposal waited for another root's commit to end. A boundary the
+    /// disposal tears down catches none of them.
     /// </summary>
     /// <remarks>
     /// The tree mounts on a real panel, which is what runs a detach callback.
@@ -71,6 +72,13 @@ namespace Velvet.Tests
             Hooks.UseEffect((Func<Action>)(() => () => throw new InvalidOperationException("cleanup:C")),
                 Array.Empty<object>());
             return V.Div();
+        }
+
+        [Component(Compiler = false, IsErrorBoundary = true, DisplayName = "B")]
+        private static VNode CatchesAroundAThrower()
+        {
+            Hooks.UseFallback(_ => V.Label(text: "fallback"));
+            return V.Custom<DetachThrower>(name: "X", key: "thrower");
         }
 
         [Component(Compiler = false)]
@@ -147,6 +155,21 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(_reports, Is.EquivalentTo(new[] { "cleanup:C", "detach:X" }));
+        }
+
+        [Test]
+        public void Given_ABoundaryAboveAnElementThatThrowsAsItDetaches_When_TheHandleIsDisposed_Then_TheRootReportsTheErrorAndTheBoundaryCatchesNothing()
+        {
+            // Arrange
+            var log = new EventLog();
+            var mounted = V.Mount(_mountPoint, log.Provide(V.Component(CatchesAroundAThrower, key: "boundary")),
+                log.ReportingErrors());
+
+            // Act
+            DisposeRecordingWhatItThrows(mounted, log.Add);
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("uncaught:detach:X"));
         }
 
         [Test]
