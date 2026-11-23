@@ -83,7 +83,7 @@ namespace Velvet
             {
                 classes = new List<string>();
                 s_unattached.Add(element, classes);
-                element.RegisterCallback(s_onAttach);
+                element.RegisterCallback(s_onAttach, CallbackOptions.Once);
             }
             if (!classes.Contains(cls))
             {
@@ -91,10 +91,19 @@ namespace Velvet
             }
         }
 
+        // The cleaner's: an element pooled before it attached must not take its last consumer's classes up on the
+        // attach its next consumer gives it.
+        internal static void ReleaseDeferred(VisualElement element)
+        {
+            if (s_unattached.Remove(element))
+            {
+                element.UnregisterCallback(s_onAttach);
+            }
+        }
+
         private static void OnAttach(AttachToPanelEvent evt)
         {
             var element = (VisualElement)evt.currentTarget;
-            element.UnregisterCallback(s_onAttach);
             if (!s_unattached.TryGetValue(element, out var classes))
             {
                 return;

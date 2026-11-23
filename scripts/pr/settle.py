@@ -5,7 +5,7 @@ Both halves existed as instructions rather than as code: `stop/unsettled_pr.py` 
 the reader to reimplement, and the merge was typed by hand. An instruction is re-derived each time,
 and that hook's own text owns what a re-derived watcher gets wrong.
 
-**Nine of the preconditions below have a refuse hook behind them**, so a `gh pr merge` typed by hand
+**Ten of the preconditions below have a refuse hook behind them**, so a `gh pr merge` typed by hand
 is held to those as well; `refuse/merge_unproven_head.py` records which hook holds which. Those hooks
 match on `gh pr merge` and do not see the `gh api -X PUT .../merge` this script sends, so teaching
 them that shape is its own change. What this adds is reporting them together: one run names
@@ -15,7 +15,7 @@ everything wrong rather than costing a round of CI per reason.
 and the two a stack member is held to. A `gh stack merge` typed by hand is refused whole instead,
 by `refuse/stack_merge_by_hand.py`.
 
-Twelve preconditions:
+Thirteen preconditions:
 
 - **Checks are bound to the head SHA they were read at.** The checks API answers about whatever it
   last recorded, which after a force-push is the previous commit's run. So the head is read, then the
@@ -65,6 +65,9 @@ Twelve preconditions:
   base, which is where it lands.
 - **A stack member merges only while `delete_branch_on_merge` is on**, since its remote branch is
   left to that setting, for the reason `delete_local_branch` gives.
+- **A pull request merges under a milestone, and one changing the package under the next version
+  the branch it lands on publishes.** CONTRIBUTING.md's merging section owns the rule and
+  `milestone.py` the reading.
 
 `watch` records a pull request as ready by asking `blocking_reasons` — the same question `merge`
 decides from, not a second one beside it. Asked twice, the two disagreed: a draft with conflicts was
@@ -133,6 +136,8 @@ expected_checks = load_by_path(Path(__file__).resolve().with_name("expected_chec
                                "expected_checks")
 
 campaign = load_by_path(Path(__file__).resolve().with_name("campaign.py"), "campaign")
+
+milestone = load_by_path(Path(__file__).resolve().with_name("milestone.py"), "milestone")
 
 # The three files this writes and two hooks read; watcher_state.py owns their format.
 watcher_state = load_by_path(Path(__file__).resolve().with_name("watcher_state.py"),
@@ -264,7 +269,8 @@ def head_sha(project, number):
 # Everything the decision reads off the pull request itself. `mergeable_state` is on this payload and
 # not on the listing one, so a caller that wants it has to ask per pull request anyway.
 PullRequest = collections.namedtuple("PullRequest",
-                                     "sha branch base draft merge_state fork state stack title")
+                                     "sha branch base draft merge_state fork state stack title "
+                                     "milestone milestone_state")
 
 # The stack a pull request sits in: its number, and the branch the whole stack merges into.
 Stack = collections.namedtuple("Stack", "number base")
@@ -292,7 +298,9 @@ def pull_request(project, number):
                        payload.get("mergeable_state") or "", home != base_repository,
                        "merged" if payload.get("merged") else payload.get("state") or "unnamed",
                        Stack(stack["number"], stack["base"]["ref"]) if stack else None,
-                       payload.get("title") or "")
+                       payload.get("title") or "",
+                       (payload.get("milestone") or {}).get("title"),
+                       (payload.get("milestone") or {}).get("state"))
 
 
 def stack_members(project, number):
@@ -582,7 +590,8 @@ def contains_commit(project, branch, sha):
 def reasons_from(before, after, results, branch, base, held_by_worktree,
                  unpublished_release, draft, merge_state, fork, failing_runs, behind_release,
                  long_lived_head, runs_unfinished, runs_failed, required, stack_below,
-                 stack_settings, stack_tangles, line_pull_request, line_head, line_squash):
+                 stack_settings, stack_tangles, line_pull_request, line_head, line_squash,
+                 milestone_pull_request, milestone_head):
     """Every reason not to merge, decided from plain data so the decision is testable without a network.
 
     `unpublished_release` takes no default on purpose: a caller that stops supplying it would otherwise
@@ -597,15 +606,17 @@ def reasons_from(before, after, results, branch, base, held_by_worktree,
     for any other, and `stack_tangles`, what `stack_tangles` answers for a stack member and () for
     any other. `line_pull_request`, `line_head` and `line_squash`, what
     `maintenance_line.pull_request_reasons`, `maintenance_line.head_reasons` and
-    `maintenance_line.squash_reasons` answer, take none either.
+    `maintenance_line.squash_reasons` answer, take none either, and nor do
+    `milestone_pull_request` and `milestone_head`, what `milestone.pull_request_reasons` and
+    `milestone.head_reasons` answer.
 
     A moved head returns with the reasons that are not about a commit and nothing else: with the
     readings straddling a force-push, nothing else read here is known to be about the same commit, so
     reporting the rest would be reporting about two SHAs at once. The publication reason is about the
     base, which the force-push did not touch; draft is a state of the pull request rather than of
     its head, a long-lived head is one by its branch name, `line_pull_request` is read off the
-    names and the title, and neither a stack's order nor the repository's settings is about the
-    head's commit.
+    names and the title, `milestone_pull_request` off the milestone alone, and neither a stack's
+    order nor the repository's settings is about the head's commit.
     """
     reasons = [unpublished_release] if unpublished_release else []
     if draft:
@@ -613,6 +624,7 @@ def reasons_from(before, after, results, branch, base, held_by_worktree,
     if long_lived_head:
         reasons.append(long_lived.reason(branch))
     reasons.extend(line_pull_request)
+    reasons.extend(milestone_pull_request)
     if stack_below:
         lowest, state = stack_below[0]
         reasons.append(f"#{lowest} sits below it in its stack and has not merged: merge #{lowest} first"
@@ -634,6 +646,7 @@ def reasons_from(before, after, results, branch, base, held_by_worktree,
         reasons.append(conflict_reason(base))
     reasons.extend(line_head)
     reasons.extend(line_squash)
+    reasons.extend(milestone_head)
     if stack_tangles:
         reasons.append("its stack is not linear on {}: {}. {}".format(
             base, "; ".join(f"#{member} does not hold the head of {below}" if how == "lacks"
@@ -708,11 +721,12 @@ Blocking = collections.namedtuple(
 
 # The readings that answer for something wider than one pull request: the publication state of a
 # base, its newest release commit, its required workflows' last push verdicts, the contexts its
-# rulesets require, and the branches this
-# checkout's worktrees hold, which is the repository's. Taken once per base and handed down, so a watcher poll over N pull
-# requests costs one fetch, one `git ls-remote --tags`, one rules listing and one runs listing per
-# workflow per base rather than N of each.
-ProjectState = collections.namedtuple("ProjectState", "held unpublished_release red release required")
+# rulesets require, the branches this checkout's worktrees hold, which is the repository's, and its
+# milestones. Taken once per base and handed down, so a watcher poll over N pull requests costs one
+# fetch, two `git ls-remote --tags`, one rules listing, one milestones listing and one runs listing
+# per workflow per base rather than N of each.
+ProjectState = collections.namedtuple("ProjectState",
+                                      "held unpublished_release red release required milestones")
 
 
 def project_state(project, base):
@@ -726,7 +740,8 @@ def project_state(project, base):
            if failing]
     return ProjectState(worktrees(project),
                         published_check.unpublished_reason(project, f"origin/{base}", fetch=False),
-                        red, release_commit(project, base), required_contexts(project, base))
+                        red, release_commit(project, base), required_contexts(project, base),
+                        milestone_state(project))
 
 
 def git_said(failure):
@@ -760,6 +775,26 @@ def line_carried(project, base, sha):
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError) as failure:
         raise RuntimeError(f"which lines {sha[:7]} carries past origin/{base} could not be read: "
                            f"{git_said(failure)}")
+
+
+def api(project):
+    """`milestone.py`'s REST caller, reading through `rest_json`."""
+    def ask(path, method="GET"):
+        return rest_json(f"repos/{repository(project)}/{path}")
+    return ask
+
+
+def milestone_state(project):
+    """`milestone.repository` off origin/main, which `project_state`'s fetch has just brought."""
+    return milestone.repository(project, api(project), GH_TIMEOUT)
+
+
+def milestone_change(project, number, base, sha, fork, versions):
+    """`milestone.change` for `sha` against origin/<base>, a fork's head fetched first by its pull
+    request's ref, since `project_state`'s fetch brings origin's branches alone."""
+    if fork:
+        gh_git(project, "fetch", "--quiet", "origin", f"pull/{number}/head")
+    return milestone.change(project, f"origin/{base}", sha, versions)
 
 
 def release_commit(project, base):
@@ -828,6 +863,13 @@ def blocking_reasons(project, number, base=None, states=None, previous=()):
     line_squash = (maintenance_line.squash_reasons(landing,
                                                    line_carried(project, landing, before.sha))
                    if not before.fork and not long_lived_head else [])
+    change = milestone_change(project, number, before.base, before.sha, before.fork,
+                              state.milestones.published)
+    milestone_pull_request = milestone.pull_request_reasons(
+        number, before.milestone, before.milestone_state,
+        milestone.suggested(change.package, landing, state.milestones))
+    milestone_head = [] if milestone_pull_request else milestone.head_reasons(
+        number, before.milestone, change, landing, state.milestones)
     holders = state.held.get(before.branch) or ()
     held = tuple((tree.path, holder_state(project, tree, after)) for tree in holders)
     runs_failed = expected_checks.failed(others, jobs, now)
@@ -852,7 +894,9 @@ def blocking_reasons(project, number, base=None, states=None, previous=()):
                                      landing, before.branch, before.title,
                                      line_main_state(project)
                                      if maintenance_line.is_line(landing) else None),
-                                 line_head=line_head, line_squash=line_squash),
+                                 line_head=line_head, line_squash=line_squash,
+                                 milestone_pull_request=milestone_pull_request,
+                                 milestone_head=milestone_head),
                     after, before.branch, results, target, before.sha, held,
                     # Read at `before`, so a moved head has none, as its reasons have none.
                     runs_failed if before.sha == after else (), stack,

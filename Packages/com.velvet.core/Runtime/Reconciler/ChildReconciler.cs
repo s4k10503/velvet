@@ -350,7 +350,6 @@ namespace Velvet
         // leaves the rest of the drain to run.
         internal bool DrainPendingPortalMounts(ReconcilePass? wave = null)
         {
-            HashSet<ComponentFiber>? childFibersBefore = null;
             var suspended = false;
             while (_ctx.PendingPortalMounts.Count > 0)
             {
@@ -456,11 +455,10 @@ namespace Velvet
                 // detached-item scope (Reconciler.BeginDetachedItemScope). A Portal reconciled outside any
                 // component body has no declaring fiber, and then neither side has one to key on.
                 var declaringFiber = logicalParent is { IsDisposed: false } ? logicalParent : null;
-                // Snapshot the anchor's direct children before, so the fibers added by this Portal's
+                // Marks where the anchor's direct children stand, so the fibers added by this Portal's
                 // reconcile can be identified afterwards and stamped with the context needed to reconstruct
                 // their enclosing Providers on an isolated re-render (the spine cannot otherwise reach them).
                 var drainAnchor = declaringFiber ?? _ctx.FiberStack.Current;
-                CaptureAnchorChildren(drainAnchor, ref childFibersBefore);
                 // The nested Reconcile below re-enters ChildReconciler.Reconcile on THIS SAME instance, whose
                 // entry unconditionally discards PendingIndexedState/PendingKeyedState as stale state left by a
                 // finished pass — correct for a genuine fresh top-level call, but wrong here: this drain runs
@@ -498,6 +496,8 @@ namespace Velvet
                 var enclosingPresenceChild = _ctx.EnclosingPresenceChild;
                 _ctx.EnclosingPresenceChild = _ctx.PresenceChildOf(placeholder);
                 var mountSuspended = false;
+                // Opened last, closed first in the finally below whatever the mount does.
+                var appendedFrom = drainAnchor?.BeginAppendLog() ?? 0;
                 try
                 {
                     PointerEventsScope.NoteReconciledInto(_ctx, resolvedTarget);
@@ -505,11 +505,13 @@ namespace Velvet
                         slotStart: slotStart);
                     // The mount half of the structural pass FiberNodePatcher.PatchSelfPost runs for a Portal.
                     _patcher.ApplyStructuralVariants(resolvedTarget);
+                    StampDrainedChildren(drainAnchor, appendedFrom, contextSnapshot, children, logicalParent);
                 }
                 catch (FiberSuspendSignal)
                 {
                     mountSuspended = true;
                     RemoveRowsFrom(resolvedTarget, slotStart);
+                    StampDrainedChildren(drainAnchor, appendedFrom, contextSnapshot, children, logicalParent);
                 }
                 catch (Exception exception) when (FiledForTheWave(wave, declaringFiber, exception))
                 {
@@ -519,6 +521,7 @@ namespace Velvet
                 }
                 finally
                 {
+                    drainAnchor?.EndAppendLog();
                     _ctx.EnclosingPresenceChild = enclosingPresenceChild;
                     _ctx.ExitPortalChildKeyScope(enclosingChildScope);
                     if (declaringFiber != null) _ctx.FiberStack.Pop();
@@ -532,7 +535,6 @@ namespace Velvet
                     }
                     _parkSetAside = setAside;
                 }
-                StampDrainedChildren(drainAnchor, childFibersBefore, contextSnapshot, children, logicalParent);
                 // The growth this mount contributed, in logical slots — the same basis as slotStart.
                 var slotLength = LogicalChildSlots.Count(resolvedTarget) - slotStart;
                 _ctx.PortalState[placeholder] = new PortalSlotInfo(
@@ -618,30 +620,17 @@ namespace Velvet
             }
         }
 
-        // Taken by ref so one set serves the whole drain loop: each entry's snapshot is consumed by its own
-        // StampDrainedChildren call before the next entry clears it.
-        private static void CaptureAnchorChildren(ComponentFiber? anchor, ref HashSet<ComponentFiber>? before)
-        {
-            if (anchor == null) return;
-            (before ??= new HashSet<ComponentFiber>()).Clear();
-            for (var f = anchor.Child; f != null; f = f.Sibling)
-            {
-                before.Add(f);
-            }
-        }
-
         // Stamps the fibers this drain entry just added under anchor with what an isolated re-render needs
-        // to rebuild their enclosing Providers — the same diff-against-a-before-set that
+        // to rebuild their enclosing Providers — the same read of what was appended since a mark that
         // FiberNodePatcher.StampNewTopLevelChildren applies on the patch half of the pair.
         private static void StampDrainedChildren(
-            ComponentFiber? anchor, HashSet<ComponentFiber>? before,
+            ComponentFiber? anchor, int appendedFrom,
             List<KeyValuePair<object, object>>? contextSnapshot, VNode?[] children, ComponentFiber? logicalParent)
         {
             if (anchor == null) return;
             DetachedMountContext? detachedContext = null;
-            for (var f = anchor.Child; f != null; f = f.Sibling)
+            foreach (var f in anchor.AppendedSince(appendedFrom))
             {
-                if (before!.Contains(f)) continue;
                 detachedContext ??= new DetachedMountContext(contextSnapshot, children, anchor, logicalParent);
                 f.DetachedMountContext = detachedContext;
             }
@@ -1030,10 +1019,25 @@ namespace Velvet
 
         // Skipping a node the parent handed back by instance leaves every component in its subtree unreached, which
         // drops the render this pass owes one with work pending. Where the reconciling fiber is marked
-        // (FiberPendingWork), this reconcile skips only a node nothing below can be rendered by a fiber, and patches
-        // every other.
+        // (FiberPendingWork), or owes a Portal its retarget (OwesPortalRetarget), this reconcile skips
+        // only a node nothing below can be rendered by a fiber, and patches every other.
         private bool SkipsIdentical(VNode? node)
-            => _ctx.FiberStack.Current is not { PendingWorkBelow: true } || !FiberPendingWork.MayHoldFiber(node);
+            => !FiberPendingWork.MayHoldFiber(node)
+                || _ctx.FiberStack.Current is not { PendingWorkBelow: true } && !OwesPortalRetarget(_ctx.FiberStack.Current);
+
+        // Read from the Portal entries, which clear ChildrenPending where the patch that mounts the children completes,
+        // so a parked, aborted or subsumed reconcile of the fiber keeps patching until then. A fiber none of whose
+        // Portals is pending any longer, a Portal it stopped returning included, drops the mark here.
+        private bool OwesPortalRetarget(ComponentFiber? fiber)
+        {
+            if (fiber is not { PortalRetargetOwed: true }) return false;
+            foreach (var entry in _ctx.PortalState.Stored.Values)
+            {
+                if (entry.ChildrenPending && ReferenceEquals(entry.DeclaringFiber, fiber)) return true;
+            }
+            fiber.PortalRetargetOwed = false;
+            return false;
+        }
 
         // Returns false only on a yield (this phase parked its resume point); true when the phase is done
         // with the range — including when an abort cut it short, which the dispatcher detects separately.

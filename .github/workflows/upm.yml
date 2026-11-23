@@ -21,10 +21,12 @@ on:
         required: false
         default: ""
 
-# actions: read, for the release gate's reading of the required workflows' push runs.
+# actions: read, for the release gate's reading of the required workflows' push runs; issues: read,
+# for the milestones the version is checked against.
 permissions:
   contents: write
   actions: read
+  issues: read
 
 concurrency:
   group: upm
@@ -113,6 +115,15 @@ jobs:
             echo "::error::package.json version ($PKG_VERSION) does not match requested release version ($VERSION). Bump package.json first."
             exit 1
           fi
+
+      # A version that skips one, or that is not the lowest open milestone of the branch publishing
+      # it, is refused before anything is tagged. CONTRIBUTING.md's releasing section owns the rule.
+      - name: Version follows the last release and is the next milestone (release only)
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+        run: python3 scripts/pr/milestone.py release --version "$VERSION"
 
       # Ahead of the split, because the split checks out the package-at-root tree, where neither this
       # script nor its CHANGELOG path exists — and ahead of the tagging, so a CHANGELOG that cannot
@@ -220,3 +231,23 @@ jobs:
           git tag "$MAIN_TAG" "$GITHUB_SHA"
           git push origin "$MAIN_TAG"
           gh release create "$TAG" --title "$TAG" --notes-file "$NOTES_FILE"
+
+  # The published version's milestone closes with the release, so the next one becomes the version
+  # settle.py and the merge hook hold pull requests to. A job of its own because the split leaves its
+  # checkout on the package-at-root tree, which holds no scripts.
+  close-milestone:
+    name: Close the published version's milestone
+    needs: split
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+        run: python3 scripts/pr/milestone.py close --version "$VERSION"

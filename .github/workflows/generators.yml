@@ -114,6 +114,9 @@ jobs:
       - name: Maintenance line tests
         run: python3 scripts/test_quality/run_suite.py scripts/pr/test_maintenance_line.py
 
+      - name: Milestone tests
+        run: python3 scripts/test_quality/run_suite.py scripts/pr/test_milestone.py
+
       - name: Automerge tests
         run: python3 scripts/test_quality/run_suite.py scripts/pr/test_automerge.py
 
@@ -157,6 +160,11 @@ jobs:
     if: github.repository == 's4k10503/velvet'
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    # issues and pull-requests read for the milestone step at the end.
+    permissions:
+      contents: read
+      issues: read
+      pull-requests: read
     steps:
       - name: Assert repository settings
         env:
@@ -245,6 +253,28 @@ jobs:
           fi
 
           exit "$failed"
+
+      # The milestone a pull request merges under, which scripts/pr/milestone.py decides and
+      # CONTRIBUTING.md's merging section states. A step of this job rather than a job of its own,
+      # so it takes no runner slot of its own. The pull request is read live rather than off the
+      # event, for the reason test.yml's publication job gives for its body. fetch-depth 0 for
+      # origin/main, the tags and the base the change is read against.
+      - if: github.event_name == 'pull_request'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - id: base
+        if: github.event_name == 'pull_request'
+        run: python3 scripts/ci/change_base.py >> "$GITHUB_OUTPUT"
+
+      - name: Milestone
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NUMBER: ${{ github.event.pull_request.number }}
+          BASE: ${{ steps.base.outputs.sha }}
+        run: python3 scripts/pr/milestone.py check --number "$NUMBER" --base "$BASE" --head HEAD
 
   # ---------------------------------------------------------------------------
   # This workflow's half of what branch protection requires. Same ownership rule

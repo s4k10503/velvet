@@ -21,28 +21,56 @@ namespace Velvet
         // Marks the overlay as a reconciler-invisible child of its host (SilhouetteBoundsSpacer.IsSpacer).
         internal const string MarkerClass = "velvet-face-border-overlay";
 
+        // What an overlay's paints belong to. The face layer (a border or a shadow's face) paints under the divider
+        // layer, as an element's own border does under the divider's band.
+        internal enum Layer
+        {
+            Face,
+            Divider,
+        }
+
         private sealed class Binding
         {
             public readonly VisualElement Overlay;
-            public Action<MeshGenerationContext, float, float> Paint = null!;
+            public Action<MeshGenerationContext, float, float>? FacePaint;
+            public Action<MeshGenerationContext, float, float>? DividerPaint;
             public EventCallback<GeometryChangedEvent>? OnGeometry;
             public EventCallback<AttachToPanelEvent>? OnAttach;
             public IVisualElementScheduledItem? StateTick;
 
             public Binding(VisualElement overlay) => Overlay = overlay;
+
+            public bool Holds(Layer layer) => (layer == Layer.Face ? FacePaint : DividerPaint) != null;
+
+            public void Set(Layer layer, Action<MeshGenerationContext, float, float>? paint)
+            {
+                if (layer == Layer.Face)
+                {
+                    FacePaint = paint;
+                }
+                else
+                {
+                    DividerPaint = paint;
+                }
+            }
         }
 
         private static readonly ConditionalWeakTable<VisualElement, Binding> s_byElement = new();
 
-        public static bool Has(VisualElement element) => s_byElement.TryGetValue(element, out _);
+        public static bool Has(VisualElement element, Layer layer = Layer.Face)
+            => s_byElement.TryGetValue(element, out var bound) && bound.Holds(layer);
+
+        // Whether element has an overlay at all, whichever layers it holds.
+        public static bool HasOverlay(VisualElement element) => s_byElement.TryGetValue(element, out _);
 
         // Paints element's border with paint, which draws in the element's own box, given its laid-out width and
-        // height, from now on.
-        public static void Ensure(VisualElement element, Action<MeshGenerationContext, float, float> paint)
+        // height, from now on, in layer's place among the layers the overlay holds.
+        public static void Ensure(VisualElement element, Action<MeshGenerationContext, float, float> paint,
+            Layer layer = Layer.Face)
         {
             if (s_byElement.TryGetValue(element, out var bound))
             {
-                bound.Paint = paint;
+                bound.Set(layer, paint);
                 bound.Overlay.MarkDirtyRepaint();
                 return;
             }
@@ -53,14 +81,16 @@ namespace Velvet
                 style = { position = Position.Absolute },
             };
             overlay.AddToClassList(MarkerClass);
-            var binding = new Binding(overlay) { Paint = paint };
+            var binding = new Binding(overlay);
+            binding.Set(layer, paint);
             overlay.generateVisualContent += mgc =>
             {
                 var w = element.layout.width;
                 var h = element.layout.height;
                 if (w > 0f && h > 0f)
                 {
-                    binding.Paint(mgc, w, h);
+                    binding.FacePaint?.Invoke(mgc, w, h);
+                    binding.DividerPaint?.Invoke(mgc, w, h);
                 }
             };
             binding.OnGeometry = _ => Place(element, binding);
@@ -77,13 +107,14 @@ namespace Velvet
             Place(element, binding);
         }
 
-        // Whether element clips its content, and, where that disagrees with whether it has an overlay, queues settle once
+        // Whether element clips its content, and, where that disagrees with whether it holds layer, queues settle once
         // outside the paint that asks, since settling writes the hierarchy. pending is the caller's mark that a settle
         // is queued.
-        public static bool ClipsAndSettle<T>(VisualElement element, ref bool pending, T state, Action<VisualElement, T> settle)
+        public static bool ClipsAndSettle<T>(VisualElement element, ref bool pending, T state, Action<VisualElement, T> settle,
+            Layer layer = Layer.Face)
         {
             var clips = StyleCascade.ClipsOverflow(element);
-            if (clips != Has(element) && !pending)
+            if (clips != Has(element, layer) && !pending)
             {
                 pending = true;
                 Defer(element, state, settle);
@@ -95,29 +126,39 @@ namespace Velvet
             => element.schedule.Execute(() => settle(element, state));
 
         // Ensures the overlay where want, else removes it, and repaints the element.
-        public static void Sync(VisualElement element, bool want, Action<MeshGenerationContext, float, float> paint)
+        public static void Sync(VisualElement element, bool want, Action<MeshGenerationContext, float, float> paint,
+            Layer layer = Layer.Face)
         {
             if (want)
             {
-                Ensure(element, paint);
+                Ensure(element, paint, layer);
             }
             else
             {
-                Remove(element);
+                Remove(element, layer);
             }
             element.MarkDirtyRepaint();
         }
 
-        public static void Remove(VisualElement element) => Remove(element, deferHierarchy: false);
+        public static void Remove(VisualElement element, Layer layer = Layer.Face)
+            => Remove(element, layer, deferHierarchy: false);
 
         // As Remove, but the overlay is hidden now and leaves the hierarchy on the host's next scheduler pass, so the
         // host's child count does not change inside the call. The divided child's teardown takes this one.
-        public static void RemoveLater(VisualElement element) => Remove(element, deferHierarchy: true);
+        public static void RemoveLater(VisualElement element, Layer layer = Layer.Face)
+            => Remove(element, layer, deferHierarchy: true);
 
-        private static void Remove(VisualElement element, bool deferHierarchy)
+        // The overlay stays while another layer still holds a paint.
+        private static void Remove(VisualElement element, Layer layer, bool deferHierarchy)
         {
             if (!s_byElement.TryGetValue(element, out var binding))
             {
+                return;
+            }
+            binding.Set(layer, null);
+            if (binding.FacePaint != null || binding.DividerPaint != null)
+            {
+                binding.Overlay.MarkDirtyRepaint();
                 return;
             }
             element.UnregisterCallback(binding.OnGeometry);

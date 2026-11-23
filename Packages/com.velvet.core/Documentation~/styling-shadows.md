@@ -42,9 +42,14 @@ inherited colour is read when the element's shadow is drawn.
 
 The presets are Tailwind v4's `--shadow-*` and `--inset-shadow-*` theme values. An `inset-shadow-*`, an
 `inset-ring-*` and a `shadow-*` on one element are all drawn, listed in that order, and each `-none` (or
-`inset-ring-0`) removes its own family's layers alone. A layer of a bracketed shadow without a colour takes
-`rgb(4 12 24 / 0.2)`, where CSS takes `currentColor`. A negative blur, a percentage, or any layer that does not
-read rejects the whole bracket, as the browser drops a `box-shadow` value it cannot read.
+`inset-ring-0`) removes its own family's layers alone. A layer of a bracketed shadow without a colour is drawn in
+`currentColor`. A negative blur, a percentage, or any layer that does not read rejects the whole bracket, as the
+browser drops a `box-shadow` value it cannot read.
+
+A colour class, a `/N` and a `-inherit` reach a layer of a bracket only where Tailwind writes the colour variable
+into it: a layer holding a colour, or two lengths and at most one other part. A length Tailwind does not read as one
+(`+1px`) or a function it does not take for a length (`hypot()`, `round()`) leaves a layer as written, in
+`currentColor` where it names no colour: `shadow-[+1px_+1px] shadow-red-500` is drawn in the text colour.
 
 ## How a layer is drawn
 
