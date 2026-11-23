@@ -84,6 +84,8 @@ namespace Velvet
             internal VNode?[] NewChildren;
             internal int SlotStart;
             internal bool HostsChildVariant;
+            // The element's halves are recorded and write where the pass applies its recorded ops.
+            internal bool Staged;
             internal MotionSelfPatch Motion;
             internal PortalSelfPatch Portal;
             internal FiberVirtualListController? VirtualList;
@@ -188,8 +190,10 @@ namespace Velvet
         }
 
         // The half of the diff that runs once the walk has reconciled the node's children. Returns what occupies the
-        // element's slot once the patch is done, which a wrapper added or removed and a z-layer relocation in either
-        // direction change; the diff names the old leaf by it from then on.
+        // element's slot once the patch is done, which a wrapper added or removed changes; the diff names the old leaf
+        // by it from then on. While a pass records, a z-layer relocation does not change it: it is settled where the pass
+        // applies its recorded writes (FiberZLayerCoordinator.SettlePatched), and the slot keeps the occupant it held
+        // before the patch until then. Outside a recording pass the settle runs at once and the occupant includes it.
         internal VisualElement PatchSelfPost(ref SelfPatch patch)
         {
             switch (patch.Kind)
@@ -234,6 +238,36 @@ namespace Velvet
             string[] appliedOldClasses, string[] appliedNewClasses)
         {
             var element = patch.Self;
+            if (patch.Staged)
+            {
+                // What the walk reads while the writes wait: the child container and the arrays the children are
+                // diffed from, and the class array a [&>*]: child's gate source is recorded from, which reads the walk's
+                // depth.
+                patch.Container = GetChildContainer(element);
+                patch.OldChildren = oldNode.Children ?? Array.Empty<VNode>();
+                patch.NewChildren = newNode.Children ?? Array.Empty<VNode>();
+                patch.HostsChildVariant = StyleChildVariantClass.HasChildVariantClass(newNode.ClassNames);
+                var (written, now) = (AsWritten(element, appliedOldClasses ?? Array.Empty<string>()),
+                    AsWritten(element, appliedNewClasses ?? Array.Empty<string>()));
+                if (!ReferenceEquals(written, now) && !SequenceEqual(written, now))
+                {
+                    RecordVariantGateSource(element, now);
+                }
+                ChildListWrites.RecordPatchPre(new PendingPatch(this, element, oldNode, newNode, _ctx.CleanupSerial));
+                return;
+            }
+            PatchBaseElementWrites(element, oldNode, newNode, appliedOldClasses, appliedNewClasses);
+            patch.Container = GetChildContainer(element);
+            patch.OldChildren = oldNode.Children ?? Array.Empty<VNode>();
+            patch.NewChildren = newNode.Children ?? Array.Empty<VNode>();
+            patch.HostsChildVariant = StyleChildVariantClass.HasChildVariantClass(newNode.ClassNames);
+        }
+
+        // The element writes of a base element's first half: the class-driven styling, the props, the attributes, the
+        // event bindings and the name.
+        private void PatchBaseElementWrites(VisualElement element, BaseElementNode oldNode, BaseElementNode newNode,
+            string[] appliedOldClasses, string[] appliedNewClasses)
+        {
             SyncClassDrivenStyling(element, appliedOldClasses, appliedNewClasses);
             DiffProps(element, oldNode.Props, newNode.Props);
             // Track an element's own Text prop as raw so the text-effect pass (run post-children) transforms the
@@ -294,16 +328,10 @@ namespace Velvet
             {
                 element.name = resolvedName;
             }
-
-            patch.Container = GetChildContainer(element);
-            patch.OldChildren = oldNode.Children ?? Array.Empty<VNode>();
-            patch.NewChildren = newNode.Children ?? Array.Empty<VNode>();
-            patch.HostsChildVariant = StyleChildVariantClass.HasChildVariantClass(newNode.ClassNames);
         }
 
-        private void PatchBaseElementPost(in SelfPatch patch, BaseElementNode oldNode, BaseElementNode newNode)
+        private void PatchBaseElementPost(VisualElement element, BaseElementNode oldNode, BaseElementNode newNode)
         {
-            var element = patch.Self;
             if (oldNode.WhileHoverClass != newNode.WhileHoverClass || oldNode.WhileTapClass != newNode.WhileTapClass
                 || oldNode.WhileFocusClass != newNode.WhileFocusClass)
             {
@@ -361,10 +389,9 @@ namespace Velvet
                 && _ctx.VariantGateClasses.TryGetValue(element, out var state)
                 && state.Composes;
 
-        private void PatchElementPost(in SelfPatch patch, ElementNode oldNode, ElementNode newNode)
+        private void PatchElementPost(VisualElement element, ElementNode oldNode, ElementNode newNode)
         {
-            var element = patch.Self;
-            PatchBaseElementPost(patch, oldNode, newNode);
+            PatchBaseElementPost(element, oldNode, newNode);
             DiffStyles(element, oldNode.Styles, newNode.Styles);
             // clip-path decides a structural WRAPPER, which is parent surgery, so only a reconcile pass may
             // run it — hence its place here rather than inside the shared, re-runnable pass sequence. It runs
@@ -381,23 +408,41 @@ namespace Velvet
 
         // Patches the element a slot stands for — the slot's element itself, or the real element its placeholder
         // stands for — and hands the result to FiberZLayerCoordinator, which relocates it or returns it to its slot
-        // when its own z or flex order says so. Contract-preserving, exactly like an ElementNode's own patch: the net
-        // effect on the slot's parent's logical children is zero — a placeholder inserted at the element's physical
-        // index with the element turned invisible, or the two exchanged by a sort — so what PatchSelfPost returns for
-        // it is what holds the slot.
+        // when its own z or flex order says so, once the pass applies its recorded writes. Contract-preserving, exactly
+        // like an ElementNode's own patch: the net effect on the slot's parent's logical children is zero — a placeholder
+        // inserted at the element's physical index with the element turned invisible, or the two exchanged by a sort —
+        // so while a pass records, PatchSelfPost returns what held the slot before the patch and the diff keeps naming that
+        // until the settle reports its swap.
         private void PatchZLayerElementPre(ref SelfPatch patch, ElementNode oldNode, ElementNode newNode)
         {
             var element = patch.Element;
             patch.Kind = SelfPatchKind.Element;
             patch.Slot = _ctx.ZLayerPlaceholders.TryGetValue(element, out var placed) ? placed : element;
             patch.Self = _wrappers.ResolveWrapped(patch.Slot);
+            // An element that is in its own slot and neither is nor is about to be wrapped in a clip wrapper, which is
+            // parent surgery the walk's return value reports, and that the pass records writes for.
+            patch.Staged = ReferenceEquals(patch.Self, element) && ReferenceEquals(patch.Slot, element)
+                && !_ctx.ClipPathBindings.ContainsKey(element) && !StyleClipPathClass.WantsClipWrapper(newNode.ClassNames)
+                // A delayed text field commits its uncommitted edit through the notifying setter when the flag comes off,
+                // which runs the app's handler: that is written where the walk is.
+                && element is not TextField { isDelayed: true }
+                && ChildListWrites.StagesPatch(element);
             PatchBaseElement(ref patch, oldNode, newNode, oldNode.ClassNames, newNode.ClassNames);
         }
 
         private VisualElement PatchZLayerElementPost(ref SelfPatch patch, ElementNode oldNode, ElementNode newNode)
         {
             var classElement = patch.Self;
-            PatchElementPost(patch, oldNode, newNode);
+            if (patch.Staged && ChildListWrites.IsRecording)
+            {
+                // The second half and the stacking decision wait for the pass's recorded writes; the diff keeps naming
+                // the occupant the slot held before the patch.
+                ChildListWrites.RecordPatchPost(new PendingPatch(this, classElement, oldNode, newNode, _ctx.CleanupSerial));
+                _ctx.PendingSettles.Add(new ReconcilerContext.QueuedSettle(classElement, this, newNode.ClassNames,
+                    newNode.Props?.Anchored != null, _ctx.CleanupSerial));
+                return classElement;
+            }
+            PatchElementPost(classElement, oldNode, newNode);
             var real = OuterOfPatched(patch.Slot, patch.Element, classElement);
             var resolved = ResolveGateClasses(classElement, newNode.ClassNames);
             if (NoteHeldZ(classElement, resolved))
@@ -496,7 +541,10 @@ namespace Velvet
         private void ApplyPostChildrenClassPasses(VisualElement element, string[] oldClassNames,
             string[] newClassNames, bool clipActive)
         {
-            // The gap and child-variant manipulators configured below read the live child list.
+            // The has-variant scans and the gap and child-variant manipulators configured below read the live state of the
+            // element's descendants, whose patch halves may still be recorded: an element patched at once (a Motion, a
+            // relocated or wrapped element) reaches here while they wait.
+            ChildListWrites.ApplyPendingPatches();
             ChildListWrites.SyncLive(element);
             (oldClassNames, newClassNames) = (AsWritten(element, oldClassNames), AsWritten(element, newClassNames));
             // Before gap / divide / grid: on a SHARED style property ([&>*]:ml-[2px] alongside gap-x-4) those
@@ -566,17 +614,81 @@ namespace Velvet
             _appliers.ApplyBackdropOnPatch(element, classNames);
         }
 
+        // The raw text is captured where the walk runs, for the text-effect passes of the ancestors the walk reaches
+        // next, and the label is written where the pass applies what it recorded.
         private void PatchText(Label label, TextNode oldNode, TextNode newNode)
         {
-            if (oldNode.Text != newNode.Text)
+            if (oldNode.Text == newNode.Text)
             {
-                // OnTextSet captures the new raw AND applies the cascade-resolved effect, so an isolated leaf
-                // re-render (its text changed via an inner component's state while the effect-bearing ancestor
-                // did not re-render) still shows the inherited transform; a whole-component render also re-applies
-                // via the ancestor's post-children pass (idempotent).
-                StyleTextEffectResolver.OnTextSet(_ctx, label, newNode.Text);
-                ApplyFlexMinSizeManipulator(label, System.Array.Empty<string>());
+                return;
             }
+            StyleTextEffectResolver.NoteTextSet(_ctx, label, newNode.Text);
+            var pending = new PendingPatch(this, label, oldNode, newNode, _ctx.CleanupSerial);
+            if (ChildListWrites.StagesPatch(label))
+            {
+                ChildListWrites.RecordPatchPre(pending);
+                return;
+            }
+            CommitPre(pending);
+        }
+
+        // Whether the element was cleaned (and so maybe pooled and rented again) since the op was recorded: the cleanup
+        // writes at once, so a staged write behind it would land on whatever the element is now.
+        private bool CleanedSince(in PendingPatch patch) => CleanedSince(patch.Element, patch.Serial);
+
+        private bool CleanedSince(VisualElement element, int serial)
+        {
+            if (_ctx.IsDisposed)
+            {
+                return true;
+            }
+            return _ctx.CleanedElements.TryGetValue(element, out var cleaned) && cleaned > serial;
+        }
+
+        // The writes a recorded PatchPre makes where the pass applies its ops.
+        internal void CommitPre(in PendingPatch patch)
+        {
+            if (CleanedSince(patch))
+            {
+                return;
+            }
+            if (patch.NewNode is ElementNode newElement)
+            {
+                var oldElement = (ElementNode)patch.OldNode!;
+                PatchBaseElementWrites(patch.Element, oldElement, newElement, oldElement.ClassNames, newElement.ClassNames);
+                return;
+            }
+            // OnTextSet shows the new text AND the cascade-resolved effect, so an isolated leaf re-render (its text
+            // changed via an inner component's state while the effect-bearing ancestor did not re-render) still shows
+            // the inherited transform; a whole-component render also re-applies via the ancestor's post-children
+            // pass (idempotent).
+            StyleTextEffectResolver.ShowTextSet(_ctx, patch.Element);
+            ApplyFlexMinSizeManipulator(patch.Element, System.Array.Empty<string>());
+        }
+
+        // The writes a recorded PatchPost makes where the pass applies its ops: the element node's second half.
+        internal void CommitPost(in PendingPatch patch)
+        {
+            if (!CleanedSince(patch))
+            {
+                PatchElementPost(patch.Element, (ElementNode)patch.OldNode!, (ElementNode)patch.NewNode!);
+            }
+        }
+
+        // The stacking of an element whose patch halves were recorded, decided once they have applied: the class source
+        // is composed from the tables the applied halves left, which the walk could not read while they were pending.
+        internal void CommitStacking(in ReconcilerContext.QueuedSettle entry)
+        {
+            if (CleanedSince(entry.Real, entry.Serial))
+            {
+                return;
+            }
+            var resolved = ResolveGateClasses(entry.Real, entry.Declared!);
+            if (NoteHeldZ(entry.Real, resolved))
+            {
+                return;
+            }
+            FiberZLayerCoordinator.OnPatched(_ctx, entry.Real, entry.Real, entry.Declared!, resolved, entry.Anchored);
         }
 
         private void RebindEvents(VisualElement element, FiberEventBinding[] newEvents)
@@ -747,7 +859,7 @@ namespace Velvet
             var newVariantClasses = motion.NewVariantClasses;
             var playedTransition = motion.PlayedTransition;
             var extraDelaySec = motion.ExtraDelaySec;
-            PatchBaseElementPost(patch, oldNode, newNode);
+            PatchBaseElementPost(element, oldNode, newNode);
 
             // An AfterChildren Motion starts its swap when the plays below it have ended, which the children's
             // patches above have reported by now.
@@ -1455,7 +1567,15 @@ namespace Velvet
                     newNode.FocusOrder, _ctx);
             }
 
-            PatchPortalChildrenPre(ref patch, record.Document.rootVisualElement, oldNode.Children, newNode.Children,
+            var target = record.Document.rootVisualElement;
+            if (_ctx.PortalState.TryGetValue(placeholder, out var recorded)
+                && recorded.Target != null && !ReferenceEquals(recorded.Target, target))
+            {
+                _host.ReleasePortalRangeForRetarget(placeholder);
+                RebaseRangeOnto(placeholder, target);
+            }
+
+            PatchPortalChildrenPre(ref patch, target, oldNode.Children, newNode.Children,
                 "world-space");
         }
 
@@ -3220,9 +3340,9 @@ namespace Velvet
         // into. A has- element matches on its DESCENDANTS, so its match can change only if a mutation landed
         // inside its subtree; that means the has- element is regionRoot itself or one of its ANCESTORS (a has-
         // element strictly BELOW regionRoot whose descendant changed was reconciled in this same flush, so its
-        // own post-children pass already covered it). So rather than re-scan EVERY registered has- element each
-        // flush, walk up from regionRoot — and from each active Portal target, whose children live outside
-        // regionRoot's subtree — and re-derive only the registered has- elements found on those chains. This is
+        // own post-children pass already covered it, after its descendants' recorded halves had applied). So rather
+        // than re-scan EVERY registered has- element each flush, walk up from regionRoot — and from each active Portal
+        // target, whose children live outside regionRoot's subtree — and re-derive only the registered has- elements found on those chains. This is
         // O(depth) instead of O(registered has- elements x subtree scan), the win the sweep needs under many
         // has- elements x frequent flushes. A null regionRoot (region unknown) falls back to re-deriving all so
         // a stale payload is never missed. Idempotent (each evaluation reads the current subtree); no has- map
@@ -3952,20 +4072,26 @@ namespace Velvet
 
         private static readonly List<string> s_placedScratch = new();
         private static readonly List<int> s_placedAt = new();
+        private static readonly List<int> s_placedSlot = new();
 
         // ComposeVariantClasses for an element whose custom-property readers apply payloads at the base layer: a
         // reader's payload sits before the first reconciled token Tailwind orders after the reader (the reader
         // ties after an equal one), so a family reading the last token of the composed array ranks it against the
-        // element's literal utilities as Tailwind does. A payload no reader owns follows them all, as it does
-        // without readers, and a token a play withheld is left out as ComposeVariantClasses leaves it.
+        // element's literal utilities as Tailwind does. A payload of a family StyleFamilyOrder sorts is measured against
+        // the tokens of its own family and importance, which the reconciled array holds in Tailwind's order
+        // (StyleFamilyOrder.Sorted), and not against a token of another family, which can stand ahead of them in the array
+        // whatever its place. A payload no reader owns follows them all, as it does without readers, and a token a play
+        // withheld is left out as ComposeVariantClasses leaves it.
         private static string[] ComposePlacedClasses(VisualElement element, string[] classNames, List<string> tokens,
             List<string> withheld, string[]? reuse)
         {
             s_placedScratch.Clear();
             s_placedAt.Clear();
+            s_placedSlot.Clear();
             foreach (var token in tokens)
             {
                 s_placedAt.Add(StyleCustomProperties.PlaceOf(element, token));
+                s_placedSlot.Add(StyleFamilyOrder.SlotOf(token));
             }
             for (var j = 0; j < classNames.Length; j++)
             {
@@ -3974,9 +4100,15 @@ namespace Velvet
                     continue;
                 }
                 var ordinal = StyleRuleOrder.OrdinalOf(classNames, j);
+                var slot = -2;
                 for (var i = 0; i < tokens.Count; i++)
                 {
-                    if (s_placedAt[i] >= 0 && s_placedAt[i] < ordinal)
+                    if (s_placedAt[i] < 0 || s_placedAt[i] >= ordinal)
+                    {
+                        continue;
+                    }
+                    slot = slot == -2 ? StyleFamilyOrder.SlotOf(classNames[j]) : slot;
+                    if (s_placedSlot[i] < 0 || s_placedSlot[i] == slot)
                     {
                         s_placedScratch.Add(tokens[i]);
                         s_placedAt[i] = -2;

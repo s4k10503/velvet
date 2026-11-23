@@ -83,6 +83,24 @@ namespace Velvet
             public readonly bool StacksZ;
             // An order-* reader, whose value reorders the element among its siblings (TryVariableOrder) the same way.
             public readonly bool StacksOrder;
+            // A box-shadow utility whose bracket is its own, with the layers it writes resolved one at a time
+            // (TryAppendShadowLayers). A theme class is not: Tailwind reads the colour variable into the layers of the
+            // value its token holds, so a colour class reaches them, which is what the resolved text says.
+            public readonly bool ShadowLayers;
+            // An important consumer of a class-driven family whose tracked token keeps its bang
+            // (StyleVariantPayload.IsImportanceAware): its payloads carry it, and so rank among the element's important
+            // literals by the consumer's own place.
+            public readonly bool KeepsBang;
+            // A colour utility's bracket reading a var(), typed as something else, with an opacity modifier: read as a colour,
+            // which the unset applies to where the value is none (StyleCustomPropertyClass.RetypesColour).
+            public readonly bool RetypesColour;
+            // A gradient stop's literal bracket of that kind holding no colour (StyleCustomPropertyClass.UnsetsLiteralStop).
+            public readonly bool ForcesUnset;
+            // Whether the unset the consumer writes discards the element's box-shadow, which an element off a panel does
+            // not write: a variable a stylesheet declares is read only once the element is on one (Reresolve).
+            public readonly bool DefersUnset;
+            // Whether the unset has already waited the one read it waits where the styles could not be applied.
+            public bool Waited;
             // The resolution the applied state came from, null when the last one resolved nothing.
             public string? Source;
             public bool Resolved;
@@ -92,7 +110,8 @@ namespace Velvet
             // another (TrackInherited); null while no inline value stands for it.
             public ArbitraryStyle? Inherited;
 
-            public Consumer(string utility, long priority, int declaration, int order, ReconcilerContext? context)
+            public Consumer(string utility, long priority, int declaration, int order, ReconcilerContext? context,
+                bool themed = false)
             {
                 Utility = utility;
                 Priority = priority;
@@ -100,29 +119,44 @@ namespace Velvet
                 Order = order;
                 Context = context;
                 Shape = UtilityShape.Of(utility);
-                AddedHint = DefaultHint(utility, Shape);
-                EffectiveHint = Shape.Hint ?? AddedHint;
+                RetypesColour = StyleCustomPropertyClass.RetypesColour(utility);
+                ForcesUnset = StyleCustomPropertyClass.UnsetsLiteralStop(utility);
+                // MUTANT_SURVIVES(equivalent, clause removed): a forced-unset stop is a from-, via- or to- utility, which no inline layer parses, so the hint only picks a probe that finds no property either way, and TryBuild, the other reader, is never reached for it.
+                AddedHint = RetypesColour || ForcesUnset ? "color" : DefaultHint(utility, Shape);
+                EffectiveHint = RetypesColour || ForcesUnset ? "color" : Shape.Hint ?? AddedHint;
                 Sides = StyleCustomPropertyClass.SidesOf(utility, Shape);
                 StacksZ = StyleZIndexClass.VariableUtility(utility) != null;
                 StacksOrder = StyleOrderClass.VariableUtility(utility) != null;
+                ShadowLayers = !themed && Shape.MainOpen > 0 && Shape.Hint != "color"
+                    && (utility.AsSpan(0, Shape.MainOpen).SequenceEqual("shadow-".AsSpan())
+                        || utility.AsSpan(0, Shape.MainOpen).SequenceEqual("inset-shadow-".AsSpan()));
                 var readsVariable = utility.IndexOf("var(", StringComparison.OrdinalIgnoreCase) >= 0;
                 ReadsVariable = readsVariable;
                 ModifierReadsVariable = Shape.HasModifier
                     && utility.IndexOf("var(", Math.Max(Shape.MainClose, 0), StringComparison.OrdinalIgnoreCase) >= 0;
-                if (readsVariable)
+                if (readsVariable || ForcesUnset)
                 {
                     Property = WrittenProperty(utility, Shape, AddedHint, out _);
-                    UnsetUtility = Property == null && Shape.MainOpen > 0
-                        ? PaintedUnset(utility.Substring(utility[0] == '-' ? 1 : 0, Shape.MainOpen - (utility[0] == '-' ? 1 : 0)),
-                            EffectiveHint)
-                        : null;
+                    UnsetUtility = Property != null ? null
+                        // MUTANT_SURVIVES(equivalent, boundary): UtilityShape.Of gives MainOpen as -1 or at least 1, never 0.
+                        : Shape.MainOpen > 0
+                            ? PaintedUnset(utility.Substring(utility[0] == '-' ? 1 : 0, Shape.MainOpen - (utility[0] == '-' ? 1 : 0)),
+                                EffectiveHint)
+                            : StyleShadowClass.UnsetOfSizeWithModifier(utility);
+                    DefersUnset = UnsetUtility != null && s_discardingUnsets.Contains(UnsetUtility);
                 }
+                KeepsBang = (priority & StyleLayerPriority.Important) != 0 && Property == null
+                    && StyleVariantPayload.IsImportanceAware(utility);
             }
 
             public long Key => StyleLayerPriority.WithRule(Priority, Declaration);
 
             // The layer the element's literal base utilities are applied at (ApplyClassToken), which this shares.
             public bool OnBaseLayer => (Key & ~StyleLayerPriority.Important) == StyleLayerPriority.Base;
+
+            // Whether the payloads sit among the reconciled tokens by the consumer's place (PlaceOf). An important
+            // consumer's follow them all unless they carry the bang, which is what lets them rank among the important ones.
+            public bool Placed => Applied != null && OnBaseLayer && ((Priority & StyleLayerPriority.Important) == 0 || KeepsBang);
         }
 
         // Applies (on) or withdraws one token StyleCustomPropertyClass.IsCustomPropertyToken accepts, at the
@@ -153,7 +187,9 @@ namespace Velvet
             if (utility != null && on)
             {
                 s_themeUtilities[core] = utility;
-                Bind(target, new Consumer(utility, priority, declaration, order, context));
+                // MUTANT_SURVIVES(equivalent, boundary): themed gates only a shadow utility. A core opening with `[` is an arbitrary property, whose utility no entry of s_propertyUtilities writes as a shadow; one opening with `(` is never bound, as WithShorthandsExpanded refuses a parenthesis at index 0.
+                var themed = core.IndexOf('[') < 0 && core.IndexOf('(') < 0;
+                Bind(target, new Consumer(utility, priority, declaration, order, context, themed: themed));
             }
             else if (!on && (utility ?? (s_themeUtilities.TryGetValue(core, out var last) ? last : null)) is { } leaving)
             {
@@ -206,7 +242,8 @@ namespace Velvet
         // The place among the element's rules (StyleRuleOrder) of the base-layer reader whose resolved payload is
         // token, or -1 where no such reader applies it. A payload a class-driven pass reads from the composed class
         // array is put there by this place rather than after the reconciled tokens, so it ranks against the
-        // element's literal utilities as Tailwind orders them. An important reader stays after them.
+        // element's literal utilities as Tailwind orders them. An important reader whose payload carries no bang stays after
+        // them.
         public static int PlaceOf(VisualElement element, string token)
         {
             if (!s_consumers.TryGetValue(element, out var consumers))
@@ -215,8 +252,7 @@ namespace Velvet
             }
             foreach (var consumer in consumers.Entries)
             {
-                if (consumer.Applied != null && consumer.OnBaseLayer && (consumer.Priority & StyleLayerPriority.Important) == 0
-                    && Array.IndexOf(consumer.Applied, token) >= 0)
+                if (consumer.Placed && Array.IndexOf(consumer.Applied!, token) >= 0)
                 {
                     return consumer.Order;
                 }
@@ -232,7 +268,7 @@ namespace Velvet
             }
             foreach (var consumer in consumers.Entries)
             {
-                if (consumer.Applied != null && consumer.OnBaseLayer && (consumer.Priority & StyleLayerPriority.Important) == 0)
+                if (consumer.Placed)
                 {
                     return true;
                 }
@@ -479,7 +515,11 @@ namespace Velvet
         {
             using var themeScope = StyleThemeTokens.Use(consumer.Context, target);
             s_built.Clear();
-            var resolved = TryBuild(target, consumer, s_built);
+            var resolved = BuildResolved(target, consumer);
+            if (DefersUnset(target, consumer, ref resolved))
+            {
+                return;
+            }
             if (consumer.Resolved && (resolved ? consumer.Source != null && Matches(s_built, consumer.Source) : consumer.Source == null))
             {
                 return;
@@ -504,6 +544,8 @@ namespace Velvet
             {
                 payloads = new[] { consumer.UnsetUtility };
             }
+            payloads = WithBang(consumer, payloads);
+            var current = IsCurrentBeforeUnset(target, consumer, resolved);
             Withdraw(target, consumer);
             consumer.Source = source;
             consumer.Resolved = true;
@@ -519,7 +561,80 @@ namespace Velvet
                     declarations: Repeat(consumer.Declaration, payloads.Length));
             }
             SettleWritten(target, consumer, WrittenBy(consumer.Applied, unset ? consumer.Property : null));
+            AcceptUnset(target, current);
         }
+
+        // Whether consumer resolves: its var()s do, and a bracket read as a colour holds one.
+        private static bool BuildResolved(VisualElement target, Consumer consumer)
+        {
+            if (consumer.ForcesUnset || !TryBuild(target, consumer, s_built))
+            {
+                return false;
+            }
+            if (!consumer.RetypesColour)
+            {
+                return true;
+            }
+            var built = s_built.ToString();
+            var slash = StyleColorValueParser.ColorModifierSlashIndex(built, 0);
+            // MUTANT_SURVIVES(equivalent, boundary): built opens with the utility's name, so a modifier's slash is never at index 0.
+            if (slash >= 0 && StyleColorValueParser.ModifierOutside(built.AsSpan(slash + 1)))
+            {
+                return false;
+            }
+            var shape = UtilityShape.Of(built);
+            return !StyleColorValueParser.RejectsAsColour(
+                built.Substring(shape.BodyStart, shape.MainClose - shape.BodyStart).Replace('_', ' '));
+        }
+
+        // Whether the panel is as its last pass left it where consumer is about to write the unset that discards a
+        // box-shadow: that write is then no change a later reader's pass has to run for, which each would otherwise repeat.
+        private static bool IsCurrentBeforeUnset(VisualElement target, Consumer consumer, bool resolved)
+            => !resolved && consumer.DefersUnset && FiberLayoutReflow.IsCurrent(target.panel);
+
+        private static void AcceptUnset(VisualElement target, bool current)
+        {
+            if (current)
+            {
+                FiberLayoutReflow.Accept(target.panel);
+            }
+        }
+
+        // Whether consumer, whose var() did not resolve, waits before it writes the unset that discards the box-shadow,
+        // leaving the element as it was. On a panel the styles are applied first, which lays the element out as a ref
+        // callback would read it, and the property is read again (resolved): a stylesheet's variable is known only after
+        // the element's style pass, which a tick can come ahead of. Where that cannot run, the consumer waits one read,
+        // the next tick's; off a panel it waits for the attach.
+        private static bool DefersUnset(VisualElement target, Consumer consumer, ref bool resolved)
+        {
+            consumer.Waited &= !resolved;
+            if (resolved || !consumer.DefersUnset || (consumer.Resolved && consumer.Source == null))
+            {
+                return false;
+            }
+            if (target.panel != null && FiberLayoutReflow.TryLayOut(target))
+            {
+                s_built.Clear();
+                resolved = TryBuild(target, consumer, s_built);
+                return false;
+            }
+            if (target.panel != null && consumer.Waited)
+            {
+                return false;
+            }
+            consumer.Waited = target.panel != null;
+            if (consumer.Waited)
+            {
+                target.schedule.Execute(() => ReresolveAll(target));
+            }
+            Withdraw(target, consumer);
+            consumer.Source = null;
+            consumer.Resolved = false;
+            return true;
+        }
+
+        private static string[]? WithBang(Consumer consumer, string[]? payloads)
+            => consumer.KeepsBang && payloads != null ? Array.ConvertAll(payloads, payload => "!" + payload) : payloads;
 
         private static void Restack(VisualElement target, Consumer consumer)
         {

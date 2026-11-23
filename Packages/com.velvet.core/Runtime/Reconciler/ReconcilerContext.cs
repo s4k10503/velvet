@@ -881,6 +881,10 @@ namespace Velvet
         internal void ClearElementSideTables(VisualElement element)
         {
             ChildListWrites.Drop(element);
+            if (ChildListWrites.IsRecording)
+            {
+                CleanedElements[element] = ++CleanupSerial;
+            }
             foreach (var table in _pureElementSideTables)
             {
                 if (table.Count != 0)
@@ -1572,6 +1576,8 @@ namespace Velvet
         // against these keys).
         public Dictionary<VisualElement, FocusScopeBinding> FocusScopeBindings { get; } = new();
 
+        internal List<DeferredAutoFocus> DeferredAutoFocus { get; } = new();
+
         // Chained-portal focus bookkeeping (PanelFocusOrder.Chained): the DECLARING-panel placeholder that
         // acts as the portal's proxy tab stop → the host record its focus forwards into, plus the reverse
         // index (host panel root → placeholder) the host-edge escape consults. Entries are added in
@@ -1742,6 +1748,33 @@ namespace Velvet
         // Slot element -> the z, flex order and position its classes give it, for an element whose classes name
         // any of them. A pure side-table, enrolled in _pureElementSideTables.
         public Dictionary<VisualElement, StackingFacts> StackingFacts { get; } = new();
+
+        // The elements a pass patched whose stacking FiberZLayerCoordinator.SettlePatched decides once the pass's
+        // recorded writes have applied, from the facts held for each then.
+        internal List<QueuedSettle> PendingSettles { get; } = new();
+
+        // The cleanup each element a recording pass has cleaned went through, by its place in the order of cleanups, so
+        // a patch op recorded before it can tell the element was cleaned since (PendingPatch.Serial).
+        internal Dictionary<VisualElement, int> CleanedElements { get; } = new();
+        internal int CleanupSerial;
+
+        internal readonly struct QueuedSettle
+        {
+            internal QueuedSettle(VisualElement real, FiberNodePatcher? patcher, string[]? declared, bool anchored, int serial)
+            {
+                Real = real;
+                Patcher = patcher;
+                Declared = declared;
+                Anchored = anchored;
+                Serial = serial;
+            }
+
+            internal VisualElement Real { get; }
+            internal FiberNodePatcher? Patcher { get; }
+            internal string[]? Declared { get; }
+            internal bool Anchored { get; }
+            internal int Serial { get; }
+        }
 
         // The elements given stacking facts or pinned since FiberZLayerCoordinator.ResortLayers last recorded the
         // parent each stands in (StackingParents). A pure side-table, enrolled in _pureElementSideTables.

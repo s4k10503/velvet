@@ -91,14 +91,20 @@ namespace Velvet
             ["to"] = new[] { "length", "percentage" },
         };
 
-        // Whether the browser rejects value where it is written as a <color>: a value TryParseColor does not read,
-        // unless it is a function or a bare word, which this does not judge (var(), oklch(), currentcolor, a named
-        // colour TryParseColor does not know).
-        internal static bool RejectsAsColour(string value)
+        // Whether the browser rejects value where it is written as a <color>: a value TryParseColor does not read, unless it
+        // is a function, which this does not judge (var(), oklch()), or a word naming a colour: a named colour,
+        // currentcolor, transparent or a system colour, current or deprecated, which TryParseColor may not know.
+        // keywordsPass leaves the CSS-wide keywords and inset undecided, for a ring's colour, which the box-shadow reads
+        // through a custom property with a fallback.
+        internal static bool RejectsAsColour(string value, bool keywordsPass = false)
         {
-            if (value.IndexOf('(') >= 0 || TryParseColor(value.AsSpan(), out _))
+            if (value.IndexOf('(') >= 0 || TryParseColor(value.AsSpan(), out _) || (keywordsPass && IsKeyword(value)))
             {
                 return false;
+            }
+            if (value.Length > 0 && Array.TrueForAll(value.ToCharArray(), char.IsLetter))
+            {
+                return !(TailwindDataTypes.IsNamedColor(value) || s_deprecatedSystemColours.Contains(value));
             }
             foreach (var c in value)
             {
@@ -109,6 +115,23 @@ namespace Velvet
             }
             return false;
         }
+
+        // The CSS-wide keywords and inset, which a ring's colour takes as the keyword they are.
+        internal static bool IsKeyword(string value) => s_keywords.Contains(value);
+
+        private static readonly HashSet<string> s_keywords = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "inherit", "unset", "initial", "revert", "revert-layer", "inset",
+        };
+
+        // CSS Color 4's deprecated system colours, which Tailwind's own list lacks.
+        private static readonly HashSet<string> s_deprecatedSystemColours = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "activeborder", "activecaption", "appworkspace", "background", "buttonhighlight", "buttonshadow",
+            "captiontext", "inactiveborder", "inactivecaption", "inactivecaptiontext", "infobackground", "infotext", "menu",
+            "menutext", "scrollbar", "threeddarkshadow", "threedface", "threedhighlight", "threedlightshadow",
+            "threedshadow", "window", "windowframe", "windowtext",
+        };
 
         // Internal so the shadow, ring, divide, gradient and filter grammars share the one colour grammar, which
         // TryParseCssColor owns.
@@ -388,6 +411,30 @@ namespace Velvet
                 return ColourVerdict.None;
             }
             return percent < 0f || percent > 100f ? ColourVerdict.Rejected : ColourVerdict.Valid;
+        }
+
+        // Whether an opacity modifier is a percentage outside 0..100, which leaves the colour Tailwind mixes it into invalid.
+        internal static bool ModifierOutside(ReadOnlySpan<char> modifier)
+            => TryParseModifierPercent(modifier, out var percent) && (percent < 0f || percent > 100f);
+
+        // The colour of a palette name or a bracket, either followed by an opacity modifier (`red-500/50`, `[#f00]/50`),
+        // at that opacity. False where the token is no colour or the modifier is none Tailwind generates.
+        internal static bool TryResolveColorWithModifier(string token, out Color colour)
+        {
+            var slash = ColorModifierSlashIndex(token, 0);
+            // MUTANT_SURVIVES(equivalent, boundary): a slash at index 0 leaves an empty colour, which TryResolveColorToken refuses as `/...` is no palette name or bracket.
+            if (slash < 0)
+            {
+                return VelvetPalette.TryResolveColorToken(token, out colour);
+            }
+            colour = default;
+            if (!TryParseAlphaModifier(token.AsSpan(slash + 1), out var alpha)
+                || !VelvetPalette.TryResolveColorToken(token.Substring(0, slash), out colour))
+            {
+                return false;
+            }
+            colour.a *= alpha;
+            return true;
         }
 
         // Parses the alpha portion of a color opacity modifier, a percent from 0 to 100 as TryParseModifierPercent reads

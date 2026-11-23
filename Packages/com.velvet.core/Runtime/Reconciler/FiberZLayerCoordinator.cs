@@ -29,7 +29,7 @@ namespace Velvet
     // positive z, sorted by z. Equal keys keep tree order.
     //
     // Safety invariant: a slot occupant (an ordinary child or a placeholder) changes when an element is created, when
-    // a settle relocates an element or returns it (from a patch, or from OnResolved / Restack / Reorder, which do not
+    // a settle relocates an element or returns it (from a patch, at the end of its pass, or from OnResolved / Restack / Reorder, which do not
     // wait for a parent a diff is parked over), when a queued mount resolves (ResolveQueuedMount), or when Arrange
     // converts a slot for a parent no diff is parked over. A settle's swap is reported through
     // ReconcilerContext.NoteSlotOccupantChanged, so a diff holding the parent's old instances names the new occupant.
@@ -168,11 +168,18 @@ namespace Velvet
             return true;
         }
 
-        // The element occupying classElement's slot: its clip-path wrapper where one holds it.
+        // The element occupying classElement's slot: its clip-path wrapper or its wrapElement wrapper where one holds it.
         internal static VisualElement SlotOf(ReconcilerContext ctx, VisualElement classElement)
-            => ctx.ClipPathBindings.TryGetValue(classElement, out var binding) ? binding.Wrapper : classElement;
+        {
+            if (ctx.ClipPathBindings.TryGetValue(classElement, out var binding))
+            {
+                return binding.Wrapper;
+            }
+            return WrapperInfrastructure.OuterOf(ctx, classElement);
+        }
 
-        // SlotOf's inverse.
+        // The element whose classes position slot: the inner of a clip-path wrapper, which takes its layout. A wrapElement
+        // wrapper is positioned by its own classes.
         internal static VisualElement ClassElementOf(ReconcilerContext ctx, VisualElement slot)
         {
             if (slot.ClassListContains(FiberWrapperElementAppliers.ClipPathWrapperClass))
@@ -381,14 +388,41 @@ namespace Velvet
         }
 
         // Patch-time entry: real (the slot's element, read through its placeholder) was patched to declared /
-        // resolved. Explicit facts relocate it at once and their loss returns it to its slot at once, so the slot
-        // occupant changes only where the patching diff expects it to; a relocation its siblings decide waits for
-        // the end of the pass (Arrange).
+        // resolved. Explicit facts relocate it and their loss returns it to its slot, where the pass's recorded writes
+        // have applied; a relocation its siblings decide waits for the end of the pass (Arrange). Outside a recording
+        // pass the settle runs at once.
         internal static void OnPatched(ReconcilerContext ctx, VisualElement real, VisualElement classElement,
             string[] declared, string[] resolved, bool anchored)
         {
             var facts = Record(ctx, real, classElement, declared, resolved, anchored);
+            if (ChildListWrites.IsRecording)
+            {
+                ctx.PendingSettles.Add(new ReconcilerContext.QueuedSettle(real, null, null, false, 0));
+                return;
+            }
             Settle(ctx, real, facts);
+        }
+
+        // Decides the stacking of what a pass patched, once its recorded writes have applied: the patch returned the
+        // occupant its slot held before, which this swaps for the placeholder or the element itself where the facts say
+        // so. The facts are the ones held now, since OnResolved, Restack and Reorder track newer ones during the pass. An
+        // element patched through staged halves has no facts of its own yet: they are recorded here, from the class
+        // arrays the applied halves have left.
+        internal static void SettlePatched(ReconcilerContext ctx)
+        {
+            var pending = ctx.PendingSettles;
+            for (var i = 0; i < pending.Count; i++)
+            {
+                var entry = pending[i];
+                if (entry.Patcher != null)
+                {
+                    entry.Patcher.CommitStacking(entry);
+                    continue;
+                }
+                var real = entry.Real;
+                Settle(ctx, real, ctx.StackingFacts.TryGetValue(real, out var facts) ? facts : null);
+            }
+            pending.Clear();
         }
 
         // The z a custom property supplies classElement changed with no patch of it; null is no integer, which
@@ -403,7 +437,7 @@ namespace Velvet
             facts = facts with { Z = resolvedZ };
             Track(ctx, real, facts);
             Settle(ctx, real, facts);
-            if (ctx.SharedReconcileDepth == 0)
+            if (ArrangesAtOnce(ctx))
             {
                 DrainTeardowns(ctx);
                 ResortLayers(ctx);
@@ -421,7 +455,7 @@ namespace Velvet
             facts = facts with { Order = order };
             Track(ctx, real, facts);
             Settle(ctx, real, facts);
-            if (ctx.SharedReconcileDepth == 0)
+            if (ArrangesAtOnce(ctx))
             {
                 DrainTeardowns(ctx);
                 ResortLayers(ctx);
@@ -435,7 +469,7 @@ namespace Velvet
         {
             var facts = Record(ctx, real, classElement, declared, resolved, anchored);
             Settle(ctx, real, facts);
-            if (ctx.SharedReconcileDepth == 0)
+            if (ArrangesAtOnce(ctx))
             {
                 DrainTeardowns(ctx);
                 ResortLayers(ctx);
@@ -452,7 +486,7 @@ namespace Velvet
                 return;
             }
             MarkPending(ctx, parent);
-            if (ctx.SharedReconcileDepth == 0)
+            if (ArrangesAtOnce(ctx))
             {
                 DrainTeardowns(ctx);
                 ResortLayers(ctx);
@@ -463,12 +497,18 @@ namespace Velvet
         internal static void OnContainerToggled(ReconcilerContext ctx, VisualElement control)
         {
             MarkPending(ctx, control);
-            if (ctx.SharedReconcileDepth == 0)
+            if (ArrangesAtOnce(ctx))
             {
                 DrainTeardowns(ctx);
                 ResortLayers(ctx);
             }
         }
+
+        // Outside any pass nothing drains after a toggle, so the parent is arranged at once. A toggle a recorded patch op
+        // makes as the pass applies its writes is inside one: the arrangement sorts the live list and rebuilds its model,
+        // which would drop the ops still recorded behind, so FinishPass arranges it after the apply.
+        private static bool ArrangesAtOnce(ReconcilerContext ctx)
+            => ctx.SharedReconcileDepth == 0 && !ChildListWrites.IsApplying;
 
         private static void Settle(ReconcilerContext ctx, VisualElement real, StackingFacts? facts)
         {
