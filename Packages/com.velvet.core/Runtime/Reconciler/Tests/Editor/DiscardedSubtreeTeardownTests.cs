@@ -383,8 +383,8 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base unregisters the bindings of a child a Portal held inside the removed row.
-        // Drop `&& !HoldsAPortalTarget(element)` from IsDiscardedAfterCleanup and the row counts as discarded, which
-        // leaves the child's callbacks registered.
+        // Drop `&& !_ctx.PortalState.Stored.HasTargetBelow(element)` from IsDiscardedAfterCleanup and the row counts as
+        // discarded, which leaves the child's callbacks registered.
         [Test]
         public void Given_APortalWhoseTargetIsInsideTheRemovedRow_When_TheRowIsCleared_Then_TheBindingOfAChildItHeldIsUnregistered()
         {
@@ -410,8 +410,8 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base treats a removed row as discarded when the Portal beside it targets an element outside the row.
-        // Change `if (target != null && IsBelow(root, target))` to `if (target != null)` in HoldsAPortalTarget and
-        // the row's callbacks are unregistered.
+        // Make HasTargetBelow return true whenever any target holds a range, rather than only a target in root's
+        // subtree, and the row's callbacks are unregistered.
         [Test]
         public void Given_APortalOutsideTheRemovedRow_When_TheRowIsCleared_Then_TheBindingOfAChildOfTheRowStaysRegistered()
         {
