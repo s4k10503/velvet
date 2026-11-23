@@ -385,30 +385,12 @@ namespace Velvet.Tests
             Assert.That(label.style.minWidth.keyword, Is.Not.EqualTo(StyleKeyword.Null));
         }
 
-        private static double s_seconds;
-
-        private static double ReadSeconds() => s_seconds;
-
-        // Runs the relative-length poll of what the label has on a laid-out panel, so the resolver writes each bracket
-        // percentage as pixels and records it: the poll is the only writer once the first layout has passed, and it
-        // fires on the panel's own clock, which is held still afterwards so no later layout pass runs it again.
-        private static void RunRelativePoll(VisualElement element)
-        {
-            EditorPanelTestHelpers.SetPanelTimeFunction(element.panel, ReadSeconds);
-            for (var i = 0; i < 2; i++)
-            {
-                s_seconds += 1d;
-                EditorPanelTestHelpers.DriveSchedulerOnce(element.panel);
-                EditorPanelTestHelpers.ForcePanelUpdate(element.panel);
-            }
-        }
-
         // Mounted, then polled and derived once more, which is where a percentage layer's pixels and the derive's
         // record of them exist.
         private Label MountPolled(ReconcilerScope scope, string containerClass, string labelClass)
         {
             var label = MountLabel(scope, containerClass, labelClass, Sentence);
-            RunRelativePoll(label);
+            EditorPanelTestHelpers.DriveRelativeLengthPoll(label.panel);
             FireGeometry(label);
             FireGeometry(label.parent);
             return label;

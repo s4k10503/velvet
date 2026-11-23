@@ -56,6 +56,27 @@ namespace Velvet.TestUtilities
             update.Invoke(scheduler, null);
         }
 
+        private static double s_pollSeconds;
+
+        private static double ReadPollSeconds() => s_pollSeconds;
+
+        /// <summary>
+        /// Runs the relative-length poll of what is on an already laid-out panel: sets the panel's clock to one this
+        /// advances by a second per call, then drives the scheduler and a layout pass twice, the first seeding the
+        /// poll's capture and the second re-resolving. The clock stays where it ends, so a later layout pass does not
+        /// run the poll again until this is called again.
+        /// </summary>
+        public static void DriveRelativeLengthPoll(IPanel panel)
+        {
+            SetPanelTimeFunction(panel, ReadPollSeconds);
+            for (var i = 0; i < 2; i++)
+            {
+                s_pollSeconds += 1d;
+                DriveSchedulerOnce(panel);
+                ForcePanelUpdate(panel);
+            }
+        }
+
         /// <summary>
         /// Runs the panel's animation phase once — the same call a live panel issues once per frame — so an
         /// EditMode fixture can advance the engine's own style transitions deterministically (the batchmode

@@ -111,18 +111,20 @@ namespace Velvet.Tests
             VelvetStyleUtilities.AttachTo(_window.rootVisualElement);
             _window.position = new Rect(0, 0, 1000f, 600f);
             _mounted = V.Mount(_window.rootVisualElement,
-                V.Div("flex flex-row w-[2000px]",
+                V.Div("flex flex-row w-[2000px] h-[2000px]",
                     V.Label(name: "leaf", className: "shrink-0 size-[calc(50%+2px)] md:w-10", text: "internationalization is long")));
             var leaf = _window.rootVisualElement.Q<Label>("leaf");
             ResolveAt(1000f, leaf);
-            ForcePanelUpdate(leaf.panel);
+            EditorPanelTestHelpers.DriveRelativeLengthPoll(leaf.panel);
             using (var evt = EventBase<GeometryChangedEvent>.GetPooled())
             {
                 leaf.SimulateEvent(evt);
             }
 
-            // Act — NaN where the size layer was never written, which no class could then have claimed from.
-            var minimum = leaf.style.height.keyword == StyleKeyword.Undefined && leaf.style.height.value.value > 1000f
+            // Act — NaN where the poll never wrote the size layer's height, 50% of the parent's declared 2000px and 2px,
+            // which no class could then have claimed the width from.
+            var minimum = leaf.style.height.keyword == StyleKeyword.Undefined
+                && Mathf.Abs(leaf.style.height.value.value - 1002f) < 0.01f
                 ? leaf.style.minWidth.value.value
                 : float.NaN;
 
