@@ -384,7 +384,21 @@ namespace Velvet
             _ctx.IsAborted = false;
             try
             {
-                _ctx.HostCommit.EndRecordedPass();
+                // A recorded op that throws has not stopped the rest from applying; the drains below still run, and the
+                // exception surfaces once they have.
+                System.Runtime.ExceptionServices.ExceptionDispatchInfo? applyFailure = null;
+                try
+                {
+                    _ctx.HostCommit.EndRecordedPass();
+                }
+                catch (Exception exception)
+                {
+                    applyFailure = System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(exception);
+                }
+                finally
+                {
+                    FiberZLayerCoordinator.SettlePatched(_ctx);
+                }
                 try
                 {
                     var suspended = ChildPass.DrainPendingPortalMounts();
@@ -404,6 +418,7 @@ namespace Velvet
                     FiberZLayerCoordinator.DrainTeardowns(_ctx);
                     FiberZLayerCoordinator.ResortLayers(_ctx);
                 }
+                applyFailure?.Throw();
             }
             finally
             {
@@ -413,6 +428,8 @@ namespace Velvet
                 // drain (a boundary inside a portal's children) is consumed at this boundary
                 // the same way.
                 _ctx.PendingPortalMounts.Clear();
+                _ctx.PendingSettles.Clear();
+                _ctx.CleanedElements.Clear();
                 // MUTANT_SURVIVES(equivalent): the set is read only for a placeholder the drain has just dequeued,
                 // and each placeholder is queued once, where FiberNodeFactory creates it, so an entry outliving
                 // the queue cleared above is never read again; what keeping it costs is holding the element.
@@ -591,9 +608,10 @@ namespace Velvet
         void IReconcilerBridge.CleanupElementForController(VisualElement row)
             => ElementCleaner.CleanupElement(SlotOccupantOf(row));
 
-        // What holds the row's slot now: its placeholder while FiberZLayerCoordinator relocates it, which a patch, the
-        // arrangement at the end of a range or pass, and a variant toggled outside any pass each decide afresh, so it
-        // is asked where the controller acts on the slot rather than kept.
+        // What holds the row's slot now: its placeholder while FiberZLayerCoordinator relocates it, which the settle of
+        // a patch at the end of its pass, the arrangement at the end of a range or pass, and a variant toggled outside
+        // any pass each decide afresh, so it is asked where the controller acts on the slot rather than kept. A row a
+        // patch relocates in the pass still holds its slot itself until that pass applies its recorded writes.
         VisualElement IReconcilerBridge.SlotOccupantForController(VisualElement row) => SlotOccupantOf(row);
 
         private VisualElement SlotOccupantOf(VisualElement row) => FiberZLayerCoordinator.PlaceholderOf(_ctx, row) ?? row;
@@ -1114,6 +1132,7 @@ namespace Velvet
             _ctx.ClearSuspenseState();
             _ctx.PortalState.Clear();
             _ctx.PendingPortalMounts.Clear();
+            _ctx.PendingSettles.Clear();
             // MUTANT_SURVIVES(equivalent): as at the pass boundary, an entry outliving its queue is never read.
             _ctx.PendingHostPlaceholders.Clear();
             // ZLayerHosts/ZLayerMembers/StackingFacts are pure side-tables (dropped by ClearAllSideTables); these
