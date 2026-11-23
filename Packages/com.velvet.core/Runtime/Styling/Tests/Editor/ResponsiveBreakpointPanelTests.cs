@@ -119,8 +119,10 @@ namespace Velvet.Tests
                 leaf.SimulateEvent(evt);
             }
 
-            // Act
-            var minimum = leaf.style.minWidth.value.value;
+            // Act — NaN where the size layer was never written, which no class could then have claimed from.
+            var minimum = leaf.style.height.keyword == StyleKeyword.Undefined && leaf.style.height.value.value > 1000f
+                ? leaf.style.minWidth.value.value
+                : float.NaN;
 
             // Assert
             Assert.That(minimum, Is.EqualTo(40f).Within(0.01f));

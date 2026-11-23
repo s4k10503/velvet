@@ -385,6 +385,39 @@ namespace Velvet.Tests
             Assert.That(label.style.minWidth.keyword, Is.Not.EqualTo(StyleKeyword.Null));
         }
 
+        private static double s_seconds;
+
+        private static double ReadSeconds() => s_seconds;
+
+        // Runs the relative-length poll of what the label has on a laid-out panel, so the resolver writes each bracket
+        // percentage as pixels and records it: the poll is the only writer once the first layout has passed, and it
+        // fires on the panel's own clock, which is held still afterwards so no later layout pass runs it again.
+        private static void RunRelativePoll(VisualElement element)
+        {
+            EditorPanelTestHelpers.SetPanelTimeFunction(element.panel, ReadSeconds);
+            for (var i = 0; i < 2; i++)
+            {
+                s_seconds += 1d;
+                EditorPanelTestHelpers.DriveSchedulerOnce(element.panel);
+                EditorPanelTestHelpers.ForcePanelUpdate(element.panel);
+            }
+        }
+
+        // Mounted, then polled and derived once more, which is where a percentage layer's pixels and the derive's
+        // record of them exist.
+        private Label MountPolled(ReconcilerScope scope, string containerClass, string labelClass)
+        {
+            var label = MountLabel(scope, containerClass, labelClass, Sentence);
+            RunRelativePoll(label);
+            FireGeometry(label);
+            FireGeometry(label.parent);
+            return label;
+        }
+
+        private static bool IsPixels(StyleLength length, float pixels)
+            => length.keyword == StyleKeyword.Undefined && length.value.unit == LengthUnit.Pixel
+                && Mathf.Abs(length.value.value - pixels) < 0.01f;
+
         // The parent takes a size on its main axis that makes `calc(50%+2px)` of it 3px or 4px, with a layout pass and
         // then only the parent's own geometry event: no scheduler tick runs, so a pixel value a length layer wrote
         // inline stays what it was before the resize.
@@ -406,16 +439,16 @@ namespace Velvet.Tests
         {
             // Arrange
             using var scope = new ReconcilerScope();
-            var label = MountLabel(scope, RowParent, "shrink-0 max-w-[calc(50%+2px)]", Sentence);
+            var label = MountPolled(scope, RowParent, "shrink-0 max-w-[calc(50%+2px)]");
             var parent = label.parent;
-            FireGeometry(parent);
+            var written = IsPixels(label.style.maxWidth, 1002f);
 
             // Act
             ResizeParent(parent, true);
             FireGeometry(parent);
 
-            // Assert
-            Assert.That(label.style.minWidth.value.value, Is.EqualTo(4f).Within(0.01f));
+            // Assert — NaN where the resolver never wrote the percentage as pixels, which the expected value is not.
+            Assert.That(written ? label.style.minWidth.value.value : float.NaN, Is.EqualTo(4f).Within(0.01f));
         }
 
         [Test]
@@ -423,16 +456,16 @@ namespace Velvet.Tests
         {
             // Arrange
             using var scope = new ReconcilerScope();
-            var label = MountLabel(scope, RowParent, "shrink-0 w-[calc(50%+2px)]", Sentence);
+            var label = MountPolled(scope, RowParent, "shrink-0 w-[calc(50%+2px)]");
             var parent = label.parent;
-            FireGeometry(parent);
+            var written = IsPixels(label.style.width, 1002f);
 
             // Act
             ResizeParent(parent, true);
             FireGeometry(parent);
 
-            // Assert
-            Assert.That(label.style.minWidth.value.value, Is.EqualTo(4f).Within(0.01f));
+            // Assert — NaN where the resolver never wrote the percentage as pixels, which the expected value is not.
+            Assert.That(written ? label.style.minWidth.value.value : float.NaN, Is.EqualTo(4f).Within(0.01f));
         }
 
         [Test]
@@ -440,16 +473,16 @@ namespace Velvet.Tests
         {
             // Arrange
             using var scope = new ReconcilerScope();
-            var label = MountLabel(scope, RowParent, "shrink-0 size-[calc(50%+2px)]", Sentence);
+            var label = MountPolled(scope, RowParent, "shrink-0 size-[calc(50%+2px)]");
             var parent = label.parent;
-            FireGeometry(parent);
+            var written = IsPixels(label.style.width, 1002f);
 
             // Act
             ResizeParent(parent, true);
             FireGeometry(parent);
 
-            // Assert
-            Assert.That(label.style.minWidth.value.value, Is.EqualTo(4f).Within(0.01f));
+            // Assert — NaN where the resolver never wrote the percentage as pixels, which the expected value is not.
+            Assert.That(written ? label.style.minWidth.value.value : float.NaN, Is.EqualTo(4f).Within(0.01f));
         }
 
         [Test]
@@ -457,16 +490,16 @@ namespace Velvet.Tests
         {
             // Arrange
             using var scope = new ReconcilerScope();
-            var label = MountLabel(scope, ColumnParent, "max-h-[calc(50%+2px)]", Sentence);
+            var label = MountPolled(scope, ColumnParent, "max-h-[calc(50%+2px)]");
             var parent = label.parent;
-            FireGeometry(parent);
+            var written = IsPixels(label.style.maxHeight, 1002f);
 
             // Act
             ResizeParent(parent, false);
             FireGeometry(parent);
 
-            // Assert
-            Assert.That(label.style.minHeight.value.value, Is.EqualTo(3f).Within(0.01f));
+            // Assert — NaN where the resolver never wrote the percentage as pixels, which the expected value is not.
+            Assert.That(written ? label.style.minHeight.value.value : float.NaN, Is.EqualTo(3f).Within(0.01f));
         }
 
         [Test]
@@ -474,16 +507,16 @@ namespace Velvet.Tests
         {
             // Arrange
             using var scope = new ReconcilerScope();
-            var label = MountLabel(scope, ColumnParent, "h-[calc(50%+2px)]", Sentence);
+            var label = MountPolled(scope, ColumnParent, "h-[calc(50%+2px)]");
             var parent = label.parent;
-            FireGeometry(parent);
+            var written = IsPixels(label.style.height, 1002f);
 
             // Act
             ResizeParent(parent, false);
             FireGeometry(parent);
 
-            // Assert
-            Assert.That(label.style.minHeight.value.value, Is.EqualTo(3f).Within(0.01f));
+            // Assert — NaN where the resolver never wrote the percentage as pixels, which the expected value is not.
+            Assert.That(written ? label.style.minHeight.value.value : float.NaN, Is.EqualTo(3f).Within(0.01f));
         }
 
         [Test]
@@ -491,16 +524,16 @@ namespace Velvet.Tests
         {
             // Arrange
             using var scope = new ReconcilerScope();
-            var label = MountLabel(scope, ColumnParent, "size-[calc(50%+2px)]", Sentence);
+            var label = MountPolled(scope, ColumnParent, "size-[calc(50%+2px)]");
             var parent = label.parent;
-            FireGeometry(parent);
+            var written = IsPixels(label.style.height, 1002f);
 
             // Act
             ResizeParent(parent, false);
             FireGeometry(parent);
 
-            // Assert
-            Assert.That(label.style.minHeight.value.value, Is.EqualTo(3f).Within(0.01f));
+            // Assert — NaN where the resolver never wrote the percentage as pixels, which the expected value is not.
+            Assert.That(written ? label.style.minHeight.value.value : float.NaN, Is.EqualTo(3f).Within(0.01f));
         }
 
         // GREEN_ON_BASE(characterization): the base caps the minimum by the inline max-width, which is the pixel layer's. A maximum read from the size layer's percentage instead caps it at 1002 and the minimum is the widest word's.
@@ -509,10 +542,11 @@ namespace Velvet.Tests
         {
             // Arrange
             using var scope = new ReconcilerScope();
-            var label = MountLabel(scope, WideRow, "shrink-0 size-[calc(50%+2px)] max-w-[40px]", Sentence);
+            var label = MountPolled(scope, WideRow, "shrink-0 size-[calc(50%+2px)] max-w-[40px]");
+            var written = IsPixels(label.style.width, 1002f);
 
             // Act
-            var minimum = label.style.minWidth.value.value;
+            var minimum = written ? label.style.minWidth.value.value : float.NaN;
 
             // Assert
             Assert.That(minimum, Is.EqualTo(40f).Within(0.01f));
@@ -524,10 +558,11 @@ namespace Velvet.Tests
         {
             // Arrange
             using var scope = new ReconcilerScope();
-            var label = MountLabel(scope, WideRow, "shrink-0 w-[40px] size-[calc(50%+2px)]", Sentence);
+            var label = MountPolled(scope, WideRow, "shrink-0 w-[40px] size-[calc(50%+2px)]");
+            var written = IsPixels(label.style.width, 40f);
 
             // Act
-            var minimum = label.style.minWidth.value.value;
+            var minimum = written ? label.style.minWidth.value.value : float.NaN;
 
             // Assert
             Assert.That(minimum, Is.EqualTo(40f).Within(0.01f));
@@ -539,30 +574,32 @@ namespace Velvet.Tests
         {
             // Arrange
             using var scope = new ReconcilerScope();
-            var label = MountLabel(scope, WideRow, "shrink-0 w-[calc(50%+2px)] !size-[40px]", Sentence);
+            var label = MountPolled(scope, WideRow, "shrink-0 w-[calc(50%+2px)] !size-[40px]");
+            var written = IsPixels(label.style.width, 40f);
 
             // Act
-            var minimum = label.style.minWidth.value.value;
+            var minimum = written ? label.style.minWidth.value.value : float.NaN;
 
             // Assert
             Assert.That(minimum, Is.EqualTo(40f).Within(0.01f));
         }
 
         // GREEN_ON_BASE(characterization): the base reads the live inline width, which the overwrite set to 40. A width taken from the
-        // percentage the layer last wrote instead caps the minimum at 1002.
+        // percentage the layer last wrote instead (the record the resolver keeps) caps the minimum at 1002.
         [Test]
         public void Given_ALabelWithABracketCalcPercentWidth_When_ItsInlineWidthIsOverwrittenAndItsOwnGeometryEventFires_Then_ItsMinWidthFollowsTheOverwrittenWidth()
         {
             // Arrange
             using var scope = new ReconcilerScope();
-            var label = MountLabel(scope, WideRow, "shrink-0 w-[calc(50%+2px)]", Sentence);
+            var label = MountPolled(scope, WideRow, "shrink-0 w-[calc(50%+2px)]");
+            var written = IsPixels(label.style.width, 1002f);
             label.style.width = 40f;
 
             // Act
             FireGeometry(label);
 
-            // Assert
-            Assert.That(label.style.minWidth.value.value, Is.EqualTo(40f).Within(0.01f));
+            // Assert — NaN where the resolver never wrote the percentage as pixels, so there was nothing to overwrite.
+            Assert.That(written ? label.style.minWidth.value.value : float.NaN, Is.EqualTo(40f).Within(0.01f));
         }
 
         // GREEN_ON_BASE(characterization): the base reads a text whose widest run is as wide as the whole text as one a minimum can reach. Change `>=` to `>` in MinimumCanReach and the equal widths no longer do.
