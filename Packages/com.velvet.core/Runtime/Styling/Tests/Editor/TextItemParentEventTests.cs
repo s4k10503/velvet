@@ -304,7 +304,7 @@ namespace Velvet.Tests
             Assert.That(label.style.minWidth.value.value, Is.EqualTo(WidestWordMinimum(label, LongerWord)));
         }
 
-        // GREEN_ON_BASE(characterization): the base derives a label a grid stopped sizing on its parent's next event, though the direction stayed. Drop `|| IsSizedByGridParent(parent)` from the stand-down branch of DeriveCore and the event leaves it.
+        // GREEN_ON_BASE(characterization): the base derives a label a grid stopped sizing on its parent's next event, though the direction stayed. Drop `|| sizedByGrid` from the `_readsParentBox` assignment in DeriveCore and the event leaves it.
         [Test]
         public void Given_ALabelStoodDownForAGridThatStopsSizingIt_When_ItsTextChangesAndOnlyItsParentsGeometryEventFires_Then_ItGetsAMinWidth()
         {
@@ -326,6 +326,77 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(label.style.minWidth.keyword, Is.Not.EqualTo(StyleKeyword.Null));
+        }
+
+        [Test]
+        public void Given_ALabelStoodDownForAGridAndSettledAgainByItsOwnEvent_When_TheGridStopsSizingItAndOnlyItsParentsGeometryEventFires_Then_ItGetsAMinWidth()
+        {
+            // Arrange — as the case above, with the label's own geometry event between the stand-down and the
+            // grid leaving, which reaches the early return on the settled signature. The text is left as it was.
+            using var scope = new ReconcilerScope();
+            var label = MountLabel(scope, NarrowRow, "", Sentence);
+            var parent = label.parent;
+            FireGeometry(parent);
+            var grids = ReconcilerContextProbe.Of(scope).GridManipulators;
+            grids[parent] = null!;
+            ManipulatorOf(scope, label).Rederive();
+            FireGeometry(label);
+            grids.Remove(parent);
+
+            // Act
+            FireGeometry(parent);
+
+            // Assert
+            Assert.That(label.style.minWidth.keyword, Is.Not.EqualTo(StyleKeyword.Null));
+        }
+
+        [Test]
+        public void Given_ALabelWithAMinWidthWritten_When_ItsInlineOverflowIsSetHiddenAndItsOwnGeometryEventFires_Then_ItsMinWidthIsReleased()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var label = MountLabel(scope, NarrowRow, "", Sentence);
+            label.style.overflow = Overflow.Hidden;
+
+            // Act
+            FireGeometry(label);
+
+            // Assert
+            Assert.That(label.style.minWidth.keyword, Is.EqualTo(StyleKeyword.Null));
+        }
+
+        [Test]
+        public void Given_ALabelStoodDownForInlineOverflowHidden_When_ThatInlineValueIsClearedAndItsOwnGeometryEventFires_Then_ItGetsAMinWidth()
+        {
+            // Arrange — the label is stood down by a derive of its own, the leaf having been given a new signature.
+            using var scope = new ReconcilerScope();
+            var label = MountLabel(scope, NarrowRow, "", Sentence);
+            label.style.overflow = Overflow.Hidden;
+            ManipulatorOf(scope, label).Rederive();
+            label.style.overflow = new StyleEnum<Overflow>(StyleKeyword.Null);
+
+            // Act
+            FireGeometry(label);
+
+            // Assert
+            Assert.That(label.style.minWidth.keyword, Is.Not.EqualTo(StyleKeyword.Null));
+        }
+
+        [Test]
+        public void Given_ALabelWithABracketCalcPercentMaxWidth_When_ItsTextChangesAndOnlyItsParentsGeometryEventFires_Then_ItsMinWidthFollowsTheText()
+        {
+            // Arrange — as the inline percent case above: the cap stays above either text's widest word.
+            using var scope = new ReconcilerScope();
+            var label = MountLabel(scope, WideRow, "shrink-0 max-w-[calc(50%+10px)]", Sentence);
+            var parent = label.parent;
+            FireGeometry(parent);
+            SetTextQuietly(label, Longer);
+
+            // Act
+            FireGeometry(parent);
+
+            // Assert
+            Assert.That(label.style.minWidth.value.value, Is.EqualTo(WidestWordMinimum(label, LongerWord)));
         }
 
         // GREEN_ON_BASE(characterization): the base reads a text whose widest run is as wide as the whole text as one a minimum can reach. Change `>=` to `>` in MinimumCanReach and the equal widths no longer do.

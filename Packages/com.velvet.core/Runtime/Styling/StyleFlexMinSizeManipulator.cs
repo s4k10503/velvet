@@ -196,10 +196,14 @@ namespace Velvet
             var parentContent = horizontal ? parent.contentRect.width : parent.contentRect.height;
             var specified = SpecifiedLength(textElement, horizontal, parentContent);
             var maximum = MaximumLength(textElement, horizontal, parentContent);
-            _readsParentBox = ReadsPercent(textElement, horizontal);
+            var sizedByGrid = IsSizedByGridParent(parent);
+            _readsParentBox = ReadsPercent(textElement, horizontal) || sizedByGrid;
             var clipped = IsClipped(textElement);
+            // StandsDown reads the inline overflow and the grid parent, and no other term here carries either, so a
+            // pass that finds one moved is not taken for a repeat.
             var baseSignature = System.HashCode.Combine(
-                ComputeSignature(horizontal, text, resolved, crossContent, specified, maximum), clipped);
+                ComputeSignature(horizontal, text, resolved, crossContent, specified, maximum), clipped,
+                IsInlineOverflowHidden(textElement), sizedByGrid);
             var atNaturalWidth = IsAtNaturalWidth(textElement, horizontal, text, resolved, frame, measure: false);
             var signature = System.HashCode.Combine(baseSignature, atNaturalWidth);
             if (_hasSignature && signature == _lastSignature)
@@ -209,7 +213,6 @@ namespace Velvet
 
             if (StandsDown(textElement, parent, horizontal, clipped))
             {
-                _readsParentBox = _readsParentBox || IsSizedByGridParent(parent);
                 Release(textElement);
                 Settle(signature, text);
                 return;
@@ -302,7 +305,19 @@ namespace Velvet
             => IsPercent(horizontal ? textElement.style.width : textElement.style.height,
                     horizontal ? _specifiedWidth : _specifiedHeight)
                 || IsPercent(horizontal ? textElement.style.maxWidth : textElement.style.maxHeight,
-                    horizontal ? _maxWidth : _maxHeight);
+                    horizontal ? _maxWidth : _maxHeight)
+                || ReadsPercentageLayer(textElement, horizontal);
+
+        // A bracket length such as `max-w-[calc(50%+10px)]` is written inline as pixels, so the percentage it
+        // reads shows only in the layer that holds it.
+        private static bool ReadsPercentageLayer(TextElement textElement, bool horizontal)
+            => horizontal
+                ? StyleArbitraryValueResolver.WinningLayerReadsPercentage(textElement, ArbitraryProperty.Width)
+                    || StyleArbitraryValueResolver.WinningLayerReadsPercentage(textElement, ArbitraryProperty.MaxWidth)
+                    || StyleArbitraryValueResolver.WinningLayerReadsPercentage(textElement, ArbitraryProperty.Size)
+                : StyleArbitraryValueResolver.WinningLayerReadsPercentage(textElement, ArbitraryProperty.Height)
+                    || StyleArbitraryValueResolver.WinningLayerReadsPercentage(textElement, ArbitraryProperty.MaxHeight)
+                    || StyleArbitraryValueResolver.WinningLayerReadsPercentage(textElement, ArbitraryProperty.Size);
 
         // Where ResolveLength takes the parent's content box into the length.
         private static bool IsPercent(StyleLength inline, Dim? fromClass)
@@ -392,8 +407,7 @@ namespace Velvet
             {
                 return true;
             }
-            if (textElement.style.overflow.keyword == StyleKeyword.Undefined
-                && textElement.style.overflow.value == Overflow.Hidden)
+            if (IsInlineOverflowHidden(textElement))
             {
                 return true;
             }
@@ -409,6 +423,10 @@ namespace Velvet
             }
             return IsSizedByGridParent(parent);
         }
+
+        private static bool IsInlineOverflowHidden(VisualElement element)
+            => element.style.overflow.keyword == StyleKeyword.Undefined
+                && element.style.overflow.value == Overflow.Hidden;
 
         private static readonly string[] s_clipClasses = { OverflowHiddenClass, TruncateClass, OverflowVisibleClass };
 
