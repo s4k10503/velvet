@@ -370,17 +370,20 @@ namespace Velvet
             // (FiberBatchScheduler.DrainImmediateWork).
             if (scheduler != null && FiberExecutionContext.Threw(scheduler)) return;
             FiberExecutionContext.Enter(scheduler, (Fiber: fiber, Budget: timeSlicedBudgetMs),
-                static state => FlushStateWork(state.Fiber, state.Budget));
+                static state => FlushStateWork(state.Fiber, state.Budget, opensWave: true));
         }
 
-        internal static void FlushStateWork(ComponentFiber fiber) => FlushStateWork(fiber, FiberLane.TimeSlicedBudgetMs);
+        internal static void FlushStateWork(ComponentFiber fiber)
+            => FlushStateWork(fiber, FiberLane.TimeSlicedBudgetMs, opensWave: false);
 
-        internal static void FlushStateWork(ComponentFiber fiber, double timeSlicedBudgetMs)
+        // opensWave: the FlushState door runs this, so the flush is a wave of its own (FiberWave); a drain's flushes and
+        // the renders a settle owes render into the wave that encloses them.
+        internal static void FlushStateWork(ComponentFiber fiber, double timeSlicedBudgetMs, bool opensWave)
         {
             OpenOwedSettleWindow(out var enclosing);
             try
             {
-                FlushFiber(fiber, timeSlicedBudgetMs, endsEnclosingCommit: enclosing != null);
+                FlushFiber(fiber, timeSlicedBudgetMs, endsEnclosingCommit: enclosing != null, opensWave);
             }
             finally
             {
@@ -429,9 +432,13 @@ namespace Velvet
         // endsEnclosingCommit: the flush runs inside an enclosing flush's owed window, ahead of that flush's own
         // effect commit, so the follow-up commit that ends a flush is the enclosing one's to run: it would take the
         // enclosing flush's refs ahead of its insertion effects and layout cleanups.
-        private static void FlushFiber(ComponentFiber fiber, double timeSlicedBudgetMs, bool endsEnclosingCommit)
+        private static void FlushFiber(
+            ComponentFiber fiber, double timeSlicedBudgetMs, bool endsEnclosingCommit, bool opensWave)
         {
             if (!fiber.IsMounted) return;
+            // A deletion an earlier render of the wave recorded takes the fiber down where the wave applies, and React
+            // renders nothing of a fiber its render deletes.
+            if (fiber.IsBeingDeleted) return;
             if (!fiber.IsDirty)
             {
                 fiber.SettleTransitionPending();
@@ -552,13 +559,85 @@ namespace Velvet
             // lane chose, and answers the deferred-commit question the same way this pass does.
             fiber.PendingReconcileBudgetMs = flushBudget;
             fiber.PendingReconcileDrainsTransitionWork = drainsTransitionWork;
+            if (!opensWave) FlushInEnclosingWork(fiber, flushBudget, drainsTransitionWork, renderLane);
+            else if (FlushAsWave(fiber, context!, flushBudget, drainsTransitionWork, renderLane))
+            {
+                context!.BatchScheduler.FlushImmediateWork();
+            }
+            if (!endsEnclosingCommit) FiberEffects.CommitStrandedLayoutWork(context!);
+        }
+
+        // The flush is a wave of its own (FiberWave), ended once it and the renders a settle owes have rendered, and
+        // committed before the indicator flush it returns whether it owes.
+        private static bool FlushAsWave(ComponentFiber fiber, ReconcilerContext context, double flushBudget,
+            bool drainsTransitionWork, FiberUpdatePriority renderLane)
+        {
+            FiberWave.Open(context);
+            bool owesIndicatorFlush;
+            try
+            {
+                bool completed;
+                try
+                {
+                    completed = RenderFlushedFiber(fiber, flushBudget, drainsTransitionWork, renderLane);
+                }
+                finally
+                {
+                    // Read ahead of the commit, whose own drain opens a wave of its own.
+                    owesIndicatorFlush = context.WaveOwesIndicatorFlush;
+                    FiberWave.End(context);
+                }
+                if (completed)
+                {
+                    CommitFlushedFiber(fiber);
+                    owesIndicatorFlush |= fiber.PendingReconcileDrainsTransitionWork;
+                }
+            }
+            finally
+            {
+                FiberWave.Commit(context);
+            }
+            return owesIndicatorFlush;
+        }
+
+        // A drain's flush, or one a settle owes, renders into the wave that encloses it, or, where a resume's settle
+        // owes it after that wave has ended, commits as a flush outside a wave does.
+        private static void FlushInEnclosingWork(ComponentFiber fiber, double flushBudget, bool drainsTransitionWork,
+            FiberUpdatePriority renderLane)
+        {
+            if (!RenderFlushedFiber(fiber, flushBudget, drainsTransitionWork, renderLane)) return;
+            CommitFlushedFiber(fiber);
+            FlushCompletedTransitionIndicator(fiber);
+        }
+
+        // Defer layout / passive effects while a time-sliced reconcile is still paused: a parked commit has only
+        // partially mutated the DOM, so a UseLayoutEffect reading a UseRef to a not-yet-attached node would observe
+        // null. ContinueReconcile's terminal chunk runs these once the work completes, so only a completed pass
+        // reaches this.
+        private static void CommitFlushedFiber(ComponentFiber fiber)
+        {
+            // Bottom-up commit — descendant effects run before this fiber's so a
+            // parent effect that reads a child imperative handle / measured size observes the
+            // child's already-applied effect.
+            FiberEffects.CommitSubtreeEffects(fiber);
+            // This independent flush may have toggled a descendant's class / controlled value without
+            // re-rendering an enclosing has- element; re-derive the registered has- elements now that the
+            // DOM mutations are committed so a has- ancestor that did not itself reconcile is not left stale.
+            // Scoped to this flush's region (the fiber's MountPoint subtree) — see RefreshHasVariants.
+            FiberWave.RefreshHasVariants(fiber.Reconciler?.Context, fiber.MountPoint);
+        }
+
+        // Renders the flushed fiber and, where its pass completed, settles the transition it landed and renders what
+        // that settle owes, all of it ahead of the effect commit. Returns whether the pass completed.
+        private static bool RenderFlushedFiber(
+            ComponentFiber fiber, double flushBudget, bool drainsTransitionWork, FiberUpdatePriority renderLane)
+        {
             var wasRenderingTransitionLane = IsRenderingTransitionLane;
             var wasTransitionDrainFiber = TransitionDrainFiber;
             var wasRenderLane = RenderLane;
             IsRenderingTransitionLane = drainsTransitionWork;
             TransitionDrainFiber = drainsTransitionWork ? fiber : null;
             RenderLane = renderLane;
-            var suspended = false;
             FiberRenderer.BeginPass(fiber);
             try
             {
@@ -568,7 +647,7 @@ namespace Velvet
             {
                 // A flush of this fiber alone has no ancestor walk on the stack to hand the signal to.
                 FiberRenderer.SuspendPassOwner(fiber, drainsTransitionWork);
-                suspended = true;
+                return false;
             }
             finally
             {
@@ -576,26 +655,10 @@ namespace Velvet
                 TransitionDrainFiber = wasTransitionDrainFiber;
                 RenderLane = wasRenderLane;
             }
-            // Defer layout / passive effects while a time-sliced reconcile is still paused: a parked commit has
-            // only partially mutated the DOM, so a UseLayoutEffect reading a UseRef to a not-yet-attached node
-            // would observe null. ContinueReconcile's terminal chunk runs these once the work completes.
-            if (!suspended && fiber.Reconciler?.HasPendingWork != true)
-            {
-                SettleCompletedTransition(fiber);
-                // Ahead of the effect commit below, which outside a drain runs its layout effects inline.
-                FlushOwedSettleRenders(s_owedSettleRenders!);
-                // Bottom-up commit — descendant effects run before this fiber's so a
-                // parent effect that reads a child imperative handle / measured size observes the
-                // child's already-applied effect. The drain pops fibers in LIFO order (deepest first).
-                FiberEffects.CommitSubtreeEffects(fiber);
-                // This independent flush may have toggled a descendant's class / controlled value without
-                // re-rendering an enclosing has- element; re-derive the registered has- elements now that the
-                // DOM mutations are committed so a has- ancestor that did not itself reconcile is not left stale.
-                // Scoped to this flush's region (the fiber's MountPoint subtree) — see RefreshHasVariants.
-                FiberNodePatcher.RefreshHasVariants(fiber.Reconciler?.Context, fiber.MountPoint);
-                FlushCompletedTransitionIndicator(fiber);
-            }
-            if (!endsEnclosingCommit) FiberEffects.CommitStrandedLayoutWork(context!);
+            if (fiber.Reconciler?.HasPendingWork == true) return false;
+            SettleCompletedTransition(fiber);
+            FlushOwedSettleRenders(s_owedSettleRenders!);
+            return true;
         }
 
         private static void SettleCompletedTransition(ComponentFiber fiber)
@@ -612,12 +675,14 @@ namespace Velvet
                     || (!fiber.LaneQueue.Contains(FiberUpdatePriority.Transition)
                         && !fiber.HasPromotedTransition));
 
+        // A flush inside a wave renders ahead of the wave's commit: a door's wave flushes the indicator once it has
+        // committed (FlushAsWave), and a drain renders the tier it would flush in passes of its own.
         private static void FlushCompletedTransitionIndicator(ComponentFiber fiber)
         {
-            if (fiber.PendingReconcileDrainsTransitionWork)
-            {
-                fiber.Reconciler?.Context.BatchScheduler.FlushImmediateWork();
-            }
+            if (!fiber.PendingReconcileDrainsTransitionWork) return;
+            var context = fiber.Reconciler?.Context;
+            if (context is { WaveOpen: true }) context.WaveOwesIndicatorFlush = true;
+            else context?.BatchScheduler.FlushImmediateWork();
         }
 
         // True when this inline-mounted fiber's MountPoint no longer shares a VE-root with the tree the root fiber
@@ -690,89 +755,42 @@ namespace Velvet
                 return;
             }
 
+            var resumeContext = fiber.Reconciler.Context;
+            FiberWave.Open(resumeContext);
             var owed = OpenOwedSettleWindow(out var enclosingOwed);
             var pushedOnto = FiberRenderer.PushFiber(fiber);
             try
             {
-                // Resume at the budget the starting lane chose so a Transition slice keeps time-slicing.
-                // An inline-mount fiber commits its child-count delta incrementally across resume slices, so
-                // each slice's delta must be propagated here exactly as the initial RenderAndReconcile pass
-                // does — otherwise the recorded starts behind this fiber, and the captured slotStart of a
-                // fiber parked there, go stale against the rows this slice just inserted / removed.
-                // The resumed slice can still expand components, so it answers the deferred-commit question
-                // the same way the pass that parked it did — see PendingReconcileDrainsTransitionWork.
-                var wasRenderingTransitionLane = IsRenderingTransitionLane;
-                var wasTransitionDrainFiber = TransitionDrainFiber;
-                var wasRenderLane = RenderLane;
-                IsRenderingTransitionLane = fiber.PendingReconcileDrainsTransitionWork;
-                TransitionDrainFiber = fiber.PendingReconcileDrainsTransitionWork ? fiber : null;
-                RenderLane = RenderLaneOf(FiberUpdatePriority.Normal, fiber.PendingReconcileDrainsTransitionWork);
-                // A resume continues the pass whose output is already this fiber's PreviousTree, so the
-                // children it reaches are stamped against that array exactly as the slice that parked
-                // stamped the ones it reached. Without it they are stamped against nothing, and
-                // ComponentFiber.SourceTree owns what that costs them.
-                var resumeContext = fiber.Reconciler.Context;
-                var enclosingFiberTree = resumeContext.CurrentFiberTree;
-                resumeContext.CurrentFiberTree = fiber.PreviousTree;
-                resumeContext.SuspendDeclinedByRevealedBoundary = false;
-                // A resume has no walk of this fiber's ancestors on the stack to have pushed the Providers above
-                // it, so they go back on the cursor for the rows this slice renders, as RenderAndReconcile puts
-                // them there for the slice that parked.
-                var contextSpine = FiberContextSpine.Push(fiber);
+                bool completed;
                 try
                 {
-                    using var portal = new FiberCommitWork.PortalScope(resumeContext, fiber);
-                    if (fiber.IsInlineMounted)
+                    try
                     {
-                        // Logical (container-blind) count, not raw childCount: this same ContinueReconcile call
-                        // now also drains any Portal / z-layer mount this slice enqueued (see Reconciler.
-                        // ContinueReconcile), and a first-of-its-sign container the drain creates or removes
-                        // would otherwise leak its own +-1 into this fiber's delta exactly like
-                        // FiberCommitWork.ReconcileOwnRows's own measurement — see
-                        // LogicalMountPointChildCount.
-                        var slice = new FiberCommitWork.RowCountWindow(fiber);
-                        fiber.Reconciler.ContinueReconcileWork(fiber.PendingReconcileBudgetMs);
-                        resumeContext.HostCommit.ShiftRows(fiber, slice.UnshiftedChange);
+                        completed = ResumeSlice(fiber, mountPoint, owed);
                     }
-                    else
+                    finally
                     {
-                        fiber.Reconciler.ContinueReconcileWork(fiber.PendingReconcileBudgetMs);
+                        FiberWave.End(resumeContext);
+                    }
+                    if (completed)
+                    {
+                        // The commit is now fully applied — run the insertion / layout / passive effects FlushState
+                        // deferred while this reconcile was paused. Runs once, only on the terminal chunk.
+                        // Bottom-up — descendant effects before this fiber's.
+                        FiberEffects.CommitSubtreeEffects(fiber);
+                        // Mirror FlushState's settled-flush pass: re-derive registered has- elements so a
+                        // time-sliced flush that toggled a descendant's class / controlled value reflects on a
+                        // has- ancestor that did not itself reconcile. Scoped to this flush's region (the fiber's
+                        // MountPoint subtree) — see RefreshHasVariants.
+                        FiberWave.RefreshHasVariants(resumeContext, fiber.MountPoint);
                     }
                 }
                 finally
                 {
-                    contextSpine.Unwind();
-                    resumeContext.CurrentFiberTree = enclosingFiberTree;
-                    IsRenderingTransitionLane = wasRenderingTransitionLane;
-                    TransitionDrainFiber = wasTransitionDrainFiber;
-                    RenderLane = wasRenderLane;
+                    FiberWave.Commit(resumeContext);
                 }
-
-                // Null once the slice has disposed this fiber, which a boundary above does when it swaps in its
-                // fallback for an error a row of the slice threw. That ends the pass, as FlushFiber's own check
-                // reads it.
-                if (fiber.Reconciler?.HasPendingWork == true)
+                if (completed)
                 {
-                    ScheduleNextSlice(mountPoint, fiber);
-                }
-                else
-                {
-                    fiber.PendingOldTree = null;
-                    SettleCompletedTransition(fiber);
-                    // Ahead of the effect commit below, so its layout effects read the holders without the
-                    // entries the settle took down.
-                    FlushOwedSettleRenders(owed);
-                    // The commit is now fully applied — run the insertion / layout / passive effects FlushState
-                    // deferred while this reconcile was paused. Runs once, only on the terminal chunk.
-                    // Bottom-up — descendant effects (LIFO drain) before this fiber's.
-                    FiberEffects.CommitSubtreeEffects(fiber);
-                    // This commit completes outside the batch drain, whose end joins a mid-drag overlay.
-                    resumeContext.ActiveDrag?.JoinOverlaysAfterCommit();
-                    // Mirror FlushState's settled-flush pass: re-derive registered has- elements so a
-                    // time-sliced flush that toggled a descendant's class / controlled value reflects on a
-                    // has- ancestor that did not itself reconcile. Scoped to this flush's region (the fiber's
-                    // MountPoint subtree) — see RefreshHasVariants.
-                    FiberNodePatcher.RefreshHasVariants(fiber.Reconciler?.Context, fiber.MountPoint);
                     // The setState-in-commit guarantee is entry-point-agnostic: this terminal slice's
                     // commits may have invoked callback refs that wrote state (the measure-in-ref
                     // pattern), and the resume runs outside any batch drain — flush now so the write
@@ -817,6 +835,81 @@ namespace Velvet
                 s_owedSettleRenders = enclosingOwed;
                 FiberRenderer.PopFiber(pushedOnto);
             }
+        }
+
+        // Resumes the parked slice and, where the pass completes, settles the transition it landed and renders what that
+        // settle owes, ahead of the effect commit. Returns whether the pass completed.
+        private static bool ResumeSlice(
+            ComponentFiber fiber, UnityEngine.UIElements.VisualElement mountPoint, List<ComponentFiber> owed)
+        {
+            // Resume at the budget the starting lane chose so a Transition slice keeps time-slicing.
+            // An inline-mount fiber commits its child-count delta incrementally across resume slices, so
+            // each slice's delta must be propagated here exactly as the initial RenderAndReconcile pass
+            // does — otherwise the recorded starts behind this fiber, and the captured slotStart of a
+            // fiber parked there, go stale against the rows this slice just inserted / removed.
+            // The resumed slice can still expand components, so it answers the deferred-commit question
+            // the same way the pass that parked it did — see PendingReconcileDrainsTransitionWork.
+            var wasRenderingTransitionLane = IsRenderingTransitionLane;
+            var wasTransitionDrainFiber = TransitionDrainFiber;
+            var wasRenderLane = RenderLane;
+            IsRenderingTransitionLane = fiber.PendingReconcileDrainsTransitionWork;
+            TransitionDrainFiber = fiber.PendingReconcileDrainsTransitionWork ? fiber : null;
+            RenderLane = RenderLaneOf(FiberUpdatePriority.Normal, fiber.PendingReconcileDrainsTransitionWork);
+            // A resume continues the pass whose output is already this fiber's PreviousTree, so the
+            // children it reaches are stamped against that array exactly as the slice that parked
+            // stamped the ones it reached. Without it they are stamped against nothing, and
+            // ComponentFiber.SourceTree owns what that costs them.
+            var resumeContext = fiber.Reconciler!.Context;
+            var enclosingFiberTree = resumeContext.CurrentFiberTree;
+            resumeContext.CurrentFiberTree = fiber.PreviousTree;
+            resumeContext.SuspendDeclinedByRevealedBoundary = false;
+            // A resume has no walk of this fiber's ancestors on the stack to have pushed the Providers above
+            // it, so they go back on the cursor for the rows this slice renders, as RenderAndReconcile puts
+            // them there for the slice that parked.
+            var contextSpine = FiberContextSpine.Push(fiber);
+            try
+            {
+                using var portal = new FiberCommitWork.PortalScope(resumeContext, fiber);
+                if (fiber.IsInlineMounted)
+                {
+                    // Logical (container-blind) count, not raw childCount: this same ContinueReconcile call
+                    // now also drains any Portal / z-layer mount this slice enqueued (see Reconciler.
+                    // ContinueReconcile), and a first-of-its-sign container the drain creates or removes
+                    // would otherwise leak its own +-1 into this fiber's delta exactly like
+                    // FiberCommitWork.ReconcileOwnRows's own measurement — see
+                    // LogicalMountPointChildCount.
+                    var slice = new FiberCommitWork.RowCountWindow(fiber);
+                    fiber.Reconciler.ContinueReconcileWork(fiber.PendingReconcileBudgetMs);
+                    resumeContext.HostCommit.ShiftRows(fiber, slice.UnshiftedChange);
+                }
+                else
+                {
+                    fiber.Reconciler.ContinueReconcileWork(fiber.PendingReconcileBudgetMs);
+                }
+            }
+            finally
+            {
+                contextSpine.Unwind();
+                resumeContext.CurrentFiberTree = enclosingFiberTree;
+                IsRenderingTransitionLane = wasRenderingTransitionLane;
+                TransitionDrainFiber = wasTransitionDrainFiber;
+                RenderLane = wasRenderLane;
+            }
+
+            // Null once the slice has disposed this fiber, which a boundary above does when it swaps in its
+            // fallback for an error a row of the slice threw. That ends the pass, as FlushFiber's own check
+            // reads it.
+            if (fiber.Reconciler?.HasPendingWork == true)
+            {
+                ScheduleNextSlice(mountPoint, fiber);
+                return false;
+            }
+            fiber.PendingOldTree = null;
+            SettleCompletedTransition(fiber);
+            // Ahead of the effect commit, so its layout effects read the holders without the entries the settle
+            // took down.
+            FlushOwedSettleRenders(owed);
+            return true;
         }
 
         // Kept out of ContinueReconcile, whose every call would otherwise build this closure

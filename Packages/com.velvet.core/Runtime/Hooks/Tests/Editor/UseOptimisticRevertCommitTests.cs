@@ -15,7 +15,7 @@ namespace Velvet.Tests
     /// holds, show the pass-through state by the time the drain's layout effects run.</item>
     /// <item>So do a holder the drain's pass rendered before the work of a descendant it subsumes settled the
     /// transition, and its reader.</item>
-    /// <item>So do they when the flush runs outside a drain, whose layout effects run inline, and when the
+    /// <item>So do they when the flush runs outside a drain, as a commit of its own, and when the
     /// settle is the terminal slice of a time-sliced reconcile, or the abort of one whose resumed slice throws
     /// into a boundary above it.</item>
     /// </list>
@@ -102,7 +102,8 @@ namespace Velvet.Tests
         [Test]
         public void Given_AFlushOutsideEveryDrain_When_ItSettlesTheTransition_Then_TheHolderAndItsReaderShowThePassthroughAtThatCommit()
         {
-            // Arrange — outside a drain the flush's layout effects run inline, ahead of anything the scheduler owes
+            // Arrange — outside a drain the flush's layout effects run in its own commit, ahead of anything the
+            // scheduler owes
             using var mounted = V.Mount(_root, V.Component(OutsideRootRender, key: "outside-root"));
             var sibling = s_fiber;
             s_start.Invoke(() =>

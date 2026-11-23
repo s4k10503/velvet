@@ -57,8 +57,8 @@ The walk follows the element tree as it is mounted, so:
 - a `V.Portal`'s content is covered when the Portal's target is inside the subtree, and not otherwise,
   wherever the `V.Portal` call itself sits.
 
-An element that joins the subtree later takes the mode at the end of the reconcile pass that mounts it —
-or, for a render inside a batched update, at the end of that batch, before its layout effects run. That
+An element that joins the subtree later takes the mode once the render that mounts it has applied — the
+mount, the flush or the batched update it is part of — before its layout effects run. That
 holds for a tree mounted with `V.Mount`, or reached through a `V.Portal`, into an element of another
 tree's subtree: the inserting tree's pass takes care of it, and the tree that owns the utility does not
 have to render again. Rows a `V.VirtualList` renders as it is resized or scrolled join when the render

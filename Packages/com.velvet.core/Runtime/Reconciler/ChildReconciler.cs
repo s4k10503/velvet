@@ -335,15 +335,20 @@ namespace Velvet
         // each relocated z-* element's arrival in its parent. A Portal's children reconcile can queue more;
         // they join the same queue, drained FIFO until empty, so a Portal mounts at the logical slot
         // (LogicalChildSlots.Count) after every earlier-drained Portal's children in the same target.
-        // Called only from Reconciler.FinishTopLevelPass, which Reconcile's and ContinueReconcile's top-level
-        // finally both reach, so the single-top-level-loop invariant holds across nested Portal-patch recursion.
+        // Called only from Reconciler.FinishPass, so the single-top-level-loop invariant holds across nested
+        // Portal-patch recursion.
         //
         // A child of a Portal that suspends does not stop the drain, since the entries behind it are the same pass's
         // and would be lost to the clear that follows it. The Portal is recorded with its children pending and the
         // result says one was, for the caller to end the pass with once the rest is done: its walk has committed, so
         // the render that owns the pass keeps its tree (FiberRenderer.RenderAndReconcile) and the retry mounts what
         // suspended by patching this Portal.
-        internal bool DrainPendingPortalMounts()
+        //
+        // In the pass of a wave (wave non-null), what a z-* placement throws is filed for the wave with the component that
+        // rendered the element (PlaceRelocated), and what a Portal's children throw as the mount adds them with the
+        // component that rendered the Portal (FiledForTheWave), each where that component is known; a throw so filed
+        // leaves the rest of the drain to run.
+        internal bool DrainPendingPortalMounts(ReconcilePass? wave = null)
         {
             var suspended = false;
             while (_ctx.PendingPortalMounts.Count > 0)
@@ -368,8 +373,9 @@ namespace Velvet
                     // target resolution and this arm resolves none — it performs the whole placement, and
                     // the insert that lands the element runs the panel-attach callbacks a V.Custom<T>
                     // subclass registered on it (PortalLayersTests pins that the insert reaches them).
-                    // Leaving that application throw on the render's own escape path is the decision here.
-                    FiberZLayerCoordinator.ResolveQueuedMount(_ctx, placeholder, zLayerMount);
+                    // Leaving that application throw on the render's own escape path, outside a wave's pass, is the
+                    // decision here.
+                    PlaceRelocated(placeholder, zLayerMount, wave, zLayerMount.Owner);
                     continue;
                 }
                 if (!_ctx.PendingHostPlaceholders.Remove(placeholder)) continue;
@@ -429,14 +435,7 @@ namespace Velvet
                 // children mount under their enclosing Providers / MotionContext rather than an empty cursor.
                 // The children's own reconcile pushes/pops on top of these and balances out, so popping the
                 // snapshot afterwards returns the cursor to empty.
-                var stack = _ctx.ComponentContextStack;
-                if (contextSnapshot != null)
-                {
-                    for (var s = 0; s < contextSnapshot.Count; s++)
-                    {
-                        stack.PushRaw(contextSnapshot[s].Key, contextSnapshot[s].Value);
-                    }
-                }
+                PushContextSnapshot(contextSnapshot);
                 // A Portal child registers in ComponentRegistry under whatever fiber is current
                 // while it mounts, and a later patch of the same Portal reaches
                 // NodePatchWalk.ReconcilePortalRange from the reconcile of the tree the declaring
@@ -507,6 +506,12 @@ namespace Velvet
                     RemoveRowsFrom(resolvedTarget, slotStart);
                     StampDrainedChildren(drainAnchor, appendedFrom, contextSnapshot, children, logicalParent);
                 }
+                catch (Exception exception) when (FiledForTheWave(wave, declaringFiber, exception))
+                {
+                    // The Portal is recorded with the rows its children left in the target, and the drain goes on to
+                    // what was queued behind it.
+                    wave!.Fail(declaringFiber, declaringFiber!, exception, placeholder);
+                }
                 finally
                 {
                     drainAnchor?.EndAppendLog();
@@ -514,13 +519,7 @@ namespace Velvet
                     _ctx.ExitPortalChildKeyScope(enclosingChildScope);
                     if (declaringFiber != null) _ctx.FiberStack.Pop();
                     _ctx.CurrentPortalPlaceholder = enclosingPortal;
-                    if (contextSnapshot != null)
-                    {
-                        for (var s = contextSnapshot.Count - 1; s >= 0; s--)
-                        {
-                            stack.PopRaw(contextSnapshot[s].Key);
-                        }
-                    }
+                    PopContextSnapshot(contextSnapshot);
                     _parkSetAside = setAside;
                 }
                 // The growth this mount contributed, in logical slots — the same basis as slotStart.
@@ -533,6 +532,41 @@ namespace Velvet
                 HideMountUnderHiddenSuspense(placeholder, resolvedTarget, slotStart, slotLength, declaringFiber);
             }
             return suspended;
+        }
+
+        // Whether what a Portal's children threw as the mount added them goes to the wave, filed under the component
+        // that rendered the Portal.
+        private void PushContextSnapshot(List<KeyValuePair<object, object>>? snapshot)
+        {
+            if (snapshot == null) return;
+            for (var s = 0; s < snapshot.Count; s++) _ctx.ComponentContextStack.PushRaw(snapshot[s].Key, snapshot[s].Value);
+        }
+
+        private void PopContextSnapshot(List<KeyValuePair<object, object>>? snapshot)
+        {
+            if (snapshot == null) return;
+            for (var s = snapshot.Count - 1; s >= 0; s--) _ctx.ComponentContextStack.PopRaw(snapshot[s].Key);
+        }
+
+        private static bool FiledForTheWave(ReconcilePass? wave, ComponentFiber? declaringFiber, Exception exception)
+            => wave != null && declaringFiber != null && exception is not BoundaryCaughtSignal;
+
+        private void PlaceRelocated(VisualElement placeholder, ZLayerMountNode node, ReconcilePass? wave,
+            ComponentFiber? owner)
+        {
+            if (wave == null || owner == null)
+            {
+                FiberZLayerCoordinator.ResolveQueuedMount(_ctx, placeholder, node);
+                return;
+            }
+            try
+            {
+                FiberZLayerCoordinator.ResolveQueuedMount(_ctx, placeholder, node);
+            }
+            catch (Exception exception)
+            {
+                wave.Fail(ComponentBoundarySearch.PlacementSearchStart(owner, node.Portal), owner, exception, node.Real);
+            }
         }
 
         // A Portal a render created inside children its Suspense hides was hidden with them before this

@@ -297,7 +297,7 @@ namespace Velvet.Tests
         [Test]
         public void Given_AParentAndItsChildWithLayoutEffects_When_TheParentsOwnUpdateIsFlushed_Then_TheChildsSetupRunsFirst()
         {
-            // Arrange — a flush outside any drain commits the parent's re-render as a commit scoped to it.
+            // Arrange — a flush outside any drain commits the parent's re-render in a commit of its own.
             using var mounted = V.Mount(_root, V.Component(ScopedCommitParentRender, key: "parent"));
             s_log.Clear();
             s_scopedParentSet.Invoke(1);

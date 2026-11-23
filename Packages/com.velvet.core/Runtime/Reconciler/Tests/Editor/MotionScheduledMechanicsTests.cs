@@ -7249,10 +7249,12 @@ namespace Velvet.Tests
         }
 
         private static TabStore s_holders;
+        private static TabStore s_nextHolders;
 
-        // Two sibling components on one store, the first holding "a" under "pool" at half opacity while it is selected
-        // and the second "b" 300px right under the same id. Both are Labels, a pooled type: the first leaves in the
-        // flush before the second mounts, so the pool gives b a's element.
+        // Two sibling components, each on a store of its own, the first holding "a" under "pool" at half opacity until
+        // its store moves on and the second "b" 300px right under the same id once its store does. Both are Labels, a
+        // pooled type: the first leaves in a drain ahead of the one the second mounts in, so the pool gives b a's
+        // element.
         [Component]
         private static VNode FirstHolderRender() => V.Div(children: Hooks.UseStore(s_holders, s => s.Index) == 0
             ? new VNode[]
@@ -7263,7 +7265,7 @@ namespace Velvet.Tests
             : Array.Empty<VNode>());
 
         [Component]
-        private static VNode SecondHolderRender() => V.Div(children: Hooks.UseStore(s_holders, s => s.Index) == 1
+        private static VNode SecondHolderRender() => V.Div(children: Hooks.UseStore(s_nextHolders, s => s.Index) == 1
             ? new VNode[]
             {
                 V.Motion(key: "b", name: "b", layoutId: "pool", elementType: typeof(Label), transition: s_slowTween,
@@ -7278,16 +7280,20 @@ namespace Velvet.Tests
             V.Component(SecondHolderRender, key: "second"),
         });
 
+        // GREEN_ON_BASE(characterization): the base mixes the next holder from the earlier one's opacity here.
         [Test]
         public void Given_AHalfOpaqueHolderWhoseElementThePoolGivesTheNextHolder_When_AQuarterOfTheTweenHasPassed_Then_TheNextIsMixingFromItsOpacity()
         {
             // Arrange — the bundled sheet, so opacity-50 resolves.
             VelvetStyleUtilities.AttachTo(Root);
             s_holders = new TabStore(0);
+            s_nextHolders = new TabStore(0);
             using var mounted = V.Mount(Root, V.Component(PooledHolderRender, key: "root"));
             Tick();
             var original = Root.Q<VisualElement>("a");
             s_holders.Select(1);
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            s_nextHolders.Select(1);
             Tick();
 
             // Act

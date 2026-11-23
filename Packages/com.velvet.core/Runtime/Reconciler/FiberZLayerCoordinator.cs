@@ -13,6 +13,10 @@ namespace Velvet
     internal sealed class ZLayerMountNode : VNode
     {
         public VisualElement Real = null!;
+        // The component that rendered the element, which a wave files the placement's error under, and the Portal whose
+        // children it was created among (ComponentBoundarySearch.PlacementSearchStart).
+        public ComponentFiber? Owner;
+        public VisualElement? Portal;
     }
 
     // Brings CSS's paint order among siblings — z-index, positioned before unpositioned, flex order — to UI Toolkit,
@@ -323,7 +327,8 @@ namespace Velvet
             Hold(placeholder, Role.Slot, outer);
             Hold(outer, RoleFor(facts!.Value.Z), null, placeholder);
             ctx.ZLayerPlaceholders[placeholder] = outer;
-            ctx.PendingPortalMounts.Enqueue((placeholder, new ZLayerMountNode { Real = outer }, null, null, null));
+            ctx.PendingPortalMounts.Enqueue(
+                (placeholder, new ZLayerMountNode { Real = outer, Owner = ctx.FiberStack.Current, Portal = ctx.CurrentPortalPlaceholder }, null, null, null));
             return placeholder;
         }
 

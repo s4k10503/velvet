@@ -65,7 +65,7 @@ namespace Velvet
                 {
                     try
                     {
-                        FiberRenderer.RenderMountedWork(mount.Fiber);
+                        FiberRenderer.RenderMountedWork(mount.Fiber, opensWave: true);
                     }
                     catch
                     {

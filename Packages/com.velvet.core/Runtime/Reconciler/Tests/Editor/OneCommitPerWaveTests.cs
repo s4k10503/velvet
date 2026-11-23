@@ -1,0 +1,807 @@
+using System;
+using System.Collections.Generic;
+using NUnit.Framework;
+using UnityEngine.UIElements;
+using Velvet.TestUtilities;
+
+namespace Velvet.Tests
+{
+    /// <summary>
+    /// Pins what one wave — one drain, or one flush, mount or resumed slice a door runs — commits as one: a later
+    /// component reads what an earlier one's deletion cleanup or patch had not yet changed, as React renders the
+    /// components one update reaches before it commits, and a render a resume's settle owes another component commits
+    /// with the resume. The guards below hold what the single pass has to keep: a component a deletion earlier in the
+    /// wave takes does not render, a suspend nothing catches gives up only the renders of the component it reached, a
+    /// Portal whose child suspends still hands that suspend to the component that queued it, a VirtualList's rows render
+    /// into the range rather than a wave of their own, a flush the wave owes renders without draining the tier inside
+    /// the wave, a flush of one component leaves another's queued update to the tier's drain, a boundary a farther one
+    /// replaced while its fallback failed hands that farther one nothing more, and an exception out of a commit leaves
+    /// the next wave free to open.
+    /// </summary>
+    [TestFixture]
+    internal sealed class OneCommitPerWaveTests
+    {
+        private static int s_written;
+        private static int s_outerFallbacks;
+        private static Label s_label;
+        private static readonly Action s_noCleanup = static () => { };
+        private static readonly Func<VisualElement, Action> s_holdLabel = element =>
+        {
+            s_label = (Label)element;
+            return s_noCleanup;
+        };
+
+        private static TransitionStarter s_start;
+        private static TransitionStarter s_otherStart;
+        private static Action<string> s_add;
+        private static StateUpdater<int> s_setOther;
+        private static StateUpdater<int> s_setRows;
+        private static StateUpdater<int> s_setQueued;
+        private static ComponentFiber s_holder;
+        private static ComponentFiber s_rows;
+        private static readonly List<string> s_queuedCommits = new();
+        private static readonly List<string> s_rowLog = new();
+        private static VisualElement s_portalTarget;
+        private static VelvetTaskCompletionSource<string> s_read;
+        private static readonly Ref<string> s_handle = new();
+        private static int s_handleThrowsLeft;
+        private static StateUpdater<int> s_setHandleTick;
+        private static ComponentFiber s_handleOwner;
+        private static ComponentFiber s_bystander;
+        private static ComponentFiber s_child;
+        private static readonly List<string> s_resumeLog = new();
+
+        [SetUp]
+        public void SetUp()
+        {
+            AsyncActionsInFlightTestAccess.ResetForTest();
+            s_written = 0;
+            s_outerFallbacks = 0;
+            s_label = null;
+            s_start = default;
+            s_otherStart = default;
+            s_add = null;
+            s_setOther = default;
+            s_setRows = default;
+            s_setQueued = default;
+            s_holder = null;
+            s_rows = null;
+            s_queuedCommits.Clear();
+            s_rowLog.Clear();
+            s_portalTarget = new VisualElement();
+            s_read = new VelvetTaskCompletionSource<string>();
+            s_handle.Set(null);
+            s_handleThrowsLeft = 0;
+            s_setHandleTick = default;
+            s_handleOwner = null;
+            s_bystander = null;
+            s_child = null;
+            s_resumeLog.Clear();
+        }
+
+        [TearDown]
+        public void TearDown() => AsyncActionsInFlightTestAccess.ResetForTest();
+
+        #region A later component reads what the wave has not applied
+
+        [Component]
+        private static VNode WritesInItsCleanup()
+        {
+            var log = EventLog.UseLog();
+            Hooks.UseLayoutEffect(() => () =>
+            {
+                s_written = 1;
+                log.Add("written");
+            }, Array.Empty<object>());
+            return V.Div();
+        }
+
+        [Component]
+        private static VNode Deleter()
+        {
+            var (shown, _) = EventLog.UseState("Shown", true);
+            return V.Div(children: new VNode[] { shown ? V.Component(WritesInItsCleanup, key: "deleted") : null });
+        }
+
+        [Component]
+        private static VNode CleanupReader()
+        {
+            EventLog.UseState("Read", 0);
+            EventLog.UseRender("Reader", s_written);
+            return V.Div();
+        }
+
+        [Component]
+        private static VNode DeleterThenReader()
+            => V.Fragment(V.Component(Deleter, key: "deleter"), V.Component(CleanupReader, key: "reader"));
+
+        [Test]
+        public void Given_AComponentThatDeletesOneWhoseLayoutCleanupWritesAValue_When_OneDrainRendersItAndALaterComponentReadingTheValue_Then_TheLaterComponentReadsTheValueFromBeforeTheCleanup()
+        {
+            // Arrange
+            var log = new EventLog();
+            using var mounted = V.Mount(new VisualElement(), log.Provide(V.Component(DeleterThenReader)));
+            log.Clear();
+
+            // Act
+            log.Setter<bool>("Shown").Invoke(false);
+            log.Setter<int>("Read").Invoke(1);
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("render:Reader=0 written"));
+        }
+
+        [Component]
+        private static VNode Patcher()
+        {
+            var (text, _) = EventLog.UseState("Text", "before");
+            return V.Label(text: text, refCallback: s_holdLabel);
+        }
+
+        // Reads the label again in a layout effect, at every render since no dependencies are given.
+        [Component]
+        private static VNode LabelReader()
+        {
+            var log = EventLog.UseLog();
+            EventLog.UseState("ReadLabel", 0);
+            EventLog.UseRender("LabelReader", s_label?.text);
+            Hooks.UseLayoutEffect((Func<Action>)(() =>
+            {
+                log.Add("read:" + s_label?.text);
+                return null;
+            }));
+            return V.Div();
+        }
+
+        [Component]
+        private static VNode PatcherThenReader()
+            => V.Fragment(V.Component(Patcher, key: "patcher"), V.Component(LabelReader, key: "reader"));
+
+        [Test]
+        public void Given_AComponentThatPatchesALabel_When_OneDrainRendersItAndALaterComponentReadingTheLabelThroughARef_Then_TheLaterComponentReadsTheTextFromBeforeThePatch()
+        {
+            // Arrange
+            var log = new EventLog();
+            using var mounted = V.Mount(new VisualElement(), log.Provide(V.Component(PatcherThenReader)));
+            log.Clear();
+
+            // Act
+            log.Setter<string>("Text").Invoke("after");
+            log.Setter<int>("ReadLabel").Invoke(1);
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("render:LabelReader=before read:after"));
+        }
+
+        #endregion
+
+        #region What the single pass keeps
+
+        [Component]
+        private static VNode DeletedChild()
+        {
+            s_child = FiberAmbientStack.Current;
+            EventLog.UseState("Child", 0);
+            EventLog.UseRender("Child");
+            return V.Div();
+        }
+
+        [Component]
+        private static VNode ParentOfADeletedChild()
+        {
+            var (shown, _) = EventLog.UseState("ShownChild", true);
+            EventLog.UseRender("Parent");
+            return V.Div(children: new VNode[] { shown ? V.Component(DeletedChild, key: "child") : null });
+        }
+
+        // GREEN_ON_BASE(characterization): the base unmounts the child before the drain reaches its flush.
+        // Deleting `if (fiber.IsBeingDeleted) return;` from FiberWorkLoop.FlushFiber reddens it.
+        [Test]
+        public void Given_AParentThatDeletesAChildWithAnUpdateOfItsOwn_When_OneDrainRendersBoth_Then_TheChildDoesNotRender()
+        {
+            // Arrange
+            var log = new EventLog();
+            using var mounted = V.Mount(new VisualElement(), log.Provide(V.Component(ParentOfADeletedChild)));
+            log.Clear();
+
+            // Act
+            log.Setter<int>("Child").Invoke(1);
+            log.Setter<bool>("ShownChild").Invoke(false);
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("render:Parent"));
+        }
+
+        [Component]
+        private static VNode CommittedChild(int value)
+        {
+            EventLog.UseInsertionAndLayoutEffects("C", new object[] { value });
+            return V.Div();
+        }
+
+        // Hands its value to a child it renders inline, which the abandon of a later render must leave alone.
+        [Component]
+        private static VNode Committer()
+        {
+            var (value, _) = EventLog.UseState("Committed", 0);
+            return V.Component(CommittedChild, value, key: "child");
+        }
+
+        [Component(Compiler = false)]
+        private static VNode SuspendsWithNothingAbove()
+        {
+            var (reads, _) = EventLog.UseState("Reads", false);
+            EventLog.UseInsertionAndLayoutEffects("S", new object[] { reads });
+            Hooks.Use(() => reads ? s_read.Task : VelvetTask.FromResult("read"), reads);
+            return V.Div();
+        }
+
+        [Component]
+        private static VNode CommitterThenSuspender()
+            => V.Fragment(V.Component(Committer, key: "committer"), V.Component(SuspendsWithNothingAbove, key: "suspender"));
+
+        // GREEN_ON_BASE(characterization): the base closes the first component's journal before the second renders.
+        // Taking FiberPassJournal.Abandon back to the start of the journal, rather than of the open segment, reddens it.
+        [Test]
+        public void Given_AComponentThatCommitsAndALaterOneThatSuspendsWithNothingToCatchIt_When_OneDrainRendersBoth_Then_TheFirstComponentsEffectsStillRun()
+        {
+            // Arrange
+            var log = new EventLog();
+            using var mounted = V.Mount(new VisualElement(), log.Provide(V.Component(CommitterThenSuspender)));
+            log.Clear();
+
+            // Act
+            log.Setter<int>("Committed").Invoke(1);
+            log.Setter<bool>("Reads").Invoke(true);
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("ins-x:C ins:C lay-x:C lay:C"));
+        }
+
+        [Component]
+        private static VNode ThrowsWhenTold(bool throws)
+        {
+            if (throws) throw new InvalidOperationException("told");
+            return V.Div();
+        }
+
+        [Component(IsErrorBoundary = true, DisplayName = "Own")]
+        private static VNode CatchesItsOwnRows()
+        {
+            var (throws, _) = EventLog.UseState("Throws", false);
+            Hooks.UseFallback(_ => V.Label(text: "fallback"));
+            return V.Component(ThrowsWhenTold, throws, key: "thrower");
+        }
+
+        [Component]
+        private static VNode Bystander()
+        {
+            s_bystander = FiberAmbientStack.Current;
+            EventLog.UseState("Bystander", 0);
+            EventLog.UseRender("Bystander");
+            return V.Div();
+        }
+
+        [Component]
+        private static VNode BystanderThenOwnCatch()
+            => V.Fragment(V.Component(Bystander, key: "bystander"), V.Component(CatchesItsOwnRows, key: "own"));
+
+        // GREEN_ON_BASE(characterization): the base reports the catch a boundary's own render makes.
+        // Making Reconciler.BeginOrJoinPass call ChildListWrites.BeginRecording whatever the wave records reddens it at
+        // the boundary's own flush, the drain's second.
+        [Test]
+        public void Given_ABoundaryWhoseOwnRenderCatchesItsChildsError_When_OneDrainRendersItAfterAnotherComponent_Then_ItReportsTheCatch()
+        {
+            // Arrange
+            var log = new EventLog();
+            using var mounted = V.Mount(new VisualElement(), log.Provide(V.Component(BystanderThenOwnCatch)),
+                log.ReportingErrors());
+            log.Clear();
+
+            // Act
+            log.Setter<int>("Bystander").Invoke(1);
+            log.Setter<bool>("Throws").Invoke(true);
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("render:Bystander caught:Own:told"));
+        }
+
+        [Component]
+        private static VNode BrokenFallbackContent() => throw new InvalidOperationException("fallback content");
+
+        [Component(IsErrorBoundary = true)]
+        private static VNode CatchesItsOwnRowsIntoABrokenFallback()
+        {
+            var (throws, _) = EventLog.UseState("InnerThrows", false);
+            Hooks.UseFallback(_ => V.Component(BrokenFallbackContent, key: "content"));
+            return V.Component(ThrowsWhenTold, throws, key: "thrower");
+        }
+
+        [Component(IsErrorBoundary = true)]
+        private static VNode CountsItsFallbacks()
+        {
+            Hooks.UseFallback(_ =>
+            {
+                s_outerFallbacks++;
+                return V.Label(text: "outer");
+            });
+            return V.Component(CatchesItsOwnRowsIntoABrokenFallback, key: "inner");
+        }
+
+        // GREEN_ON_BASE(characterization): the base disposes the inner boundary as the outer one's fallback replaces it.
+        // Taking `|| fiber.IsBeingDeleted` out of FiberErrorBoundary.ShowCaughtFallback reddens it: the inner boundary
+        // then hands the error it caught to the outer one a second time.
+        [Test]
+        public void Given_ABoundaryWhoseOwnRenderCatchesIntoAFallbackThatThrows_When_ADrainRendersIt_Then_TheBoundaryAboveShowsItsFallbackOnce()
+        {
+            // Arrange
+            var log = new EventLog();
+            using var mounted = V.Mount(new VisualElement(), log.Provide(V.Component(CountsItsFallbacks)),
+                log.ReportingErrors());
+
+            // Act
+            log.Setter<bool>("InnerThrows").Invoke(true);
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert
+            Assert.That(s_outerFallbacks, Is.EqualTo(1));
+        }
+
+        [Component]
+        private static VNode ReadsItsProps(int value)
+        {
+            EventLog.UseState("OwnTick", 0);
+            EventLog.UseRender("Props", value);
+            return V.Div();
+        }
+
+        // Hands its value to a child it renders inline, whose later render of its own reads the props that render left.
+        [Component]
+        private static VNode HandsItsValueDown()
+        {
+            var (value, _) = EventLog.UseState("Handed", 0);
+            return V.Component(ReadsItsProps, value, key: "reader");
+        }
+
+        [Component]
+        private static VNode HanderThenSuspender()
+            => V.Fragment(
+                V.Component(HandsItsValueDown, key: "hander"),
+                V.Component(SuspendsWithNothingAbove, key: "suspender"));
+
+        // GREEN_ON_BASE(characterization): the base closes the first component's journal before the second renders.
+        // Leaving `_subsumedAtSegment` where it was in FiberPassJournal.TryOpen reddens it: the suspend's abandon then
+        // writes the earlier props back over the child the first component rendered.
+        [Test]
+        public void Given_AComponentThatHandsAValueToAChildAndALaterOneThatSuspendsWithNothingToCatchIt_When_TheChildRendersOnItsOwnAfterTheDrain_Then_ItReadsTheValueHandedToIt()
+        {
+            // Arrange
+            var log = new EventLog();
+            using var mounted = V.Mount(new VisualElement(), log.Provide(V.Component(HanderThenSuspender)));
+            log.Setter<int>("Handed").Invoke(1);
+            log.Setter<bool>("Reads").Invoke(true);
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            log.Clear();
+
+            // Act
+            log.Setter<int>("OwnTick").Invoke(1);
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("render:Props=1"));
+        }
+
+        [Component]
+        private static VNode PortalOfADiv()
+        {
+            var (shown, _) = EventLog.UseState("ShownDiv", false);
+            return V.Div(children: new VNode[]
+            {
+                shown ? V.Portal(s_portalTarget, new VNode[] { V.Div() }, key: "portal") : null,
+            });
+        }
+
+        [Component]
+        private static VNode PortalThenPatcherThenReader()
+            => V.Fragment(
+                V.Component(PortalOfADiv, key: "portal"),
+                V.Component(Patcher, key: "patcher"),
+                V.Component(LabelReader, key: "reader"));
+
+        [Test]
+        public void Given_AComponentWhosePortalMountsAheadOfOneThatPatchesALabel_When_OneDrainRendersBothAndALaterComponentReadingTheLabel_Then_TheLaterComponentReadsTheTextFromBeforeThePatch()
+        {
+            // Arrange
+            var log = new EventLog();
+            using var mounted = V.Mount(new VisualElement(), log.Provide(V.Component(PortalThenPatcherThenReader)));
+            log.Clear();
+
+            // Act
+            log.Setter<bool>("ShownDiv").Invoke(true);
+            log.Setter<string>("Text").Invoke("after");
+            log.Setter<int>("ReadLabel").Invoke(1);
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("render:LabelReader=before read:after"));
+        }
+
+        [Component(Compiler = false)]
+        private static VNode PortalReader()
+        {
+            var text = Hooks.Use(_ => s_read.Task);
+            EventLog.UseRender("Reader", text);
+            return V.Label(text: text);
+        }
+
+        [Component]
+        private static VNode PortalHost()
+        {
+            var (shown, _) = EventLog.UseState("ShownPortal", false);
+            return V.Div(children: new VNode[]
+            {
+                shown ? V.Portal(s_portalTarget, new VNode[] { V.Component(PortalReader, key: "reader") }, key: "portal") : null,
+            });
+        }
+
+        // GREEN_ON_BASE(characterization): the base retries the component whose pass a Portal child's suspend reached.
+        // Passing a null closingRoot to FinishPass from Reconciler.FinishTopLevelPass, which drops that suspend, reddens
+        // it: nothing then asks for the retry that mounts the child once the read resolves.
+        [Test]
+        public void Given_AComponentWhosePortalsChildSuspendsWithNothingToCatchIt_When_TheReadResolves_Then_ThePortalsChildRenders()
+        {
+            // Arrange — the component's Portal mounts in the drain's wave, where its child suspends
+            var log = new EventLog();
+            using var mounted = V.Mount(new VisualElement(), log.Provide(V.Component(PortalHost)));
+            log.Setter<bool>("ShownPortal").Invoke(true);
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            log.Clear();
+
+            // Act
+            s_read.TrySetResult("ready");
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("render:Reader=ready"));
+        }
+
+        [Component]
+        private static VNode GrowingSibling()
+        {
+            var (rows, _) = EventLog.UseState("Rows", 1);
+            var labels = new VNode[rows];
+            for (var i = 0; i < rows; i++) labels[i] = V.Label(text: "a" + i);
+            return V.Fragment(labels);
+        }
+
+        [Component]
+        private static VNode RetextedSibling()
+        {
+            var (text, _) = EventLog.UseState("Retext", "b");
+            return V.Label(text: text);
+        }
+
+        [Component]
+        private static VNode TwoInlineSiblings()
+            => V.Div(name: "siblings", children: new VNode[]
+            {
+                V.Component(GrowingSibling, key: "growing"),
+                V.Component(RetextedSibling, key: "retexted"),
+            });
+
+        // GREEN_ON_BASE(characterization): the base places each sibling's rows in a pass of its own.
+        // Making Reconciler.BeginOrJoinPass call ChildListWrites.BeginRecording whatever the wave records reddens it.
+        [Test]
+        public void Given_TwoInlineSiblingsInOneElement_When_OneDrainRendersBothAndTheFirstAddsARow_Then_TheElementHoldsBothOutputsInOrder()
+        {
+            // Arrange
+            var log = new EventLog();
+            var root = new VisualElement();
+            using var mounted = V.Mount(root, log.Provide(V.Component(TwoInlineSiblings)));
+
+            // Act
+            log.Setter<int>("Rows").Invoke(2);
+            log.Setter<string>("Retext").Invoke("b2");
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert
+            Assert.That(root.Q<VisualElement>("siblings").DisplayedLabelTexts("|"), Is.EqualTo("a0|a1|b2"));
+        }
+
+        #endregion
+
+        [Component]
+        private static VNode TwoQueued()
+            => V.Fragment(V.Component(Bystander, key: "bystander"), V.Component(DeletedChild, key: "other"));
+
+        // GREEN_ON_BASE(characterization): the base leaves the immediate tier to its drain after a flush of one fiber.
+        // Making FiberWave.Open set WaveOwesIndicatorFlush reddens it, through the flush of that tier the door then
+        // runs.
+        [Test]
+        public void Given_TwoComponentsWithQueuedUpdates_When_OneIsFlushedOnItsOwn_Then_TheOtherIsLeftQueued()
+        {
+            // Arrange
+            var log = new EventLog();
+            using var mounted = V.Mount(new VisualElement(), log.Provide(V.Component(TwoQueued)));
+            log.Setter<int>("Bystander").Invoke(1);
+            log.Setter<int>("Child").Invoke(1);
+            log.Clear();
+
+            // Act
+            FiberWorkLoop.FlushState(s_bystander);
+
+            // Assert — null where the other component holds no update the flush could have rendered
+            Assert.That(s_child.IsDirty ? log.ToString() : null, Is.EqualTo("render:Bystander"));
+        }
+
+        #region Work a wave runs inside another's
+
+        [Component]
+        private static VNode PortalRow(string id)
+        {
+            s_rowLog.Add("render:" + id);
+            return id == "a"
+                ? V.Fragment(V.Label(text: id),
+                    V.Portal(s_portalTarget, new VNode[] { V.Component(PortalRowChild, key: "child") }, key: "portal"))
+                : V.Label(text: id);
+        }
+
+        [Component]
+        private static VNode PortalRowChild()
+        {
+            s_rowLog.Add("render:portal-child");
+            return V.Label(text: "child");
+        }
+
+        // GREEN_ON_BASE(characterization): the base mounts a row's Portal where the range a scroll renders ends.
+        // Making FiberRenderer.MountWork pass opensWave: true reddens it, through the assertion FiberWave.Open makes at
+        // the depth the range's bracket has raised.
+        [Test]
+        public void Given_AVirtualListWhoseFirstRowHoldsAPortal_When_AScrollRendersBothRows_Then_ThePortalsChildRendersAfterBothRows()
+        {
+            // Arrange — a headless mount measures no viewport, so the list renders no row until the range update.
+            var root = new VisualElement();
+            using var mounted = V.Mount(root, V.VirtualList(
+                items: new[] { "a", "b" },
+                keySelector: item => item,
+                itemHeight: 50f,
+                renderer: item => V.Component(PortalRow, item, key: item),
+                overscan: 0));
+            var controller = mounted.Root.Reconciler.Context.VirtualListControllers[root.Q<ScrollView>()];
+            s_rowLog.Clear();
+
+            // Act
+            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 100f);
+
+            // Assert
+            Assert.That(string.Join(" ", s_rowLog), Is.EqualTo("render:a render:b render:portal-child"));
+        }
+
+        // Declares the transition apart from the holder, so the render that takes the indicator down is not the
+        // holder's.
+        [Component(Compiler = false)]
+        private static VNode Starter()
+        {
+            var (_, start) = Hooks.UseTransition();
+            s_start = start;
+            return V.Label(text: "starter");
+        }
+
+        [Component(Compiler = false)]
+        private static VNode OtherStarter()
+        {
+            var (_, start) = Hooks.UseTransition();
+            s_otherStart = start;
+            return V.Label(text: "other-starter");
+        }
+
+        // Holds an entry the first transition owns and an update of the second's, and logs what it shows at every
+        // commit, since no dependencies are given.
+        [Component(Compiler = false)]
+        private static VNode StarvedHolder()
+        {
+            s_holder = FiberAmbientStack.Current;
+            var (other, setOther) = Hooks.UseState(0);
+            var (shown, add) = Hooks.UseOptimistic<string, string>("base", (current, action) => current + "+" + action);
+            s_setOther = setOther;
+            s_add = add;
+            Hooks.UseLayoutEffect((Func<Action>)(() =>
+            {
+                s_queuedCommits.Add("holder:" + shown + ":" + other);
+                return null;
+            }));
+            return V.Label(text: shown + ":" + other);
+        }
+
+        // A top-level Fragment of host nodes takes the reconciler's time-sliceable fast path.
+        [Component(Compiler = false)]
+        private static VNode SlicedRows()
+        {
+            s_rows = FiberAmbientStack.Current;
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setRows = setTick;
+            var rows = new VNode[9];
+            for (var i = 0; i < rows.Length; i++) rows[i] = V.Label(text: $"{i}-{tick}");
+            return V.Fragment(children: rows);
+        }
+
+        [Component(Compiler = false)]
+        private static VNode QueuedBeforeTheResume()
+        {
+            var (value, setValue) = Hooks.UseState(0);
+            s_setQueued = setValue;
+            Hooks.UseLayoutEffect((Func<Action>)(() =>
+            {
+                s_queuedCommits.Add("queued:" + value);
+                return null;
+            }), new object[] { value });
+            return V.Label(text: "queued:" + value);
+        }
+
+        [Component(Compiler = false)]
+        private static VNode ResumeOwesAStarvedHolder()
+            => V.Div(children: new VNode[]
+            {
+                V.Component(Starter, key: "starter"),
+                V.Component(OtherStarter, key: "other-starter"),
+                V.Component(SlicedRows, key: "rows"),
+                V.Component(StarvedHolder, key: "holder"),
+                V.Component(QueuedBeforeTheResume, key: "queued"),
+            });
+
+        // GREEN_ON_BASE(characterization): the base commits the queued update in a drain the owed holder's flush runs.
+        // Making FiberWorkLoop.FlushCompletedTransitionIndicator call FlushImmediateWork inside a wave reddens it,
+        // through the assertion FiberWave.Open makes while the resume's pass still records.
+        [Test]
+        public void Given_AResumeWhoseSettleOwesAHolderAStarvedTransitionsRender_When_TheResumeCompletes_Then_AnUpdateQueuedBeforeItCommits()
+        {
+            // Arrange — the second transition's update leaves the holder a Transition lane its owed flush promotes,
+            // which makes that flush drain transition work; the slice parks, and the update queued last waits on the
+            // immediate tier.
+            using var mounted = V.Mount(new VisualElement(), V.Component(ResumeOwesAStarvedHolder));
+            s_otherStart.Invoke(() => s_setOther.Invoke(1));
+            s_start.Invoke(() =>
+            {
+                s_add.Invoke("sent");
+                s_setRows.Invoke(1);
+            });
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            s_rows.FlushStateWithTinyBudgetForTest();
+            s_holder.TransitionStarvationCounter = FiberWorkLoop.TransitionStarvationThreshold - 1;
+            s_setQueued.Invoke(1);
+            s_queuedCommits.Clear();
+
+            // Act
+            s_rows.DrainTimeSlicedReconcileForTest();
+
+            // Assert — the holder shows the second transition's update only where its owed flush rendered that lane
+            Assert.That(string.Join(" ", s_queuedCommits), Is.EqualTo("holder:base:1 queued:1"));
+        }
+
+        // Holds an entry the transition owns, so the resume that lands the transition's work owes it a render, and
+        // logs the layout effect of every render, since no dependencies are given.
+        [Component(Compiler = false)]
+        private static VNode LoggingHolder()
+        {
+            var (shown, add) = Hooks.UseOptimistic<string, string>("base", (current, action) => current + "+" + action);
+            s_add = add;
+            Hooks.UseLayoutEffect((Func<Action>)(() =>
+            {
+                s_resumeLog.Add("holder-layout");
+                return null;
+            }));
+            return V.Label(text: shown);
+        }
+
+        // Rows of host nodes, which take the time-sliceable fast path, the last holding a ref callback that is a new
+        // delegate at every render, so the render a resume completes replaces it.
+        [Component(Compiler = false)]
+        private static VNode SlicedRowsWithARef()
+        {
+            s_rows = FiberAmbientStack.Current;
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setRows = setTick;
+            var rows = new VNode[10];
+            for (var i = 0; i < 9; i++) rows[i] = V.Label(text: $"{i}-{tick}");
+            rows[9] = V.Div(refCallback: element =>
+            {
+                s_resumeLog.Add("ref:" + tick);
+                return () => s_resumeLog.Add("ref-x:" + tick);
+            });
+            return V.Fragment(children: rows);
+        }
+
+        [Component(Compiler = false)]
+        private static VNode ResumeOwesAHolder()
+            => V.Div(children: new VNode[]
+            {
+                V.Component(Starter, key: "starter"),
+                V.Component(LoggingHolder, key: "holder"),
+                V.Component(SlicedRowsWithARef, key: "rows"),
+            });
+
+        [Test]
+        public void Given_AResumeWhoseSettleOwesAnotherComponentARender_When_TheResumeCompletes_Then_TheRefTheResumeReplacesDetachesBeforeThatComponentsLayoutEffect()
+        {
+            // Arrange — the slice parks, so only the resume completes the pass and settles the transition
+            using var mounted = V.Mount(new VisualElement(), V.Component(ResumeOwesAHolder));
+            s_start.Invoke(() =>
+            {
+                s_add.Invoke("sent");
+                s_setRows.Invoke(1);
+            });
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            s_rows.FlushStateWithTinyBudgetForTest();
+            s_resumeLog.Clear();
+
+            // Act
+            s_rows.DrainTimeSlicedReconcileForTest();
+
+            // Assert
+            Assert.That(string.Join(" ", s_resumeLog.FindAll(entry => entry == "holder-layout" || entry == "ref-x:0")),
+                Is.EqualTo("ref-x:0 holder-layout"));
+        }
+
+        #endregion
+
+        #region A commit that throws
+
+        [Component(Compiler = false)]
+        private static VNode HandleOwner()
+        {
+            s_handleOwner = FiberAmbientStack.Current;
+            var log = EventLog.UseLog();
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setHandleTick = setTick;
+            Hooks.UseImperativeHandle(s_handle, () =>
+            {
+                if (tick == 0 || s_handleThrowsLeft == 0) return "handle";
+                s_handleThrowsLeft--;
+                throw new InvalidOperationException("handle");
+            });
+            Hooks.UseLayoutEffect((Func<Action>)(() =>
+            {
+                log.Add("lay:" + tick);
+                return null;
+            }), new object[] { tick });
+            return V.Label(text: "owner:" + tick);
+        }
+
+        // GREEN_ON_BASE(characterization): the base commits a flush outside any wave, so its throw leaves nothing set.
+        // Moving FiberEffects.FlushDeferredDrainLayoutEffects' clear of DeferDrainLayoutEffects after its commit reddens
+        // it, through the assertion FiberWave.Open makes for the next flush.
+        [Test]
+        public void Given_AFlushWhoseImperativeHandleThrowsOutOfItsCommit_When_TheComponentFlushesAgain_Then_ItsLayoutEffectRuns()
+        {
+            // Arrange
+            var log = new EventLog();
+            using var mounted = V.Mount(new VisualElement(), log.Provide(V.Component(HandleOwner)));
+            s_handleThrowsLeft = 1;
+            s_setHandleTick.Invoke(1);
+            var threw = false;
+            try
+            {
+                FiberWorkLoop.FlushState(s_handleOwner);
+            }
+            catch (InvalidOperationException)
+            {
+                threw = true;
+            }
+            log.Clear();
+
+            // Act
+            s_setHandleTick.Invoke(2);
+            FiberWorkLoop.FlushState(s_handleOwner);
+
+            // Assert — null where the first flush's commit threw nothing
+            Assert.That(threw ? log.ToString() : null, Is.EqualTo("lay:2"));
+        }
+
+        #endregion
+    }
+}

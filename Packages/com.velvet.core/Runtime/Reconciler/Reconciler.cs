@@ -124,6 +124,7 @@ namespace Velvet
             // bridge assigned; skipping the set avoids the fail-fast double-call check.
             if (ownsContext)
             {
+                _ctx.Root = this;
                 _ctx.SetReconcilerBridge(this);
                 // Lets the batch scheduler block a synchronous discrete-event flush while any reconcile
                 // pass (including a time-sliced resume that runs outside the batch Drain) is on the stack.
@@ -131,14 +132,14 @@ namespace Velvet
                 _ctx.BatchScheduler.SetIntakeDropCallback(_ctx.DropAllCaptures);
                 _ctx.BatchScheduler.SetPassiveEffectFlush(() => FiberEffects.FlushPendingPassiveEffectsWork(_ctx));
                 // Brackets each drain to drive (1) the UseStore tearing guard — pinning is active only inside a
-                // drain, and each drain pass is a wave of its own — and (2) the layout-effect commit phase:
-                // fibers defer their effect commit during the drain so all renders precede any layout effect,
-                // flushed at drain end (before the wave ends, so a layout effect still reads the pinned snapshot).
+                // drain, and each drain pass is a wave of its own — and (2) the drain's FiberWave: its renders
+                // record into one pass, which applies once they are done, and their effects commit at drain end
+                // (before the snapshot wave ends, so a layout effect still reads the pinned snapshot).
                 _ctx.BatchScheduler.SetStoreSnapshotWaveCallbacks(
                     () =>
                     {
                         _ctx.BeginStoreSnapshotWave();
-                        _ctx.DeferDrainLayoutEffects = true;
+                        FiberWave.Open(_ctx);
                     },
                     () =>
                     {
@@ -146,7 +147,14 @@ namespace Velvet
                         // not left permanently active.
                         try
                         {
-                            FlushDrainEndCommitWork();
+                            try
+                            {
+                                FiberWave.End(_ctx);
+                            }
+                            finally
+                            {
+                                FiberWave.CommitDeferred(_ctx);
+                            }
                         }
                         finally
                         {
@@ -181,27 +189,6 @@ namespace Velvet
             _patchWalk = patchWalk;
             _factory = factory;
             _childReconciler = childReconciler;
-        }
-
-        // The drag session's overlay join follows the layout effects but does not depend on them completing.
-        private void FlushDrainEndCommitWork()
-        {
-            try
-            {
-                // Ahead of the layout effects, which read the tree the drain committed.
-                try
-                {
-                    PointerEventsScope.OnDrainEnd(_ctx);
-                }
-                finally
-                {
-                    FiberEffects.FlushDeferredDrainLayoutEffects(_ctx);
-                }
-            }
-            finally
-            {
-                _ctx.ActiveDrag?.JoinOverlaysAfterCommit();
-            }
         }
 
         /// <summary>
@@ -264,9 +251,9 @@ namespace Velvet
             {
                 UnityEngine.Debug.Assert(FiberExecutionContext.IsSet, "A reconcile pass ran with no entry on the stack.");
                 profilerScope = s_reconcileMarker.Auto();
-                ChildListWrites.BeginPass();
+                if (!JoinsTheWavesPass()) ChildListWrites.BeginPass();
                 _ctx.RelationalTreeWatch.Watch(parent?.panel);
-                ChildListWrites.BeginRecording(_ctx.Pass);
+                BeginOrJoinPass();
             }
 
             // Put back rather than cleared, and held across FinishTopLevelPass below: that boundary runs
@@ -357,10 +344,54 @@ namespace Velvet
         // top-level Reconcile happens to run.
         // A Portal child that suspended ends the pass with a signal once the rest of this has run, and walked picks
         // which: the drain follows a walk that returned, or one that threw and is still unwinding.
+        //
+        // Inside a wave the pass is the wave's and ends where the wave does (FiberWave.End), except where this render
+        // queued a Portal's or a WorldSpace node's mount: that mount's drain runs here, inside this render, as it does
+        // outside a wave, so the pass ends here and the next render of the wave begins another. Recording is off while
+        // it ends, so a render the drain starts is a pass of its own.
         private void FinishTopLevelPass(VisualElement? reconciledInto, bool walked)
         {
             TakeAbort();
-            FinishPass(reconciledInto, walked);
+            if (!_ctx.WaveRecords)
+            {
+                FinishPass(reconciledInto, walked);
+                ChildListWrites.VerifyTouched();
+                return;
+            }
+            if (_ctx.PendingHostPlaceholders.Count == 0)
+            {
+                if (reconciledInto != null) PointerEventsScope.NoteReconciledInto(_ctx, reconciledInto);
+                return;
+            }
+            _ctx.WaveRecords = false;
+            try
+            {
+                FinishPass(reconciledInto, walked, Owner);
+                ChildListWrites.VerifyTouched();
+            }
+            finally
+            {
+                _ctx.WaveRecords = true;
+            }
+        }
+
+        private bool JoinsTheWavesPass() => _ctx.WaveRecords && _ctx.Pass.Recording;
+
+        // A render inside a wave records into the pass the wave holds, beginning it where a Portal mount ended the
+        // last, and starts a run of ops of its own in it.
+        private void BeginOrJoinPass()
+        {
+            if (!JoinsTheWavesPass()) ChildListWrites.BeginRecording(_ctx.Pass);
+            if (_ctx.WaveRecords) _ctx.Pass.BeginSegment(Owner);
+        }
+
+        // Ends the pass a wave's renders recorded into (FiberWave.End). A render that queued a Portal's mount ended the
+        // pass it recorded into, so none is left to mount here.
+        internal void FinishWavePass()
+        {
+            // MUTANT_SURVIVES(equivalent, literal): walked picks the signal a Portal's suspend ends a pass with.
+            // FinishPass drops the suspend of a wave's pass that no root's render closes.
+            FinishPass(reconciledInto: null, walked: true);
             ChildListWrites.VerifyTouched();
         }
 
@@ -380,8 +411,13 @@ namespace Velvet
         // FinishTopLevelPass less the aborted-pass reading its callers take of the pass they ran: a VirtualList range
         // rendered outside a pass ends with this (EndRangeForController), and can end inside the end of one of those
         // passes.
-        private void FinishPass(VisualElement? reconciledInto, bool walked)
+        //
+        // The pass of a wave keeps what its ops, placements and Portal mounts threw for the wave to route (FiberWave.End).
+        // closingRoot is the root whose render a Portal mount ended the pass inside, which the suspend of that mount goes
+        // to.
+        private void FinishPass(VisualElement? reconciledInto, bool walked, ComponentFiber? closingRoot = null)
         {
+            var wave = _ctx.Pass.Segments.Count > 0 ? _ctx.Pass : null;
             _ctx.PointerEventsWalkHeld++;
             // The abort flag stops sibling work inside the pass that just ended; the deferred
             // host mounts below are commit work for placeholders that SURVIVED it. A boundary
@@ -414,13 +450,16 @@ namespace Velvet
                 }
                 try
                 {
-                    var suspended = ChildPass.DrainPendingPortalMounts();
+                    var suspended = ChildPass.DrainPendingPortalMounts(wave);
                     // After the drain, whose own reconciles can tear down a Portal too.
                     foreach (var target in _ctx.PortalTargetsToRestyle)
                     {
                         NodePatcher.ApplyStructuralVariants(target);
                     }
-                    if (suspended) throw walked ? FiberSuspendSignal.AfterTheWalk : FiberSuspendSignal.Instance;
+                    if (suspended && (wave == null || closingRoot is { IsDisposed: false }))
+                    {
+                        throw walked ? FiberSuspendSignal.AfterTheWalk : FiberSuspendSignal.Instance;
+                    }
                 }
                 finally
                 {
@@ -458,8 +497,8 @@ namespace Velvet
                 // Declaring-resolution misses are scoped to one top-level pass: retrying the
                 // scan next pass is what lets a late-arriving declaring panel resolve.
                 _ctx.DeclaringResolveMisses.Clear();
-                // After the portal drain, whose reconciles can restore a rotate. Inside a batch drain the drain's
-                // end does this instead: its passes are one render.
+                // After the portal drain, whose reconciles can restore a rotate. Inside a wave the wave's commit does
+                // this instead: its passes are one render.
                 if (!_ctx.DeferDrainLayoutEffects) MotionLayoutIdDriver.EndRender(_ctx);
                 // After the portal drain, whose reconciles insert elements of their own.
                 StyleRelationalVariantManipulator.RetargetAll(_ctx);
@@ -563,7 +602,7 @@ namespace Velvet
             if (isTopLevel)
             {
                 UnityEngine.Debug.Assert(FiberExecutionContext.IsSet, "A resumed pass ran with no entry on the stack.");
-                ChildListWrites.BeginRecording(_ctx.Pass);
+                BeginOrJoinPass();
             }
 
             // A resume continues the pass an earlier slice suspended, so a setup it queues carries that
