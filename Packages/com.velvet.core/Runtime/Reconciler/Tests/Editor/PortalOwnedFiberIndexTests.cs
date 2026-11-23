@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Linq;
 using System.Reflection;
 using NUnit.Framework;
 using UnityEngine.UIElements;
@@ -11,7 +12,8 @@ namespace Velvet.Tests
     /// Suspense, the cleanup of a Portal and the drain of a Portal's children read in place of a test of every
     /// registered fiber: it lists a fiber under the placeholder it is stamped with once mounted, under none once
     /// the Portal leaves, and under the new placeholder once a restamp moves it. Each read answers -1 where the
-    /// registry holds no such index.
+    /// registry holds no such index. A fiber leaves its placeholder's list by a node the registry holds for it rather
+    /// than by a search, which the cases below that read the nodes specify.
     /// </summary>
     [TestFixture]
     internal sealed class PortalOwnedFiberIndexTests
@@ -204,6 +206,85 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(IndexedUnder(registry, second), Is.EqualTo(1));
+        }
+
+        private static ComponentFiber[] OwnedBy(ComponentRegistry registry, VisualElement placeholder)
+        {
+            var index = IndexOf(registry);
+            if (index == null || !index.Contains(placeholder)) return null;
+            return ((IEnumerable)index[placeholder]).Cast<ComponentFiber>().ToArray();
+        }
+
+        private static int NodesHeld(ComponentRegistry registry)
+            => ((IDictionary)typeof(ComponentRegistry)
+                .GetField("_portalIndexNodes", BindingFlags.Instance | BindingFlags.NonPublic)?.GetValue(registry))?.Count ?? -1;
+
+        private static ComponentFiber AlsoRegisteredUnder(ComponentRegistry registry, VisualElement placeholder)
+        {
+            var fiber = new ComponentFiber { OwningPortalPlaceholder = placeholder };
+            var key = (fiber.Parent, (VisualElement)null, new VisualElement(), new object(), new object());
+            var table = (IDictionary)typeof(ComponentRegistry)
+                .GetField("_inlineFiberToKey", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(registry);
+            table[fiber] = key;
+            typeof(ComponentRegistry).GetMethod("IndexUnderOwningPortal", BindingFlags.Instance | BindingFlags.NonPublic)
+                ?.Invoke(registry, new object[] { fiber });
+            return fiber;
+        }
+
+        [Test]
+        public void Given_TwoPortalsEachRenderingAComponent_When_TheTreeMounts_Then_EachIndexedFiberHoldsANodeToLeaveBy()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(Host, key: "host"));
+
+            // Act
+            var nodes = NodesHeld(mounted.Root.Reconciler.Context.ComponentRegistry);
+
+            // Assert
+            Assert.That(nodes, Is.EqualTo(2));
+        }
+
+        [Test]
+        public void Given_TwoMountedPortals_When_OneIsRenderedAway_Then_OnlyTheOthersFiberHoldsANode()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(Host, key: "host"));
+
+            // Act
+            RenderHost(mounted, 1);
+
+            // Assert
+            Assert.That(NodesHeld(mounted.Root.Reconciler.Context.ComponentRegistry), Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_AnIndexedFiber_When_ItIsRestampedWithAnotherPlaceholder_Then_ItHoldsOneNode()
+        {
+            // Arrange
+            var (registry, fiber) = RegisteredUnder(new VisualElement());
+
+            // Act
+            Restamp(registry, fiber, new VisualElement());
+
+            // Assert
+            Assert.That(NodesHeld(registry), Is.EqualTo(1));
+        }
+
+        // GREEN_ON_BASE(characterization): the base lists the fibers a placeholder owns in the order they were stamped, and so does the list a node leaves.
+        [Test]
+        public void Given_ThreeFibersIndexedUnderOnePlaceholder_When_TheFirstIsRestampedAway_Then_TheOtherTwoStayInStampOrder()
+        {
+            // Arrange
+            var placeholder = new VisualElement();
+            var (registry, first) = RegisteredUnder(placeholder);
+            var second = AlsoRegisteredUnder(registry, placeholder);
+            var third = AlsoRegisteredUnder(registry, placeholder);
+
+            // Act
+            Restamp(registry, first, new VisualElement());
+
+            // Assert
+            Assert.That(OwnedBy(registry, placeholder), Is.EqualTo(new[] { second, third }));
         }
     }
 }
