@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Reflection;
 using NUnit.Framework;
 using UnityEditor;
@@ -69,9 +70,14 @@ namespace Velvet.Tests
         private StyleSheet _ruledSheet;
 
         // Attaches a sheet of the app's own, imported as the editor imports a .uss file.
-        private void AttachSheet(string uss)
+        private void AttachSheet(string uss, bool asTheme = false)
         {
             _ruledSheet = ScriptableObject.CreateInstance<StyleSheet>();
+            if (asTheme)
+            {
+                EngineMember.StyleSheetIsDefault.ResolveProperty()!.SetValue(_ruledSheet, true);
+            }
+
             var impl = Activator.CreateInstance(StockStyleSheetImport.Impl!, true)!;
             try
             {
@@ -87,7 +93,7 @@ namespace Velvet.Tests
 
         // Registers a family "ruled" whose normal font is saved where a sheet can name it, and attaches a sheet whose
         // .ruled rule gives that font. Returns the family's bold.
-        private FontAsset AttachSheetGivingTheRuledFont()
+        private FontAsset AttachSheetGivingTheRuledFont(bool asTheme = false)
         {
             // Built from the font the panel draws a label in, as TextLineBoxPanelTests builds the one it saves.
             var probe = new Label("a");
@@ -102,7 +108,7 @@ namespace Velvet.Tests
             AssetDatabase.AddObjectToAsset(ruled.material, ruled);
             VelvetFonts.Register(Family("ruled", ruled, ruledBold));
             var ruledFont = "-unity-font-definition: url(\"project://database/" + RuledPath + "\");";
-            AttachSheet(".ruled { " + ruledFont + " } .ruled-hover:hover { " + ruledFont + " } .dark .dark-mid { " + ruledFont + " }");
+            AttachSheet(".ruled { " + ruledFont + " } .ruled-hover:hover { " + ruledFont + " } .dark .dark-mid { " + ruledFont + " }", asTheme);
             return ruledBold;
         }
 
@@ -181,6 +187,132 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(Target(root).style.unityFontDefinition.value.fontAsset, Is.SameAs(s_serifBold));
+        }
+
+        private static VNode BoldContainerWithAMiddle(VNode middleChild, string middleName = "mid") =>
+            V.Div(className: "font-bold", children: new[] { V.Div(name: middleName, children: new[] { middleChild }) });
+
+        private static VNode BoldTarget() => V.Label(className: "font-bold", text: "target", name: "target");
+
+        [Test]
+        public void Given_AClasslessElementBetweenABoldContainerAndABoldLabel_When_TheFontTheContainerInheritsChanges_Then_TheLabelFollowsBeforeTheStylesAreUpdated()
+        {
+            // Arrange
+            var root = NewRootGivenFont(s_sans);
+            _mounted = V.Mount(root, BoldContainerWithAMiddle(BoldTarget()));
+            RunAFrame();
+            RunAFrame();
+
+            // Act
+            root.style.unityFontDefinition = FontDefinition.FromSDFFont(s_serif);
+            EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
+
+            // Assert
+            Assert.That(Target(root).style.unityFontDefinition.value.fontAsset, Is.SameAs(s_serifBold));
+        }
+
+        [Test]
+        public void Given_ABoldLabelUnderABoldContainer_When_TheFontTheContainerInheritsChangesToOneNoFamilyHolds_Then_TheLabelWritesNoFontOfItsOwn()
+        {
+            // Arrange
+            var root = NewRootGivenFont(s_serif);
+            _mounted = V.Mount(root, V.Div(className: "font-bold", children: new[] { BoldTarget() }));
+            RunAFrame();
+            RunAFrame();
+
+            // Act
+            root.style.unityFontDefinition = FontDefinition.FromSDFFont(s_unregistered);
+            EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
+
+            // Assert
+            Assert.That(Target(root).style.unityFontDefinition.keyword, Is.EqualTo(StyleKeyword.Null));
+        }
+
+        [Test]
+        public void Given_AnAuthorFontOnAnElementAboveAClasslessOneAndABoldLabel_When_ItChanges_Then_TheLabelFollowsBeforeTheStylesAreUpdated()
+        {
+            // Arrange
+            _mounted = V.Mount(_host.Root, V.Div(name: "above", children: new[]
+            {
+                V.Div(children: new[] { BoldTarget() }),
+            }));
+            var above = _host.Root.Q("above");
+            above.style.unityFontDefinition = FontDefinition.FromSDFFont(s_sans);
+            RunAFrame();
+            RunAFrame();
+
+            // Act
+            above.style.unityFontDefinition = FontDefinition.FromSDFFont(s_serif);
+            EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
+
+            // Assert
+            Assert.That(Target(_host.Root).style.unityFontDefinition.value.fontAsset, Is.SameAs(s_serifBold));
+        }
+
+        [Test]
+        public void Given_ANormalContainerAboveABoldLabel_When_TheFontTheContainerInheritsChangesToOneNoFamilyHolds_Then_TheLabelWritesNoFontOfItsOwn()
+        {
+            // Arrange
+            var root = NewRootGivenFont(s_sans);
+            _mounted = V.Mount(root, V.Div(className: "font-normal", children: new[] { BoldTarget() }));
+            RunAFrame();
+            RunAFrame();
+
+            // Act
+            root.style.unityFontDefinition = FontDefinition.FromSDFFont(s_unregistered);
+            EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
+
+            // Assert
+            Assert.That(Target(root).style.unityFontDefinition.keyword, Is.EqualTo(StyleKeyword.Null));
+        }
+
+        // GREEN_ON_BASE(characterization): the base leaves the label under an element whose font a rule of a theme gives it
+        // as that element shows it. Pass `includeDefault: false` where RuleFonts asks the matcher and the label reads the
+        // container's new font through that element instead.
+        [Test]
+        public void Given_AnElementWhoseFontAThemeRuleGivesBetweenABoldContainerAndABoldLabel_When_TheFontTheContainerInheritsChanges_Then_TheLabelKeepsTheRulesFamily()
+        {
+            // Arrange
+            var ruledBold = AttachSheetGivingTheRuledFont(asTheme: true);
+            var root = NewRootGivenFont(s_sans);
+            _mounted = V.Mount(root, V.Div(className: "font-bold", children: new[]
+            {
+                V.Div(className: "ruled", children: new[] { BoldTarget() }),
+            }));
+            RunAFrame();
+            RunAFrame();
+
+            // Act
+            root.style.unityFontDefinition = FontDefinition.FromSDFFont(s_serif);
+            EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
+
+            // Assert
+            Assert.That(Target(root).style.unityFontDefinition.value.fontAsset, Is.SameAs(ruledBold));
+        }
+
+        // GREEN_ON_BASE(characterization): the base leaves the label under an element that transitions its font as that
+        // element shows it. Drop the transition clause from `Inherits` and the label reads the container's new font
+        // through that element instead.
+        [Test]
+        public void Given_AClasslessElementTransitioningItsFontBetweenABoldContainerAndABoldLabel_When_TheFontTheContainerInheritsChanges_Then_TheLabelKeepsTheFontTheElementShows()
+        {
+            // Arrange
+            var root = NewRootGivenFont(s_sans);
+            _mounted = V.Mount(root, BoldContainerWithAMiddle(BoldTarget()));
+            var middle = root.Q("mid");
+            middle.style.transitionProperty = new StyleList<StylePropertyName>(
+                new List<StylePropertyName> { new StylePropertyName("all") });
+            middle.style.transitionDuration = new StyleList<TimeValue>(
+                new List<TimeValue> { new TimeValue(1f, TimeUnit.Second) });
+            RunAFrame();
+            RunAFrame();
+
+            // Act
+            root.style.unityFontDefinition = FontDefinition.FromSDFFont(s_serif);
+            EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
+
+            // Assert
+            Assert.That(Target(root).style.unityFontDefinition.value.fontAsset, Is.SameAs(s_sansBold));
         }
 
         [Test]
@@ -577,6 +709,29 @@ namespace Velvet.Tests
             }));
             root.Q("mid").style.unityFont = legacy;
             RunAFrame();
+
+            // Assert
+            Assert.That(Target(root).style.unityFontDefinition.value.font, Is.Not.Null.And.SameAs(legacy));
+        }
+
+        [Test]
+        public void Given_AClasslessElementBetweenAnElementGainingAnInlineLegacyFontAndABoldLabel_When_TheFontIsSet_Then_TheLabelsDefinitionIsThatLegacyFontBeforeTheStylesAreUpdated()
+        {
+            // Arrange
+            VelvetFonts.DefaultFamily = "sans";
+            var legacy = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            var root = new VisualElement();
+            _host.Root.Add(root);
+            _mounted = V.Mount(root, V.Div(name: "above", children: new[]
+            {
+                V.Div(children: new[] { BoldTarget() }),
+            }));
+            RunAFrame();
+            RunAFrame();
+
+            // Act
+            root.Q("above").style.unityFont = legacy;
+            EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
 
             // Assert
             Assert.That(Target(root).style.unityFontDefinition.value.font, Is.Not.Null.And.SameAs(legacy));

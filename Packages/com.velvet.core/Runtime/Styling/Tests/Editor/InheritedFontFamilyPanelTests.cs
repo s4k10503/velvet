@@ -572,6 +572,27 @@ namespace Velvet.Tests
             Assert.That(TargetAsset(), Is.SameAs(_monoBold));
         }
 
+        [Test]
+        public void Given_AClasslessElementBetweenABoldElementAndABoldLabel_When_TheContainersFamilyChanges_Then_TheLabelFollowsAtOnce()
+        {
+            // Arrange
+            VNode Tree(string containerClass) => V.Div(className: containerClass, children: new VNode[]
+            {
+                V.Div(className: "font-bold", children: new VNode[]
+                {
+                    V.Div(children: new[] { Target("font-bold") }),
+                }),
+            });
+            _mounted = V.Mount(_host.Root, Tree("font-serif"));
+            RunAFrame();
+
+            // Act
+            _mounted.Render(Tree("font-mono"));
+
+            // Assert
+            Assert.That(TargetAsset(), Is.SameAs(_monoBold));
+        }
+
         // GREEN_ON_BASE(characterization): the base writes the re-registered family's Bold on the label at once. Walk
         // `Inheritors.Keys` in its own order in Refresh instead of InTreeOrder and the label, which entered the table
         // before the element between it and the container, resolves first against that element's old face.
