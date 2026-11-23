@@ -170,6 +170,7 @@ namespace Velvet
 
         private void MarkOwnerParked()
         {
+            FiberWave.KeepBatchOrder(_ctx);
             if (Owner != null) FiberPendingWork.MarkAncestors(Owner);
         }
 
@@ -363,6 +364,7 @@ namespace Velvet
                 if (reconciledInto != null) PointerEventsScope.NoteReconciledInto(_ctx, reconciledInto);
                 return;
             }
+            FiberWave.KeepBatchOrder(_ctx);
             _ctx.WaveRecords = false;
             try
             {
@@ -382,13 +384,30 @@ namespace Velvet
         private void BeginOrJoinPass()
         {
             if (!JoinsTheWavesPass()) ChildListWrites.BeginRecording(_ctx.Pass);
+            if (RendersBelowAnEarlierRoot()) FiberWave.KeepBatchOrder(_ctx);
             if (_ctx.WaveRecords) _ctx.Pass.BeginSegment(Owner);
+        }
+
+        // Whether a root the wave's pass already recorded sits above this render's: a component row a VirtualList
+        // mounts, which renders by its own entry after the walk of the host above it has ended.
+        private bool RendersBelowAnEarlierRoot()
+        {
+            var segments = _ctx.Pass.Segments;
+            for (var i = 0; i < segments.Count; i++)
+            {
+                for (var above = Owner?.Parent; above != null; above = above.Parent)
+                {
+                    if (ReferenceEquals(above, segments[i].Root)) return true;
+                }
+            }
+            return false;
         }
 
         // Ends the pass a wave's renders recorded into (FiberWave.End). A render that queued a Portal's mount ended the
         // pass it recorded into, so none is left to mount here.
         internal void FinishWavePass()
         {
+            _ctx.Pass.RunsTurnEnds = !_ctx.WaveKeepsBatchOrder;
             // MUTANT_SURVIVES(equivalent, literal): walked picks the signal a Portal's suspend ends a pass with.
             // FinishPass drops the suspend of a wave's pass that no root's render closes.
             FinishPass(reconciledInto: null, walked: true);
@@ -575,6 +594,7 @@ namespace Velvet
         internal void ContinueReconcileWork(double frameBudgetMs)
         {
             if (_ctx.IsDisposed || !HasPendingWork) { return; }
+            FiberWave.KeepBatchOrder(_ctx);
             using var _ = s_continueReconcileMarker.Auto();
 
             // A resume continues the same pass an earlier time-slice suspended, so while genuinely

@@ -44,7 +44,10 @@ namespace Velvet
         {
             var element = CreateUnownedElement(node);
             var owner = _ctx.FiberStack.Current;
-            if (_ctx.WaveRecords && owner != null) _ctx.Pass.Owners[element] = (owner, _ctx.CurrentPortalPlaceholder);
+            if (_ctx.WaveRecords && owner != null)
+            {
+                _ctx.Pass.Owners[element] = (owner, _ctx.CurrentPortalPlaceholder, _ctx.Pass.PlaceBehindRecorded);
+            }
             return element;
         }
 

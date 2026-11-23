@@ -522,6 +522,9 @@ namespace Velvet
             s_current = pass;
         }
 
+        internal static bool IsCreatedByThePass(VisualElement? element)
+            => element != null && s_current != null && s_current.Recording && s_current.Created.Contains(element);
+
         // A container the pass creates takes its children at once.
         internal static void MarkCreated(VisualElement element)
         {
@@ -746,6 +749,7 @@ namespace Velvet
                 {
                     while (segment + 1 < pass.Segments.Count && pass.Segments[segment + 1].FirstOp <= i) segment++;
                     pass.ApplyingRoot = segment >= 0 ? pass.Segments[segment].Root : null;
+                    pass.Meets = 2 * (pass.Applied + i) + 1;
                     try
                     {
                         ApplyOp(pass, pass.Ops[i]);
@@ -763,6 +767,13 @@ namespace Velvet
             finally
             {
                 pass.Applying = false;
+                pass.RunsTurnEnds = false;
+                // MUTANT_SURVIVES(equivalent, line removed): what is thrown then takes the last op's place, 2g - 1, for
+                // the 2g behind it. Ops are odd and elements even, so the only places it can now tie or pass are that
+                // op's, whose captures were held first, and an element's at 2g, whose failure is held as the wave routes,
+                // after it: it keeps its order against both.
+                pass.Meets = ReconcilePass.NoPlace;
+                pass.Applied += pass.Ops.Count;
                 // MUTANT_SURVIVES(equivalent, line removed): ApplyingRoot is read only while Applying is set, and Apply
                 // writes it ahead of each op; the reset lets go of the fiber.
                 pass.ApplyingRoot = null;
@@ -788,8 +799,8 @@ namespace Velvet
         }
 
         // Files an insert of an element the wave created under the component that rendered it, its search starting where
-        // React's commit starts a placement's (ComponentBoundarySearch.PlacementSearchStart), and any other op under the
-        // root of its run. False where the pass is no wave's.
+        // React's commit starts a placement's (ComponentBoundarySearch.PlacementSearchStart), at the place the element's
+        // walk ended at, and any other op under the root of its run, at the op's. False where the pass is no wave's.
         private static bool FileFailure(ReconcilePass pass, VisualElement? added, Exception exception)
         {
             if (added != null)
@@ -797,17 +808,17 @@ namespace Velvet
                 if (pass.Owners.TryGetValue(added, out var rendered))
                 {
                     pass.Fail(ComponentBoundarySearch.PlacementSearchStart(rendered.Owner, rendered.Portal), rendered.Owner,
-                        exception, added);
+                        exception, added, rendered.Place);
                     return true;
                 }
             }
             if (pass.ApplyingRoot == null) return false;
-            pass.Fail(pass.ApplyingRoot, pass.ApplyingRoot, exception, added);
+            pass.Fail(pass.ApplyingRoot, pass.ApplyingRoot, exception, added, pass.PlaceNow);
             return true;
         }
 
-        // Records where a turn begins and where it ends among the ops, for the teardowns attached to the anchor to run at
-        // (RecordTeardown). Null where no pass is recording, which needs none. They apply as nothing else.
+        // Records where a turn begins among the ops, for the teardowns attached to the anchor to run at (RecordTeardown).
+        // Null where no pass is recording, which needs none.
         internal static TurnAnchor? RecordTurnBegin()
         {
             if (s_current is not { Recording: true, Applying: false } pass) return null;
@@ -816,12 +827,24 @@ namespace Velvet
             return anchor;
         }
 
-        internal static void RecordTurnEnd(TurnAnchor? anchor)
+        // Records where a fiber's turn ends among the ops, behind everything its walk recorded, for a pass whose wave runs
+        // turn ends to run its insertion effects and layout cleanups at (FiberEffects.RunTurnEnd).
+        internal static void RecordTurnEnd(ComponentFiber fiber)
         {
-            if (anchor == null) return;
             if (s_current is not { Recording: true, Applying: false } pass) return;
-            // MUTANT_SURVIVES(equivalent, line removed): no apply reads a FiberEnd.
-            pass.Ops.Add(new ReconcilePass.Op { Anchor = anchor, Kind = ReconcilePass.OpKind.FiberEnd });
+            // MUTANT_SURVIVES(equivalent, guard removed): a fiber with nothing pending runs nothing at its turn end, and
+            // KeepBatchOrderForAPlacement asks for pending insertion effects of its own.
+            if (!FiberEffects.HasTurnEndWork(fiber)) return;
+            pass.Ops.Add(new ReconcilePass.Op { Fiber = fiber, Kind = ReconcilePass.OpKind.FiberEnd });
+            FiberWave.KeepBatchOrderForAPlacement(fiber);
+        }
+
+        // Records the detach of the ref the element's queued setup replaces, where the walk has reconciled the element's
+        // children, for a pass whose wave runs turn ends to run there (ReconcilerContext.DetachReplacedRefAtItsTurn).
+        internal static void RecordRefDetach(VisualElement element, ComponentFiber owner)
+        {
+            if (s_current is not { Recording: true, Applying: false } pass) return;
+            pass.Ops.Add(new ReconcilePass.Op { Child = element, Fiber = owner, Kind = ReconcilePass.OpKind.RefDetach });
         }
 
         // Queues a deletion's teardown to run at its turn: where the anchor's op applies, after the teardowns attached to it
@@ -865,7 +888,16 @@ namespace Velvet
                 ApplyAnchor(op.Anchor!);
                 return;
             }
-            if (op.Kind >= ReconcilePass.OpKind.FiberEnd) return;
+            if (op.Kind == ReconcilePass.OpKind.FiberEnd)
+            {
+                if (pass.RunsTurnEnds) FiberEffects.RunTurnEnd(op.Fiber!);
+                return;
+            }
+            if (op.Kind == ReconcilePass.OpKind.RefDetach)
+            {
+                if (pass.RunsTurnEnds) op.Fiber!.Reconciler?.Context.DetachReplacedRefAtItsTurn(op.Child, op.Fiber);
+                return;
+            }
             if (op.Kind >= ReconcilePass.OpKind.PatchPre)
             {
                 var patch = pass.Patches[op.Index];

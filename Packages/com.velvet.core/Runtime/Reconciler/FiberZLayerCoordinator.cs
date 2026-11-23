@@ -17,6 +17,9 @@ namespace Velvet
         // children it was created among (ComponentBoundarySearch.PlacementSearchStart).
         public ComponentFiber? Owner;
         public VisualElement? Portal;
+        // Where the wave meets the placement (ReconcilePass.PlaceBehindRecorded), NoPlace where no wave recorded the
+        // element.
+        public long Place = ReconcilePass.NoPlace;
     }
 
     // Brings CSS's paint order among siblings — z-index, positioned before unpositioned, flex order — to UI Toolkit,
@@ -328,7 +331,13 @@ namespace Velvet
             Hold(outer, RoleFor(facts!.Value.Z), null, placeholder);
             ctx.ZLayerPlaceholders[placeholder] = outer;
             ctx.PendingPortalMounts.Enqueue(
-                (placeholder, new ZLayerMountNode { Real = outer, Owner = ctx.FiberStack.Current, Portal = ctx.CurrentPortalPlaceholder }, null, null, null));
+                (placeholder, new ZLayerMountNode
+                {
+                    Real = outer,
+                    Owner = ctx.FiberStack.Current,
+                    Portal = ctx.CurrentPortalPlaceholder,
+                    Place = ctx.WaveRecords ? ctx.Pass.PlaceBehindRecorded : ReconcilePass.NoPlace,
+                }, null, null, null));
             return placeholder;
         }
 

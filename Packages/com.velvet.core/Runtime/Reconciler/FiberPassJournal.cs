@@ -151,6 +151,16 @@ namespace Velvet
 
         internal void RecordHooks(List<SuspenseRender> renders) => _hooks.AddRange(renders);
 
+        // Whether a render of the fiber waits in the journal, whose hook state Close commits.
+        internal bool Holds(ComponentFiber fiber)
+        {
+            for (var i = _hooks.Count - 1; i >= 0; i--)
+            {
+                if (ReferenceEquals(_hooks[i].Fiber, fiber)) return true;
+            }
+            return false;
+        }
+
         // Called once the render has returned, so a render that threw is not in the journal: the catch that saw
         // it writes its inputs back itself.
         internal void RecordSubsumed(ComponentFiber fiber, in FiberInputs before)
