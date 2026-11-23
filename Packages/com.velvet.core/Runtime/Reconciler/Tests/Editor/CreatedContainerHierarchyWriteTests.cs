@@ -45,9 +45,7 @@ namespace Velvet.Tests
             {
                 if (s_target == null) return;
                 var written = new VisualElement();
-                ChildListWrites.ViaQueue++;
-                try { ChildListWrites.HierarchyInsert(s_target, 0, written); }
-                finally { ChildListWrites.ViaQueue--; }
+                using (ChildListWrites.QueueWrite()) ChildListWrites.HierarchyInsert(s_target, 0, written);
                 s_parentAtWrite = written.hierarchy.parent;
                 ChildListWrites.HierarchyRemove(s_target, written);
             }

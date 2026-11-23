@@ -18,11 +18,14 @@ namespace Velvet.Tests
     {
         private static readonly Type Writes = typeof(ChildListWrites);
 
+        private ReconcilePass _pass = null!;
+        private ReconcilePass _other = null!;
+
         [SetUp]
         public void SetUp()
         {
-            ChildListWrites.ViaQueue = 0;
-            ChildListWrites.EndRecording();
+            _pass = new ReconcilePass();
+            _other = new ReconcilePass();
             ClearStatic("s_touched");
             ClearStatic("s_nested");
         }
@@ -30,8 +33,9 @@ namespace Velvet.Tests
         [TearDown]
         public void TearDown()
         {
-            ChildListWrites.ViaQueue = 0;
-            ChildListWrites.EndRecording();
+            // The pass that began last is current, so it ends first.
+            for (var i = _other.Depth; i > 0; i--) ChildListWrites.EndRecording(_other);
+            for (var i = _pass.Depth; i > 0; i--) ChildListWrites.EndRecording(_pass);
         }
 
         private static void ClearStatic(string name)
@@ -49,16 +53,12 @@ namespace Velvet.Tests
 
         private static void RecordedInsert(VisualElement container, int index, VisualElement child)
         {
-            ChildListWrites.ViaQueue++;
-            try { ChildListWrites.Insert(container, index, child); }
-            finally { ChildListWrites.ViaQueue--; }
+            using (ChildListWrites.QueueWrite()) ChildListWrites.Insert(container, index, child);
         }
 
         private static void RecordedRemoveAt(VisualElement container, int index)
         {
-            ChildListWrites.ViaQueue++;
-            try { ChildListWrites.RemoveAtForMove(container, index); }
-            finally { ChildListWrites.ViaQueue--; }
+            using (ChildListWrites.QueueWrite()) ChildListWrites.RemoveAtForMove(container, index);
         }
 
         // GREEN_ON_BASE(characterization): the base applies the recorded writes into a container before a removal from it.
@@ -69,7 +69,7 @@ namespace Velvet.Tests
             // Arrange
             var kept = new VisualElement();
             var container = Holding(kept);
-            ChildListWrites.BeginRecording();
+            ChildListWrites.BeginRecording(_pass);
             RecordedInsert(container, 1, new VisualElement());
 
             // Act
@@ -87,7 +87,7 @@ namespace Velvet.Tests
             // Arrange
             var kept = new VisualElement();
             var container = Holding(kept);
-            ChildListWrites.BeginRecording();
+            ChildListWrites.BeginRecording(_pass);
             RecordedInsert(container, 1, new VisualElement());
 
             // Act
@@ -104,12 +104,12 @@ namespace Velvet.Tests
         {
             // Arrange
             var container = Holding(new VisualElement());
-            ChildListWrites.BeginRecording();
+            ChildListWrites.BeginRecording(_pass);
             RecordedInsert(container, 0, new VisualElement());
 
             // Act
             ChildListWrites.Clear(container);
-            ChildListWrites.EndRecording();
+            ChildListWrites.EndRecording(_pass);
 
             // Assert
             Assert.That(container.hierarchy.childCount, Is.EqualTo(0));
@@ -123,44 +123,43 @@ namespace Velvet.Tests
             // Arrange
             var inserted = new VisualElement { name = "a" };
             var container = Holding(new VisualElement { name = "b" });
-            ChildListWrites.BeginRecording();
+            ChildListWrites.BeginRecording(_pass);
             RecordedInsert(container, 1, inserted);
 
             // Act
             ChildListWrites.HierarchySort(container, (x, y) => string.CompareOrdinal(x.name, y.name));
-            ChildListWrites.EndRecording();
+            ChildListWrites.EndRecording(_pass);
 
             // Assert
             Assert.That(container[0], Is.SameAs(inserted));
         }
 
         // GREEN_ON_BASE(characterization): the base applies a recording's writes when another pass begins recording.
-        // Drop `if (s_recording) ApplyRecorded();` from BeginRecording and the insert stays recorded.
+        // Drop `if (open != null) Apply(open);` from BeginRecording and the insert stays recorded.
         [Test]
         public void Given_ARecordingWithAnInsertNotYetApplied_When_AnotherPassBeginsRecording_Then_TheInsertHasReachedTheLiveList()
         {
             // Arrange
             var container = Holding(new VisualElement());
-            ChildListWrites.BeginRecording();
+            ChildListWrites.BeginRecording(_pass);
             RecordedInsert(container, 1, new VisualElement());
 
             // Act
-            ChildListWrites.BeginRecording();
+            ChildListWrites.BeginRecording(_other);
 
             // Assert
             Assert.That(container.hierarchy.childCount, Is.EqualTo(2));
         }
 
-        // GREEN_ON_BASE(characterization): the base forgets the containers a pass created when the next pass begins recording.
-        // Drop `s_created.Clear();` from BeginRecording and the insert is made at once.
+        // GREEN_ON_BASE(characterization): the base keeps the containers one pass created out of the next pass's recording.
         [Test]
         public void Given_AContainerTheFirstPassCreated_When_ASecondPassBeginsRecording_Then_AnInsertIntoItIsRecorded()
         {
             // Arrange
             var created = new VisualElement();
-            ChildListWrites.BeginRecording();
+            ChildListWrites.BeginRecording(_pass);
             ChildListWrites.MarkCreated(created);
-            ChildListWrites.BeginRecording();
+            ChildListWrites.BeginRecording(_other);
 
             // Act
             RecordedInsert(created, 0, new VisualElement());
@@ -170,7 +169,7 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base reads a recorded move out of a container from its model, so the moved child is not counted.
-        // Drop `Mark(left);` from RecordInsert and the count reads the live list, which still holds the child.
+        // Drop `Mark(pass, left);` from RecordInsert and the count reads the live list, which still holds the child.
         [Test]
         public void Given_ARecordedMoveOutOfAContainerWithAModel_When_ItsRecordedCountIsRead_Then_TheMovedChildIsNotCounted()
         {
@@ -178,7 +177,7 @@ namespace Velvet.Tests
             var moved = new VisualElement();
             var source = Holding(moved);
             var destination = Holding(new VisualElement());
-            ChildListWrites.BeginRecording();
+            ChildListWrites.BeginRecording(_pass);
 
             // Act
             RecordedInsert(destination, 1, moved);
@@ -196,7 +195,7 @@ namespace Velvet.Tests
             var moved = new VisualElement();
             var source = Holding(moved);
             var destination = Holding(new VisualElement());
-            ChildListWrites.BeginRecording();
+            ChildListWrites.BeginRecording(_pass);
 
             // Act
             RecordedInsert(destination, 1, moved);
@@ -221,14 +220,14 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base reads a child whose removal is recorded as having no parent.
-        // Drop `s_pendingParent[element] = null;` from RecordRemoveAt and the live parent answers.
+        // Drop `pass.PendingParent[element] = null;` from RecordRemoveAt and the live parent answers.
         [Test]
         public void Given_ARecordedRemovalOfAChild_When_ItsParentIsRead_Then_ItHasNone()
         {
             // Arrange
             var child = new VisualElement();
             var container = Holding(child);
-            ChildListWrites.BeginRecording();
+            ChildListWrites.BeginRecording(_pass);
 
             // Act
             RecordedRemoveAt(container, 0);
@@ -245,12 +244,12 @@ namespace Velvet.Tests
             // Arrange
             var container = Holding(new VisualElement());
             var child = new VisualElement();
-            ChildListWrites.BeginRecording();
+            ChildListWrites.BeginRecording(_pass);
             RecordedInsert(container, 5, child);
 
             // Act
             var parent = ChildListWrites.ParentOf(child);
-            try { ChildListWrites.EndRecording(); }
+            try { ChildListWrites.EndRecording(_pass); }
             catch (ArgumentOutOfRangeException) { }
 
             // Assert
@@ -258,7 +257,7 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base lets a write made while the recorded ones apply nest without
-        // applying them again. Delete `if (s_applying) return;` from ApplyRecorded and the nested apply puts the first
+        // applying them again. Delete `if (pass.Applying) return;` from Apply and the nested apply puts the first
         // insert back in front.
         [Test]
         public void Given_AWriteThatAppliesTheRecordedWritesWhileTheyApply_When_TheyApply_Then_TheyLandInTheOrderMade()
@@ -267,22 +266,25 @@ namespace Velvet.Tests
             var container = new ApplyingContainer();
             var first = new VisualElement();
             var second = new VisualElement();
-            ChildListWrites.BeginRecording();
+            container.Other = _other;
+            ChildListWrites.BeginRecording(_pass);
             RecordedInsert(container, 0, first);
             RecordedInsert(container, 0, second);
             container.ApplyOnNextRead = true;
 
             // Act
-            ChildListWrites.EndRecording();
+            ChildListWrites.EndRecording(_pass);
 
             // Assert
             Assert.That(container.hierarchy[0], Is.SameAs(second));
         }
 
-        // The container's content read is where the first live insert of the apply passes through.
+        // The container's content read is where the first live insert of the apply passes through, and a pass that
+        // begins there asks the pass applying to apply again.
         private sealed class ApplyingContainer : VisualElement
         {
             internal bool ApplyOnNextRead;
+            internal ReconcilePass Other = null!;
 
             public override VisualElement contentContainer
             {
@@ -291,7 +293,8 @@ namespace Velvet.Tests
                     if (ApplyOnNextRead)
                     {
                         ApplyOnNextRead = false;
-                        ChildListWrites.ApplyRecorded();
+                        ChildListWrites.BeginRecording(Other);
+                        ChildListWrites.EndRecording(Other);
                     }
                     return this;
                 }
@@ -299,52 +302,51 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base lets go of the containers a pass created when it ends, so none is
-        // held after it. Drop `s_created.Clear();` from EndRecording and the set still holds the container.
+        // held after it. Drop `pass.Created.Clear();` from EndRecording and the set still holds the container.
         [Test]
         public void Given_AContainerAPassCreated_When_ThePassEnds_Then_NoCreatedContainerIsHeld()
         {
             // Arrange
-            ChildListWrites.BeginRecording();
+            ChildListWrites.BeginRecording(_pass);
             ChildListWrites.MarkCreated(new VisualElement());
 
             // Act
-            ChildListWrites.EndRecording();
+            ChildListWrites.EndRecording(_pass);
 
             // Assert
-            var created = Writes.GetField("s_created", BindingFlags.NonPublic | BindingFlags.Static)!.GetValue(null)!;
-            Assert.That(created.GetType().GetProperty("Count")!.GetValue(created), Is.EqualTo(0));
+            Assert.That(_pass.Created.Count, Is.EqualTo(0));
         }
 
         // GREEN_ON_BASE(characterization): the base drops the model of a container the recorded writes left empty.
-        // Drop `PruneIfEmpty(container);` from the loop in ApplyRecorded's finally and the empty model stays.
+        // Drop `PruneIfEmpty(container);` from the loop in Apply's finally and the empty model stays.
         [Test]
         public void Given_ARecordedRemovalOfTheOnlyChild_When_TheRecordedWritesApply_Then_TheContainerKeepsNoModel()
         {
             // Arrange
             var container = Holding(new VisualElement());
-            ChildListWrites.BeginRecording();
+            ChildListWrites.BeginRecording(_pass);
             RecordedRemoveAt(container, 0);
 
             // Act
-            ChildListWrites.EndRecording();
+            ChildListWrites.EndRecording(_pass);
 
             // Assert
             Assert.That(RowModelAccess.Peek(container), Is.Null);
         }
 
         // GREEN_ON_BASE(characterization): the base queues a container for verification again once the writes recorded into it have applied.
-        // Drop `Touch(container);` from the loop in ApplyRecorded's finally and the next verification skips it,
+        // Drop `Touch(container);` from the loop in Apply's finally and the next verification skips it,
         // leaving the model at 2.
         [Test]
         public void Given_AVerificationBetweenARecordedInsertAndItsApplication_When_AForeignWriteLeftTheModelBehind_Then_TheNextVerificationRebuildsIt()
         {
             // Arrange
             var container = Holding(new VisualElement());
-            ChildListWrites.BeginRecording();
+            ChildListWrites.BeginRecording(_pass);
             RecordedInsert(container, 1, new VisualElement());
             ChildListWrites.VerifyTouched();
             container.hierarchy.Insert(0, new VisualElement());
-            ChildListWrites.EndRecording();
+            ChildListWrites.EndRecording(_pass);
             LogAssert.Expect(LogType.Assert, new Regex("ContainerRows drifted"));
 
             // Act
