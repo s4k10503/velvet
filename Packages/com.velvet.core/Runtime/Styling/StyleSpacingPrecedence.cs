@@ -475,7 +475,7 @@ namespace Velvet
         }
 
         // The length of the variants in front of a payload: up to and including the last ':' outside brackets.
-        internal static int VariantsLength(string core)
+        internal static int VariantsLength(ReadOnlySpan<char> core)
         {
             var depth = 0;
             var length = 0;

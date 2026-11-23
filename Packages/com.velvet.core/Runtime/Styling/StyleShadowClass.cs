@@ -197,9 +197,9 @@ namespace Velvet
             {
                 return false;
             }
-            var core = StyleArbitraryValueResolver.StripImportant(cls, out _);
-            return !string.IsNullOrEmpty(core) && (core == "shadow" || core.StartsWith("shadow-", StringComparison.Ordinal)
-                || core.StartsWith("shadow/", StringComparison.Ordinal));
+            var core = StyleArbitraryValueResolver.ImportantCore(cls.AsSpan());
+            return core.SequenceEqual("shadow".AsSpan()) || core.StartsWith("shadow-".AsSpan(), StringComparison.Ordinal)
+                || core.StartsWith("shadow/".AsSpan(), StringComparison.Ordinal);
         }
 
         // inset-shadow-* and inset-ring-* write layers of the same box-shadow, so they are drawn by this paint.
@@ -209,9 +209,9 @@ namespace Velvet
             {
                 return false;
             }
-            var core = StyleArbitraryValueResolver.StripImportant(cls, out _);
-            return !string.IsNullOrEmpty(core) && (core == "inset-ring" || core.StartsWith("inset-shadow-", StringComparison.Ordinal)
-                || core.StartsWith("inset-ring-", StringComparison.Ordinal));
+            var core = StyleArbitraryValueResolver.ImportantCore(cls.AsSpan());
+            return core.SequenceEqual("inset-ring".AsSpan()) || core.StartsWith("inset-shadow-".AsSpan(), StringComparison.Ordinal)
+                || core.StartsWith("inset-ring-".AsSpan(), StringComparison.Ordinal);
         }
 
         // Whether cls, past a leading bang, opens with root. One that does not has no core opening with root either, so

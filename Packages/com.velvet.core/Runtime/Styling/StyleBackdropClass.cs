@@ -116,15 +116,17 @@ namespace Velvet
         internal static string NameOf(BackdropFunction function) => s_names[(int)function];
 
         // Loose, like StyleRingClass.IsRingClass: a token of the family's shape that names no value adds nothing.
-        public static bool IsBackdropClass(string? cls)
-            => !string.IsNullOrEmpty(cls)
-                && (cls!.StartsWith(Prefix, StringComparison.Ordinal) || cls.StartsWith("-" + Prefix, StringComparison.Ordinal));
+        public static bool IsBackdropClass(string? cls) => OpensBackdrop(cls.AsSpan());
+
+        private static bool OpensBackdrop(ReadOnlySpan<char> core)
+            => core.StartsWith(Prefix.AsSpan(), StringComparison.Ordinal)
+                || core.StartsWith(("-" + Prefix).AsSpan(), StringComparison.Ordinal);
 
         public static bool HasBackdropClass(string[]? classNames)
             => StyleClassFamilies.Has(classNames, StyleClassFamily.Backdrop);
 
         internal static bool IsBackdropToken(string cls)
-            => IsBackdropClass(StyleArbitraryValueResolver.StripImportant(cls ?? string.Empty, out _));
+            => OpensBackdrop(StyleArbitraryValueResolver.ImportantCore(cls.AsSpan()));
 
         private struct Slot
         {

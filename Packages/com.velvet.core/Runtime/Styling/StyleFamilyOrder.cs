@@ -36,7 +36,7 @@ namespace Velvet
             (IsSliceToken, s_byKey),
             (StyleFontClass.IsFontToken, s_noLane),
             (IsZIndexToken, s_noLane),
-            (StyleOrderClass.IsOrderToken, s_noLane),
+            (token => StyleOrderClass.IsOrderToken(token), s_noLane),
             (StyleGapClass.IsGapToken, s_noLane),
             (StyleGridClass.IsGridToken, s_noLane),
             (StyleDivideClass.IsDivideToken, s_noLane),

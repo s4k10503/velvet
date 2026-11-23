@@ -1,3 +1,5 @@
+using System;
+
 namespace Velvet
 {
     // What an element's own class list says about pointer-events. Inherit is the absence of either utility, which
@@ -18,13 +20,16 @@ namespace Velvet
 
         // The variant-payload gate's check (StyleVariantPayload), sharing Read's token names. A variant payload
         // lands bare, which is the form this matches.
-        public static bool IsPointerEventsToken(string cls) => cls == NoneClassName || cls == AutoClassName;
+        public static bool IsPointerEventsToken(string cls) => IsModeName(cls.AsSpan());
 
         internal static bool HasPointerEventsClass(string[] classNames)
             => StyleClassFamilies.Has(classNames, StyleClassFamily.PointerEvents);
 
         internal static bool IsModeToken(string cls)
-            => IsPointerEventsToken(StyleArbitraryValueResolver.StripImportant(cls, out _));
+            => IsModeName(StyleArbitraryValueResolver.ImportantCore(cls.AsSpan()));
+
+        private static bool IsModeName(ReadOnlySpan<char> core)
+            => core.SequenceEqual(NoneClassName.AsSpan()) || core.SequenceEqual(AutoClassName.AsSpan());
 
         // An important token outranks an unmarked one wherever it sits, as an !important declaration does; between
         // two of the same weight the later decides, the order the variant gate composes its payloads in.

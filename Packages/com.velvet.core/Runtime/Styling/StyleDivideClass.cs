@@ -103,7 +103,7 @@ namespace Velvet
         // the family here.
         public static bool IsDivideToken(string cls)
             => !string.IsNullOrEmpty(cls)
-                && StyleArbitraryValueResolver.StripImportant(cls, out _).StartsWith("divide-", StringComparison.Ordinal);
+                && StyleArbitraryValueResolver.ImportantCore(cls.AsSpan()).StartsWith("divide-".AsSpan(), StringComparison.Ordinal);
 
         // Cheap early-out gate: true when ANY class belongs to the divide family, important tokens included.
         // Used to skip the full TryExtract scan on the ~99% of elements with no divide class.

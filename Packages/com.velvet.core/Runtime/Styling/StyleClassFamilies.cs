@@ -39,7 +39,8 @@ namespace Velvet
     // reach a theme-scope read. ClassGateThemeScopeTests fails where a family here reads a token differently inside a
     // sheet's scope.
     //
-    // Direct-mapped, so the table is bounded without an eviction pass and a miss allocates nothing of its own. Two
+    // Direct-mapped, so the table is bounded without an eviction pass, and a miss allocates nothing: no predicate
+    // copies a token to read it. ClassReadAllocationTests measures a miss over variant and important tokens. Two
     // arrays sharing a slot each read again when the other displaced it, and the table keeps the last array of
     // each slot alive.
     //

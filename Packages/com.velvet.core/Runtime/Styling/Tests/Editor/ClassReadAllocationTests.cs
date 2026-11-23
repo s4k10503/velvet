@@ -452,5 +452,50 @@ namespace Velvet.Tests
             // Assert
             Assert.That(importantBlocks, Is.EqualTo(plainBlocks));
         }
+
+        // StyleClassFamilies keeps a reading by the array's identity, so each window reads a copy it has kept none for.
+        private static int FamilyReadMissBlocks(string[] classNames)
+        {
+            var fresh = classNames;
+            void Copy() => fresh = (string[])classNames.Clone();
+            void ReadFamilies() => StyleClassFamilies.Has(fresh, StyleClassFamily.Stacking);
+            for (var i = 0; i < 64; i++)
+            {
+                Copy();
+                ReadFamilies();
+            }
+            return GCAllocationProbe.MedianBlocksDuring(Copy, ReadFamilies);
+        }
+
+        [Test]
+        public void Given_VariantClassesNotReadBefore_When_TheirFamiliesAreRead_Then_NothingIsAllocated()
+        {
+            // Arrange
+            var classNames = new[]
+            {
+                "flex", "flex-row", "dark:-skew-x-6", "dark:shadow-lg", "dark:border-dashed", "dark:bg-gradient-to-r",
+                "dark:from-blue-500", "dark:to-blue-900", "dark:animate-none",
+            };
+
+            // Act
+            var blocks = FamilyReadMissBlocks(classNames);
+
+            // Assert
+            Assert.That(blocks, Is.Zero);
+        }
+
+        [TestCase("!bg-red-500")]
+        [TestCase("bg-red-500!")]
+        [TestCase("hover:!bg-red-500")]
+        [TestCase("!shadow-md")]
+        [TestCase("!inset-ring")]
+        public void Given_AnImportantClassNotReadBefore_When_ItsFamiliesAreRead_Then_NothingIsAllocated(string cls)
+        {
+            // Act
+            var blocks = FamilyReadMissBlocks(new[] { cls });
+
+            // Assert
+            Assert.That(blocks, Is.Zero);
+        }
     }
 }

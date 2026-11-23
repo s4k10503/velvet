@@ -163,7 +163,7 @@ namespace Velvet
         // family through here.
         public static bool IsGapToken(string cls)
             => !string.IsNullOrEmpty(cls)
-                && (StyleArbitraryValueResolver.StripImportant(cls, out _).StartsWith("gap-", StringComparison.Ordinal)
+                && (StyleArbitraryValueResolver.ImportantCore(cls.AsSpan()).StartsWith("gap-".AsSpan(), StringComparison.Ordinal)
                     || IsSpaceToken(cls));
 
         // True for the space-x-* / space-y-* family, negative forms and reverse markers included.
