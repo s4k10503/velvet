@@ -353,6 +353,10 @@ namespace Velvet
                 if (ReferenceEquals(child.hierarchy.parent, container)) rows.Remove(child);
                 parent.Remove(child);
             }
+            catch (Exception exception)
+            {
+                if (!FileRemovalFailure(child, exception)) throw;
+            }
             finally
             {
                 Exit(container);
@@ -379,6 +383,10 @@ namespace Velvet
                 if (ReferenceEquals(child.hierarchy.parent, parent)) rows.Remove(child);
                 parent.hierarchy.Remove(child);
             }
+            catch (Exception exception)
+            {
+                if (!FileRemovalFailure(child, exception)) throw;
+            }
             finally
             {
                 Exit(parent);
@@ -400,10 +408,15 @@ namespace Velvet
                 return;
             }
             var rows = Enter(container, index);
+            var child = index >= 0 && index < container.hierarchy.childCount ? container.hierarchy[index] : null;
             try
             {
-                if (index >= 0 && index < container.hierarchy.childCount) rows.Remove(container.hierarchy[index]);
+                if (child != null) rows.Remove(child);
                 parent.RemoveAt(index);
+            }
+            catch (Exception exception)
+            {
+                if (child == null || !FileRemovalFailure(child, exception)) throw;
             }
             finally
             {
@@ -437,6 +450,10 @@ namespace Velvet
                 rows.Remove(child);
                 child.RemoveFromHierarchy();
             }
+            catch (Exception exception)
+            {
+                if (!FileRemovalFailure(child, exception)) throw;
+            }
             finally
             {
                 Exit(parent);
@@ -458,16 +475,35 @@ namespace Velvet
                 return;
             }
             var rows = Enter(container, -1);
+            System.Runtime.ExceptionServices.ExceptionDispatchInfo? first = null;
             try
             {
                 rows.Clear();
-                parent.Clear();
+                // A child at a time, in order, so one whose removal throws leaves the ones after it to be removed.
+                while (container.hierarchy.childCount > 0)
+                {
+                    var child = container.hierarchy[0];
+                    try
+                    {
+                        container.hierarchy.RemoveAt(0);
+                    }
+                    catch (Exception exception)
+                    {
+                        // A throw ahead of the child leaving the list would otherwise come round again.
+                        if (ReferenceEquals(child.hierarchy.parent, container)) throw;
+                        if (!FileRemovalFailure(child, exception))
+                        {
+                            first ??= System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(exception);
+                        }
+                    }
+                }
             }
             finally
             {
                 Exit(container);
             }
             PruneIfEmpty(container);
+            first?.Throw();
         }
 
         // ---- Recorded writes ----
@@ -641,9 +677,10 @@ namespace Velvet
         private static void RecordRemoveAt(ReconcilePass pass, VisualElement container, VisualElement caller, int index)
         {
             var rows = Synced(container, -1);
+            VisualElement? element = null;
             if (index >= 0 && index < rows.TotalCount)
             {
-                var element = rows.ElementAt(index);
+                element = rows.ElementAt(index);
                 rows.Remove(element);
                 pass.PendingParent[element] = null;
             }
@@ -651,7 +688,7 @@ namespace Velvet
             RecordBehindApplyingRoot(pass);
             pass.Ops.Add(new ReconcilePass.Op
             {
-                Container = container, Caller = caller, Index = index, Kind = ReconcilePass.OpKind.RemoveAt,
+                Container = container, Caller = caller, Child = element!, Index = index, Kind = ReconcilePass.OpKind.RemoveAt,
             });
             Touch(container);
         }
@@ -754,7 +791,12 @@ namespace Velvet
                     }
                     catch (Exception exception)
                     {
-                        var added = pass.Ops[i].Kind == ReconcilePass.OpKind.Insert ? pass.Ops[i].Child : null;
+                        var op = pass.Ops[i];
+                        if (op.Kind is ReconcilePass.OpKind.RemoveAt or ReconcilePass.OpKind.RemoveChild && op.Child != null)
+                        {
+                            NoteRemovalThrew(op.Child);
+                        }
+                        var added = op.Kind == ReconcilePass.OpKind.Insert ? op.Child : null;
                         if (!FileFailure(pass, added, exception))
                         {
                             first ??= System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(exception);
@@ -828,6 +870,36 @@ namespace Velvet
             }
             pass.Fail(root, root, exception, element, pass.PlaceNow);
             return true;
+        }
+
+        // What a removal made at once threw, filed as the current pass files a failed op (FileUnderTheRun), with the element
+        // noted as one whose removal threw. False where nothing takes it, which leaves the caller to rethrow.
+        private static bool FileRemovalFailure(VisualElement element, Exception exception)
+        {
+            NoteRemovalThrew(element);
+            return s_current is { } pass && FileUnderTheRun(pass, RunRootOf(pass), null, exception);
+        }
+
+        // The elements a removal of which threw, which FiberElementCleaner's pool returns and z-* release read.
+        private static readonly ConditionalWeakTable<VisualElement, object> s_removalThrew = new();
+        private static readonly object s_threw = new();
+
+        private static void NoteRemovalThrew(VisualElement element)
+        {
+            s_removalThrew.Remove(element);
+            s_removalThrew.Add(element, s_threw);
+        }
+
+        internal static bool RemovalThrew(VisualElement element) => s_removalThrew.TryGetValue(element, out _);
+
+        // Whether the removal of element, or of an element above it, threw.
+        internal static bool RemovalThrewAbove(VisualElement element)
+        {
+            for (VisualElement? at = element; at != null; at = at.hierarchy.parent)
+            {
+                if (RemovalThrew(at)) return true;
+            }
+            return false;
         }
 
         // The root of the run a removal decided now belongs to, as Apply reads runs: that of the op the pass is applying,

@@ -793,7 +793,36 @@ namespace Velvet
             {
                 s_held.Add(element, new Held { Role = role, Partner = partner, Slot = slot });
             }
+            if (role is Role.BackReal or Role.MiddleReal or Role.FrontReal) Watch(element);
             ChildListWrites.Reclassify(element);
+        }
+
+        // Whether UI Toolkit has sent real a DetachFromPanelEvent since it last attached, which
+        // FiberElementCleaner.ReleaseRetiredZLayerReals reads where a removal above the element threw. Noted in the
+        // trickle-down phase, ahead of the callbacks the element registers itself, so one of those that throws still
+        // finds it noted; DisposeDetachErrorTests' case of a z-* element throwing inside a row fails where it is not.
+        internal static bool DetachSent(VisualElement real) => s_detachSent.TryGetValue(real, out _);
+
+        private static readonly ConditionalWeakTable<VisualElement, object> s_watched = new();
+        private static readonly ConditionalWeakTable<VisualElement, object> s_detachSent = new();
+        private static readonly object s_noted = new();
+
+        private static readonly EventCallback<DetachFromPanelEvent> s_noteDetach = static evt =>
+        {
+            var element = (VisualElement)evt.currentTarget;
+            s_detachSent.Remove(element);
+            s_detachSent.Add(element, s_noted);
+        };
+
+        private static readonly EventCallback<AttachToPanelEvent> s_noteAttach =
+            static evt => s_detachSent.Remove((VisualElement)evt.currentTarget);
+
+        private static void Watch(VisualElement real)
+        {
+            if (s_watched.TryGetValue(real, out _)) return;
+            s_watched.Add(real, s_noted);
+            real.RegisterCallback(s_noteDetach, TrickleDown.TrickleDown);
+            real.RegisterCallback(s_noteAttach, TrickleDown.TrickleDown);
         }
 
         // The other flip of what ChildListWrites.Classify answers for an element: it holds no role any more.
