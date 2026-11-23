@@ -16,7 +16,9 @@ namespace Velvet.Tests
     /// applied, is reported the same way where the disposal removes it, each of two, and where a drain's update removes
     /// it, whichever walk cleans it up, the boundary above the component whose render removed it catches it, though a
     /// later render of the same drain records behind it. Under a reconciler no root owns, the first such error is thrown
-    /// once each element has left.
+    /// once each element has left. An element whose removal threw is neither removed again nor pooled, so its callback
+    /// runs once and is reported once where it sits in a clip-path wrapper, in a pooled button, or in a row whose removal
+    /// took it, and a pooled button whose own callback threw stays out of the pool.
     /// </summary>
     /// <remarks>
     /// The tree mounts on a real panel, which is what runs a detach callback.
@@ -47,38 +49,33 @@ namespace Velvet.Tests
             s_disposedByAnotherRoot = null;
             _host?.Dispose();
             _host = null;
+            VNodePoolTestAccess.ClearButtonPoolForTest();
         }
 
-        // Stands in for a V.Custom<T> whose element registers a panel-detach callback that throws.
+        // Stands in for a V.Custom<T> whose element registers a panel-detach callback, which throws on every call. Its
+        // message says whether the element attached as, or inside, a relocated z-* element, and inside a clip-path
+        // wrapper, so a case about either fails where the arrangement stops making one, and numbers every call after the
+        // first, so a callback run twice reads as two messages.
         internal sealed class DetachThrower : VisualElement
         {
+            private string _arranged = "";
+            private int _calls;
+
             public DetachThrower()
             {
-                RegisterCallback<DetachFromPanelEvent>(_ =>
+                RegisterCallback<AttachToPanelEvent>(_ =>
                 {
-                    s_detached++;
-                    throw new InvalidOperationException("detach:" + name);
+                    var parent = hierarchy.parent;
+                    _arranged = (FiberZLayerCoordinator.IsRelocatedReal(this) || FiberZLayerCoordinator.IsRelocatedReal(parent)
+                            ? ":z" : "")
+                        + (parent != null && parent.ClassListContains(FiberWrapperElementAppliers.ClipPathWrapperClass)
+                            ? ":wrapped" : "");
                 });
-            }
-        }
-
-        // As DetachThrower, saying in its message whether it attached as a relocated z-* element, so a case about one
-        // fails where the arrangement stops making one, and throwing from its first detach alone, so a removal after the
-        // case's own does not throw.
-        internal sealed class ZPlacedDetachThrower : VisualElement
-        {
-            private bool _relocated;
-            private bool _thrown;
-
-            public ZPlacedDetachThrower()
-            {
-                RegisterCallback<AttachToPanelEvent>(_ => _relocated = FiberZLayerCoordinator.IsRelocatedReal(this));
                 RegisterCallback<DetachFromPanelEvent>(_ =>
                 {
-                    if (_thrown) return;
-                    _thrown = true;
                     s_detached++;
-                    throw new InvalidOperationException("detach:" + name + (_relocated ? ":z" : ""));
+                    _calls++;
+                    throw new InvalidOperationException("detach:" + name + _arranged + (_calls > 1 ? "#" + _calls : ""));
                 });
             }
         }
@@ -113,7 +110,7 @@ namespace Velvet.Tests
             EventLog.UseRender("R");
             return V.Div(className: "relative", children: new VNode[]
             {
-                shown ? V.Custom<ZPlacedDetachThrower>(className: "absolute z-10", name: "Z", key: "thrower") : null,
+                shown ? V.Custom<DetachThrower>(className: "absolute z-10", name: "Z", key: "thrower") : null,
             });
         }
 
@@ -125,8 +122,38 @@ namespace Velvet.Tests
             var (shown, _) = EventLog.UseState("L", true);
             EventLog.UseRender("L");
             return V.Div(className: "relative", children: shown
-                ? new VNode[] { V.Custom<ZPlacedDetachThrower>(className: "absolute z-10", name: "Z", key: "thrower") }
+                ? new VNode[] { V.Custom<DetachThrower>(className: "absolute z-10", name: "Z", key: "thrower") }
                 : Array.Empty<VNode>());
+        }
+
+        [Component(Compiler = false)]
+        private static VNode RemovesAWrappedThrower()
+        {
+            var (shown, _) = EventLog.UseState("W", true);
+            EventLog.UseRender("W");
+            return V.Div(children: new VNode[]
+            {
+                shown ? V.Custom<DetachThrower>(className: "clip-path-[circle(50%)]", name: "W", key: "thrower") : null,
+            });
+        }
+
+        // Registers a detach callback that throws on every call, as an application's ref callback can.
+        private static readonly Func<VisualElement, Action> s_registersAThrowingDetach = element =>
+        {
+            element.RegisterCallback<DetachFromPanelEvent>(_ => throw new InvalidOperationException("detach:" + element.name));
+            return () => { };
+        };
+
+        [Component(Compiler = false)]
+        private static VNode RemovesTwoButtons()
+        {
+            var (shown, _) = EventLog.UseState("P", true);
+            EventLog.UseRender("P");
+            return V.Div(children: new VNode[]
+            {
+                shown ? V.Button(key: "thrower", name: "P", refCallback: s_registersAThrowingDetach) : null,
+                shown ? V.Button(key: "control") : null,
+            });
         }
 
         [Component(Compiler = false)]
@@ -264,8 +291,8 @@ namespace Velvet.Tests
         {
             // Arrange
             var mounted = V.Mount(_mountPoint, V.Fragment(
-                    V.Custom<ZPlacedDetachThrower>(className: "absolute z-10", name: "Y", key: "y"),
-                    V.Custom<ZPlacedDetachThrower>(className: "absolute z-10", name: "Z", key: "z")),
+                    V.Custom<DetachThrower>(className: "absolute z-10", name: "Y", key: "y"),
+                    V.Custom<DetachThrower>(className: "absolute z-10", name: "Z", key: "z")),
                 new MountOptions { OnUncaughtError = (error, _) => _reports.Add(error.Message) });
 
             // Act
@@ -340,8 +367,8 @@ namespace Velvet.Tests
             _host.Root.Add(scope.Root);
             var before = new VNode[]
             {
-                V.Custom<ZPlacedDetachThrower>(className: "absolute z-10", name: "Y", key: "first"),
-                V.Custom<ZPlacedDetachThrower>(className: "absolute z-10", name: "Y", key: "second"),
+                V.Custom<DetachThrower>(className: "absolute z-10", name: "Y", key: "first"),
+                V.Custom<DetachThrower>(className: "absolute z-10", name: "Y", key: "second"),
             };
             scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), before);
 
@@ -351,6 +378,118 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(string.Join(" / ", _reports), Is.EqualTo("threw:detach:Y:z@2"));
+        }
+
+        // GREEN_ON_BASE(characterization): UI Toolkit leaves an element whose detach callback threw naming its panel.
+        // FiberElementCleaner.StoppedPartway reads that, and an engine that clears the panel anyway reddens this.
+        [Test]
+        public void Given_AnElementWhoseDetachCallbackThrows_When_ItIsRemovedFromItsPanel_Then_ItStillNamesThatPanel()
+        {
+            // Arrange
+            var element = new DetachThrower();
+            _mountPoint.Add(element);
+
+            // Act
+            RecordingWhatItThrows(() => _mountPoint.Remove(element), _reports.Add);
+
+            // Assert
+            Assert.That(element.panel, Is.SameAs(_host.Panel));
+        }
+
+        [Test]
+        public void Given_AClipPathWrappedElementThatThrowsAsItDetaches_When_TheHandleIsDisposed_Then_ItsCallbackRunsOnceAndTheRootReportsIt()
+        {
+            // Arrange
+            var mounted = V.Mount(_mountPoint, V.Custom<DetachThrower>(className: "clip-path-[circle(50%)]", name: "X", key: "x"),
+                new MountOptions { OnUncaughtError = (error, _) => _reports.Add(error.Message) });
+
+            // Act
+            RecordingWhatItThrows(mounted.Dispose, _reports.Add);
+
+            // Assert
+            Assert.That(string.Join(" / ", _reports), Is.EqualTo("detach:X:wrapped"));
+        }
+
+        [Test]
+        public void Given_APooledButtonHoldingAnElementThatThrowsAsItDetaches_When_TheHandleIsDisposed_Then_ItsCallbackRunsOnceAndTheRootReportsIt()
+        {
+            // Arrange
+            var mounted = V.Mount(_mountPoint,
+                V.Button(key: "button", children: new VNode[] { V.Custom<DetachThrower>(name: "X", key: "x") }),
+                new MountOptions { OnUncaughtError = (error, _) => _reports.Add(error.Message) });
+
+            // Act
+            RecordingWhatItThrows(mounted.Dispose, _reports.Add);
+
+            // Assert
+            Assert.That(string.Join(" / ", _reports), Is.EqualTo("detach:X"));
+        }
+
+        [Test]
+        public void Given_AClipPathWrappedZPlacedElementInTheMountTargetThatThrowsAsItDetaches_When_TheHandleIsDisposed_Then_ItsCallbackRunsOnceAndTheRootReportsIt()
+        {
+            // Arrange
+            var mounted = V.Mount(_mountPoint,
+                V.Custom<DetachThrower>(className: "absolute z-10 clip-path-[circle(50%)]", name: "X", key: "x"),
+                new MountOptions { OnUncaughtError = (error, _) => _reports.Add(error.Message) });
+
+            // Act
+            RecordingWhatItThrows(mounted.Dispose, _reports.Add);
+
+            // Assert
+            Assert.That(string.Join(" / ", _reports), Is.EqualTo("detach:X:z:wrapped"));
+        }
+
+        [Test]
+        public void Given_AZPlacedElementThatThrowsAsItDetachesInsideARow_When_TheHandleIsDisposed_Then_ItsCallbackRunsOnceAndTheRootReportsIt()
+        {
+            // Arrange
+            var mounted = V.Mount(_mountPoint, V.Div(className: "relative", key: "row", children: new VNode[]
+                {
+                    V.Custom<DetachThrower>(className: "absolute z-10", name: "Z", key: "z"),
+                }),
+                new MountOptions { OnUncaughtError = (error, _) => _reports.Add(error.Message) });
+
+            // Act
+            RecordingWhatItThrows(mounted.Dispose, _reports.Add);
+
+            // Assert
+            Assert.That(string.Join(" / ", _reports), Is.EqualTo("detach:Z:z"));
+        }
+
+        [Test]
+        public void Given_ABoundaryAboveAComponentWhoseClipPathWrappedElementThrowsAsItDetaches_When_ADrainRemovesTheElement_Then_ItsCallbackRunsOnceAndTheBoundaryReportsIt()
+        {
+            // Arrange
+            var log = new EventLog();
+            using var mounted = V.Mount(_mountPoint, log.Provide(V.Component(FirstBoundary,
+                new Holds(V.Component(RemovesAWrappedThrower, key: "w")), key: "b1")), log.ReportingErrors());
+            log.Clear();
+
+            // Act
+            log.Setter<bool>("W").Invoke(false);
+            RecordingWhatItThrows(mounted.GetSchedulerForTest().DrainImmediateForTest, log.Add);
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("render:W caught:B1:detach:W:wrapped"));
+        }
+
+        // The button removed alongside is the control: it goes back to the pool.
+        [Test]
+        public void Given_TwoPooledButtonsOneOfWhichThrowsAsItDetaches_When_ADrainRemovesBoth_Then_OnlyTheOtherGoesBackToThePool()
+        {
+            // Arrange
+            VNodePoolTestAccess.ClearButtonPoolForTest();
+            var log = new EventLog();
+            using var mounted = V.Mount(_mountPoint, log.Provide(V.Component(FirstBoundary,
+                new Holds(V.Component(RemovesTwoButtons, key: "p")), key: "b1")), log.ReportingErrors());
+
+            // Act
+            log.Setter<bool>("P").Invoke(false);
+            RecordingWhatItThrows(mounted.GetSchedulerForTest().DrainImmediateForTest, log.Add);
+
+            // Assert
+            Assert.That(VNodePoolTestAccess.ButtonPoolCountForTest, Is.EqualTo(1));
         }
     }
 }
