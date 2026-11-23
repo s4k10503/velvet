@@ -453,9 +453,18 @@ namespace Velvet.Tests
             Assert.That(importantBlocks, Is.EqualTo(plainBlocks));
         }
 
-        // StyleClassFamilies keeps a reading by the array's identity, so each window reads a copy it has kept none for.
-        private static int FamilyReadMissBlocks(string[] classNames)
+        [TestCase("flex", "flex-row", "dark:-skew-x-6", "dark:shadow-lg", "dark:border-dashed", "dark:bg-gradient-to-r",
+            "dark:from-blue-500", "dark:to-blue-900", "dark:animate-none")]
+        [TestCase("!bg-red-500")]
+        [TestCase("bg-red-500!")]
+        [TestCase("hover:!bg-red-500")]
+        [TestCase("!shadow-md")]
+        [TestCase("!inset-ring")]
+        public void Given_VariantOrImportantClassesTheFamilyTableHasNotRead_When_TheirFamiliesAreRead_Then_NothingIsAllocated(
+            params string[] classNames)
         {
+            // Arrange
+            // StyleClassFamilies keeps a reading by the array's identity, so each window reads a copy it has kept none for.
             var fresh = classNames;
             void Copy() => fresh = (string[])classNames.Clone();
             void ReadFamilies() => StyleClassFamilies.Has(fresh, StyleClassFamily.Stacking);
@@ -464,35 +473,9 @@ namespace Velvet.Tests
                 Copy();
                 ReadFamilies();
             }
-            return GCAllocationProbe.MedianBlocksDuring(Copy, ReadFamilies);
-        }
-
-        [Test]
-        public void Given_VariantClassesNotReadBefore_When_TheirFamiliesAreRead_Then_NothingIsAllocated()
-        {
-            // Arrange
-            var classNames = new[]
-            {
-                "flex", "flex-row", "dark:-skew-x-6", "dark:shadow-lg", "dark:border-dashed", "dark:bg-gradient-to-r",
-                "dark:from-blue-500", "dark:to-blue-900", "dark:animate-none",
-            };
 
             // Act
-            var blocks = FamilyReadMissBlocks(classNames);
-
-            // Assert
-            Assert.That(blocks, Is.Zero);
-        }
-
-        [TestCase("!bg-red-500")]
-        [TestCase("bg-red-500!")]
-        [TestCase("hover:!bg-red-500")]
-        [TestCase("!shadow-md")]
-        [TestCase("!inset-ring")]
-        public void Given_AnImportantClassNotReadBefore_When_ItsFamiliesAreRead_Then_NothingIsAllocated(string cls)
-        {
-            // Act
-            var blocks = FamilyReadMissBlocks(new[] { cls });
+            var blocks = GCAllocationProbe.MedianBlocksDuring(Copy, ReadFamilies);
 
             // Assert
             Assert.That(blocks, Is.Zero);
