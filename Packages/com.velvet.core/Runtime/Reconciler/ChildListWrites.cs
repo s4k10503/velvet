@@ -481,14 +481,14 @@ namespace Velvet
         // above) answer from it meanwhile, and a container with a recorded write is skipped by the checks that compare the
         // model with the live list. Insert, Remove, RemoveAt, RemoveFromHierarchy, HierarchyRemove and Clear made into such
         // a container, or of a child one holds, are recorded behind them too, and so is one made while they apply.
-        // HierarchySort sorts the live list, and asserts that no pass is recording a write for the container, which it
-        // does not read while the pass applies.
+        // HierarchySort sorts the live list, and asserts that the pass holds no recorded write for the container, except
+        // while it applies.
         //
         // The list, and the parents it leaves pending, belong to the ReconcilePass that recorded them, and s_current is
-        // the one that is recording or applying. Outside every pass nothing is recorded: ParentOf
-        // answers from the live tree and a write is made at once. The model of a container (s_rows) belongs to the container, whichever pass writes it, and the readers
-        // of the model answer from the container's own Pending count, which each pass raises by what it marks and
-        // takes off by the same amount where it applies.
+        // that pass from BeginRecording until EndRecording has applied it. Outside it nothing is recorded: ParentOf
+        // answers from the live tree and a write is made at once. The model of a container (s_rows) belongs to the
+        // container, and the readers of the model answer from the container's own Pending count, which the pass raises
+        // by what it marks and takes off by the same amount where it applies.
         private static ReconcilePass? s_current;
 
         // Raised around the writes HostCommitQueue makes, which are the ones recorded.
@@ -721,9 +721,9 @@ namespace Velvet
             pass.Ops.Add(new ReconcilePass.Op { Index = pass.Patches.Count - 1, Kind = kind });
         }
 
-        // The pass whose recorded ops hold the container, the child or the live parent of the child; null where none
-        // does or the pass is applying them. A writer that finds one records its write behind those ops, which the live
-        // list has not taken yet.
+        // The current pass where its recorded ops hold the container, the child or the live parent of the child; null
+        // where they do not or it is applying them. A writer that finds it records its write behind those ops, which the
+        // live list has not taken yet.
         private static ReconcilePass? HoldingPass(VisualElement? container, VisualElement? child)
         {
             var pass = s_current;
@@ -733,8 +733,7 @@ namespace Velvet
                     || (child.hierarchy.parent is { } live && pass.PendingContainers.ContainsKey(live)))) ? pass : null;
         }
 
-        // Puts the recorded writes on the live lists in the order they were made. Recording goes on: only EndRecording
-        // ends it, and a flush made mid-pass applies what is recorded while the pass keeps recording. An op that throws
+        // Puts the recorded writes on the live lists in the order they were made. An op that throws
         // does not stop the ones behind it: the walk has moved on from each of them, so the live tree has to take every
         // one. The first exception is rethrown once they have, except where a wave recorded the ops: there each is kept
         // for the wave to route (ReconcilePass.Failures), filed under the component that rendered the element an insert
@@ -927,6 +926,8 @@ namespace Velvet
         // pass as well, which has nothing to apply: a pass records only while it is current.
         internal static void EndRecording(ReconcilePass pass)
         {
+            UnityEngine.Debug.Assert(s_current == null || ReferenceEquals(s_current, pass),
+                "A pass ended while another was recording or applying.");
             pass.Recording = false;
             try
             {
