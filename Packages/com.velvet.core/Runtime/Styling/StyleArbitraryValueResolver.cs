@@ -3445,21 +3445,39 @@ namespace Velvet
             return !AutoLayerWins(element, property);
         }
 
-        // The layer that holds property over the element's classes, when it is a length expression reading a
-        // percentage: the pixels written inline are the last tick's of it, so a reader that needs the current
-        // ones resolves the expression itself (StyleRelativeLengths.TryResolve).
+        // The layer that ends up holding longhand, among the writers connected to seed (the property named for it
+        // or the shorthand beside it), in the order ResolveSharedLonghands applies them, when it is a length
+        // expression reading a percentage: the pixels written inline are the last tick's of it, so a reader that needs
+        // the current ones resolves the expression itself (StyleRelativeLengths.TryResolve).
         internal static bool TryWinningPercentageExpression(
-            VisualElement element, ArbitraryProperty property, out StyleLengthExpression expression)
+            VisualElement element, ArbitraryProperty seed, StyleLonghand longhand, out StyleLengthExpression expression)
         {
             expression = null!;
-            if (!s_layers.TryGetValue(element, out var map)
-                || !TryWinningLayer(map, property, out var winner)
-                || winner.Expression == null
-                || !winner.Expression.ReadsPercentage)
+            if (!s_layers.TryGetValue(element, out var map))
             {
                 return false;
             }
-            expression = winner.Expression;
+            var writers = ConnectedWriters(seed, map);
+            ArbitraryStyle holder = default;
+            var held = false;
+            if (writers == null)
+            {
+                held = StyleArbitraryLonghands.Of(seed).Contains(longhand) && TryWinningLayer(map, seed, out holder);
+            }
+            else
+            {
+                SortWriters(writers, map);
+                for (var i = writers.Count - 1; i >= 0 && !held; i--)
+                {
+                    holder = writers[i].Style;
+                    held = StyleArbitraryLonghands.Of(holder.Property).Contains(longhand);
+                }
+            }
+            if (!held || holder.Expression == null || !holder.Expression.ReadsPercentage)
+            {
+                return false;
+            }
+            expression = holder.Expression;
             return true;
         }
 
@@ -3972,17 +3990,7 @@ namespace Velvet
                 return 0;
             }
 
-            writers.Sort((a, z) =>
-            {
-                var byKey = a.Key.CompareTo(z.Key);
-                if (byKey != 0)
-                {
-                    return byKey;
-                }
-                var byCascade = StyleSpacingPrecedence.CompareCascade(a.Style.Property, z.Style.Property);
-                return byCascade != 0 ? byCascade : map.ArrivalOf(a.Style.Property, a.Key)
-                    .CompareTo(map.ArrivalOf(z.Style.Property, z.Key));
-            });
+            SortWriters(writers, map);
             var slots = 0;
             foreach (var (key, style) in writers)
             {
@@ -3996,6 +4004,21 @@ namespace Velvet
             }
             return slots;
         }
+
+        // Ascending by the order ResolveSharedLonghands applies them in, so the last of those writing a longhand is the
+        // one that holds it.
+        private static void SortWriters(List<(long Key, ArbitraryStyle Style)> writers, LayerMap map)
+            => writers.Sort((a, z) =>
+            {
+                var byKey = a.Key.CompareTo(z.Key);
+                if (byKey != 0)
+                {
+                    return byKey;
+                }
+                var byCascade = StyleSpacingPrecedence.CompareCascade(a.Style.Property, z.Style.Property);
+                return byCascade != 0 ? byCascade : map.ArrivalOf(a.Style.Property, a.Key)
+                    .CompareTo(map.ArrivalOf(z.Style.Property, z.Key));
+            });
 
         // Writes the layer that won a property at key. Preflight's is shown through the element's inline rule, which an
         // inline value stands over, and no inline value of the element's own is written over.

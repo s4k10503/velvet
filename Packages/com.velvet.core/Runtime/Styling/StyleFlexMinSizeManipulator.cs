@@ -312,10 +312,11 @@ namespace Velvet
         // reads shows only in the layer that holds it.
         private static bool ReadsPercentageLayer(TextElement textElement, bool horizontal)
             => StyleArbitraryValueResolver.TryWinningPercentageExpression(
-                    textElement, horizontal ? ArbitraryProperty.Width : ArbitraryProperty.Height, out _)
+                    textElement, horizontal ? ArbitraryProperty.Width : ArbitraryProperty.Height,
+                    horizontal ? StyleLonghand.Width : StyleLonghand.Height, out _)
                 || StyleArbitraryValueResolver.TryWinningPercentageExpression(
-                    textElement, horizontal ? ArbitraryProperty.MaxWidth : ArbitraryProperty.MaxHeight, out _)
-                || StyleArbitraryValueResolver.TryWinningPercentageExpression(textElement, ArbitraryProperty.Size, out _);
+                    textElement, horizontal ? ArbitraryProperty.MaxWidth : ArbitraryProperty.MaxHeight,
+                    horizontal ? StyleLonghand.MaxWidth : StyleLonghand.MaxHeight, out _);
 
         // Where ResolveLength takes the parent's content box into the length.
         private static bool IsPercent(StyleLength inline, Dim? fromClass)
@@ -359,16 +360,16 @@ namespace Velvet
                     - resolved.borderLeftWidth - resolved.borderRightWidth;
 
         private float? SpecifiedLength(TextElement textElement, bool horizontal, float parentContent)
-            => TryLayerLength(textElement, horizontal, horizontal ? ArbitraryProperty.Width : ArbitraryProperty.Height,
-                    out var fromLayer)
+            => TryLayerLength(textElement, horizontal ? ArbitraryProperty.Width : ArbitraryProperty.Height,
+                    horizontal ? StyleLonghand.Width : StyleLonghand.Height, horizontal, out var fromLayer)
                 ? fromLayer
                 : ResolveLength(
                     horizontal ? textElement.style.width : textElement.style.height,
                     horizontal ? _specifiedWidth : _specifiedHeight, parentContent);
 
         private float? MaximumLength(TextElement textElement, bool horizontal, float parentContent)
-            => TryLayerLength(textElement, horizontal, horizontal ? ArbitraryProperty.MaxWidth : ArbitraryProperty.MaxHeight,
-                    out var fromLayer)
+            => TryLayerLength(textElement, horizontal ? ArbitraryProperty.MaxWidth : ArbitraryProperty.MaxHeight,
+                    horizontal ? StyleLonghand.MaxWidth : StyleLonghand.MaxHeight, horizontal, out var fromLayer)
                 ? fromLayer
                 : ResolveLength(
                     horizontal ? textElement.style.maxWidth : textElement.style.maxHeight,
@@ -377,11 +378,11 @@ namespace Velvet
         // A bracket length that reads a percentage is resolved against the parent's box as it is now: what the
         // layer last wrote inline is the poll's, which runs after the layout that moved the box. Null while the
         // element is not laid out or the percentage is of an indefinite size.
-        private static bool TryLayerLength(TextElement textElement, bool horizontal, ArbitraryProperty own, out float? length)
+        private static bool TryLayerLength(
+            TextElement textElement, ArbitraryProperty seed, StyleLonghand longhand, bool horizontal, out float? length)
         {
             length = null;
-            if (!StyleArbitraryValueResolver.TryWinningPercentageExpression(textElement, own, out var expression)
-                && !StyleArbitraryValueResolver.TryWinningPercentageExpression(textElement, ArbitraryProperty.Size, out expression))
+            if (!StyleArbitraryValueResolver.TryWinningPercentageExpression(textElement, seed, longhand, out var expression))
             {
                 return false;
             }

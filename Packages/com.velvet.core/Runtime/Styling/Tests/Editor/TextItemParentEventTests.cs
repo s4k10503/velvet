@@ -503,6 +503,51 @@ namespace Velvet.Tests
             Assert.That(label.style.minHeight.value.value, Is.EqualTo(3f).Within(0.01f));
         }
 
+        // GREEN_ON_BASE(characterization): the base caps the minimum by the inline max-width, which is the pixel layer's. A maximum read from the size layer's percentage instead caps it at 1002 and the minimum is the widest word's.
+        [Test]
+        public void Given_ALabelWithABracketCalcPercentSizeAndAPixelMaxWidth_When_Mounted_Then_ItsMinWidthIsCappedByTheMaxWidth()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var label = MountLabel(scope, WideRow, "shrink-0 size-[calc(50%+2px)] max-w-[40px]", Sentence);
+
+            // Act
+            var minimum = label.style.minWidth.value.value;
+
+            // Assert
+            Assert.That(minimum, Is.EqualTo(40f).Within(0.01f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base caps the minimum by the inline width, which the width layer wins over the size layer's. A width read from the size layer's percentage instead caps it at 1002.
+        [Test]
+        public void Given_ALabelWithAPixelWidthOverABracketCalcPercentSize_When_Mounted_Then_ItsMinWidthIsCappedByTheWidth()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var label = MountLabel(scope, WideRow, "shrink-0 w-[40px] size-[calc(50%+2px)]", Sentence);
+
+            // Act
+            var minimum = label.style.minWidth.value.value;
+
+            // Assert
+            Assert.That(minimum, Is.EqualTo(40f).Within(0.01f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base caps the minimum by the inline width, which the important size layer holds. A width read from the lower width layer's percentage instead caps it at 1002.
+        [Test]
+        public void Given_ALabelWithAPercentWidthUnderAHigherKeyedPixelSize_When_Mounted_Then_ItsMinWidthIsCappedByTheSize()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var label = MountLabel(scope, WideRow, "shrink-0 w-[calc(50%+2px)] !size-[40px]", Sentence);
+
+            // Act
+            var minimum = label.style.minWidth.value.value;
+
+            // Assert
+            Assert.That(minimum, Is.EqualTo(40f).Within(0.01f));
+        }
+
         // GREEN_ON_BASE(characterization): the base reads a text whose widest run is as wide as the whole text as one a minimum can reach. Change `>=` to `>` in MinimumCanReach and the equal widths no longer do.
         [Test]
         public void Given_ATextWithABreakInItWhoseWidestRunIsItsWholeWidth_When_AskedWhetherTheMinimumCanReachIt_Then_ItCan()
