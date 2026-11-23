@@ -540,9 +540,9 @@ namespace Velvet
                 unset = payloads == null || !AllWrite(payloads, consumer.Sides == null || split!.Length == 1 ? property : null);
                 payloads = unset ? null : payloads;
             }
-            else if (payloads == null && consumer.UnsetUtility != null)
+            else if (payloads == null)
             {
-                payloads = new[] { consumer.UnsetUtility };
+                payloads = UnsetPayloads(consumer, source != null);
             }
             payloads = WithBang(consumer, payloads);
             var current = IsCurrentBeforeUnset(target, consumer, resolved);

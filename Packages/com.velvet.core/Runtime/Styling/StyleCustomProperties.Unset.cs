@@ -71,6 +71,35 @@ namespace Velvet
                 ["skew-"] = ("skew-0", "skew-0", "skew-0", "skew-0"),
             };
 
+        // What a consumer that applied no payload writes: for a ring colour whose modifier variable resolved to something Split
+        // does not take as a percentage, a bracket no colour reader takes behind a modifier, which discards the box-shadow
+        // (StyleRingClass.DiscardsBoxShadow). An undeclared variable resolves to nothing and keeps UnsetUtility's
+        // text-colour ring.
+        private static string[]? UnsetPayloads(Consumer consumer, bool resolved)
+        {
+            var discarding = resolved ? DiscardingRingColour(consumer) : null;
+            var utility = discarding ?? consumer.UnsetUtility;
+            return utility == null ? null : new[] { utility };
+        }
+
+        // Null for any other consumer, and for a ring width, which takes no modifier.
+        private static string? DiscardingRingColour(Consumer consumer)
+        {
+            if (!consumer.ModifierReadsVariable || consumer.Shape.Hint == "length")
+            {
+                return null;
+            }
+            var utility = consumer.Utility;
+            foreach (var root in new[] { "ring-offset-", "inset-ring-", "ring-" })
+            {
+                if (utility.StartsWith(root, StringComparison.Ordinal))
+                {
+                    return root + "[foo]/50";
+                }
+            }
+            return null;
+        }
+
         private static bool Inherits(ArbitraryProperty property)
             => property is ArbitraryProperty.TextColor or ArbitraryProperty.FontSize or ArbitraryProperty.LetterSpacing;
 

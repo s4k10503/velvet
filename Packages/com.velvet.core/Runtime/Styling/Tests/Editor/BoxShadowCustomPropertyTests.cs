@@ -317,6 +317,22 @@ namespace Velvet.Tests
             Assert.That(drawn, Is.False);
         }
 
+        // An untyped bracket that is no colour and no length is mixed into a colour all the same, which the box-shadow then
+        // finds invalid; a length is the width's, which takes no modifier.
+        [TestCase("ring-2 ring-[10%]/50")]
+        [TestCase("ring-2 ring-[foo]/50")]
+        [TestCase("ring ring-offset-2 ring-offset-[foo]/50")]
+        [TestCase("shadow-lg inset-ring inset-ring-[10%]/50")]
+        public void Given_AnUntypedRingBracketHoldingNoColourWithAModifier_When_Extracted_Then_TheBoxShadowIsDiscarded(string classes)
+        {
+            // Act
+            var drawn = StyleShadowClass.TryExtract(StyleSpacingPrecedence.Normalize(classes.Split(' ')), out _)
+                || StyleRingClass.TryExtract(StyleSpacingPrecedence.Normalize(classes.Split(' ')), out _);
+
+            // Assert
+            Assert.That(drawn, Is.False);
+        }
+
         [TestCase("ring-[number:var(--x)]/50")]
         [TestCase("ring-offset-[number:var(--x)]/50")]
         [TestCase("inset-ring-[percentage:var(--x)]/50")]
@@ -337,6 +353,95 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(ring, Is.EqualTo(0f));
+        }
+
+        // The colour of the ring an element with classes paints, "current" where it takes the text colour and "no ring" where
+        // it paints none.
+        private static string RingColour(string classes)
+        {
+            using var scope = new ReconcilerScope();
+            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(),
+                new VNode[] { V.Div(className: classes, name: "card") });
+            var binding = RingOverlay.TryGet(scope.Root.Q<VisualElement>("card"));
+            return binding == null ? "no ring" : binding.Spec.Ring.CurrentColor ? "current" : ColorUtility.ToHtmlStringRGBA(binding.Spec.Ring.Color);
+        }
+
+        // GREEN_ON_BASE(characterization): the base already discards the box-shadow for these, Chromium's outcome with the variable declared.
+        [TestCase("ring-[number:5px]/[var(--a)]")]
+        [TestCase("ring-[unset]/(--a)")]
+        [TestCase("ring-[number:5px]/(--a)")]
+        public void Given_ARingBracketHoldingNoColourWithAModifierReadingAPercentage_When_Mounted_Then_NoRingIsDrawn(string cls)
+        {
+            // Act
+            var control = Ring("[--a:50%] ring-2");
+            var ring = control == 2f ? RingColour("[--a:50%] ring-2 " + cls) : "control undrawn";
+
+            // Assert
+            Assert.That(ring, Is.EqualTo("no ring"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base already draws this, Chromium's outcome with the variable declared.
+        [Test]
+        public void Given_ARingColourWithAModifierReadingAPercentage_When_Mounted_Then_ItIsThatColourAtThatOpacity()
+        {
+            // Act
+            var colour = RingColour("[--a:50%] ring-2 ring-[red]/(--a)");
+
+            // Assert
+            Assert.That(colour, Is.EqualTo("FF000080"));
+        }
+
+        // The variable is declared, so the modifier is a value that is no percentage rather than nothing.
+        [TestCase("ring-[red]/(--a)")]
+        [TestCase("ring-[red]/[var(--a)]")]
+        public void Given_ARingColourWithAModifierReadingAPropertyHoldingNoPercentage_When_Mounted_Then_NoRingIsDrawn(string cls)
+        {
+            // Act
+            var control = Ring("[--a:50%] ring-2");
+            var ring = control == 2f ? RingColour("[--a:0.5] ring-2 " + cls) : "control undrawn";
+
+            // Assert
+            Assert.That(ring, Is.EqualTo("no ring"));
+        }
+
+        // A math function coming to a percentage is a percentage, written as a variable's value or as a bracket's.
+        [TestCase("[--a:calc(50%)] ring-2 ring-[red]/(--a)")]
+        [TestCase("[--a:calc(50%)] ring-2 ring-[red]/[var(--a)]")]
+        [TestCase("ring-2 ring-[red]/[calc(50%)]")]
+        public void Given_ARingColourWithAModifierThatIsAMathFunctionComingToAPercentage_When_Mounted_Then_ItIsThatColourAtThatOpacity(
+            string classes)
+        {
+            // Act
+            var colour = RingColour(classes);
+
+            // Assert
+            Assert.That(colour, Is.EqualTo("FF000080"));
+        }
+
+        // GREEN_ON_BASE(characterization): the variable's payload is the literal modifier's text, which the box-shadow readers reject past 0..100%.
+        [TestCase("[--a:150%] ring-2 ring-[red]/(--a)")]
+        [TestCase("[--a:-10%] ring-2 ring-[red]/(--a)")]
+        [TestCase("ring-2 ring-[red]/[150%]")]
+        [TestCase("ring-2 ring-[red]/[-10%]")]
+        public void Given_ARingColourWithAModifierOutsideZeroToOneHundredPercent_When_Mounted_Then_NoRingIsDrawn(string classes)
+        {
+            // Act
+            var control = Ring("[--a:50%] ring-2");
+            var ring = control == 2f ? RingColour(classes) : "control undrawn";
+
+            // Assert
+            Assert.That(ring, Is.EqualTo("no ring"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base already draws the text-colour ring, as Chromium does with the variable undeclared.
+        [Test]
+        public void Given_ARingBracketHoldingNoColourWithAModifierReadingAnUndeclaredProperty_When_Mounted_Then_TheRingIsDrawnInTheTextColour()
+        {
+            // Act
+            var colour = RingColour("ring-2 ring-[number:5px]/(--a)");
+
+            // Assert
+            Assert.That(colour, Is.EqualTo("current"));
         }
 
         // GREEN_ON_BASE(characterization): the base draws the ring, which holds a colour whatever the bracket's hint.

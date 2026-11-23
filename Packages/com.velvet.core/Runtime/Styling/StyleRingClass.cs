@@ -437,8 +437,8 @@ namespace Velvet
         // Whether suffix is a bracket holding a value that is no colour, behind an opacity modifier that reads no variable
         // and under no type hint or one that is not root's width's: Tailwind mixes it into a colour, a custom property the
         // box-shadow reads, which the browser then finds invalid there. A colour under such a hint is valid, and read as a
-        // colour; a keyword is none, and so is a hinted value Velvet's grammar rejects. A width's hint, or a modifier that reads a
-        // variable, leaves it as it was.
+        // colour; a keyword is none, and so is a value Velvet's grammar rejects, an untyped one unless it is a length,
+        // which Tailwind takes for the width. A width's hint, or a modifier that reads a variable, leaves it as it was.
         private static bool MixesNonColour(string suffix, string root)
         {
             var slash = StyleColorValueParser.ColorModifierSlashIndex(suffix, 0);
@@ -449,8 +449,8 @@ namespace Velvet
                 && !modifier.IsEmpty && modifier[0] != '(' && modifier.IndexOf("var(".AsSpan()) < 0
                 && StyleArbitraryValueResolver.TrySplitTypeHint(suffix.AsSpan(1, slash - 2), out var hint, out var value)
                 && (hint == null || !StyleColorValueParser.HintSelectsNonColour(root, hint))
-                && (StyleColorValueParser.IsKeyword(value.ToString())
-                    || (hint != null && StyleColorValueParser.RejectsAsColour(value.ToString())));
+                && StyleColorValueParser.RejectsAsColour(value.ToString())
+                && (hint != null || !TailwindDataTypes.IsLength(value));
         }
 
         // Tailwind's isPositiveInteger: String(Number(suffix)) === suffix, so digits without a leading zero, naming

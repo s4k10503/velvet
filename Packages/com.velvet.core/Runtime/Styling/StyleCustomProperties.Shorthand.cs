@@ -24,7 +24,7 @@ namespace Velvet
             if (consumer.ModifierReadsVariable)
             {
                 var modifier = source.LastIndexOf("/[", StringComparison.Ordinal);
-                if (modifier < 0 || source.Length < modifier + 4 || source[source.Length - 2] != '%')
+                if (modifier < 0 || !StyleColorValueParser.ModifierIsPercentage(source.AsSpan(modifier + 1)))
                 {
                     return null;
                 }
