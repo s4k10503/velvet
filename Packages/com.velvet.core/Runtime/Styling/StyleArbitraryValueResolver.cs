@@ -37,22 +37,11 @@ namespace Velvet
                 return className;
             }
 
-            if (className[0] == '!')
+            if (className[0] == '!' || className[className.Length - 1] == '!')
             {
-                // Ahead of variants (!hover:w-4) the bang makes a candidate Tailwind generates no rule for, so the
-                // token is left whole and not important.
-                if (StyleSpacingPrecedence.VariantsLength(className) > 0)
-                {
-                    return className;
-                }
-                important = true;
-                return className.Substring(1);
-            }
-
-            if (className[className.Length - 1] == '!')
-            {
-                important = true;
-                return className.Substring(0, className.Length - 1);
+                var core = ImportantCore(className.AsSpan());
+                important = core.Length != className.Length;
+                return important ? core.ToString() : className;
             }
 
             // Tailwind's spelling behind variants (hover:!w-4), whose bang opens the utility after the last variant.
@@ -69,6 +58,25 @@ namespace Velvet
             }
 
             return className;
+        }
+
+        // StripImportant's core without the copy, for a reader comparing it against names and prefixes holding no
+        // colon. Where StripImportant removes a bang from behind variants (hover:!w-4), no slice of the token is the
+        // core, so the token comes back as written: both open with the same variants, which leaves neither equal to
+        // such a name and each opening with such a prefix exactly when those variants do.
+        internal static ReadOnlySpan<char> ImportantCore(ReadOnlySpan<char> className)
+        {
+            if (className.Length == 0)
+            {
+                return className;
+            }
+            if (className[0] == '!')
+            {
+                // Ahead of variants (!hover:w-4) the bang makes a candidate Tailwind generates no rule for, so the
+                // token is left whole and not important.
+                return StyleSpacingPrecedence.VariantsLength(className) > 0 ? className : className.Slice(1);
+            }
+            return className[className.Length - 1] == '!' ? className.Slice(0, className.Length - 1) : className;
         }
 
         // True when a class token encodes an inline value (resolved to inline style) rather than a plain

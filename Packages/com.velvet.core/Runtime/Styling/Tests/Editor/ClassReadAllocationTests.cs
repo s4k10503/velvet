@@ -452,5 +452,33 @@ namespace Velvet.Tests
             // Assert
             Assert.That(importantBlocks, Is.EqualTo(plainBlocks));
         }
+
+        [TestCase("flex", "flex-row", "dark:-skew-x-6", "dark:shadow-lg", "dark:border-dashed", "dark:bg-gradient-to-r",
+            "dark:from-blue-500", "dark:to-blue-900", "dark:animate-none")]
+        [TestCase("!bg-red-500")]
+        [TestCase("bg-red-500!")]
+        [TestCase("hover:!bg-red-500")]
+        [TestCase("!shadow-md")]
+        [TestCase("!inset-ring")]
+        public void Given_VariantOrImportantClassesTheFamilyTableHasNotRead_When_TheirFamiliesAreRead_Then_NothingIsAllocated(
+            params string[] classNames)
+        {
+            // Arrange
+            // StyleClassFamilies keeps a reading by the array's identity, so each window reads a copy it has kept none for.
+            var fresh = classNames;
+            void Copy() => fresh = (string[])classNames.Clone();
+            void ReadFamilies() => StyleClassFamilies.Has(fresh, StyleClassFamily.Stacking);
+            for (var i = 0; i < 64; i++)
+            {
+                Copy();
+                ReadFamilies();
+            }
+
+            // Act
+            var blocks = GCAllocationProbe.MedianBlocksDuring(Copy, ReadFamilies);
+
+            // Assert
+            Assert.That(blocks, Is.Zero);
+        }
     }
 }

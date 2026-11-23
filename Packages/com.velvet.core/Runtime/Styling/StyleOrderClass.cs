@@ -11,8 +11,7 @@ namespace Velvet
     {
         private const string Prefix = "order-";
 
-        // Whether core, with its important bang stripped, is an order-* utility of any spelling, parsed or not.
-        internal static bool IsOrderToken(string core) => StyleIntegerUtility.IsToken(core, Prefix);
+        internal static bool IsOrderToken(ReadOnlySpan<char> core) => StyleIntegerUtility.IsToken(core, Prefix);
 
         // Cheap early-out gate ahead of TryExtract.
         public static bool HasOrderClass(string[] classNames)

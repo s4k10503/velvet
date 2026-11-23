@@ -7,19 +7,14 @@ namespace Velvet
     // integer bare or bracketed, with the cascade's important-beats-plain, later-beats-earlier winner.
     internal static class StyleIntegerUtility
     {
-        // Whether core, with its important bang stripped, is `prefix` or `-prefix` followed by anything.
-        internal static bool IsToken(string core, string prefix)
-        {
-            var offset = core.Length > 0 && core[0] == '-' ? 1 : 0;
-            return core.Length >= offset + prefix.Length
-                && string.CompareOrdinal(core, offset, prefix, 0, prefix.Length) == 0;
-        }
+        internal static bool IsToken(ReadOnlySpan<char> core, string prefix)
+            => core.Slice(core.Length > 0 && core[0] == '-' ? 1 : 0).StartsWith(prefix.AsSpan(), StringComparison.Ordinal);
 
-        // The class test of the cheap early-out gates ahead of a class's TryExtract. Routed through StripImportant so
-        // it agrees with the parse on what counts as the utility: otherwise "!z-10" would fail the gate and never be
+        // The class test of the cheap early-out gates ahead of a class's TryExtract. Routed through the important core
+        // so it agrees with the parse on what counts as the utility: otherwise "!z-10" would fail the gate and never be
         // attempted.
         internal static bool IsTokenClass(string cls, string prefix)
-            => !string.IsNullOrEmpty(cls) && IsToken(StyleArbitraryValueResolver.StripImportant(cls, out _), prefix);
+            => !string.IsNullOrEmpty(cls) && IsToken(StyleArbitraryValueResolver.ImportantCore(cls.AsSpan()), prefix);
 
         // The utility a class reading a custom property is read as (StyleCustomPropertyClass.Consumer), for a class
         // with its important bang stripped; null for any other class. bracketed and negatedBracketed are the

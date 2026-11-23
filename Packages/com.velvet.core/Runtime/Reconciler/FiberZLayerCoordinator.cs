@@ -214,14 +214,16 @@ namespace Velvet
             {
                 return false;
             }
-            var core = StyleArbitraryValueResolver.StripImportant(UtilityOf(cls), out _);
-            return core == "absolute" || core == "relative" || StyleOrderClass.IsOrderToken(core)
-                || core.StartsWith("z-", System.StringComparison.Ordinal)
-                || core.StartsWith("-z-", System.StringComparison.Ordinal);
+            var core = StyleArbitraryValueResolver.ImportantCore(UtilityOf(cls));
+            return System.MemoryExtensions.SequenceEqual(core, "absolute")
+                || System.MemoryExtensions.SequenceEqual(core, "relative")
+                || StyleOrderClass.IsOrderToken(core)
+                || System.MemoryExtensions.StartsWith(core, "z-", System.StringComparison.Ordinal)
+                || System.MemoryExtensions.StartsWith(core, "-z-", System.StringComparison.Ordinal);
         }
 
         // The utility after cls's last variant separator outside brackets and parentheses.
-        private static string UtilityOf(string cls)
+        private static System.ReadOnlySpan<char> UtilityOf(string cls)
         {
             var depth = 0;
             var start = 0;
@@ -240,7 +242,7 @@ namespace Velvet
                         break;
                 }
             }
-            return start == 0 ? cls : cls.Substring(start);
+            return System.MemoryExtensions.AsSpan(cls, start);
         }
 
         // Records the z and flex order resolved — the class source the element's passes read, with whatever variant
