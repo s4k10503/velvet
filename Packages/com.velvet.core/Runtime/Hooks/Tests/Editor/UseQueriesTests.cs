@@ -247,6 +247,60 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ACombine_When_TheComponentRendersAgainAfterItsMount_Then_TheCombineDoesNotRunAgain()
+        {
+            // Arrange
+            s_client.SetQueryData(new QueryKey("a"), 1);
+            s_client.SetQueryData(new QueryKey("b"), 2);
+            using var mounted = Mount(SumCallsReader);
+
+            // Act
+            Rerender(mounted);
+
+            // Assert
+            Assert.That(s_combined[s_combined.Count - 1], Is.EqualTo("1:1"),
+                "v5's constructor runs setQueries before the first render, so the mount's own replaces no result");
+        }
+
+        [Test]
+        public void Given_StrictModeAndACombine_When_TheComponentRendersAgainAfterTheMountsEffectsReplay_Then_TheCombineDoesNotRunAgain()
+        {
+            // Arrange
+            FiberStrictMode.Enabled = true;
+            s_client.SetQueryData(new QueryKey("a"), 1);
+            s_client.SetQueryData(new QueryKey("b"), 2);
+            using var mounted = Mount(SumCallsReader);
+
+            // Act
+            Rerender(mounted);
+
+            // Assert
+            Assert.That(s_combined[s_combined.Count - 1], Is.EqualTo("1:1"),
+                "v5's StrictMode replay hands setQueries the observers it kept, so nothing is replaced");
+        }
+
+        [Test]
+        public void Given_AFirstRenderThatSuspendedAfterItsCombine_When_ADataIsSetBeforeTheRetry_Then_TheComponentRendersWhatTheCombineMakesOfIt()
+        {
+            // Arrange
+            s_keys = new[] { "a" };
+            s_client.SetQueryData(new QueryKey("a"), 1);
+            using var mounted = Mount(() =>
+            {
+                var sum = Hooks.UseQueries(Queries(), s_sum, s_client);
+                var later = Hooks.UseSuspenseQuery(Options("b"), s_client);
+                return V.Label(text: "sum:" + sum + ",b:" + later.Data);
+            });
+
+            // Act
+            s_client.SetQueryData(new QueryKey("a"), 10);
+            Settle(mounted, () => Source("b").TrySetResult(2));
+
+            // Assert
+            Assert.That(Texts(), Is.EqualTo("sum:10,b:2"), "v5 builds a fresh observer for a tree that suspended before its first mount");
+        }
+
+        [Test]
         public void Given_ACombineOfWhetherEachHasData_When_AQuerysDataChangesButStillExists_Then_TheComponentDoesNotRenderAgain()
         {
             // Arrange
@@ -270,8 +324,8 @@ namespace Velvet.Tests
         [Test]
         public void Given_ACombineOfStaleness_When_TheDataTurnsStaleAndTheComponentRendersTwice_Then_TheCombineSeesIt()
         {
-            // Arrange — the render before the data turns stale runs the combine over the results the mount's commit
-            // recorded, so the first render after it has nothing new to combine.
+            // Arrange — the first render after the data turns stale finds no result replaced since the combine last
+            // ran, so it returns what the combine made of the fresh data.
             s_client = new QueryClient(new QueryClientOptions { GcTime = TimeSpan.MaxValue, Retry = 0, Clock = () => s_now });
             s_client.SetQueryData(new QueryKey("a"), 1);
             using var mounted = Mount(StaleReader);
@@ -322,7 +376,7 @@ namespace Velvet.Tests
             Assert.That(s_combined[s_combined.Count - 1], Is.EqualTo(true), "v5's setQueries runs combine over the result it replaced and re-renders for what changed");
         }
 
-        // GREEN_ON_BASE(characterization): the base already re-renders a combine of staleness for data set again unchanged.
+        // GREEN_ON_BASE(characterization): the base already re-renders a combine that rendered the data stale for the same data set again.
         [Test]
         public void Given_ACombineThatRenderedTheDataStale_When_TheSameDataIsSetAgain_Then_TheCombineSeesItFresh()
         {
@@ -332,6 +386,7 @@ namespace Velvet.Tests
             using var mounted = Mount(StaleReader);
             s_now = TimeSpan.FromSeconds(2);
             Rerender(mounted);
+            mounted.FlushStateForTest();
 
             // Act — the same value, so the only change is staleness: one the last render read, and the subscription's
             // own reading at the mount's commit did not
@@ -958,6 +1013,18 @@ namespace Velvet.Tests
             var results = Hooks.UseQueries(Queries(), s_client);
             s_renders.Add(results);
             return V.Label(text: "first:" + results[0].Data + ":" + results[1].Status);
+        }
+
+        // The tick names the render that took each reading, so a render that never ran cannot read as one whose
+        // combine did not.
+        [Component]
+        private static VNode SumCallsReader()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setTick = setTick;
+            Hooks.UseQueries(Queries(), s_sum, s_client);
+            s_combined.Add(tick + ":" + s_combineCalls);
+            return V.Label(text: "sum-calls");
         }
 
         [Component]

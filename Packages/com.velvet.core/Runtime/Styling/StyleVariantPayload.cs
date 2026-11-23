@@ -347,7 +347,7 @@ namespace Velvet
                     priority, declaration, on);
         }
 
-        private static bool IsImportanceAware(string core)
+        internal static bool IsImportanceAware(string core)
             => StyleFontClass.IsFontToken(core) || StyleTextEffectClass.IsTextEffectToken(core)
                 || IsStackingToken(core)
                 || StylePointerEventsClass.IsPointerEventsToken(core)

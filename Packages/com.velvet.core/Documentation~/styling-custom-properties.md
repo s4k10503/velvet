@@ -25,7 +25,7 @@ declaration outranks a stylesheet's.
 
 - `var(--name)` and `var(--name, fallback)` anywhere in a utility's bracket, or in its modifier's: `w-[var(--w)]`,
   `from-[var(--brand)]`, `shadow-[0_2px_var(--blur)_#000]`, `w-[calc(var(--w)*2)]`, `bg-red-500/[var(--alpha)]`.
-  The fallback may hold further `var()`s.
+  The fallback may hold further `var()`s, and a numeric modifier may follow the bracket of a shadow or a colour (`shadow-[var(--x)]/50`, `bg-[var(--c)]/50`), the utilities Tailwind writes a rule for it on.
 - Tailwind's shorthand: `bg-(--brand)` is `bg-[var(--brand)]`, `text-(length:--size)` is
   `text-[length:var(--size)]`, `w-(--w,calc(1rem*2))` is `w-[var(--w,calc(1rem*2))]`, and `bg-red-500/(--alpha)`
   is `bg-red-500/[var(--alpha)]`. A modifier's shorthand takes no type hint, so `bg-red-500/(number:--alpha)` is
@@ -83,11 +83,12 @@ the panel's next scheduler tick. The rule still outranks the element's lower-ran
 for that property, so `w-[20px] hover:w-[var(--missing)]` leaves the width `auto` while hovered rather than 20px.
 
 Where Velvet paints the utility itself rather than writing a style property, it takes what the browser draws: a
-gradient stop's colour is transparent and its position the stop's default (0%, 50% or 100%), `shadow-[…]` draws
-no shadow, a ring's colour is the text colour and its width none, an outline's colour is the text colour and its
-width 3px, `gap-[…]` leaves no gap, a filter function is left out of the filter, a `drop-shadow-[color:…]` leaves
-each drop shadow its own colour, a `skew-x-[…]` or `skew-y-[…]` leaves that axis unsheared and a `skew-[…]` both,
-and a font weight, a font family and a line height are the parent's.
+gradient stop's colour is transparent and its position the stop's default (0%, 50% or 100%), `shadow-[…]`,
+`inset-shadow-[…]` and the width of a `ring-[length:…]` or an `inset-ring-[length:…]` leave no box-shadow at all, the
+ring and every shadow beside them included (a bracket typed as a colour, such as `shadow-[color:…]`, leaves it), a ring's colour is the text colour, an outline's colour is the text
+colour and its width 3px, `gap-[…]` leaves no gap, a filter function is left out of the filter, a
+`drop-shadow-[color:…]` leaves each drop shadow its own colour, a `skew-x-[…]` or `skew-y-[…]` leaves that axis
+unsheared and a `skew-[…]` both, and a font weight, a font family and a line height are the parent's.
 
 ## When a reader is resolved again
 
