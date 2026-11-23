@@ -9,42 +9,26 @@ using Velvet.TestUtilities;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Pins what a deletion lets go of once it has ended: the roots its plan (<see cref="DeletionPlan"/>) kept where an
-    /// abort kept the removals from running, and what its pooled walk (<see cref="DeletionCommit"/>) and pooled plan
-    /// held in each field a case names.
+    /// Pins what a deletion lets go of once it has ended: what its pooled walk (<see cref="DeletionCommit"/>) and pooled
+    /// plan (<see cref="DeletionPlan"/>) held in each field a case names, and that a deletion whose teardown waits for
+    /// the pass's writes to apply returns both to their pools.
     /// </summary>
     [TestFixture]
     internal sealed class DeletionCommitStateTests
     {
-        private const string CleanupError = "Deletion commit state test cleanup throw";
-
         private static StateUpdater<bool> s_setShown;
-        private static StateUpdater<int> s_setTick;
+
+        // A component dropped from a container of its own: the deletion holds a fiber, so its teardown waits for the pass's
+        // recorded writes to apply.
+        [Component(Compiler = false)]
+        private static VNode DroppedRow() => V.Label(text: "dropped");
 
         [Component(Compiler = false)]
-        private static VNode LayoutCleanupThrower()
+        private static VNode DropperHost()
         {
-            Hooks.UseLayoutEffect(() => () => throw new InvalidOperationException(CleanupError), Array.Empty<object>());
-            return V.Label(text: "thrower");
-        }
-
-        // The deletion that aborts is in an element the boundary renders, which its fallback removes whole.
-        [Component(Compiler = false, IsErrorBoundary = true)]
-        private static VNode AbortingBoundary(int tick)
-        {
-            Hooks.UseFallback(_ => V.Label(text: "fallback"));
-            return V.Div(children: new VNode[]
-            {
-                tick == 0 ? V.Component(LayoutCleanupThrower, key: "thrower") : V.Label(text: "dropped"),
-            });
-        }
-
-        [Component(Compiler = false)]
-        private static VNode AbortingHost()
-        {
-            var (tick, setTick) = Hooks.UseState(0);
-            s_setTick = setTick;
-            return V.Component(AbortingBoundary, tick, key: "boundary");
+            var (shown, setShown) = Hooks.UseState(true);
+            s_setShown = setShown;
+            return V.Div(children: new VNode[] { shown ? V.Component(DroppedRow, key: "row") : null });
         }
 
         private sealed record Target(VisualElement Element);
@@ -89,18 +73,6 @@ namespace Velvet.Tests
             return entries;
         }
 
-        // What the plans the pool holds still keep in one of their fields.
-        private static int EntriesLeftInPooledPlans(string field)
-        {
-            var entries = 0;
-            foreach (var plan in PooledPlans())
-            {
-                var value = FieldPathValue(plan, field);
-                entries += (int)value.GetType().GetProperty("Count")!.GetValue(value);
-            }
-            return entries;
-        }
-
         // What the lists one of their fields keeps for reuse still hold, over the walks the pool holds.
         private static int EntriesLeftInListsOfPooledWalks(string field)
         {
@@ -134,20 +106,48 @@ namespace Velvet.Tests
             return target;
         }
 
+        // GREEN_ON_BASE(refactor): the base runs the deletion in the walk and returns the plan it rented there; this pins
+        // that a deletion run in the apply returns it too.
         [Test]
-        public void Given_ADeletionWhoseLayoutCleanupThrowsIntoABoundaryAboveItsElement_When_TheBoundaryFallsBack_Then_NoPooledPlanKeepsARoot()
+        public void Given_ADeletionOfAComponentRunInTheApply_When_TheSecondHasEnded_Then_TheSecondReturnedTheOnePlanItRented()
         {
             // Arrange
-            var root = new VisualElement();
-            using var mounted = V.Mount(root, V.Component(AbortingHost), CaughtErrors.Unlogged);
+            using var mounted = V.Mount(new VisualElement(), V.Component(DropperHost));
+            mounted.DrainForTest();
+            s_setShown.Invoke(false);
+            mounted.DrainForTest();
+            var pooledAfterFirst = PooledPlans().Count;
+            s_setShown.Invoke(true);
             mounted.DrainForTest();
 
             // Act
-            s_setTick.Invoke(1);
+            s_setShown.Invoke(false);
             mounted.DrainForTest();
 
-            // Assert — a boundary that never fell back aborted nothing, so that reading is a sentinel.
-            Assert.That(root.FindLabelByText("fallback") != null ? EntriesLeftInPooledPlans("Roots") : -1, Is.EqualTo(0));
+            // Assert — a first deletion that returned nothing leaves no pool to compare
+            Assert.That(pooledAfterFirst > 0 ? PooledPlans().Count - pooledAfterFirst : -1, Is.EqualTo(0));
+        }
+
+        // GREEN_ON_BASE(refactor): the base runs the deletion in the walk and returns the walk it rented there; this pins
+        // that a deletion run in the apply returns it too.
+        [Test]
+        public void Given_ADeletionOfAComponentRunInTheApply_When_TheSecondHasEnded_Then_TheSecondReturnedTheOneWalkItRented()
+        {
+            // Arrange
+            using var mounted = V.Mount(new VisualElement(), V.Component(DropperHost));
+            mounted.DrainForTest();
+            s_setShown.Invoke(false);
+            mounted.DrainForTest();
+            var pooledAfterFirst = PooledWalks().Count;
+            s_setShown.Invoke(true);
+            mounted.DrainForTest();
+
+            // Act
+            s_setShown.Invoke(false);
+            mounted.DrainForTest();
+
+            // Assert — a first deletion that returned nothing leaves no pool to compare
+            Assert.That(pooledAfterFirst > 0 ? PooledWalks().Count - pooledAfterFirst : -1, Is.EqualTo(0));
         }
 
         [TestCase("_removedRows")]

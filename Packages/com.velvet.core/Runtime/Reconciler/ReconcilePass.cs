@@ -13,13 +13,15 @@ namespace Velvet
     // suspend that nothing in the pass catches abandons it.
     internal sealed class ReconcilePass
     {
-        internal enum OpKind : byte { Insert, RemoveAt, RemoveChild, PatchPre, PatchPost }
+        internal enum OpKind : byte { Insert, RemoveAt, RemoveChild, PatchPre, PatchPost, Teardown }
 
         internal struct Op
         {
             internal VisualElement Container;
             internal VisualElement Caller;
             internal VisualElement Child;
+            // The deletion a Teardown runs.
+            internal DeletionCommit? Deletion;
             // The index into Patches of a PatchPre or a PatchPost.
             internal int Index;
             internal OpKind Kind;

@@ -176,11 +176,14 @@ namespace Velvet.Tests
             return V.Component(ThrowsOnItsTickOverAThrowingCleanup);
         }
 
-        // GREEN_ON_BASE(characterization): the base drops what the swap took when the fallback it swapped in
-        // suspends. Drop `DropTheSwapsErrors(fiber);` in the catch of FiberSuspendSignal in TryCatch and the
-        // cleanup's error stays queued and is reported with the catch.
+        // React commits the fallback once the read resolves, reporting the catch in that commit's layout phase, and the
+        // failed child's cleanup throws in the same commit's mutation phase. captureCommitPhaseError queues a capture
+        // update on the boundary, whose render has DidCapture set and so unmounts the fallback and mounts it again
+        // (finishClassComponent's forceUnmountCurrentAndReconcile), and reports that error after the remount.
+        // The cleanup throws before the fallback commits here, so the boundary leaves the capture for the commit that
+        // shows the fallback (FiberErrorBoundary.TakeCaptures).
         [Test]
-        public void Given_AnErrorBoundaryWhoseFallbackSuspends_When_TheFailedChildsCleanupThrowsAtTheSwap_Then_OnlyTheCatchIsReported()
+        public void Given_AnErrorBoundaryWhoseFallbackSuspends_When_TheFailedChildsCleanupThrowsAtTheSwap_Then_TheCatchIsReportedAheadOfTheCleanupsError()
         {
             // Arrange
             var log = new EventLog();
@@ -197,7 +200,56 @@ namespace Velvet.Tests
             mounted.DrainForTest();
 
             // Assert
-            Assert.That(log.ToString(), Is.EqualTo("| ins:IF ref:IF lay:IF caught:Inner:thrown by X"));
+            Assert.That(log.ToString(), Is.EqualTo(
+                "| ins:IF ref:IF lay:IF caught:Inner:thrown by X ins-x:IF lay-x:IF ref-x:IF ins:IF ref:IF lay:IF caught:Inner:cleanup threw"));
+        }
+
+        private static ErrorBoundaryReset s_reset;
+
+        [Component]
+        private static VNode LoggedThrowerOverAThrowingCleanup()
+        {
+            var (tick, _) = EventLog.UseState("Tick", 0);
+            EventLog.UseInsertionAndLayoutEffects("C", Array.Empty<object>());
+            Hooks.UseLayoutEffect(
+                (Func<Action?>)(() => () => throw new InvalidOperationException("cleanup threw")),
+                Array.Empty<object>());
+            return tick > 0 ? throw new InvalidOperationException("thrown by X") : V.Div();
+        }
+
+        [Component(Compiler = false, IsErrorBoundary = true, DisplayName = "Inner")]
+        private static VNode ResettableSuspendingFallbackBoundary(Gate gate)
+        {
+            s_reset = FiberAmbientStack.Current!.ResetHandle;
+            Hooks.UseFallback(_ => V.Component(SuspendingContent, gate));
+            return V.Component(LoggedThrowerOverAThrowingCleanup);
+        }
+
+        // The cleanup throws in the commit that swaps the fallback in, which never happens while the fallback is suspended
+        // (React's render is not committed, so the failed child stays mounted and no cleanup has run). A reset made then
+        // shows the children again, and the error the cleanup threw is not shown a fallback.
+        // GREEN_ON_BASE(characterization): the base drops what the swap took when the fallback it swapped in suspends, so
+        // a reset shows the children there too.
+        [Test]
+        public void Given_AnErrorBoundaryWhoseFallbackSuspends_When_ItIsResetBeforeTheReadResolves_Then_ItsChildrenMountAgainAndTheCleanupsErrorIsDropped()
+        {
+            // Arrange
+            var log = new EventLog();
+            var gate = new Gate();
+            using var mounted = _renderer.Mount(
+                log.Provide(V.Component(ResettableSuspendingFallbackBoundary, gate)), log.ReportingErrors());
+            mounted.DrainForTest();
+            log.Clear();
+            log.Setter<int>("Tick").Invoke(1);
+            mounted.DrainForTest();
+            log.Add("|");
+
+            // Act
+            s_reset.Invoke();
+            mounted.DrainForTest();
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("ins-x:C lay-x:C | ins:C lay:C"));
         }
     }
 }

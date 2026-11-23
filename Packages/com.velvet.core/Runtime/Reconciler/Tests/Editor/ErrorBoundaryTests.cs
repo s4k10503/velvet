@@ -1287,8 +1287,9 @@ namespace Velvet.Tests
         private static int s_throwingCleanupRuns;
         private static Action<int> s_throwingSetValue;
 
-        // GREEN_ON_BASE(characterization): the merge base already disposes an orphan whose cleanup raised the abort.
-        // That abort comes after a walk that reached every fiber, so nothing is kept back from the sweep.
+        // GREEN_ON_BASE(characterization): the merge base already disposes an orphan whose cleanup threw into a boundary.
+        // The cleanup's error is captured for the boundary, which shows its fallback in the commit that follows, and the
+        // orphan is disposed where the deletion tears down, whatever the boundary does.
         [Test]
         public void Given_AnOrphanWhoseCleanupThrowsIntoABoundary_When_TheRenderDropsIt_Then_ItIsDisposed()
         {

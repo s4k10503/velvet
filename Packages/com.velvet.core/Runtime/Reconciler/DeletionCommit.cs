@@ -6,7 +6,8 @@ namespace Velvet
     // React's commitDeletionEffectsOnFiber over what one container's reconcile deletes, or over what leaves outside
     // one: the pre-order walk of PreOrderTeardown, which records a component's cleanups
     // (FiberEffects.CleanUpDeleted) and an element's ref detach where it reaches them, and RunPlan runs them in that
-    // order. It runs ahead of the removals, which find neither left to run.
+    // order. It runs ahead of the removals, which find neither left to run, or, where the pass records its writes, once
+    // they are queued behind the writes recorded so far (Teardown).
     internal sealed class DeletionCommit : PreOrderTeardown
     {
         // An instance per walk on the stack, so a cleanup that commits another walk takes an instance of its own.
@@ -26,6 +27,12 @@ namespace Velvet
         private readonly HashSet<ComponentFiber> _collected = new();
         private readonly List<ComponentFiber> _fibers = new();
         private bool _startsInsideARow;
+        // The removed rows registered for Teardown before their removals are recorded, in the order registered.
+        private readonly List<(VisualElement Parent, VisualElement Element, VisualElement Poolable, VisualElement? DiscardedRoot)> _cleanups = new();
+        private bool _deferred;
+        private bool _queued;
+        private bool _executed;
+        private bool _walkOver;
 
         // A container reconcile's deletion: Begin, each old leaf it removes in order, Run, and End after the removals,
         // or where an abort skipped them. Occupants are the container's old leaves, the first at slotStart.
@@ -49,12 +56,125 @@ namespace Velvet
 
         // React deletes a parent's children in the order it reconciled them, so the rows are taken in theirs, each
         // removed row as a subtree, and an orphan whose row stays where that row is. The plan is executed as soon as it
-        // is built, and the removals read what it holds of each root.
+        // is built, or queued for Teardown where CanDefer says so, and the removals read what it holds of each root.
         internal DeletionPlan Run(List<ComponentFiber> oldFibers, HashSet<ComponentFiber> newFibers, int oldLength)
         {
             var plan = BuildPlan(oldFibers, newFibers, oldLength);
-            Execute();
+            _deferred = ChildListWrites.IsRecording && CanDefer();
+            if (!_deferred) Execute();
             return plan;
+        }
+
+        // Whether the deletion runs where the pass applies its recorded writes (Teardown) rather than where it is decided.
+        // It keeps the immediate path where a fiber's unmount reconciles its own rows (a wrapper-mounted fiber with a
+        // tree), and where a Portal sits under a root, whose range CleanupPortal removes and whose fibers it disposes by
+        // looking them up in the registry, which a hidden fiber has left.
+        private bool CanDefer()
+        {
+            if (_portalsUnderRoots.Count > 0) return false;
+            foreach (var fiber in _fibers)
+            {
+                if (!fiber.IsInlineMounted && fiber.MountPoint != null && fiber.PreviousTree != null) return false;
+            }
+            return true;
+        }
+
+        // Whether the deletion's cleanups and disposals wait for Teardown, so the walk records the removals of its rows
+        // (AddCleanup) instead of making them.
+        internal bool DefersTeardown => _deferred;
+
+        // Registers a removed row of the container for Teardown to clean up, where it is still the container's child.
+        internal void AddCleanup(VisualElement parent, VisualElement element)
+        {
+            if (ChildListWrites.PhysicalIndexOf(parent, element) < 0) return;
+            var (poolable, discardedRoot) = _cleaner.PlanRemoval(element, _deletion);
+            _cleanups.Add((parent, element, poolable, discardedRoot));
+        }
+
+        internal List<(VisualElement Parent, VisualElement Element, VisualElement Poolable, VisualElement? DiscardedRoot)> Cleanups
+            => _cleanups;
+
+        // Hides the fibers the deletion disposes and queues Teardown behind the writes recorded so far, which the removals
+        // of the rows registered by AddCleanup follow.
+        internal void Queue()
+        {
+            if (!_deferred || _queued) return;
+            _queued = true;
+            Ctx.ComponentRegistry.HideFibers(_fibers);
+            if (!ChildListWrites.RecordTeardown(this)) Teardown();
+        }
+
+        // Where the deletion's walk is over. One that was never queued is now, so its fibers do not wait for a teardown
+        // that is not coming. The walk and Teardown each end the commit if they come last: an apply the walk's own
+        // writes reach can run Teardown before the walk is over.
+        internal void Complete()
+        {
+            _walkOver = true;
+            if (!_deferred) End();
+            else if (!_queued) Queue();
+            else if (_executed) End();
+        }
+
+        // What the recorded writes up to this one made room for: the plan's take-downs, the cleanup of each registered
+        // row, then the fibers' disposal. Each runs where the one before it threw, and the first exception is rethrown
+        // after them. An error a cleanup throws is captured for its boundary (CommitErrors.Capture), as one thrown in
+        // the layout commit is, which TeardownDepth selects.
+        internal void Teardown()
+        {
+            // MUTANT_SURVIVES(equivalent, guard removed): Apply runs each op once, and Queue records the op only the first time it is asked.
+            if (_executed) return;
+            _executed = true;
+            var ctx = Ctx;
+            System.Runtime.ExceptionServices.ExceptionDispatchInfo? first = null;
+            ctx.TeardownDepth++;
+            try
+            {
+                try
+                {
+                    Execute();
+                }
+                catch (System.Exception exception)
+                {
+                    first ??= System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(exception);
+                }
+                foreach (var (_, element, poolable, discardedRoot) in _cleanups)
+                {
+                    try
+                    {
+                        _cleaner.CleanupRemovedRow(element, poolable, discardedRoot, _deletion);
+                    }
+                    catch (System.Exception exception)
+                    {
+                        first ??= System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(exception);
+                    }
+                }
+                // The fibers the rows' cleanups did not reach are disposed too, orphans first, since a hidden fiber nothing
+                // disposes is registered nowhere and leaks its subscriptions.
+                DisposeAll(_fibers, ref first);
+            }
+            finally
+            {
+                ctx.TeardownDepth--;
+                if (_walkOver) End();
+            }
+            first?.Throw();
+        }
+
+        private void DisposeAll(List<ComponentFiber> fibers, ref System.Runtime.ExceptionServices.ExceptionDispatchInfo? first)
+        {
+            foreach (var fiber in fibers)
+            {
+                // MUTANT_SURVIVES(equivalent, guard removed): FiberRenderer.Dispose returns at a disposed fiber, and what DisposeFiber and Hide do after it remove by the fiber as a key.
+                if (fiber.IsDisposed) continue;
+                try
+                {
+                    Ctx.ComponentRegistry.DisposeAndRemove(fiber);
+                }
+                catch (System.Exception exception)
+                {
+                    first ??= System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(exception);
+                }
+            }
         }
 
         // The walk alone: what it reaches is recorded and nothing is taken down, though the fibers it reaches are marked
@@ -242,7 +362,27 @@ namespace Velvet
 
         protected override bool PlansTakeDowns => true;
 
-        protected override void TakeDown(ComponentFiber fiber) => FiberEffects.CleanUpDeleted(fiber);
+        // The insertion and layout cleanups of a deletion Teardown runs count as a commit, as a layout commit's do, and the
+        // passive ones run outside it.
+        protected override void TakeDown(ComponentFiber fiber)
+        {
+            if (!_executed)
+            {
+                FiberEffects.CleanUpDeleted(fiber);
+                return;
+            }
+            Ctx.EffectCommitDepth++;
+            try
+            {
+                FiberEffects.CleanupAllInsertionEffects(fiber);
+                FiberEffects.CleanupAllLayoutEffects(fiber);
+            }
+            finally
+            {
+                Ctx.EffectCommitDepth--;
+            }
+            FiberEffects.CleanupAllEffects(fiber);
+        }
 
         protected override void TakeDown(VisualElement element) => _cleaner.DetachRef(element);
 
@@ -270,6 +410,12 @@ namespace Velvet
             ClearAndTrim(_orphans);
             ClearAndTrim(_collected);
             _fibers.Clear();
+            _cleanups.Clear();
+            // MUTANT_SURVIVES(equivalent): Run assigns the flag before anything reads it.
+            _deferred = false;
+            _queued = false;
+            _executed = false;
+            _walkOver = false;
             // MUTANT_SURVIVES(equivalent): a walk left flagged walks rows that need no walk (WalksRows).
             _startsInsideARow = false;
         }

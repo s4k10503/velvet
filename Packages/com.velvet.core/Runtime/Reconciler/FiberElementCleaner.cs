@@ -31,6 +31,21 @@ namespace Velvet
             ReturnOccupantToPool(element, poolable);
         }
 
+        // What a removal that a Teardown runs later reads now: the occupant its pool return hands back and the root a
+        // discarded subtree is cleaned under, the second of which consults PortalState, which an earlier cleanup mutates.
+        internal (VisualElement Poolable, VisualElement? DiscardedRoot) PlanRemoval(VisualElement element, DeletionPlan plan)
+        {
+            var poolable = plan.PoolableOf(element) ?? PoolableOccupantOf(element);
+            return (poolable, IsDiscardedAfterCleanup(element, poolable) ? element : null);
+        }
+
+        // The cleanup half of RemoveElement, for a row registered for Teardown before its removal is recorded.
+        internal void CleanupRemovedRow(VisualElement element, VisualElement poolable, VisualElement? discardedRoot, DeletionPlan plan)
+        {
+            CleanupElement(element, element.panel, discardedRoot, plan);
+            ReturnOccupantToPool(element, poolable);
+        }
+
         // Whether nothing outside the subtree keeps element or anything below it once its removal returns: the
         // slot's poolable occupant is left to the collector, and no Portal range inside the subtree is torn out
         // through CleanupPortal, which returns the children it holds to the pools after they were cleaned as

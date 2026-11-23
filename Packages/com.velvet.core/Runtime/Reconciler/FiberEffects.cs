@@ -202,12 +202,14 @@ namespace Velvet
 
         // Errors a commit captured wait for the render of their boundary, which this renders as the commit that threw
         // is over. Inside a drain the drain's own passes render it, and a boundary the flush could not render stays
-        // owed for the scheduler.
+        // owed for the scheduler. One whose fallback has not committed (CatchUnreported) is not owed yet: its capture
+        // waits for the render ReportCarriedCatch asks for.
         private static bool CanFlushCaptures(ReconcilerContext ctx)
             => CommitErrors.OldestOwed(ctx) != long.MaxValue && ctx.BatchScheduler.CanFlushImmediate;
 
         // False where no capture was taken, which a flush the scheduler holds back (a boundary hidden under a Suspense,
-        // or in a detached host) leaves as it was.
+        // or in a detached host) leaves as it was. A boundary whose fallback has not committed is left out of what is owed,
+        // so a window holding only such captures never reaches the flush.
         private static bool FlushCaptures(ReconcilerContext ctx)
         {
             var oldest = CommitErrors.OldestOwed(ctx);
@@ -215,7 +217,7 @@ namespace Velvet
             // boundary no longer queued.
             foreach (var boundary in ctx.BoundariesOwedCaptures)
             {
-                if (!boundary.IsDirty) FiberWorkLoop.ScheduleRerender(boundary, FiberUpdatePriority.Urgent);
+                if (!boundary.IsDirty && !boundary.CatchUnreported) FiberWorkLoop.ScheduleRerender(boundary, FiberUpdatePriority.Urgent);
             }
             ctx.FlushingCaptures = true;
             try
@@ -239,6 +241,7 @@ namespace Velvet
                 || ctx.DeferDrainLayoutEffects
                 || ctx.HeldRowLayoutEffects.Count > 0
                 || ctx.EffectCommitDepth > 0
+                || ctx.TeardownDepth > 0
                 || ctx.IsDrainingRefAttaches
                 || ctx.FlushingCaptures;
 
