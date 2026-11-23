@@ -6,8 +6,8 @@ namespace Velvet
     // React's commitDeletionEffectsOnFiber over what one container's reconcile deletes, or over what leaves outside
     // one: the pre-order walk of PreOrderTeardown, which records a component's cleanups
     // (FiberEffects.CleanUpDeleted) and an element's ref detach where it reaches them, and RunPlan runs them in that
-    // order. It runs ahead of the removals, which find neither left to run, or, where the pass records its writes, once
-    // they are queued behind the writes recorded so far (Teardown).
+    // order. It runs ahead of the removals, which find neither left to run, or, where the pass records its writes, at its
+    // owner's turn among them (Teardown).
     internal sealed class DeletionCommit : PreOrderTeardown
     {
         // An instance per walk on the stack, so a cleanup that commits another walk takes an instance of its own.
@@ -32,6 +32,8 @@ namespace Velvet
         private bool _startsInsideARow;
         // The removed rows registered for Teardown before their removals are recorded, in the order registered.
         private readonly List<(VisualElement Parent, VisualElement Element, VisualElement Poolable, VisualElement? DiscardedRoot)> _cleanups = new();
+        // Where the deletion's teardown runs among the pass's recorded writes: the turn of the fiber or construct that owns it.
+        private TurnAnchor? _anchor;
         private bool _deferred;
         private bool _queued;
         private bool _executed;
@@ -39,8 +41,12 @@ namespace Velvet
 
         // A container reconcile's deletion: Begin, each old leaf it removes in order, Run, and End after the removals,
         // or where an abort skipped them. Occupants are the container's old leaves, the first at slotStart.
+        //
+        // A deletion that a pass records its writes for runs at its owner's turn (Queue): the nearest fiber or construct of
+        // the walk that kept what it deleted, or the container's own where there is none. A container whose deletions that
+        // wait for the apply have several owners holds one DeletionCommit for each, chained through NextGroup.
         internal static DeletionCommit Begin(ReconcilerContext ctx, FiberElementCleaner cleaner, VisualElement? container,
-            int slotStart, OldSlotOccupants? occupants)
+            int slotStart, OldSlotOccupants? occupants, TurnAnchor? anchor = null)
         {
             var commit = s_pool.Count > 0 ? s_pool.Pop() : new DeletionCommit();
             commit.Ctx = ctx;
@@ -48,9 +54,19 @@ namespace Velvet
             commit._container = container;
             commit._slotStart = slotStart;
             commit._occupants = occupants;
+            commit._anchor = anchor;
             commit._deletion = DeletionPlan.Rent();
             return commit;
         }
+
+        // The deletion of the same container that runs at another owner's turn, if the container has one.
+        internal DeletionCommit? NextGroup;
+        // The orphans of the container that this deletion takes down where it is one of several (GeneralPathReconciler.TakeDownTheDeletion).
+        internal readonly List<ComponentFiber> OwnOldFibers = new();
+        // The fibers Run was given, which hold the orphans this deletion takes down.
+        internal List<ComponentFiber>? OldFibers => _oldFibers;
+        private List<ComponentFiber>? _oldFibers;
+        internal DeletionPlan Plan => _deletion;
 
         internal void AddRemovedRow(int index, VisualElement row) => _removedRows.Add((index, row));
 
@@ -58,15 +74,14 @@ namespace Velvet
         internal List<(int Index, VisualElement Row)> RemovedRows => _removedRows;
 
         // React deletes a parent's children in the order it reconciled them, so the rows are taken in theirs, each
-        // removed row as a subtree, and an orphan whose row stays where that row is. The plan is executed as soon as it
-        // is built, or queued for Teardown where CanDefer says so, and the removals read what it holds of each root.
-        internal DeletionPlan Run(List<ComponentFiber> oldFibers, HashSet<ComponentFiber> newFibers, int oldLength)
+        // removed row as a subtree, and an orphan whose row stays where that row is. The plan is built by BuildPlan, and
+        // executed as soon as Settle says it does not wait, or queued for Teardown, and the removals read what it holds
+        // of each root.
+        internal void Settle(bool deferred)
         {
-            var plan = BuildPlan(oldFibers, newFibers, oldLength);
-            _deferred = ChildListWrites.IsRecording && CanDefer();
+            _deferred = deferred;
             if (_deferred) DetachPortals();
             else Execute();
-            return plan;
         }
 
         // Whether the deletion runs where the pass applies its recorded writes (Teardown) rather than where it is decided.
@@ -74,7 +89,7 @@ namespace Velvet
         // tree), where a Portal under a root has the container itself for its target, whose range follows the
         // container's own rows (HostCommitQueue.FollowOwnRows), and where a Portal's target is inside a root, which
         // takes its rows with it.
-        private bool CanDefer()
+        internal bool CanDefer()
         {
             foreach (var placeholder in _portalsUnderRoots)
             {
@@ -135,14 +150,15 @@ namespace Velvet
         internal List<(VisualElement Parent, VisualElement Element, VisualElement Poolable, VisualElement? DiscardedRoot)> Cleanups
             => _cleanups;
 
-        // Hides the fibers the deletion disposes and queues Teardown behind the writes recorded so far, which the removals
-        // of the rows registered by AddCleanup follow, and those of the Portals' rows (DetachPortals) follow at once.
+        // Hides the fibers the deletion disposes and queues Teardown at its owner's turn among the writes recorded so far,
+        // ahead of the removals of the rows registered by AddCleanup and of the Portals' rows (DetachPortals), which follow
+        // at once.
         internal void Queue()
         {
             if (!_deferred || _queued) return;
             _queued = true;
             Ctx.ComponentRegistry.HideFibers(_fibers);
-            if (!ChildListWrites.RecordTeardown(this)) Teardown();
+            if (!ChildListWrites.RecordTeardown(this, _anchor)) Teardown();
             foreach (var (target, row) in _portalRows) Ctx.HostCommit.RemoveRow(target, row);
         }
 
@@ -223,6 +239,15 @@ namespace Velvet
         // as being deleted (ComponentFiber.BeginDeletion).
         internal DeletionPlan BuildPlan(List<ComponentFiber> oldFibers, HashSet<ComponentFiber> newFibers, int oldLength)
         {
+            Collect(oldFibers, newFibers);
+            return Order(oldLength);
+        }
+
+        // What the walk reaches, which CanDefer reads and the walk itself does not change: the orphans, the roots of the
+        // removed rows and the fibers held under them.
+        internal void Collect(List<ComponentFiber> oldFibers, HashSet<ComponentFiber> newFibers)
+        {
+            _oldFibers = oldFibers;
             foreach (var fiber in oldFibers)
             {
                 if (newFibers.Contains(fiber) || !_orphans.Add(fiber)) continue;
@@ -231,6 +256,11 @@ namespace Velvet
             }
             foreach (var (_, row) in _removedRows) AddRowAsRoot(row);
             CollectHeldFibers();
+        }
+
+        // The walk over what Collect reached, in React's order.
+        internal DeletionPlan Order(int oldLength)
+        {
             ComponentFiber.BeginDeletion(_fibers);
             foreach (var fiber in _fibers) PlaceDeleted(fiber, oldLength);
             _orphanRows.Sort(static (a, b) => a.Index.CompareTo(b.Index));
@@ -442,6 +472,10 @@ namespace Velvet
             _container = null;
             // MUTANT_SURVIVES(equivalent): Begin assigns the occupants before any read.
             _occupants = null;
+            _anchor = null;
+            OwnOldFibers.Clear();
+            NextGroup = null;
+            _oldFibers = null;
             _removedRows.Clear();
             _orphanRows.Clear();
             _deletion.Release();

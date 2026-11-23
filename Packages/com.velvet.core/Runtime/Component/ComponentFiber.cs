@@ -335,6 +335,12 @@ namespace Velvet
 
         private ComponentFiber? _offscreenUnder;
 
+        // The position the fiber's component node was last walked at in a container's walk, zero where it sat at the root
+        // of a fiber's tree or of the container's children: which construct it sat in, which a deletion of the fiber is
+        // attributed to (GeneralPathReconciler.AnchorOf). Positions restart for each container, so it means something
+        // only beside the walk that reads it.
+        internal long EnclosingTurn;
+
         // The fiber rendering the Suspense whose fallback this fiber was in when a walk last reached it, or null, as
         // GeneralPathReconciler.ExpandComponentInline writes it. A walk reaches only fibers below the one it renders
         // for, so the topmost fiber of a fallback is written only where a walk expands that Suspense, and keeps the
