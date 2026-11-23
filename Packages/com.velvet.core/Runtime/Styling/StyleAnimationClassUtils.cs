@@ -181,6 +181,7 @@ namespace Velvet
             else
             {
                 dest.RemoveFromClassList(cls);
+                CornerRadiusFit.NoteClassWrite(dest);
                 StyleClassProjection.RawRemoved(dest, cls);
             }
         }

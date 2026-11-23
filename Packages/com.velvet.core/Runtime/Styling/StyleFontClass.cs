@@ -207,7 +207,8 @@ namespace Velvet
                     return true;
             }
 
-            if (!cls.StartsWith("font-", StringComparison.Ordinal))
+            // A token reading a custom property is read through the payload its reader resolves it to.
+            if (!cls.StartsWith("font-", StringComparison.Ordinal) || StyleCustomPropertyClass.IsConsumer(cls))
             {
                 return false;
             }

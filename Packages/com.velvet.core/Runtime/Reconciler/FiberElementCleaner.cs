@@ -413,6 +413,7 @@ namespace Velvet
             StyleArbitraryValueResolver.HandBackAll(element);
             // Ahead of ClearAll, which drops the layer map the watch is recorded in.
             StyleArbitraryValueResolver.ReleaseShownImageWatchOf(element);
+            StyleUserClassProperties.ReleaseDeferred(element);
             // Drop the arbitrary-value layer stack so a pooled widget does not inherit a prior consumer's
             // base/variant layers (state ghosting across pool reuse).
             StyleArbitraryValueResolver.ClearAll(element);
@@ -674,6 +675,9 @@ namespace Velvet
                 return;
             }
 
+            // The rows it removes leave the count a Portal patched around this one reads, as its own growth would. Before
+            // the removal of its range, which takes the target's entry with the last one.
+            if (portalInfo.Target != null) _ctx.PortalState.Stored.AddGrowth(portalInfo.Target, -portalInfo.SlotLength);
             _ctx.PortalState.Remove(element);
             // The RESOLVED target recorded at mount: the same removal works for registry, layer and
             // world-space portals, and it stays correct even if a registry id was re-registered to
@@ -703,6 +707,7 @@ namespace Velvet
             var physicalSlotStart = LogicalChildSlots.ToPhysical(target, portalInfo.SlotStart);
             var slotEnd = LogicalChildSlots.ToPhysical(target, portalInfo.SlotStart + portalInfo.SlotLength);
             var targetCount = ChildListWrites.ChildCount(target);
+            // MUTANT_SURVIVES(equivalent, boundary): at slotEnd == targetCount the assignment writes the value slotEnd already holds.
             if (slotEnd > targetCount) slotEnd = targetCount;
             // Read before any is cleaned: a cleanup can take a child hosted before its element out of the target
             // (RemoveCleaned), which would move the indices still to be visited.

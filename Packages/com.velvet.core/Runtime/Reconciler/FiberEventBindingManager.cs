@@ -423,6 +423,9 @@ namespace Velvet
             }
         }
 
+        // Handlers are unregistered one by one rather than with UnregisterAllRemovableCallbacks: the flush a
+        // discrete handler ends with (FiberDiscreteEventScope) commits inside that element's dispatch, which is
+        // where the bulk call throws; EventBindingManagerTests holds that refusal.
         public void UnbindAll(VisualElement element)
         {
             if (element == null)
