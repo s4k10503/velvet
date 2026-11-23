@@ -815,15 +815,16 @@ namespace Velvet
         }
 
         // With root, the root of the run of a wave's pass the failure belongs to, keeps it for the wave to route
-        // (ReconcilePass.Failures) at the place the pass meets now. Without one, the root MountedTree.Dispose is unmounting
-        // takes it (CommitErrors.Capture), as React's root.unmount() captures what a removal throws at the root. False
-        // where there is neither.
+        // (ReconcilePass.Failures) at the place the pass meets now. Without one, it goes to the fiber whose unmount the pass
+        // reconciles, which takes it where that is the root MountedTree.Dispose is unmounting (CommitErrors.Capture
+        // declines a fiber whose unmount has cleared IsMounted otherwise), as React's root.unmount() captures what a
+        // removal throws at the root. False where nothing takes it.
         internal static bool FileUnderTheRun(ReconcilePass pass, ComponentFiber? root, VisualElement? element,
             Exception exception)
         {
             if (root == null)
             {
-                return pass.DisposingRoot != null && CommitErrors.Capture(pass.DisposingRoot, null, exception);
+                return pass.UnmountingFiber != null && CommitErrors.Capture(pass.UnmountingFiber, null, exception);
             }
             pass.Fail(root, root, exception, element, pass.PlaceNow);
             return true;

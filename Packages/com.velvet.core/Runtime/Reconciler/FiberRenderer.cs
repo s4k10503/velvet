@@ -363,12 +363,16 @@ namespace Velvet
                 // reconcile directly, so it must push here too — otherwise the child fibers are not found
                 // and their emitted VEs are not removed.
                 var unmountPushedOnto = PushFiber(fiber);
+                var pass = fiber.Reconciler!.Context.Pass;
+                var enclosingUnmount = pass.UnmountingFiber;
+                pass.UnmountingFiber = fiber;
                 try
                 {
                     FiberCommitWork.ReconcileOwnRows(fiber, fiber.PreviousTree, Array.Empty<VNode>(), frameBudgetMs: 0);
                 }
                 finally
                 {
+                    pass.UnmountingFiber = enclosingUnmount;
                     PopFiber(unmountPushedOnto);
                 }
             }

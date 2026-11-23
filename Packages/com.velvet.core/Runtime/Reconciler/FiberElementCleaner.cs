@@ -81,11 +81,25 @@ namespace Velvet
         // parent — mirroring the rollback-orphan path, which already unwraps before reclaiming.
         private void ReturnOccupantNow(VisualElement removed, VisualElement poolable)
         {
+            if (StoppedPartway(removed)) return;
             if (!ReferenceEquals(poolable, removed))
             {
                 ChildListWrites.RemoveFromHierarchy(poolable);
             }
             ReturnToPool(poolable);
+        }
+
+        // Whether element is out of the tree it was removed from yet still names that tree's panel, as a removal whose
+        // DetachFromPanelEvent callback threw leaves every element it took (DisposeDetachErrorTests' engine case pins
+        // that). Such an element is neither removed again nor pooled: either hands it to UI Toolkit as though it were
+        // still on the panel.
+        private static bool StoppedPartway(VisualElement element)
+        {
+            var panel = element.panel;
+            if (panel == null) return false;
+            var top = element;
+            while (top.hierarchy.parent != null) top = top.hierarchy.parent;
+            return !ReferenceEquals(top, panel.visualTree);
         }
 
         // Runs where FinishPass has applied the pass's recorded removals.
@@ -846,6 +860,9 @@ namespace Velvet
             foreach (var (real, poolable, root) in retired)
             {
                 FiberZLayerCoordinator.ForgetRetired(real);
+                // Went out of the tree with a container whose removal threw, as that container's other descendants did,
+                // and stays with it.
+                if (StoppedPartway(real)) continue;
                 try
                 {
                     ChildListWrites.RemoveFromHierarchy(real);
