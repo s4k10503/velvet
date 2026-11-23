@@ -105,6 +105,8 @@ namespace Velvet
         private readonly HashSet<VisualElement> _pending = new();
         private readonly System.Predicate<VisualElement> _settle;
         private readonly List<VisualElement> _buffer = new();
+        private readonly List<(int Depth, VisualElement Element)> _order = new();
+        private readonly List<(int Depth, VisualElement Element)> _refreshOrder = new();
         private VisualElement? _mountRoot;
         private VisualElement? _anchor;
         private IVisualElementScheduledItem? _follow;
@@ -143,8 +145,16 @@ namespace Velvet
                 StyleFontResolver.ApplyResolved(element, Families[element].Intent, null, foreign: false);
             }
 
-            foreach (var element in InTreeOrder(Inheritors.Keys))
+            _refreshOrder.Clear();
+            foreach (var key in Inheritors.Keys)
             {
+                Enqueue(_refreshOrder, key);
+            }
+
+            _refreshOrder.Sort(s_byDepth);
+            for (var i = 0; i < _refreshOrder.Count; i++)
+            {
+                var element = _refreshOrder[i].Element;
                 var entry = Inheritors[element];
                 if (entry.Named != null || InheritedFamily(element) != null)
                 {
@@ -474,32 +484,37 @@ namespace Velvet
         }
 
         // An element reads the font its parent has just been given, so each ancestor goes before what is under it,
-        // whatever order the collection holds them in.
-        private static List<VisualElement> InTreeOrder(IEnumerable<VisualElement> elements)
+        // whatever order the collection holds them in. The buffers hold a copy, which Refresh needs since it writes
+        // to the table it was filled from. Each caller has its own: neither can run inside the other, since a resolve
+        // raises no registry event.
+        private static void Enqueue(List<(int Depth, VisualElement Element)> buffer, VisualElement element)
         {
-            var keyed = new List<(int Depth, VisualElement Element)>();
-            foreach (var element in elements)
+            var depth = 0;
+            for (var up = ChildListWrites.ParentOf(element); up != null; up = ChildListWrites.ParentOf(up))
             {
-                var depth = 0;
-                for (var up = ChildListWrites.ParentOf(element); up != null; up = ChildListWrites.ParentOf(up))
-                {
-                    depth++;
-                }
-
-                keyed.Add((depth, element));
+                depth++;
             }
 
-            keyed.Sort(static (left, right) => left.Depth.CompareTo(right.Depth));
-            return keyed.ConvertAll(static pair => pair.Element);
+            buffer.Add((depth, element));
         }
+
+        private static readonly Comparison<(int Depth, VisualElement Element)> s_byDepth =
+            static (left, right) => left.Depth.CompareTo(right.Depth);
 
         private void SettleInTreeOrder()
         {
-            foreach (var element in InTreeOrder(_pending))
+            _order.Clear();
+            foreach (var element in _pending)
             {
-                if (_settle(element))
+                Enqueue(_order, element);
+            }
+
+            _order.Sort(s_byDepth);
+            for (var i = 0; i < _order.Count; i++)
+            {
+                if (_settle(_order[i].Element))
                 {
-                    _pending.Remove(element);
+                    _pending.Remove(_order[i].Element);
                 }
             }
         }
