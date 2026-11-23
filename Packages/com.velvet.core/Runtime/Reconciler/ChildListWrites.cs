@@ -480,7 +480,7 @@ namespace Velvet
             {
                 rows.Clear();
                 // A child at a time, in order, so one whose removal throws leaves the ones after it to be removed.
-                while (container.hierarchy.childCount > 0)
+                for (var left = container.hierarchy.childCount; left > 0; left--)
                 {
                     var child = container.hierarchy[0];
                     try
@@ -489,7 +489,7 @@ namespace Velvet
                     }
                     catch (Exception exception)
                     {
-                        // A throw ahead of the child leaving the list would otherwise come round again.
+                        // A throw ahead of the child leaving the list leaves it where the next round would take it again.
                         if (ReferenceEquals(child.hierarchy.parent, container)) throw;
                         if (!FileRemovalFailure(child, exception))
                         {
@@ -884,11 +884,7 @@ namespace Velvet
         private static readonly ConditionalWeakTable<VisualElement, object> s_removalThrew = new();
         private static readonly object s_threw = new();
 
-        private static void NoteRemovalThrew(VisualElement element)
-        {
-            s_removalThrew.Remove(element);
-            s_removalThrew.Add(element, s_threw);
-        }
+        private static void NoteRemovalThrew(VisualElement element) => s_removalThrew.AddOrUpdate(element, s_threw);
 
         internal static bool RemovalThrew(VisualElement element) => s_removalThrew.TryGetValue(element, out _);
 

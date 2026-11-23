@@ -162,11 +162,11 @@ namespace Velvet.Tests
         [Component(Compiler = false)]
         private static VNode ListRow() => V.Div();
 
-        private static VNode AListOf(Func<string, VNode> renderer)
-            => V.VirtualList(items: new[] { "R" }, keySelector: item => item, itemHeight: 50f, renderer: renderer,
-                overscan: 0);
+        private static VNode AListOf(Func<string, VNode> renderer, params string[] items)
+            => V.VirtualList(items: items, keySelector: item => item, itemHeight: 50f, renderer: renderer, overscan: 0);
 
-        private static VNode AListOfThrowers() => AListOf(item => V.Custom<DetachThrower>(name: item, key: item));
+        private static VNode AListOfThrowers(params string[] items)
+            => AListOf(item => V.Custom<DetachThrower>(name: item, key: item), items);
 
         // The list is the only child of its parent's walk, so a removal of it takes the fast path, which cleans the list up
         // as the walk removes it.
@@ -175,7 +175,7 @@ namespace Velvet.Tests
         {
             var (shown, _) = EventLog.UseState("V", true);
             EventLog.UseRender("V");
-            return V.Div(children: shown ? new[] { AListOfThrowers() } : Array.Empty<VNode>());
+            return V.Div(children: shown ? new[] { AListOfThrowers("R") } : Array.Empty<VNode>());
         }
 
         // EditMode runs no layout, so the list is given the range its scroll would give it.
@@ -185,6 +185,11 @@ namespace Velvet.Tests
                 .UpdateVisibleRange(scrollY: 0f, viewportHeight: 50f);
             mounted.DrainForTest();
         }
+
+        // As ShowTheListsRow, for a list a reconciler no root owns renders, sized for two rows.
+        private static void ShowTwoRows(ReconcilerScope scope)
+            => scope.Reconciler.Context.VirtualListControllers[scope.Root.Q<ScrollView>()]
+                .UpdateVisibleRange(scrollY: 0f, viewportHeight: 100f);
 
         [Component(Compiler = false)]
         private static VNode RendersAgain()
@@ -530,7 +535,7 @@ namespace Velvet.Tests
         public void Given_AVirtualListWhoseRowThrowsAsItDetaches_When_TheHandleIsDisposed_Then_TheRootReportsTheError()
         {
             // Arrange
-            var mounted = V.Mount(_mountPoint, V.Div(children: new[] { AListOfThrowers() }),
+            var mounted = V.Mount(_mountPoint, V.Div(children: new[] { AListOfThrowers("R") }),
                 new MountOptions { OnUncaughtError = (error, _) => _reports.Add(error.Message) });
             ShowTheListsRow(mounted);
 
@@ -567,7 +572,7 @@ namespace Velvet.Tests
             // Arrange
             var mounted = V.Mount(_mountPoint, V.Div(children: new VNode[]
                 {
-                    AListOf(item => V.Component(ListRow, key: item)),
+                    AListOf(item => V.Component(ListRow, key: item), "R"),
                     V.Custom<DetachThrower>(name: "X", key: "x"),
                 }),
                 new MountOptions { OnUncaughtError = (error, _) => _reports.Add(error.Message) });
@@ -597,6 +602,44 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(string.Join(" / ", _reports), Is.EqualTo("detach:A / detach:B:z"));
+        }
+
+        // Both rows carry one name: which of the two fails first is not what this pins.
+        [Test]
+        public void Given_AVirtualListWhoseTwoRowsThrowAsTheyDetachUnderAReconcilerNoRootOwns_When_AReconcileRemovesTheList_Then_TheFirstErrorIsThrownOnceBothHaveDetached()
+        {
+            // Arrange — the entry carries how many detach callbacks had run when the error reached the case
+            using var scope = new ReconcilerScope();
+            _host.Root.Add(scope.Root);
+            var before = new[] { AListOf(item => V.Custom<DetachThrower>(name: "R", key: item), "first", "second") };
+            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), before);
+            ShowTwoRows(scope);
+
+            // Act
+            RecordingWhatItThrows(() => scope.Reconciler.Reconcile(scope.Root, before, Array.Empty<VNode>()),
+                entry => _reports.Add(entry + "@" + s_detached));
+
+            // Assert
+            Assert.That(string.Join(" / ", _reports), Is.EqualTo("threw:detach:R@2"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base pools a z-* button the healthy removal of its row took with it.
+        // It reddens where the z-* release skips an element whose detach went out without a throw anywhere above it.
+        [Test]
+        public void Given_AZPlacedButtonInARow_When_TheHandleIsDisposed_Then_TheButtonGoesBackToThePool()
+        {
+            // Arrange
+            VNodePoolTestAccess.ClearButtonPoolForTest();
+            var mounted = V.Mount(_mountPoint, V.Div(className: "relative", key: "row", children: new VNode[]
+            {
+                V.Button(className: "absolute z-10", key: "z"),
+            }));
+
+            // Act
+            mounted.Dispose();
+
+            // Assert
+            Assert.That(VNodePoolTestAccess.ButtonPoolCountForTest, Is.EqualTo(1));
         }
 
         // GREEN_ON_BASE(characterization): the base removes the z-* element from a host its own detach disposes the root in.

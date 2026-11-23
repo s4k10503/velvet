@@ -803,24 +803,17 @@ namespace Velvet
         // finds it noted; DisposeDetachErrorTests' case of a z-* element throwing inside a row fails where it is not.
         internal static bool DetachSent(VisualElement real) => s_detachSent.TryGetValue(real, out _);
 
-        private static readonly ConditionalWeakTable<VisualElement, object> s_watched = new();
         private static readonly ConditionalWeakTable<VisualElement, object> s_detachSent = new();
         private static readonly object s_noted = new();
 
-        private static readonly EventCallback<DetachFromPanelEvent> s_noteDetach = static evt =>
-        {
-            var element = (VisualElement)evt.currentTarget;
-            s_detachSent.Remove(element);
-            s_detachSent.Add(element, s_noted);
-        };
+        private static readonly EventCallback<DetachFromPanelEvent> s_noteDetach =
+            static evt => s_detachSent.AddOrUpdate((VisualElement)evt.currentTarget, s_noted);
 
         private static readonly EventCallback<AttachToPanelEvent> s_noteAttach =
             static evt => s_detachSent.Remove((VisualElement)evt.currentTarget);
 
         private static void Watch(VisualElement real)
         {
-            if (s_watched.TryGetValue(real, out _)) return;
-            s_watched.Add(real, s_noted);
             real.RegisterCallback(s_noteDetach, TrickleDown.TrickleDown);
             real.RegisterCallback(s_noteAttach, TrickleDown.TrickleDown);
         }
