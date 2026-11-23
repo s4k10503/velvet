@@ -62,9 +62,8 @@ namespace Velvet.TestUtilities
 
         /// <summary>
         /// Runs the relative-length poll of what is on an already laid-out panel: sets the panel's clock to one this
-        /// advances by a second per call, then drives the scheduler and a layout pass twice, the first seeding the
-        /// poll's capture and the second re-resolving. The clock stays where it ends, so a later layout pass does not
-        /// run the poll again until this is called again.
+        /// holds, then twice advances it a second and drives the scheduler and a layout pass. The clock stays where it
+        /// ends, so a later layout pass does not run the poll again until this is called again.
         /// </summary>
         public static void DriveRelativeLengthPoll(IPanel panel)
         {
