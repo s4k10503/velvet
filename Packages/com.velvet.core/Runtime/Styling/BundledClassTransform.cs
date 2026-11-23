@@ -280,6 +280,7 @@ namespace Velvet
 
             private static int Unread(VisualElement element, StyleSheet sheet, bool bundled, ref bool attached)
             {
+                if (RadiusWatchSheets.IsWatch(sheet)) return 0;
                 var scan = ScanOf(sheet, bundled);
                 attached |= scan.Bundled;
                 if (scan.Entries == null) return ScaleBit | RotateBit | OriginBit;

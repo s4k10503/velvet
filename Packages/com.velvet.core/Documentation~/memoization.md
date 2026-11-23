@@ -136,6 +136,14 @@ An assembly that carries the `AssemblyMetadata` below also has every component w
 [assembly: System.Reflection.AssemblyMetadata(MemoizationReportAttribute.MetadataKey, MemoizationReportAttribute.WarnValue)]
 ```
 
+## The props comparer of `[Component(Memoize = true)]`
+
+For each `[Component(Memoize = true)]` method taking one props parameter, the package's source generator emits a comparer for that props type into the method's assembly and registers it with `PropsComparerRegistry` from a module initializer. A parent-driven render then compares the props through that comparer, so on an IL2CPP player it reads each member by typed access instead of through `FieldInfo` and `PropertyInfo`, and on a Mono runtime it replaces the compiled expression. A member is decided by the rule `ComponentAttribute.Memoize` states.
+
+The comparer is written only for a props type the generator can compare member by member exactly as the runtime's walk does: a class a render builds, whose members are read by the walk's rules and whose value-type members it can read in full. A props type it declines keeps the runtime's own walk, so a decline changes speed and nothing else. A struct declared in another assembly is not read, so a props type holding one is declined.
+
+A props value reaching the comparer under a subtype of the declared props type is not found by the registry and takes the same walk.
+
 ## Use inside the Runtime asmdef
 
 `[MemoizeMethod]` works in any partial class inside `Velvet.asmdef`. The Generator DLL is placed at `Runtime/Plugins/Generators/Velvet.SourceGenerators.dll` and Unity applies it automatically via the `RoslynAnalyzer` label.

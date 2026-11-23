@@ -36,8 +36,9 @@ from unittest import mock
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 # `-x, ` is optional, the long name always present, and a metavar between the name and the two
-# spaces before the description is what marks an option as taking a value.
-OPTION = re.compile(r"^\s{2,}(?:-(\w), )?--([a-z][\w-]*)(\s+\S+)?(\s\s|$)")
+# spaces before the description is what marks an option as taking a value. Newer gh help prints a
+# boolean with `[=true|false]` right after its name; it is read the same as the bare name.
+OPTION = re.compile(r"^\s{2,}(?:-(\w), )?--([a-z][\w-]*)(?:\[=true\|false\])?(\s+\S+)?(\s\s|$)")
 BLOCK = re.compile(r"^(?:INHERITED )?FLAGS\n(.*?)\n\n", re.S | re.M)
 
 # The subcommands the guard claims. `new` is create under another name and prints create's help, so
@@ -128,6 +129,7 @@ class BodyPathReadingTests(unittest.TestCase):
         with mock.patch.dict(os.environ, {"HOME": str(self.home)}):
             return pr_body.read_body_file(spelling, str(self.home), after_a_move=False)
 
+    # GREEN_ON_BASE(characterization): the body-path reading this change leaves as the base has it.
     def test_Given_ATildeSpelledBody_When_Read_Then_ItIsTheFileThatIsThere(self):
         # Arrange
         (self.home / "body.md").write_text("a body that answers")
@@ -138,8 +140,7 @@ class BodyPathReadingTests(unittest.TestCase):
         # Assert
         self.assertEqual((text, obstruction), ("a body that answers", None))
 
-    # GREEN_ON_BASE(characterization): the base answers this too, and it is the half the
-    # widened reading could take with it — only running it says whether it did.
+    # GREEN_ON_BASE(characterization): the body-path reading this change leaves as the base has it.
     def test_Given_ATildeSpelledBodyThatIsNotThere_When_Read_Then_ItIsStillMissing(self):
         # Arrange — the control: expanding the selector must not make an absent file readable.
         # Act
@@ -148,8 +149,7 @@ class BodyPathReadingTests(unittest.TestCase):
         # Assert
         self.assertEqual(obstruction, pr_body.MISSING)
 
-    # GREEN_ON_BASE(characterization): the base answers this too, and it is the half the
-    # widened reading could take with it — only running it says whether it did.
+    # GREEN_ON_BASE(characterization): the body-path reading this change leaves as the base has it.
     def test_Given_AVariableSpelledBody_When_Read_Then_ItIsStillUnexpanded(self):
         # Arrange — the other selector, which names no path this can resolve and is refused as before.
         # Act
@@ -160,6 +160,8 @@ class BodyPathReadingTests(unittest.TestCase):
 
 
 class ValueFlagMirrorTests(unittest.TestCase):
+    # GREEN_ON_BASE(characterization): the hook's mirrors of gh's tables are the base's, unchanged.
+    # What moved is this file's own reading of gh's help, which now also reads `[=true|false]`.
     def test_Given_ghsOwnOptionTable_When_TheValueTakingOptionsAreRead_Then_TheMirrorSpellsThoseExactly(self):
         # Arrange -- only one direction of a disagreement can cost a body. A flag gh takes a value
         # for and the mirror calls boolean spends the operand behind it, so `--body-file` after it
@@ -176,6 +178,8 @@ class ValueFlagMirrorTests(unittest.TestCase):
         self.assertEqual(unmirrored, [],
                          "gh takes a value for these and VALUE_FLAGS calls them boolean")
 
+    # GREEN_ON_BASE(characterization): the hook's mirrors of gh's tables are the base's, unchanged.
+    # What moved is this file's own reading of gh's help, which now also reads `[=true|false]`.
     def test_Given_ghsOwnOptionTable_When_TheBooleanShorthandsAreRead_Then_TheClusterParseKnowsEachOne(self):
         # Arrange — a cluster is read one letter at a time, so a boolean shorthand the parse does not
         # know stops the walk and takes any body flag clustered behind it with it: `-wF b.md`.
@@ -196,6 +200,8 @@ class SubcommandTableTests(unittest.TestCase):
     each of these does not.
     """
 
+    # GREEN_ON_BASE(characterization): the hook's mirrors of gh's tables are the base's, unchanged.
+    # What moved is this file's own reading of gh's help, which now also reads `[=true|false]`.
     def test_Given_ghsOwnOptionTables_When_EachCarriedSubcommandIsRead_Then_ItsTableSpellsThemExactly(self):
         # Arrange — both directions and both kinds, per subcommand rather than unioned: a flag
         # wrongly value-taking swallows the body flag behind it, and one wrongly boolean lets its own
@@ -219,6 +225,7 @@ class SubcommandTableTests(unittest.TestCase):
         # with nothing. Not the count: a second correct entry is not a regression.
         self.assertEqual((bool(subcommand_flags()), disagreement), (True, []))
 
+    # GREEN_ON_BASE(characterization): the operand parse this change leaves as the base has it.
     def test_Given_AMergeBodyBehindAValuelessShorthand_When_TheOperandsAreParsed_Then_TheBodyIsFound(self):
         # Arrange — `-m` is `--merge` here and carries no value, so the token after it is the next
         # option rather than its operand.
@@ -239,8 +246,8 @@ class ExemptionScopeTests(unittest.TestCase):
     what a reader has to trust when they see one.
     """
 
-    # GREEN_ON_BASE(refactor): the exemption table is unchanged; what moved is how this case spells the
-    # lookup, now that `option_table` takes the whole command rather than a `gh pr` subcommand.
+    # GREEN_ON_BASE(characterization): the hook's mirrors of gh's tables are the base's, unchanged.
+    # What moved is this file's own reading of gh's help, which now also reads `[=true|false]`.
     def test_Given_ghsOwnOptionTables_When_TheDryRunExemptionIsRead_Then_ItNamesTheSubcommandsThatTakeIt(self):
         # Arrange — `pr new` is `pr create`'s alias and prints the same table, so it rides with it.
         # `merge` is read here though the body guard does not claim it: the exemption table is what

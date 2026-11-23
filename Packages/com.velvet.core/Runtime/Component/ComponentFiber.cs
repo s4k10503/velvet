@@ -246,6 +246,11 @@ namespace Velvet
 
         private bool _pendingWorkBelow;
 
+        // Set on a fiber that declares a Portal standing on a host root the engine replaced. While a Portal it declares
+        // has children pending, its reconciles patch every node that may hold a Portal, identical to the last render's
+        // or not (ChildReconciler.OwesPortalRetarget, which clears it once none has).
+        internal bool PortalRetargetOwed { get; set; }
+
         // Whether the pass SuspendedOn names was a transition's, which the retry then renders on the Transition lane.
         internal bool SuspendedInTransition
         {
@@ -1389,9 +1394,41 @@ namespace Velvet
         // or has no parent.
         private ComponentFiber? _previousSibling;
 
+        // The children appended while a reader holds the log, in append order. A capture of the children before a
+        // reconcile and a read of those it added then costs the added ones, not every child, where a parent with N
+        // children added one at a time would pay N(N-1)/2.
+        private List<ComponentFiber>? _appendLog;
+        private int _appendLogReaders;
+
+        // The position a later AppendedSince reads from. Every call is paired with one EndAppendLog.
+        internal int BeginAppendLog()
+        {
+            _appendLog ??= new List<ComponentFiber>();
+            _appendLogReaders++;
+            return _appendLog.Count;
+        }
+
+        internal void EndAppendLog()
+        {
+            if (--_appendLogReaders == 0) _appendLog = null;
+        }
+
+        // Where the next appended child lands in the log, which a reader moves its mark to once it has read up to it.
+        internal int AppendLogPosition => _appendLog!.Count;
+
+        // The children appended since mark that are still children of this fiber.
+        internal IEnumerable<ComponentFiber> AppendedSince(int mark)
+        {
+            for (var i = mark; i < _appendLog!.Count; i++)
+            {
+                if (ReferenceEquals(_appendLog[i].Parent, this)) yield return _appendLog[i];
+            }
+        }
+
         public void AppendChild(ComponentFiber child)
         {
             child.Parent?.RemoveChild(child);
+            _appendLog?.Add(child);
 
             child.Parent = this;
             child.Sibling = null;

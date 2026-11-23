@@ -413,7 +413,7 @@ author markup.
 **Minimum size.** A CSS flex item cannot shrink below its content-based minimum size along the
 container's main axis (CSS Flexbox §4.5): its min-content size, capped by its definite preferred size on
 that axis, then by its maximum size. Velvet writes that value inline, as `min-width` in a row and
-`min-height` in a column, on every `Label` and `Button` it creates:
+`min-height` in a column, on a `Label` or `Button` it creates wherever it can bind:
 
 - a row's min-content width is the widest run of text with no break opportunity in it: spaces
   separate runs (a no-break space does not), a hyphen between letters ends one, and each ideograph,
@@ -421,6 +421,10 @@ that axis, then by its maximum size. Velvet writes that value inline, as `min-wi
   `whitespace-nowrap` and `whitespace-pre` it is the whole text;
 - a column's min-content height is the height the text takes at the width the item was given;
 - the item's own padding and border on that axis is added to either.
+
+A row item that can shrink, wraps, has more than one run of text and holds the width of its whole text on one
+line carries no minimum, since the minimum is never above that width; the value is written once the row squeezes
+the item below it. A column item and the other row items are measured as before.
 
 A declared `w-*` / `h-*` / `size-*` (class, bracket or inline) caps the minimum at that size, and a
 `max-w-*` / `max-h-*` caps it at the maximum; `w-fit`, `w-min`, `w-max` and `w-auto` declare no definite

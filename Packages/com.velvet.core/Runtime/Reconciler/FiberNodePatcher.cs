@@ -111,7 +111,7 @@ namespace Velvet
         internal struct PortalSelfPatch
         {
             internal ComponentFiber? DeclaringFiber;
-            internal HashSet<ComponentFiber>? ChildFibersBefore;
+            internal int ChildrenAppendedFrom;
             internal PortalSlotInfo PrevState;
             internal int BeforeTailCount;
             internal InlineTenancy? Tenancy;
@@ -1541,34 +1541,25 @@ namespace Velvet
             }
         }
 
-        // Captures declaringFiber's current direct children, in a set rented from the shared pool, so a later
-        // diff against its children after a patch can tell which ones are new (see StampNewTopLevelChildren).
-        private ComponentFiber? CaptureDeclaringChildFibers(out HashSet<ComponentFiber>? childFibersBefore)
+        // Marks where declaringFiber's children stand, so StampNewTopLevelChildren can tell which ones the patch
+        // added. Paired with EndAppendLog on the returned fiber.
+        private ComponentFiber? CaptureDeclaringChildFibers(out int appendedFrom)
         {
             var declaringFiber = _ctx.FiberStack.Current;
-            childFibersBefore = null;
-            if (declaringFiber != null)
-            {
-                childFibersBefore = _ctx.BufferPool.RentFiberSet();
-                for (var f = declaringFiber.Child; f != null; f = f.Sibling)
-                {
-                    childFibersBefore.Add(f);
-                }
-            }
+            appendedFrom = declaringFiber?.BeginAppendLog() ?? 0;
             return declaringFiber;
         }
 
-        // Stamps DetachedMountContext on every top-level child of declaringFiber NOT present in
-        // childFibersBefore — the fibers this patch's reconcile of its children just created — with what an
+        // Stamps DetachedMountContext on every top-level child of declaringFiber appended since
+        // appendedFrom — the fibers this patch's reconcile of its children just created — with what an
         // isolated re-render of them needs to rebuild their enclosing Providers, as the drain's
         // StampDrainedChildren does for a mount. Shared by every patch of a mounted Portal and WorldSpace.
         private void StampNewTopLevelChildren(
-            ComponentFiber declaringFiber, HashSet<ComponentFiber> childFibersBefore, VNode?[]? descendantNodes)
+            ComponentFiber declaringFiber, int appendedFrom, VNode?[]? descendantNodes)
         {
             DetachedMountContext? detached = null;
-            for (var f = declaringFiber.Child; f != null; f = f.Sibling)
+            foreach (var f in declaringFiber.AppendedSince(appendedFrom))
             {
-                if (childFibersBefore.Contains(f)) continue;
                 detached ??= new DetachedMountContext(_ctx.ComponentContextStack.SnapshotTops(),
                     descendantNodes, declaringFiber, declaringFiber);
                 f.DetachedMountContext = detached;
@@ -1623,7 +1614,15 @@ namespace Velvet
                     newNode.FocusOrder, _ctx);
             }
 
-            PatchPortalChildrenPre(ref patch, record.Document.rootVisualElement, oldNode.Children, newNode.Children,
+            var target = record.Document.rootVisualElement;
+            if (_ctx.PortalState.TryGetValue(placeholder, out var recorded)
+                && recorded.Target != null && !ReferenceEquals(recorded.Target, target))
+            {
+                _host.ReleasePortalRangeForRetarget(placeholder);
+                RebaseRangeOnto(placeholder, target);
+            }
+
+            PatchPortalChildrenPre(ref patch, target, oldNode.Children, newNode.Children,
                 "world-space");
         }
 
@@ -1672,7 +1671,7 @@ namespace Velvet
             // stored in. Measuring this physically let an invisible child arriving on the target — a portal
             // child gaining a filter, or a negative z — inflate the recorded length by one, which then
             // shifted every downstream portal's SlotStart and made the cleanup walk over-remove.
-            patch.Portal.BeforeTailCount = LogicalChildSlots.Count(target);
+            patch.Portal.BeforeTailCount = LogicalChildSlots.Count(target) - _ctx.PortalState.Stored.GrowthOn(target);
             // What a reconcile nested in this one already moved the starts on target for is left out of the
             // shift below, for the reason FiberCommitWork.RowCountWindow gives.
             patch.Portal.Tenancy = _ctx.ComponentRegistry.TenancyOf(target);
@@ -1683,9 +1682,9 @@ namespace Velvet
             // gain its first ones on a LATER patch, and a Portal that heals onto a target registered after it
             // mounted creates them here. FiberStack.Current is the declaring fiber (RenderAndReconcile keeps it
             // pushed for the whole patch of its own returned tree), the parent those children register under. The
-            // "before" snapshot is rented from the shared pool, since this runs on every patch of a mounted Portal,
-            // and rented last: the walk calls this right before the try whose finally returns it (ClosePortalRange).
-            patch.Portal.DeclaringFiber = CaptureDeclaringChildFibers(out patch.Portal.ChildFibersBefore);
+            // append log is opened last: the walk calls this right before the try whose finally closes it
+            // (ClosePortalRange).
+            patch.Portal.DeclaringFiber = CaptureDeclaringChildFibers(out patch.Portal.ChildrenAppendedFrom);
         }
 
         // Runs whether or not the children's reconcile returned: one that unwinds — a boundary above catching a
@@ -1707,15 +1706,12 @@ namespace Velvet
                 }
                 if (mounted && portal.DeclaringFiber != null)
                 {
-                    StampNewTopLevelChildren(portal.DeclaringFiber, portal.ChildFibersBefore!, portal.StampedChildren);
+                    StampNewTopLevelChildren(portal.DeclaringFiber, portal.ChildrenAppendedFrom, portal.StampedChildren);
                 }
             }
             finally
             {
-                if (portal.ChildFibersBefore != null)
-                {
-                    _ctx.BufferPool.ReturnFiberSet(portal.ChildFibersBefore);
-                }
+                portal.DeclaringFiber?.EndAppendLog();
             }
         }
 
@@ -1732,7 +1728,7 @@ namespace Velvet
             var shiftedBefore = tenancy?.ShiftedRows ?? 0;
             var beforeTailCount = LogicalChildSlots.Count(target);
             _host.RemoveRows(target, inserted.SlotStart, inserted.SlotLength);
-            RecordPatchedPortalRange(placeholder, target, inserted, beforeTailCount, tenancy, shiftedBefore);
+            RecordPatchedPortalRange(placeholder, target, inserted, beforeTailCount - _ctx.PortalState.Stored.GrowthOn(target), tenancy, shiftedBefore);
         }
 
         private void RecordPatchedPortalRange(
@@ -1742,9 +1738,12 @@ namespace Velvet
             // (beforeTailCount - prevState.SlotLength) is the count of target children that do NOT belong to
             // this Portal's slot — unchanged by the reconcile above. Subtracting it from the new total
             // isolates this Portal's new slot length without re-counting the foreign children.
-            var newSlotLength = LogicalChildSlots.Count(target) - (beforeTailCount - prevState.SlotLength);
+            // A Portal patched inside this one's reconcile on the same target adds its rows to the count, and
+            // they are its own: it recorded them as growth on the target.
+            // beforeTailCount is read net of what those had recorded by then, so the same net count is taken here.
+            var grown = _ctx.PortalState.Stored.GrowthOn(target);
+            var newSlotLength = LogicalChildSlots.Count(target) - grown - (beforeTailCount - prevState.SlotLength);
             var delta = newSlotLength - prevState.SlotLength;
-
             // The RESOLVED target is written back: a portal that mounted before its id registered
             // recorded no target, and the first healing patch must fill it in so the slot-shift
             // grouping, the eventual cleanup, and the has-variant portal-target sweep all see where
@@ -1752,6 +1751,7 @@ namespace Velvet
             // reference.
             _ctx.PortalState[placeholder] = prevState with { Target = target, SlotLength = newSlotLength };
             _ctx.PortalState.Anchor(placeholder);
+            _ctx.PortalState.Stored.AddGrowth(target, delta);
 
             var unshifted = delta - ((tenancy?.ShiftedRows ?? 0) - shiftedBefore);
             _ctx.HostCommit.ShiftBehindPortalRange(target, placeholder, prevState, unshifted);
@@ -4119,20 +4119,26 @@ namespace Velvet
 
         private static readonly List<string> s_placedScratch = new();
         private static readonly List<int> s_placedAt = new();
+        private static readonly List<int> s_placedSlot = new();
 
         // ComposeVariantClasses for an element whose custom-property readers apply payloads at the base layer: a
         // reader's payload sits before the first reconciled token Tailwind orders after the reader (the reader
         // ties after an equal one), so a family reading the last token of the composed array ranks it against the
-        // element's literal utilities as Tailwind does. A payload no reader owns follows them all, as it does
-        // without readers, and a token a play withheld is left out as ComposeVariantClasses leaves it.
+        // element's literal utilities as Tailwind does. A payload of a family StyleFamilyOrder sorts is measured against
+        // the tokens of its own family and importance, which the reconciled array holds in Tailwind's order
+        // (StyleFamilyOrder.Sorted), and not against a token of another family, which can stand ahead of them in the array
+        // whatever its place. A payload no reader owns follows them all, as it does without readers, and a token a play
+        // withheld is left out as ComposeVariantClasses leaves it.
         private static string[] ComposePlacedClasses(VisualElement element, string[] classNames, List<string> tokens,
             List<string> withheld, string[]? reuse)
         {
             s_placedScratch.Clear();
             s_placedAt.Clear();
+            s_placedSlot.Clear();
             foreach (var token in tokens)
             {
                 s_placedAt.Add(StyleCustomProperties.PlaceOf(element, token));
+                s_placedSlot.Add(StyleFamilyOrder.SlotOf(token));
             }
             for (var j = 0; j < classNames.Length; j++)
             {
@@ -4141,9 +4147,15 @@ namespace Velvet
                     continue;
                 }
                 var ordinal = StyleRuleOrder.OrdinalOf(classNames, j);
+                var slot = -2;
                 for (var i = 0; i < tokens.Count; i++)
                 {
-                    if (s_placedAt[i] >= 0 && s_placedAt[i] < ordinal)
+                    if (s_placedAt[i] < 0 || s_placedAt[i] >= ordinal)
+                    {
+                        continue;
+                    }
+                    slot = slot == -2 ? StyleFamilyOrder.SlotOf(classNames[j]) : slot;
+                    if (s_placedSlot[i] < 0 || s_placedSlot[i] == slot)
                     {
                         s_placedScratch.Add(tokens[i]);
                         s_placedAt[i] = -2;

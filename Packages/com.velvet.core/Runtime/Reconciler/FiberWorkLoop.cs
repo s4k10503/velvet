@@ -319,7 +319,7 @@ namespace Velvet
             var scheduler = fiber.Reconciler?.Context.BatchScheduler;
             if (scheduler == null)
             {
-                // MUTANT_SURVIVES(unreachable, line removed): a fiber reaches ScheduleFlush only while mounted, and a mounted fiber holds a Reconciler (SetupMount assigns it before IsMounted; Unmount clears IsMounted and its lanes first), so the scheduler is never null here.
+                // MUTANT_SURVIVES(equivalent, line removed): this branch is taken only by a fiber with no Reconciler, which only an unmounted fiber lacks, and the FlushState that ScheduleStandaloneFlush schedules returns at FlushFiber's IsMounted check for such a fiber; Mount runs only on a fiber just created (ComponentRegistry.CreateAndMountFiber, V.Mount), so an unmounted one is never mounted again before the scheduled call runs.
                 ScheduleStandaloneFlush(fiber);
                 return;
             }
@@ -338,6 +338,7 @@ namespace Velvet
         // (RenderCommitAllocationTests).
         private static void ScheduleStandaloneFlush(ComponentFiber fiber)
         {
+            // MUTANT_SURVIVES(equivalent, equality): the only caller is the branch of ScheduleFlush that a fiber with no Reconciler takes, and the FlushState scheduled below returns at FlushFiber's IsMounted check for it (Mount runs only on a fiber just created, so it is never mounted again), so scheduling it or not changes nothing; Schedule also does nothing for a null MountPoint.
             if (fiber.MountPoint == null) return;
             HostSchedulers.For(fiber).Schedule(fiber.MountPoint, () => FlushState(fiber));
         }

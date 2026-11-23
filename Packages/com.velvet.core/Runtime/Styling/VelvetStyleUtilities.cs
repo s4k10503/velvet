@@ -127,6 +127,8 @@ namespace Velvet
             root.styleSheets.Add(Sheet);
             SnappedBorderSheets.Follow(root);
             BindThemeTo(root);
+            // The sheets the root already holds, which a mount below would otherwise read at its first pass.
+            RadiusWatchSheets.EnsureAbove(root);
         }
 
         /// <summary>
@@ -321,7 +323,7 @@ namespace Velvet
                 {
                     var sheet = chain[i].styleSheets[j];
                     // The host's panel has a scale of its own, which the host root's sheet follows.
-                    if (SnappedBorderSheets.IsSnapped(sheet) || ReachesAbove(carry.HostRoot, sheet)) continue;
+                    if (SnappedBorderSheets.IsSnapped(sheet) || RadiusWatchSheets.IsWatch(sheet) || ReachesAbove(carry.HostRoot, sheet)) continue;
                     sheets.Remove(sheet);
                     sheets.Add(sheet);
                 }
@@ -389,6 +391,7 @@ namespace Velvet
 
         internal static int SheetStamp(int stamp, StyleSheet sheet)
         {
+            if (RadiusWatchSheets.IsWatch(sheet)) return stamp;
             stamp = HashCode.Combine(stamp, sheet, sheet.contentHash);
             foreach (var imported in Facts(sheet).Imports) stamp = SheetStamp(stamp, imported);
             return stamp;
