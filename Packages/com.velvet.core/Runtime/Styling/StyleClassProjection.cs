@@ -111,6 +111,7 @@ namespace Velvet
             {
                 if (priority == StyleLayerPriority.Base)
                 {
+                    StyleTransitionBehavior.PlayChanged(element, cls);
                     return;
                 }
                 model = StyleArbitraryValueResolver.GetOrCreateProjection(element);
@@ -118,6 +119,7 @@ namespace Velvet
             }
             model.RawAdded(element, cls, priority);
             AuthoredTransform.Resync(element);
+            StyleTransitionBehavior.PlayChanged(element, cls);
         }
 
         // The removal half of RawAdded. It also forgets the class at the base priority, where a seed adopted it
@@ -126,6 +128,7 @@ namespace Velvet
         {
             StyleArbitraryValueResolver.TryGetProjection(element)?.RawRemoved(element, cls);
             AuthoredTransform.Resync(element);
+            StyleTransitionBehavior.PlayChanged(element, cls);
         }
 
         // The writer's removal of a class a variant payload in force still holds, which stays on the list: only
@@ -134,6 +137,7 @@ namespace Velvet
         {
             StyleArbitraryValueResolver.TryGetProjection(element)?.RawReleased(element, cls);
             AuthoredTransform.Resync(element);
+            StyleTransitionBehavior.PlayChanged(element, cls);
         }
 
         // Ranks a class a play ranked above the base as the element's own from now on. A class the play's rank no
@@ -142,6 +146,7 @@ namespace Velvet
         {
             StyleArbitraryValueResolver.TryGetProjection(element)?.RawRested(element, cls);
             AuthoredTransform.Resync(element);
+            StyleTransitionBehavior.PlayChanged(element, cls);
         }
 
         // Whether cls is element's own while the projection keeps it off the live class list: declared by its
@@ -796,12 +801,12 @@ namespace Velvet
                 return -1;
             }
 
-            // The keys cls is held at by the className or a payload, a play's ranking-only entries left out.
-            public void DeclaredKeys(string cls, List<long> into)
+            // The keys cls is held at, a play's ranking-only entries among them where withPlays.
+            public void Keys(string cls, List<long> into, bool withPlays)
             {
                 foreach (var entry in _entries)
                 {
-                    if (entry.Class == cls && !entry.RankOnly)
+                    if (entry.Class == cls && (withPlays || !entry.RankOnly))
                     {
                         into.Add(entry.Priority);
                     }

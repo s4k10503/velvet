@@ -169,6 +169,19 @@ namespace Velvet.Tests
             Assert.That(Joined(classNames), Is.EqualTo(token + "|" + Scoped + token));
         }
 
+        [TestCase("transition-discrete")]
+        [TestCase("transition-normal")]
+        [TestCase("md:transition-discrete")]
+        public void Given_ATransitionBehaviourOnATextField_When_TheNodeIsBuilt_Then_TheControlKeepsItAndTheInputBoxTakesIt(
+            string token)
+        {
+            // Act
+            var classNames = V.TextField(className: token).ClassNames;
+
+            // Assert
+            Assert.That(Joined(classNames), Is.EqualTo(token + "|" + Scoped + token));
+        }
+
         [Test]
         public void Given_ATextFieldBuiltTwiceWithTheSameClasses_When_ItsClassesAreRouted_Then_BothBuildsShareOneArray()
         {

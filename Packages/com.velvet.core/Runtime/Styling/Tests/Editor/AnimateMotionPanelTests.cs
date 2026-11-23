@@ -366,9 +366,9 @@ namespace Velvet.Tests
             // suspension; the swap's own list stays on the element, with the opacity the pulse writes left out.
             var (beforeSwap, afterSwap) = SwapVariantUnderAPulse("w-[40px] h-[40px] bg-red-500 animate-pulse");
 
-            // Assert — `all` expands to every longhand but the one the pulse drives, filter among them.
-            var expected = string.Join(",", Enumerable.Range(0, StyleUtilityProperties.LonghandCount)
-                .Select(i => StyleUtilityProperties.UssName((StyleLonghand)i)).Where(name => name != "opacity"));
+            // Assert — transition-all's list but the one the pulse drives, filter among them.
+            var expected = string.Join(",",
+                StyleUtilityTableProbe.TransitionAllLonghands().Where(name => name != "opacity"));
             Assert.That((beforeSwap, afterSwap), Is.EqualTo(("<unset>", expected)));
         }
 
@@ -381,9 +381,9 @@ namespace Velvet.Tests
             var (beforeSwap, afterSwap) =
                 SwapVariantUnderAPulse("w-[40px] h-[40px] bg-red-500 transition-opacity animate-pulse");
 
-            // Assert — `all` expands to every longhand but the one the pulse drives, filter among them.
-            var expected = string.Join(",", Enumerable.Range(0, StyleUtilityProperties.LonghandCount)
-                .Select(i => StyleUtilityProperties.UssName((StyleLonghand)i)).Where(name => name != "opacity"));
+            // Assert — transition-all's list but the one the pulse drives, filter among them.
+            var expected = string.Join(",",
+                StyleUtilityTableProbe.TransitionAllLonghands().Where(name => name != "opacity"));
             Assert.That((beforeSwap, afterSwap), Is.EqualTo(("", expected)));
         }
 

@@ -2872,7 +2872,7 @@ namespace Velvet
     {
         private static readonly StyleLonghandSet[] Declared =
         {
-            new StyleLonghandSet(0xFFB6CFFFED861FA1UL, 0x0000000000D8777BUL),
+            new StyleLonghandSet(0xFFB6CFFFED861FBDUL, 0x0000000000D8777BUL),
             new StyleLonghandSet(0xFFFFFFFFFFFFFFFFUL, 0x0000000000FFFFFFUL),
             new StyleLonghandSet(0x0000085441000000UL, 0x0000000000000000UL),
             new StyleLonghandSet(0x0000085441000000UL, 0x0000000000000400UL),

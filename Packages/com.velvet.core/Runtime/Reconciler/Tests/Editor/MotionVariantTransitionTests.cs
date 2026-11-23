@@ -591,10 +591,10 @@ namespace Velvet.Tests
             // Act
             reconciler.Reconcile(Root, Tree("hidden"), Tree("visible"));
 
-            // Assert — the overrides follow the "all" entry the rest of the swap transitions on.
+            // Assert — the overrides follow transition-all's list, which the rest of the swap transitions on.
             var property = Root.Q<VisualElement>("m").style.transitionProperty;
             Assert.That(string.Join(",", property.value?.Select(p => p.ToString()) ?? Enumerable.Empty<string>()),
-                Is.EqualTo("all,opacity"));
+                Is.EqualTo(string.Join(",", StyleUtilityTableProbe.TransitionAllLonghands()) + ",opacity"));
         }
 
         [Test]

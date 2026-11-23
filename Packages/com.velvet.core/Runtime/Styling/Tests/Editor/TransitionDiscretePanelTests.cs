@@ -28,6 +28,12 @@ namespace Velvet.Tests
             "visibility", "background-position-x", "background-position-y",
         };
 
+        // Kept in transition-all's list beside them as well (_effects.uss says why).
+        private static readonly HashSet<string> s_fontProperties = new(StringComparer.Ordinal)
+        {
+            "-unity-font", "-unity-font-definition", "-unity-font-style",
+        };
+
         private sealed class ClassNames : Store<string>
         {
             public ClassNames(string initial) : base(initial) { }
@@ -120,8 +126,8 @@ namespace Velvet.Tests
 
         private static string[] Sorted(IEnumerable<string> names) => names.OrderBy(name => name, StringComparer.Ordinal).ToArray();
 
-        // The longhands UI Toolkit animates whose transitions it interpolates, and those it only switches that CSS
-        // transitions by default, sorted. Each animatable property is started between the element's own values, which
+        // The longhands UI Toolkit animates whose transitions it interpolates, and those it only switches that
+        // transition-all keeps, sorted. Each animatable property is started between the element's own values, which
         // records the Values class its longhands dispatch to.
         private static string[] InterpolatedOrTransitionedByCss(VisualElement element)
         {
@@ -144,7 +150,8 @@ namespace Velvet.Tests
             foreach (DictionaryEntry entry in dispatched)
             {
                 var name = (string)names[entry.Key];
-                if (!OnlySwitches(entry.Value.GetType()) || s_cssTransitionsByDefault.Contains(name))
+                if (!OnlySwitches(entry.Value.GetType()) || s_cssTransitionsByDefault.Contains(name)
+                    || s_fontProperties.Contains(name))
                 {
                     listed.Add(name);
                 }
@@ -178,7 +185,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_TransitionAll_When_Resolved_Then_ItListsWhatTheEngineInterpolatesAndWhatCssTransitionsByDefault()
+        public void Given_TransitionAll_When_Resolved_Then_ItListsWhatTheEngineInterpolatesAndWhatItKeeps()
         {
             // Arrange
             var element = Resolved("transition-all");
@@ -218,21 +225,6 @@ namespace Velvet.Tests
             Assert.That(element.resolvedStyle.justifyContent, Is.EqualTo(Justify.FlexEnd));
         }
 
-        [Test]
-        public void Given_AnElementTransitioningAll_When_AFontDefinitionIsWrittenInline_Then_ItShowsTheNewFontAtOnce()
-        {
-            // Arrange
-            var font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-            var element = Resolved("transition-all duration-1000 ease-linear");
-
-            // Act
-            element.style.unityFontDefinition = new StyleFontDefinition(FontDefinition.FromFont(font));
-            RunAQuarterSecond(element);
-
-            // Assert
-            Assert.That(element.resolvedStyle.unityFontDefinition.font, Is.SameAs(font));
-        }
-
         // GREEN_ON_BASE(characterization): the base transitions opacity under transition-all as this change does.
         // Taking `opacity` out of transition-all's list in _effects.uss reddens this case.
         [Test]
@@ -251,7 +243,7 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base hands transition-all's switching properties to the engine anyway.
-        // Deleting the AddToModel of transition-all-discrete in StyleTransitionBehavior.Sync reddens this case.
+        // Routing only transition-all through StyleTransitionBehavior in StyleClassProjection.Add reddens this case.
         [Test]
         public void Given_AnElementTransitioningAllWithTransitionDiscrete_When_ItsJustifyContentIsWritten_Then_AQuarterSecondInItKeepsTheOldValue()
         {
@@ -267,7 +259,8 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base hands transition-all's switching properties to the engine anyway.
-        // Deleting the AddToModel of transition-all-discrete in StyleTransitionBehavior.Add reddens this case.
+        // Routing only transition-discrete and transition-normal through StyleTransitionBehavior in
+        // StyleClassProjection.Add reddens this case.
         [Test]
         public void Given_TransitionDiscreteWrittenBeforeTransitionAll_When_ItsJustifyContentIsWritten_Then_AQuarterSecondInItKeepsTheOldValue()
         {
@@ -410,7 +403,7 @@ namespace Velvet.Tests
             StyleTransitionUtilities.TryGet("transition-all", out var transitionAll, out _);
             return table.Keys.Cast<string>()
                 .Select(name => (Name: name, Position: StyleTransitionUtilities.TryGet(name, out var position, out _) ? position : -1))
-                .Where(utility => utility.Position > transitionAll)
+                .Where(utility => utility.Position > transitionAll && utility.Name != "transition-all-discrete")
                 .OrderBy(utility => utility.Position)
                 .Select(utility => utility.Name);
         }
@@ -432,7 +425,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AVariantTween_When_ItStarts_Then_ItListsWhatTheEngineInterpolatesAndWhatCssTransitionsByDefault()
+        public void Given_AVariantTween_When_ItStarts_Then_ItListsWhatTheEngineInterpolatesAndWhatTransitionAllKeeps()
         {
             // Arrange
             var element = Attached(new VisualElement());
@@ -465,7 +458,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AVariantTweenWithAnOverrideNamingAll_When_ItStarts_Then_TheOverrideListsWhatTheEngineInterpolatesAndWhatCssTransitionsByDefault()
+        public void Given_AVariantTweenWithAnOverrideNamingAll_When_ItStarts_Then_TheOverrideListsWhatTheEngineInterpolatesAndWhatTransitionAllKeeps()
         {
             // Arrange
             var element = Attached(new VisualElement());
@@ -479,6 +472,109 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(Sorted(Listed(element).Skip(expected.Length)), Is.EqualTo(expected));
+        }
+
+        // GREEN_ON_BASE(characterization): the base lists `all` then the override on every element.
+        // Choosing transition-all's own list for the names under transition-discrete, leaving the timing on `all`'s,
+        // reddens this case.
+        [Test]
+        public void Given_AVariantTweenWithAnOverrideOnAnElementWithTransitionDiscrete_When_ItStarts_Then_TheOverrideFollowsAll()
+        {
+            // Arrange
+            var element = Mounted("transition-discrete");
+            var overrides = new[] { new StylePropertyTransition("opacity", durationSec: 0.15f) };
+
+            // Act
+            new StyleAnimationScheduler().PlayVariantEnter(element, Array.Empty<string>(), Array.Empty<string>(),
+                durationSec: 0.3f, easing: EasingMode.Linear, delaySec: 0f, propertyOverrides: overrides);
+            ForcePanelUpdate(element.panel);
+
+            // Assert
+            var durationsMs = element.resolvedStyle.transitionDuration.Select(time => time.value).ToArray();
+            Assert.That(string.Join(",", Listed(element)) == "all,opacity" ? durationsMs : new[] { float.NaN },
+                Is.EqualTo(new[] { 300f, 150f }).Within(1e-3f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base's variant tween lists `all` whatever its pose shows.
+        // Dropping PoseClasses from the TweenSpec StyleAnimationScheduler.PlayEnterInternal builds reddens this case.
+        [Test]
+        public void Given_AVariantTweenWhosePoseShowsTransitionDiscrete_When_ItStarts_Then_ItListsAll()
+        {
+            // Arrange
+            var element = Attached(new VisualElement());
+
+            // Act
+            new StyleAnimationScheduler().PlayVariantEnter(element, Array.Empty<string>(), new[] { "transition-discrete" },
+                durationSec: 1f, easing: EasingMode.Linear, delaySec: 0f);
+            ForcePanelUpdate(element.panel);
+
+            // Assert
+            Assert.That(Listed(element), Is.EqualTo(new[] { "all" }));
+        }
+
+        // GREEN_ON_BASE(characterization): the base lists `all` for transition-all whatever a play shows.
+        // Dropping the PlayChanged of StyleClassProjection.RawAdded reddens this case.
+        [Test]
+        public void Given_TransitionAll_When_APlayShowsTransitionDiscrete_Then_TransitionAllListsAll()
+        {
+            // Arrange
+            var element = Mounted("transition-all");
+
+            // Act
+            StyleAnimationClassUtils.AddClasses(element, new[] { "transition-discrete" }, StyleLayerPriority.Animation);
+            ForcePanelUpdate(element.panel);
+
+            // Assert
+            Assert.That(Listed(element), Is.EqualTo(new[] { "all" }));
+        }
+
+        [Test]
+        public void Given_TransitionAllUnderADarkTransitionDiscrete_When_APlayShowsTransitionNormal_Then_TransitionAllKeepsItsOwnList()
+        {
+            // Arrange
+            var element = Mounted("transition-all dark:transition-discrete");
+            VelvetTheme.IsDark = true;
+            var expected = InterpolatedOrTransitionedByCss(element);
+
+            // Act
+            StyleAnimationClassUtils.AddClasses(element, new[] { "transition-normal" }, StyleLayerPriority.Animation);
+            ForcePanelUpdate(element.panel);
+
+            // Assert
+            Assert.That(Sorted(Listed(element)), Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void Given_TransitionAllWhileAPlayShowsTransitionDiscrete_When_ThePlayTakesItOff_Then_TransitionAllKeepsItsOwnList()
+        {
+            // Arrange
+            var element = Mounted("transition-all");
+            StyleAnimationClassUtils.AddClasses(element, new[] { "transition-discrete" }, StyleLayerPriority.Animation);
+            var expected = InterpolatedOrTransitionedByCss(element);
+
+            // Act
+            StyleAnimationClassUtils.RemoveClasses(element, new[] { "transition-discrete" });
+            ForcePanelUpdate(element.panel);
+
+            // Assert
+            Assert.That(Sorted(Listed(element)), Is.EqualTo(expected));
+        }
+
+        // GREEN_ON_BASE(characterization): the base lists `all` for transition-all whatever ranks the behaviours.
+        // Reading transition-all's keys without a play's in StyleTransitionBehavior.Resync reddens this case.
+        [Test]
+        public void Given_TransitionDiscrete_When_APlayShowsTransitionAll_Then_ItListsAll()
+        {
+            // Arrange — a dark payload builds the element's projection model before the play shows anything.
+            var element = Mounted("transition-discrete dark:opacity-50");
+            VelvetTheme.IsDark = true;
+
+            // Act
+            StyleAnimationClassUtils.AddClasses(element, new[] { "transition-all" }, StyleLayerPriority.Animation);
+            ForcePanelUpdate(element.panel);
+
+            // Assert
+            Assert.That(Listed(element), Is.EqualTo(new[] { "all" }));
         }
     }
 }

@@ -34,17 +34,9 @@ namespace Velvet.Tests
             }
         }
 
-        // The longhands transition-all's rule lists, in the bundled table's order.
-        private static string[] TransitionAllLonghands()
-        {
-            StyleTransitionUtilities.TryGet("transition-all", out _, out var listed);
-            return Enumerable.Range(0, StyleUtilityProperties.LonghandCount).Select(i => (StyleLonghand)i)
-                .Where(listed.Contains).Select(StyleUtilityProperties.UssName).ToArray();
-        }
-
         // The top-level value once per entry of transition-all's list, then the overrides' own.
         private static float[] LeadingThen(float leading, params float[] overrides)
-            => Enumerable.Repeat(leading, TransitionAllLonghands().Length).Concat(overrides).ToArray();
+            => Enumerable.Repeat(leading, StyleUtilityTableProbe.TransitionAllLonghands().Length).Concat(overrides).ToArray();
 
         private VisualElement MountOnRealPanel()
         {
@@ -85,7 +77,7 @@ namespace Velvet.Tests
             // over an array of durations the tolerance still reaches.
             var props = string.Join(",", element.resolvedStyle.transitionProperty.Select(p => p.ToString()));
             var durationsMs = element.resolvedStyle.transitionDuration.Select(t => t.value).ToArray();
-            var listed = string.Join(",", TransitionAllLonghands());
+            var listed = string.Join(",", StyleUtilityTableProbe.TransitionAllLonghands());
             Assert.That(props == listed + ",opacity,scale" ? durationsMs : new[] { float.NaN },
                 Is.EqualTo(LeadingThen(300f, 150f, 500f)).Within(1e-3f));
         }
@@ -133,7 +125,7 @@ namespace Velvet.Tests
 
             // Assert
             var easings = string.Join(",", element.resolvedStyle.transitionTimingFunction.Select(e => e.mode.ToString()));
-            var leading = Enumerable.Repeat("EaseOut", TransitionAllLonghands().Length);
+            var leading = Enumerable.Repeat("EaseOut", StyleUtilityTableProbe.TransitionAllLonghands().Length);
             Assert.That(easings, Is.EqualTo(string.Join(",", leading.Concat(new[] { "Linear", "EaseIn" }))));
         }
 

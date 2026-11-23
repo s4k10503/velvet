@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using NUnit.Framework;
 using UnityEngine.UIElements;
 using Velvet.TestUtilities;
@@ -291,10 +292,11 @@ namespace Velvet.Tests
                 }),
             });
 
-            // Assert — transition-property: all is applied so the class swap TWEENS rather than snapping (a
+            // Assert — transition-all's list is applied so the class swap TWEENS rather than snapping (a
             // duration-only transition tweens; without this the variant change would be instant).
             var tp = scope.Root[0].style.transitionProperty;
-            Assert.That(tp.keyword == StyleKeyword.Null ? "(unset)" : tp.value[0].ToString(), Is.EqualTo("all"));
+            Assert.That(tp.keyword == StyleKeyword.Null ? new[] { "(unset)" } : tp.value.Select(p => p.ToString()).ToArray(),
+                Is.EqualTo(StyleUtilityTableProbe.TransitionAllLonghands()));
         }
 
         [Test]

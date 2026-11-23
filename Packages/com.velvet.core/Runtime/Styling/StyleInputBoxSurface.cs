@@ -234,7 +234,31 @@ namespace Velvet
 
         private static Placement PlacementOfCore(string core)
         {
-            if (core.StartsWith("bg-", StringComparison.Ordinal)
+            if (IsBoxFamily(core))
+            {
+                return Placement.Box;
+            }
+            // transition-behavior goes where transition-property does, and declares no longhand to say so.
+            if (StyleTransitionBehavior.IsBehaviourClass(core))
+            {
+                return Placement.Both;
+            }
+            var longhands = LonghandsOf(core);
+            if (longhands.IsEmpty)
+            {
+                return Placement.Control;
+            }
+            if (longhands.Union(s_boxLonghands) == s_boxLonghands)
+            {
+                return Placement.Box;
+            }
+            return longhands.Union(s_transitionLonghands) == s_transitionLonghands
+                ? Placement.Both
+                : Placement.Control;
+        }
+
+        private static bool IsBoxFamily(string core)
+            => core.StartsWith("bg-", StringComparison.Ordinal)
                 // The nine-slice utilities follow the background image bg-[addr:…] puts on the box.
                 || core.StartsWith("slice-", StringComparison.Ordinal)
                 || core == "border" || core.StartsWith("border-", StringComparison.Ordinal)
@@ -251,23 +275,7 @@ namespace Velvet
                 || StyleSkewClass.IsSkewClass(core)
                 || StyleAnimateClass.IsAnimateClass(core)
                 || core.StartsWith("caret-", StringComparison.Ordinal)
-                || core.StartsWith("selection:", StringComparison.Ordinal))
-            {
-                return Placement.Box;
-            }
-            var longhands = LonghandsOf(core);
-            if (longhands.IsEmpty)
-            {
-                return Placement.Control;
-            }
-            if (longhands.Union(s_boxLonghands) == s_boxLonghands)
-            {
-                return Placement.Box;
-            }
-            return longhands.Union(s_transitionLonghands) == s_transitionLonghands
-                ? Placement.Both
-                : Placement.Control;
-        }
+                || core.StartsWith("selection:", StringComparison.Ordinal);
 
         private static bool IsShadowOrRingToken(string core)
             => StyleShadowClass.IsShadowClass(core)

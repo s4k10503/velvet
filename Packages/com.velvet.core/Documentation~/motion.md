@@ -132,9 +132,9 @@ V.Div(name: "row", className: "flex flex-row gap-x-2", children: new VNode[]
   including inline geometry the pose had overwritten.
 - A key whose Motion is created again while the key stays, as an `elementType` change does, enters
   again, unless `initial: false` still withholds that key's enter (below).
-- **What an exit animates:** under the default Tween driver, any USS-transitionable property the
-  pose swap changed animates — `transition-property: all` picks up the whole class delta, not a
-  fixed channel set. Spring and cubic-bezier exits drive the channels they can resolve a number
+- **What an exit animates:** under the default Tween driver, the pose swap's class delta transitions
+  over what `transition-all` transitions on the element (*Discrete properties*), not a fixed channel
+  set. Spring and cubic-bezier exits drive the channels they can resolve a number
   for out of the class strings; *Driven channels* below is the single list of what that covers and
   what it deliberately leaves out. A `skew-x-*` / `skew-y-*` angle animates on every driver: a Tween that
   moves one runs on the Bezier driver, which draws the angle, since UI Toolkit's transition cannot.
@@ -539,19 +539,18 @@ missing or cannot be invoked, the play uses the ordinary inline or resolved star
 
 ## Discrete properties (`transition-discrete`)
 
-As under CSS's default `transition-behavior: normal`, `transition-all` leaves out the properties UI Toolkit can only
+As under CSS's default `transition-behavior: normal`, `transition-all` leaves out properties UI Toolkit can only
 switch from one value to the other, such as `flex-direction`, `justify-content`, `position`, `white-space`,
-`-unity-text-align`, `-unity-font-definition` and `background-image`: a class or an inline write changes one of them at
-once while the element's other properties transition. `visibility` and `background-position`, which CSS transitions
-by default, stay in.
+`-unity-text-align` and `background-image`: a class or an inline write changes one of them at once while the
+element's other properties transition. `visibility`, `background-position` and the font properties stay in.
 `transition-discrete` (`transition-behavior: allow-discrete`) transitions them too, each switching to the new value
 partway through, as CSS switches a discrete property; `transition-normal` takes them back out. Of the two, the one
 that ranks later wins, as of two utilities writing one property: a variant's over the element's own, either way
-round (`transition-discrete md:transition-normal`). A `Tween` variant swap UI Toolkit's own transition runs (*Clocks*)
-transitions what `transition-all` would on its element. `transition-colors`, `transition-colors-scale`,
-`transition-colors-scale-opacity`, `transition-filter`, `transition-opacity`, `transition-transform` and
-`transition-none` name none of these properties, so the two classes change what `transition-all` and such a swap
-transition, and nothing else.
+round (`transition-discrete md:transition-normal`), and a pose's while a play shows it. A `Tween` variant swap UI
+Toolkit's own transition runs (*Clocks*) transitions what `transition-all` would on its element. `transition-colors`,
+`transition-colors-scale`, `transition-colors-scale-opacity`, `transition-filter`, `transition-opacity`,
+`transition-transform` and `transition-none` name none of these properties, so the two classes change what
+`transition-all` and such a swap transition, and nothing else.
 
 ## Cubic-bezier easing
 

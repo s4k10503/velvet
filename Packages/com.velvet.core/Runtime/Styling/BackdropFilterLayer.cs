@@ -100,8 +100,9 @@ namespace Velvet
         }
 
         // A change of the declared backdrop-filter: transitioned where an entry runs for it, by CSS's interpolation
-        // (BackdropFilterSteps); landed at once otherwise. transition-property names it only through `all`, since a
-        // name UI Toolkit has no property for reads back as none of them (StyleFilterTransitionDriver.TryFindTransition).
+        // (BackdropFilterSteps); landed at once otherwise. transition-property names it only through `all` or
+        // transition-all's list, since a name UI Toolkit has no property for reads back as none of them
+        // (StyleFilterTransitionDriver.TryFindTransition).
         internal void ChangeTo(BackdropSpec spec)
         {
             var target = BackdropFilterSteps.Resolve(spec, _element);
@@ -113,7 +114,7 @@ namespace Velvet
             }
             if (_element.panel == null
                 || !StyleFilterTransitionDriver.TryFindTransition(_element, "backdrop-filter", null, out var durationMs,
-                    out var delayMs, out var easing)
+                    out var delayMs, out var easing, throughTransitionAll: true)
                 || BackdropFilterSteps.Same(shown, target)
                 || !BackdropFilterSteps.TryPair(shown, target, out var from, out var to))
             {

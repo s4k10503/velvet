@@ -44,7 +44,7 @@ namespace Velvet.Tests
         }
 
         // Whether the element still transitions its height and no longer its width, which is what a play writing the
-        // width leaves of an `all`.
+        // width leaves of an `all` or of transition-all's list.
         private static bool NarrowedOutOfWidth(VisualElement element)
             => element.style.transitionProperty.value is { } names
                 && names.Contains(new StylePropertyName("height")) && !names.Contains(new StylePropertyName("width"));

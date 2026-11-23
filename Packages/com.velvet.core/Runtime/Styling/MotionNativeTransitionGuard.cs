@@ -28,7 +28,7 @@ namespace Velvet
         // the same reason Color is one: the driver reports the slot, not the channel.
         //
         // Neither has a SlotsOf arm yet: the driver reports the slot it writes, and an element reaches
-        // both through `all`. `.transition-filter` is the one utility that could name a declared side
+        // both through `all` or transition-all's list. `.transition-filter` is the one utility that could name a declared side
         // finer, which is a separate change from giving the driver a flag.
         Filter = 1 << 6,
         BackgroundPosition = 1 << 7,

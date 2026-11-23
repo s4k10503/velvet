@@ -317,7 +317,7 @@ namespace Velvet
             {
                 DurationSec = durationSec, Easing = easing, DelaySec = play.DelaySec, DelayOffsetSec = delayOffsetSec,
                 AllProperties = variantMode, PropertyOverrides = propertyOverrides, OrchestrationSec = play.OrchestrationSec,
-                Repeat = play.Repeat,
+                Repeat = play.Repeat, PoseClasses = toClasses, PoseKey = StyleLayerPriority.Animation,
             }, out var timing);
             if (variantMode)
             {
@@ -564,7 +564,7 @@ namespace Velvet
                 DurationSec = config.DurationSec, Easing = exitEasing, DelaySec = config.DelaySec,
                 DelayOffsetSec = delayOffsetSec, AllProperties = restoreFromOnCancel,
                 PropertyOverrides = restoreFromOnCancel ? config.PropertyOverrides : null, OrchestrationSec = additionalDelaySec - waitSec,
-                Repeat = config.PlayedRepeat,
+                Repeat = config.PlayedRepeat, PoseClasses = toClasses, PoseKey = StyleLayerPriority.Exit,
             }, out var timing);
             StyleAnimationClassUtils.AddClasses(element, fromClasses, StyleLayerPriority.Exit, Context,
                 realiseInline: !restoreFromOnCancel);
@@ -2070,6 +2070,10 @@ namespace Velvet
             // A variant swap's: transition-all's list, and the per-property overrides that extend it.
             public bool AllProperties { get; init; }
             public IReadOnlyList<StylePropertyTransition>? PropertyOverrides { get; init; }
+            // The classes the swap shows and the key it shows them at, whose transition-discrete or transition-normal
+            // decides the list as the element's own do.
+            public string[]? PoseClasses { get; init; }
+            public long PoseKey { get; init; }
             // The stagger the play waits, from which an entry's own delay counts.
             public float OrchestrationSec { get; init; }
             public MotionRepeat Repeat { get; init; }
@@ -2087,9 +2091,10 @@ namespace Velvet
             // where a variant swap would otherwise set transition-all's list (allProperties), matching the
             // contract documented on StyleTransitionConfig.PropertyOverrides. Every other combination (no
             // overrides, or a preset transition that never sets allProperties) falls through unchanged below.
+            var discrete = allProperties && StyleTransitionBehavior.AllowsDiscrete(element, spec.PoseClasses, spec.PoseKey);
             if (allProperties && propertyOverrides is { Count: > 0 })
             {
-                return ApplyPropertyOverrideTransitionStyles(element, spec, propertyOverrides);
+                return ApplyPropertyOverrideTransitionStyles(element, spec, propertyOverrides, discrete);
             }
 
             var durationMs = (int)(durationSec * 1000);
@@ -2102,8 +2107,7 @@ namespace Velvet
             // supplies just a duration). Preset transitions keep their USS transition-property and don't pass this flag.
             if (allProperties)
             {
-                element.style.transitionProperty =
-                    StyleTransitionBehavior.TransitionAllList(StyleTransitionBehavior.AllowsDiscrete(element));
+                element.style.transitionProperty = StyleTransitionBehavior.TransitionAllList(discrete);
             }
 
             delaySec += delayOffsetSec;
@@ -2163,12 +2167,11 @@ namespace Velvet
         // — the per-mode EasingFunction INSTANCES it holds are still reused via the existing static cache
         // (GetOrCreateEasingList) rather than reallocated.
         private (List<TimeValue> durationList, List<TimeValue>? delayList) ApplyPropertyOverrideTransitionStyles(
-            VisualElement element, TweenSpec spec, IReadOnlyList<StylePropertyTransition> overrides)
+            VisualElement element, TweenSpec spec, IReadOnlyList<StylePropertyTransition> overrides, bool discrete)
         {
             var (defaultDurationSec, defaultEasing, defaultDelaySec, delayOffsetSec) =
                 (spec.DurationSec, spec.Easing, spec.DelaySec, spec.DelayOffsetSec);
             var count = overrides.Count;
-            var discrete = StyleTransitionBehavior.AllowsDiscrete(element);
             var head = StyleTransitionBehavior.TransitionAllList(discrete);
             var propertyNames = discrete
                 ? s_discretePropertyNameListCache.GetValue(overrides, static ov => OverrideNames(true, ov))

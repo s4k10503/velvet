@@ -273,11 +273,11 @@ exceeds 1024 pixels is blurred on a copy halved until the reach fits and drawn b
 deviation. A colour function runs on the
 encoded value, clamped to 0..1 after each one.
 
-A change transitions where the resolved `transition-property` runs an entry for `all` (`transition-all`, a bare
-`duration-*`), by CSS's rules for a filter list: functions pair by position, a list shorter than the other fades
+A change transitions where the resolved `transition-property` runs an entry for `all` or `transition-all`'s list
+(`transition-all`, a bare `duration-*`), by CSS's rules for a filter list: functions pair by position, a list shorter than the other fades
 in or out at its end from the functions' initial values, `none` counts as an empty list, and any other change
 applies at once. A change back to where a running transition started runs for the part it had covered. UI Toolkit
-reads back no transition-property entry naming `backdrop-filter`, so only `all` reaches it.
+reads back no transition-property entry naming `backdrop-filter`, so only those reach it.
 
 What remains different from a browser: a world-space panel draws no backdrop filter. UI Toolkit refuses an
 immediate-mode element in a panel cameras draw (`WorldSpaceImmediateModeTests` pins the refusal), and the layer has to

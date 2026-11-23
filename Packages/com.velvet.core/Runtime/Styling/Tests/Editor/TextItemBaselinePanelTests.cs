@@ -800,8 +800,8 @@ namespace Velvet.Tests
         [Test]
         public void Given_ATransitionAllLabel_When_ItsMinimumChanges_Then_TheNewMinimumLandsAtOnce()
         {
-            // Arrange — a half-second transition on every property, which an animated rewrite of the minimum
-            // would still be near its start value under, the panel clock not having advanced.
+            // Arrange — a half-second transition on what transition-all lists, min-width among it, which an animated
+            // rewrite of the minimum would still be near its start value under, the panel clock not having advanced.
             const string Longer = "antidisestablishmentarianism is long";
             using var scope = new ReconcilerScope();
             _window.rootVisualElement.Add(scope.Root);

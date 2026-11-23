@@ -3896,7 +3896,7 @@ namespace Velvet
         // already patched by EmitPresenceChild, which runs before this restore — so a re-add that also
         // changed props re-applies the new value rather than a stale pre-pin one.
         //
-        // CancelExit (the caller's previous statement) deliberately leaves transition-property: all /
+        // CancelExit (the caller's previous statement) deliberately leaves the variant swap's transition-property /
         // transition-duration active on this exact element so the variant's OWN reversal (e.g. opacity
         // fading back toward its resting value) keeps interpolating instead of popping. This geometry fixup
         // is bookkeeping, not an animated property, but with that transition still live any value it passes
