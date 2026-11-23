@@ -1,5 +1,5 @@
 /*
- * Preflight - the baseline every utility outranks, and the transition-behavior utilities.
+ * Preflight - the baseline every utility outranks.
  *
  * Tailwind v4's preflight zeroes margin and padding on every element, and CSS starts every element at
  * flex-shrink: 1 and, since white-space is inherited, at the white-space of its parent. Velvet gives the
@@ -25,71 +25,3 @@
 /* Gives an element whose colour is read off a live source (border-current, text-inherit, ...) the custom property
    that makes UI Toolkit send it CustomStyleResolvedEvent; see ColorReferenceWatch. */
 .velvet-color-reference { --velvet-color-reference: 1; }
-
-/* transition-discrete and transition-normal: CSS's transition-behavior, which UI Toolkit lacks. No other bundled
-   transition-* utility names a property the engine can only switch, so transition-all's list (_effects.uss) is the one
-   the two behaviours differ on: transition-discrete turns it into `all`, and transition-normal with it keeps the list.
-   They compound with transition-all here rather than declare transition-property as utilities: the utility table
-   would rank such a utility against the transition-* ones, and a variant's transition-all would take a base
-   transition-discrete off the element. A compound outranks every single-class rule, so each utility declaring
-   transition-property after transition-all is restated below with the two of them, in the order the utilities are
-   declared, to keep the place it holds without transition-discrete. TransitionDiscretePanelTests fails when one is
-   missing or differs. */
-.transition-all.transition-discrete { transition-property: all; }
-.transition-all.transition-discrete.transition-normal {
-    transition-property:
-        -unity-background-image-tint-color, -unity-material, -unity-paragraph-spacing, -unity-slice-bottom,
-        -unity-slice-left, -unity-slice-right, -unity-slice-scale, -unity-slice-top, -unity-text-outline-color,
-        -unity-text-outline-width, aspect-ratio, background-color, background-position-x,
-        background-position-y, background-size, border-bottom-color, border-bottom-left-radius,
-        border-bottom-right-radius, border-bottom-width, border-left-color, border-left-width,
-        border-right-color, border-right-width, border-top-color, border-top-left-radius,
-        border-top-right-radius, border-top-width, bottom, color, filter, flex-basis, flex-grow, flex-shrink,
-        font-size, height, left, letter-spacing, margin-bottom, margin-left, margin-right, margin-top,
-        max-height, max-width, min-height, min-width, opacity, padding-bottom, padding-left, padding-right,
-        padding-top, right, rotate, scale, text-shadow, top, transform-origin, translate, visibility, width,
-        word-spacing;
-}
-.transition-all.transition-discrete.transition-colors { transition-property: background-color, border-color, color; }
-.transition-all.transition-discrete.transition-colors-scale { transition-property: background-color, border-color, color, scale; }
-.transition-all.transition-discrete.transition-colors-scale-opacity { transition-property: background-color, border-color, color, scale, opacity; }
-.transition-all.transition-discrete.transition-filter { transition-property: filter; }
-.transition-all.transition-discrete.transition-opacity { transition-property: opacity; }
-.transition-all.transition-discrete.transition-transform { transition-property: translate, scale, rotate; }
-.transition-all.transition-discrete.transition-none { transition-property: none; }
-.transition-all.transition-discrete.anim-fade-enter-from,
-.transition-all.transition-discrete.anim-fade-enter-to,
-.transition-all.transition-discrete.anim-fade-exit-from,
-.transition-all.transition-discrete.anim-fade-exit-to {
-    transition-property: opacity;
-}
-.transition-all.transition-discrete.anim-slide-up-enter-from,
-.transition-all.transition-discrete.anim-slide-up-enter-to,
-.transition-all.transition-discrete.anim-slide-up-exit-from,
-.transition-all.transition-discrete.anim-slide-up-exit-to,
-.transition-all.transition-discrete.anim-slide-down-enter-from,
-.transition-all.transition-discrete.anim-slide-down-enter-to,
-.transition-all.transition-discrete.anim-slide-down-exit-from,
-.transition-all.transition-discrete.anim-slide-down-exit-to,
-.transition-all.transition-discrete.anim-slide-left-enter-from,
-.transition-all.transition-discrete.anim-slide-left-enter-to,
-.transition-all.transition-discrete.anim-slide-left-exit-from,
-.transition-all.transition-discrete.anim-slide-left-exit-to,
-.transition-all.transition-discrete.anim-slide-right-enter-from,
-.transition-all.transition-discrete.anim-slide-right-enter-to,
-.transition-all.transition-discrete.anim-slide-right-exit-from,
-.transition-all.transition-discrete.anim-slide-right-exit-to {
-    transition-property: translate, opacity;
-}
-.transition-all.transition-discrete.anim-scale-enter-from,
-.transition-all.transition-discrete.anim-scale-enter-to,
-.transition-all.transition-discrete.anim-scale-exit-from,
-.transition-all.transition-discrete.anim-scale-exit-to {
-    transition-property: scale, opacity;
-}
-.transition-all.transition-discrete.anim-fade-slide-up-enter-from,
-.transition-all.transition-discrete.anim-fade-slide-up-enter-to,
-.transition-all.transition-discrete.anim-fade-slide-up-exit-from,
-.transition-all.transition-discrete.anim-fade-slide-up-exit-to {
-    transition-property: translate, opacity;
-}

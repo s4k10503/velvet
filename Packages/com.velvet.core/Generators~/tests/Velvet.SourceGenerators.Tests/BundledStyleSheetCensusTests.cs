@@ -24,11 +24,11 @@ namespace Velvet.SourceGenerators.Tests
     /// </remarks>
     public sealed class BundledStyleSheetCensusTests
     {
-        private const int SurveyedRuleCount = 2408;
-        private const int SurveyedSingleClassRuleCount = 2370;
+        private const int SurveyedRuleCount = 2414;
+        private const int SurveyedSingleClassRuleCount = 2376;
         private const int SurveyedDistinctPropertyNameCount = 65;
-        private const int SurveyedUtilityClassCount = 2299;
-        private const int SurveyedTransitionUtilityCount = 36;
+        private const int SurveyedUtilityClassCount = 2300;
+        private const int SurveyedTransitionUtilityCount = 37;
 
         private static readonly Census Surveyed = Census.OfBundledStyleSheets();
 
@@ -168,7 +168,7 @@ namespace Velvet.SourceGenerators.Tests
             Assert.Equal(
                 new[]
                 {
-                    "transition-all", "transition-colors", "transition-colors-scale",
+                    "transition-all", "transition-all-discrete", "transition-colors", "transition-colors-scale",
                     "transition-colors-scale-opacity", "transition-filter", "transition-opacity",
                     "transition-transform", "transition-none",
                 },
@@ -296,7 +296,7 @@ namespace Velvet.SourceGenerators.Tests
             // Arrange
             var expected = new Dictionary<SelectorShape, int>
             {
-                [SelectorShape.SingleClass] = 2370,
+                [SelectorShape.SingleClass] = 2376,
                 [SelectorShape.ClassWithPseudoClass] = 32,
                 [SelectorShape.ClassWithStateMarker] = 3,
                 [SelectorShape.Root] = 2,
@@ -557,11 +557,7 @@ namespace Velvet.SourceGenerators.Tests
                     .Select(path => UssStyleSheetParser.Parse(path, File.ReadAllText(path)))
                     .ToList();
 
-                // The rules the table is derived from: it does not read the preflight sheet.
-                var rules = sheets
-                    .Where(s => Path.GetFileName(s.Path) != StyleUtilityTableBuilder.PreflightSheetName)
-                    .SelectMany(s => s.Rules)
-                    .ToList();
+                var rules = sheets.SelectMany(s => s.Rules).ToList();
                 var histogram = new Dictionary<SelectorShape, int>();
                 var gates = new Dictionary<string, HashSet<UssGate>>(StringComparer.Ordinal);
                 var declared = new SortedSet<string>(StringComparer.Ordinal);

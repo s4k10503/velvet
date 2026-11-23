@@ -54,10 +54,13 @@
  * Of two of them, the one Tailwind emits later holds the property.
  *
  * transition-all lists the longhands UI Toolkit interpolates instead of naming `all`, so that one the engine can only
- * switch, not interpolate, changes at once, as under CSS's default transition-behavior; transition-discrete gives
- * those back (_preflight.uss). visibility and background-position-x/y are listed although the engine only switches
- * them: CSS transitions both under that default, which leaving them out would stop. TransitionDiscretePanelTests
- * derives the list from the engine and fails when this one differs.
+ * switch, not interpolate, changes at once, as under CSS's default transition-behavior. visibility and
+ * background-position-x/y are listed although the engine only switches them: CSS transitions both under that default,
+ * which leaving them out would stop. TransitionDiscretePanelTests derives the list from the engine and fails when this
+ * one differs.
+ *
+ * transition-all-discrete is transition-all under transition-discrete, which StyleTransitionBehavior puts on the
+ * element beside transition-all. It is declared next to transition-all so that every later utility keeps its place.
  */
 .transition-all {
     transition-property:
@@ -72,6 +75,11 @@
         max-height, max-width, min-height, min-width, opacity, padding-bottom, padding-left, padding-right,
         padding-top, right, rotate, scale, text-shadow, top, transform-origin, translate, visibility, width,
         word-spacing;
+    transition-duration: var(--duration-normal);
+    transition-timing-function: ease-in-out;
+}
+.transition-all-discrete {
+    transition-property: all;
     transition-duration: var(--duration-normal);
     transition-timing-function: ease-in-out;
 }

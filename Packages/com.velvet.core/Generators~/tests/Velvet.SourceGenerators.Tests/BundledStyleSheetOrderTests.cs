@@ -130,9 +130,8 @@ namespace Velvet.SourceGenerators.Tests
             {
                 if (Path.GetFileName(source.Path) == StyleUtilityTableBuilder.PreflightSheetName)
                 {
-                    // Declared ahead of every utility: its resets lose to them on order, so one may precede a
-                    // utility writing the same property, and its transition-behavior compounds outrank them on
-                    // specificity, which order does not decide.
+                    // A base layer declared ahead of every utility to lose to them, so a reset may precede a
+                    // utility writing the same property.
                     continue;
                 }
                 var sheet = UssStyleSheetParser.Parse(source.Path, source.Text);

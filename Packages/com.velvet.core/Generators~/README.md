@@ -221,7 +221,7 @@ The same run converts the palette, written in OKLCH in the file `PaletteDerivati
 
 Four partials declare no rules and are expected to: `StyleUtilities.uss` is nothing but `@import`, and `_gap.uss`, `_presets.uss` and `_states.uss` describe utility families Velvet realises in C# rather than in USS (each says so in its own header). Their classes are therefore absent from the table, which from the table's side looks identical to a class that sets nothing — `BundledStyleSheetCensusTests` pins the list so the distinction stays visible.
 
-`_preflight.uss` declares the baseline `.velvet-label` gives a Label Velvet creates, imported ahead of every utility. The table skips that sheet by name: the class is a marker, not a utility, and recording it would make `StyleArbitraryValueResolver.DeclaresOwn` read every such label as declaring its own margin and padding. The sheet also holds the compounds that realise `transition-discrete` and `transition-normal` on `transition-all`, a selector shape the table reports rather than models, as the sheet explains; `BundledStyleSheetCensusTests` surveys the rules of every other sheet.
+`_preflight.uss` declares the baseline `.velvet-label` gives a Label Velvet creates, imported ahead of every utility. The table skips that sheet by name: the class is a marker, not a utility, and recording it would make `StyleArbitraryValueResolver.DeclaresOwn` read every such label as declaring its own margin and padding.
 
 ## The code-shape rules
 

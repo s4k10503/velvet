@@ -420,11 +420,12 @@ namespace Velvet
         /// <summary>
         /// Optional per-property transition overrides layered on top of the top-level <see cref="DurationSec"/> /
         /// <see cref="Easing"/> / <see cref="DelaySec"/> (e.g. opacity tweening in 0.15s while scale takes 0.5s).
-        /// When set, the implicit "all" catch-all a variant class swap transitions on — the swap carries no
-        /// transition-* of its own — stays on the top-level timing and these properties follow it, in declaration
-        /// order, each on its own: as with Framer Motion's per-value transitions, a property no override names
-        /// keeps the top-level timing. Currently wired only where a variant swap would otherwise set transition-property:
-        /// all (a variant-driven enter, or an exit driven by a <c>variants</c> + <c>exit</c> label) — a preset
+        /// When set, the catch-all a variant class swap transitions on — <c>transition-all</c>'s list, the swap carrying
+        /// no transition-* of its own — stays on the top-level timing and these properties follow it, in declaration
+        /// order, each on its own, an entry naming <c>all</c> standing for that list: as with Framer Motion's per-value
+        /// transitions, a property no override names keeps the top-level timing. Currently wired only where a variant
+        /// swap would otherwise set that list (a variant-driven enter, or an exit driven by a <c>variants</c> +
+        /// <c>exit</c> label) — a preset
         /// transition's own USS-declared transition-property is untouched — and in <see cref="Animator"/>, which reads
         /// an entry as a per-value transition. Null (default) preserves today's behavior unchanged.
         /// On a <see cref="TransitionType.Spring"/> or <see cref="TransitionType.Bezier"/> play, a channel an entry

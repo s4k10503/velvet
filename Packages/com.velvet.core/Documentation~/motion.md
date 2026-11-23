@@ -313,7 +313,8 @@ the entry's delay and once whatever the play repeats. A `Tween` holding such an 
 `DurationSec` is 0 holding an entry that animates, plays on the per-frame driver a `Bezier` plays on, the play's own
 curve landing at once. Where an entry's delay is shorter than the play's, the entry's value starts then and the rest
 wait out the play's own; a `Spring`'s or `Bezier`'s reversal starts every value at once. A property no override names animates on the
-enclosing config's timing.
+enclosing config's timing where `transition-all` would transition it (*Discrete properties*), and an entry named
+`"all"` stands for those properties.
 Completion is sized off the **slowest** of those, so a long override finishes instead
 of being snapped when the top-level duration elapses. A `Tween`, a `Bezier` and a `Spring` read them on every variant swap:
 mount enters, label changes and exits.
@@ -508,7 +509,8 @@ missing or cannot be invoked, the play uses the ordinary inline or resolved star
   that applies is decided from the element's **class list**, resolved the way the cascade resolves
   it: `transition-property` holds one value, so the utilities that set it do not combine — the
   **last-declared** one present on the element wins outright and the rest contribute nothing. The
-  bundled order is Tailwind's: `transition-all`, `transition-colors`, `transition-colors-scale`,
+  bundled order is Tailwind's: `transition-all` (with the `transition-all-discrete` Velvet puts beside it under
+  `transition-discrete`, *Discrete properties*), `transition-colors`, `transition-colors-scale`,
   `transition-colors-scale-opacity`, `transition-filter`, `transition-opacity`,
   `transition-transform`, `transition-none`, then the scheduler-applied `anim-*` presets. So
   `transition-all transition-colors` transitions the colours only, and
@@ -543,9 +545,13 @@ switch from one value to the other, such as `flex-direction`, `justify-content`,
 once while the element's other properties transition. `visibility` and `background-position`, which CSS transitions
 by default, stay in.
 `transition-discrete` (`transition-behavior: allow-discrete`) transitions them too, each switching to the new value
-partway through, as CSS switches a discrete property; `transition-normal` takes them back out, as in
-`transition-discrete md:transition-normal`. The other `transition-*` utilities name none of these properties, so the
-two classes change what `transition-all` transitions and nothing else.
+partway through, as CSS switches a discrete property; `transition-normal` takes them back out. Of the two, the one
+that ranks later wins, as of two utilities writing one property: a variant's over the element's own, either way
+round (`transition-discrete md:transition-normal`). A `Tween` variant swap UI Toolkit's own transition runs (*Clocks*)
+transitions what `transition-all` would on its element. `transition-colors`, `transition-colors-scale`,
+`transition-colors-scale-opacity`, `transition-filter`, `transition-opacity`, `transition-transform` and
+`transition-none` name none of these properties, so the two classes change what `transition-all` and such a swap
+transition, and nothing else.
 
 ## Cubic-bezier easing
 

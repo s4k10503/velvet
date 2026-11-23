@@ -152,7 +152,7 @@ namespace Velvet
 
             // Classic transition enter: the to-classes are a TRANSIENT overlay, so they are removed on
             // completion (variantMode: false). Per-property overrides are wired only where a variant swap sets
-            // transition-property: all (see PlayVariantEnter / PlayExit); a preset's own USS-declared
+            // transition-all's list (see PlayVariantEnter / PlayExit); a preset's own USS-declared
             // transition-property is untouched, so PropertyOverrides is not read here.
             PlayEnterInternal(in play, config.DurationSec, config.Easing,
                 variantMode: false, propertyOverrides: null);
@@ -554,7 +554,7 @@ namespace Velvet
             var exitEasing = config.ExitEasing ?? config.Easing;
 
             // Step 1: add the exit initial-state class and set duration / easing as inline styles. A variant exit
-            // (restoreFromOnCancel) swaps variant utility classes, so it needs transition-property: all to tween
+            // (restoreFromOnCancel) swaps variant utility classes, so it needs transition-all's list to tween
             // — the same condition that gates reading PropertyOverrides (a preset exit's own USS-declared
             // transition-property is untouched).
             var (staggerDelayMs, delayOffsetSec) = SplitNativeDelay(config.DelaySec, additionalDelaySec,
@@ -1871,8 +1871,8 @@ namespace Velvet
         // the pose repeats from the play's target leaves the list, which rests it at that target
         // (HeldTransitionOverrideEngineTests), through the rewrite MotionNativeTransitionGuard uses for the slots
         // a driver owns. A classic enter's or a preset exit's transition-property is its USS one, which is why
-        // only a play with resting classes reaches here. Rejected: a zero duration, under which an earlier `all`
-        // still times the longhand.
+        // only a play with resting classes reaches here. Rejected: a zero duration, under which an earlier entry
+        // naming the longhand, or `all`, still times it.
         private static void LandOnHeldTransition(VisualElement element, PendingAnimation pending,
             string[] poseClasses, StyleLonghandSet named)
         {
@@ -2037,12 +2037,6 @@ namespace Velvet
             return false;
         }
 
-        // C# becomes the Single Source of Truth, so they need not be defined in USS.
-        // The EasingFunction lists are cached per EasingMode and the TimeValue lists rented from TimeValueListPool,
-        // and the element receives MotionTweenTiming's copy of each, never one of these.
-        private static readonly List<UnityEngine.UIElements.StylePropertyName> s_allTransitionProperties =
-            new() { new UnityEngine.UIElements.StylePropertyName("all") };
-
         // A delay that never runs out — a BeforeChildren wait on a parent repeating without end — leaves the play
         // registered at its from-pose and never starts it, as Framer Motion never starts a child animation that waits
         // on one. A cancel still finds it.
@@ -2073,7 +2067,7 @@ namespace Velvet
             public EasingMode Easing { get; init; }
             public float DelaySec { get; init; }
             public float DelayOffsetSec { get; init; }
-            // A variant swap's: transition-property: all, and the per-property overrides that extend it.
+            // A variant swap's: transition-all's list, and the per-property overrides that extend it.
             public bool AllProperties { get; init; }
             public IReadOnlyList<StylePropertyTransition>? PropertyOverrides { get; init; }
             // The stagger the play waits, from which an entry's own delay counts.
@@ -2089,8 +2083,8 @@ namespace Velvet
             var (allProperties, propertyOverrides) = (spec.AllProperties, spec.PropertyOverrides);
             timing = MotionTweenTiming.Begin(element);
             StyleEaseCurve.NoteTween(element, spec.Repeat, allProperties ? propertyOverrides : null);
-            // Per-property overrides extend the "all" catch-all with an explicit property list — reachable only
-            // where a variant swap would otherwise set transition-property: all (allProperties), matching the
+            // Per-property overrides extend the catch-all with an explicit property list — reachable only
+            // where a variant swap would otherwise set transition-all's list (allProperties), matching the
             // contract documented on StyleTransitionConfig.PropertyOverrides. Every other combination (no
             // overrides, or a preset transition that never sets allProperties) falls through unchanged below.
             if (allProperties && propertyOverrides is { Count: > 0 })
@@ -2104,11 +2098,12 @@ namespace Velvet
 
             // Variant animations swap user utility classes (e.g. opacity-0 ↔ opacity-100) that carry no
             // transition-* of their own, so UITK has no property to tween and the swap would snap. Set
-            // transition-property: all so the changed computed values animate (a variant tween supplies just
-            // a duration). Preset transitions keep their USS transition-property and don't pass this flag.
+            // transition-all's list so the changed computed values animate as under that class (a variant tween
+            // supplies just a duration). Preset transitions keep their USS transition-property and don't pass this flag.
             if (allProperties)
             {
-                element.style.transitionProperty = s_allTransitionProperties;
+                element.style.transitionProperty =
+                    StyleTransitionBehavior.TransitionAllList(StyleTransitionBehavior.AllowsDiscrete(element));
             }
 
             delaySec += delayOffsetSec;
@@ -2123,6 +2118,26 @@ namespace Velvet
             return (durationList, delayList);
         }
 
+        private const string AllPropertyName = "all";
+
+        private static List<StylePropertyName> OverrideNames(bool allowsDiscrete, IReadOnlyList<StylePropertyTransition> overrides)
+        {
+            var head = StyleTransitionBehavior.TransitionAllList(allowsDiscrete);
+            var names = new List<StylePropertyName>(head);
+            for (var i = 0; i < overrides.Count; i++)
+            {
+                if (overrides[i].Property == AllPropertyName)
+                {
+                    names.AddRange(head);
+                }
+                else
+                {
+                    names.Add(new StylePropertyName(overrides[i].Property));
+                }
+            }
+            return names;
+        }
+
         // Per-overrides-list cache of the property-name list transition-property is set to: WHICH properties
         // are named never depends on the enter/exit direction (unlike the easing list below, an override's own
         // Property is never direction-dependent), and PropertyOverrides is fixed at config-authoring time and
@@ -2131,17 +2146,19 @@ namespace Velvet
         // StyleArbitraryValueResolver's per-element layer cache) avoids repeating an identical List<T> on every
         // single enter/exit that reuses the same config.
         private static readonly ConditionalWeakTable<IReadOnlyList<StylePropertyTransition>, List<StylePropertyName>> s_propertyNameListCache = new();
+        private static readonly ConditionalWeakTable<IReadOnlyList<StylePropertyTransition>, List<StylePropertyName>> s_discretePropertyNameListCache = new();
 
-        // Per-property override path: transition-property becomes "all" on the top-level timing followed by the
-        // overridden properties (in declaration order), as Framer's per-value transition leaves every value it does
-        // not name on the default one. The "all" entry has to come first: UI Toolkit takes the last entry naming a
-        // property among those whose span is positive (MotionPerPropertyTransitionTests pins both halves).
+        // Per-property override path: transition-property becomes transition-all's list on the top-level timing
+        // followed by the overridden properties (in declaration order), an override naming `all` standing for that
+        // list again, as Framer's per-value transition leaves every value it does not name on the default one. The
+        // leading entries have to come first: UI Toolkit takes the last entry naming a property among those whose
+        // span is positive (MotionPerPropertyTransitionTests pins both halves).
         // Duration / delay are positionally-matched lists, rented EMPTY
         // and filled directly in the loop below (rather than staged through an intermediary int[] first) from
         // the SAME pools the single-entry path above uses, so they are returned through the existing
         // PendingAnimation.DurationList / DelayList bookkeeping unchanged. An entry's timing is its own
         // (StylePropertyTransition), its delay counted from the stagger rather than after the play's delay. The easing list
-        // is built each call rather than cached, since the "all" entry's easing is the direction's: PropertyOverrides
+        // is built each call rather than cached, since the leading entries' easing is the direction's: PropertyOverrides
         // is a handful of entries, so the allocation is bounded and one-shot per animation start (never per-frame)
         // — the per-mode EasingFunction INSTANCES it holds are still reused via the existing static cache
         // (GetOrCreateEasingList) rather than reallocated.
@@ -2151,24 +2168,21 @@ namespace Velvet
             var (defaultDurationSec, defaultEasing, defaultDelaySec, delayOffsetSec) =
                 (spec.DurationSec, spec.Easing, spec.DelaySec, spec.DelayOffsetSec);
             var count = overrides.Count;
-            var propertyNames = s_propertyNameListCache.GetValue(overrides, static ov =>
-            {
-                var names = new List<StylePropertyName> { s_allTransitionProperties[0] };
-                for (var i = 0; i < ov.Count; i++)
-                {
-                    names.Add(new StylePropertyName(ov[i].Property));
-                }
-                return names;
-            });
-            var easingList = new List<EasingFunction>(count);
-            var durationList = _listPool.RentEmptyDurationList(count);
-            var delayList = _listPool.RentEmptyDelayList(count);
+            var discrete = StyleTransitionBehavior.AllowsDiscrete(element);
+            var head = StyleTransitionBehavior.TransitionAllList(discrete);
+            var propertyNames = discrete
+                ? s_discretePropertyNameListCache.GetValue(overrides, static ov => OverrideNames(true, ov))
+                : s_propertyNameListCache.GetValue(overrides, static ov => OverrideNames(false, ov));
+            var easingList = new List<EasingFunction>(propertyNames.Count);
+            var durationList = _listPool.RentEmptyDurationList(propertyNames.Count);
+            var delayList = _listPool.RentEmptyDelayList(propertyNames.Count);
             var hasDelay = delayOffsetSec != 0f;
-            // i = -1 is the leading "all" entry: an override with every field left null takes the top-level timing.
+            // i = -1 is the leading transition-all list: an override with every field left null takes the top-level
+            // timing.
             for (var i = -1; i < count; i++)
             {
                 var o = i < 0 ? default : overrides[i];
-                easingList.Add(GetOrCreateEasingList(i < 0 ? defaultEasing : o.EasingOrDefault)[0]);
+                var easing = GetOrCreateEasingList(i < 0 ? defaultEasing : o.EasingOrDefault)[0];
                 var durationMs = (int)((i < 0 ? defaultDurationSec : o.DurationOrDefaultSec) * 1000);
                 var delaySec = (i < 0 ? defaultDelaySec : o.OwnDelaySec(spec.OrchestrationSec)) + delayOffsetSec;
                 if (delaySec != 0f)
@@ -2177,15 +2191,20 @@ namespace Velvet
                 }
                 var delayMs = (int)(delaySec * 1000);
                 // UI Toolkit drops an entry whose span is not positive before it looks for the last one naming a
-                // property, which would leave that property on the "all" entry's timing: a 1ms span lands it
+                // property, which would leave that property on the leading entries' timing: a 1ms span lands it
                 // instead, as LandOnHeldTransition does (MotionPerPropertyTransitionTests).
                 if (Math.Max(0, durationMs) + delayMs <= 0)
                 {
                     durationMs = 1;
                     delayMs = 0;
                 }
-                durationList.Add(new TimeValue(durationMs, TimeUnit.Millisecond));
-                delayList.Add(new TimeValue(delayMs, TimeUnit.Millisecond));
+                var entries = i < 0 || o.Property == AllPropertyName ? head.Count : 1;
+                for (var entry = 0; entry < entries; entry++)
+                {
+                    easingList.Add(easing);
+                    durationList.Add(new TimeValue(durationMs, TimeUnit.Millisecond));
+                    delayList.Add(new TimeValue(delayMs, TimeUnit.Millisecond));
+                }
             }
 
             element.style.transitionProperty = propertyNames;
@@ -2458,7 +2477,7 @@ namespace Velvet
         {
             MotionTweenTiming.End(element, timing);
             StyleEaseCurve.NoteTweenEnded(element);
-            // Release the variant transition-property: all (set by ApplyTransitionStyles for variant swaps).
+            // Release the variant transition-property (set by ApplyTransitionStyles for variant swaps).
             // A no-op for preset transitions, which never set it inline (USS provides transition-property).
             // Routed through the guard rather than nulled here: a per-frame animate-* driver can be holding the
             // same slot suspended for longer than this play, and it owns what the slot goes back to.

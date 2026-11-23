@@ -34,11 +34,18 @@ namespace Velvet
         public static void Add(VisualElement element, string cls, long priority)
         {
             var model = StyleArbitraryValueResolver.TryGetProjection(element, out var previousUniform);
-            AddToModel(element, cls, priority, model);
+            if (StyleTransitionBehavior.Owns(cls))
+            {
+                StyleTransitionBehavior.Add(element, cls, priority);
+            }
+            else
+            {
+                AddToModel(element, cls, priority, model);
+            }
             StyleArbitraryValueResolver.NotifyClassesChanged(element, previousUniform);
         }
 
-        private static void AddToModel(VisualElement element, string cls, long priority, Model? model)
+        internal static void AddToModel(VisualElement element, string cls, long priority, Model? model)
         {
             CornerRadiusFit.TrackClass(element, cls);
             if (model == null)
@@ -57,12 +64,19 @@ namespace Velvet
         public static void Remove(VisualElement element, string cls, long priority)
         {
             var model = StyleArbitraryValueResolver.TryGetProjection(element, out var previousUniform);
-            RemoveFromModel(element, cls, priority, model);
+            if (StyleTransitionBehavior.Owns(cls))
+            {
+                StyleTransitionBehavior.Remove(element, cls, priority);
+            }
+            else
+            {
+                RemoveFromModel(element, cls, priority, model);
+            }
             CornerRadiusFit.NoteClassWrite(element);
             StyleArbitraryValueResolver.NotifyClassesChanged(element, previousUniform);
         }
 
-        private static void RemoveFromModel(VisualElement element, string cls, long priority, Model? model)
+        internal static void RemoveFromModel(VisualElement element, string cls, long priority, Model? model)
         {
             if (model != null)
             {
@@ -780,6 +794,18 @@ namespace Velvet
                     }
                 }
                 return -1;
+            }
+
+            // The keys cls is held at by the className or a payload, a play's ranking-only entries left out.
+            public void DeclaredKeys(string cls, List<long> into)
+            {
+                foreach (var entry in _entries)
+                {
+                    if (entry.Class == cls && !entry.RankOnly)
+                    {
+                        into.Add(entry.Priority);
+                    }
+                }
             }
 
             // A payload's or the className's slot, never a play's ranking-only entry at the same key.

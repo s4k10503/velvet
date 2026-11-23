@@ -170,10 +170,9 @@ namespace Velvet.StyleTable
                 }
             }
 
-            // The sheet imported ahead of every utility. Its marker rules give an element a starting value under a
-            // class no className names, which recording would put in the table as a utility declaring its own margin
-            // and padding, and its transition-behavior compounds are a shape the table reports rather than models
-            // (the sheet says why they are compounds).
+            // A baseline imported ahead of every utility: it gives an element a starting value and is not a
+            // class a className can name, so recording it would put a Velvet-owned marker class in the table
+            // as a utility declaring its own margin and padding.
             if (string.Equals(Path.GetFileName(sheet.Path), PreflightSheetName, StringComparison.Ordinal))
             {
                 return;
