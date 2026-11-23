@@ -1,537 +1,8 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1795425898001,
+  "lastUpdate": 1795427081185,
   "repoUrl": "https://github.com/s4k10503/velvet",
   "entries": {
     "Velvet benchmarks": [
-      {
-        "commit": {
-          "author": {
-            "email": "50241623+s4k10503@users.noreply.github.com",
-            "name": "0y0",
-            "username": "s4k10503"
-          },
-          "committer": {
-            "email": "noreply@github.com",
-            "name": "GitHub",
-            "username": "web-flow"
-          },
-          "distinct": true,
-          "id": "108c7e90b1892091325077e2d361db16896de868",
-          "message": "fix(velvet)!: align named radii with Tailwind v4 (#1427)\n\nRefs #1316.\n\n## Summary\n- `rounded-sm` is 4px, where it was 2px. `rounded-xs` (2px) and `rounded-4xl` (32px) resolve, including the logical forms (`rounded-s-sm`, `rounded-ss-xs`, `rounded-e-4xl`) and the per-corner forms.\n- `md` through `3xl`, and bare `rounded`, stay where they were. The token, the stylesheet rules, and the C# radius scale move together.\n- This is a breaking pixel change: a caller who wrote `rounded-sm` for 2px now gets 4px.\n\nThe palette, ring, and shadow boxes on #1316 stay open. Blur is #1426.\n\n## Test plan\n- [x] The new cases failed on the old scale: 299 passed, 19 failed (`Logs/run.jmHvgd`), then 318 passed, 0 failed (`Logs/run.zENCXU`)\n- [ ] Base-red shows those 19 cases red on main\n- [ ] Required checks (Unity) and Required checks (generators)",
-          "timestamp": "2026-10-21T18:34:25Z",
-          "tree_id": "93df10b9e635416febdce1a0131ddbdd36796f46",
-          "url": "https://github.com/s4k10503/velvet/commit/108c7e90b1892091325077e2d361db16896de868"
-        },
-        "date": 1792611478600,
-        "tool": "customSmallerIsBetter",
-        "benches": [
-          {
-            "name": "Velvet.Tests.Performance.VNodePoolBenchmarks.RentReturnProps_Cycle / Time.GC()",
-            "value": 0,
-            "unit": ""
-          },
-          {
-            "name": "Velvet.Tests.Performance.VNodePoolBenchmarks.RentReturnProps_Cycle / Time",
-            "value": 0.015050000000428554,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.VNodePoolBenchmarks.VButton_Allocation / Time.GC()",
-            "value": 1,
-            "unit": ""
-          },
-          {
-            "name": "Velvet.Tests.Performance.VNodePoolBenchmarks.VButton_Allocation / Time",
-            "value": 0.027549999999564534,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.VNodePoolBenchmarks.VDiv_Allocation / Time.GC()",
-            "value": 1,
-            "unit": ""
-          },
-          {
-            "name": "Velvet.Tests.Performance.VNodePoolBenchmarks.VDiv_Allocation / Time",
-            "value": 0.018799999999828287,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.VNodePoolBenchmarks.VLabel_Allocation / Time.GC()",
-            "value": 1,
-            "unit": ""
-          },
-          {
-            "name": "Velvet.Tests.Performance.VNodePoolBenchmarks.VLabel_Allocation / Time",
-            "value": 0.027199999999766078,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.UseMutationPlayModeBenchmarks.UseMutation_OneMutateRoundTrip / Time.GC()",
-            "value": 40,
-            "unit": ""
-          },
-          {
-            "name": "Velvet.Tests.Performance.UseMutationPlayModeBenchmarks.UseMutation_OneMutateRoundTrip / Time",
-            "value": 0.36405000000036125,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.UseStateRerenderAllocBenchmarks.UseState_RerenderClosureAlloc / Time.GC()",
-            "value": 3405,
-            "unit": ""
-          },
-          {
-            "name": "Velvet.Tests.Performance.UseStateRerenderAllocBenchmarks.UseState_RerenderClosureAlloc / Time",
-            "value": 8.841399999999908,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Mount_1000Elements_WithLayoutAndPaint / E2E.Time",
-            "value": 346.27445,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Mount_1000Elements_WithLayoutAndPaint / E2E.GC",
-            "value": 1239040,
-            "unit": "b"
-          },
-          {
-            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Mount_1000Elements_WithLayoutAndPaint / E2E.Reconcile",
-            "value": 346.2676,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Mount_1000Elements_WithLayoutAndPaint / E2E.MarkDirty",
-            "value": 0.004,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Mount_100Elements_WithLayoutAndPaint / E2E.Time",
-            "value": 14.1248,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Mount_100Elements_WithLayoutAndPaint / E2E.GC",
-            "value": 0,
-            "unit": "b"
-          },
-          {
-            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Mount_100Elements_WithLayoutAndPaint / E2E.Reconcile",
-            "value": 14.12085,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Mount_100Elements_WithLayoutAndPaint / E2E.MarkDirty",
-            "value": 0.004,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Mount_10Elements_WithLayoutAndPaint / E2E.Time",
-            "value": 1.5675500000000002,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Mount_10Elements_WithLayoutAndPaint / E2E.GC",
-            "value": 0,
-            "unit": "b"
-          },
-          {
-            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Mount_10Elements_WithLayoutAndPaint / E2E.Reconcile",
-            "value": 1.5637,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Mount_10Elements_WithLayoutAndPaint / E2E.MarkDirty",
-            "value": 0.00385,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.FiberAsyncResourcePlayModeBenchmarks.HooksUse_SuspendResumeRoundTrip / HooksUse.SuspendResume.Time",
-            "value": 1.4644500000000003,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.FiberAsyncResourcePlayModeBenchmarks.HooksUse_SuspendResumeRoundTrip / HooksUse.SuspendResume.GC",
-            "value": 83,
-            "unit": ""
-          },
-          {
-            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_A_NewLabelAlone / Time.GC()",
-            "value": 11006,
-            "unit": ""
-          },
-          {
-            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_A_NewLabelAlone / Time",
-            "value": 8.022050000000036,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_B_NewLabelWithText / Time.GC()",
-            "value": 11007,
-            "unit": ""
-          },
-          {
-            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_B_NewLabelWithText / Time",
-            "value": 8.270600000000286,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_C_NewLabelAndSetText / Time.GC()",
-            "value": 11006,
-            "unit": ""
-          },
-          {
-            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_C_NewLabelAndSetText / Time",
-            "value": 7.963850000000093,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_D_NewLabelAndAddToRoot / Time.GC()",
-            "value": 11018,
-            "unit": ""
-          },
-          {
-            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_D_NewLabelAndAddToRoot / Time",
-            "value": 9.15319999999997,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_E_FullPipelineParity / Time.GC()",
-            "value": 11018,
-            "unit": ""
-          },
-          {
-            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_E_FullPipelineParity / Time",
-            "value": 9.233349999999973,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_F_VelvetReconcile / Time.GC()",
-            "value": 27325,
-            "unit": ""
-          },
-          {
-            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_F_VelvetReconcile / Time",
-            "value": 283.0579,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_G_VelvetReconcileLongLived / Time.GC()",
-            "value": 24017,
-            "unit": ""
-          },
-          {
-            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_G_VelvetReconcileLongLived / Time",
-            "value": 238.59185000000025,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.InstrumentCanariesPlayModeBenchmarks.InstrumentCanary_AllocationBlocks / Time.GC()",
-            "value": 1,
-            "unit": ""
-          },
-          {
-            "name": "Velvet.Tests.Performance.InstrumentCanariesPlayModeBenchmarks.InstrumentCanary_AllocationBlocks / Time",
-            "value": 0.008199999999987995,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.InstrumentCanariesPlayModeBenchmarks.InstrumentCanary_TimingBaseline / Time",
-            "value": 0.3385499999999999,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.PaintPassReconcileBenchmarks.Reconcile_UnchangedClassList_100LiteralPaintRows / Time.GC()",
-            "value": 805,
-            "unit": ""
-          },
-          {
-            "name": "Velvet.Tests.Performance.PaintPassReconcileBenchmarks.Reconcile_UnchangedClassList_100LiteralPaintRows / Time",
-            "value": 20.137499999999932,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.PaintPassReconcileBenchmarks.Reconcile_UnchangedClassList_100VariantGatedPaintRows / Time.GC()",
-            "value": 12205,
-            "unit": ""
-          },
-          {
-            "name": "Velvet.Tests.Performance.PaintPassReconcileBenchmarks.Reconcile_UnchangedClassList_100VariantGatedPaintRows / Time",
-            "value": 30.060849999999846,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.InitialMount_1000Elements / Time.GC()",
-            "value": 22022,
-            "unit": ""
-          },
-          {
-            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.InitialMount_1000Elements / Time",
-            "value": 234.99094999999966,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.InitialMount_100Elements / Time.GC()",
-            "value": 2209,
-            "unit": ""
-          },
-          {
-            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.InitialMount_100Elements / Time",
-            "value": 5.498750000000086,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.InitialMount_10Elements / Time.GC()",
-            "value": 231,
-            "unit": ""
-          },
-          {
-            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.InitialMount_10Elements / Time",
-            "value": 0.7071999999998866,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.PooledWidgetRecycle_LabelsAndButtons_10Elements / Time.GC()",
-            "value": 335,
-            "unit": ""
-          },
-          {
-            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.PooledWidgetRecycle_LabelsAndButtons_10Elements / Time",
-            "value": 12.905350000000226,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_AllChange_100Elements / Time.GC()",
-            "value": 5,
-            "unit": ""
-          },
-          {
-            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_AllChange_100Elements / Time",
-            "value": 5.6305500000001985,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_BudgetedIndexed_AllChange_200Elements / Time.GC()",
-            "value": 5,
-            "unit": ""
-          },
-          {
-            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_BudgetedIndexed_AllChange_200Elements / Time",
-            "value": 39.638800000000174,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_BudgetedIndexed_GrowShrink_100To200Elements / Time.GC()",
-            "value": 2226,
-            "unit": ""
-          },
-          {
-            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_BudgetedIndexed_GrowShrink_100To200Elements / Time",
-            "value": 84.45519999999999,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_BudgetedKeyed_AllChange_200Elements / Time.GC()",
-            "value": 7,
-            "unit": ""
-          },
-          {
-            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_BudgetedKeyed_AllChange_200Elements / Time",
-            "value": 23.60104999999976,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_Expansion_AllChange_100Nodes / Time.GC()",
-            "value": 6609,
-            "unit": ""
-          },
-          {
-            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_Expansion_AllChange_100Nodes / Time",
-            "value": 19.28455000000008,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_Expansion_NoChange_100Nodes / Time.GC()",
-            "value": 2415,
-            "unit": ""
-          },
-          {
-            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_Expansion_NoChange_100Nodes / Time",
-            "value": 8.423499999999876,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_Keyed_AllChange_100Elements / Time.GC()",
-            "value": 5,
-            "unit": ""
-          },
-          {
-            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_Keyed_AllChange_100Elements / Time",
-            "value": 7.137450000000058,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_Keyed_NoChange_100Elements / Time.GC()",
-            "value": 5,
-            "unit": ""
-          },
-          {
-            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_Keyed_NoChange_100Elements / Time",
-            "value": 0.18585000000075524,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_Keyed_Reverse_100Elements / Time.GC()",
-            "value": 1005,
-            "unit": ""
-          },
-          {
-            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_Keyed_Reverse_100Elements / Time",
-            "value": 20.72109999999998,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_NoChange_100Elements / Time.GC()",
-            "value": 0,
-            "unit": ""
-          },
-          {
-            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_NoChange_100Elements / Time",
-            "value": 0.08364999999957945,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.StyleManipulatorReconcileBenchmarks.Mount_100StyledRows / Time.GC()",
-            "value": 111303,
-            "unit": ""
-          },
-          {
-            "name": "Velvet.Tests.Performance.StyleManipulatorReconcileBenchmarks.Mount_100StyledRows / Time",
-            "value": 555.0151499999993,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.StyleManipulatorReconcileBenchmarks.Reconcile_ChangedClassList_100StyledRows / Time.GC()",
-            "value": 92105,
-            "unit": ""
-          },
-          {
-            "name": "Velvet.Tests.Performance.StyleManipulatorReconcileBenchmarks.Reconcile_ChangedClassList_100StyledRows / Time",
-            "value": 203.5682999999999,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.StyleManipulatorReconcileBenchmarks.Reconcile_StripAndRestoreClassList_100StyledRows / Time.GC()",
-            "value": 135297,
-            "unit": ""
-          },
-          {
-            "name": "Velvet.Tests.Performance.StyleManipulatorReconcileBenchmarks.Reconcile_StripAndRestoreClassList_100StyledRows / Time",
-            "value": 620.198550000001,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.StyleManipulatorReconcileBenchmarks.Reconcile_UnchangedClassList_100StyledRows / Time.GC()",
-            "value": 6805,
-            "unit": ""
-          },
-          {
-            "name": "Velvet.Tests.Performance.StyleManipulatorReconcileBenchmarks.Reconcile_UnchangedClassList_100StyledRows / Time",
-            "value": 39.539149999999836,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.TextSizeEffectReconcileBenchmarks.Reconcile_RetextLabels_200LabelsUnderAnInertContainer / Time.GC()",
-            "value": 5,
-            "unit": ""
-          },
-          {
-            "name": "Velvet.Tests.Performance.TextSizeEffectReconcileBenchmarks.Reconcile_RetextLabels_200LabelsUnderAnInertContainer / Time",
-            "value": 38.481500000000324,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.TextSizeEffectReconcileBenchmarks.Reconcile_RetextLabels_200LabelsUnderATextSizeContainer / Time.GC()",
-            "value": 805,
-            "unit": ""
-          },
-          {
-            "name": "Velvet.Tests.Performance.TextSizeEffectReconcileBenchmarks.Reconcile_RetextLabels_200LabelsUnderATextSizeContainer / Time",
-            "value": 39.90489999999954,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.TextSizeEffectReconcileBenchmarks.Reconcile_RetextLabels_200LabelsWithAnInertClass / Time.GC()",
-            "value": 5,
-            "unit": ""
-          },
-          {
-            "name": "Velvet.Tests.Performance.TextSizeEffectReconcileBenchmarks.Reconcile_RetextLabels_200LabelsWithAnInertClass / Time",
-            "value": 47.53765000000021,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.TextSizeEffectReconcileBenchmarks.Reconcile_RetextLabels_200LabelsWithATextSize / Time.GC()",
-            "value": 405,
-            "unit": ""
-          },
-          {
-            "name": "Velvet.Tests.Performance.TextSizeEffectReconcileBenchmarks.Reconcile_RetextLabels_200LabelsWithATextSize / Time",
-            "value": 48.102699999999686,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.VisibleToggleProjectionBenchmarks.Reconcile_ToggleVisible_200Rows / Time.GC()",
-            "value": 1605,
-            "unit": ""
-          },
-          {
-            "name": "Velvet.Tests.Performance.VisibleToggleProjectionBenchmarks.Reconcile_ToggleVisible_200Rows / Time",
-            "value": 309.78499999999985,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.VisibleToggleProjectionBenchmarks.Reconcile_ToggleVisible_200RowsWithASuppressedClass / Time.GC()",
-            "value": 5605,
-            "unit": ""
-          },
-          {
-            "name": "Velvet.Tests.Performance.VisibleToggleProjectionBenchmarks.Reconcile_ToggleVisible_200RowsWithASuppressedClass / Time",
-            "value": 317.89995,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.RouteLoaderRunnerPlayModeBenchmarks.RunLoadersSync_AwaitSyncCompleted / Time.GC()",
-            "value": 14,
-            "unit": ""
-          },
-          {
-            "name": "Velvet.Tests.Performance.RouteLoaderRunnerPlayModeBenchmarks.RunLoadersSync_AwaitSyncCompleted / Time",
-            "value": 0.05954999999971733,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.RouteLoaderRunnerPlayModeBenchmarks.RunLoadersSync_SuspendDeferredCompletion / RouteLoaderRunner.SuspendDeferred.Time",
-            "value": 0.3481,
-            "unit": "ms"
-          },
-          {
-            "name": "Velvet.Tests.Performance.RouteLoaderRunnerPlayModeBenchmarks.RunLoadersSync_SuspendDeferredCompletion / RouteLoaderRunner.SuspendDeferred.GC",
-            "value": 9,
-            "unit": ""
-          },
-          {
-            "name": "Velvet.Tests.Performance.RouterNavigationPlayModeBenchmarks.NavigateAsync_LoaderAndBlocker / Time.GC()",
-            "value": 97,
-            "unit": ""
-          },
-          {
-            "name": "Velvet.Tests.Performance.RouterNavigationPlayModeBenchmarks.NavigateAsync_LoaderAndBlocker / Time",
-            "value": 0.2540000000001328,
-            "unit": "ms"
-          }
-        ]
-      },
       {
         "commit": {
           "author": {
@@ -147325,6 +146796,1200 @@ window.BENCHMARK_DATA = {
             "value": 0.2180499999994936,
             "unit": "ms",
             "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "50241623+s4k10503@users.noreply.github.com",
+            "name": "0y0",
+            "username": "s4k10503"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "4f83fc267d6717c7787fa8290988f00e7c288324",
+          "message": "refactor(velvet): run each deferred deletion at the turn of the nearest construct the pass kept (#1738)\n\nRefs #1655. Refs #1600. Stacked on #1737.\n\nThis is step 7 of [the commit-phase design on #1655](https://github.com/s4k10503/velvet/issues/1655#issuecomment-6912782030), with [the revision that lands it together with the spine's brackets](https://github.com/s4k10503/velvet/issues/1655#issuecomment-6917007797). Under #1736, a deferred deletion ran at its container's slot, after the container's whole walk. React runs a fiber's deletions at that fiber's turn in `commitMutationEffectsOnFiber`: ahead of its children, and behind everything before it in the tree. This change places each deferred deletion at that turn. That is the order half of #1600. The \"U before D\" half, which concerns the cleanups of updated fibers, stays with step 8.\n\n## What changed\n\n- **Turns.** The walk records a `FiberBegin` op that carries a pooled `TurnAnchor` at each of these points:\n  - each fiber's new-side expansion;\n  - the container's own start;\n  - each construct React gives a fiber: Fragment, Provider, Suspense. `V.Memoized`, the `useMemo` equivalent, gets none. A child an AnimatePresence stops rendering is kept as a ghost and disposed in a later pass, in the walk, so it waits at no turn.\n\n  Anchors are kept per container walk, keyed by fiber and position. A walk whose old side holds nothing records none.\n- **Resolution.** Each removed row and orphan resolves once to the anchor of its turn:\n  1. it climbs out of the constructs the pass dropped to the nearest one it kept, using the old side's `OldTurnParents`;\n  2. failing that, it goes to its fiber;\n  3. failing that, it goes to the container.\n- **Placement.** A container whose deletions defer and fall under more than one turn splits them into one `DeletionCommit` per anchor. Each teardown attaches to its anchor and runs when that anchor's op applies.\n  - A teardown whose anchor a mid-walk flush already applied goes to the pass's late list. The next apply runs that list first, in anchor order.\n  - A container that cannot defer keeps the single pre-order plan. This is decided once per container.\n\n## Behaviour\n\n- **New order.** Within one pass, a deferred deletion's cleanups now run at the turn of its nearest kept component, Provider, Suspense or Fragment. They come after the cleanups of what comes before it in the tree, and before those inside what it still renders.\n- **Old order.** Before this change, a deletion in a nested container ran ahead of an earlier owner's, and a container's own deletions ran after its owners'.\n\n## Evidence\n\n`DeletionAtOwnerTurnTests` makes one assert per case.\n\n- **Order between turns:**\n  - an owner ahead of an element that deletes a component;\n  - an element ahead of an owner;\n  - a container's own deletion ahead of an owner's;\n  - a Provider, a Suspense, a Suspense reveal and a nested Fragment, each against an earlier sibling's deletion;\n  - a Provider dropping a keyed Fragment;\n  - a `V.Memoized` drop;\n  - an error boundary's own deletion;\n  - two components under one owner.\n- **Immediate and flushed paths:**\n  - a list row that cannot wait keeps tree order;\n  - a delayed `TextField` that flushes the walk keeps the container first.\n- **Pools and anchors:**\n  - both walks of a two-turn deletion return to the pool, and no pooled walk keeps a field;\n  - a pass holds no anchor once it ends;\n  - an anchor rented again runs its new deletions once.\n\n`TestUtilities` gains `DeletionCommitPool`, shared with `DeletionCommitStateTests`, and `ReconcilePassProbe`.\n\nThe CHANGELOG fragment `refactor-commit-deletion-at-apply.md` states the turn order for deletions that wait for the apply. It also says a removal that does not wait is taken down in tree order. No `Documentation~` guide describes deletion order.\n\n## Not covered\n\n- **Flushed deletions.** A patch applied at once inside the walk applies every deletion recorded before it. The two delayed-field cases therefore read the label after the flush applied its write, where React reads the earlier text.\n- **Cost.** A recorded walk with an old side now records one op and one dictionary entry for each Fragment, Provider or Suspense it enters. This is not measured.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+          "timestamp": "2026-11-23T18:27:30+09:00",
+          "tree_id": "206c299907ccdae3b77b1506163610d80cb7fa30",
+          "url": "https://github.com/s4k10503/velvet/commit/4f83fc267d6717c7787fa8290988f00e7c288324"
+        },
+        "date": 1795427077686,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "Velvet.Tests.Performance.VNodePoolBenchmarks.VButton_Allocation / Time.GC()",
+            "value": 2,
+            "unit": "",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.VNodePoolBenchmarks.VButton_Allocation / Time",
+            "value": 0.016650000000254295,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.VNodePoolBenchmarks.VDiv_Allocation / Time.GC()",
+            "value": 1,
+            "unit": "",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.VNodePoolBenchmarks.VDiv_Allocation / Time",
+            "value": 0.018399999999473948,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.VNodePoolBenchmarks.VLabel_Allocation / Time.GC()",
+            "value": 2,
+            "unit": "",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.VNodePoolBenchmarks.VLabel_Allocation / Time",
+            "value": 0.015199999999822467,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.EffectContextRerenderAllocBenchmarks.UseState_RerenderClosureAlloc_With4EffectsAnd2Contexts / Time.GC()",
+            "value": 2404,
+            "unit": "",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.EffectContextRerenderAllocBenchmarks.UseState_RerenderClosureAlloc_With4EffectsAnd2Contexts / Time",
+            "value": 31.359599999999773,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.UseMutationPlayModeBenchmarks.UseMutation_OneMutateRoundTrip / Time.GC()",
+            "value": 24,
+            "unit": "",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.UseMutationPlayModeBenchmarks.UseMutation_OneMutateRoundTrip / Time",
+            "value": 0.49250000000006366,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.UseStateRerenderAllocBenchmarks.UseState_RerenderClosureAlloc / Time.GC()",
+            "value": 1104,
+            "unit": "",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.UseStateRerenderAllocBenchmarks.UseState_RerenderClosureAlloc / Time",
+            "value": 14.411849999999959,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Floor_1000Labels / Build.Time",
+            "value": 19.873150000000003,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Floor_1000Labels / Build.GC",
+            "value": 9000.5,
+            "unit": "",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Floor_1000Labels_ThroughNextFrame / Build.Time",
+            "value": 19.970950000000002,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Floor_1000Labels_ThroughNextFrame / Frame.TickScheduledActions",
+            "value": 0.023474000000000002,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Floor_1000Labels_ThroughNextFrame / Frame.ValidateLayout",
+            "value": 79.3613015,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Floor_1000Labels_ThroughNextFrame / Frame.PrepareRepaint",
+            "value": 74.89401849999999,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Floor_1000Labels_ThroughNextFrame / Window.GC",
+            "value": 12057.5,
+            "unit": "",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Mount_1000Elements / Build.Time",
+            "value": 106.33505,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Mount_1000Elements / Build.GC",
+            "value": 38493,
+            "unit": "",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Mount_1000Elements_ThroughNextFrame / Build.Time",
+            "value": 108.4996,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Mount_1000Elements_ThroughNextFrame / Frame.TickScheduledActions",
+            "value": 0.043538,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Mount_1000Elements_ThroughNextFrame / Frame.ValidateLayout",
+            "value": 257.63338699999997,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Mount_1000Elements_ThroughNextFrame / Frame.PrepareRepaint",
+            "value": 73.9788085,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Mount_1000Elements_ThroughNextFrame / Window.GC",
+            "value": 48331,
+            "unit": "",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Mount_100Elements / Build.Time",
+            "value": 12.8891,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Mount_100Elements / Build.GC",
+            "value": 3338,
+            "unit": "",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Mount_10Elements / Build.Time",
+            "value": 2.2218,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Mount_10Elements / Build.GC",
+            "value": 218,
+            "unit": "",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.FiberAsyncResourcePlayModeBenchmarks.HooksUse_SuspendResumeRoundTrip / HooksUse.SuspendResume.Time",
+            "value": 1.8126000000000002,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.FiberAsyncResourcePlayModeBenchmarks.HooksUse_SuspendResumeRoundTrip / HooksUse.SuspendResume.GCAcrossFrame",
+            "value": 628.5,
+            "unit": "",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.FlexMinSizeResizeBenchmarks.ResizeFrames_ColumnOf500Labels / Frame.TickScheduledActions",
+            "value": 0.0564245,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.FlexMinSizeResizeBenchmarks.ResizeFrames_ColumnOf500Labels / Frame.ValidateLayout",
+            "value": 33.2656015,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.FlexMinSizeResizeBenchmarks.ResizeFrames_ColumnOf500Labels / Frame.PrepareRepaint",
+            "value": 41.692530500000004,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.FlexMinSizeResizeBenchmarks.ResizeFrames_ColumnOf500Labels / Frame.GC",
+            "value": 25,
+            "unit": "",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.FlexMinSizeResizeBenchmarks.ResizeFrames_ColumnOf500Labels / Frame.Derive",
+            "value": 500,
+            "unit": "",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.FlexMinSizeResizeBenchmarks.ResizeFrames_RowOf500Labels / Frame.TickScheduledActions",
+            "value": 0.0517875,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.FlexMinSizeResizeBenchmarks.ResizeFrames_RowOf500Labels / Frame.ValidateLayout",
+            "value": 2.1421305,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.FlexMinSizeResizeBenchmarks.ResizeFrames_RowOf500Labels / Frame.PrepareRepaint",
+            "value": 0.1692195,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.FlexMinSizeResizeBenchmarks.ResizeFrames_RowOf500Labels / Frame.GC",
+            "value": 7349,
+            "unit": "",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.FlexMinSizeResizeBenchmarks.ResizeFrames_RowOf500Labels / Frame.Derive",
+            "value": 0,
+            "unit": "",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.IdleFrameBenchmarks.IdleFrames_1000StyledElements / Frame.TickScheduledActions",
+            "value": 0.6184885,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.IdleFrameBenchmarks.IdleFrames_1000StyledElements / Frame.ValidateLayout",
+            "value": 0.0053005,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.IdleFrameBenchmarks.IdleFrames_1000StyledElements / Frame.PrepareRepaint",
+            "value": 0.053277000000000005,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.IdleFrameBenchmarks.IdleFrames_1000StyledElements / Frame.GC",
+            "value": 7264.5,
+            "unit": "",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.IdleFrameBenchmarks.IdleFrames_1000StyledElementsWithPolls / Frame.TickScheduledActions",
+            "value": 11.828167,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.IdleFrameBenchmarks.IdleFrames_1000StyledElementsWithPolls / Frame.ValidateLayout",
+            "value": 0.006295,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.IdleFrameBenchmarks.IdleFrames_1000StyledElementsWithPolls / Frame.PrepareRepaint",
+            "value": 0.0704615,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.IdleFrameBenchmarks.IdleFrames_1000StyledElementsWithPolls / Frame.GC",
+            "value": 5915,
+            "unit": "",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_A_NewLabelAlone / Time.GC()",
+            "value": 11005,
+            "unit": "",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_A_NewLabelAlone / Time",
+            "value": 9.059949999999958,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_B_NewLabelWithText / Time.GC()",
+            "value": 11005,
+            "unit": "",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_B_NewLabelWithText / Time",
+            "value": 9.214899999999943,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_C_NewLabelAndSetText / Time.GC()",
+            "value": 11006,
+            "unit": "",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_C_NewLabelAndSetText / Time",
+            "value": 8.635599999999954,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_D_NewLabelAndAddToRoot / Time.GC()",
+            "value": 11017,
+            "unit": "",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_D_NewLabelAndAddToRoot / Time",
+            "value": 9.291949999999929,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_E_FullPipelineParity / Time.GC()",
+            "value": 11017,
+            "unit": "",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_E_FullPipelineParity / Time",
+            "value": 9.626850000000104,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_F_VelvetReconcile / Time.GC()",
+            "value": 26535,
+            "unit": "",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_F_VelvetReconcile / Time",
+            "value": 129.18409999999994,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_G_VelvetReconcileLongLived / Time.GC()",
+            "value": 23084,
+            "unit": "",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_G_VelvetReconcileLongLived / Time",
+            "value": 38.578050000000076,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.InstrumentCanariesPlayModeBenchmarks.InstrumentCanary_AllocationBlocks / Time.GC()",
+            "value": 1,
+            "unit": "",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.InstrumentCanariesPlayModeBenchmarks.InstrumentCanary_AllocationBlocks / Time",
+            "value": 0.008049999999911961,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.InstrumentCanariesPlayModeBenchmarks.InstrumentCanary_TimingBaseline / Time",
+            "value": 0.3227000000000002,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.Append_1000RowsTo1000 / Op.Time",
+            "value": 454.77,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.Append_1000RowsTo1000 / Op.GC",
+            "value": 181029.5,
+            "unit": "",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.Clear_1000Rows / Op.Time",
+            "value": 60.8986,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.Clear_1000Rows / Op.GC",
+            "value": 21,
+            "unit": "",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.Create_10000Rows / Op.Time",
+            "value": 3877.1165,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.Create_10000Rows / Op.GC",
+            "value": 1760366,
+            "unit": "",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.Create_1000Rows / Op.Time",
+            "value": 340.92025,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.Create_1000Rows / Op.GC",
+            "value": 178159,
+            "unit": "",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.PartialUpdate_EveryTenthOf1000Rows / Op.Time",
+            "value": 32.22315,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.PartialUpdate_EveryTenthOf1000Rows / Op.GC",
+            "value": 8942,
+            "unit": "",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.Remove_OneOf1000Rows / Op.Time",
+            "value": 20.496699999999997,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.Remove_OneOf1000Rows / Op.GC",
+            "value": 5039,
+            "unit": "",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.Replace_AllOf1000Rows / Op.Time",
+            "value": 407.58680000000004,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.Replace_AllOf1000Rows / Op.GC",
+            "value": 178097,
+            "unit": "",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.Select_OneOf1000Rows / Op.Time",
+            "value": 18.203000000000003,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.Select_OneOf1000Rows / Op.GC",
+            "value": 5113,
+            "unit": "",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.Swap_Rows2And999Of1000 / Op.Time",
+            "value": 20.16845,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.Swap_Rows2And999Of1000 / Op.GC",
+            "value": 5126,
+            "unit": "",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.MountedThemeRowBenchmarks.Rerender_UnchangedClassList_100PaintRowsUnderASheet / Time.GC()",
+            "value": 1015,
+            "unit": "",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.MountedThemeRowBenchmarks.Rerender_UnchangedClassList_100PaintRowsUnderASheet / Time",
+            "value": 17.332499999999982,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.MountedThemeRowBenchmarks.Rerender_UnchangedClassList_100StyledRowsUnderASheet / Time.GC()",
+            "value": 2816,
+            "unit": "",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.MountedThemeRowBenchmarks.Rerender_UnchangedClassList_100StyledRowsUnderASheet / Time",
+            "value": 29.922450000000026,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.MountedThemeRowBenchmarks.Rerender_UnchangedClassList_100TextSizeLabelsUnderASheet / Time.GC()",
+            "value": 1115,
+            "unit": "",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.MountedThemeRowBenchmarks.Rerender_UnchangedClassList_100TextSizeLabelsUnderASheet / Time",
+            "value": 6.547199999999975,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.PaintPassReconcileBenchmarks.Reconcile_UnchangedClassList_100LiteralPaintRows / Time.GC()",
+            "value": 704,
+            "unit": "",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.PaintPassReconcileBenchmarks.Reconcile_UnchangedClassList_100LiteralPaintRows / Time",
+            "value": 19.89660000000015,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.PaintPassReconcileBenchmarks.Reconcile_UnchangedClassList_100VariantGatedPaintRows / Time.GC()",
+            "value": 2364,
+            "unit": "",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.PaintPassReconcileBenchmarks.Reconcile_UnchangedClassList_100VariantGatedPaintRows / Time",
+            "value": 42.96139999999991,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.PooledButtonRowBenchmarks.Clear_1000PooledButtonRows / Time",
+            "value": 59.450050000000005,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.PooledButtonRowBenchmarks.Clear_1000PooledButtonRows / GC.Alloc",
+            "value": 3128,
+            "unit": "",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.PooledButtonRowBenchmarks.Create_1000PooledButtonRows / Time",
+            "value": 49.8745,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.PooledButtonRowBenchmarks.Create_1000PooledButtonRows / GC.Alloc",
+            "value": 48918,
+            "unit": "",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.PortalUnmountScalingBenchmarks.NoPortals_1000 / Unmount.Time",
+            "value": 59.02405,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.PortalUnmountScalingBenchmarks.NoPortals_1000 / Unmount.GC",
+            "value": 3076,
+            "unit": "",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.PortalUnmountScalingBenchmarks.NoPortals_250 / Unmount.Time",
+            "value": 20.96825,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.PortalUnmountScalingBenchmarks.NoPortals_250 / Unmount.GC",
+            "value": 826,
+            "unit": "",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.PortalUnmountScalingBenchmarks.OnePortalWithInlineChildren_1000 / Unmount.Time",
+            "value": 65.24270000000001,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.PortalUnmountScalingBenchmarks.OnePortalWithInlineChildren_1000 / Unmount.GC",
+            "value": 3020,
+            "unit": "",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.PortalUnmountScalingBenchmarks.OnePortalWithInlineChildren_250 / Unmount.Time",
+            "value": 22.40665,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.PortalUnmountScalingBenchmarks.OnePortalWithInlineChildren_250 / Unmount.GC",
+            "value": 770,
+            "unit": "",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.PortalUnmountScalingBenchmarks.SiblingPortals_1000 / Unmount.Time",
+            "value": 12899.480800000001,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.PortalUnmountScalingBenchmarks.SiblingPortals_1000 / Unmount.GC",
+            "value": 5013,
+            "unit": "",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.PortalUnmountScalingBenchmarks.SiblingPortals_250 / Unmount.Time",
+            "value": 727.6020000000001,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.PortalUnmountScalingBenchmarks.SiblingPortals_250 / Unmount.GC",
+            "value": 1263,
+            "unit": "",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.RadiusWatchRestyleBenchmarks.IdleFrames_1000DivsWithTheSheetWatch / Frame.TickScheduledActions",
+            "value": 0.0393705,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.RadiusWatchRestyleBenchmarks.IdleFrames_1000DivsWithTheSheetWatch / Frame.ValidateLayout",
+            "value": 0.003816,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.RadiusWatchRestyleBenchmarks.IdleFrames_1000DivsWithTheSheetWatch / Frame.PrepareRepaint",
+            "value": 0.0377665,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.RadiusWatchRestyleBenchmarks.IdleFrames_1000DivsWithTheSheetWatch / Frame.GC",
+            "value": 8833,
+            "unit": "",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.RadiusWatchRestyleBenchmarks.IdleFrames_1000DivsWithTheSheetWatchPaused / Frame.TickScheduledActions",
+            "value": 0.021353999999999998,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.RadiusWatchRestyleBenchmarks.IdleFrames_1000DivsWithTheSheetWatchPaused / Frame.ValidateLayout",
+            "value": 0.003913,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.RadiusWatchRestyleBenchmarks.IdleFrames_1000DivsWithTheSheetWatchPaused / Frame.PrepareRepaint",
+            "value": 0.0340385,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.RadiusWatchRestyleBenchmarks.IdleFrames_1000DivsWithTheSheetWatchPaused / Frame.GC",
+            "value": 8945,
+            "unit": "",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.RadiusWatchRestyleBenchmarks.RestyleFrames_1000DivsUnderARadiusRule / Frame.TickScheduledActions",
+            "value": 0.035429,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.RadiusWatchRestyleBenchmarks.RestyleFrames_1000DivsUnderARadiusRule / Frame.ValidateLayout",
+            "value": 20.101100000000002,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.RadiusWatchRestyleBenchmarks.RestyleFrames_1000DivsUnderARadiusRule / Frame.PrepareRepaint",
+            "value": 0.193614,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.RadiusWatchRestyleBenchmarks.RestyleFrames_1000DivsUnderARadiusRule / Frame.GC",
+            "value": 4441.5,
+            "unit": "",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.RadiusWatchRestyleBenchmarks.RestyleFrames_1000DivsUnderNoRadiusRule / Frame.TickScheduledActions",
+            "value": 0.0410895,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.RadiusWatchRestyleBenchmarks.RestyleFrames_1000DivsUnderNoRadiusRule / Frame.ValidateLayout",
+            "value": 13.839093,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.RadiusWatchRestyleBenchmarks.RestyleFrames_1000DivsUnderNoRadiusRule / Frame.PrepareRepaint",
+            "value": 0.17889,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.RadiusWatchRestyleBenchmarks.RestyleFrames_1000DivsUnderNoRadiusRule / Frame.GC",
+            "value": 6593.5,
+            "unit": "",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.InitialMount_1000Elements / Time.GC()",
+            "value": 24086,
+            "unit": "",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.InitialMount_1000Elements / Time",
+            "value": 36.50485000000003,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.InitialMount_100Elements / Time.GC()",
+            "value": 2123,
+            "unit": "",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.InitialMount_100Elements / Time",
+            "value": 3.7607500000001437,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.InitialMount_10Elements / Time.GC()",
+            "value": 228,
+            "unit": "",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.InitialMount_10Elements / Time",
+            "value": 0.7651000000003023,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.PooledWidgetRecycle_LabelsAndButtons_10Elements / Time.GC()",
+            "value": 174,
+            "unit": "",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.PooledWidgetRecycle_LabelsAndButtons_10Elements / Time",
+            "value": 12.935650000000123,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_AllChange_100Elements / Time.GC()",
+            "value": 4,
+            "unit": "",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_AllChange_100Elements / Time",
+            "value": 2.8437999999998738,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_BudgetedIndexed_AllChange_200Elements / Time.GC()",
+            "value": 4,
+            "unit": "",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_BudgetedIndexed_AllChange_200Elements / Time",
+            "value": 16.960599999999886,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_BudgetedIndexed_GrowShrink_100To200Elements / Time.GC()",
+            "value": 2064,
+            "unit": "",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_BudgetedIndexed_GrowShrink_100To200Elements / Time",
+            "value": 111.41095000000041,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_BudgetedKeyed_AllChange_200Elements / Time.GC()",
+            "value": 6,
+            "unit": "",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_BudgetedKeyed_AllChange_200Elements / Time",
+            "value": 16.32294999999999,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_Expansion_AllChange_100Nodes / Time.GC()",
+            "value": 3624,
+            "unit": "",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_Expansion_AllChange_100Nodes / Time",
+            "value": 25.467349999999897,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_Expansion_NoChange_100Nodes / Time.GC()",
+            "value": 14,
+            "unit": "",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_Expansion_NoChange_100Nodes / Time",
+            "value": 2.136399999999867,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_Keyed_AllChange_100Elements / Time.GC()",
+            "value": 4,
+            "unit": "",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_Keyed_AllChange_100Elements / Time",
+            "value": 5.603200000000243,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_Keyed_NoChange_100Elements / Time.GC()",
+            "value": 4,
+            "unit": "",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_Keyed_NoChange_100Elements / Time",
+            "value": 0.2183500000001004,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_Keyed_Reverse_100Elements / Time.GC()",
+            "value": 32,
+            "unit": "",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_Keyed_Reverse_100Elements / Time",
+            "value": 3.769749999999931,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_NoChange_100Elements / Time.GC()",
+            "value": 4,
+            "unit": "",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_NoChange_100Elements / Time",
+            "value": 0.16285000000016225,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.RenderPathScalingBenchmarks.ParentRerender_1000InlineComponentRows / Op.Time",
+            "value": 64.87935,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.RenderPathScalingBenchmarks.ParentRerender_1000InlineComponentRows / Op.GC",
+            "value": 13034,
+            "unit": "",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.RenderPathScalingBenchmarks.ParentRerender_250InlineComponentRows / Op.Time",
+            "value": 15.86905,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.RenderPathScalingBenchmarks.ParentRerender_250InlineComponentRows / Op.GC",
+            "value": 3278,
+            "unit": "",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.RenderPathScalingBenchmarks.ParentRerender_500InlineComponentRows / Op.Time",
+            "value": 32.350049999999996,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.RenderPathScalingBenchmarks.ParentRerender_500InlineComponentRows / Op.GC",
+            "value": 6531,
+            "unit": "",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.RenderPathScalingBenchmarks.RowSetState_Under1000MemoizedRows / Op.Time",
+            "value": 0.17875000000000002,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.RenderPathScalingBenchmarks.RowSetState_Under1000MemoizedRows / Op.GC",
+            "value": 14,
+            "unit": "",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.RenderPathScalingBenchmarks.RowSetState_Under2000MemoizedRows / Op.Time",
+            "value": 0.18895,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.RenderPathScalingBenchmarks.RowSetState_Under2000MemoizedRows / Op.GC",
+            "value": 14,
+            "unit": "",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.RenderPathScalingBenchmarks.RowSetState_Under250MemoizedRows / Op.Time",
+            "value": 0.16849999999999998,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.RenderPathScalingBenchmarks.RowSetState_Under250MemoizedRows / Op.GC",
+            "value": 14,
+            "unit": "",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.RenderPathScalingBenchmarks.RowSetState_Under500MemoizedRows / Op.Time",
+            "value": 0.1618,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.RenderPathScalingBenchmarks.RowSetState_Under500MemoizedRows / Op.GC",
+            "value": 14,
+            "unit": "",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.StyleManipulatorReconcileBenchmarks.Mount_100StyledRows / Time.GC()",
+            "value": 77911,
+            "unit": "",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.StyleManipulatorReconcileBenchmarks.Mount_100StyledRows / Time",
+            "value": 289.32095000000027,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.StyleManipulatorReconcileBenchmarks.Reconcile_ChangedClassList_100StyledRows / Time.GC()",
+            "value": 40504,
+            "unit": "",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.StyleManipulatorReconcileBenchmarks.Reconcile_ChangedClassList_100StyledRows / Time",
+            "value": 179.5954499999998,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.StyleManipulatorReconcileBenchmarks.Reconcile_StripAndRestoreClassList_100StyledRows / Time.GC()",
+            "value": 80186,
+            "unit": "",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.StyleManipulatorReconcileBenchmarks.Reconcile_StripAndRestoreClassList_100StyledRows / Time",
+            "value": 449.6998000000003,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.StyleManipulatorReconcileBenchmarks.Reconcile_UnchangedClassList_100StyledRows / Time.GC()",
+            "value": 2804,
+            "unit": "",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.StyleManipulatorReconcileBenchmarks.Reconcile_UnchangedClassList_100StyledRows / Time",
+            "value": 46.64429999999993,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.TextSizeEffectReconcileBenchmarks.Reconcile_RetextLabels_200LabelsUnderAnInertContainer / Time.GC()",
+            "value": 4,
+            "unit": "",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.TextSizeEffectReconcileBenchmarks.Reconcile_RetextLabels_200LabelsUnderAnInertContainer / Time",
+            "value": 11.587400000000116,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.TextSizeEffectReconcileBenchmarks.Reconcile_RetextLabels_200LabelsUnderATextSizeContainer / Time.GC()",
+            "value": 804,
+            "unit": "",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.TextSizeEffectReconcileBenchmarks.Reconcile_RetextLabels_200LabelsUnderATextSizeContainer / Time",
+            "value": 15.702000000000226,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.TextSizeEffectReconcileBenchmarks.Reconcile_RetextLabels_200LabelsWithAnInertClass / Time.GC()",
+            "value": 4,
+            "unit": "",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.TextSizeEffectReconcileBenchmarks.Reconcile_RetextLabels_200LabelsWithAnInertClass / Time",
+            "value": 12.851699999999823,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.TextSizeEffectReconcileBenchmarks.Reconcile_RetextLabels_200LabelsWithATextSize / Time.GC()",
+            "value": 404,
+            "unit": "",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.TextSizeEffectReconcileBenchmarks.Reconcile_RetextLabels_200LabelsWithATextSize / Time",
+            "value": 16.142950000000155,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.VisibleToggleProjectionBenchmarks.Reconcile_ToggleVisible_200Rows / Time.GC()",
+            "value": 1206,
+            "unit": "",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.VisibleToggleProjectionBenchmarks.Reconcile_ToggleVisible_200Rows / Time",
+            "value": 123.04975000000013,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.VisibleToggleProjectionBenchmarks.Reconcile_ToggleVisible_200RowsWithASuppressedClass / Time.GC()",
+            "value": 2806,
+            "unit": "",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.VisibleToggleProjectionBenchmarks.Reconcile_ToggleVisible_200RowsWithASuppressedClass / Time",
+            "value": 134.2091500000006,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.RouteLoaderRunnerPlayModeBenchmarks.RunLoadersSync_AwaitSyncCompleted / Time.GC()",
+            "value": 14,
+            "unit": "",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.RouteLoaderRunnerPlayModeBenchmarks.RunLoadersSync_AwaitSyncCompleted / Time",
+            "value": 0.0573500000000422,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.RouteLoaderRunnerPlayModeBenchmarks.RunLoadersSync_SuspendDeferredCompletion / RouteLoaderRunner.SuspendDeferred.Time",
+            "value": 0.35130000000000006,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.RouteLoaderRunnerPlayModeBenchmarks.RunLoadersSync_SuspendDeferredCompletion / RouteLoaderRunner.SuspendDeferred.GCAcrossFrame",
+            "value": 133,
+            "unit": "",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.RouterNavigationPlayModeBenchmarks.NavigateAsync_LoaderAndBlocker / Time.GC()",
+            "value": 110,
+            "unit": "",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
+          },
+          {
+            "name": "Velvet.Tests.Performance.RouterNavigationPlayModeBenchmarks.NavigateAsync_LoaderAndBlocker / Time",
+            "value": 0.2507500000001528,
+            "unit": "ms",
+            "extra": "processor: INTEL(R) XEON(R) PLATINUM 8573C"
           }
         ]
       }
