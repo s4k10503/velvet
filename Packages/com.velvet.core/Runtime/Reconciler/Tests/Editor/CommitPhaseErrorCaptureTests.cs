@@ -11,7 +11,7 @@ namespace Velvet.Tests
 {
     /// <summary>
     /// Specifies where an error goes that a layout effect, a ref setup or a passive effect throws while its commit
-    /// runs, as React's captureCommitPhaseError sends it.
+    /// runs, or a ref's cleanup throws as a render removes its element, as React's captureCommitPhaseError sends it.
     /// <list type="bullet">
     /// <item>The commit goes on: the effects and ref setups after the throwing one, its siblings' among them, still
     /// run.</item>
@@ -130,6 +130,21 @@ namespace Velvet.Tests
             Assert.That(_root.Q<Label>("fallback") != null, Is.True);
         }
 
+        [Test]
+        public void Given_ABoundaryWhoseRenderRemovesItsOwnElementWithAThrowingRefCleanup_When_ARenderOfItsParentUpdatesASiblingAfterIt_Then_TheSiblingsLayoutEffectRunsBeforeTheFallbacks()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(RemovingHost, key: "host"), CaughtErrors.Unlogged);
+            s_log.Clear();
+
+            // Act
+            s_setRemovingHost.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(string.Join(", ", s_log), Is.EqualTo("after 1 layout, fallback layout"));
+        }
+
         private static StateUpdater<int> s_setHost;
         private static Button s_button;
 
@@ -210,6 +225,44 @@ namespace Velvet.Tests
         {
             Hooks.UseFallback(_ => V.Label(name: "fallback", text: "fallback"));
             return show ? V.Component(ThrowingPassiveRender, "a", key: "a") : V.Label(text: "idle");
+        }
+
+        private static StateUpdater<int> s_setRemovingHost;
+
+        private static readonly Func<VisualElement, Action> s_throwingCleanupRef =
+            static _ => () => throw new InvalidOperationException("cleanup boom");
+
+        // Its render at 1 walks the boundary, which removes an element of its own, and then updates the sibling after it.
+        [Component]
+        private static VNode RemovingHost()
+        {
+            var (n, setN) = Hooks.UseState(0);
+            s_setRemovingHost = setN;
+            return V.Div(children: new VNode[]
+            {
+                V.Component(RemovingBoundary, n, key: "boundary"),
+                V.Component(LoggingTickRender, n, key: "after"),
+            });
+        }
+
+        [Component(IsErrorBoundary = true)]
+        private static VNode RemovingBoundary(int n)
+        {
+            Hooks.UseFallback(_ => V.Component(FallbackRender, key: "fallback"));
+            return V.Div(children: n == 0
+                ? new VNode[] { V.Label(text: "removed", refCallback: s_throwingCleanupRef) }
+                : Array.Empty<VNode>());
+        }
+
+        [Component]
+        private static VNode LoggingTickRender(int n)
+        {
+            Hooks.UseLayoutEffect((Func<Action>)(() =>
+            {
+                s_log.Add("after " + n + " layout");
+                return null;
+            }), new object[] { n });
+            return V.Label(text: "after");
         }
 
         [Component(IsErrorBoundary = true)]

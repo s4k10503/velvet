@@ -2400,8 +2400,8 @@ namespace Velvet
         // (cleanup, then setup) only when its identity changes or the element remounts. The cleanup
         // fires when the element detaches from the DOM, releasing resources such as resetting
         // Ref<T>.Current to null.
-        public Dictionary<VisualElement, (System.Func<VisualElement, System.Action> Callback, System.Action? Cleanup)>
-            RefCallbacks { get; } = new();
+        public Dictionary<VisualElement, (System.Func<VisualElement, System.Action> Callback, System.Action? Cleanup,
+            ComponentFiber? Owner)> RefCallbacks { get; } = new();
 
         // Ref setups queued and not yet run, in the order the walks reached them, keyed for replacement
         // so one element contributes one setup however many times a pass syncs it. Run by DrainRefAttaches at
@@ -2699,13 +2699,7 @@ namespace Velvet
             // entry instead of overwriting the one being run.
             _pendingRefAttachIndex.Remove(element);
             _pendingRefAttaches[index] = default;
-            // Ahead of the setup too, so an element the setup itself takes out of the tree is one
-            // FiberElementCleaner finds an entry for and removes. A setup CAN reach that: it runs
-            // at depth zero now, where a discrete event it dispatches commits synchronously instead
-            // of being held back. Recorded only afterwards, the removal would find no entry and the
-            // write below would then add one for an element no tree holds, past the removal that
-            // would have taken it.
-            RefCallbacks[element] = (callback, null);
+            RefCallbacks[element] = (callback, null, owner);
             // A callback that reads its element's box here reads it laid out, as in React's layout phase.
             FiberLayoutReflow.LayOutFor(this, element, owner);
             System.Action? cleanup = null;
@@ -2719,20 +2713,7 @@ namespace Velvet
             }
             if (RefCallbacks.ContainsKey(element))
             {
-                RefCallbacks[element] = (callback, cleanup);
-            }
-            else if (cleanup != null)
-            {
-                // Its entry is gone, so nothing is left holding this cleanup. Firing it here is
-                // what keeps a setup that acquires a resource from leaking it.
-                try
-                {
-                    InOwnersFrame(owner, _ => { cleanup(); return null; }, element);
-                }
-                catch (System.Exception exception)
-                {
-                    ContainUserCallbackFailure(owner, exception);
-                }
+                RefCallbacks[element] = (callback, cleanup, owner);
             }
         }
 
@@ -2775,7 +2756,7 @@ namespace Velvet
             if (replaced == null) return;
             // Ahead of the cleanup: a boundary catching its failure can take the element out, and
             // finding the replaced entry there, FiberElementCleaner would run the cleanup a second time.
-            RefCallbacks[element] = (callback, null);
+            RefCallbacks[element] = (callback, null, owner);
             // Its failure goes where a setup's does, and the setup still runs.
             try
             {

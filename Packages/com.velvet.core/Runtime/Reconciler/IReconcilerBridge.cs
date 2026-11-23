@@ -29,6 +29,9 @@ namespace Velvet
         // updates, and React flushes pending passive effects before it renders one.
         void FlushPendingPassiveEffectsForController();
 
+        // The bridge context's scheduler, which owns the controller's range as an entry (FiberExecutionContext).
+        FiberBatchScheduler SchedulerForController { get; }
+
         // A range rendered outside a reconcile pass has no enclosing entry to end with
         // FiberEffects.CommitStrandedLayoutWork, so the controller calls this where a range render returns.
         void CommitStrandedLayoutWorkForController();

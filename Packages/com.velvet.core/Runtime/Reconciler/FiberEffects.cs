@@ -222,7 +222,7 @@ namespace Velvet
             ctx.FlushingCaptures = true;
             try
             {
-                ctx.BatchScheduler.FlushImmediate();
+                ctx.BatchScheduler.FlushImmediateWork();
             }
             finally
             {
@@ -327,6 +327,7 @@ namespace Velvet
         private static void CommitLayoutBatch(
             ReconcilerContext ctx, ComponentFiber? scope, List<(ComponentFiber Fiber, bool IsMount)> roots)
         {
+            UnityEngine.Debug.Assert(FiberExecutionContext.IsSet, "A layout commit ran with no entry on the stack.");
             ctx.EffectCommitDepth++;
             // A catch during this commit's own setups showed a fallback this commit has not laid out, so its
             // report waits for the follow-up commit that does.
@@ -719,7 +720,18 @@ namespace Velvet
         private static void ScheduleStandaloneEffectRun(VisualElement mountPoint, ComponentFiber fiber)
         {
             var host = HostSchedulers.For(fiber);
-            host.Schedule(mountPoint, () => host.Run(fiber.MountPoint, fiber, RunEffects));
+            host.Schedule(mountPoint, () => host.Run(fiber.MountPoint, fiber, RunScheduledEffects));
+        }
+
+        private static void RunScheduledEffects(ComponentFiber fiber)
+        {
+            if (FiberExecutionContext.IsSet)
+            {
+                FiberExecutionContext.Hold(FiberExecutionContext.Request.PassiveFlush, fiber, null, fiber,
+                    static held => RunScheduledEffects(held));
+                return;
+            }
+            FiberExecutionContext.Enter<ComponentFiber>(null, fiber, static run => RunEffects(run));
         }
 
         private static void ArmPassiveDrain(ReconcilerContext context)
@@ -745,7 +757,18 @@ namespace Velvet
         // arming writes the same element: a context's anchor is set once.
         private static Action PassiveEffectDrainCallback(ReconcilerContext context)
             => () => context.HostScheduler.Run(
-                context.PassiveEffectDrainAnchor, context, static ctx => DrainPassiveEffects(ctx));
+                context.PassiveEffectDrainAnchor, context, static ctx => DrainScheduledPassiveEffects(ctx));
+
+        private static void DrainScheduledPassiveEffects(ReconcilerContext context)
+        {
+            if (FiberExecutionContext.IsSet)
+            {
+                FiberExecutionContext.Hold(FiberExecutionContext.Request.PassiveFlush, context, context.BatchScheduler, context,
+                    static held => DrainScheduledPassiveEffects(held));
+                return;
+            }
+            FiberExecutionContext.Enter(context.BatchScheduler, context, static ctx => DrainPassiveEffects(ctx));
+        }
 
         // An exit with nothing to animate, whose child the pass that just ended removed, settles in the
         // passive-effect flush, after the effects that flush runs, as Framer Motion settles it after that commit.
@@ -780,6 +803,7 @@ namespace Velvet
         // the same way TakeBatch does for the layout commit.
         private static void DrainPassiveEffects(ReconcilerContext context)
         {
+            UnityEngine.Debug.Assert(FiberExecutionContext.IsSet, "A passive flush ran with no entry on the stack.");
             context.PassiveEffectDrainScheduled = false;
             // Snapshot and clear the staged set before running: an effect setup can synchronously
             // stage further passive effects (setState in a UseEffect), which must enqueue a NEW drain
@@ -1016,6 +1040,7 @@ namespace Velvet
         // flush helper. Does nothing if already unmounted (Cleanup runs from CleanupAllEffects).
         private static void RunEffects(ComponentFiber fiber)
         {
+            UnityEngine.Debug.Assert(FiberExecutionContext.IsSet, "A passive flush ran with no entry on the stack.");
             fiber.EffectFlushScheduled = false;
             if (!fiber.IsMounted) return;
 #if UNITY_EDITOR
@@ -1044,13 +1069,24 @@ namespace Velvet
             if (context == null)
             {
                 // No shared context (defensive): fall back to the single-fiber flush.
-                if (rootFiber != null) RunEffects(rootFiber);
+                if (rootFiber != null) RunScheduledEffects(rootFiber);
                 return;
             }
             FlushPendingPassiveEffects(context);
         }
 
         internal static void FlushPendingPassiveEffects(ReconcilerContext context)
+        {
+            if (FiberExecutionContext.IsSet)
+            {
+                FiberExecutionContext.Hold(FiberExecutionContext.Request.PassiveFlush, context.BatchScheduler,
+                    context.BatchScheduler, context, static held => FlushPendingPassiveEffects(held));
+                return;
+            }
+            FiberExecutionContext.Enter(context.BatchScheduler, context, static ctx => FlushPendingPassiveEffectsWork(ctx));
+        }
+
+        internal static void FlushPendingPassiveEffectsWork(ReconcilerContext context)
         {
             // React refuses to flush passive effects inside a commit ("Cannot flush passive effects while already
             // rendering"), a passive flush being one. Reached from a layout commit or from an effect this context's

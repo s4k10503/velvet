@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Reflection;
 using NUnit.Framework;
 using UnityEngine.UIElements;
+using Velvet.TestUtilities;
 
 namespace Velvet.Tests
 {
@@ -59,7 +60,7 @@ namespace Velvet.Tests
             pool.ReturnCommitEntryList(borrowed);
 
             // Act
-            FiberEffects.CommitSubtreeEffects(mounted.Root);
+            FiberExecutionContextTestAccess.RunAsEntryForTest(() => FiberEffects.CommitSubtreeEffects(mounted.Root));
 
             // Assert
             Assert.That(PoolHolds(pool, "_commitEntryListPool", borrowed), Is.True);
@@ -78,7 +79,7 @@ namespace Velvet.Tests
             context.PendingDrainLayoutEffects.Add((mounted.Root, false));
 
             // Act
-            FiberEffects.FlushDeferredDrainLayoutEffects(context);
+            FiberExecutionContextTestAccess.RunAsEntryForTest(() => FiberEffects.FlushDeferredDrainLayoutEffects(context));
 
             // Assert
             Assert.That(PoolHolds(context.BufferPool, "_commitEntryListPool", borrowed), Is.True);
@@ -96,7 +97,7 @@ namespace Velvet.Tests
             pool.ReturnDeferredEntryList(borrowed);
 
             // Act
-            FiberEffects.CommitSubtreeEffects(mounted.Root);
+            FiberExecutionContextTestAccess.RunAsEntryForTest(() => FiberEffects.CommitSubtreeEffects(mounted.Root));
 
             // Assert
             Assert.That(PoolHolds(pool, "_deferredEntryListPool", borrowed), Is.True);
@@ -121,7 +122,7 @@ namespace Velvet.Tests
             var taken = OnTopInRentOrder(pool, 2)[1];
 
             // Act
-            FiberEffects.CommitSubtreeEffects(mounted.Root);
+            FiberExecutionContextTestAccess.RunAsEntryForTest(() => FiberEffects.CommitSubtreeEffects(mounted.Root));
 
             // Assert
             Assert.That(PoolHolds(pool, "_commitEntryListPool", taken), Is.True);
@@ -138,7 +139,7 @@ namespace Velvet.Tests
             var deduped = OnTopInRentOrder(pool, 3)[2];
 
             // Act
-            FiberEffects.CommitSubtreeEffects(mounted.Root);
+            FiberExecutionContextTestAccess.RunAsEntryForTest(() => FiberEffects.CommitSubtreeEffects(mounted.Root));
 
             // Assert
             Assert.That(PoolHolds(pool, "_commitEntryListPool", deduped), Is.True);

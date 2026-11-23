@@ -359,6 +359,24 @@ namespace Velvet
         // to inherit.
         internal static void FlushState(ComponentFiber fiber, double timeSlicedBudgetMs)
         {
+            var scheduler = fiber.Reconciler?.Context.BatchScheduler;
+            if (FiberExecutionContext.IsSet)
+            {
+                FiberExecutionContext.Hold(FiberExecutionContext.Request.FiberFlush, fiber, scheduler,
+                    (Fiber: fiber, Budget: timeSlicedBudgetMs), static state => FlushState(state.Fiber, state.Budget));
+                return;
+            }
+            // A flush of one fiber renders queued work without either tier's drain, so it stands down where they do
+            // (FiberBatchScheduler.DrainImmediateWork).
+            if (scheduler != null && FiberExecutionContext.Threw(scheduler)) return;
+            FiberExecutionContext.Enter(scheduler, (Fiber: fiber, Budget: timeSlicedBudgetMs),
+                static state => FlushStateWork(state.Fiber, state.Budget));
+        }
+
+        internal static void FlushStateWork(ComponentFiber fiber) => FlushStateWork(fiber, FiberLane.TimeSlicedBudgetMs);
+
+        internal static void FlushStateWork(ComponentFiber fiber, double timeSlicedBudgetMs)
+        {
             OpenOwedSettleWindow(out var enclosing);
             try
             {
@@ -392,15 +410,18 @@ namespace Velvet
         internal static void OweSettleRender(ComponentFiber holder) => s_owedSettleRenders?.Add(holder);
 
         // Only a holder still holding an immediate-tier lane is flushed, so Transition work it holds for itself
-        // keeps its tier, and one the flush skips (unmounted, hidden under a fallback, in a detached host)
-        // keeps its lane for the scheduler.
+        // keeps its tier, and one the flush skips (unmounted, hidden under a fallback, in a detached host, or of a
+        // root an exception left in the release running, as the FlushState door skips it) keeps its lane for the
+        // scheduler.
         private static void FlushOwedSettleRenders(List<ComponentFiber> owed)
         {
             for (var i = 0; i < owed.Count; i++)
             {
+                var scheduler = owed[i].Reconciler?.Context.BatchScheduler;
+                if (scheduler != null && FiberExecutionContext.Threw(scheduler)) continue;
                 if (FiberLane.SchedulesOnImmediateTier(FiberLane.GetHighestPendingPriority(owed[i])))
                 {
-                    FlushState(owed[i]);
+                    FlushStateWork(owed[i]);
                 }
             }
         }
@@ -595,7 +616,7 @@ namespace Velvet
         {
             if (fiber.PendingReconcileDrainsTransitionWork)
             {
-                fiber.Reconciler?.Context.BatchScheduler.FlushImmediate();
+                fiber.Reconciler?.Context.BatchScheduler.FlushImmediateWork();
             }
         }
 
@@ -636,11 +657,23 @@ namespace Velvet
         // advance in EditMode) so a parked slice can be driven to completion manually.
         internal static void ContinueReconcile(ComponentFiber fiber)
         {
+            var scheduler = fiber.Reconciler?.Context.BatchScheduler;
+            if (FiberExecutionContext.IsSet)
+            {
+                FiberExecutionContext.Hold(FiberExecutionContext.Request.Resume, fiber, scheduler, fiber,
+                    static resumed => ContinueReconcile(resumed));
+                return;
+            }
+            FiberExecutionContext.Enter(scheduler, fiber, static resumed => ContinueReconcileWork(resumed));
+        }
+
+        private static void ContinueReconcileWork(ComponentFiber fiber)
+        {
             // A resumed slice renders, so pending passive effects run before it as they do before a drain
             // (FiberBatchScheduler.Drain), and ahead of the guards below, which read what those effects leave.
             fiber.Reconciler?.Context.BatchScheduler.FlushPendingPassiveEffectsAheadOfAResume();
             // Ahead of the guards below, since the flush can unmount the fiber or finish its pass.
-            fiber.Reconciler?.Context.BatchScheduler.FlushOwedExternalStoreRenders();
+            fiber.Reconciler?.Context.BatchScheduler.FlushOwedExternalStoreRendersWork();
             if (!fiber.IsMounted) return;
             if (fiber.Reconciler == null) return;
             var mountPoint = fiber.MountPoint;
@@ -698,12 +731,12 @@ namespace Velvet
                         // FiberCommitWork.ReconcileOwnRows's own measurement — see
                         // LogicalMountPointChildCount.
                         var slice = new FiberCommitWork.RowCountWindow(fiber);
-                        fiber.Reconciler.ContinueReconcile(fiber.PendingReconcileBudgetMs);
+                        fiber.Reconciler.ContinueReconcileWork(fiber.PendingReconcileBudgetMs);
                         resumeContext.HostCommit.ShiftRows(fiber, slice.UnshiftedChange);
                     }
                     else
                     {
-                        fiber.Reconciler.ContinueReconcile(fiber.PendingReconcileBudgetMs);
+                        fiber.Reconciler.ContinueReconcileWork(fiber.PendingReconcileBudgetMs);
                     }
                 }
                 finally
@@ -745,7 +778,7 @@ namespace Velvet
                     // pattern), and the resume runs outside any batch drain — flush now so the write
                     // commits before the frame yields. Safe here: the pass completed (no pending
                     // work) and the reconcile-active bracket was exited by ContinueReconcile above.
-                    fiber.Reconciler?.Context.BatchScheduler.FlushImmediate();
+                    fiber.Reconciler?.Context.BatchScheduler.FlushImmediateWork();
                 }
                 FiberEffects.CommitStrandedLayoutWork(resumeContext);
             }

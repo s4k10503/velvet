@@ -681,8 +681,9 @@ namespace Velvet.Tests
             context.DeferredInlineLayoutEffectFibers.Push((s_passiveCountingFiber, false, settledPass));
 
             // Act — one drain, since the flush that loops would run a held effect in its second
-            typeof(FiberEffects).GetMethod("DrainPassiveEffects", BindingFlags.NonPublic | BindingFlags.Static)
-                .Invoke(null, new object[] { context });
+            FiberExecutionContextTestAccess.RunAsEntryForTest(() =>
+                typeof(FiberEffects).GetMethod("DrainPassiveEffects", BindingFlags.NonPublic | BindingFlags.Static)
+                    .Invoke(null, new object[] { context }));
 
             // Assert
             Assert.That(s_passiveCountingRuns, Is.GreaterThan(0),

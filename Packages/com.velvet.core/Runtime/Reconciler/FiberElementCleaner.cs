@@ -303,17 +303,19 @@ namespace Velvet
             _ctx.ForgetRefDetachedWhileHidden(element);
             if (!_ctx.RefCallbacks.TryGetValue(element, out var installedRef)) return;
             _ctx.RefCallbacks.Remove(element);
-            // Contained the way Reconciler.ReleaseRefCallbacks contains the same user delegate. A throw
-            // escaping here skips the rest of this element's teardown — including the ring detach whose
+            // A throw escaping here skips the rest of this element's teardown — including the ring detach whose
             // own note says skipping it strands a live band — and unwinds whichever removal loop called
-            // in, so the rows it had not reached yet stay in the tree.
+            // in, so the rows it had not reached yet stay in the tree. One a component's ref throws is captured for a
+            // boundary from that component, as React's safelyDetachRef captures it; a ref no component rendered has none
+            // to start from.
             try
             {
                 installedRef.Cleanup?.Invoke();
             }
             catch (System.Exception exception)
             {
-                FiberLogger.LogException("FiberElementCleaner", exception);
+                if (installedRef.Owner != null) ComponentBoundarySearch.CaptureFromOwner(installedRef.Owner, exception);
+                else FiberLogger.LogException("FiberElementCleaner", exception);
             }
         }
 

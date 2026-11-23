@@ -886,7 +886,7 @@ namespace Velvet.Tests
             using var controller = new FiberVirtualListController(scrollView, LayoutIdRows(), _reconciler);
             controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 100f);
             Tick();
-            controller.Update(LayoutIdRows());
+            FiberExecutionContextTestAccess.RunAsEntryForTest(() => controller.Update(LayoutIdRows()));
             Tick();
             scrollView.scrollOffset = new Vector2(0f, 500f);
             Tick();
