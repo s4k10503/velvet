@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 using NUnit.Framework;
 using UnityEngine.UIElements;
 using Velvet.TestUtilities;
@@ -19,11 +20,13 @@ namespace Velvet.Tests
     /// once each element has left. An element whose removal threw is neither removed again nor pooled, so a callback in a
     /// clip-path wrapper or a pooled button runs once and is reported once, and a pooled button whose own callback threw
     /// stays out of the pool. A <c>z-*</c> element in a row whose removal threw is removed again only where that throw
-    /// came ahead of its own detach, so its callback runs once either way, a pooled one rented again included, and a
-    /// <c>z-*</c> button a healthy removal of its row took still goes back to the pool. A <c>V.VirtualList</c>'s row is
-    /// reported the same way where the disposal or a drain's update removes the list, as is an element beside a list of
-    /// components; under a reconciler no root owns, the first of two rows' errors is thrown once both have detached. A
-    /// host that disposes its root as it detaches is left without the root's <c>z-*</c> element.
+    /// came ahead of its own detach, so its callback runs once either way, a pooled one rented again included, whether it
+    /// attaches as a <c>z-*</c> element or is relocated where it stands, and a <c>z-*</c> button a healthy removal of its row
+    /// took still goes back to the pool, carrying nothing the relocation registered. A <c>V.VirtualList</c>'s row is
+    /// reported the same way where the disposal removes the list, as is an element beside a list of components; where a
+    /// drain's update removes it, each of two rows is detached and reported; under a reconciler no root owns, the first of
+    /// two rows' errors is thrown once both have detached. A host that disposes its root as it detaches is left without
+    /// the root's <c>z-*</c> element.
     /// </summary>
     /// <remarks>
     /// The tree mounts on a real panel, which is what runs a detach callback.
@@ -177,21 +180,58 @@ namespace Velvet.Tests
         {
             var (shown, _) = EventLog.UseState("V", true);
             EventLog.UseRender("V");
-            return V.Div(children: shown ? new[] { AListOfThrowers("R") } : Array.Empty<VNode>());
+            return V.Div(children: shown ? new[] { AListOfThrowers("R1", "R2") } : Array.Empty<VNode>());
         }
 
-        // EditMode runs no layout, so the list is given the range its scroll would give it.
-        private void ShowTheListsRow(MountedTree mounted)
+        // EditMode runs no layout, so the list is given the range its scroll would give it, rows of it tall.
+        private void ShowTheListsRows(MountedTree mounted, int rows = 1)
         {
             mounted.Root.Reconciler!.Context.VirtualListControllers[_mountPoint.Q<ScrollView>()]
-                .UpdateVisibleRange(scrollY: 0f, viewportHeight: 50f);
+                .UpdateVisibleRange(scrollY: 0f, viewportHeight: 50f * rows);
             mounted.DrainForTest();
         }
 
-        // As ShowTheListsRow, for a list a reconciler no root owns renders, sized for two rows.
+        // As ShowTheListsRows, for a list a reconciler no root owns renders, sized for two rows.
         private static void ShowTwoRows(ReconcilerScope scope)
             => scope.Reconciler.Context.VirtualListControllers[scope.Root.Q<ScrollView>()]
                 .UpdateVisibleRange(scrollY: 0f, viewportHeight: 100f);
+
+        // The button is plain until Lift is set, when it is relocated where it stands, with no attach behind it.
+        [Component(Compiler = false)]
+        private static VNode LiftsARentedButton()
+        {
+            var (lifted, _) = EventLog.UseState("Lift", false);
+            return V.Div(className: "relative", children: new VNode[]
+            {
+                V.Custom<DetachThrower>(name: "X", key: "x"),
+                V.Button(className: lifted ? "absolute z-10" : null, key: "z", name: "P",
+                    refCallback: s_registersAThrowingDetach),
+            });
+        }
+
+        // Pools a z-* button: the healthy removal of its row takes it off the panel and the release returns it.
+        private void PoolAZPlacedButton()
+        {
+            VNodePoolTestAccess.ClearButtonPoolForTest();
+            V.Mount(_mountPoint, V.Div(className: "relative", key: "row", children: new VNode[]
+            {
+                V.Button(className: "absolute z-10", key: "z"),
+            })).Dispose();
+        }
+
+        // UI Toolkit exposes no count of an element's trickle-down callbacks, so it is read from its callback registry, as
+        // CallbackRegistryProbe reads the bubble-up ones.
+        private static int TrickleDownCallbackCount(VisualElement element)
+        {
+            var registry = typeof(CallbackEventHandler)
+                .GetField("m_CallbackRegistry", BindingFlags.Instance | BindingFlags.NonPublic)!
+                .GetValue(element);
+            if (registry == null) return 0;
+            var trickleDown = registry.GetType()
+                .GetField("m_TrickleDownCallbacks", BindingFlags.Instance | BindingFlags.NonPublic)!
+                .GetValue(registry);
+            return (int)trickleDown.GetType().GetProperty("Count")!.GetValue(trickleDown);
+        }
 
         [Component(Compiler = false)]
         private static VNode RendersAgain()
@@ -539,7 +579,7 @@ namespace Velvet.Tests
             // Arrange
             var mounted = V.Mount(_mountPoint, V.Div(children: new[] { AListOfThrowers("R") }),
                 new MountOptions { OnUncaughtError = (error, _) => _reports.Add(error.Message) });
-            ShowTheListsRow(mounted);
+            ShowTheListsRows(mounted);
 
             // Act
             RecordingWhatItThrows(mounted.Dispose, _reports.Add);
@@ -548,14 +588,16 @@ namespace Velvet.Tests
             Assert.That(string.Join(" / ", _reports), Is.EqualTo("detach:R"));
         }
 
+        // Each row's removal is its own, so the first one's error neither cuts the render short nor keeps the second from
+        // leaving the panel.
         [Test]
-        public void Given_ABoundaryAboveAComponentWhoseVirtualListRowThrowsAsItDetaches_When_ADrainRemovesTheList_Then_TheBoundaryReportsTheError()
+        public void Given_ABoundaryAboveAComponentWhoseVirtualListRowsBothThrowAsTheyDetach_When_ADrainRemovesTheList_Then_TheBoundaryReportsEachRowsError()
         {
             // Arrange
             var log = new EventLog();
             using var mounted = V.Mount(_mountPoint, log.Provide(V.Component(FirstBoundary,
                 new Holds(V.Component(RemovesAListOfThrowers, key: "v")), key: "b1")), log.ReportingErrors());
-            ShowTheListsRow(mounted);
+            ShowTheListsRows(mounted, rows: 2);
             log.Clear();
 
             // Act
@@ -563,7 +605,7 @@ namespace Velvet.Tests
             RecordingWhatItThrows(mounted.GetSchedulerForTest().DrainImmediateForTest, log.Add);
 
             // Assert
-            Assert.That(log.ToString(), Is.EqualTo("render:V caught:B1:detach:R"));
+            Assert.That(log.ToString(), Is.EqualTo("render:V caught:B1:detach:R1 caught:B1:detach:R2"));
         }
 
         // The list's row is a component, which mounts under an element of its own and unmounts its rows through the pass
@@ -578,7 +620,7 @@ namespace Velvet.Tests
                     V.Custom<DetachThrower>(name: "X", key: "x"),
                 }),
                 new MountOptions { OnUncaughtError = (error, _) => _reports.Add(error.Message) });
-            ShowTheListsRow(mounted);
+            ShowTheListsRows(mounted);
 
             // Act
             RecordingWhatItThrows(mounted.Dispose, _reports.Add);
@@ -661,6 +703,46 @@ namespace Velvet.Tests
                     V.Button(className: "absolute z-10", key: "z", name: "P", refCallback: s_registersAThrowingDetach),
                 }),
                 new MountOptions { OnUncaughtError = (error, _) => _reports.Add(error.Message) });
+
+            // Act
+            RecordingWhatItThrows(mounted.Dispose, _reports.Add);
+
+            // Assert
+            Assert.That(string.Join(" / ", _reports), Is.EqualTo("detach:X / detach:P"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base registers nothing on a z-* button that a pool hands to a later tree.
+        // Leaving out either UnregisterCallback in FiberZLayerCoordinator.Release reddens this.
+        [Test]
+        public void Given_AZPlacedButtonAHealthyRemovalPooled_When_ATreeRentsItBesideAFreshButton_Then_ItCarriesNoMoreTrickleDownCallbacksThanTheFreshOne()
+        {
+            // Arrange
+            PoolAZPlacedButton();
+
+            // Act
+            using var mounted = V.Mount(_mountPoint, V.Div(key: "row", children: new VNode[]
+            {
+                V.Button(key: "rented", name: "rented"),
+                V.Button(key: "fresh", name: "fresh"),
+            }));
+
+            // Assert
+            Assert.That(TrickleDownCallbackCount(_mountPoint.Q<Button>("rented")),
+                Is.EqualTo(TrickleDownCallbackCount(_mountPoint.Q<Button>("fresh"))));
+        }
+
+        // The rented button attaches as a plain one and is relocated where it stands, so no attach clears what an earlier
+        // tenancy noted; FiberZLayerCoordinator.Release drops that note with the role.
+        [Test]
+        public void Given_APooledZPlacedButtonRentedPlainAndRelocatedBehindAnElementThatThrowsAsItDetaches_When_TheHandleIsDisposed_Then_TheButtonsCallbackRunsAndBothAreReported()
+        {
+            // Arrange
+            PoolAZPlacedButton();
+            var log = new EventLog();
+            var mounted = V.Mount(_mountPoint, log.Provide(V.Component(LiftsARentedButton, key: "l")),
+                new MountOptions { OnUncaughtError = (error, _) => _reports.Add(error.Message) });
+            log.Setter<bool>("Lift").Invoke(true);
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
 
             // Act
             RecordingWhatItThrows(mounted.Dispose, _reports.Add);
