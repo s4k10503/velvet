@@ -56,7 +56,12 @@ namespace Velvet.Tests
             return root;
         }
 
-        private void Mount(VisualElement root, VNode tree) => _mounts.Add(V.Mount(root, tree));
+        private MountedTree Mount(VisualElement root, VNode tree)
+        {
+            var mounted = V.Mount(root, tree);
+            _mounts.Add(mounted);
+            return mounted;
+        }
 
         // An element a className gives classNames, in a tree mounted on an element of its own.
         private VisualElement Mounted(string classNames)
@@ -67,9 +72,10 @@ namespace Velvet.Tests
         }
 
         // An element carrying classNames on its class list, under an element no tree is mounted on.
-        private VisualElement Unmounted(string classNames, VisualElement root)
+        private VisualElement Unmounted(string classNames, VisualElement root) => Unmounted(new VisualElement(), classNames, root);
+
+        private VisualElement Unmounted(VisualElement element, string classNames, VisualElement root)
         {
-            var element = new VisualElement();
             foreach (var className in classNames.Split(' '))
             {
                 element.AddToClassList(className);
@@ -423,6 +429,48 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(after, Is.EqualTo(Justify.FlexStart));
+        }
+
+        private sealed class Shown : Store<bool>
+        {
+            public Shown() : base(true) { }
+
+            public void Hide() => SetState(_ => false);
+
+            protected override void ResetCore() => SetState(_ => true);
+        }
+
+        private static Shown s_shown;
+        private static VisualElement s_portalTarget;
+
+        [Component]
+        private static VNode PortalHost() => V.Div(children: new VNode[]
+        {
+            V.Portal(s_portalTarget,
+                Hooks.UseStore(s_shown, shown => shown) ? new VNode[] { V.Div(name: "ported") } : Array.Empty<VNode>()),
+        });
+
+        // GREEN_ON_BASE(characterization): the base cancels no transition UI Toolkit runs of justify-content.
+        // Leaving out RowHolds' release of its StyleTransitionBehavior hold reddens this case.
+        [Test]
+        public void Given_ARowAPortalStoppedRendering_When_ItChangesJustifyContentUnderNoMount_Then_UIToolkitRunsItsTransition()
+        {
+            // Arrange
+            s_shown = new Shown();
+            s_portalTarget = NewRoot();
+            var mounted = Mount(NewRoot(), V.Component(PortalHost, key: "host"));
+            var row = s_portalTarget.Q<VisualElement>("ported");
+            s_shown.Hide();
+            mounted.FlushStateForTest();
+            var released = s_portalTarget.Q<VisualElement>("ported") == null;
+            var element = Unmounted(row, "transition-all justify-start " + OneSecond, NewRoot());
+            Swap(element, "justify-start", "justify-end");
+
+            // Act
+            var after = AfterTheNextAnimationUpdate(element);
+
+            // Assert — the portal gave the row back only where it left the target.
+            Assert.That(released ? after : NoneRan, Is.EqualTo(Justify.FlexStart));
         }
 
         private static object s_sink;
