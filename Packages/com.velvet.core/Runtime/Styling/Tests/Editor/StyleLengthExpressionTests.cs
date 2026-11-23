@@ -31,6 +31,26 @@ namespace Velvet.Tests
             Assert.That(px, Is.EqualTo(expected).Within(1e-3f));
         }
 
+        // GREEN_ON_BASE(characterization): the base reads cqmax as the larger of the container's width and the panel's height, the block axis a container does not have. Remove the `cqmax` entry from the unit table and no length parses.
+        [TestCase(float.NaN, 400f)]
+        [TestCase(300f, 300f)]
+        [TestCase(700f, 350f)]
+        public void Given_AContainerMaxLength_When_Evaluated_Then_ItIsTheLargerOfTheContainersWidthAndThePanelsHeight(
+            float containerWidth, float expected)
+        {
+            // Arrange — a panel 800x600, whose width stands for the container's where there is none.
+            StyleLengthExpression.TryParse("50cqmax", out var expression);
+            var basis = new RelativeLengthBasis(
+                FontUnitPixels.WithoutMetrics(10f), FontUnitPixels.WithoutMetrics(StyleLengthExpression.RootFontSize),
+                200f, 800f, 600f, containerWidth);
+
+            // Act
+            var px = expression?.Evaluate(basis) ?? float.NaN;
+
+            // Assert
+            Assert.That(px, Is.EqualTo(expected).Within(1e-3f));
+        }
+
         [TestCase("2em", 20f)]
         [TestCase("calc(50%+1em)", 110f)]
         [TestCase("calc(50%-1rem)", 84f)]

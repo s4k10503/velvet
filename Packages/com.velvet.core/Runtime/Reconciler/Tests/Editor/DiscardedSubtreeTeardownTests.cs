@@ -367,6 +367,79 @@ namespace Velvet.Tests
                 Is.EqualTo((true, 0, 0)));
         }
 
+        // The callbacks registered on the element in either phase.
+        private static int RegisteredCallbacks(VisualElement element)
+        {
+            var registry = typeof(CallbackEventHandler)
+                .GetField("m_CallbackRegistry", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(element);
+            if (registry == null) return 0;
+            var total = 0;
+            foreach (var phase in new[] { "m_TrickleDownCallbacks", "m_BubbleUpCallbacks" })
+            {
+                var list = registry.GetType().GetField(phase, BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(registry)!;
+                total += (int)list.GetType().GetProperty("Count")!.GetValue(list)!;
+            }
+            return total;
+        }
+
+        // GREEN_ON_BASE(characterization): the base unregisters the bindings of a child a Portal held inside the removed row.
+        // Drop `&& !HoldsAPortalTarget(element)` from IsDiscardedAfterCleanup and the row counts as discarded, which
+        // leaves the child's callbacks registered.
+        [Test]
+        public void Given_APortalWhoseTargetIsInsideTheRemovedRow_When_TheRowIsCleared_Then_TheBindingOfAChildItHeldIsUnregistered()
+        {
+            // Arrange — the target comes before the placeholder, so the child is visited as a descendant first.
+            using var scope = new ReconcilerScope();
+            var rowWithSlot = new VNode[] { V.Div("flex flex-row", V.Div(name: "slot")) };
+            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), rowWithSlot);
+            var slot = scope.Root.Q<VisualElement>("slot");
+            var rowWithPortal = new VNode[]
+            {
+                V.Div("flex flex-row", V.Div(name: "slot"),
+                    V.Portal(slot, children: new VNode?[] { V.Div("p-1", PressBindings()) })),
+            };
+            scope.Reconciler.Reconcile(scope.Root, rowWithSlot, rowWithPortal);
+            var held = slot.Children().First();
+            var whileMounted = RegisteredCallbacks(held);
+
+            // Act
+            Clear(scope, rowWithPortal);
+
+            // Assert — a child that carried no callback while mounted reads -1, which no count of them equals.
+            Assert.Greater(whileMounted > 0 ? whileMounted - RegisteredCallbacks(held) : -1, 0);
+        }
+
+        // GREEN_ON_BASE(characterization): the base treats a removed row as discarded when the Portal beside it targets an element outside the row.
+        // Change `if (target != null && IsBelow(root, target))` to `if (target != null)` in HoldsAPortalTarget and
+        // the row's callbacks are unregistered.
+        [Test]
+        public void Given_APortalOutsideTheRemovedRow_When_TheRowIsCleared_Then_TheBindingOfAChildOfTheRowStaysRegistered()
+        {
+            // Arrange — a Portal into a target outside the row stands beside it.
+            using var scope = new ReconcilerScope();
+            var row = V.Div("flex flex-row", V.Div("p-1", PressBindings()));
+            var first = new VNode[] { V.Div(name: "holder", children: new VNode[] { V.Div(name: "slot") }), row };
+            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), first);
+            var slot = scope.Root.Q<VisualElement>("slot");
+            var withPortal = new VNode[]
+            {
+                V.Div(name: "holder", children: new VNode[]
+                {
+                    V.Div(name: "slot"), V.Portal(slot, children: new VNode?[] { V.Label(text: "p") }),
+                }),
+                row,
+            };
+            scope.Reconciler.Reconcile(scope.Root, first, withPortal);
+            var held = scope.Root.Children().Last().Children().First();
+            var whileMounted = RegisteredCallbacks(held);
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, withPortal, new[] { withPortal[0] });
+
+            // Assert — nothing was unregistered; a child that carried no callback while mounted reads -1.
+            Assert.AreEqual(0, whileMounted > 0 ? whileMounted - RegisteredCallbacks(held) : -1);
+        }
+
         // The click gate registers its pointer-down, pointer-up and submit callbacks in the trickle-down phase.
         private static int TrickleDownCallbacks(VisualElement element)
         {

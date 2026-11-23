@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Unit tests for per_case_coverage.py: which files it compresses while the editor writes them, and the
-run it hands licensed_editor.py.
+"""Unit tests for per_case_coverage.py: which files it compresses while the editor writes them, which
+cases each launch is given, and the run it hands licensed_editor.py.
 
-The editor is replaced by a writer that names its files the way Code Coverage numbers them, since what
-the cases ask is what each directory holds afterwards.
+The editor is replaced by a writer that names its files the way Code Coverage numbers them and a results
+file that names the cases it was filtered to, since what the cases ask is what each directory holds
+afterwards.
 
 Run: python3 scripts/ci/test_per_case_coverage.py
 """
@@ -15,6 +16,7 @@ import os
 import re
 import subprocess
 import tempfile
+import threading
 import time
 import unittest
 from pathlib import Path
@@ -73,41 +75,83 @@ def assembly_filter(command):
     return [option for option in options if option.startswith("assemblyFilters:")][0][len("assemblyFilters:"):]
 
 
+CASES = tuple("Velvet.Tests.Fixture{}.Given_{}".format(fixture, case) for fixture in "ABC" for case in "123")
+
+
+def results_file(path, names, total=None):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    cases = "".join('<test-case fullname="{}" result="Passed"/>'.format(name) for name in names)
+    path.write_text('<test-run total="{}">{}</test-run>'.format(len(names) if total is None else total, cases))
+
+
 class Editor:
-    """Stands in for `licensed_editor.run_licensed`, writing `numbers` where the package would and
-    answering with `status`. With `blocked_for`, a file stands where the copies' folder goes for that
-    long after the files are written, so every compressing pass in that time fails; with `keep_blocked`,
-    it is never taken away."""
+    """Stands in for the editor `measure` launches. A launch without `-enableCodeCoverage` is the plain
+    run, and writes a results file naming `cases`. A launch with it takes the cases its `-testFilter`
+    selects, writes `numbers` where the package would, and answers `status`; one over more than
+    `kill_over` cases is killed as the container kills an editor, answering -9 with its first file
+    written. With `ran`, its results file claims that many cases instead of the ones selected."""
 
-    def __init__(self, numbers=(0, 1), status=0, wait_for_copy=0.0, blocked_for=0.0, keep_blocked=False):
-        self.numbers, self.status, self.wait_for_copy = numbers, status, wait_for_copy
-        self.blocked_for, self.keep_blocked = blocked_for, keep_blocked
+    def __init__(self, cases=CASES, numbers=(0, 1), status=0, plain_status=0, kill_over=None, ran=None,
+                 blocked=False):
+        self.cases, self.numbers, self.status, self.plain_status = cases, numbers, status, plain_status
+        self.kill_over, self.ran, self.blocked = kill_over, ran, blocked
         self.commands = []
-        self.copied_during_run = False
 
-    def __call__(self, command, what):
+    def launched(self):
+        """Each launch with coverage on, as the cases its filter selected."""
+        return [self.selected(command) for command in self.commands if "-enableCodeCoverage" in command]
+
+    def selected(self, command):
+        terms = command[command.index("-testFilter") + 1].split(";")
+        return [name for name in self.cases if any(re.search(term, name) for term in terms)]
+
+    def __call__(self, command):
         self.commands.append(command)
+        results = Path(command[command.index("-testResults") + 1])
+        if "-enableCodeCoverage" not in command:
+            results_file(results, self.cases)
+            return self.plain_status
+        chosen = self.selected(command)
         coverage = Path(command[command.index("-coverageResultsPath") + 1])
-        blocker = coverage.parent / "per-case" / "project-opencov"
-        if self.blocked_for or self.keep_blocked:
-            blocker.write_text("")
-        write(coverage / "project-opencov" / "EditMode", self.numbers)
-        if self.blocked_for:
-            time.sleep(self.blocked_for)
-            blocker.unlink()
-        per_case = blocker / "EditMode" / (name(self.numbers[0]) + ".gz")
-        deadline = time.time() + self.wait_for_copy
-        while time.time() < deadline and not per_case.exists():
-            time.sleep(0.01)
-        self.copied_during_run = per_case.exists()
+        killed = self.kill_over is not None and len(chosen) > self.kill_over
+        if self.blocked:
+            (coverage.parent.parent / "per-case").mkdir(parents=True, exist_ok=True)
+            (coverage.parent.parent / "per-case" / coverage.name).write_text("")
+        folder = coverage / "project-opencov" / "EditMode"
+        write(folder, self.numbers)
+        if killed:
+            # The package was streaming its newest file when the editor died.
+            newest = folder / name(self.numbers[-1])
+            newest.write_bytes(newest.read_bytes()[:len(newest.read_bytes()) // 2])
+            return -9
+        results_file(results, chosen, self.ran)
         return self.status
 
 
-def run_main(holder, editor, *extra, poll=3600, root=None):
+def run_measure(holder, editor, shard=(1, 1), per_launch=100, poll=3600, root=None):
+    output = Path(holder) / "output"
+    root = root or project(holder)
+    status = per_case_coverage.measure("EditMode", root, output, shard, per_launch,
+                                       per_case_coverage.package_assemblies(root), editor, poll)
+    return status, output
+
+
+def run_main(holder, run, *extra, root=None):
     output = Path(holder) / "output"
     status = per_case_coverage.main(["--platform", "EditMode", "--output", str(output),
-                                     "--project", str(root or project(holder)), *extra], run=editor, poll=poll)
+                                     "--project", str(root or project(holder)), *extra], run=run)
     return status, output
+
+
+class Licence:
+    """Stands in for `licensed_editor.run_licensed`, which runs a command and answers its status."""
+
+    def __init__(self, status=0):
+        self.status, self.commands = status, []
+
+    def __call__(self, command, what):
+        self.commands.append(command)
+        return self.status
 
 
 class CompressFinishedTests(unittest.TestCase):
@@ -178,6 +222,103 @@ class CompressFinishedTests(unittest.TestCase):
         self.assertEqual(copy.read_bytes(), written)
 
 
+class ShardingTests(unittest.TestCase):
+
+    def test_Given_ASuiteAndAShardCount_When_EachBlockIsTaken_Then_TheBlocksHoldEveryCaseOnce(self):
+        # Arrange
+        names = ["case{:02d}".format(number) for number in range(10)]
+
+        # Act
+        blocks = [per_case_coverage.block_of(names, shard, 4) for shard in (1, 2, 3, 4)]
+
+        # Assert
+        self.assertEqual([name for block in blocks for name in block], names)
+
+    def test_Given_NamesCarryingRegexMetacharactersAndSeparators_When_AFilterIsBuilt_Then_ItSelectsOnlyThem(self):
+        # Arrange — a nested fixture's `+`, an argument list, and a `;` that would split a term, the
+        # first half of which is a prefix of "aZ"; each of the others differs from one of them by the
+        # one character a loose term would let through.
+        wanted = ["N.Outer+Inner.Given_X(1,2)", "N.Outer.Given_Y(\"a;b\")"]
+        others = ["N.OuterInner.Given_X(1,2)", "N.Outer+Inner.Given_X(1,3)", "N.Outer.Given_Y(\"aXb\")",
+                  "N.Outer.Given_Y(\"aZ\")", "N.Outer+Inner.Given_X(1,2)tail"]
+        value = per_case_coverage.filter_for(wanted)
+
+        # Act
+        selected = [name for name in wanted + others if any(re.search(term, name) for term in value.split(";"))]
+
+        # Assert — "aXb" is the one near name a `;` read as any character lets through, and the cost of
+        # keeping the term whole.
+        self.assertEqual(selected, wanted + ["N.Outer.Given_Y(\"aXb\")"])
+
+    def test_Given_AResultsFile_When_ItsRosterIsRead_Then_EachNameIsHeldOnceInOrder(self):
+        # Arrange
+        holder = tempfile.TemporaryDirectory()
+        self.addCleanup(holder.cleanup)
+        path = Path(holder.name) / "results.xml"
+        results_file(path, ["b.Two", "a.One", "b.Two"])
+
+        # Act
+        names = per_case_coverage.roster_of(path)
+
+        # Assert
+        self.assertEqual(names, ["a.One", "b.Two"])
+
+    def test_Given_NoResultsFile_When_ItsRosterIsRead_Then_NoCaseIsNamed(self):
+        # Arrange
+        path = Path(tempfile.gettempdir()) / "per-case-coverage-no-such-results.xml"
+
+        # Act
+        names = per_case_coverage.roster_of(path)
+
+        # Assert
+        self.assertEqual(names, [])
+
+
+class MemoryTests(unittest.TestCase):
+
+    def test_Given_ACgroupFileHoldingBytes_When_MemoryIsRead_Then_ItIsInMebibytes(self):
+        # Arrange
+        holder = tempfile.TemporaryDirectory()
+        self.addCleanup(holder.cleanup)
+        path = Path(holder.name) / "memory.current"
+        path.write_text("{}\n".format(3 * 1024 * 1024 * 5))
+
+        # Act
+        held = per_case_coverage.memory_in_use((path,))
+
+        # Assert
+        self.assertEqual(held, 15)
+
+    def test_Given_NoCgroupFile_When_MemoryIsRead_Then_NothingIsReported(self):
+        # Arrange
+        path = Path(tempfile.gettempdir()) / "per-case-coverage-no-such-cgroup"
+
+        # Act
+        held = per_case_coverage.memory_in_use((path,))
+
+        # Assert
+        self.assertIsNone(held)
+
+    def test_Given_AWatcherSamplingMemory_When_ItIsStopped_Then_ThePeakIsTheLargestSample(self):
+        # Arrange
+        holder = tempfile.TemporaryDirectory()
+        self.addCleanup(holder.cleanup)
+        samples = iter([100, 700, 300] + [300] * 1000)
+        stop, peak = threading.Event(), [0]
+        watcher = threading.Thread(target=per_case_coverage.watch, args=(
+            Path(holder.name) / "coverage", Path(holder.name) / "per-case", stop, 0.01, peak,
+            lambda: next(samples)))
+
+        # Act
+        watcher.start()
+        time.sleep(0.3)
+        stop.set()
+        watcher.join()
+
+        # Assert
+        self.assertEqual(peak[0], 700)
+
+
 class MainTests(unittest.TestCase):
 
     def holder(self):
@@ -185,123 +326,282 @@ class MainTests(unittest.TestCase):
         self.addCleanup(holder.cleanup)
         return holder.name
 
-    def test_Given_AProjectResolvingAnotherCoverageVersion_When_Run_Then_NoEditorStartsAndTheRunIsRefused(self):
+    def refused(self, holder, licence, root=None, *extra):
+        status, _ = run_main(holder, licence, *extra, root=root)
+        # The status only where nothing was started, which no refusal can read as.
+        return status if not licence.commands else "a run started"
+
+    # GREEN_ON_BASE(characterization): the base's main refuses a project resolving another Code Coverage version the same way; this branch moved the refusal in front of the licensed run unchanged.
+    def test_Given_AProjectResolvingAnotherCoverageVersion_When_Run_Then_NothingStartsAndTheRunIsRefused(self):
         # Arrange
-        holder, editor = self.holder(), Editor()
-        root = project(holder, version="1.4.0")
+        holder, licence = self.holder(), Licence()
 
         # Act
-        status = per_case_coverage.main(["--platform", "EditMode", "--output", str(Path(holder) / "out"),
-                                         "--project", str(root)], run=editor)
+        refused = self.refused(holder, licence, project(holder, version="1.4.0"))
 
-        # Assert — the status only where no editor was started, which no refusal can read as.
-        self.assertEqual(status if not editor.commands else "an editor started", 2)
+        # Assert
+        self.assertEqual(refused, 2)
 
-    def test_Given_AnOutputThatAlreadyHoldsARun_When_Run_Then_NoEditorStartsAndTheRunIsRefused(self):
+    # GREEN_ON_BASE(characterization): the base's main refuses an output that holds a run the same way; this branch only moved the refusal in front of the licensed run.
+    def test_Given_AnOutputThatAlreadyHoldsARun_When_Run_Then_NothingStartsAndTheRunIsRefused(self):
         # Arrange — a second run's files would take the first run's names and be passed over.
-        holder, editor = self.holder(), Editor()
+        holder, licence = self.holder(), Licence()
         (Path(holder) / "output" / "per-case").mkdir(parents=True)
         (Path(holder) / "output" / "per-case" / (name(0) + ".gz")).write_bytes(b"")
 
         # Act
-        status, _ = run_main(holder, editor)
+        refused = self.refused(holder, licence)
 
-        # Assert — the status only where no editor was started, which no refusal can read as.
-        self.assertEqual(status if not editor.commands else "an editor started", 2)
+        # Assert
+        self.assertEqual(refused, 2)
 
-    def test_Given_AProjectDeclaringNoPackageAssembly_When_Run_Then_NoEditorStartsAndTheRunIsRefused(self):
+    # GREEN_ON_BASE(characterization): the base's main refuses a project declaring no package assembly the same way; this branch only moved the refusal in front of the licensed run.
+    def test_Given_AProjectDeclaringNoPackageAssembly_When_Run_Then_NothingStartsAndTheRunIsRefused(self):
         # Arrange — an empty filter would leave the package's default to choose what is measured.
-        holder, editor = self.holder(), Editor()
-        root = project(holder, asmdefs=())
+        holder, licence = self.holder(), Licence()
 
         # Act
-        status, _ = run_main(holder, editor, root=root)
+        refused = self.refused(holder, licence, project(holder, asmdefs=()))
 
-        # Assert — the status only where no editor was started, which no refusal can read as.
-        self.assertEqual(status if not editor.commands else "an editor started", 2)
+        # Assert
+        self.assertEqual(refused, 2)
 
-    def test_Given_TheRepositorysProject_When_TheEditorIsLaunched_Then_TheWeaversAssemblyIsMeasured(self):
+    def test_Given_AShardPastTheLastOne_When_ItIsRead_Then_NoShardIsTaken(self):
+        # Arrange — a block no shard takes would leave its cases unmeasured with every job green.
+        text = "7/6"
+
+        # Act
+        shard = per_case_coverage.shard_of(text)
+
+        # Assert
+        self.assertIsNone(shard)
+
+    def test_Given_AShard_When_TheMeasuringCommandIsBuilt_Then_ItNamesThatShard(self):
+        # Arrange
+        shard = (2, 6)
+
+        # Act
+        command = per_case_coverage.measuring_command("EditMode", Path("out"), Path("project"), shard, 100)
+
+        # Assert
+        self.assertEqual(command[command.index("--shard") + 1], "2/6")
+
+    # GREEN_ON_BASE(characterization): the base's main returned the licensed run's status as the run's own; the licensed command is what this branch changed.
+    def test_Given_TheLicensedRun_When_ItEnds_Then_ItsStatusIsTheRunsOwn(self):
+        # Arrange
+        holder, licence = self.holder(), Licence(status=3)
+
+        # Act
+        status, _ = run_main(holder, licence)
+
+        # Assert
+        self.assertEqual(status, 3)
+
+
+class MeasureTests(unittest.TestCase):
+
+    def holder(self):
+        holder = tempfile.TemporaryDirectory()
+        self.addCleanup(holder.cleanup)
+        return holder.name
+
+    def test_Given_NineCasesAndLaunchesOfFour_When_Measured_Then_TheLaunchesTakeFourFourAndOne(self):
+        # Arrange
+        editor = Editor()
+
+        # Act
+        run_measure(self.holder(), editor, per_launch=4)
+
+        # Assert
+        self.assertEqual([len(cases) for cases in editor.launched()], [4, 4, 1])
+
+    def test_Given_TheSuitesCases_When_Measured_Then_EachIsInOneLaunch(self):
+        # Arrange
+        editor = Editor()
+
+        # Act
+        run_measure(self.holder(), editor, per_launch=4)
+
+        # Assert
+        self.assertEqual(sorted(case for cases in editor.launched() for case in cases), sorted(CASES))
+
+    def test_Given_TheSecondOfThreeShards_When_Measured_Then_OnlyItsBlockIsLaunched(self):
+        # Arrange
+        editor = Editor()
+
+        # Act
+        run_measure(self.holder(), editor, shard=(2, 3))
+
+        # Assert
+        self.assertEqual([case for cases in editor.launched() for case in cases], sorted(CASES)[3:6])
+
+    def test_Given_APlainRunThatFailed_When_Measured_Then_NoLaunchWithCoverageStarts(self):
+        # Arrange — a suite that does not hold on the commit measures nothing worth reading.
+        editor = Editor(plain_status=2)
+
+        # Act
+        status, _ = run_measure(self.holder(), editor)
+
+        # Assert — the status only where no launch with coverage started.
+        self.assertEqual(status if not editor.launched() else "a launch started", 2)
+
+    def test_Given_ALaunchTheContainerKilled_When_Measured_Then_ItsCasesRunAgainAsHalves(self):
+        # Arrange — nine cases are over what this editor survives, and four or five are not.
+        editor = Editor(kill_over=5)
+
+        # Act
+        run_measure(self.holder(), editor, per_launch=9)
+
+        # Assert
+        self.assertEqual([len(cases) for cases in editor.launched()], [9, 4, 5])
+
+    def test_Given_ALaunchTheContainerKilled_When_ItsHalvesPass_Then_TheRunPasses(self):
+        # Arrange
+        editor = Editor(kill_over=5)
+
+        # Act
+        status, _ = run_measure(self.holder(), editor, per_launch=9)
+
+        # Assert
+        self.assertEqual(status, 0)
+
+    def test_Given_AKilledLaunchOfOneCase_When_Measured_Then_TheRunFailsWithTheKill(self):
+        # Arrange — one case alone is more than the container holds.
+        editor = Editor(cases=CASES[:2], kill_over=0)
+
+        # Act
+        status, _ = run_measure(self.holder(), editor, per_launch=1)
+
+        # Assert
+        self.assertEqual(status, -9)
+
+    def test_Given_ALaunchThatRanFewerCasesThanItWasGiven_When_Measured_Then_TheRunFails(self):
+        # Arrange — a filter that matched too little reports green over the smaller set.
+        editor = Editor(ran=1)
+
+        # Act
+        status, _ = run_measure(self.holder(), editor, per_launch=4)
+
+        # Assert
+        self.assertEqual(status, 1)
+
+    def test_Given_ALaunchThatFailedItsCases_When_Measured_Then_TheRunFailsWithItsStatus(self):
+        # Arrange
+        editor = Editor(status=2)
+
+        # Act
+        status, _ = run_measure(self.holder(), editor)
+
+        # Assert
+        self.assertEqual(status, 2)
+
+    def test_Given_ALaunchTheContainerKilled_When_ItsFilesAreCompressed_Then_TheCutOffNewestIsNotAmongThem(self):
+        # Arrange — a lone case cannot be halved, so its launch's records are all there is to read.
+        editor = Editor(cases=CASES[:1], kill_over=0)
+
+        # Act
+        _, output = run_measure(self.holder(), editor, per_launch=1)
+
+        # Assert
+        self.assertEqual(sorted(path.name for path in (output / "per-case").rglob("*.gz")), [name(0) + ".gz"])
+
+    def test_Given_AFailedLaunch_When_Measured_Then_TheManifestNamesIt(self):
+        # Arrange
+        editor = Editor(status=2)
+
+        # Act
+        _, output = run_measure(self.holder(), editor)
+
+        # Assert
+        manifest = json.loads((output / "per-case" / "shard.json").read_text())
+        self.assertEqual(manifest["problems"], ["launch 0001: status 2"])
+
+    def test_Given_AShardOfTwo_When_Measured_Then_TheManifestHoldsTheWholeRostersLength(self):
+        # Arrange
+        editor = Editor()
+
+        # Act
+        _, output = run_measure(self.holder(), editor, shard=(2, 2))
+
+        # Assert
+        manifest = json.loads((output / "per-case" / "shard.json").read_text())
+        self.assertEqual(manifest["roster"], len(CASES))
+
+    def test_Given_ARun_When_ALaunchIsMade_Then_ItIsAskedForEachCasesReferences(self):
+        # Arrange
+        editor = Editor()
+
+        # Act
+        run_measure(self.holder(), editor)
+
+        # Assert
+        command = [command for command in editor.commands if "-enableCodeCoverage" in command][0]
+        self.assertIn("generateTestReferences", command[command.index("-coverageOptions") + 1].split(";"))
+
+    def test_Given_TheRepositorysProject_When_ALaunchIsMade_Then_TheWeaversAssemblyIsMeasured(self):
         # Arrange — the weaver fixtures run Unity.Velvet.CodeGen in the editor domain.
         editor = Editor()
 
         # Act
-        run_main(self.holder(), editor, root=REPO_ROOT)
+        run_measure(self.holder(), editor, root=REPO_ROOT)
 
         # Assert
-        self.assertIn("+Unity.Velvet.CodeGen", assembly_filter(editor.commands[0]).split(","))
+        command = [command for command in editor.commands if "-enableCodeCoverage" in command][0]
+        self.assertIn("+Unity.Velvet.CodeGen", assembly_filter(command).split(","))
 
-    def test_Given_AsmdefsUnderATestsAndATildeFolder_When_TheEditorIsLaunched_Then_OnlyThePackagesOwnIsMeasured(self):
+    def test_Given_AsmdefsUnderATestsAndATildeFolder_When_ALaunchIsMade_Then_OnlyThePackagesOwnIsMeasured(self):
         # Arrange
         holder, editor = self.holder(), Editor()
         root = project(holder, asmdefs=(("Runtime", "Velvet"), ("Runtime/Tests/Editor", "Velvet.Tests.A"),
                                         ("TestUtilities", "Velvet.TestUtilities"), ("Samples~/App", "Sample")))
 
         # Act
-        run_main(holder, editor, root=root)
+        run_measure(holder, editor, root=root)
 
         # Assert
-        self.assertEqual(assembly_filter(editor.commands[0]), "+Velvet")
+        command = [command for command in editor.commands if "-enableCodeCoverage" in command][0]
+        self.assertEqual(assembly_filter(command), "+Velvet")
 
-    def test_Given_ARun_When_TheEditorIsLaunched_Then_TheAssembliesItWasAskedForAreWrittenBesideTheRecords(self):
+    def test_Given_ARun_When_Measured_Then_TheAssembliesItWasAskedForAreWrittenBesideTheRecords(self):
         # Arrange — the reader refuses an asked assembly no record reaches, and reads what was asked here.
         editor = Editor()
 
         # Act
-        _, output = run_main(self.holder(), editor)
+        _, output = run_measure(self.holder(), editor)
 
         # Assert — None where no such file was written, which the list it names never reads as.
         written = output / "per-case" / "asked-assemblies.txt"
         self.assertEqual(written.read_text() if written.exists() else None, "Velvet\n")
 
-    def test_Given_ARun_When_TheEditorIsLaunched_Then_ItIsAskedForEachCasesReferences(self):
-        # Arrange
-        editor = Editor()
-
-        # Act
-        run_main(self.holder(), editor)
-
-        # Assert
-        command = editor.commands[0]
-        self.assertIn("generateTestReferences", command[command.index("-coverageOptions") + 1].split(";"))
-
-    def test_Given_FilesTheEditorLeftBehind_When_ItHasExited_Then_EachIsCompressed(self):
+    def test_Given_FilesALaunchLeftBehind_When_ItHasExited_Then_EachIsCompressedUnderTheLaunchs_Folder(self):
         # Arrange — a poll longer than the run, so nothing but the closing pass compresses.
-        editor = Editor(numbers=(0, 1))
+        editor = Editor(cases=CASES[:1], numbers=(0, 1))
 
         # Act
-        _, output = run_main(self.holder(), editor)
+        _, output = run_measure(self.holder(), editor)
 
         # Assert
-        self.assertEqual(sorted(path.name for path in (output / "per-case").rglob("*.gz")),
-                         [name(0) + ".gz", name(1) + ".gz"])
+        self.assertEqual(sorted(path.relative_to(output / "per-case").as_posix()
+                                for path in (output / "per-case").rglob("*.gz")),
+                         ["0001/project-opencov/EditMode/" + name(0) + ".gz",
+                          "0001/project-opencov/EditMode/" + name(1) + ".gz"])
 
-    def test_Given_AnEditorStillRunning_When_AnEarlierPassCouldNotCompress_Then_ALaterOneCompressesBeforeItExits(self):
-        # Arrange — the passes in the first fifth of a second fail, and the editor then waits for the
-        # copy of its older file before exiting.
-        editor = Editor(numbers=(0, 1), wait_for_copy=10.0, blocked_for=0.2)
+    def test_Given_TwoLaunches_When_TheirFilesAreRead_Then_NeitherTakesTheOthersNames(self):
+        # Arrange — each launch's folder is its own, so the second's `_0000` is not passed over.
+        editor = Editor(cases=CASES[:2], numbers=(0, 1))
 
         # Act
-        run_main(self.holder(), editor, poll=0.01)
+        _, output = run_measure(self.holder(), editor, per_launch=1)
 
         # Assert
-        self.assertTrue(editor.copied_during_run)
-
-    def test_Given_AnEditorThatFailed_When_TheRunEnds_Then_ItsStatusIsTheRunsOwn(self):
-        # Arrange
-        editor = Editor(status=3)
-
-        # Act
-        status, _ = run_main(self.holder(), editor)
-
-        # Assert
-        self.assertEqual(status, 3)
+        self.assertEqual(len(list((output / "per-case").rglob("*.gz"))), 4)
 
     def test_Given_AnEditorThatPassed_When_ItsFilesCannotBeCompressed_Then_TheRunFails(self):
-        # Arrange — the editor leaves a file where the copies' directory has to be.
-        holder, editor = self.holder(), Editor(keep_blocked=True)
+        # Arrange — the editor leaves a file where the launch's copies' folder has to be.
+        editor = Editor(blocked=True)
 
         # Act
-        status, _ = run_main(holder, editor)
+        status, _ = run_measure(self.holder(), editor)
 
         # Assert
         self.assertEqual(status, 1)
@@ -381,6 +681,100 @@ class WorkflowTests(unittest.TestCase):
 
         # Assert
         self.assertIn("needs.commit.outputs.sha != ''", condition)
+
+    def test_Given_TheWorkflowsMatrix_When_ItsShardsAreRead_Then_EachSuiteHasEveryBlockOfItsCount(self):
+        # Arrange — a block no shard takes is a run of cases measured by nobody, with every job green.
+        block = "\n".join(job_block(WORKFLOW.read_text(), "suite"))
+        read = re.findall(r"\{ testMode: (\w+), shard: (\d+), shards: (\d+) \}", block)
+        by_mode = {}
+        for mode, shard, shards in read:
+            by_mode.setdefault(mode, []).append((int(shard), int(shards)))
+
+        # Act
+        problems = ["{}: {}".format(mode, entries) for mode, entries in sorted(by_mode.items())
+                    if [shard for shard, _ in entries] != list(range(1, entries[0][1] + 1))
+                    or {shards for _, shards in entries} != {entries[0][1]}]
+
+        # Assert — the floor is on what was read, since a reader finding no entry reports no problem.
+        self.assertEqual(problems or sorted(by_mode), ["EditMode", "PlayMode"])
+
+    def test_Given_TheWorkflow_When_ItsReportJobIsRead_Then_ItRunsWhateverTheSuiteJobsEndedWith(self):
+        # Arrange
+        block = job_block(WORKFLOW.read_text(), "report")
+
+        # Act
+        conditions = [line for line in block if line.startswith("    if:")]
+
+        # Assert
+        self.assertTrue(any("!cancelled()" in condition for condition in conditions))
+
+    def test_Given_TheWorkflow_When_ItsResultsUploadIsRead_Then_TheLaunchesLogsAreInIt(self):
+        # Arrange
+        block = "\n".join(job_block(WORKFLOW.read_text(), "suite"))
+        uploads = [part for part in block.split("name: ") if part.startswith("per-case-results-")]
+
+        # Act
+        paths = re.findall(r"Logs/per-case-coverage/(\w+)", uploads[0].split("name: ")[0] if uploads else "")
+
+        # Assert
+        self.assertEqual(paths, ["results", "launches"])
+
+    def test_Given_TheWorkflow_When_ItsReportStepExpectsShards_Then_TheyAreTheMatrixsCounts(self):
+        # Arrange
+        text = WORKFLOW.read_text()
+        matrix = {mode: int(shards) for mode, shards in re.findall(
+            r"\{ testMode: (\w+), shard: 1, shards: (\d+) \}", "\n".join(job_block(text, "suite")))}
+
+        # Act
+        expected = {mode: int(count) for mode, count in re.findall(
+            r"--expect (\w+)=(\d+)", "\n".join(job_block(text, "report")))}
+
+        # Assert — a workflow with no expectation reads as a string no matrix equals, since both sides
+        # empty would agree.
+        self.assertEqual(expected or "no --expect read", matrix)
+
+    def test_Given_TheWorkflow_When_ItsReportStepIsRead_Then_ItChecksTheShardsManifests(self):
+        # Arrange
+        block = "\n".join(job_block(WORKFLOW.read_text(), "report"))
+
+        # Act
+        checked = "per_case_manifest.py Logs/per-case" in block
+
+        # Assert
+        self.assertTrue(checked)
+
+    def test_Given_TheWorkflow_When_ItsSuiteStepIsRead_Then_ItIsGivenTheShardOfItsMatrixEntry(self):
+        # Arrange
+        block = "\n".join(job_block(WORKFLOW.read_text(), "suite"))
+
+        # Act
+        given = re.findall(r"^\s+SHARD: (.+)$", block, re.M)
+
+        # Assert
+        self.assertEqual(given, ["${{ matrix.shard }}/${{ matrix.shards }}"])
+
+    def test_Given_TheWorkflow_When_ItsSuiteStepIsRead_Then_TheScriptIsPassedThatShard(self):
+        # Arrange
+        block = "\n".join(job_block(WORKFLOW.read_text(), "suite"))
+
+        # Act
+        passed = re.findall(r"per_case_coverage\.py (.*)$", block, re.M)
+
+        # Assert
+        self.assertIn('--shard "$SHARD"', passed[0].split("--platform", 1)[1])
+
+    def test_Given_TheWorkflow_When_ItsReportJobDownloadsRecords_Then_ItsPatternTakesWhatEachShardUploads(self):
+        # Arrange
+        text = WORKFLOW.read_text()
+        patterns = re.findall(r"pattern: (\S+)", "\n".join(job_block(text, "report")))
+        uploads = re.findall(r"name: (per-case-records-\S+)", "\n".join(job_block(text, "suite")))
+
+        # Act
+        taken = bool(patterns and uploads) and uploads[0].startswith(patterns[0].rstrip("*")) \
+            and patterns[0].endswith("*")
+
+        # Assert
+        self.assertTrue(taken)
 
 
 if __name__ == "__main__":

@@ -45,6 +45,8 @@ namespace Velvet
         // flip can ever fire it again.
         public bool AutoFocusFired;
         public EventCallback<AttachToPanelEvent>? OnAttach;
+        public ReconcilerContext? Context;
+        public VisualElement? PortalPlaceholder;
 
         // Creation order across every mounted tree. Of two contained scopes a landing crosses between, the
         // newer one keeps it; a strict order is what stops the two pulling focus back from each other.
@@ -88,8 +90,8 @@ namespace Velvet
         // would compute subtree rings that drift from the engine's own panel-wide ring, and registering
         // per call-site element would stack duplicate listeners whose relative order inverts the branch
         // priority. An element with no panel yet defers via a tracked self-removing attach hook (one per
-        // element — repeat calls while detached dedup). Called from V.Mount (main panel), PanelHostFactory
-        // (each host panel it creates), ConfigurePortalFocusOrder (a chained portal's declaring panel, and the
+        // element — repeat calls while detached dedup). Called from V.Mount (main panel), PanelHostFactory.ApplyRootSetup
+        // (each root of a host panel, the first and each its document builds after it), ConfigurePortalFocusOrder (a chained portal's declaring panel, and the
         // host panel of a chained or appended one, which can be a new panel since the host was created, as
         // FocusChainedPortalTests' case for a host document disabled and enabled again holds), and the
         // focus-scope attach hook (whatever panel the scope lands in).
@@ -145,12 +147,11 @@ namespace Velvet
             NavigatorPendingAttach pending = null!;
             EventCallback<AttachToPanelEvent> hook = _ =>
             {
-                element.UnregisterCallback(pending.Hook);
                 ctx.NavigatorPendingAttachHooks.Remove(pending);
                 AttachToRoot(element.panel?.visualTree, ctx);
             };
             pending = new NavigatorPendingAttach(element, hook);
-            element.RegisterCallback(hook);
+            element.RegisterCallback(hook, CallbackOptions.Once);
             ctx.NavigatorPendingAttachHooks.Add(pending);
             return pending;
         }
@@ -262,6 +263,16 @@ namespace Velvet
                     ctx.AppendedHosts.Add(record);
                 }
                 EnsureAttached(hostRoot, ctx);
+            }
+        }
+
+        // Moves a replaced host root's chained-ring ownership to its successor, ahead of a portal that registered on
+        // the successor first.
+        internal static void RekeyChainedHost(VisualElement previousRoot, VisualElement root, ReconcilerContext ctx)
+        {
+            if (ctx.ChainedHostRoots.Remove(previousRoot, out var owner))
+            {
+                ctx.ChainedHostRoots[root] = owner;
             }
         }
 
@@ -1455,6 +1466,8 @@ namespace Velvet
         }
     }
 
+    internal readonly record struct DeferredAutoFocus(VisualElement Scope, FocusScopeBinding Binding, VisualElement? Placeholder);
+
     // Attach/Update/Detach lifecycle for a focus-scope binding, dispatched through the shared
     // ApplyElementBinding plumbing exactly like SceneView/Particles/Anchored. Attach registers the
     // AutoFocus hook and lazily ensures the navigator on whatever panel the scope lands in; Detach is the
@@ -1464,7 +1477,12 @@ namespace Velvet
     {
         public static FocusScopeBinding Attach(VisualElement element, FocusScopeSettings settings, ReconcilerContext ctx)
         {
-            var binding = new FocusScopeBinding(settings) { RestoreTarget = FiberFocusNavigator.FocusedElementAnywhere(ctx) };
+            var binding = new FocusScopeBinding(settings)
+            {
+                RestoreTarget = FiberFocusNavigator.FocusedElementAnywhere(ctx),
+                Context = ctx,
+                PortalPlaceholder = ctx.CurrentPortalPlaceholder,
+            };
             if (element is FocusScopeStart start)
             {
                 start.Binding = binding;
@@ -1473,8 +1491,9 @@ namespace Velvet
             binding.OnAttach = _ =>
             {
                 FiberFocusNavigator.EnsureAttached(element, ctx);
-                // A range's content is attached after its start; OnRangeEndAttached takes the autoFocus there.
-                if (element is not FocusScopeStart)
+                // A range's autoFocus fires from its start here once its end is on a panel, and from OnRangeEndAttached
+                // once its start is among the end's siblings; the latch takes whichever finds the other first.
+                if (element is not FocusScopeStart start || FocusScopeRange.EndOf(start)?.panel != null)
                 {
                     FireAutoFocusOnce(element, binding);
                 }
@@ -1494,6 +1513,7 @@ namespace Velvet
 
         public static void Detach(VisualElement element, FocusScopeBinding binding)
         {
+            binding.Context?.DeferredAutoFocus.RemoveAll(entry => ReferenceEquals(entry.Scope, element));
             if (binding.OnAttach != null)
             {
                 element.UnregisterCallback(binding.OnAttach);
@@ -1505,6 +1525,26 @@ namespace Velvet
             {
                 start.Binding = null;
                 FocusScopeRange.Live--;
+            }
+        }
+
+        // The autoFocus of the scopes a Suspense kept hidden at their attach, for the commit that reveals them.
+        internal static void FireDeferredAutoFocus(ReconcilerContext ctx)
+        {
+            if (ctx.DeferredAutoFocus.Count == 0)
+            {
+                return;
+            }
+            var deferred = ctx.DeferredAutoFocus.ToArray();
+            foreach (var entry in deferred)
+            {
+                if (entry.Scope.panel == null || SuspenseHiddenElements.IsAtOrUnderHidden(entry.Scope)
+                    || SuspenseHiddenElements.IsAtOrUnderHidden(entry.Placeholder))
+                {
+                    continue;
+                }
+                ctx.DeferredAutoFocus.Remove(entry);
+                TakeAutoFocus(entry.Scope, entry.Binding, afterStyles: true);
             }
         }
 
@@ -1526,27 +1566,62 @@ namespace Velvet
             {
                 return;
             }
-            binding.AutoFocusFired = true;
-            if (binding.Settings.AutoFocus)
+            var placeholder = binding.PortalPlaceholder;
+            if (SuspenseHiddenElements.IsAtOrUnderHidden(scope) || SuspenseHiddenElements.IsAtOrUnderHidden(placeholder))
             {
-                AutoFocusFirst(scope);
+                if (binding.Context is { } ctx && !ctx.DeferredAutoFocus.Exists(entry => ReferenceEquals(entry.Scope, scope)))
+                {
+                    ctx.DeferredAutoFocus.Add(new DeferredAutoFocus(scope, binding, placeholder));
+                }
+                return;
             }
+            TakeAutoFocus(scope, binding, afterStyles: false);
+        }
+
+        // A deferred scope's rows keep the computed display none their hide gave them until the panel's next style
+        // pass, and none of them can take focus before it. The release applies the panel's styles first
+        // (FiberLayoutReflow), which leaves them as they are where it cannot run, and then one attempt waits for the next
+        // tick there. SuspenseHiddenPortalFocusTests pins the first.
+        private static void TakeAutoFocus(VisualElement scope, FocusScopeBinding binding, bool afterStyles)
+        {
+            binding.AutoFocusFired = true;
+            if (!binding.Settings.AutoFocus)
+            {
+                return;
+            }
+            if (afterStyles && binding.Context is { } ctx)
+            {
+                FiberLayoutReflow.LayOutFor(ctx, scope, null);
+            }
+            if (AutoFocusFirst(scope) || !afterStyles)
+            {
+                return;
+            }
+            scope.schedule.Execute(() =>
+            {
+                if (binding.OnAttach != null && scope.panel != null && !SuspenseHiddenElements.IsAtOrUnderHidden(scope))
+                {
+                    AutoFocusFirst(scope);
+                }
+            });
         }
 
         // Focuses the scope's first focusable descendant (document order), skipped when focus already sits
         // inside the scope. Deliberately NOT computed through a focus ring: ring membership requires the
         // element chain to be resolved as displayed, which has not happened yet at attach time (the panel's
         // style pass runs after this frame's mounts) — the engine ring would read empty here. A plain
-        // traversal over the same focusability predicate (minus the displayed check) is what attach-time
-        // can actually answer.
-        private static void AutoFocusFirst(VisualElement scopeRoot)
+        // traversal over the focusability predicate is what attach-time can answer; its displayed term is the
+        // computed one, which TakeAutoFocus waits on after a reveal.
+        private static bool AutoFocusFirst(VisualElement scopeRoot)
         {
             var controller = scopeRoot.panel?.focusController;
             if (controller?.focusedElement is VisualElement current && FiberFocusNavigator.ScopeContains(scopeRoot, current))
             {
-                return;
+                return true;
             }
-            FindFirstFocusableInScope(scopeRoot)?.Focus();
+            var first = FindFirstFocusableInScope(scopeRoot);
+            first?.Focus();
+            return first != null;
         }
 
         internal static VisualElement? FindFirstFocusableInScope(VisualElement scope)

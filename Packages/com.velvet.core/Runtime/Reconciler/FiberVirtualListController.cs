@@ -629,6 +629,7 @@ namespace Velvet
         private void RebuildVisibleContainer(int newFirst, int newCount, VisualElement[] newElements)
         {
             _reconciler.BeginRowPlacementForController(_visibleContainer);
+            // MUTANT_SURVIVES(unreachable, line removed): _slotRows is read and written only in this method and the Clear after the removal loop empties it on every exit but an exception out of that loop, so it enters empty, and ChildListWrites.Rows appends rather than clears.
             _slotRows.Clear();
             ChildListWrites.Rows(_visibleContainer, 0, ChildListWrites.RenderedCount(_visibleContainer), _slotRows);
             for (var i = _slotRows.Count - 1; i >= 0; i--)

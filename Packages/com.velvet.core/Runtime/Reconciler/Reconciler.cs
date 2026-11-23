@@ -776,11 +776,11 @@ namespace Velvet
             FinishPass(container, walked: true);
         }
 
-        // What a detached item scope hands from Begin to Stamp and End: the host's children before the scope, which tells
-        // the item fibers it adds, and the spine Begin pushed.
+        // What a detached item scope hands from Begin to Stamp and End: where in the host's append log the item fibers
+        // not yet stamped begin, and the spine Begin pushed.
         private sealed class DetachedItemScope
         {
-            public readonly HashSet<ComponentFiber> Before = new();
+            public int Unstamped;
             public FiberContextSpine Spine;
             public VisualElement? EnclosingPortal;
         }
@@ -813,12 +813,9 @@ namespace Velvet
             // links them under the host (so they share the host's ReconcilerContext / context cursor) and
             // lets the spine's parent-walk reach the host on an isolated re-render.
             _ctx.FiberStack.Push(host);
-            // Snapshot the host's current children so End can identify the item fibers added by this scope.
-            // A fresh set per call supports nested VirtualLists (an item that itself renders a VirtualList).
-            for (var f = host.Child; f != null; f = f.Sibling)
-            {
-                scope.Before.Add(f);
-            }
+            // Opened per call so End can identify the item fibers added by this scope, which supports nested
+            // VirtualLists (an item that itself renders a VirtualList).
+            scope.Unstamped = host.BeginAppendLog();
             return scope;
         }
 
@@ -826,20 +823,19 @@ namespace Velvet
             ComponentFiber? host, List<KeyValuePair<object, object>>? enclosingContext, VNode itemVnode, object? scopeToken)
         {
             if (host == null || scopeToken is not DetachedItemScope scope) return;
-            var seen = scope.Before;
-            // Stamp each fiber newly added under host since the prior call (set diff via Add). DescendantNodes is
+            // Stamp each fiber newly added under host since the prior call. DescendantNodes is
             // THIS item's rendered vnode so the spine can re-push a Provider the renderer placed above the item's
             // consumer; anchor is the host the item fibers parent under (the registry-lookup parent the walk
-            // matches the consumer against). seen also marks them so End's fallback does not re-stamp them.
+            // matches the consumer against). The cursor moves past them so End's fallback does not re-stamp them.
             DetachedMountContext? detached = null;
-            for (var f = host.Child; f != null; f = f.Sibling)
+            foreach (var f in host.AppendedSince(scope.Unstamped))
             {
-                if (!seen.Add(f)) continue;
                 detached ??= new DetachedMountContext(
                     enclosingContext, itemVnode != null ? new[] { itemVnode } : null, host,
                     rootProviderChildrenStartAtWalkRoot: true);
                 f.DetachedMountContext = detached;
             }
+            scope.Unstamped = host.AppendLogPosition;
         }
 
         void IReconcilerBridge.EndDetachedItemScope(
@@ -850,15 +846,15 @@ namespace Velvet
                 _ctx.FiberStack.Pop();
                 if (scopeToken is DetachedItemScope scope)
                 {
-                    // Fallback for any item fiber not stamped per-item (StampDetachedItemFibers marks the ones it
-                    // handled in Before): only the enclosing snapshot is replayed, with no item-vnode walk.
+                    // Fallback for any item fiber not stamped per-item (StampDetachedItemFibers moves the cursor past
+                    // the ones it handled): only the enclosing snapshot is replayed, with no item-vnode walk.
                     DetachedMountContext? detached = null;
-                    for (var f = host.Child; f != null; f = f.Sibling)
+                    foreach (var f in host.AppendedSince(scope.Unstamped))
                     {
-                        if (scope.Before.Contains(f)) continue;
                         detached ??= new DetachedMountContext(enclosingContext, descendantNodes: null, anchor: host);
                         f.DetachedMountContext = detached;
                     }
+                    host.EndAppendLog();
                     scope.Spine.Unwind();
                     _ctx.CurrentPortalPlaceholder = scope.EnclosingPortal;
                 }
