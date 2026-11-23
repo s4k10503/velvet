@@ -270,6 +270,7 @@ namespace Velvet.Tests
             Assert.That(NodesHeld(registry), Is.EqualTo(1));
         }
 
+        // GREEN_ON_BASE(characterization): the base lists the fibers a placeholder owns in the order they were stamped, and so does the list a node leaves.
         [Test]
         public void Given_ThreeFibersIndexedUnderOnePlaceholder_When_TheFirstIsRestampedAway_Then_TheOtherTwoStayInStampOrder()
         {
