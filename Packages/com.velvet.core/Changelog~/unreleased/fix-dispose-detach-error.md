@@ -16,7 +16,7 @@
   callback run a second time where Velvet took it out of something again afterwards — its `clip-path-*` or
   `wrapElement` wrapper, a pooled `V.Button` or `V.Label` it sat in, or, for a `z-*` element, the row the removal
   took — and that second throw left the update or the `Dispose`. The callback now runs once, and its error is reported
-  once.
+  once; for a `z-*` element, that holds of a callback registered for the bubble-up phase, the default.
 - A pooled element, a `V.Button` say, whose own `DetachFromPanelEvent` callback threw as it was removed went back to
   the element pool still naming the panel it had left, to be handed to a tree that rented one. It no longer goes back
   to the pool.

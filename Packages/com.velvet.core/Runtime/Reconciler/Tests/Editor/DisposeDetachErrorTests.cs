@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Reflection;
 using NUnit.Framework;
 using UnityEngine.UIElements;
 using Velvet.TestUtilities;
@@ -217,20 +216,6 @@ namespace Velvet.Tests
             {
                 V.Button(className: "absolute z-10", key: "z"),
             })).Dispose();
-        }
-
-        // UI Toolkit exposes no count of an element's trickle-down callbacks, so it is read from its callback registry, as
-        // CallbackRegistryProbe reads the bubble-up ones.
-        private static int TrickleDownCallbackCount(VisualElement element)
-        {
-            var registry = typeof(CallbackEventHandler)
-                .GetField("m_CallbackRegistry", BindingFlags.Instance | BindingFlags.NonPublic)!
-                .GetValue(element);
-            if (registry == null) return 0;
-            var trickleDown = registry.GetType()
-                .GetField("m_TrickleDownCallbacks", BindingFlags.Instance | BindingFlags.NonPublic)!
-                .GetValue(registry);
-            return (int)trickleDown.GetType().GetProperty("Count")!.GetValue(trickleDown);
         }
 
         [Component(Compiler = false)]
@@ -727,8 +712,8 @@ namespace Velvet.Tests
             }));
 
             // Assert
-            Assert.That(TrickleDownCallbackCount(_mountPoint.Q<Button>("rented")),
-                Is.EqualTo(TrickleDownCallbackCount(_mountPoint.Q<Button>("fresh"))));
+            Assert.That(CallbackRegistryProbe.TrickleDownCallbackCount(_mountPoint.Q<Button>("rented")),
+                Is.EqualTo(CallbackRegistryProbe.TrickleDownCallbackCount(_mountPoint.Q<Button>("fresh"))));
         }
 
         // The rented button attaches as a plain one and is relocated where it stands, so no attach clears what an earlier

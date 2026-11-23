@@ -4,13 +4,17 @@ using UnityEngine.UIElements;
 namespace Velvet.TestUtilities
 {
     /// <summary>
-    /// Counts the callbacks registered on an element for the bubble-up phase, which is where an
-    /// <c>AttachToPanelEvent</c> hook and a synthetic-bubbling bridge's listeners land. UI Toolkit exposes no
-    /// count, so it is read from the element's callback registry by reflection.
+    /// Counts the callbacks registered on an element for one phase: the bubble-up one, which is where an
+    /// <c>AttachToPanelEvent</c> hook and a synthetic-bubbling bridge's listeners land, or the trickle-down one. UI
+    /// Toolkit exposes no count, so it is read from the element's callback registry by reflection.
     /// </summary>
     public static class CallbackRegistryProbe
     {
-        public static int BubbleUpCallbackCount(VisualElement element)
+        public static int BubbleUpCallbackCount(VisualElement element) => CallbackCount(element, "m_BubbleUpCallbacks");
+
+        public static int TrickleDownCallbackCount(VisualElement element) => CallbackCount(element, "m_TrickleDownCallbacks");
+
+        private static int CallbackCount(VisualElement element, string phaseField)
         {
             var registry = typeof(CallbackEventHandler)
                 .GetField("m_CallbackRegistry", BindingFlags.Instance | BindingFlags.NonPublic)!
@@ -19,10 +23,10 @@ namespace Velvet.TestUtilities
             {
                 return 0;
             }
-            var bubbleUp = registry.GetType()
-                .GetField("m_BubbleUpCallbacks", BindingFlags.Instance | BindingFlags.NonPublic)!
+            var phase = registry.GetType()
+                .GetField(phaseField, BindingFlags.Instance | BindingFlags.NonPublic)!
                 .GetValue(registry);
-            return (int)bubbleUp.GetType().GetProperty("Count")!.GetValue(bubbleUp);
+            return (int)phase.GetType().GetProperty("Count")!.GetValue(phase);
         }
     }
 }
