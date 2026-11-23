@@ -3524,20 +3524,17 @@ namespace Velvet
             {
                 return;
             }
-            LayerMap? map;
             if (expression == null)
             {
-                if (!s_layers.TryGetValue(element, out map) || map.WrittenSizes == null)
+                if (s_layers.TryGetValue(element, out var held) && held.WrittenSizes != null)
                 {
-                    return;
+                    held.WrittenSizes[slot] = new WrittenSize { Expression = null, Pixels = pixels };
                 }
+                return;
             }
-            else
-            {
-                map = s_layers.GetValue(element, static _ => new LayerMap());
-                map.WrittenSizes ??= new WrittenSize[4];
-            }
-            map.WrittenSizes![slot] = new WrittenSize { Expression = expression, Pixels = pixels };
+            var map = s_layers.GetValue(element, static _ => new LayerMap());
+            map.WrittenSizes ??= new WrittenSize[4];
+            map.WrittenSizes[slot] = new WrittenSize { Expression = expression, Pixels = pixels };
         }
 
         // Whether the layer that holds property over the element's classes is the `auto` keyword.
