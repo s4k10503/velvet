@@ -612,12 +612,8 @@ namespace Velvet
                     FiberCommitWork.ParkOldTreeIfPending(fiber, reconciler, oldTree, deferReconcile);
 #if UNITY_EDITOR
                     // The double-invoke diagnostic compares this fiber's own body output against a re-render of
-                    // the same body, so it is independent of reconcile / commit timing. Inline mounts
-                    // (deferReconcile) commit their leaves later via the parent expansion, but that expansion
-                    // reads only fiber.PreviousTree and never re-invokes the body or the hook cursor — so the
-                    // diagnostic is safe to run here for inline mounts too. Under the wrapper-less architecture
-                    // inline mount is the common case, so gating it out would disable the diagnostic for nearly
-                    // every component.
+                    // the same body, so it is independent of reconcile / commit timing: a deferred render, whose
+                    // rows are committed later by whoever takes PreviousTree, runs it too.
                     diagnosticCommittedTree = newTree;
 #endif
                 }
