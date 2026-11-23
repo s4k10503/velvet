@@ -155,16 +155,27 @@ A length in a token's value is read as Tailwind v4 reads it: `rem` is 16px (`--s
 `--breakpoint-3xl: 120rem`), and `calc()`, `min()`, `max()` and `clamp()` are evaluated. UI Toolkit's own importer fails
 a whole file on a `rem`, in most values a delimiter (the `/` of `16 / 9`), a hex colour it cannot parse (`#zzz`), a
 URL its lexer cannot read (`url(a b)`), a range (`u+1`), a `var()` whose arguments it refuses (`var(--a,)`), a
-comment among the arguments of most functions (`blur(/* x */ 4px)`) or a function with nothing between its
-parentheses other than `none()`, `filter()` and the URL functions it meets in a custom property, drops a function it
+comment among the arguments of most functions (`blur(/* x */ 4px)`), a function with nothing between its
+parentheses other than `none()`, `filter()` and the URL functions, or a `resource()` with only whitespace there
+(`resource( )`) it meets in a custom property, drops a function it
 does not know (a math function, `cubic-bezier()`, `steps()`, …), fails the file on or splits a number it reads
 otherwise than CSS does (`1e3px`, `1-2`, `3.px` stored as `3 px`, `1px_a` as `1px _a`), and fails the file on or
 stores as another colour than CSS reads an `rgb()` or `rgba()` holding anything besides three integers separated
 alike and, in `rgba()`, a number after them, after a further comma where commas separate them or after a `/` where
 spaces do (`rgb(100%, 0%, 0%)` fails it, `rgb(0 0 0 / 50%)` is stored as opaque
 black, `rgb(0.5, 0, 0)` unscaled). So `Velvet.Editor` imports such a file itself,
-storing those custom properties as the text they were written with, and writing an `!important` in another case,
-which the importer also fails the file on, in lower case. A colour stored as text is read by Velvet's theme tokens,
+storing those custom properties as the text they were written with, a string beside one of those tokens
+(`"a" 1rem`) included, a string glued to an identifier or another string (`"a"b`, which the importer joins into one)
+included too (also where only a comment separates them: `"a"/**/b`, `a/**/b`), and a string alone (`"Inter"`) left as
+written, and writing an `!important` in another case,
+which the importer also fails the file on, in lower case. It writes two more values as CSS reads them where the
+importer does not: an `rgb()` or `rgba()` it holds (three integers and an alpha) has a channel above 255 or below
+0, and an alpha above 1 or below 0, clamped (`rgb(300, 0, 0)` is `rgb(255, 0, 0)`; one stored as text, such as
+`rgb(300, 0, 0.5)`, keeps its numbers, and Velvet's colour reader clamps them), and a `resource()` path the
+importer would shorten, one holding a range (`resource(u+1)`), a dimension (`icon@2x.png`), a percentage, a `#`, an
+`@` or a function, is stored as the text written, and one holding a comment as the text without it (a path holding
+a quote, or a backslash outside a string, is left as written, and the importer still stores it shortened). A colour
+stored as text is read by Velvet's theme tokens,
 not by a stock USS `color: var(--x)`. A new or edited file is imported first by
 the stock importer, which logs its error, and then again by Velvet's once the selection is written to the file's meta
 file; commit that meta file. The two settings of the stock importer's inspector, validation and unsupported selectors,

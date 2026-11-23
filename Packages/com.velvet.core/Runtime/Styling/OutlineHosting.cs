@@ -314,6 +314,7 @@ namespace Velvet
         {
             var count = ChildListWrites.ChildCount(host);
             var index = count;
+            // MUTANT_SURVIVES(equivalent, boundary): the child of host on the way down to element is never an outline node, so the walk stops at its index at the latest, and index 0 either is that child or is not reached.
             for (var i = count - 1; i >= 0; i--)
             {
                 var child = ChildListWrites.ElementAtPhysical(host, i)!;

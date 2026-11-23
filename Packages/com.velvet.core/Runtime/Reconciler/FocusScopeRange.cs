@@ -17,8 +17,7 @@ namespace Velvet
         internal FocusScopeBinding? Binding { get; set; }
     }
 
-    // The hidden element closing a V.FocusScope's content. It is attached after the content, so its attach is
-    // where the scope's autoFocus finds the content in place; FocusScopeRangeTests' autoFocus case holds this.
+    // The hidden element closing a V.FocusScope's content. FocusScopeDriver owns when its attach fires the scope's autoFocus.
     internal sealed class FocusScopeEnd : VisualElement
     {
         public FocusScopeEnd()
@@ -80,6 +79,27 @@ namespace Velvet
                     case FocusScopeStart start when depth == 0:
                         return start;
                     case FocusScopeStart:
+                        depth--;
+                        break;
+                }
+            }
+            return null;
+        }
+
+        internal static FocusScopeEnd? EndOf(FocusScopeStart start)
+        {
+            var parent = start.hierarchy.parent;
+            var depth = 0;
+            for (var i = parent == null ? 0 : parent.hierarchy.IndexOf(start) + 1; parent != null && i < parent.hierarchy.childCount; i++)
+            {
+                switch (parent.hierarchy[i])
+                {
+                    case FocusScopeStart:
+                        depth++;
+                        break;
+                    case FocusScopeEnd end when depth == 0:
+                        return end;
+                    case FocusScopeEnd:
                         depth--;
                         break;
                 }

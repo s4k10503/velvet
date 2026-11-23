@@ -203,7 +203,7 @@ namespace Velvet
                 var startSec = (double)Read(s_startTime!, timing);
                 var elapsedSec = (double)s_now!.GetValue(system) - startSec;
                 carry.TakeOver((from.Value, to.Value, (float)Read(s_duration!, timing), (float)elapsedSec),
-                    StyleEaseCurve.TakenOver(element, name, startSec, (Func<float, float>)Read(s_curve!, timing)),
+                    StyleEaseCurve.TakenOver(element, name, property!, startSec, (Func<float, float>)Read(s_curve!, timing)),
                     (reversingStart.Value, (float)Read(s_shortening!, timing), (float)Read(s_eased!, timing)), (to.Tag, reversingStart.Tag));
             }
             catch (Exception)
@@ -217,13 +217,13 @@ namespace Velvet
         // member that does not resolve leaves the transition as it started. StyleEaseCurveTransitionTests fails when the
         // swap stops reaching the transition, and MotionNamedEaseTransitionTests' first-frame cases when the frame is not
         // written again.
-        public static void Retime(VisualElement element, StylePropertyName property,
+        public static (object Id, double StartSec)? Retime(VisualElement element, StylePropertyName property,
             Func<Func<float, float>, Func<float, float>?> replace)
         {
             if (!s_readable || s_valuesByProperty == null || s_nameId == null || s_updateValues == null
                 || s_updateComputedStyleAt == null || element.panel == null)
             {
-                return;
+                return null;
             }
             try
             {
@@ -232,24 +232,25 @@ namespace Velvet
                     || s_valuesByProperty.GetValue(system) is not System.Collections.IDictionary byProperty
                     || s_nameId.GetValue(property) is not { } id || byProperty[id] is not { } values)
                 {
-                    return;
+                    return null;
                 }
                 var running = Read(s_running!, values);
                 (s_args[0], s_args[1], s_args[2]) = (element, id, null);
                 if (Close(s_indexOf!, running.GetType()) is not MethodInfo indexOf || indexOf.Invoke(running, s_args) is not true)
                 {
-                    return;
+                    return null;
                 }
                 var index = (int)s_args[2]!;
                 var timings = (Array)Read(s_timings!, running);
                 var timing = timings.GetValue(index)!;
                 var curveField = (FieldInfo)Close(s_curve!, timing.GetType());
+                var startSec = (double)Read(s_startTime!, timing);
                 if (curveField.GetValue(timing) is not Func<float, float> current || replace(current) is not { } curve)
                 {
-                    return;
+                    return (id, startSec);
                 }
                 curveField.SetValue(timing, curve);
-                var elapsedSec = (double)s_now.GetValue(system) - (double)Read(s_startTime!, timing);
+                var elapsedSec = (double)s_now.GetValue(system) - startSec;
                 if (elapsedSec >= 0.0)
                 {
                     ((FieldInfo)Close(s_eased!, timing.GetType()))
@@ -258,9 +259,11 @@ namespace Velvet
                 timings.SetValue(timing, index);
                 s_updateValues.Invoke(values, null);
                 s_updateComputedStyleAt.Invoke(values, new object[] { index });
+                return (id, startSec);
             }
             catch (Exception)
             {
+                return null;
             }
         }
 

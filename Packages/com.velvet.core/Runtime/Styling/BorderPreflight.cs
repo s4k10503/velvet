@@ -462,8 +462,7 @@ namespace Velvet
             }
         }
 
-        // Starts listening on an attached element when a stylesheet reaching it has a rule setting a border width that
-        // selects it by a class, its name, its type or every element.
+        // How often a panel's watch compares the stylesheets of the ancestors it was asked to watch (WatchSheets).
         private const long SheetTickMs = 16;
 
         // An ancestor of an attached element, and the stylesheets it had when last looked at.
@@ -487,8 +486,9 @@ namespace Velvet
 
         // One scheduled item per panel compares the stylesheets of the ancestors of the elements that attached on it, and
         // asks the elements under an ancestor again once its stylesheets change. It runs only while such an ancestor
-        // is alive on the panel.
-        private static void WatchSheets(VisualElement element)
+        // is alive on the panel. It also has RadiusWatchSheets attach the watch sheets of an ancestor again once its stylesheets
+        // change, for CornerRadiusFit.
+        internal static void WatchSheets(VisualElement element, bool self = false)
         {
             var panel = element.panel;
             if (panel == null)
@@ -502,7 +502,7 @@ namespace Velvet
                 created.Item = panel.visualTree.schedule.Execute(() => TickSheets(panel, created)).Every(SheetTickMs);
                 s_sheetWatches.Add(panel, created);
             }
-            for (var ancestor = element.hierarchy.parent; ancestor != null && !watch.Known.TryGetValue(ancestor, out _);
+            for (var ancestor = self ? element : element.hierarchy.parent; ancestor != null && !watch.Known.TryGetValue(ancestor, out _);
                  ancestor = ancestor.hierarchy.parent)
             {
                 var entry = new Ancestor(ancestor, SheetsOf(ancestor));
@@ -522,9 +522,10 @@ namespace Velvet
             for (var i = 0; i < element.styleSheets.count; i++)
             {
                 var sheet = element.styleSheets[i];
-                if (!SnappedBorderSheets.IsSnapped(sheet))
+                if (!SnappedBorderSheets.IsSnapped(sheet) && !RadiusWatchSheets.IsWatch(sheet))
                 {
-                    hash = unchecked((hash * 31) + sheet.GetHashCode());
+                    // The content hash too, which an edit of the sheet in place moves.
+                    hash = unchecked((hash * 31) + sheet.GetHashCode() + sheet.contentHash);
                 }
             }
             return hash;
@@ -560,6 +561,15 @@ namespace Velvet
             {
                 foreach (var element in changed)
                 {
+                    // One ancestor failing leaves the others to be read.
+                    try
+                    {
+                        RadiusWatchSheets.EnsureOn(element);
+                    }
+                    catch (System.Exception exception)
+                    {
+                        UnityEngine.Debug.LogException(exception);
+                    }
                     AskAgain(element);
                 }
             }
@@ -675,7 +685,7 @@ namespace Velvet
 
             private void Add(StyleSheet sheet)
             {
-                if (VelvetStyleUtilities.IsUtilities(sheet) || SnappedBorderSheets.IsSnapped(sheet)
+                if (VelvetStyleUtilities.IsUtilities(sheet) || SnappedBorderSheets.IsSnapped(sheet) || RadiusWatchSheets.IsWatch(sheet)
                     || (s_isDefault != null && (bool)s_isDefault.GetValue(sheet)) || s_rules == null
                     || s_ruleSelectors == null || s_simple == null || s_parts == null || s_partValue == null
                     || s_partType == null)

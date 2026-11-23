@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine.UIElements;
 
@@ -224,7 +225,13 @@ namespace Velvet
                 }
                 ranges.Add((pair.Key, pair.Value.SlotStart, pair.Value.SlotLength));
             }
+            // ParentOf finds the range holding a slot by its start, which takes the ranges on one target to be
+            // disjoint; NestedPortalRangeTests pins that for a Portal inside another's children.
+            foreach (var ranges in _portalsOf.Values) ranges.Sort(s_byStart);
         }
+
+        private static readonly Comparison<(VisualElement Placeholder, int Start, int Length)> s_byStart
+            = static (a, b) => a.Start.CompareTo(b.Start);
 
         // Whether a Portal has rows in a target, which mount after the pass that rendered the Portal: the late
         // arrival SortByTreeOrder places.
@@ -332,9 +339,26 @@ namespace Velvet
             if (_standInOf.TryGetValue(element, out var standIn)) return standIn;
             if (!_portalsOf.TryGetValue(physical, out var ranges)) return physical;
             var slot = LogicalSlotOf(element);
-            foreach (var range in ranges)
+            var low = 0;
+            var high = ranges.Count - 1;
+            var at = -1;
+            while (low <= high)
             {
-                if (slot >= range.Start && slot < range.Start + range.Length) return range.Placeholder;
+                var mid = (low + high) >> 1;
+                if (ranges[mid].Start <= slot)
+                {
+                    at = mid;
+                    low = mid + 1;
+                }
+                else
+                {
+                    high = mid - 1;
+                }
+            }
+            // Empty ranges share a start with the one holding rows, whichever way they sort.
+            for (var i = at; i >= 0 && ranges[i].Start == ranges[at].Start; i--)
+            {
+                if (slot < ranges[i].Start + ranges[i].Length) return ranges[i].Placeholder;
             }
             return physical;
         }

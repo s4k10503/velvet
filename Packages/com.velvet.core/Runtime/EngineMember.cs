@@ -107,6 +107,18 @@ namespace Velvet
         internal static readonly EngineMember StylePropertyValues =
             ReadProperty(UIElements, "UnityEngine.UIElements.StyleProperty", "values", "UnityEngine.UIElements.StyleValueHandle[]");
 
+        // RadiusWatchSheets' copy of a radius rule's selectors: their specificity and the relationship each simple selector
+        // has to the one before it, the builder's float value, and the count of variables a rule declares, which its sheet
+        // sets to none.
+        internal static readonly EngineMember StyleComplexSelectorSpecificity =
+            ReadProperty(UIElements, "UnityEngine.UIElements.StyleComplexSelector", "specificity", "System.Int32");
+
+        internal static readonly EngineMember StyleRuleCustomPropertiesCount =
+            Field(UIElements, "UnityEngine.UIElements.StyleRule", "customPropertiesCount", "System.Int32");
+
+        internal static readonly EngineMember StyleSelectorPreviousRelationship = ReadProperty(UIElements,
+            "UnityEngine.UIElements.StyleSelector", "previousRelationship", "enum:UnityEngine.UIElements.StyleSelectorRelationship");
+
         internal static readonly EngineMember StyleComplexSelectorSelectors = ReadProperty(UIElements,
             "UnityEngine.UIElements.StyleComplexSelector", "selectors", "UnityEngine.UIElements.StyleSelector[]");
 
@@ -579,6 +591,9 @@ namespace Velvet
 
         internal static readonly EngineMember StyleSheetBuilderAddDimension =
             Method(UIElements, StyleSheetBuilderType, "AddValue", "System.Void", DimensionType);
+
+        internal static readonly EngineMember StyleSheetBuilderAddFloat =
+            Method(UIElements, StyleSheetBuilderType, "AddValue", "System.Void", "System.Single");
 
         internal static readonly EngineMember StyleSheetBuilderEndProperty =
             Method(UIElements, StyleSheetBuilderType, "EndProperty", "System.Void");

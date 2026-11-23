@@ -451,9 +451,9 @@ namespace Velvet
 
         private static void StepTail(VisualElement element, LayoutIdProjection projection, float dtSec)
         {
-            MotionNativeTransitionGuard.Refresh(element);
             Adopt(element, projection);
             Narrow(element, projection);
+            MotionNativeTransitionGuard.Refresh(element);
             if (projection.WritesRotate) WriteRotate(element, projection, float.NaN, dtSec);
             if (projection.WritesRadii) WriteRadii(element, projection, null, Vector2.one, dtSec);
             MotionLayoutIdDriver.RunOn(element, projection, dtSec);
