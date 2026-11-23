@@ -194,10 +194,11 @@ namespace Velvet
             }
 
             var parentContent = horizontal ? parent.contentRect.width : parent.contentRect.height;
-            var specified = SpecifiedLength(textElement, horizontal, parentContent);
-            var maximum = MaximumLength(textElement, horizontal, parentContent);
+            var written = StyleArbitraryValueResolver.WrittenSizeExpressions(textElement, horizontal);
+            var specified = SpecifiedLength(textElement, horizontal, parentContent, written);
+            var maximum = MaximumLength(textElement, horizontal, parentContent, written);
             var sizedByGrid = IsSizedByGridParent(parent);
-            _readsParentBox = ReadsPercent(textElement, horizontal) || sizedByGrid;
+            _readsParentBox = ReadsPercent(textElement, horizontal, written) || sizedByGrid;
             var clipped = IsClipped(textElement);
             // StandsDown reads the inline overflow and the grid parent, and no other term here carries either, so a
             // pass that finds one moved is not taken for a repeat.
@@ -301,22 +302,13 @@ namespace Velvet
                     && Mathf.Ceil(MeasureMinContentWidth(textElement, text, whiteSpace)) >= Mathf.Ceil(whole));
         }
 
-        private bool ReadsPercent(TextElement textElement, bool horizontal)
+        private bool ReadsPercent(
+            TextElement textElement, bool horizontal, StyleArbitraryValueResolver.SizeExpressions written)
             => IsPercent(horizontal ? textElement.style.width : textElement.style.height,
                     horizontal ? _specifiedWidth : _specifiedHeight)
                 || IsPercent(horizontal ? textElement.style.maxWidth : textElement.style.maxHeight,
                     horizontal ? _maxWidth : _maxHeight)
-                || ReadsPercentageLayer(textElement, horizontal);
-
-        // A bracket length such as `max-w-[calc(50%+10px)]` is written inline as pixels, so the percentage it
-        // reads shows only in the layer that holds it.
-        private static bool ReadsPercentageLayer(TextElement textElement, bool horizontal)
-            => StyleArbitraryValueResolver.TryWinningPercentageExpression(
-                    textElement, horizontal ? ArbitraryProperty.Width : ArbitraryProperty.Height,
-                    horizontal ? StyleLonghand.Width : StyleLonghand.Height, out _)
-                || StyleArbitraryValueResolver.TryWinningPercentageExpression(
-                    textElement, horizontal ? ArbitraryProperty.MaxWidth : ArbitraryProperty.MaxHeight,
-                    horizontal ? StyleLonghand.MaxWidth : StyleLonghand.MaxHeight, out _);
+                || written.ReadsPercentage;
 
         // Where ResolveLength takes the parent's content box into the length.
         private static bool IsPercent(StyleLength inline, Dim? fromClass)
@@ -359,40 +351,36 @@ namespace Velvet
                 : resolved.width - resolved.paddingLeft - resolved.paddingRight
                     - resolved.borderLeftWidth - resolved.borderRightWidth;
 
-        private float? SpecifiedLength(TextElement textElement, bool horizontal, float parentContent)
-            => TryLayerLength(textElement, horizontal ? ArbitraryProperty.Width : ArbitraryProperty.Height,
-                    horizontal ? StyleLonghand.Width : StyleLonghand.Height, horizontal, out var fromLayer)
-                ? fromLayer
-                : ResolveLength(
-                    horizontal ? textElement.style.width : textElement.style.height,
-                    horizontal ? _specifiedWidth : _specifiedHeight, parentContent);
+        private float? SpecifiedLength(
+            TextElement textElement, bool horizontal, float parentContent, StyleArbitraryValueResolver.SizeExpressions written)
+            => ResolveLength(
+                horizontal ? textElement.style.width : textElement.style.height,
+                horizontal ? _specifiedWidth : _specifiedHeight, parentContent,
+                textElement, horizontal, written.Specified);
 
-        private float? MaximumLength(TextElement textElement, bool horizontal, float parentContent)
-            => TryLayerLength(textElement, horizontal ? ArbitraryProperty.MaxWidth : ArbitraryProperty.MaxHeight,
-                    horizontal ? StyleLonghand.MaxWidth : StyleLonghand.MaxHeight, horizontal, out var fromLayer)
-                ? fromLayer
-                : ResolveLength(
-                    horizontal ? textElement.style.maxWidth : textElement.style.maxHeight,
-                    horizontal ? _maxWidth : _maxHeight, parentContent);
+        private float? MaximumLength(
+            TextElement textElement, bool horizontal, float parentContent, StyleArbitraryValueResolver.SizeExpressions written)
+            => ResolveLength(
+                horizontal ? textElement.style.maxWidth : textElement.style.maxHeight,
+                horizontal ? _maxWidth : _maxHeight, parentContent,
+                textElement, horizontal, written.Maximum);
 
-        // A bracket length that reads a percentage is resolved against the parent's box as it is now: what the
-        // layer last wrote inline is the poll's, which runs after the layout that moved the box. Null while the
-        // element is not laid out or the percentage is of an indefinite size.
-        private static bool TryLayerLength(
-            TextElement textElement, ArbitraryProperty seed, StyleLonghand longhand, bool horizontal, out float? length)
+        // A bracket length that reads a percentage is written inline as pixels by a layer that a later tick rewrites,
+        // so it is resolved from the expression the resolver last wrote into the slot, against the parent's box as
+        // it is now. Null while the element is not laid out or the percentage is of an indefinite size.
+        private static float? ResolveLength(
+            StyleLength inline, Dim? fromClass, float parentContent,
+            TextElement textElement, bool horizontal, StyleLengthExpression? written)
         {
-            length = null;
-            if (!StyleArbitraryValueResolver.TryWinningPercentageExpression(textElement, seed, longhand, out var expression))
+            if (written == null || !written.ReadsPercentage)
             {
-                return false;
+                return ResolveLength(inline, fromClass, parentContent);
             }
-            if (StyleRelativeLengths.TryResolve(
-                    textElement, expression, horizontal ? RelativeLengthAxis.Width : RelativeLengthAxis.Height,
-                    StyleKeyword.None, out var resolved) && resolved.keyword == StyleKeyword.Undefined)
-            {
-                length = resolved.value.value;
-            }
-            return true;
+            return StyleRelativeLengths.TryResolve(
+                    textElement, written, horizontal ? RelativeLengthAxis.Width : RelativeLengthAxis.Height,
+                    StyleKeyword.None, out var resolved) && resolved.keyword == StyleKeyword.Undefined
+                ? resolved.value.value
+                : null;
         }
 
         private static float MeasureContentMinimum(

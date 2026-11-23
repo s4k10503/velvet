@@ -1843,6 +1843,9 @@ namespace Velvet
             // a bracket value with a variant-applied class ever gets one.
             public Dictionary<ArbitraryProperty, long>? Floors;
 
+            // See WrittenSizeExpressions. Allocated by the first width, height or maximum written.
+            public StyleLengthExpression?[]? WrittenSizes;
+
             // Per property, the longhands its winning layer writes that a class claims at a key above the layer's.
             // Absent means no class does.
             public Dictionary<ArbitraryProperty, StyleLonghandSet>? Claims;
@@ -3445,40 +3448,72 @@ namespace Velvet
             return !AutoLayerWins(element, property);
         }
 
-        // The layer that ends up holding longhand, among the writers connected to seed (the property named for it
-        // or the shorthand beside it), in the order ResolveSharedLonghands applies them, when it is a length
-        // expression reading a percentage: the pixels written inline are the last tick's of it, so a reader that needs
-        // the current ones resolves the expression itself (StyleRelativeLengths.TryResolve).
-        internal static bool TryWinningPercentageExpression(
-            VisualElement element, ArbitraryProperty seed, StyleLonghand longhand, out StyleLengthExpression expression)
+        // The length expressions last written into an element's width, height, maximum width and maximum height, by
+        // WriteLength and cleared by ClearInline, so a reader sees what the resolver settled on after its ordering,
+        // floors and class claims rather than rebuilding it. Null where the slot last took a plain length or was
+        // cleared.
+        internal readonly struct SizeExpressions
         {
-            expression = null!;
-            if (!s_layers.TryGetValue(element, out var map))
+            public SizeExpressions(StyleLengthExpression? specified, StyleLengthExpression? maximum)
             {
-                return false;
+                Specified = specified;
+                Maximum = maximum;
             }
-            var writers = ConnectedWriters(seed, map);
-            ArbitraryStyle holder = default;
-            var held = false;
-            if (writers == null)
+
+            public StyleLengthExpression? Specified { get; }
+
+            public StyleLengthExpression? Maximum { get; }
+
+            public bool ReadsPercentage => (Specified?.ReadsPercentage ?? false) || (Maximum?.ReadsPercentage ?? false);
+        }
+
+        internal static SizeExpressions WrittenSizeExpressions(VisualElement element, bool horizontal)
+        {
+            if (!s_layers.TryGetValue(element, out var map) || map.WrittenSizes == null)
             {
-                held = StyleArbitraryLonghands.Of(seed).Contains(longhand) && TryWinningLayer(map, seed, out holder);
+                return default;
             }
-            else
+            var sizes = map.WrittenSizes;
+            return horizontal
+                ? new SizeExpressions(sizes[(int)SizeSlot.Width], sizes[(int)SizeSlot.MaxWidth])
+                : new SizeExpressions(sizes[(int)SizeSlot.Height], sizes[(int)SizeSlot.MaxHeight]);
+        }
+
+        private enum SizeSlot
+        {
+            Width,
+            Height,
+            MaxWidth,
+            MaxHeight,
+        }
+
+        // The slots a property writes among the four, as a bit set over SizeSlot.
+        private static int SizeSlotsOf(ArbitraryProperty property) => property switch
+        {
+            ArbitraryProperty.Width => 1 << (int)SizeSlot.Width,
+            ArbitraryProperty.Height => 1 << (int)SizeSlot.Height,
+            ArbitraryProperty.MaxWidth => 1 << (int)SizeSlot.MaxWidth,
+            ArbitraryProperty.MaxHeight => 1 << (int)SizeSlot.MaxHeight,
+            ArbitraryProperty.Size => (1 << (int)SizeSlot.Width) | (1 << (int)SizeSlot.Height),
+            _ => 0,
+        };
+
+        private static void NoteSizeExpression(VisualElement element, ArbitraryProperty property, StyleLengthExpression? expression)
+        {
+            var slots = SizeSlotsOf(property);
+            if (slots == 0)
             {
-                SortWriters(writers, map);
-                for (var i = writers.Count - 1; i >= 0 && !held; i--)
+                return;
+            }
+            var map = s_layers.GetValue(element, static _ => new LayerMap());
+            var sizes = map.WrittenSizes ??= new StyleLengthExpression?[4];
+            for (var i = 0; i < sizes.Length; i++)
+            {
+                if ((slots & (1 << i)) != 0)
                 {
-                    holder = writers[i].Style;
-                    held = StyleArbitraryLonghands.Of(holder.Property).Contains(longhand);
+                    sizes[i] = expression;
                 }
             }
-            if (!held || holder.Expression == null || !holder.Expression.ReadsPercentage)
-            {
-                return false;
-            }
-            expression = holder.Expression;
-            return true;
         }
 
         // Whether the layer that holds property over the element's classes is the `auto` keyword.
@@ -3990,7 +4025,17 @@ namespace Velvet
                 return 0;
             }
 
-            SortWriters(writers, map);
+            writers.Sort((a, z) =>
+            {
+                var byKey = a.Key.CompareTo(z.Key);
+                if (byKey != 0)
+                {
+                    return byKey;
+                }
+                var byCascade = StyleSpacingPrecedence.CompareCascade(a.Style.Property, z.Style.Property);
+                return byCascade != 0 ? byCascade : map.ArrivalOf(a.Style.Property, a.Key)
+                    .CompareTo(map.ArrivalOf(z.Style.Property, z.Key));
+            });
             var slots = 0;
             foreach (var (key, style) in writers)
             {
@@ -4004,21 +4049,6 @@ namespace Velvet
             }
             return slots;
         }
-
-        // Ascending by the order ResolveSharedLonghands applies them in, so the last of those writing a longhand is the
-        // one that holds it.
-        private static void SortWriters(List<(long Key, ArbitraryStyle Style)> writers, LayerMap map)
-            => writers.Sort((a, z) =>
-            {
-                var byKey = a.Key.CompareTo(z.Key);
-                if (byKey != 0)
-                {
-                    return byKey;
-                }
-                var byCascade = StyleSpacingPrecedence.CompareCascade(a.Style.Property, z.Style.Property);
-                return byCascade != 0 ? byCascade : map.ArrivalOf(a.Style.Property, a.Key)
-                    .CompareTo(map.ArrivalOf(z.Style.Property, z.Key));
-            });
 
         // Writes the layer that won a property at key. Preflight's is shown through the element's inline rule, which an
         // inline value stands over, and no inline value of the element's own is written over.
@@ -4975,12 +5005,18 @@ namespace Velvet
         {
             if (style.Expression != null)
             {
+                var written = false;
                 foreach (var setter in setters)
                 {
                     if (StyleRelativeLengths.TryResolve(element, style.Expression, setter.Axis, setter.Indefinite, out var resolved))
                     {
                         setter.Set(target, resolved);
+                        written = true;
                     }
+                }
+                if (written)
+                {
+                    NoteSizeExpression(element, style.Property, style.Expression);
                 }
                 return;
             }
@@ -4989,6 +5025,7 @@ namespace Velvet
             {
                 setter.Set(target, length);
             }
+            NoteSizeExpression(element, style.Property, null);
         }
 
         // Clears the inline style for the given property (StyleKeyword.Null reverts to the USS default), fanning
@@ -5055,6 +5092,10 @@ namespace Velvet
             foreach (var setter in setters)
             {
                 setter.Set(s, nullStyle);
+            }
+            if (SizeSlotsOf(property) != 0 && s_layers.TryGetValue(element, out var written) && written.WrittenSizes != null)
+            {
+                NoteSizeExpression(element, property, null);
             }
         }
 
