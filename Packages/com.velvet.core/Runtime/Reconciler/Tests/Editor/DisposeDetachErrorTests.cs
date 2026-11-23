@@ -16,9 +16,12 @@ namespace Velvet.Tests
     /// applied, is reported the same way where the disposal removes it, each of two, and where a drain's update removes
     /// it, whichever walk cleans it up, the boundary above the component whose render removed it catches it, though a
     /// later render of the same drain records behind it. Under a reconciler no root owns, the first such error is thrown
-    /// once each element has left. An element whose removal threw is neither removed again nor pooled, so its callback
-    /// runs once and is reported once where it sits in a clip-path wrapper, in a pooled button, or in a row whose removal
-    /// took it, and a pooled button whose own callback threw stays out of the pool.
+    /// once each element has left. An element whose removal threw is neither removed again nor pooled, so a callback in a
+    /// clip-path wrapper or a pooled button runs once and is reported once, and a pooled button whose own callback threw
+    /// stays out of the pool. A <c>z-*</c> element in a row whose removal threw is removed again only where that throw
+    /// came ahead of its own detach, so its callback runs once either way. A <c>V.VirtualList</c>'s row is reported the
+    /// same way where the disposal or a drain's update removes the list, as is an element beside a list of components,
+    /// and a host that disposes its root as it detaches is left without the root's <c>z-*</c> element.
     /// </summary>
     /// <remarks>
     /// The tree mounts on a real panel, which is what runs a detach callback.
@@ -154,6 +157,33 @@ namespace Velvet.Tests
                 shown ? V.Button(key: "thrower", name: "P", refCallback: s_registersAThrowingDetach) : null,
                 shown ? V.Button(key: "control") : null,
             });
+        }
+
+        [Component(Compiler = false)]
+        private static VNode ListRow() => V.Div();
+
+        private static VNode AListOf(Func<string, VNode> renderer)
+            => V.VirtualList(items: new[] { "R" }, keySelector: item => item, itemHeight: 50f, renderer: renderer,
+                overscan: 0);
+
+        private static VNode AListOfThrowers() => AListOf(item => V.Custom<DetachThrower>(name: item, key: item));
+
+        // The list is the only child of its parent's walk, so a removal of it takes the fast path, which cleans the list up
+        // as the walk removes it.
+        [Component(Compiler = false)]
+        private static VNode RemovesAListOfThrowers()
+        {
+            var (shown, _) = EventLog.UseState("V", true);
+            EventLog.UseRender("V");
+            return V.Div(children: shown ? new[] { AListOfThrowers() } : Array.Empty<VNode>());
+        }
+
+        // EditMode runs no layout, so the list is given the range its scroll would give it.
+        private void ShowTheListsRow(MountedTree mounted)
+        {
+            mounted.Root.Reconciler!.Context.VirtualListControllers[_mountPoint.Q<ScrollView>()]
+                .UpdateVisibleRange(scrollY: 0f, viewportHeight: 50f);
+            mounted.DrainForTest();
         }
 
         [Component(Compiler = false)]
@@ -380,22 +410,24 @@ namespace Velvet.Tests
             Assert.That(string.Join(" / ", _reports), Is.EqualTo("threw:detach:Y:z@2"));
         }
 
-        // GREEN_ON_BASE(characterization): UI Toolkit leaves a removed container naming its panel when a child's detach throws.
-        // FiberElementCleaner.StoppedPartway reads that of the element a removal took, which need not be the one whose
-        // callback threw; an engine that clears the panel anyway reddens this.
+        // GREEN_ON_BASE(characterization): UI Toolkit leaves a child the detach of a removal never reached naming its panel.
+        // FiberElementCleaner.ReleaseRetiredZLayerReals removes such a z-* element again for that; an engine that clears
+        // the panel anyway reddens this.
         [Test]
-        public void Given_AContainerHoldingAnElementWhoseDetachCallbackThrows_When_TheContainerIsRemovedFromItsPanel_Then_TheContainerStillNamesThatPanel()
+        public void Given_AContainerWhoseFirstChildThrowsAsItDetaches_When_TheContainerIsRemovedFromItsPanel_Then_ItsSecondChildStillNamesThatPanel()
         {
             // Arrange
             var container = new VisualElement();
             container.Add(new DetachThrower());
+            var second = new VisualElement();
+            container.Add(second);
             _mountPoint.Add(container);
 
             // Act
             RecordingWhatItThrows(() => _mountPoint.Remove(container), _reports.Add);
 
             // Assert
-            Assert.That(container.panel, Is.SameAs(_host.Panel));
+            Assert.That(second.panel, Is.SameAs(_host.Panel));
         }
 
         [Test]
@@ -492,6 +524,98 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(VNodePoolTestAccess.ButtonPoolCountForTest, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_AVirtualListWhoseRowThrowsAsItDetaches_When_TheHandleIsDisposed_Then_TheRootReportsTheError()
+        {
+            // Arrange
+            var mounted = V.Mount(_mountPoint, V.Div(children: new[] { AListOfThrowers() }),
+                new MountOptions { OnUncaughtError = (error, _) => _reports.Add(error.Message) });
+            ShowTheListsRow(mounted);
+
+            // Act
+            RecordingWhatItThrows(mounted.Dispose, _reports.Add);
+
+            // Assert
+            Assert.That(string.Join(" / ", _reports), Is.EqualTo("detach:R"));
+        }
+
+        [Test]
+        public void Given_ABoundaryAboveAComponentWhoseVirtualListRowThrowsAsItDetaches_When_ADrainRemovesTheList_Then_TheBoundaryReportsTheError()
+        {
+            // Arrange
+            var log = new EventLog();
+            using var mounted = V.Mount(_mountPoint, log.Provide(V.Component(FirstBoundary,
+                new Holds(V.Component(RemovesAListOfThrowers, key: "v")), key: "b1")), log.ReportingErrors());
+            ShowTheListsRow(mounted);
+            log.Clear();
+
+            // Act
+            log.Setter<bool>("V").Invoke(false);
+            RecordingWhatItThrows(mounted.GetSchedulerForTest().DrainImmediateForTest, log.Add);
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("render:V caught:B1:detach:R"));
+        }
+
+        // The list's row is a component, which mounts under an element of its own and unmounts its rows through the pass
+        // the disposal runs, ahead of the removal that throws.
+        [Test]
+        public void Given_AVirtualListOfComponentsBesideAnElementThatThrowsAsItDetaches_When_TheHandleIsDisposed_Then_TheRootReportsTheError()
+        {
+            // Arrange
+            var mounted = V.Mount(_mountPoint, V.Div(children: new VNode[]
+                {
+                    AListOf(item => V.Component(ListRow, key: item)),
+                    V.Custom<DetachThrower>(name: "X", key: "x"),
+                }),
+                new MountOptions { OnUncaughtError = (error, _) => _reports.Add(error.Message) });
+            ShowTheListsRow(mounted);
+
+            // Act
+            RecordingWhatItThrows(mounted.Dispose, _reports.Add);
+
+            // Assert
+            Assert.That(string.Join(" / ", _reports), Is.EqualTo("detach:X"));
+        }
+
+        // A's callback throws ahead of B's in the order UI Toolkit detaches the row's elements in.
+        [Test]
+        public void Given_ARowWhoseElementThrowsAsItDetachesAheadOfAZPlacedElementThatThrowsToo_When_TheHandleIsDisposed_Then_EachCallbackRunsOnceAndBothAreReported()
+        {
+            // Arrange
+            var mounted = V.Mount(_mountPoint, V.Div(className: "relative", key: "row", children: new VNode[]
+                {
+                    V.Custom<DetachThrower>(name: "A", key: "a"),
+                    V.Custom<DetachThrower>(className: "absolute z-10", name: "B", key: "b"),
+                }),
+                new MountOptions { OnUncaughtError = (error, _) => _reports.Add(error.Message) });
+
+            // Act
+            RecordingWhatItThrows(mounted.Dispose, _reports.Add);
+
+            // Assert
+            Assert.That(string.Join(" / ", _reports), Is.EqualTo("detach:A / detach:B:z"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base removes the z-* element from a host its own detach disposes the root in.
+        // Nothing throws here, so the element's removal is an ordinary one, made while UI Toolkit is still detaching the
+        // host.
+        [Test]
+        public void Given_AHostThatDisposesItsRootAsItDetaches_When_TheHostIsRemovedWithAZPlacedElementInIt_Then_TheElementLeavesTheHost()
+        {
+            // Arrange
+            var host = new VisualElement();
+            _mountPoint.Add(host);
+            var mounted = V.Mount(host, V.Div(className: "absolute z-10", name: "Z", key: "z"));
+            host.RegisterCallback<DetachFromPanelEvent>(_ => mounted.Dispose());
+
+            // Act
+            _mountPoint.Remove(host);
+
+            // Assert
+            Assert.That(host.childCount, Is.EqualTo(0));
         }
     }
 }
