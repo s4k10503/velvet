@@ -443,6 +443,7 @@ namespace Velvet
             var signature = SignatureAbove(ctx.ThemeRoot);
             if (signature != scope.Signature)
             {
+                RadiusWatchSheets.EnsureAbove(ctx.ThemeRoot);
                 var first = scope.Signature == int.MinValue;
                 scope.Signature = signature;
                 scope.Version++;
@@ -492,6 +493,10 @@ namespace Velvet
                 for (var i = 0; i < element.styleSheets.count; i++)
                 {
                     var sheet = element.styleSheets[i];
+                    if (sheet != null && RadiusWatchSheets.IsWatch(sheet))
+                    {
+                        continue;
+                    }
                     hash = unchecked(hash * 31 + (sheet == null ? 0 : RuntimeHelpers.GetHashCode(sheet)) * 7 + (sheet == null ? 0 : sheet.contentHash));
                 }
             }
@@ -501,7 +506,7 @@ namespace Velvet
         // A sheet that reaches the bundled utilities through its imports contributes those as bundled.
         private static void Observe(Scope scope, StyleSheet? sheet, bool bundled)
         {
-            if (sheet == null)
+            if (sheet == null || RadiusWatchSheets.IsWatch(sheet))
             {
                 return;
             }

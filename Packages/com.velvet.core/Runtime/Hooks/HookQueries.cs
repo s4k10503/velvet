@@ -23,6 +23,9 @@ namespace Velvet
         internal abstract void RecordNotified();
         internal abstract object Notified(IQueryResultSource source);
         internal abstract bool ChangedSinceNotified { get; }
+        // The reading the latest render took, and whether it differs from one an earlier render took.
+        internal abstract object Reading { get; }
+        internal abstract bool DiffersFrom(object reading);
         // The query's own result computed afresh from its entry, and what differs from the one before.
         internal abstract QueryProperties RefreshChanges();
         internal abstract QueryProperties? NotifyOnChangeProps { get; }
@@ -100,6 +103,11 @@ namespace Velvet
         internal override object Notified(IQueryResultSource source) => _computer.Notified(source);
 
         internal override bool ChangedSinceNotified => _computer.ChangedSinceNotified;
+
+        internal override object Reading => _computer.Current;
+
+        internal override bool DiffersFrom(object reading)
+            => reading is not QuerySnapshot<TData> held || _computer.Current.DifferencesFrom(held) != QueryProperties.None;
 
         internal override QueryProperties RefreshChanges() => _computer.RefreshChanges(_observer.Entry ?? _entry, _settings);
 
@@ -248,15 +256,18 @@ namespace Velvet
         private readonly Action _rerender;
         private QueryObserver[] _observers = Array.Empty<QueryObserver>();
         private QueriesItem[] _items = Array.Empty<QueriesItem>();
-        // TanStack's #result: replaced whenever an observer the hook holds tells it of a change, and by a commit that
-        // changes the observers or what they read. Its replacement is what lets combine run again.
+        // TanStack's #result: replaced whenever an observer the hook holds tells it of a change its own query notifies
+        // of, and by a commit that changes the observers or what they read, which a mount's does only as _committed
+        // says. Its replacement is what lets combine run again.
         private int _resultVersion;
         // Set while a commit hands the observers their options, when an observer that tells of a change is told
         // of once they all have, as v5's setQueries notifies once at its end.
         private bool _syncing;
         private bool _changedWhileSyncing;
-        // The mount's commit, and a StrictMode replay of it after LeaveAll, records the results without telling of
-        // them, since the render it commits read them.
+        // A mount's commit, and a StrictMode replay of it after LeaveAll, replaces the results only for a change an
+        // observer told of while syncing, which the render it commits did not read: v5's mount reaches setQueries with
+        // the observers its constructor matched before that render, and its replay with those it kept. It tells of
+        // them only where a query notifies of that change.
         private bool _committed;
         private Delegate? _combine;
         private Func<object[], TCombined>? _invokeCombine;
@@ -266,6 +277,7 @@ namespace Velvet
         private QueryKey[] _lastKeys = Array.Empty<QueryKey>();
         private bool _hasCombined;
         private TCombined _combined = default!;
+        private object[] _combinedReadings = Array.Empty<object>();
 
         private readonly Action<QueryProperties> _trackProperty;
 
@@ -365,6 +377,7 @@ namespace Velvet
             var notify = _changedWhileSyncing && AnyQueryNotifies();
             if (!notify && !structural && !ResultsChanged()) return;
             RecordResults();
+            if (committed || _changedWhileSyncing) _resultVersion++;
             if (notify || committed) Notify(refreshed: true);
         }
 
@@ -393,7 +406,6 @@ namespace Velvet
             {
                 item.RecordNotified();
             }
-            _resultVersion++;
         }
 
         // TanStack's #onUpdate, for an observer the hook holds that told of a change its own query notifies of: that
@@ -483,6 +495,29 @@ namespace Velvet
                 results[i] = refreshed ? _items[i].Refresh(source) : _items[i].Notified(source);
             }
             return results;
+        }
+
+        // A hook that has not committed holds no result of its own to replace, so a render whose reading differs from
+        // the one the cached combine was handed combines again.
+        internal TCombined Combine(QueriesRead read, Delegate combine, Func<object[], TCombined> invokeCombine)
+        {
+            if (!_committed && _hasCombined && ReadingChanged(read.Items)) _resultVersion++;
+            var combined = Combine(read.Results, read.Keys, combine, invokeCombine);
+            if (!_committed)
+            {
+                _combinedReadings = Array.ConvertAll(read.Items, item => item.Reading);
+            }
+            return combined;
+        }
+
+        private bool ReadingChanged(QueriesItem[] items)
+        {
+            if (items.Length != _combinedReadings.Length) return false;
+            for (var i = 0; i < items.Length; i++)
+            {
+                if (items[i].DiffersFrom(_combinedReadings[i])) return true;
+            }
+            return false;
         }
 
         // TanStack's #combineResult: combine runs again only when the results were replaced, the queries' keys

@@ -181,8 +181,8 @@ namespace Velvet
                 {
                     if (Outranks(important, ref colorImportant))
                     {
-                        hasColor = true;
-                        color = c;
+                        hasColor = c.HasValue;
+                        color = c.GetValueOrDefault();
                     }
                 }
                 // Otherwise an unsupported divide-* (divide-double, …): skip it without disturbing the
@@ -313,7 +313,17 @@ namespace Velvet
         // divide-{color}: a named palette color (divide-gray-200, divide-white, …) or the
         // arbitrary form divide-[<color>]. Returns false for a non-color suffix so
         // the caller leaves the accumulated spec untouched (e.g. divide-dashed, divide-solid).
-        private static bool TryParseColor(string cls, out Color color) =>
-            VelvetPalette.TryResolveColorToken(cls.Substring("divide-".Length), out color);
+        // divide-current is currentcolor, the colour a divider has where no class names one, so it names none.
+        private static bool TryParseColor(string cls, out Color? color)
+        {
+            color = null;
+            if (cls == "divide-current")
+            {
+                return true;
+            }
+            var found = StyleColorValueParser.TryResolveColorWithModifier(cls.Substring("divide-".Length), out var palette);
+            color = found ? palette : null;
+            return found;
+        }
     }
 }

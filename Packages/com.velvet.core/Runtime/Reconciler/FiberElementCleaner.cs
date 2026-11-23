@@ -398,6 +398,7 @@ namespace Velvet
             StyleArbitraryValueResolver.HandBackAll(element);
             // Ahead of ClearAll, which drops the layer map the watch is recorded in.
             StyleArbitraryValueResolver.ReleaseShownImageWatchOf(element);
+            StyleUserClassProperties.ReleaseDeferred(element);
             // Drop the arbitrary-value layer stack so a pooled widget does not inherit a prior consumer's
             // base/variant layers (state ghosting across pool reuse).
             StyleArbitraryValueResolver.ClearAll(element);
@@ -688,6 +689,7 @@ namespace Velvet
             var physicalSlotStart = LogicalChildSlots.ToPhysical(target, portalInfo.SlotStart);
             var slotEnd = LogicalChildSlots.ToPhysical(target, portalInfo.SlotStart + portalInfo.SlotLength);
             var targetCount = ChildListWrites.ChildCount(target);
+            // MUTANT_SURVIVES(equivalent, boundary): at slotEnd == targetCount the assignment writes the value slotEnd already holds.
             if (slotEnd > targetCount) slotEnd = targetCount;
             // Read before any is cleaned: a cleanup can take a child hosted before its element out of the target
             // (RemoveCleaned), which would move the indices still to be visited.

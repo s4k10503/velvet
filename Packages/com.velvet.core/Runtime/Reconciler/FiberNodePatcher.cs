@@ -1576,7 +1576,15 @@ namespace Velvet
                     newNode.FocusOrder, _ctx);
             }
 
-            PatchPortalChildrenPre(ref patch, record.Document.rootVisualElement, oldNode.Children, newNode.Children,
+            var target = record.Document.rootVisualElement;
+            if (_ctx.PortalState.TryGetValue(placeholder, out var recorded)
+                && recorded.Target != null && !ReferenceEquals(recorded.Target, target))
+            {
+                _host.ReleasePortalRangeForRetarget(placeholder);
+                RebaseRangeOnto(placeholder, target);
+            }
+
+            PatchPortalChildrenPre(ref patch, target, oldNode.Children, newNode.Children,
                 "world-space");
         }
 
@@ -4072,20 +4080,26 @@ namespace Velvet
 
         private static readonly List<string> s_placedScratch = new();
         private static readonly List<int> s_placedAt = new();
+        private static readonly List<int> s_placedSlot = new();
 
         // ComposeVariantClasses for an element whose custom-property readers apply payloads at the base layer: a
         // reader's payload sits before the first reconciled token Tailwind orders after the reader (the reader
         // ties after an equal one), so a family reading the last token of the composed array ranks it against the
-        // element's literal utilities as Tailwind does. A payload no reader owns follows them all, as it does
-        // without readers, and a token a play withheld is left out as ComposeVariantClasses leaves it.
+        // element's literal utilities as Tailwind does. A payload of a family StyleFamilyOrder sorts is measured against
+        // the tokens of its own family and importance, which the reconciled array holds in Tailwind's order
+        // (StyleFamilyOrder.Sorted), and not against a token of another family, which can stand ahead of them in the array
+        // whatever its place. A payload no reader owns follows them all, as it does without readers, and a token a play
+        // withheld is left out as ComposeVariantClasses leaves it.
         private static string[] ComposePlacedClasses(VisualElement element, string[] classNames, List<string> tokens,
             List<string> withheld, string[]? reuse)
         {
             s_placedScratch.Clear();
             s_placedAt.Clear();
+            s_placedSlot.Clear();
             foreach (var token in tokens)
             {
                 s_placedAt.Add(StyleCustomProperties.PlaceOf(element, token));
+                s_placedSlot.Add(StyleFamilyOrder.SlotOf(token));
             }
             for (var j = 0; j < classNames.Length; j++)
             {
@@ -4094,9 +4108,15 @@ namespace Velvet
                     continue;
                 }
                 var ordinal = StyleRuleOrder.OrdinalOf(classNames, j);
+                var slot = -2;
                 for (var i = 0; i < tokens.Count; i++)
                 {
-                    if (s_placedAt[i] >= 0 && s_placedAt[i] < ordinal)
+                    if (s_placedAt[i] < 0 || s_placedAt[i] >= ordinal)
+                    {
+                        continue;
+                    }
+                    slot = slot == -2 ? StyleFamilyOrder.SlotOf(classNames[j]) : slot;
+                    if (s_placedSlot[i] < 0 || s_placedSlot[i] == slot)
                     {
                         s_placedScratch.Add(tokens[i]);
                         s_placedAt[i] = -2;

@@ -212,7 +212,8 @@ namespace Velvet
             {
                 "Float" or "Dimension" or "Keyword" or "Enum" or "String" or "Variable"
                     => s_readAsString!.Invoke(null, new[] { sheet, handle }) as string,
-                "ResourcePath" => "resource(\"" + s_readAsString!.Invoke(null, new[] { sheet, handle }) + "\")",
+                "ResourcePath" => "resource(\"" + ((s_readAsString!.Invoke(null, new[] { sheet, handle }) as string) ?? string.Empty)
+                    .Replace("\\", "\\\\").Replace("\"", "\\\"") + "\")",
                 "Color" => Hex((Color)s_readColor!.Invoke(sheet, new[] { handle })!),
                 _ => null,
             };
