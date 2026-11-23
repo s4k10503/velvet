@@ -117,12 +117,21 @@ namespace Velvet.Tests
         }
 
         // The resolved justify-content after the style pass that starts the transitions a change asks for and the
-        // panel's animation update after it, with the clock where it was; NoneRan where that pass started none.
+        // panel's animation update after it, with the clock where it was; NoneRan where no transition of it started.
+        // A start is read from the run event the element hears in either update. Reading a transition still running
+        // after the style pass was rejected: in
+        // Given_TransitionDiscreteAndADarkTransitionNormal_When_TheThemeIsDark_Then_TheNextAnimationUpdateLandsAWrite
+        // none was.
         private static Justify AfterTheNextAnimationUpdate(VisualElement element)
         {
+            var started = false;
+            var justifyContent = new StylePropertyName("justify-content");
+            EventCallback<TransitionRunEvent> heard = evt => started |= ReferenceEquals(evt.target, element)
+                && evt.stylePropertyNames.Contains(justifyContent);
+            element.RegisterCallback(heard);
             ForcePanelUpdate(element.panel);
-            var started = Runs(element);
             EditorPanelTestHelpers.DriveAnimationsOnce(element.panel);
+            element.UnregisterCallback(heard);
             return started ? element.resolvedStyle.justifyContent : NoneRan;
         }
 
