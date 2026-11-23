@@ -124,6 +124,19 @@ namespace Velvet.Tests
         private static string[] Listed(VisualElement element)
             => element.resolvedStyle.transitionProperty.Select(property => property.ToString()).ToArray();
 
+        private static string[] ListedWithADuration(VisualElement element)
+            => element.resolvedStyle.transitionDuration.Any(time => time.value > 0f)
+                ? Listed(element)
+                : new[] { "(no duration)" };
+
+        private static string[] WrittenInline(VisualElement element)
+        {
+            var property = element.style.transitionProperty;
+            return property.keyword == StyleKeyword.Null
+                ? new[] { "(unset)" }
+                : property.value.Select(name => name.ToString()).ToArray();
+        }
+
         private static string[] Sorted(IEnumerable<string> names) => names.OrderBy(name => name, StringComparer.Ordinal).ToArray();
 
         // The longhands UI Toolkit animates whose transitions it interpolates, and those it only switches that
@@ -346,7 +359,7 @@ namespace Velvet.Tests
             ForcePanelUpdate(element.panel);
 
             // Assert
-            Assert.That(Listed(element), Is.EqualTo(new[] { "all" }));
+            Assert.That(ListedWithADuration(element), Is.EqualTo(new[] { "all" }));
         }
 
         [Test]
@@ -454,7 +467,7 @@ namespace Velvet.Tests
             ForcePanelUpdate(element.panel);
 
             // Assert
-            Assert.That(Listed(element), Is.EqualTo(new[] { "all" }));
+            Assert.That(WrittenInline(element), Is.EqualTo(new[] { "all" }));
         }
 
         [Test]
@@ -509,7 +522,7 @@ namespace Velvet.Tests
             ForcePanelUpdate(element.panel);
 
             // Assert
-            Assert.That(Listed(element), Is.EqualTo(new[] { "all" }));
+            Assert.That(WrittenInline(element), Is.EqualTo(new[] { "all" }));
         }
 
         // GREEN_ON_BASE(characterization): the base lists `all` for transition-all whatever a play shows.
@@ -525,7 +538,7 @@ namespace Velvet.Tests
             ForcePanelUpdate(element.panel);
 
             // Assert
-            Assert.That(Listed(element), Is.EqualTo(new[] { "all" }));
+            Assert.That(ListedWithADuration(element), Is.EqualTo(new[] { "all" }));
         }
 
         [Test]
@@ -574,7 +587,7 @@ namespace Velvet.Tests
             ForcePanelUpdate(element.panel);
 
             // Assert
-            Assert.That(Listed(element), Is.EqualTo(new[] { "all" }));
+            Assert.That(ListedWithADuration(element), Is.EqualTo(new[] { "all" }));
         }
 
         private static object s_sink;
