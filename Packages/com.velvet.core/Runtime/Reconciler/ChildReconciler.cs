@@ -435,14 +435,7 @@ namespace Velvet
                 // children mount under their enclosing Providers / MotionContext rather than an empty cursor.
                 // The children's own reconcile pushes/pops on top of these and balances out, so popping the
                 // snapshot afterwards returns the cursor to empty.
-                var stack = _ctx.ComponentContextStack;
-                if (contextSnapshot != null)
-                {
-                    for (var s = 0; s < contextSnapshot.Count; s++)
-                    {
-                        stack.PushRaw(contextSnapshot[s].Key, contextSnapshot[s].Value);
-                    }
-                }
+                PushContextSnapshot(contextSnapshot);
                 // A Portal child registers in ComponentRegistry under whatever fiber is current
                 // while it mounts, and a later patch of the same Portal reaches
                 // NodePatchWalk.ReconcilePortalRange from the reconcile of the tree the declaring
@@ -526,13 +519,7 @@ namespace Velvet
                     _ctx.ExitPortalChildKeyScope(enclosingChildScope);
                     if (declaringFiber != null) _ctx.FiberStack.Pop();
                     _ctx.CurrentPortalPlaceholder = enclosingPortal;
-                    if (contextSnapshot != null)
-                    {
-                        for (var s = contextSnapshot.Count - 1; s >= 0; s--)
-                        {
-                            stack.PopRaw(contextSnapshot[s].Key);
-                        }
-                    }
+                    PopContextSnapshot(contextSnapshot);
                     _parkSetAside = setAside;
                 }
                 // The growth this mount contributed, in logical slots — the same basis as slotStart.
@@ -549,6 +536,18 @@ namespace Velvet
 
         // Whether what a Portal's children threw as the mount added them goes to the wave, filed under the component
         // that rendered the Portal.
+        private void PushContextSnapshot(List<KeyValuePair<object, object>>? snapshot)
+        {
+            if (snapshot == null) return;
+            for (var s = 0; s < snapshot.Count; s++) _ctx.ComponentContextStack.PushRaw(snapshot[s].Key, snapshot[s].Value);
+        }
+
+        private void PopContextSnapshot(List<KeyValuePair<object, object>>? snapshot)
+        {
+            if (snapshot == null) return;
+            for (var s = snapshot.Count - 1; s >= 0; s--) _ctx.ComponentContextStack.PopRaw(snapshot[s].Key);
+        }
+
         private static bool FiledForTheWave(ReconcilePass? wave, ComponentFiber? declaringFiber, Exception exception)
             => wave != null && declaringFiber != null && exception is not BoundaryCaughtSignal;
 
