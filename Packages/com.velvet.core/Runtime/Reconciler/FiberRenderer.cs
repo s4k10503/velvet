@@ -134,8 +134,6 @@ namespace Velvet
         // GeneralPathReconciler.ExpandInlineRecursive) to incorporate into the parent expansion;
         // no Reconcile is issued from the fiber itself. The caller is responsible for placing the
         // output VEs into parent.children at slotStart.
-        // Subsequent setState-triggered re-renders use the fiber's own Reconciler with slot-range
-        // addressing (the deferReconcile flag is only honored on this initial mount path).
         // sharedContext: see SetupMount.
         public static void MountInline(ComponentFiber fiber, VisualElement? parent, int slotStart, ReconcilerContext? sharedContext = null)
         {
