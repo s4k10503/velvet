@@ -538,6 +538,28 @@ namespace Velvet.Tests
             Assert.That(IsRelocated(child), Is.False);
         }
 
+        // GREEN_ON_BASE(characterization): the base stands the element in its slot. The still-queued check of
+        // FiberZLayerCoordinator.Settle does not redden it; ZIndexStackingTests holds the case that observes that check.
+        [Test]
+        public void Given_AZIndexRaisedAtCreationThatAParentsDeclarationUnstacksInTheSameMount_When_Mounted_Then_ItStandsInItsSlot()
+        {
+            // Arrange / Act — the grandparent declares 20, so inner is created raised and queued behind a placeholder;
+            // its parent then declares auto, before the queue drains.
+            _mounted = V.Mount(_window.rootVisualElement,
+                V.Div(name: "outer", className: "[--z:20]", children: new VNode?[]
+                {
+                    V.Div(name: "mid", className: "[--z:auto]", children: new VNode?[]
+                    {
+                        V.Div(name: "inner", className: "absolute z-(--z)"),
+                        V.Div(className: "absolute z-10"),
+                    }),
+                }));
+            var inner = _window.rootVisualElement.Q<VisualElement>("inner");
+
+            // Assert — the slot's parent, or a word for where else inner stands.
+            Assert.AreEqual("mid", inner == null ? "missing" : IsRelocated(inner) ? "relocated" : inner.parent?.name ?? "unparented");
+        }
+
         // Whether child stacks out of its declared slot.
         private bool IsRelocated(VisualElement child) => _mounted.Root.Reconciler.Context.ZLayerMembers.ContainsKey(child);
 

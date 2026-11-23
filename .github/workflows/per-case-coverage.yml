@@ -75,11 +75,14 @@ jobs:
           fi
 
   # ---------------------------------------------------------------------------
-  # The suite in the editor image under scripts/ci/per_case_coverage.py, which gzips each case's file
-  # as the package finishes it.
+  # The suite in the editor image under scripts/ci/per_case_coverage.py, which runs it in launches of a
+  # bounded number of cases and gzips each case's file as the package finishes it. One editor over the whole
+  # suite was killed with SIGKILL under EDITOR_MEMORY after 223 of the EditMode suite's 17033 cases and
+  # 232 of the PlayMode suite's 500, so a shard is the I-th of N blocks of a suite's cases, and the
+  # report reads every shard's records together. Each shard repeats the plain run that names the cases.
   # ---------------------------------------------------------------------------
   suite:
-    name: Per-case coverage (${{ matrix.testMode }})
+    name: Per-case coverage (${{ matrix.testMode }} ${{ matrix.shard }}/${{ matrix.shards }})
     needs: [license-check, commit]
     if: needs.license-check.outputs.has_license == 'true' && needs.commit.outputs.sha != ''
     runs-on: ubuntu-latest
@@ -89,7 +92,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        testMode: [EditMode, PlayMode]
+        include:
+          - { testMode: EditMode, shard: 1, shards: 6 }
+          - { testMode: EditMode, shard: 2, shards: 6 }
+          - { testMode: EditMode, shard: 3, shards: 6 }
+          - { testMode: EditMode, shard: 4, shards: 6 }
+          - { testMode: EditMode, shard: 5, shards: 6 }
+          - { testMode: EditMode, shard: 6, shards: 6 }
+          - { testMode: PlayMode, shard: 1, shards: 1 }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -110,6 +120,7 @@ jobs:
           UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
           UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
           PLATFORM: ${{ matrix.testMode }}
+          SHARD: ${{ matrix.shard }}/${{ matrix.shards }}
         run: |
           version=$(sed -n 's/^m_EditorVersion: //p' ProjectSettings/ProjectVersion.txt)
           docker run --rm --init --workdir /github/workspace \
@@ -118,7 +129,7 @@ jobs:
             --env UNITY_LICENSE --env UNITY_EMAIL --env UNITY_PASSWORD \
             --env PYTHONDONTWRITEBYTECODE=1 \
             "unityci/editor:ubuntu-$version-linux-il2cpp-3" \
-            python3 -u scripts/ci/per_case_coverage.py --platform "$PLATFORM" --output Logs/per-case-coverage
+            python3 -u scripts/ci/per_case_coverage.py --platform "$PLATFORM" --shard "$SHARD" --output Logs/per-case-coverage
 
       # The two readings test.yml's unity-tests job takes of its results, for the reasons it gives there.
       - name: Assert no inconclusive results
@@ -132,25 +143,29 @@ jobs:
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
-          name: Per-case coverage results (${{ matrix.testMode }})
-          path: Logs/per-case-coverage/results
+          name: per-case-results-${{ matrix.testMode }}-${{ matrix.shard }}
+          path: |
+            Logs/per-case-coverage/results
+            Logs/per-case-coverage/launches
 
       # Already gzipped, one file a case, so the upload is asked for no compression of its own.
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
-          name: Per-case coverage (${{ matrix.testMode }})
+          name: per-case-records-${{ matrix.testMode }}-${{ matrix.shard }}
           path: Logs/per-case-coverage/per-case
           compression-level: 0
           if-no-files-found: error
 
   # ---------------------------------------------------------------------------
-  # Run only where both suites passed, so that what a deletion is read off is a suite that holds on the
-  # commit measured.
+  # Runs once the suite jobs have finished, whatever they ended with, so that one failed launch does not
+  # cost the records of the others. per_case_manifest.py names each shard that failed, and the step ends
+  # red where any did, so a deletion is read off a run that says which of its cases were measured.
   # ---------------------------------------------------------------------------
   report:
     name: Per-case coverage (report)
     needs: [commit, suite]
+    if: ${{ !cancelled() && needs.suite.result != 'skipped' }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -158,15 +173,12 @@ jobs:
         with:
           ref: ${{ needs.commit.outputs.sha }}
 
+      # Each shard's records land in a folder of the artifact's name, since the shards' files share their
+      # names.
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: Per-case coverage (EditMode)
-          path: Logs/per-case/EditMode
-
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          name: Per-case coverage (PlayMode)
-          path: Logs/per-case/PlayMode
+          pattern: per-case-records-*
+          path: Logs/per-case
 
       # The append to the summary stays on the line that bounds it: test_step_summary.py reads it by line.
       - env:
@@ -174,9 +186,14 @@ jobs:
           GROUP: ${{ inputs.group }}
         run: |
           set +e
-          python3 scripts/test_quality/unique_coverage.py Logs/per-case/EditMode Logs/per-case/PlayMode \
-            ${GROUP:+--group "$GROUP"} > unique-coverage.txt 2>&1
+          python3 scripts/ci/per_case_manifest.py Logs/per-case --expect EditMode=6 --expect PlayMode=1 \
+            > manifest.txt 2>&1
+          manifest=$?
+          python3 scripts/test_quality/unique_coverage.py Logs/per-case \
+            ${GROUP:+--group "$GROUP"} > coverage-report.txt 2>&1
           status=$?
+          cat manifest.txt coverage-report.txt > unique-coverage.txt
+          if [ "$status" -eq 0 ]; then status=$manifest; fi
           title="Lines only one fixture reaches ($SHA)"
           python3 scripts/ci/step_summary.py block "$title" unique-coverage.txt >> "$GITHUB_STEP_SUMMARY"
           exit "$status"

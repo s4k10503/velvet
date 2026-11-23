@@ -33,15 +33,149 @@ namespace Velvet
         string? TargetId = null, ComponentFiber? DeclaringFiber = null,
         VisualElement? First = null, VisualElement? Last = null, bool ChildrenPending = false);
 
+    // The ranges as recorded, with the end of the last one on each target kept beside them so
+    // PortalSlotTracker.RowsBehindRanges does not read every range per question. A write that moves an end up keeps it,
+    // and one that takes the last end down, or moves its range to another target, leaves the target's end to be read
+    // again from the ranges on the next question.
+    internal sealed class PortalRangeStore : IEnumerable<KeyValuePair<VisualElement, PortalSlotInfo>>
+    {
+        private sealed class TargetEnd
+        {
+            public bool Known;
+            public bool Any;
+            public int Last;
+        }
+
+        private readonly Dictionary<VisualElement, PortalSlotInfo> _map = new();
+        private readonly Dictionary<VisualElement, TargetEnd> _ends = new();
+        private readonly Dictionary<VisualElement, int> _rangesOn = new();
+        private readonly Dictionary<VisualElement, int> _growth = new();
+
+        public int Count => _map.Count;
+
+        public Dictionary<VisualElement, PortalSlotInfo>.KeyCollection Keys => _map.Keys;
+
+        public Dictionary<VisualElement, PortalSlotInfo>.ValueCollection Values => _map.Values;
+
+        public bool ContainsKey(VisualElement placeholder) => _map.ContainsKey(placeholder);
+
+        public bool TryGetValue(VisualElement placeholder, out PortalSlotInfo info) => _map.TryGetValue(placeholder, out info);
+
+        public Dictionary<VisualElement, PortalSlotInfo>.Enumerator GetEnumerator() => _map.GetEnumerator();
+
+        IEnumerator<KeyValuePair<VisualElement, PortalSlotInfo>> IEnumerable<KeyValuePair<VisualElement, PortalSlotInfo>>.GetEnumerator()
+            => GetEnumerator();
+
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+
+        public PortalSlotInfo this[VisualElement placeholder]
+        {
+            get => _map[placeholder];
+            set
+            {
+                if (_map.TryGetValue(placeholder, out var old))
+                {
+                    Leave(old, value);
+                    if (!ReferenceEquals(old.Target, value.Target))
+                    {
+                        CountOn(old.Target, -1);
+                        CountOn(value.Target, 1);
+                    }
+                }
+                else
+                {
+                    CountOn(value.Target, 1);
+                }
+                _map[placeholder] = value;
+                if (value.Target != null && _ends.TryGetValue(value.Target, out var ends) && ends.Known)
+                {
+                    var end = value.SlotStart + value.SlotLength;
+                    if (!ends.Any || end > ends.Last) ends.Last = end;
+                    ends.Any = true;
+                }
+            }
+        }
+
+        public bool Remove(VisualElement placeholder)
+        {
+            if (!_map.TryGetValue(placeholder, out var old)) return false;
+            Leave(old, default);
+            CountOn(old.Target, -1);
+            return _map.Remove(placeholder);
+        }
+
+        public void Clear()
+        {
+            _map.Clear();
+            _ends.Clear();
+            _rangesOn.Clear();
+            _growth.Clear();
+        }
+
+        // The rows Portal patches have recorded as their own on target so far, so a Portal patched around another on
+        // the same target leaves them out of its own length. The entry goes with the last range on target.
+        internal int GrowthOn(VisualElement target) => _growth.GetValueOrDefault(target);
+
+        internal void AddGrowth(VisualElement target, int by)
+        {
+            if (_rangesOn.ContainsKey(target)) _growth[target] = _growth.GetValueOrDefault(target) + by;
+        }
+
+        private void CountOn(VisualElement? target, int by)
+        {
+            if (target == null) return;
+            var count = _rangesOn.GetValueOrDefault(target) + by;
+            if (count == 0)
+            {
+                _rangesOn.Remove(target);
+                _growth.Remove(target);
+            }
+            else _rangesOn[target] = count;
+        }
+
+        // The end of the last range on target, or null where none is on it.
+        internal int? LastEndOn(VisualElement target)
+        {
+            // Most targets asked about hold no range, and answer without reading any.
+            if (!_rangesOn.ContainsKey(target)) return null;
+            if (!_ends.TryGetValue(target, out var ends)) _ends[target] = ends = new TargetEnd();
+            if (!ends.Known)
+            {
+                ends.Any = false;
+                ends.Last = 0;
+                foreach (var info in _map.Values)
+                {
+                    if (!ReferenceEquals(info.Target, target)) continue;
+                    var end = info.SlotStart + info.SlotLength;
+                    if (!ends.Any || end > ends.Last) ends.Last = end;
+                    ends.Any = true;
+                }
+                ends.Known = true;
+            }
+            return ends.Any ? ends.Last : null;
+        }
+
+        // A range leaving its old state: its target's last end no longer holds where it was that end and the new state
+        // does not keep it there.
+        private void Leave(PortalSlotInfo old, PortalSlotInfo replacement)
+        {
+            if (old.Target == null || !_ends.TryGetValue(old.Target, out var ends) || !ends.Known) return;
+            var oldEnd = old.SlotStart + old.SlotLength;
+            if (oldEnd < ends.Last) return;
+            var stays = ReferenceEquals(replacement.Target, old.Target) && replacement.SlotStart + replacement.SlotLength >= oldEnd;
+            if (!stays) ends.Known = false;
+        }
+    }
+
     // ReconcilerContext.PortalState: the ranges as Portals recorded them, read back as their rows place them.
     // Every read answers from the rows, the way a range with no rows to read answers from what was recorded;
     // Stored is the recording itself, which the shifts in PortalSlotTracker and FiberCommitWork move and
     // measure, since a read there would count a row once as moved and once as shifted.
     internal sealed class PortalRangeTable : IEnumerable<KeyValuePair<VisualElement, PortalSlotInfo>>
     {
-        private readonly Dictionary<VisualElement, PortalSlotInfo> _stored = new();
+        private readonly PortalRangeStore _stored = new();
 
-        internal Dictionary<VisualElement, PortalSlotInfo> Stored => _stored;
+        internal PortalRangeStore Stored => _stored;
 
         public int Count => _stored.Count;
 
@@ -249,7 +383,7 @@ namespace Velvet
         // change. The changed entry is excluded whether or not it is still recorded. Mutate-while-iterate is
         // avoided via a deferred 2-pass scan.
         internal static void ShiftRangesBehind(
-            Dictionary<VisualElement, PortalSlotInfo> portalState,
+            PortalRangeStore portalState,
             VisualElement? target,
             VisualElement changedPlaceholder,
             PortalSlotInfo changed,
@@ -276,21 +410,14 @@ namespace Velvet
         // The rows target holds behind the end of the last range on it, or null when no range is on target.
         // Target's own children sit ahead of every range, so a change in their count moves this while the
         // recorded ends stand still.
-        internal static int? RowsBehindRanges(Dictionary<VisualElement, PortalSlotInfo> portalState, VisualElement target)
+        internal static int? RowsBehindRanges(PortalRangeStore portalState, VisualElement target)
         {
-            int? lastEnd = null;
-            foreach (var info in portalState.Values)
-            {
-                if (!ReferenceEquals(info.Target, target)) continue;
-                var end = info.SlotStart + info.SlotLength;
-                // MUTANT_SURVIVES(equivalent, boundary): where the two are equal, either arm is the same number.
-                lastEnd = lastEnd > end ? lastEnd : end;
-            }
+            var lastEnd = portalState.LastEndOn(target);
             return lastEnd == null ? null : LogicalChildSlots.Count(target) - lastEnd.Value;
         }
 
         // Moves by delta every range on target, which a change in target's own children does.
-        internal static void ShiftRangesOn(Dictionary<VisualElement, PortalSlotInfo> portalState, VisualElement target, int delta)
+        internal static void ShiftRangesOn(PortalRangeStore portalState, VisualElement target, int delta)
         {
             // MUTANT_SURVIVES(equivalent): a zero delta rewrites every start it visits to its own value.
             if (delta == 0) return;
@@ -1422,6 +1549,8 @@ namespace Velvet
         // FiberFocusNavigator consults this registry at event time (its ScopeWalk resolves an element's scopes
         // against these keys).
         public Dictionary<VisualElement, FocusScopeBinding> FocusScopeBindings { get; } = new();
+
+        internal List<DeferredAutoFocus> DeferredAutoFocus { get; } = new();
 
         // Chained-portal focus bookkeeping (PanelFocusOrder.Chained): the DECLARING-panel placeholder that
         // acts as the portal's proxy tab stop → the host record its focus forwards into, plus the reverse

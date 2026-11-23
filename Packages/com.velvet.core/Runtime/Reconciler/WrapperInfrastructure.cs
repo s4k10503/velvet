@@ -27,11 +27,13 @@ namespace Velvet
         // wrapper when it is the inner of one, else itself. Callers that hold a pre-patch element
         // reference (the VirtualList bridge) use this after a patch, because a class-driven
         // wrap/unwrap during the patch swaps which element occupies the slot.
-        internal VisualElement ResolveOuter(VisualElement element)
+        internal VisualElement ResolveOuter(VisualElement element) => OuterOf(_ctx, element);
+
+        internal static VisualElement OuterOf(ReconcilerContext ctx, VisualElement element)
         {
             var parent = ChildListWrites.ParentOf(element);
             return parent != null
-                && _ctx.WrapperToInnerMap.TryGetValue(parent, out var inner)
+                && ctx.WrapperToInnerMap.TryGetValue(parent, out var inner)
                 && ReferenceEquals(inner, element)
                 ? parent
                 : element;
