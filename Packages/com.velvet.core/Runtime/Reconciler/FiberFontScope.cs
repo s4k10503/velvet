@@ -34,6 +34,10 @@ namespace Velvet
     // the parent resolves a definition and a legacy font, once for each ancestor up to the one naming a family, an
     // inheritor or an author's definition (AncestorLegacy); where the matcher cannot be built, only inline fonts are read.
     //
+    // A resolve reads the font of the nearest ancestor that declares one rather than the parent's where the parent only
+    // inherits its own (InheritedPeek), and an inheritor resolved in a Tick whose family changed reads again those below
+    // it through elements that only inherit (ResolveBelow).
+    //
     // A change to the registry resolves every element the tables hold again: one naming a family, or inheriting a
     // named one, at once; one inheriting its parent's font once that font has been read again.
     //
@@ -217,14 +221,74 @@ namespace Velvet
         private static UnityEngine.Object? ParentPeek(VisualElement element)
         {
             var parent = ChildListWrites.ParentOf(element);
+            return parent == null ? null : Peek(parent);
+        }
+
+        private static UnityEngine.Object? Peek(VisualElement source)
+        {
+            var resolved = source.resolvedStyle;
+            var definition = resolved.unityFontDefinition;
+            return (UnityEngine.Object?)definition.fontAsset ?? (UnityEngine.Object?)definition.font ?? resolved.unityFont;
+        }
+
+        // Whether the element takes its font from its parent: it declares none inline and transitions none, an element that
+        // transitions its font being read as it shows it
+        // (Given_AClasslessElementTransitioningItsFontBetweenABoldContainerAndABoldLabel_When_TheFontTheContainerInheritsChanges_Then_TheLabelKeepsTheFontTheElementShows).
+        private static bool Inherits(VisualElement element)
+            => element.style.unityFontDefinition.keyword == StyleKeyword.Null
+                && element.style.unityFont.keyword == StyleKeyword.Null
+                && !StyleFilterTransitionDriver.TryFindTransition(element, "-unity-font-definition", "-unity-font",
+                    out _, out _, out _);
+
+        // The font the element's parent gives it as of now. An element that inherits its font shows it from the style
+        // pass of its panel, so a write of Velvet's or an author's above it is read off the nearest ancestor that
+        // declares a font instead, unless a rule of an author's stylesheet gives one in between, which is read where
+        // it is given. Where the two reads agree, nothing is asked of the matcher.
+        // Given_AClasslessElementBetweenABoldElementAndABoldLabel_When_TheContainersFamilyChanges_Then_TheLabelFollowsAtOnce
+        // fails when the read stops at the parent.
+        private static UnityEngine.Object? InheritedPeek(VisualElement element)
+        {
+            var parent = ChildListWrites.ParentOf(element);
             if (parent == null)
             {
                 return null;
             }
 
-            var resolved = parent.resolvedStyle;
-            var definition = resolved.unityFontDefinition;
-            return (UnityEngine.Object?)definition.fontAsset ?? (UnityEngine.Object?)definition.font ?? resolved.unityFont;
+            var source = parent;
+            while (Inherits(source))
+            {
+                var up = ChildListWrites.ParentOf(source);
+                if (up == null)
+                {
+                    break;
+                }
+
+                source = up;
+            }
+
+            var near = Peek(parent);
+            var far = Peek(source);
+            if (far == near)
+            {
+                return far;
+            }
+
+            // Where the matcher cannot be built, a rule in between cannot be told from a font not computed yet, and the
+            // engine's own read of the parent stands.
+            if (BorderPreflight.HasAuthorSheet(parent) is not { } sheeted)
+            {
+                return near;
+            }
+
+            for (var ancestor = parent; sheeted && ancestor != source; ancestor = ChildListWrites.ParentOf(ancestor)!)
+            {
+                if ((BorderPreflight.AuthorRuleFonts(ancestor) ?? 0) != 0)
+                {
+                    return Peek(ancestor);
+                }
+            }
+
+            return far;
         }
 
         private static FontAsset? AssetOfPeek(VisualElement element, UnityEngine.Object? peek)
@@ -290,7 +354,7 @@ namespace Velvet
                 return Declared(element, StyleCascade.RulesLegacyFont(element));
             }
 
-            var peek = ParentPeek(element);
+            var peek = InheritedPeek(element);
             var named = NamedAncestor(element);
             var ancestorLegacy = AncestorLegacy(element, named, sheeted);
             if (ancestorLegacy != null)
@@ -423,14 +487,16 @@ namespace Velvet
             return RuleKeyOf(element) != entry.RuleKey;
         }
 
-        private void Resolve(VisualElement element, in FontIntent intent, bool force)
+        // Whether this resolve gave the element another family, or another font no family holds, than its last one.
+        private bool Resolve(VisualElement element, in FontIntent intent, bool force)
         {
             var hadPrior = Inheritors.TryGetValue(element, out var prior);
             var found = Locate(element);
             var family = found.Named ?? VelvetFonts.FamilyOf(found.Source);
             var foreign = found.Named == null && found.Source != null && family == null;
             var legacy = foreign ? found.Legacy : null;
-            if (force || !hadPrior || family != prior.Family || foreign != prior.Foreign || legacy != prior.Legacy)
+            var moved = !hadPrior || family != prior.Family || foreign != prior.Foreign || legacy != prior.Legacy;
+            if (force || moved)
             {
                 StyleFontResolver.ApplyResolved(element, intent, family, foreign, legacy);
             }
@@ -439,6 +505,7 @@ namespace Velvet
             Inheritors[element] = new Inheritor(intent, found.Named, ParentPeek(element), 0, StyleCascade.RulesHash(element),
                 InlineFontLedger.AuthorFont(element), family, foreign, ruleKey, ParentLegacy(element), legacy);
             _wantsFollow = true;
+            return hadPrior && moved;
         }
 
         // Starts the per-update read once an inheritor exists and an anchor to schedule it on is known.
@@ -559,18 +626,30 @@ namespace Velvet
             }
         }
 
-        // A child reads its font off its parent, so each inheritor directly under one resolved here is read again
-        // straight after it, in this Tick rather than the next.
+        // A child reads its font off its parent, so each inheritor under one resolved here is read again straight after
+        // it, in this Tick rather than the next: one directly under it where the font it shows has moved, and one with
+        // only elements that inherit their font in between where the family it resolved to has.
         private void ResolveDown(VisualElement element, in FontIntent intent, bool force)
         {
-            Resolve(element, intent, force);
-            var count = element.hierarchy.childCount;
+            ResolveBelow(element, Resolve(element, intent, force), direct: true);
+        }
+
+        private void ResolveBelow(VisualElement parent, bool moved, bool direct)
+        {
+            var count = parent.hierarchy.childCount;
             for (var i = 0; i < count; i++)
             {
-                var child = element.hierarchy[i];
-                if (Inheritors.TryGetValue(child, out var entry) && ParentPeek(child) != entry.Seen)
+                var child = parent.hierarchy[i];
+                if (Inheritors.TryGetValue(child, out var entry))
                 {
-                    ResolveDown(child, entry.Intent, false);
+                    if (direct ? ParentPeek(child) != entry.Seen : moved)
+                    {
+                        ResolveDown(child, entry.Intent, false);
+                    }
+                }
+                else if (moved && !Families.ContainsKey(child) && Inherits(child))
+                {
+                    ResolveBelow(child, true, false);
                 }
             }
         }
