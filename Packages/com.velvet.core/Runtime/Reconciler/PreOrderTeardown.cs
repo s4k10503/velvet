@@ -5,7 +5,7 @@ namespace Velvet
 {
     // The pre-order walk React's commit takes over a subtree it takes down — disappearLayoutEffects for a tree a
     // Suspense hides (SuspenseOffscreenCommit), commitDeletionEffectsOnFiber for a deleted one (DeletionCommit): a
-    // component is reached ahead of the element its output starts at (RenderedChildrenCache.StartOf), enclosing ones
+    // component is reached ahead of the element its output starts at (Place), enclosing ones
     // ahead of those inside them, then the element itself, then what is inside it. A Portal's children and an element
     // FiberZLayerCoordinator relocated are reached where they are declared.
     internal abstract class PreOrderTeardown

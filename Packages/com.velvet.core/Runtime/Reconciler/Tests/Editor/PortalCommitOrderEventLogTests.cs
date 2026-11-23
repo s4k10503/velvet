@@ -138,6 +138,28 @@ namespace Velvet.Tests
             => V.Fragment(V.Portal(props.Target,
                 new VNode[] { V.Component(ChildRenderingAComponentThenAnElement, key: "c1") }, key: "portal"));
 
+        private sealed record TwoTargets(VisualElement First, VisualElement Second);
+
+        [Component]
+        private static VNode Row(Named props)
+        {
+            EventLog.UseEffects(props.Name, Array.Empty<object>());
+            return V.Div();
+        }
+
+        [Component]
+        private static VNode PortalIntoTheContainerItRendersIn(VisualElement container)
+            => V.Fragment(
+                V.Portal(container, new VNode[] { V.Component(Row, new Named("X"), key: "x") }, key: "portal"),
+                V.Component(Row, new Named("A"), key: "a"),
+                V.Component(Empty, new Named("N"), key: "n"));
+
+        [Component]
+        private static VNode PortalOfNothingThenAPortalIntoAnotherTarget(TwoTargets targets)
+            => V.Fragment(
+                V.Portal(targets.First, new VNode[] { V.Component(Empty, new Named("M"), key: "m") }, key: "first"),
+                V.Portal(targets.Second, new VNode[] { V.Component(Probed, new Named("T"), key: "t") }, key: "second"));
+
         [Component]
         private static VNode VirtualRow(Named props)
         {
@@ -255,9 +277,42 @@ namespace Velvet.Tests
             Assert.That(log.ToString(), Is.EqualTo("ins:E ins:C1 lay:E ref:D lay:C1 eff:E eff:C1"));
         }
 
+        // M holds no row, so its output sits at the end of its Portal's range, which is where its target ends.
+        [Test]
+        public void Given_APortalChildRenderingNothingAheadOfAPortalIntoAnotherTarget_When_Mounted_Then_ItsEffectsRunAheadOfTheSecondPortalsChildInEveryPhase()
+        {
+            // Arrange
+            var log = new EventLog();
+
+            // Act
+            using var mounted = _renderer.Mount(log.Provide(V.Component(PortalOfNothingThenAPortalIntoAnotherTarget,
+                new TwoTargets(_renderer.CreatePortalTarget(), _renderer.CreatePortalTarget()))));
+            mounted.DrainForTest();
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("ins:M ins:T lay:M ref:T lay:T eff:M eff:T"));
+        }
+
         [TestFixture]
         internal sealed class UIToolkitOnlyPortals
         {
+            // N holds no row and is the last of the container's own children, so its slot holds the first row of the
+            // Portal's range behind them.
+            [Test]
+            public void Given_AComponentRenderingNothingLastInAContainerThatAPortalAheadOfItTargets_When_Mounted_Then_ThePortalsChildsEffectsRunFirst()
+            {
+                // Arrange
+                var log = new EventLog();
+                var container = new VisualElement();
+
+                // Act
+                using var mounted = V.Mount(container, log.Provide(V.Component(PortalIntoTheContainerItRendersIn, container)));
+                mounted.DrainForTest();
+
+                // Assert
+                Assert.That(log.ToString(), Is.EqualTo("ins:X ins:A ins:N lay:X lay:A lay:N eff:X eff:A eff:N"));
+            }
+
             // GREEN_ON_BASE(characterization): on the UI renderer's own fixture the base runs the row's effects first.
             [Test]
             public void Given_AVirtualListRowInAPortalAndASiblingAfterThePortalUpdatedTogether_When_TheyCommit_Then_TheRowsEffectsRunFirst()

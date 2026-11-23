@@ -19,7 +19,7 @@ namespace Velvet.Tests
     /// tier; each tier's drain flushes only its own fibers.</item>
     /// <item>The drain callback is anchored on the tree-stable root, so a fiber unmounted before the boundary is
     /// dropped from the pending queue while still-mounted fibers flush.</item>
-    /// <item>The drain preserves enqueue order, flushing an earlier-dirtied fiber before a later one.</item>
+    /// <item>The drain flushes a dirty parent ahead of its dirty child.</item>
     /// <item>A synchronous immediate flush is a no-op while a drain is already in progress; the update it
     /// schedules is deferred to the next-frame drain rather than committed re-entrantly.</item>
     /// <item>setState calls performed after an await in a plain async handler stay on the immediate tier and
@@ -334,8 +334,9 @@ namespace Velvet.Tests
                 "The surviving fiber is flushed and commits its value even though the lead unmounted");
         }
 
+        // GREEN_ON_BASE(characterization): the base's depth sort also flushes the parent ahead of its child.
         [Test]
-        public void Given_NestedParentAndChildBothDirty_When_Drained_Then_FlushesInEnqueueOrder()
+        public void Given_NestedParentAndChildBothDirty_When_Drained_Then_TheParentFlushesBeforeTheChild()
         {
             // Arrange — the parent is dirtied before the child
             using var mounted = MountParentChild();
@@ -348,7 +349,7 @@ namespace Velvet.Tests
 
             // Assert
             Assert.AreEqual(new[] { "parent", "child" }, s_orderLog.ToArray(),
-                "The drain preserves enqueue order — the parent (enqueued first) flushes before the child");
+                "The drain flushes the parent ahead of its child");
         }
 
         [Test]

@@ -34,10 +34,9 @@ namespace Velvet
         // Bumped each time the bound is reached, which drops every droppable hand-on made before it (RunInNextFrame).
         private int _handOnGeneration;
 
-        // Insertion-ordered pending queues: the List preserves enqueue order so the drain matches the
-        // pre-batching schedule.Execute registration order (a parent dirtied before its child flushes
-        // first, so the parent's reconcile does not redundantly rebuild the child's subtree), and the
-        // HashSet dedups so a fiber dirtied multiple times within one batch is flushed once.
+        // Pending queues: the List keeps enqueue order, which a drain keeps only among the fibers its walk does
+        // not reach (AddInTreeOrder), and the HashSet dedups so a fiber dirtied multiple times within one batch
+        // is flushed once.
         private readonly List<ComponentFiber> _immediateOrder = new();
         private readonly HashSet<ComponentFiber> _immediateSet = new();
         private readonly List<ComponentFiber> _delayedOrder = new();
@@ -152,6 +151,15 @@ namespace Velvet
         // queue being iterated. A single buffer suffices because the _draining guard ensures only one drain
         // (immediate or delayed) is ever live at a time. Cleared after each drain to release fiber refs for GC.
         private readonly List<ComponentFiber> _drainBuffer = new();
+
+        // AddInTreeOrder's, reused across drains as _drainBuffer is. A walk that returns leaves both empty.
+        private readonly HashSet<ComponentFiber> _unreached = new();
+        private readonly List<ComponentFiber> _walk = new();
+
+        // Each fiber above a component row the last walk passed through, with its render count then
+        // (AFiberAboveARowRendered), and OrderRestInTree's copy of what the drain has yet to render.
+        private readonly List<(ComponentFiber Fiber, int Renders)> _aboveRows = new();
+        private readonly List<ComponentFiber> _rest = new();
 
         private readonly Action _runImmediateCallback;
         private readonly Action _flushHeld;
@@ -691,10 +699,9 @@ namespace Velvet
             try
             {
                 _drainBuffer.Clear();
-                _drainBuffer.AddRange(order);
+                AddInTreeOrder(order, _drainBuffer);
                 order.Clear();
                 set?.Clear();
-                StableSortByTreeDepth(_drainBuffer);
                 for (var i = 0; i < _drainBuffer.Count; i++)
                 {
                     // A fiber whose ancestor flushed earlier in this same pass may have been subsumed by that
@@ -717,8 +724,14 @@ namespace Velvet
                     // Not mirrored on the delayed tier: skipping a delayed entry that holds Normal or Urgent work
                     // would hold that work back rather than keep it from running early.
                     FiberWorkLoop.FlushStateWork(fiber);
+                    // Unlike a fiber an ancestor's render subsumes, a component row that render moves still renders
+                    // by its own entry, so once a fiber above one the last walk passed through has rendered, what
+                    // the drain has yet to render takes its order from the tree again.
+                    if (AFiberAboveARowRendered()) OrderRestInTree(i);
                 }
                 _drainBuffer.Clear();
+                // MUTANT_SURVIVES(equivalent, line removed): the next walk clears the list before reading it, so the entries only keep their fibers reachable until then.
+                _aboveRows.Clear();
             }
             finally
             {
@@ -745,46 +758,121 @@ namespace Velvet
             return lanes.Count > 0 && !FiberLane.SchedulesOnImmediateTier(lanes.Min);
         }
 
-        // Orders the drain ancestors-before-descendants so a parent's flush (which re-expands its inline
-        // children via ComponentRegistry → SubsumeFiberIntoThisPass) subsumes a child into the same pass
-        // BEFORE the child's own enqueued entry is reached — matching the single top-down pass where
-        // each component renders at most once regardless of setter call order. A child dirtied before its
-        // parent in one handler would otherwise re-render its slot in isolation, then a second time when the
-        // parent re-expands it. Insertion sort by tree depth (Parent-hop count): stable, so same-depth fibers
-        // (siblings, unrelated subtrees) keep their enqueue order, and cheap for the small batches drained here.
-        private static void StableSortByTreeDepth(List<ComponentFiber> buffer)
+        // React renders the updates one render takes in a single walk down the root's tree, so an ancestor renders
+        // ahead of its descendants and, of two fibers neither of which holds the other, the one earlier in the tree
+        // renders first. The first is what lets a parent's flush subsume a child queued here into the same pass
+        // before the child's own entry is reached (the loop in Drain says how), whatever order their setters ran in.
+        // Siblings are taken in the order their output sits in the tree (LogicalElementTree), not in the Child
+        // chain's: the chain holds a Portal's children, and a component mounted later into a container ahead of a
+        // sibling's, behind that sibling. A queued fiber the walk does not reach keeps its enqueue order, behind the
+        // ones it does.
+        private void AddInTreeOrder(List<ComponentFiber> queued, List<ComponentFiber> into)
         {
-            var count = buffer.Count;
-            if (count < 2) return;
-
-            // Cache each fiber's depth once. TreeDepth walks the parent chain to the root, so recomputing the
-            // comparand's depth inside the inner loop would cost O(count^2 * depth) parent-hops per drain;
-            // precomputing makes it O(count * depth) hops + O(count^2) int comparisons. The parent chain does
-            // not change during the sort, so the cached keys yield the same stable ordering as the recompute.
-            var depths = new int[count];
-            for (var i = 0; i < count; i++) depths[i] = TreeDepth(buffer[i]);
-
-            for (var i = 1; i < count; i++)
+            // MUTANT_SURVIVES(equivalent, line removed): an entry an earlier walk left can only add a re-sort, and only the render of a fiber the last walk noted moves a fiber the drain has yet to render, so a re-sort it adds finds the rest in tree order already.
+            _aboveRows.Clear();
+            var root = queued.Count < 2 ? null : ContextRootAbove(queued);
+            if (root == null)
             {
-                var item = buffer[i];
-                var depth = depths[i];
-                var j = i - 1;
-                while (j >= 0 && depths[j] > depth)
-                {
-                    buffer[j + 1] = buffer[j];
-                    depths[j + 1] = depths[j];
-                    j--;
-                }
-                buffer[j + 1] = item;
-                depths[j + 1] = depth;
+                into.AddRange(queued);
+                return;
+            }
+            foreach (var fiber in queued) _unreached.Add(fiber);
+            LogicalElementTree? tree = null;
+            try
+            {
+                AddReachedInPreOrder(root, into, ref tree);
+            }
+            finally
+            {
+                tree?.Return();
+            }
+            foreach (var fiber in queued)
+            {
+                if (_unreached.Remove(fiber)) into.Add(fiber);
             }
         }
 
-        private static int TreeDepth(ComponentFiber fiber)
+        private void AddReachedInPreOrder(ComponentFiber root, List<ComponentFiber> into, ref LogicalElementTree? tree)
         {
-            var depth = 0;
-            for (var p = fiber.Parent; p != null; p = p.Parent) depth++;
-            return depth;
+            _walk.Add(root);
+            while (_walk.Count > 0)
+            {
+                var fiber = _walk[_walk.Count - 1];
+                _walk.RemoveAt(_walk.Count - 1);
+                if (_unreached.Remove(fiber)) into.Add(fiber);
+                // A component row, the component a VirtualList's renderer returns as a row, is the one child a
+                // mount places in an element of its own rather than inline in its parent's
+                // (FiberNodeFactory.CreateForComponentNode).
+                if (!fiber.IsInlineMounted)
+                {
+                    for (var above = fiber.Parent; above != null; above = above.Parent)
+                    {
+                        _aboveRows.Add((above, above.RenderCount));
+                    }
+                }
+                // Inserted at one index, the children stand in reverse; OrderLatestFirst puts the latest output
+                // lowest and leaves a tie in that reverse, so the walk takes the earliest output first and, of a
+                // tie, the first in the Child chain.
+                var pushed = _walk.Count;
+                for (var child = fiber.Child; child != null; child = child.Sibling)
+                {
+                    if (child.PendingWorkBelow || _unreached.Contains(child)) _walk.Insert(pushed, child);
+                }
+                OrderLatestFirst(_walk, pushed, root.Reconciler!.Context, ref tree);
+            }
+        }
+
+        private bool AFiberAboveARowRendered()
+        {
+            var a = 0;
+            while (a < _aboveRows.Count && _aboveRows[a].Fiber.RenderCount == _aboveRows[a].Renders) a++;
+            return a != _aboveRows.Count;
+        }
+
+        private void OrderRestInTree(int done)
+        {
+            for (var i = done + 1; i < _drainBuffer.Count; i++) _rest.Add(_drainBuffer[i]);
+            _drainBuffer.RemoveRange(done + 1, _rest.Count);
+            AddInTreeOrder(_rest, _drainBuffer);
+            _rest.Clear();
+        }
+
+        private static ComponentFiber? ContextRootAbove(List<ComponentFiber> queued)
+        {
+            foreach (var fiber in queued)
+            {
+                var top = fiber;
+                while (top.Parent != null) top = top.Parent;
+                if (top.Reconciler is { OwnsContext: true }) return top;
+            }
+            return null;
+        }
+
+        private static void OrderLatestFirst(
+            List<ComponentFiber> walk, int from, ReconcilerContext context, ref LogicalElementTree? tree)
+        {
+            for (var i = from + 1; i < walk.Count; i++)
+            {
+                var fiber = walk[i];
+                var j = i - 1;
+                while (j >= from && OutputStartsAfter(tree ??= LogicalElementTree.Rent(context), fiber, walk[j]))
+                {
+                    walk[j + 1] = walk[j];
+                    j--;
+                }
+                walk[j + 1] = fiber;
+            }
+        }
+
+        // A tie, as where a fiber holding no rows sits in front of a sibling's first, reads false both ways and keeps
+        // the Child chain's order, which a container's walk writes for the components it places
+        // (GeneralPathReconciler.CommitComponentOrder).
+        private static bool OutputStartsAfter(LogicalElementTree tree, ComponentFiber fiber, ComponentFiber other)
+        {
+            var place = tree.PlaceOf(fiber, out var behindLast);
+            var otherPlace = tree.PlaceOf(other, out var otherBehindLast);
+            return place != null && otherPlace != null
+                && tree.PlaceComesAfter(place, behindLast, otherPlace, otherBehindLast);
         }
 
         // Whether a drain of the immediate tier can start from here: no drain of either tier and no reconcile pass is
