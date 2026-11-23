@@ -423,11 +423,6 @@ namespace Velvet
             }
         }
 
-        // When deferReconcile is true (initial inline mount), the commit is performed by the caller's parent
-        // expansion rather than this fiber's own Reconciler: the newTree is captured on PreviousTree by the
-        // caller and consumed by ExpandInlineRecursive, which inserts the output VEs into the parent at the
-        // fiber's slot range — so the FiberRenderer-side bookkeeping is skipped here to avoid using the
-        // unexpanded VNode count.
         internal static BoundaryCaughtSignal? ReconcileIntoSlotRange(
             ComponentFiber fiber, VNode?[] oldTree, VNode?[] newTree, double frameBudgetMs, bool deferReconcile)
         {
@@ -459,7 +454,7 @@ namespace Velvet
         }
 
         // Parks the prior committed tree as the baseline a time-sliced reconcile that is still pending resumes
-        // against. A deferred render reconciles none of its own rows (the parent expansion does), so it parks nothing.
+        // against.
         internal static void ParkOldTreeIfPending(
             ComponentFiber fiber, Reconciler? reconciler, VNode?[] oldTree, bool deferReconcile)
         {

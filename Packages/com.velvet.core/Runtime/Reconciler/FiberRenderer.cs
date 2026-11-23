@@ -134,8 +134,6 @@ namespace Velvet
         // GeneralPathReconciler.ExpandInlineRecursive) to incorporate into the parent expansion;
         // no Reconcile is issued from the fiber itself. The caller is responsible for placing the
         // output VEs into parent.children at slotStart.
-        // Subsequent setState-triggered re-renders use the fiber's own Reconciler with slot-range
-        // addressing (the deferReconcile flag is only honored on this initial mount path).
         // sharedContext: see SetupMount.
         public static void MountInline(ComponentFiber fiber, VisualElement? parent, int slotStart, ReconcilerContext? sharedContext = null)
         {
@@ -614,12 +612,8 @@ namespace Velvet
                     FiberCommitWork.ParkOldTreeIfPending(fiber, reconciler, oldTree, deferReconcile);
 #if UNITY_EDITOR
                     // The double-invoke diagnostic compares this fiber's own body output against a re-render of
-                    // the same body, so it is independent of reconcile / commit timing. Inline mounts
-                    // (deferReconcile) commit their leaves later via the parent expansion, but that expansion
-                    // reads only fiber.PreviousTree and never re-invokes the body or the hook cursor — so the
-                    // diagnostic is safe to run here for inline mounts too. Under the wrapper-less architecture
-                    // inline mount is the common case, so gating it out would disable the diagnostic for nearly
-                    // every component.
+                    // the same body, so it is independent of reconcile / commit timing, and a deferred render runs it
+                    // too.
                     diagnosticCommittedTree = newTree;
 #endif
                 }
