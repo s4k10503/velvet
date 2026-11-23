@@ -423,9 +423,6 @@ namespace Velvet
             }
         }
 
-        // A deferred render reconciles none of its own rows: whoever deferred it takes the tree it leaves on
-        // PreviousTree — the parent expansion for a mount or a subsumed render, the Suspense boundary's
-        // re-render for a retry.
         internal static BoundaryCaughtSignal? ReconcileIntoSlotRange(
             ComponentFiber fiber, VNode?[] oldTree, VNode?[] newTree, double frameBudgetMs, bool deferReconcile)
         {
@@ -457,7 +454,7 @@ namespace Velvet
         }
 
         // Parks the prior committed tree as the baseline a time-sliced reconcile that is still pending resumes
-        // against. A deferred render reconciles none of its own rows (the parent expansion does), so it parks nothing.
+        // against.
         internal static void ParkOldTreeIfPending(
             ComponentFiber fiber, Reconciler? reconciler, VNode?[] oldTree, bool deferReconcile)
         {

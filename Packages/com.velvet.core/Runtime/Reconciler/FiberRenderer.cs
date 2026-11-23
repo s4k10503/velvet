@@ -612,8 +612,8 @@ namespace Velvet
                     FiberCommitWork.ParkOldTreeIfPending(fiber, reconciler, oldTree, deferReconcile);
 #if UNITY_EDITOR
                     // The double-invoke diagnostic compares this fiber's own body output against a re-render of
-                    // the same body, so it is independent of reconcile / commit timing: a deferred render, whose
-                    // rows are committed later by whoever takes PreviousTree, runs it too.
+                    // the same body, so it is independent of reconcile / commit timing, and a deferred render runs it
+                    // too.
                     diagnosticCommittedTree = newTree;
 #endif
                 }
