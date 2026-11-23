@@ -453,6 +453,37 @@ namespace Velvet.Tests
                     : null);
         }
 
+        private static VisualElement s_unlinkedByCleanup;
+
+        // Its layout cleanup takes the element of the child it holds out of its own, so the walk reaches the child
+        // only if it read the children before that cleanup ran.
+        [Component(Compiler = false)]
+        private static VNode UnlinksItsChild()
+        {
+            var log = EventLog.UseLog();
+            var childRef = EventLog.UseRefCallback<VisualElement>("Z");
+            Hooks.UseLayoutEffect(() => () =>
+            {
+                log.Add("lay-x:M");
+                s_unlinkedByCleanup?.RemoveFromHierarchy();
+            }, Array.Empty<object>());
+            return V.Div(children: new VNode[]
+            {
+                V.Div(key: "z", refCallback: element =>
+                {
+                    s_unlinkedByCleanup = element;
+                    return childRef(element);
+                }),
+            });
+        }
+
+        [Component(Compiler = false)]
+        private static VNode UnlinkingHost()
+        {
+            var (shown, _) = EventLog.UseState("Shown", true);
+            return V.Fragment(shown ? V.Component(UnlinksItsChild, key: "m") : null);
+        }
+
         private MountedEventLogTree Mount(EventLog log, VNode root)
         {
             var mounted = _renderer.Mount(log.Provide(root));
@@ -704,6 +735,22 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(log.ToString(), Is.EqualTo("ins-x:X lay-x:X ins-x:O lay-x:O ins-x:Oi lay-x:Oi ref-x:Oi"));
+        }
+
+        [Test]
+        public void Given_ACleanupInADeletedElementThatUnlinksItsChildsElement_When_TheElementsParentStopsRenderingIt_Then_TheChildsRefStillDetaches()
+        {
+            // Arrange
+            s_unlinkedByCleanup = null;
+            var log = new EventLog();
+            using var mounted = Mount(log, V.Component(UnlinkingHost));
+
+            // Act
+            log.Setter<bool>("Shown").Invoke(false);
+            mounted.DrainForTest();
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("lay-x:M ref-x:Z"));
         }
 
         [TestFixture]

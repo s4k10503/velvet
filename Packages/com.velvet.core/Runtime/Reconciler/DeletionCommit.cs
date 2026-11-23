@@ -4,9 +4,9 @@ using UnityEngine.UIElements;
 namespace Velvet
 {
     // React's commitDeletionEffectsOnFiber over what one container's reconcile deletes, or over what leaves outside
-    // one: the pre-order walk of PreOrderTeardown, in which a component's cleanups run where the walk reaches
-    // the component (FiberEffects.CleanUpDeleted), and an element's ref detaches where the walk reaches the element. It
-    // runs ahead of the removals, which find neither left to run.
+    // one: the pre-order walk of PreOrderTeardown, which records a component's cleanups
+    // (FiberEffects.CleanUpDeleted) and an element's ref detach where it reaches them, and RunPlan runs them in that
+    // order. It runs ahead of the removals, which find neither left to run.
     internal sealed class DeletionCommit : PreOrderTeardown
     {
         // An instance per walk on the stack, so a cleanup that commits another walk takes an instance of its own.
@@ -77,6 +77,7 @@ namespace Velvet
             }
             for (; next < _orphanRows.Count; next++) TakeDownStartingAt(_orphanRows[next].Start);
             TakeDownTheRest();
+            RunPlan();
             foreach (var (root, mounted) in _roots) Ctx.RemovalsTakenDown[root] = mounted;
         }
 
@@ -106,6 +107,7 @@ namespace Velvet
                 foreach (var fiber in commit._fibers) commit.Place(fiber);
                 commit.VisitRow(element);
                 commit.TakeDownTheRest();
+                commit.RunPlan();
                 return mounted;
             }
             finally
@@ -225,8 +227,10 @@ namespace Velvet
         private void TakeDownAncestorsFirst(ComponentFiber fiber)
         {
             if (fiber.Parent != null && _collected.Contains(fiber.Parent)) TakeDownAncestorsFirst(fiber.Parent);
-            TakeDown(fiber);
+            Take(fiber);
         }
+
+        protected override bool PlansTakeDowns => true;
 
         protected override void TakeDown(ComponentFiber fiber) => FiberEffects.CleanUpDeleted(fiber);
 
