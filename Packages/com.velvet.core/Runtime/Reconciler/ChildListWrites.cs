@@ -735,9 +735,7 @@ namespace Velvet
 
         // Puts the recorded writes on the live lists in the order they were made. An op that throws
         // does not stop the ones behind it: the walk has moved on from each of them, so the live tree has to take every
-        // one. The first exception is rethrown once they have, except where a wave recorded the ops: there each is kept
-        // for the wave to route (ReconcilePass.Failures), filed under the component that rendered the element an insert
-        // adds, or else under the root whose render recorded the op.
+        // one. The first exception FileFailure does not file is rethrown once they have.
         private static void Apply(ReconcilePass pass)
         {
             pass.Applying = true;
@@ -798,9 +796,12 @@ namespace Velvet
             first?.Throw();
         }
 
-        // Files an insert of an element the wave created under the component that rendered it, its search starting where
-        // React's commit starts a placement's (ComponentBoundarySearch.PlacementSearchStart), at the place the element's
-        // walk ended at, and any other op under the root of its run, at the op's. False where the pass is no wave's.
+        // Where a wave recorded the ops, keeps a failure for the wave to route (ReconcilePass.Failures): an insert of an
+        // element the wave created under the component that rendered it, its search starting where React's commit starts
+        // a placement's (ComponentBoundarySearch.PlacementSearchStart), at the place the element's walk ended at, and any
+        // other op under the root of its run, at the op's. In a pass no wave owns, the root MountedTree.Dispose is
+        // unmounting takes it (CommitErrors.Capture), as React's root.unmount() captures what a removal throws at the
+        // root. False where there is neither.
         private static bool FileFailure(ReconcilePass pass, VisualElement? added, Exception exception)
         {
             if (added != null)
@@ -812,7 +813,10 @@ namespace Velvet
                     return true;
                 }
             }
-            if (pass.ApplyingRoot == null) return false;
+            if (pass.ApplyingRoot == null)
+            {
+                return pass.DisposingRoot != null && CommitErrors.Capture(pass.DisposingRoot, null, exception);
+            }
             pass.Fail(pass.ApplyingRoot, pass.ApplyingRoot, exception, added, pass.PlaceNow);
             return true;
         }

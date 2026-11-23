@@ -51,6 +51,10 @@ namespace Velvet
         // The root of the op Apply is applying, whose run an op recorded behind it belongs to.
         internal ComponentFiber? ApplyingRoot;
 
+        // The root MountedTree.Dispose is unmounting, set while the unmount runs: ChildListWrites.FileFailure files a
+        // failed op of a pass no wave owns under it.
+        internal ComponentFiber? DisposingRoot;
+
         // The component that rendered each element created while a wave records into the pass, with the Portal whose
         // children it was created among, which a failed insert of the element is filed under in place of the root of its
         // run, and the place the element's walk ended at (PlaceBehindRecorded), which the failure takes. Apply clears it

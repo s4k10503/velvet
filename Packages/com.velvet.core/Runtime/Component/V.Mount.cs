@@ -207,7 +207,16 @@ namespace Velvet
             if (context != null) FiberExecutionContext.StandDown(context.BatchScheduler);
             FiberExecutionContext.Enter(context?.BatchScheduler, (Tree: this, Context: context), static state =>
             {
-                FiberRenderer.DisposeWork(state.Tree.Root);
+                var pass = state.Context?.Pass;
+                if (pass != null) pass.DisposingRoot = state.Tree.Root;
+                try
+                {
+                    FiberRenderer.DisposeWork(state.Tree.Root);
+                }
+                finally
+                {
+                    if (pass != null) pass.DisposingRoot = null;
+                }
                 StyleThemeTokens.Release(state.Context);
                 if (state.Context != null) FiberErrorBoundary.ReportErrorsDuringDisposal(state.Context);
             });
