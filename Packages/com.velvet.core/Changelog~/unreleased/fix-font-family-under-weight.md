@@ -1,8 +1,9 @@
 ### Fixed
 
-- A weight, italic or width class now keeps the `font-family` CSS gives the element, from the nearest declaration: a
-  font an author's stylesheet rule or inline style gives the element itself, or an element between it and a
-  `font-<name>` ancestor, decides the family instead of that ancestor's class. A font given as a font file, or by
-  the legacy `-unity-font`, decides it too, and where no registered family holds it the author's font is left in
-  place with the weight or italic emulated on it, rather than the default family's face being written over it. An
-  author font gained or lost after the label resolved reaches the label within the next updates of its panel.
+- A weight, italic or width class now keeps the `font-family` CSS gives the element. The element's own font decides
+  first, whether an author's inline font or a rule of its own stylesheet, and the class writes that font's family's
+  face rather than the parent's; removing the font classes gives an inline font the class replaced back. Otherwise the
+  font the parent resolves to decides, so an author font set on an element between the element and its `font-<name>`
+  ancestor, by a rule, a class, a pseudo-state or inline style, wins over that ancestor's class. A font given as a font
+  file, or by the legacy `-unity-font`, decides too, and where no registered family holds it the author's font stays,
+  with the weight or italic emulated on it. A change reaches the element within the next updates of its panel.

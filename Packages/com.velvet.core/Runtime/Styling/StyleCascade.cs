@@ -57,38 +57,6 @@ namespace Velvet
 
         private static readonly PropertyInfo? s_overflow = EngineMember.ComputedStyleOverflow.ResolveProperty();
 
-        private static readonly PropertyInfo? s_pseudoStates = EngineMember.PseudoStates.ResolveProperty();
-
-        // The element's pseudo-states (hover, focus, active...) as the engine holds them; 0 where they cannot be read. Read by
-        // an accessor compiled once, as RulesHash is, since a font stamp reads it for each element on every update.
-        public static int PseudoStates(VisualElement element)
-        {
-#if !ENABLE_IL2CPP
-            if (s_compiledPseudoStates != null) return s_compiledPseudoStates(element);
-#endif
-            return s_pseudoStates == null ? 0 : Convert.ToInt32(s_pseudoStates.GetValue(element));
-        }
-
-#if !ENABLE_IL2CPP
-        private static readonly Func<VisualElement, int>? s_compiledPseudoStates = CompilePseudoStates();
-
-        private static Func<VisualElement, int>? CompilePseudoStates()
-        {
-            if (s_pseudoStates == null) return null;
-            try
-            {
-                var element = System.Linq.Expressions.Expression.Parameter(typeof(VisualElement), "element");
-                return System.Linq.Expressions.Expression.Lambda<Func<VisualElement, int>>(
-                    System.Linq.Expressions.Expression.Convert(
-                        System.Linq.Expressions.Expression.Property(element, s_pseudoStates), typeof(int)), element).Compile();
-            }
-            catch (Exception)
-            {
-                return null;
-            }
-        }
-#endif
-
         // Whether the element clips its content, by its own computed style; by its inline overflow alone where that
         // cannot be read.
         public static bool ClipsOverflow(VisualElement element)

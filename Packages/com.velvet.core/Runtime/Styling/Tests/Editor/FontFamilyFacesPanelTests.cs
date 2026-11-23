@@ -96,7 +96,7 @@ namespace Velvet.Tests
             AssetDatabase.AddObjectToAsset(ruled.material, ruled);
             VelvetFonts.Register(Family("ruled", ruled, ruledBold));
             var ruledFont = "-unity-font-definition: url(\"project://database/" + RuledPath + "\");";
-            AttachSheet(".ruled { " + ruledFont + " } .ruled-hover:hover { " + ruledFont + " }");
+            AttachSheet(".ruled { " + ruledFont + " } .ruled-hover:hover { " + ruledFont + " } .dark .dark-mid { " + ruledFont + " }");
             return ruledBold;
         }
 
@@ -452,6 +452,69 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(Target(root).style.unityFontDefinition.value.fontAsset, Is.SameAs(ruledBold));
+        }
+
+        private static VNode SerifContainerWithAMiddle(string middleClass) => V.Div(className: "font-serif", children: new[]
+        {
+            V.Div(className: middleClass, name: "mid", children: new[] { V.Label(className: "font-bold", text: "target", name: "target") }),
+        });
+
+        [Test]
+        public void Given_ABoldLabelUnderAFamilyContainer_When_ASheetGivingARuledMiddleItsFontIsAttachedAboveTheContainer_Then_TheLabelFollows()
+        {
+            // Arrange
+            var root = new VisualElement();
+            _host.Root.Add(root);
+            _mounted = V.Mount(root, SerifContainerWithAMiddle("ruled"));
+            RunAFrame();
+
+            // Act
+            var ruledBold = AttachSheetGivingTheRuledFont();
+            RunAFrame();
+
+            // Assert
+            Assert.That(Target(root).style.unityFontDefinition.value.fontAsset, Is.SameAs(ruledBold));
+        }
+
+        [Test]
+        public void Given_ABoldLabelUnderAFamilyContainer_When_ADescendantRuleOfAClassAboveTheContainerStartsToMatchTheMiddle_Then_TheLabelFollows()
+        {
+            // Arrange
+            var ruledBold = AttachSheetGivingTheRuledFont();
+            var root = new VisualElement();
+            _host.Root.Add(root);
+            _mounted = V.Mount(root, SerifContainerWithAMiddle("dark-mid"));
+            RunAFrame();
+
+            // Act
+            root.AddToClassList("dark");
+            RunAFrame();
+
+            // Assert
+            Assert.That(Target(root).style.unityFontDefinition.value.fontAsset, Is.SameAs(ruledBold));
+        }
+
+        [Test]
+        public void Given_ABoldLabelWhoseInlineFontReplacedByTheClassIsOfAFamily_When_ThatFamilyIsUnregistered_Then_TheInlineFontIsGivenBack()
+        {
+            // Arrange
+            VelvetFonts.DefaultFamily = "sans";
+            var root = new VisualElement();
+            _host.Root.Add(root);
+            _mounted = V.Mount(root, ClassedBoldLabel(string.Empty));
+            RunAFrame();
+            Target(root).style.unityFontDefinition = FontDefinition.FromSDFFont(s_serif);
+            _mounted.Render(ClassedBoldLabel("font-bold"));
+            RunAFrame();
+
+            // Act
+            VelvetFonts.Unregister("serif");
+            RunAFrame();
+            RunAFrame();
+            RunAFrame();
+
+            // Assert
+            Assert.That(Target(root).style.unityFontDefinition.value.fontAsset, Is.SameAs(s_serif));
         }
     }
 }

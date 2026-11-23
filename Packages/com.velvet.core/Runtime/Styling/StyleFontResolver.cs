@@ -161,7 +161,10 @@ namespace Velvet
             }
         }
 
-        /// <summary>Reverts both inline font properties to their USS / inherited defaults.</summary>
+        /// <summary>
+        /// Reverts both inline font properties to their USS / inherited defaults, giving back the inline font an author
+        /// had given the element, which a font class replaced.
+        /// </summary>
         public static void Clear(VisualElement element)
         {
             if (element == null)
@@ -169,7 +172,7 @@ namespace Velvet
                 return;
             }
 
-            element.style.unityFontDefinition = StyleKeyword.Null;
+            InlineFontLedger.TakeOff(element);
             element.style.unityFontStyleAndWeight = StyleKeyword.Null;
             DefaultFamilyRoots.Overwritten(element);
         }
@@ -188,10 +191,10 @@ namespace Velvet
 
         // inherited is the family an ancestor names or an inherited font belongs to, read only when the request names
         // none of its own. foreign is an inherited font no family holds, which a weight or italic request then
-        // emulates on that font where DefaultFamily would otherwise have been chosen. keepFont leaves the inline font
-        // definition as it is where no asset is written, for a font the author gave the element inline.
+        // emulates on that font where DefaultFamily would otherwise have been chosen. Where no asset is written, the inline
+        // definition is Velvet's earlier write taken off, and an inline font the author gave the element stays.
         internal static void ApplyResolved(VisualElement element, in FontIntent intent, string? inherited,
-            bool foreign, bool keepFont = false)
+            bool foreign)
         {
             var weight = intent.HasWeight ? intent.Weight : VelvetFontWeight.Normal;
             var family = intent.HasFamily ? intent.Family : inherited;
@@ -219,6 +222,7 @@ namespace Velvet
             }
 
             Remember(element);
+            var author = InlineFontLedger.AuthorDefinition(element);
 
             bool needStyle;
             bool bold;
@@ -227,16 +231,21 @@ namespace Velvet
             if (asset != null)
             {
                 element.style.unityFontDefinition = new StyleFontDefinition(FontDefinition.FromSDFFont(asset));
+                InlineFontLedger.Wrote(element, asset, author);
                 bold = residualBold;
                 ital = residualItalic;
                 needStyle = bold || ital;
             }
             else
             {
-                if (!keepFont)
+                if (InlineFontLedger.Written(element) != null)
                 {
-                    element.style.unityFontDefinition = StyleKeyword.Null;
+                    element.style.unityFontDefinition = author == null
+                        ? new StyleFontDefinition(StyleKeyword.Null)
+                        : InlineFontLedger.DefinitionOf(author);
                 }
+
+                InlineFontLedger.Wrote(element, null, null);
                 bold = intent.HasWeight && (int)weight >= 600;
                 ital = intent.Italic;
                 needStyle = intent.HasWeight || intent.HasItalic;

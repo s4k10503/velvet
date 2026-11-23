@@ -282,9 +282,10 @@ namespace Velvet.Tests
             Assert.That(TargetAsset(), Is.SameAs(_monoBold));
         }
 
-        // GREEN_ON_BASE(characterization): the base takes the nearest font-<name> ancestor's family. Read an inheritor
-        // ancestor's inline font as an author's in Locate (`InlineFont(ancestor)` where it takes `inheritor.Own`) and the
-        // label takes the family that holds that write, the default one here, since the asset is registered under both.
+        // GREEN_ON_BASE(characterization): the base takes the nearest font-<name> ancestor's family. Replace
+        // `VelvetFonts.NamedHolds(family, parentAsset)` in Locate by `VelvetFonts.FamilyOf(parentAsset) == family` and the
+        // label takes the family that holds the container's write, the default one here, since the asset is registered
+        // under both.
         [Test]
         public void Given_AWeightContainerWhoseFaceTheDefaultFamilyAlsoHolds_When_ANormalLabelMountsInASerifContainer_Then_TheSerifFamilyDecides()
         {
@@ -479,6 +480,60 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(scope.Inheritors[element].Wait, Is.EqualTo(1));
+        }
+
+
+        // GREEN_ON_BASE(characterization): the base resolves a bold label under font-sans to sans Bold. Drop
+        // `InlineFontLedger.Wrote(element, asset, author)` from the asset branch of ApplyResolved and the serif write the
+        // label's former class made is read as the author's, and the label stays serif.
+        [Test]
+        public void Given_ALabelNamingSerifAndBold_When_ItsClassBecomesBoldAlone_Then_TheSansContainersFamilyDecides()
+        {
+            // Arrange
+            VNode Tree(string className) => V.Div(className: "font-sans", children: new[] { Target(className) });
+            _mounted = V.Mount(_host.Root, Tree("font-serif font-bold"));
+            RunAFrame();
+
+            // Act
+            _mounted.Render(Tree("font-bold"));
+            RunAFrame();
+
+            // Assert
+            Assert.That(TargetAsset(), Is.SameAs(_sansBold));
+        }
+
+        [Test]
+        public void Given_ABoldLabelWhoseInlineFontTheAuthorSetAfterTheClassWrote_When_TheFontClassIsRemoved_Then_TheInlineFontStays()
+        {
+            // Arrange
+            _mounted = V.Mount(_host.Root, V.Div(children: new[] { Target("font-bold") }));
+            RunAFrame();
+            _host.Root.Q<Label>("target").style.unityFontDefinition = FontDefinition.FromSDFFont(_monoNormal);
+
+            // Act
+            _mounted.Render(V.Div(children: new[] { Target(string.Empty) }));
+            RunAFrame();
+
+            // Assert
+            Assert.That(TargetAsset(), Is.SameAs(_monoNormal));
+        }
+
+        [Test]
+        public void Given_ALabelWhoseInlineFontTheBoldClassReplaced_When_TheFontClassIsRemoved_Then_TheAuthorsInlineFontIsBack()
+        {
+            // Arrange
+            _mounted = V.Mount(_host.Root, V.Div(children: new[] { Target(string.Empty) }));
+            RunAFrame();
+            _host.Root.Q<Label>("target").style.unityFontDefinition = FontDefinition.FromSDFFont(_monoNormal);
+            _mounted.Render(V.Div(children: new[] { Target("font-bold") }));
+            RunAFrame();
+
+            // Act
+            _mounted.Render(V.Div(children: new[] { Target(string.Empty) }));
+            RunAFrame();
+
+            // Assert
+            Assert.That(TargetAsset(), Is.SameAs(_monoNormal));
         }
 
         #endregion

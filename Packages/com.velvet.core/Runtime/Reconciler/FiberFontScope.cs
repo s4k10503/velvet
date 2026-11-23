@@ -8,28 +8,28 @@ namespace Velvet
 {
     // Lets a weight or italic class with no family class of its own resolve against the family CSS gives the element:
     // the nearest declaration of a font-family, the element itself counting, since a weight class selects a face within
-    // a family and never picks the family. A declaration is a font-<name> class on an ancestor, a font an author's rule
-    // (a stylesheet other than a default one) or inline style gives an element, or the legacy -unity-font property so
-    // given. Where an ancestor's class is nearest, its family is named; where a font is, the family is the one that
-    // holds that font, and a font no registered family holds is kept with the weight or italic emulated on it.
-    // An inline font on the element itself is the author's where it is not the one written here (Inheritor.Written);
-    // the author's font is remembered (Inheritor.Own) since the write replaces it.
+    // a family and never picks the family. The element's own declaration is an inline font the author gave it (told from
+    // Velvet's own write by InlineFontLedger) or a rule of a stylesheet other than a default one setting its font.
+    // Below that, the font its parent resolves to is what the engine's cascade gives it, wherever the rule or inline
+    // style that set it sits, and the family is the one that holds that font; a font no registered family holds is
+    // kept with the weight or italic emulated on it. Where a font-<name> ancestor exists, the family it names is kept
+    // for as long as the parent's font belongs to that family (VelvetFonts.NamedHolds), which is what keeps a font
+    // list's fallbacks; a parent's font that does not belong is an author's, and decides instead.
     //
     // Resolution order is the constraint. A parent's font layer runs after its children are created, and a
     // created element is parented only afterwards, so a lookup made while an element resolves can come back
     // empty or stale. Each such element is therefore queued, and Drain re-resolves it at the top-level pass
     // boundary, where an element created in the pass has its final parent (the same point RingOverlay.DrainPendingPlacements
-    // runs). A change to an ancestor's family outside creation queues the inheritors under it the same way.
+    // runs). A change to an ancestor's family outside creation queues the inheritors under it the same way. A parent's
+    // font read while an ancestor holds a write of Velvet's that the panel has not resolved yet is not read: the named
+    // family stands until the next update of the panel.
     //
-    // Where nothing is declared, an inheritor takes the family that holds the font its parent resolves to. That font is
-    // read from the parent's resolvedStyle, so it is read again at every update of the panel (Tick) for as long as an
-    // inheritor exists. So is what an author can change beneath an inheritor without an event of its own: Tick compares
-    // a stamp of the elements from the inheritor up to its named ancestor (classes, name, stylesheets, inline fonts, and
-    // the key the engine holds the matched rules of the element a rule gave the font to), which allocates nothing.
-    // Author rules are asked of the engine's matcher (BorderPreflight.AuthorRuleSets) only where a stylesheet other than a
-    // default one is attached above the element; where the matcher cannot be built only inline fonts are read. The stamp
-    // holds each element's pseudo-states, so the matcher runs again on the update a hover, focus or active state changes
-    // there and not while an inherited style of an ancestor animates.
+    // The parent's resolved font is read again at every update of the panel (Tick) for as long as an inheritor exists,
+    // there being no event of its own for a stylesheet, a class or a pseudo-state changing a font above an element. What
+    // an author can change on the element itself without one is read the same way: its inline font and the key the
+    // engine holds its matched rules under, which also moves with the inherited styles of its parent and then asks the
+    // engine's rule matcher again (BorderPreflight.AuthorRuleSets, only where a stylesheet other than a default one is
+    // attached above the element; where the matcher cannot be built, only inline fonts are read).
     //
     // A change to the registry resolves every element the tables hold again: one naming a family, or inheriting a
     // named one, at once; one inheriting its parent's font once that font has been read again.
@@ -38,61 +38,47 @@ namespace Velvet
     // ReconcilerContext's pure side-tables.
     internal sealed class FiberFontScope
     {
-        // What an inheritor was last resolved against. Named is the family a font-<name> ancestor names; Seen the font its
-        // parent resolved to then, which only an element with no named family reads. Wait is the number of reads left
-        // after a registry change before it is resolved again whether or not anything moved. Chain is the stamp of what
-        // was read and Rule the element whose rules gave the font it was resolved from, null where none did. Own is the
-        // font the author gave the element inline, which the inline write replaces, and Written the asset that write
-        // put there. Family, Foreign and Keep are what was applied.
+        // What an inheritor was last resolved against. Named is the family a font-<name> ancestor names and kept; Seen the
+        // font its parent resolved to then. Wait is the number of reads left after a registry change before it is resolved
+        // again whether or not anything moved. Rules is the key the engine held the element's matched rules under and Own
+        // the font the author gave the element inline. Family and Foreign are what was applied.
         internal readonly struct Inheritor
         {
             public readonly FontIntent Intent;
             public readonly string? Named;
-            public readonly FontAsset? Seen;
+            public readonly UnityEngine.Object? Seen;
             public readonly int Wait;
-            public readonly int? Chain;
-            public readonly VisualElement? Rule;
+            public readonly long? Rules;
             public readonly UnityEngine.Object? Own;
-            public readonly FontAsset? Written;
             public readonly string? Family;
             public readonly bool Foreign;
-            public readonly bool Keep;
 
-            public Inheritor(FontIntent intent, string? named, FontAsset? seen, int wait, int? chain = null,
-                VisualElement? rule = null, UnityEngine.Object? own = null, FontAsset? written = null,
-                string? family = null, bool foreign = false, bool keep = false)
+            public Inheritor(FontIntent intent, string? named, UnityEngine.Object? seen, int wait, long? rules = null,
+                UnityEngine.Object? own = null, string? family = null, bool foreign = false)
             {
                 Intent = intent;
                 Named = named;
                 Seen = seen;
                 Wait = wait;
-                Chain = chain;
-                Rule = rule;
+                Rules = rules;
                 Own = own;
-                Written = written;
                 Family = family;
                 Foreign = foreign;
-                Keep = keep;
             }
 
-            public Inheritor WithWait(int wait)
-                => new(Intent, Named, Seen, wait, Chain, Rule, Own, Written, Family, Foreign, Keep);
+            public Inheritor WithWait(int wait) => new(Intent, Named, Seen, wait, Rules, Own, Family, Foreign);
         }
 
-        // Where a font was found, and the font itself.
+        // Where a font was found: the family a font-<name> ancestor names, or the asset of the font that decides.
         private readonly struct Located
         {
             public readonly string? Named;
             public readonly FontAsset? Source;
-            public readonly VisualElement? Rule;
-            public readonly UnityEngine.Object? Own;
 
-            public Located(string? named, FontAsset? source, VisualElement? rule, UnityEngine.Object? own)
+            public Located(string? named, FontAsset? source)
             {
                 Named = named;
                 Source = source;
-                Rule = rule;
-                Own = own;
             }
         }
 
@@ -107,16 +93,11 @@ namespace Velvet
         private static readonly string[] s_fontProperties = { "-unity-font-definition", "-unity-font" };
 
         // Weak, so a scope nobody disposed is not kept alive by the registry's event.
-        private static readonly List<WeakReference<FiberFontScope>> s_scopes = new();
+        private static readonly List<System.WeakReference<FiberFontScope>> s_scopes = new();
 
         private readonly HashSet<VisualElement> _pending = new();
-        private readonly Predicate<VisualElement> _settle;
+        private readonly System.Predicate<VisualElement> _settle;
         private readonly List<VisualElement> _buffer = new();
-
-        // What one read of an element's own state hashed to, so elements that share ancestors read each only once in a Tick.
-        // Kept only inside a Tick, since an element can change between ticks without a record of it here.
-        private readonly Dictionary<VisualElement, int> _linkStamps = new();
-        private bool _inTick;
         private VisualElement? _mountRoot;
         private VisualElement? _anchor;
         private IVisualElementScheduledItem? _follow;
@@ -131,7 +112,7 @@ namespace Velvet
         {
             _settle = Settle;
             s_scopes.RemoveAll(static entry => !entry.TryGetTarget(out _));
-            s_scopes.Add(new WeakReference<FiberFontScope>(this));
+            s_scopes.Add(new System.WeakReference<FiberFontScope>(this));
         }
 
         private static void RegistryChanged()
@@ -172,84 +153,115 @@ namespace Velvet
             Follow();
         }
 
-        // The family the nearest ancestor carrying a font-<name> class names, or null where there is none or where a font
-        // is declared nearer (Locate).
-        internal string? InheritedFamily(VisualElement element)
+        // The family a font-<name> ancestor names and the element keeps, or null where there is none or where a font
+        // declared nearer decides.
+        internal string? InheritedFamily(VisualElement element) => Locate(element).Named;
+
+        // The nearest ancestor carrying a font-<name> class.
+        private VisualElement? NamedAncestor(VisualElement element)
         {
             if (Families.Count == 0)
             {
                 return null;
             }
 
-            return Locate(element, Inheritors.TryGetValue(element, out var prior) ? prior : default).Named;
-        }
-
-        // The legacy font definition or font an author gave element inline, or null. An inline font Velvet wrote is told
-        // apart by the caller.
-        private static UnityEngine.Object? InlineFont(VisualElement element)
-        {
-            var definition = element.style.unityFontDefinition;
-            if (definition.keyword != StyleKeyword.Null)
+            var up = ChildListWrites.ParentOf(element);
+            while (up != null && !Families.ContainsKey(up))
             {
-                var value = definition.value;
-                return (UnityEngine.Object?)value.fontAsset ?? value.font;
+                up = ChildListWrites.ParentOf(up);
             }
 
-            var legacy = element.style.unityFont;
-            return legacy.keyword != StyleKeyword.Null ? legacy.value : null;
+            return up;
         }
 
-        // The font the author gave element inline: what is there unless it is the asset the last write put there, in which
-        // case the font that write replaced.
-        private static UnityEngine.Object? AuthorInline(VisualElement element, in Inheritor prior)
+        // The font the element's parent resolves to, as the object the engine holds: null before the panel has resolved
+        // one. A legacy font counts only where the definition names none.
+        private static UnityEngine.Object? ParentPeek(VisualElement element)
         {
-            var inline = InlineFont(element);
-            var shown = inline as FontAsset;
-            var wrote = prior.Written;
-            if (shown != null && wrote != null)
+            var parent = ChildListWrites.ParentOf(element);
+            if (parent == null)
             {
-                if (shown == wrote || LineBoxFont.SourceOf(shown) == wrote)
-                {
-                    return prior.Own;
-                }
+                return null;
             }
 
-            return inline;
+            var resolved = parent.resolvedStyle;
+            var definition = resolved.unityFontDefinition;
+            return (UnityEngine.Object?)definition.fontAsset ?? (UnityEngine.Object?)definition.font ?? resolved.unityFont;
         }
 
-        // Finds the nearest declaration of a font for element: its own, else an ancestor's class, else the font of an
-        // element between that ancestor and it, else none.
-        private Located Locate(VisualElement element, in Inheritor prior)
+        private static FontAsset? AssetOfPeek(VisualElement element, UnityEngine.Object? peek)
         {
-            var gate = BorderPreflight.HasAuthorSheet(element) == true;
-            var own = AuthorInline(element, prior);
-            var ruled = own == null && gate && BorderPreflight.AuthorRuleSets(element, s_fontProperties) == true;
-            if (own != null || ruled)
+            if (peek is FontAsset asset)
             {
-                return new Located(null, DeclaredAsset(element, own), ruled ? element : null, own);
+                return LineBoxFont.SourceOf(asset) ?? asset;
             }
 
+            var parent = ChildListWrites.ParentOf(element);
+            var font = peek as UnityEngine.Font;
+            if (font == null || parent == null)
+            {
+                return null;
+            }
+
+            return StyleCascade.CachedFontAsset(parent, font);
+        }
+
+        // Whether an ancestor between element and the one naming its family holds a write of Velvet's that the panel has not
+        // resolved yet, so that the parent's resolved font says nothing about what is written above it.
+        private static bool Unresolved(VisualElement element, VisualElement named)
+        {
             for (var ancestor = ChildListWrites.ParentOf(element); ancestor != null; ancestor = ChildListWrites.ParentOf(ancestor))
             {
-                if (Families.TryGetValue(ancestor, out var named))
+                var written = InlineFontLedger.Written(ancestor);
+                if (written != null)
                 {
-                    return new Located(named.Family, null, null, null);
+                    var shown = ancestor.resolvedStyle.unityFontDefinition.fontAsset;
+                    return (LineBoxFont.SourceOf(shown) ?? shown) != written;
                 }
 
-                var inline = Inheritors.TryGetValue(ancestor, out var inheritor) ? inheritor.Own : InlineFont(ancestor);
-                var rule = inline == null && gate && BorderPreflight.AuthorRuleSets(ancestor, s_fontProperties) == true;
-                if (inline != null || rule)
+                if (ancestor == named)
                 {
-                    return new Located(null, DeclaredAsset(ancestor, inline), rule ? ancestor : null, null);
+                    return false;
                 }
             }
 
-            return new Located(null, ParentFont(element), null, null);
+            return false;
         }
 
-        // The font asset UI Toolkit draws a declared font in: the inline one, else the one the rules give, which a Font
-        // reads through the text settings; null before the panel has resolved the rules.
-        private static FontAsset? DeclaredAsset(VisualElement declarer, UnityEngine.Object? inline)
+        // Finds what decides element's family: its own declared font, else the family a font-<name> ancestor names while
+        // the parent's font belongs to it, else the parent's font.
+        private Located Locate(VisualElement element)
+        {
+            var own = InlineFontLedger.AuthorFont(element);
+            var ruled = own == null && BorderPreflight.HasAuthorSheet(element) == true
+                && BorderPreflight.AuthorRuleSets(element, s_fontProperties) == true;
+            if (own != null || ruled)
+            {
+                return new Located(null, DeclaredAsset(element, own));
+            }
+
+            var peek = ParentPeek(element);
+            var named = NamedAncestor(element);
+            if (named != null)
+            {
+                var family = Families[named].Family;
+                var parentAsset = AssetOfPeek(element, peek);
+                var kept = parentAsset == null || VelvetFonts.NamedHolds(family, parentAsset)
+                    || Unresolved(element, named) || !VelvetFonts.Resolve(family, VelvetFontWeight.Normal, false).HasAsset;
+                if (kept)
+                {
+                    return new Located(family, null);
+                }
+
+                return new Located(null, parentAsset);
+            }
+
+            return new Located(null, AssetOfPeek(element, peek));
+        }
+
+        // The font asset UI Toolkit draws element's declared font in: the inline one, else the one the rules give, which a
+        // Font reads through the text settings; null before the panel has resolved the rules.
+        private static FontAsset? DeclaredAsset(VisualElement element, UnityEngine.Object? inline)
         {
             if (inline is FontAsset asset)
             {
@@ -257,70 +269,21 @@ namespace Velvet
             }
 
             return inline is UnityEngine.Font font
-                ? StyleCascade.CachedFontAsset(declarer, font)
-                : StyleCascade.UnderlyingFontAsset(declarer, null);
-        }
-
-        // The font the element's parent resolves to; null before the panel has resolved one.
-        private static FontAsset? ParentFont(VisualElement element)
-        {
-            var asset = ChildListWrites.ParentOf(element)?.resolvedStyle.unityFontDefinition.fontAsset;
-            return LineBoxFont.SourceOf(asset) ?? asset;
-        }
-
-        private int LinkStamp(VisualElement link)
-        {
-            if (_inTick)
-            {
-                if (_linkStamps.TryGetValue(link, out var known))
-                {
-                    return known;
-                }
-            }
-
-            var style = link.style;
-            var definition = style.unityFontDefinition;
-            var stamp = HashCode.Combine(link, link.name, (int)definition.keyword, definition.value.fontAsset,
-                definition.value.font, (int)style.unityFont.keyword, style.unityFont.value);
-            stamp = HashCode.Combine(stamp, StyleCascade.PseudoStates(link));
-            stamp = VelvetStyleUtilities.ClassStamp(stamp, link);
-            for (var i = 0; i < link.styleSheets.count; i++)
-            {
-                stamp = VelvetStyleUtilities.SheetStamp(stamp, link.styleSheets[i]);
-            }
-
-            if (_inTick)
-            {
-                _linkStamps[link] = stamp;
-            }
-
-            return stamp;
-        }
-
-        // What decides element's font apart from the parent's resolved one, from element up to the ancestor naming a
-        // family: each element's inline font, name, classes and stylesheets, and the key the engine holds rule's
-        // matched rules under, which also moves with the inherited styles of rule's parent.
-        private int ChainStamp(VisualElement element, VisualElement? rule)
-        {
-            var stamp = 0;
-            for (var link = element; link != null && (link == element || !Families.ContainsKey(link)); link = ChildListWrites.ParentOf(link))
-            {
-                stamp = HashCode.Combine(stamp, LinkStamp(link));
-            }
-
-            return rule == null ? stamp : HashCode.Combine(stamp, StyleCascade.RulesHash(rule));
+                ? StyleCascade.CachedFontAsset(element, font)
+                : StyleCascade.UnderlyingFontAsset(element, null);
         }
 
         private bool Moved(VisualElement element, in Inheritor entry)
         {
-            if (entry.Named == null && ParentFont(element) != entry.Seen)
+            if (ParentPeek(element) != entry.Seen || InlineFontLedger.AuthorFont(element) != entry.Own)
             {
                 return true;
             }
 
-            if (entry.Chain is { } chain)
+            var rules = entry.Rules;
+            if (rules != null)
             {
-                return ChainStamp(element, entry.Rule) != chain;
+                return StyleCascade.RulesHash(element) != rules;
             }
 
             return false;
@@ -329,21 +292,16 @@ namespace Velvet
         private void Resolve(VisualElement element, in FontIntent intent, bool force)
         {
             var hadPrior = Inheritors.TryGetValue(element, out var prior);
-            var found = Locate(element, prior);
+            var found = Locate(element);
             var family = found.Named ?? VelvetFonts.FamilyOf(found.Source);
             var foreign = found.Named == null && found.Source != null && family == null;
-            var keep = foreign && found.Own != null;
-            var written = prior.Written;
-            if (force || !hadPrior || family != prior.Family || foreign != prior.Foreign || keep != prior.Keep)
+            if (force || !hadPrior || family != prior.Family || foreign != prior.Foreign)
             {
-                StyleFontResolver.ApplyResolved(element, intent, family, foreign, keep);
-                var inline = element.style.unityFontDefinition;
-                written = inline.keyword != StyleKeyword.Null && !keep ? inline.value.fontAsset : null;
-                _linkStamps.Remove(element);
+                StyleFontResolver.ApplyResolved(element, intent, family, foreign);
             }
 
-            Inheritors[element] = new Inheritor(intent, found.Named, found.Named == null ? ParentFont(element) : null, 0,
-                ChainStamp(element, found.Rule), found.Rule, found.Own, written, family, foreign, keep);
+            Inheritors[element] = new Inheritor(intent, found.Named, ParentPeek(element), 0, StyleCascade.RulesHash(element),
+                InlineFontLedger.AuthorFont(element), family, foreign);
             _wantsFollow = true;
         }
 
@@ -429,21 +387,6 @@ namespace Velvet
         private void Tick()
         {
             _buffer.Clear();
-            _linkStamps.Clear();
-            _inTick = true;
-            try
-            {
-                TickOnce();
-            }
-            finally
-            {
-                _inTick = false;
-                _linkStamps.Clear();
-            }
-        }
-
-        private void TickOnce()
-        {
             var any = false;
             foreach (var pair in Inheritors)
             {
@@ -476,7 +419,7 @@ namespace Velvet
             }
         }
 
-        // A child reads its font off its parent, so each unnamed inheritor directly under one resolved here is read again
+        // A child reads its font off its parent, so each inheritor directly under one resolved here is read again
         // straight after it, in this Tick rather than the next.
         private void ResolveDown(VisualElement element, in FontIntent intent, bool force)
         {
@@ -485,7 +428,7 @@ namespace Velvet
             for (var i = 0; i < count; i++)
             {
                 var child = element.hierarchy[i];
-                if (Inheritors.TryGetValue(child, out var entry) && entry.Named == null && ParentFont(child) != entry.Seen)
+                if (Inheritors.TryGetValue(child, out var entry) && ParentPeek(child) != entry.Seen)
                 {
                     ResolveDown(child, entry.Intent, false);
                 }

@@ -227,6 +227,7 @@ namespace Velvet
             element.style.unityFontDefinition = asset == null
                 ? new StyleFontDefinition(StyleKeyword.Null)
                 : new StyleFontDefinition(FontDefinition.FromSDFFont(asset));
+            InlineFontLedger.Wrote(element, asset);
         }
 
         private static bool InsideAnother(VisualElement element)
