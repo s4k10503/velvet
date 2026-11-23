@@ -105,6 +105,12 @@
         "failClosed": true
       },
       {
+        "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/harness/adapter.py\" cursor PreToolUse refuse/merge_off_milestone.py",
+        "timeout": 150.0,
+        "matcher": "Shell",
+        "failClosed": true
+      },
+      {
         "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/harness/adapter.py\" cursor PreToolUse refuse/pr_body_of_another_branch.py",
         "timeout": 15.0,
         "matcher": "Shell",

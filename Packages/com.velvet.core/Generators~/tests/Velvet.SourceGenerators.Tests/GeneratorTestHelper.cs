@@ -116,6 +116,13 @@ namespace Velvet
         public static void RegisterComponentDisplayName(string declaringTypeFullName, string methodName, string displayName) { }
     }
 
+    public static class PropsComparerRegistry
+    {
+        private static readonly global::System.Collections.Generic.Dictionary<global::System.Type, global::System.Func<object, object, bool>> s_comparers = new();
+        public static void Register(global::System.Type propsType, global::System.Func<object, object, bool> comparer) { s_comparers[propsType] = comparer; }
+        public static bool ValueEquals(object prev, object next) => object.Equals(prev, next);
+    }
+
     public static class Hooks
     {
         // Static API stubs for the positional hooks a functional-component test fixture may call. Every
@@ -272,7 +279,10 @@ namespace Velvet
         /// same V.Memoized overload set the package ships. The Velvet half is compiled at the latest version,
         /// as the package's own asmdefs are.
         /// </summary>
-        public static ConsumerRunResult RunAsCSharp9Consumer(string userSource)
+        public static ConsumerRunResult RunAsCSharp9Consumer(string userSource) =>
+            RunAsCSharp9Consumer(userSource, new MemoizeMethodGenerator());
+
+        public static ConsumerRunResult RunAsCSharp9Consumer(string userSource, IIncrementalGenerator consumerGenerator)
         {
             var velvet = CSharpCompilation.Create(
                 assemblyName: "Velvet",
@@ -294,7 +304,7 @@ namespace Velvet
                 references: ReferenceAssemblies().Append(MetadataReference.CreateFromImage(velvetImage)),
                 options: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, allowUnsafe: true));
             GeneratorDriver driver = CSharpGeneratorDriver.Create(
-                new[] { new MemoizeMethodGenerator().AsSourceGenerator() }, parseOptions: consumerParseOptions);
+                new[] { consumerGenerator.AsSourceGenerator() }, parseOptions: consumerParseOptions);
             driver = driver.RunGeneratorsAndUpdateCompilation(consumer, out var updated, out _);
 
             var errors = updated.GetDiagnostics()

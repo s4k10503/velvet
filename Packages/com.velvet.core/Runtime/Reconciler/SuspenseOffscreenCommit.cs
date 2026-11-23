@@ -90,6 +90,7 @@ namespace Velvet
                     SuspenseHiddenElements.Reveal(element);
                     Ctx.AttachRefsHiddenUnder(element);
                 }
+                FocusScopeDriver.FireDeferredAutoFocus(Ctx);
             }
             foreach (var element in _hidden)
             {

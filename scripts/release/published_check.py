@@ -316,6 +316,25 @@ def derived_version_reason(base_changelog, result_changelog, gained_since, tags=
     return None
 
 
+def published_versions(tags):
+    """The versions the remote's `vX.Y.Z` tags name, which is one per published release."""
+    return {tag[1:] for tag in tags if tag.startswith("v") and next_version.SEMVER.match(tag[1:])}
+
+
+def skipped_reason(base_changelog, result_changelog, tags=()):
+    """Why a version this change closes is not one of the `next_version.successors` of the newest
+    version published below it, or None."""
+    published = published_versions(tags)
+    for version in closing_versions(base_changelog, result_changelog, tags):
+        previous = next_version.skipped_from(published, version)
+        if previous:
+            return (f"{version} does not follow {previous}, the newest release below it, so "
+                    f"publishing it skips a version: what follows {previous} is "
+                    f"{', '.join(next_version.successors(previous))}, and "
+                    f"scripts/release/next_version.py prints which one this tree is.")
+    return None
+
+
 def publication_reason(changelog_text, package_json_text, tags):
     """Why nothing may be merged on top of this tree, or None.
 
@@ -544,6 +563,10 @@ def main():
                left_open_reason(composed_base, composed_result, tags),
                "closes a version over entries it leaves unreleased",
                "nothing this closes leaves an entry unreleased")
+        report(f"{args.base}..{args.result}",
+               skipped_reason(composed_base, composed_result, tags),
+               "closes a version that skips one",
+               "nothing this closes skips a version")
 
     return 1 if failed else 0
 
