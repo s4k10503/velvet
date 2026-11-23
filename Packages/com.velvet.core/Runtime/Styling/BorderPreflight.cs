@@ -967,6 +967,59 @@ namespace Velvet
             return false;
         }
 
+        // A sheet is read once, since reading the engine's flag boxes it on every call; a sheet read before the engine marked it a
+        // default one is read as an author's, which only lets a caller ask the matcher what it would have skipped.
+        private static readonly ConditionalWeakTable<StyleSheet, object> s_defaultSheets = new();
+
+        private static bool IsDefaultSheet(StyleSheet sheet)
+        {
+            if (!s_defaultSheets.TryGetValue(sheet, out var known))
+            {
+                known = (bool)s_isDefault!.GetValue(sheet);
+                s_defaultSheets.Add(sheet, known);
+            }
+
+            return (bool)known;
+        }
+
+        // Whether a stylesheet other than a default one is attached to element or to an element above it, which is where the
+        // matcher reads the rules it can find from; null where the matcher cannot be built. Lets a caller skip AuthorRuleSets,
+        // which allocates, where no rule of an author could match.
+        internal static bool? HasAuthorSheet(VisualElement element)
+        {
+            if (s_extractor == null) return null;
+
+            for (var link = element; link != null; link = link.hierarchy.parent)
+            {
+                for (var i = 0; i < link.styleSheets.count; i++)
+                {
+                    if (!IsDefaultSheet(link.styleSheets[i])) return true;
+                }
+            }
+            return false;
+        }
+
+        // Which font properties a rule of a non-default stylesheet matching element sets, from one run of the matcher: 1 for
+        // -unity-font-definition and 2 for the legacy -unity-font; null where the matcher cannot be built.
+        internal static int? AuthorRuleFonts(VisualElement element)
+        {
+            if (s_extractor == null) return null;
+
+            var found = 0;
+            foreach (var (_, _, name) in AuthorProperties(element))
+            {
+                if (name == "-unity-font-definition")
+                {
+                    found |= 1;
+                }
+                else if (name == "-unity-font")
+                {
+                    found |= 2;
+                }
+            }
+            return found;
+        }
+
         // Each property of each rule of a non-default stylesheet matching element, with the sheet the rule sits in and
         // the property's name. The matcher is cleared again however the walk ends.
         private static System.Collections.Generic.IEnumerable<(object Sheet, object Property, string Name)>
