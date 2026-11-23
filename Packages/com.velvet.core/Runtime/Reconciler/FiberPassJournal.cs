@@ -32,6 +32,67 @@ namespace Velvet
         }
     }
 
+    // What a fiber held in its previous and pending old trees and its Portal stamp.
+    internal readonly record struct FiberTrees(
+        VNode?[]? Previous, VNode?[]? PendingOld, UnityEngine.UIElements.VisualElement? OwningPortal);
+
+    // What a fiber held in the Suspense and offscreen marks, the fallback flags, the output a reconcile is writing,
+    // the presence it sits in, the discarded-mount flag and the marks of work waiting. Kept as a unit, as FiberInputs
+    // is, so that a write to any one of them records all.
+    internal readonly record struct FiberBoundaryState
+    {
+        internal bool IsOffscreen { get; init; }
+        internal UnityEngine.UIElements.VisualElement? HiddenUnder { get; init; }
+        internal ComponentFiber? OffscreenUnder { get; init; }
+        internal ComponentFiber? SuspenseFallbackOf { get; init; }
+        internal bool LayoutEffectsHidden { get; init; }
+        internal bool IsShowingFallback { get; init; }
+        internal bool FallbackReplacedPreviousTree { get; init; }
+        internal VNode?[]? ReconcilingTree { get; init; }
+        internal ReconcilerContext.PresenceBoundaryState? EnclosingPresence { get; init; }
+        internal string? EnclosingPresenceKey { get; init; }
+        internal bool MountDiscarded { get; init; }
+        internal bool ParkedPassSuspended { get; init; }
+        internal bool PendingWorkBelow { get; init; }
+        internal bool SuspendedInTransition { get; init; }
+
+        internal static FiberBoundaryState Of(ComponentFiber fiber) => new()
+        {
+            IsOffscreen = fiber.IsOffscreen,
+            HiddenUnder = fiber.HiddenUnder,
+            OffscreenUnder = fiber.OffscreenUnder,
+            SuspenseFallbackOf = fiber.SuspenseFallbackOf,
+            LayoutEffectsHidden = fiber.LayoutEffectsHidden,
+            IsShowingFallback = fiber.IsShowingFallback,
+            FallbackReplacedPreviousTree = fiber.FallbackReplacedPreviousTree,
+            ReconcilingTree = fiber.ReconcilingTree,
+            EnclosingPresence = fiber.EnclosingPresence,
+            EnclosingPresenceKey = fiber.EnclosingPresenceKey,
+            MountDiscarded = fiber.MountDiscarded,
+            ParkedPassSuspended = fiber.ParkedPassSuspended,
+            PendingWorkBelow = fiber.PendingWorkBelow,
+            SuspendedInTransition = fiber.SuspendedInTransition,
+        };
+
+        internal void WriteTo(ComponentFiber fiber)
+        {
+            fiber.IsOffscreen = IsOffscreen;
+            fiber.HiddenUnder = HiddenUnder;
+            fiber.OffscreenUnder = OffscreenUnder;
+            fiber.SuspenseFallbackOf = SuspenseFallbackOf;
+            fiber.LayoutEffectsHidden = LayoutEffectsHidden;
+            fiber.IsShowingFallback = IsShowingFallback;
+            fiber.FallbackReplacedPreviousTree = FallbackReplacedPreviousTree;
+            fiber.ReconcilingTree = ReconcilingTree;
+            fiber.EnclosingPresence = EnclosingPresence;
+            fiber.EnclosingPresenceKey = EnclosingPresenceKey;
+            fiber.MountDiscarded = MountDiscarded;
+            fiber.ParkedPassSuspended = ParkedPassSuspended;
+            fiber.PendingWorkBelow = PendingWorkBelow;
+            fiber.SuspendedInTransition = SuspendedInTransition;
+        }
+    }
+
     // An inline fiber a pass rendered in place, with what it held before the render.
     internal readonly record struct SubsumedRender(ComponentFiber Fiber, FiberInputs Before);
 
@@ -46,6 +107,16 @@ namespace Velvet
     {
         private readonly List<SuspenseRender> _hooks = new();
         private readonly List<SubsumedRender> _subsumed = new();
+        // What each fiber and tenancy held before the pass first wrote it. The write sites are the setters of
+        // ComponentFiber.MountSlotStart, MountSlotCount, PreviousTree, PendingOldTree, OwningPortalPlaceholder and
+        // the members of FiberBoundaryState, and of InlineTenancy.ShiftedRows, so a new write site of one of those
+        // members is journaled with the rest; a new member is not. Rollback reads them, Abandon does not, and Close
+        // discards them.
+        private readonly Dictionary<ComponentFiber, (int Start, int Count)> _slots = new();
+        private readonly Dictionary<InlineTenancy, int> _shiftedRows = new();
+        // The trees and the Portal stamp of a fiber are kept together: a write to any of the three records all of them.
+        private readonly Dictionary<ComponentFiber, FiberTrees> _trees = new();
+        private readonly Dictionary<ComponentFiber, FiberBoundaryState> _boundaries = new();
         private ComponentFiber? _owner;
 
         internal bool IsOpen => _owner != null;
@@ -70,6 +141,58 @@ namespace Velvet
             _subsumed.Add(new SubsumedRender(fiber, before));
         }
 
+        // Called by the setters before the first write of a pass, so the entry is the value the pass found.
+        internal void RecordSlots(ComponentFiber fiber)
+        {
+            if (_owner == null) return;
+            if (!_slots.ContainsKey(fiber)) _slots.Add(fiber, (fiber.MountSlotStart, fiber.MountSlotCount));
+        }
+
+        internal void RecordTrees(ComponentFiber fiber)
+        {
+            if (_owner == null) return;
+            if (!_trees.ContainsKey(fiber)) _trees.Add(fiber, new FiberTrees(fiber.PreviousTree, fiber.PendingOldTree, fiber.OwningPortalPlaceholder));
+        }
+
+        internal void RecordBoundary(ComponentFiber fiber)
+        {
+            if (_owner == null) return;
+            if (!_boundaries.ContainsKey(fiber)) _boundaries.Add(fiber, FiberBoundaryState.Of(fiber));
+        }
+
+        internal void RecordShiftedRows(InlineTenancy tenancy)
+        {
+            if (_owner == null) return;
+            _shiftedRows.TryAdd(tenancy, tenancy.ShiftedRows);
+        }
+
+        // Puts back what the pass wrote on the fiber side. Private until the drop that reads it lands; the pass-drop
+        // harness reaches it by reflection.
+        private void Rollback()
+        {
+            var slots = new List<KeyValuePair<ComponentFiber, (int Start, int Count)>>(_slots);
+            var shifted = new List<KeyValuePair<InlineTenancy, int>>(_shiftedRows);
+            var trees = new List<KeyValuePair<ComponentFiber, FiberTrees>>(_trees);
+            var boundaries = new List<KeyValuePair<ComponentFiber, FiberBoundaryState>>(_boundaries);
+            foreach (var (fiber, before) in slots)
+            {
+                fiber.MountSlotStart = before.Start;
+                fiber.MountSlotCount = before.Count;
+            }
+            foreach (var (tenancy, before) in shifted) tenancy.ShiftedRows = before;
+            foreach (var (fiber, before) in trees)
+            {
+                fiber.PreviousTree = before.Previous;
+                fiber.PendingOldTree = before.PendingOld;
+                fiber.OwningPortalPlaceholder = before.OwningPortal;
+            }
+            foreach (var (fiber, before) in boundaries) before.WriteTo(fiber);
+            _slots.Clear();
+            _shiftedRows.Clear();
+            _trees.Clear();
+            _boundaries.Clear();
+        }
+
         internal void Close()
         {
             try
@@ -84,6 +207,10 @@ namespace Velvet
             {
                 _hooks.Clear();
                 _subsumed.Clear();
+                _slots.Clear();
+                _shiftedRows.Clear();
+                _trees.Clear();
+                _boundaries.Clear();
                 _owner = null;
             }
         }
