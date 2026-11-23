@@ -184,6 +184,24 @@ namespace Velvet
             return null;
         }
 
+        // Whether asset is one a family named by family holds, family being one name or a list of them.
+        internal static bool NamedHolds(string family, FontAsset asset)
+        {
+            var names = VelvetFontStack.IsList(family) ? VelvetFontStack.Split(family) : new List<string> { family };
+            return names.Exists(name => NameHolds(name, asset));
+        }
+
+        private static bool NameHolds(string name, FontAsset asset)
+        {
+            if (name.StartsWith(VelvetFontStack.AddressPrefix, StringComparison.Ordinal))
+            {
+                TryLoadAddressableFont(name.Substring(VelvetFontStack.AddressPrefix.Length), out var loaded);
+                return loaded == asset;
+            }
+
+            return _families.TryGetValue(name, out var def) && def.Holds(asset, LoadAddress);
+        }
+
         /// <summary>True when a family with the given name is registered.</summary>
         public static bool IsRegistered(string? familyName) => NameKeyedRegistry.IsRegistered(familyName, _families);
 

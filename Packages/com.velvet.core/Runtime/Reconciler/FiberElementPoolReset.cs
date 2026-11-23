@@ -153,6 +153,7 @@ namespace Velvet
             AuthoredTransform.Release(element);
             ClearLateClearedStyle(element.style);
             element.style.Clear();
+            InlineFontLedger.Forget(element);
             SuspenseHiddenElements.Release(element);
 
             element.userData = null;

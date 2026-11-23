@@ -231,6 +231,14 @@ namespace Velvet
             return CachedFontAsset(element, inlineFont != null ? inlineFont : (UnityEngine.Font?)s_unityFont.GetValue(style));
         }
 
+        // The legacy font the rules and the parent give element beneath its inline one; null where there is none or the
+        // cached style cannot be read.
+        public static UnityEngine.Font? RulesLegacyFont(VisualElement element)
+        {
+            var style = s_unityFont != null ? Of(element) : null;
+            return style == null ? null : (UnityEngine.Font?)s_unityFont!.GetValue(style);
+        }
+
         // The font asset UI Toolkit draws font in for element, or its text settings' default where font is null.
         public static UnityEngine.TextCore.Text.FontAsset? CachedFontAsset(VisualElement element, UnityEngine.Font? font)
         {

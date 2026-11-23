@@ -24,14 +24,15 @@ namespace Velvet.Tests
         private FontAsset _sansBold;
         private FontAsset _serifBold;
         private FontAsset _monoBold;
+        private FontAsset _monoNormal;
 
         [SetUp]
         public void SetUp()
         {
             VelvetFonts.Clear();
-            _sansBold = Register("sans");
-            _serifBold = Register("serif");
-            _monoBold = Register("mono");
+            _sansBold = Register("sans", out _);
+            _serifBold = Register("serif", out _);
+            _monoBold = Register("mono", out _monoNormal);
             VelvetFonts.DefaultFamily = "sans";
             _host = new HeadlessEditorPanelHost();
         }
@@ -53,9 +54,9 @@ namespace Velvet.Tests
         }
 
         // Registers a family with a Normal and a Bold entry and returns the Bold asset.
-        private FontAsset Register(string name)
+        private FontAsset Register(string name, out FontAsset normal)
         {
-            var normal = NewAsset();
+            normal = NewAsset();
             var bold = NewAsset();
             VelvetFonts.Register(new VelvetFontFamily(name,
                 new VelvetFontWeightEntry { weight = VelvetFontWeight.Normal, upright = normal },
@@ -217,6 +218,117 @@ namespace Velvet.Tests
             Assert.That((ReferenceEquals(asset, _serifBold), pending.Count), Is.EqualTo((true, 0)));
         }
 
+        // The panel updates its styles, then runs its scheduler once, as one frame does.
+        private void RunAFrame()
+        {
+            EditorPanelTestHelpers.ForcePanelUpdate(_host.Panel);
+            EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
+        }
+
+        private static VNode FamilyContainerWithAnAuthoredMiddle(string labelClass) =>
+            V.Div(className: "font-sans", children: new[]
+            {
+                V.Div(name: "mid", children: new[] { Target(labelClass) }),
+            });
+
+        [Test]
+        public void Given_ABoldLabelInASansContainer_When_AnElementBetweenThemGainsAnInlineMonoFont_Then_TheLabelResolvesMonosBold()
+        {
+            // Arrange
+            _mounted = V.Mount(_host.Root, FamilyContainerWithAnAuthoredMiddle("font-bold"));
+            RunAFrame();
+
+            // Act
+            _host.Root.Q("mid").style.unityFontDefinition = FontDefinition.FromSDFFont(_monoNormal);
+            RunAFrame();
+
+            // Assert
+            Assert.That(TargetAsset(), Is.SameAs(_monoBold));
+        }
+
+        [Test]
+        public void Given_AnInlineMonoFontOnAnElementBetweenASansContainerAndALabel_When_TheLabelBecomesBold_Then_TheLabelResolvesMonosBold()
+        {
+            // Arrange
+            _mounted = V.Mount(_host.Root, FamilyContainerWithAnAuthoredMiddle("font-normal"));
+            _host.Root.Q("mid").style.unityFontDefinition = FontDefinition.FromSDFFont(_monoNormal);
+            RunAFrame();
+
+            // Act
+            _mounted.Render(FamilyContainerWithAnAuthoredMiddle("font-bold"));
+            RunAFrame();
+
+            // Assert
+            Assert.That(TargetAsset(), Is.SameAs(_monoBold));
+        }
+
+        [Test]
+        public void Given_ABoldLabelInASansContainer_When_ABoldElementBetweenThemGainsAnInlineMonoFont_Then_TheLabelResolvesMonosBold()
+        {
+            // Arrange
+            VNode Tree() => V.Div(className: "font-sans", children: new[]
+            {
+                V.Div(className: "font-bold", name: "mid", children: new[] { Target("font-bold") }),
+            });
+            _mounted = V.Mount(_host.Root, Tree());
+            RunAFrame();
+
+            // Act
+            _host.Root.Q("mid").style.unityFontDefinition = FontDefinition.FromSDFFont(_monoNormal);
+            RunAFrame();
+            RunAFrame();
+
+            // Assert
+            Assert.That(TargetAsset(), Is.SameAs(_monoBold));
+        }
+
+        // GREEN_ON_BASE(characterization): the base takes the nearest font-<name> ancestor's family. Replace
+        // `VelvetFonts.NamedHolds(family, parentAsset)` in Locate by `VelvetFonts.FamilyOf(parentAsset) == family` and the
+        // label takes the family that holds the container's write, the default one here, since the asset is registered
+        // under both.
+        [Test]
+        public void Given_AWeightContainerWhoseFaceTheDefaultFamilyAlsoHolds_When_ANormalLabelMountsInASerifContainer_Then_TheSerifFamilyDecides()
+        {
+            // Arrange
+            VelvetFonts.Clear();
+            var shared = NewAsset();
+            var serifNormal = NewAsset();
+            VelvetFonts.Register(new VelvetFontFamily("serif",
+                new VelvetFontWeightEntry { weight = VelvetFontWeight.Normal, upright = serifNormal },
+                new VelvetFontWeightEntry { weight = VelvetFontWeight.Bold, upright = shared }));
+            VelvetFonts.Register(new VelvetFontFamily("sans",
+                new VelvetFontWeightEntry { weight = VelvetFontWeight.Normal, upright = NewAsset() },
+                new VelvetFontWeightEntry { weight = VelvetFontWeight.Bold, upright = shared }));
+            VelvetFonts.DefaultFamily = "sans";
+            var tree = V.Div(className: "font-serif", children: new VNode[]
+            {
+                V.Div(className: "font-bold", children: new[] { Target("font-normal") }),
+            });
+
+            // Act
+            _mounted = V.Mount(_host.Root, tree);
+            RunAFrame();
+
+            // Assert
+            Assert.That(TargetAsset(), Is.SameAs(serifNormal));
+        }
+
+        [Test]
+        public void Given_ALabelWithAnInlineMonoFontInASansContainer_When_ItBecomesBold_Then_TheLabelResolvesMonosBold()
+        {
+            // Arrange
+            _mounted = V.Mount(_host.Root, V.Div(className: "font-sans", children: new[] { Target("font-normal") }));
+            RunAFrame();
+            _host.Root.Q<Label>("target").style.unityFontDefinition = FontDefinition.FromSDFFont(_monoNormal);
+
+            // Act
+            _mounted.Render(V.Div(className: "font-sans", children: new[] { Target("font-bold") }));
+            RunAFrame();
+
+            // Assert
+            Assert.That(TargetAsset(), Is.SameAs(_monoBold));
+        }
+
         // GREEN_ON_BASE(characterization): the family a label names itself still wins over an ancestor's.
         [Test]
         public void Given_ALabelNamingItsOwnFamily_When_MountedInAFamilyContainer_Then_ItsOwnFamilyDecides()
@@ -368,6 +480,196 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(scope.Inheritors[element].Wait, Is.EqualTo(1));
+        }
+
+
+        // GREEN_ON_BASE(characterization): the base resolves a bold label under font-sans to sans Bold. Drop
+        // `InlineFontLedger.Wrote(element, asset, author)` from the asset branch of ApplyResolved and the serif write the
+        // label's former class made is read as the author's, and the label stays serif.
+        [Test]
+        public void Given_ALabelNamingSerifAndBold_When_ItsClassBecomesBoldAlone_Then_TheSansContainersFamilyDecides()
+        {
+            // Arrange
+            VNode Tree(string className) => V.Div(className: "font-sans", children: new[] { Target(className) });
+            _mounted = V.Mount(_host.Root, Tree("font-serif font-bold"));
+            RunAFrame();
+
+            // Act
+            _mounted.Render(Tree("font-bold"));
+            RunAFrame();
+
+            // Assert
+            Assert.That(TargetAsset(), Is.SameAs(_sansBold));
+        }
+
+        [Test]
+        public void Given_ABoldLabelWhoseInlineFontTheAuthorSetAfterTheClassWrote_When_TheFontClassIsRemoved_Then_TheInlineFontStays()
+        {
+            // Arrange
+            _mounted = V.Mount(_host.Root, V.Div(children: new[] { Target("font-bold") }));
+            RunAFrame();
+            _host.Root.Q<Label>("target").style.unityFontDefinition = FontDefinition.FromSDFFont(_monoNormal);
+
+            // Act
+            _mounted.Render(V.Div(children: new[] { Target(string.Empty) }));
+            RunAFrame();
+
+            // Assert
+            Assert.That(TargetAsset(), Is.SameAs(_monoNormal));
+        }
+
+        [Test]
+        public void Given_ALabelWhoseInlineFontTheBoldClassReplaced_When_TheFontClassIsRemoved_Then_TheAuthorsInlineFontIsBack()
+        {
+            // Arrange
+            _mounted = V.Mount(_host.Root, V.Div(children: new[] { Target(string.Empty) }));
+            RunAFrame();
+            _host.Root.Q<Label>("target").style.unityFontDefinition = FontDefinition.FromSDFFont(_monoNormal);
+            _mounted.Render(V.Div(children: new[] { Target("font-bold") }));
+            RunAFrame();
+
+            // Act
+            _mounted.Render(V.Div(children: new[] { Target(string.Empty) }));
+            RunAFrame();
+
+            // Assert
+            Assert.That(TargetAsset(), Is.SameAs(_monoNormal));
+        }
+
+
+        // A tree whose label is in the scope's tables before the element between it and the container: the element
+        // gains its weight class in a patch after the label already inherits.
+        private void MountLabelBeforeMiddleIsAnInheritor(string containerClass)
+        {
+            VNode Tree(string container, string middle) => V.Div(className: container, children: new VNode[]
+            {
+                V.Div(className: middle, children: new[] { Target("font-bold") }),
+            });
+            _mounted = V.Mount(_host.Root, Tree(containerClass, string.Empty));
+            RunAFrame();
+            _mounted.Render(Tree(containerClass, "font-normal"));
+            RunAFrame();
+        }
+
+        // GREEN_ON_BASE(characterization): the base resolves a bold label under a font-<name> ancestor the moment that
+        // class changes, with a weight element between them. Settle the pending inheritors in `_pending`'s own order
+        // instead of SettleInTreeOrder and the label, which entered the set before the element, settles first and reads
+        // the element's old font.
+        [Test]
+        public void Given_AWeightElementBetweenAFamilyContainerAndABoldLabel_When_TheContainersFamilyChanges_Then_TheLabelFollowsAtOnce()
+        {
+            // Arrange
+            MountLabelBeforeMiddleIsAnInheritor("font-serif");
+            VNode Tree(string containerClass) => V.Div(className: containerClass, children: new VNode[]
+            {
+                V.Div(className: "font-normal", children: new[] { Target("font-bold") }),
+            });
+
+            // Act
+            _mounted.Render(Tree("font-mono"));
+
+            // Assert
+            Assert.That(TargetAsset(), Is.SameAs(_monoBold));
+        }
+
+        // GREEN_ON_BASE(characterization): the base writes the re-registered family's Bold on the label at once. Walk
+        // `Inheritors.Keys` in its own order in Refresh instead of InTreeOrder and the label, which entered the table
+        // before the element between it and the container, resolves first against that element's old face.
+        [Test]
+        public void Given_AWeightElementBetweenAFamilyContainerAndABoldLabel_When_TheContainersFamilyIsRegisteredAgain_Then_TheLabelResolvesTheNewBoldAtOnce()
+        {
+            // Arrange
+            MountLabelBeforeMiddleIsAnInheritor("font-serif");
+            var replacement = NewAsset();
+
+            // Act
+            VelvetFonts.Register(new VelvetFontFamily("serif",
+                new VelvetFontWeightEntry { weight = VelvetFontWeight.Normal, upright = NewAsset() },
+                new VelvetFontWeightEntry { weight = VelvetFontWeight.Bold, upright = replacement }));
+
+            // Assert
+            Assert.That(TargetAsset(), Is.SameAs(replacement));
+        }
+
+        // GREEN_ON_BASE(characterization): the base keeps the list a container names for the label under it. Read the list
+        // as a single name in `VelvetFonts.NamedHolds` and the label's resolve takes the family of the container's font,
+        // which appends no fallback to the Bold it writes.
+        [Test]
+        public void Given_AContainerNamingAFontListWhoseFirstNameHoldsNoFont_When_ItsLabelsWeightChanges_Then_TheLabelKeepsTheListsFallbacks()
+        {
+            // Arrange
+            VNode Tree(string labelClass) => V.Div(className: "font-[ghost,mono,serif]", children: new[] { Target(labelClass) });
+            _mounted = V.Mount(_host.Root, Tree("font-bold"));
+            RunAFrame();
+            _monoBold.fallbackFontAssetTable?.Clear();
+
+            // Act
+            _mounted.Render(Tree("font-black"));
+            RunAFrame();
+
+            // Assert
+            Assert.That(_monoBold.fallbackFontAssetTable, Does.Contain(_serifBold));
+        }
+
+        // GREEN_ON_BASE(characterization): the base writes no asset for a family nothing is registered under. Drop
+        // `!VelvetFonts.Resolve(family, VelvetFontWeight.Normal, false).HasAsset` from `kept` in Locate and the label takes
+        // the default family's Bold, the font the unnamed container inherits.
+        [Test]
+        public void Given_AFamilyContainerNamingNoRegisteredFamily_When_ABoldLabelMounts_Then_TheLabelWritesNoAsset()
+        {
+            // Arrange
+            var tree = V.Div(className: "font-ghost", children: new[] { Target("font-bold") });
+
+            // Act
+            _mounted = V.Mount(_host.Root, tree);
+            RunAFrame();
+            RunAFrame();
+
+            // Assert
+            Assert.That(_host.Root.Q<Label>("target").style.unityFontDefinition.keyword, Is.EqualTo(StyleKeyword.Null));
+        }
+
+        [Test]
+        public void Given_AFontListNamingTwoFamilies_When_AskedWhetherItHoldsTheSecondsFont_Then_ItDoes()
+        {
+            // Act
+            var holds = VelvetFonts.NamedHolds("serif,mono", _monoBold);
+
+            // Assert
+            Assert.That(holds, Is.True);
+        }
+
+        [Test]
+        public void Given_AFontListNamingTwoFamilies_When_AskedWhetherItHoldsAThirdFamilysFont_Then_ItDoesNot()
+        {
+            // Act
+            var holds = VelvetFonts.NamedHolds("serif,mono", _sansBold);
+
+            // Assert
+            Assert.That(holds, Is.False);
+        }
+
+        [Test]
+        public void Given_ALabelWhoseInlineFontTheBoldClassReplacedAndALineBoxCopyOfThatWrite_When_TheFontClassIsRemoved_Then_TheAuthorsInlineFontIsBack()
+        {
+            // Arrange
+            _mounted = V.Mount(_host.Root, V.Div(children: new[] { Target(string.Empty) }));
+            RunAFrame();
+            var label = _host.Root.Q<Label>("target");
+            label.style.unityFontDefinition = FontDefinition.FromSDFFont(_monoNormal);
+            _mounted.Render(V.Div(children: new[] { Target("font-bold") }));
+            RunAFrame();
+            var user = new object();
+            var copy = LineBoxFont.Acquire(user, _monoBold, 24f, 16f);
+            label.style.unityFontDefinition = FontDefinition.FromSDFFont(copy);
+
+            // Act
+            _mounted.Render(V.Div(children: new[] { Target(string.Empty) }));
+            RunAFrame();
+            LineBoxFont.Release(user, copy);
+
+            // Assert
+            Assert.That(TargetAsset(), Is.SameAs(_monoNormal));
         }
 
         #endregion
