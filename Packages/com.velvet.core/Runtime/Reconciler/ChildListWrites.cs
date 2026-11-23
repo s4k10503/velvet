@@ -744,7 +744,8 @@ namespace Velvet
                     || (child.hierarchy.parent is { } live && pass.PendingContainers.ContainsKey(live)))) ? pass : null;
         }
 
-        // Puts the recorded writes on the live lists in the order they were made and ends recording. An op that throws
+        // Puts the recorded writes on the live lists in the order they were made. Recording goes on: only EndRecording
+        // ends it, and a flush made mid-pass applies what is recorded while the pass keeps recording. An op that throws
         // does not stop the ones behind it: the walk has moved on from each of them, so the live tree has to take every
         // one, and the first exception is rethrown once they have.
         private static void Apply(ReconcilePass pass)

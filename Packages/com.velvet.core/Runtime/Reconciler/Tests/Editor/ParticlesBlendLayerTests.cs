@@ -247,6 +247,24 @@ namespace Velvet.Tests
             Assert.That(binding.LiveExtentLocal, Is.EqualTo(new Rect(0f, 0f, 30f, 40f)));
         }
 
+        // GREEN_ON_BASE(characterization): a layer already at its index is left in place by every tick, as before.
+        // Change `layers[i].parent != element` to `layers[i].parent == element` in SyncLayers and each tick takes the
+        // layer off the panel and puts it back.
+        [Test]
+        public void Given_ABlendLayerAlreadyAtItsIndex_When_TheTickArrangesTwice_Then_ItIsNeverTakenOffThePanel()
+        {
+            // Arrange
+            var binding = MountAndPresetTwoExtents("fx-layer-stays");
+            var detaches = 0;
+            binding.Layers[0].RegisterCallback<DetachFromPanelEvent>(_ => detaches++);
+
+            // Act
+            AdvanceTicks(2);
+
+            // Assert — read as -1 where the ticks did not arrange, which the live extent they leave tells.
+            Assert.That(binding.LiveExtentLocal == new Rect(0f, 0f, 30f, 40f) ? detaches : -1, Is.Zero);
+        }
+
         // GREEN_ON_BASE(characterization): every tick marks the blend layers for repaint along with the element, as before.
         [Test]
         public void Given_ALiveEffectWithABlendLayer_When_TheTickFires_Then_TheLayerRepaints()

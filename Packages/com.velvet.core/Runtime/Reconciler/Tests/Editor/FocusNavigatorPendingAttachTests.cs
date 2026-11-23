@@ -98,6 +98,24 @@ namespace Velvet.Tests
                 Is.True);
         }
 
+        // GREEN_ON_BASE(refactor): the base's hook unregisters itself in its handler, so a second attach event
+        // finds nothing there either; registering it Once moves that off the handler.
+        [Test]
+        public void Given_ADeferredAttachThatFired_When_AnotherAttachEventReachesTheElement_Then_TheNavigatorIsNotAttachedAgain()
+        {
+            // Arrange — the attachment is dropped after the first event, so a handler that ran again would make it anew.
+            FiberFocusNavigator.EnsureAttached(_element, _reconciler.Context);
+            _window.rootVisualElement.Add(_element);
+            _reconciler.Context.NavigatorAttachments.Clear();
+
+            // Act
+            using var again = AttachToPanelEvent.GetPooled();
+            _element.SimulateEvent(again);
+
+            // Assert
+            Assert.That(_reconciler.Context.NavigatorAttachments, Is.Empty);
+        }
+
         // GREEN_ON_BASE(refactor): the base's DetachAll unregisters a hook that never fired too; moving
         // it onto NavigatorPendingAttach has to keep that.
         [Test]
