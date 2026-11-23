@@ -25,10 +25,6 @@ namespace Velvet
         void HoldRowLayoutEffects();
         void CommitHeldRowLayoutEffects();
 
-        // A range render outside a pass is a render of its own: react-window's scroll and resize renders are state
-        // updates, and React flushes pending passive effects before it renders one.
-        void FlushPendingPassiveEffectsForController();
-
         // The bridge context's scheduler, which owns the controller's range as an entry (FiberExecutionContext).
         FiberBatchScheduler SchedulerForController { get; }
 

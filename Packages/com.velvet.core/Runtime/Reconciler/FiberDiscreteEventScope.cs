@@ -42,7 +42,7 @@ namespace Velvet
                 {
                     FiberWorkLoop.IsInDiscreteEvent = wasInDiscreteEvent;
                 }
-                if (!wasInDiscreteEvent) batchScheduler?.FlushDiscreteEvent();
+                if (!wasInDiscreteEvent) batchScheduler?.FlushImmediate();
             }
         }
     }

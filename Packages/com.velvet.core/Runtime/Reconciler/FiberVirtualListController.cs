@@ -286,8 +286,6 @@ namespace Velvet
 
         private void RenderRange(int newFirst, int newLast)
         {
-            // Inside a pass or a drain the scheduler's gate makes this a no-op.
-            _reconciler.FlushPendingPassiveEffectsForController();
             // A row's refs and layout effects read the row, which is in the list only once RebuildVisibleContainer
             // places it. Committed after DisposeUntakenRows too, so a recycled item's ref cleanup runs before the
             // setup of whatever took its place.

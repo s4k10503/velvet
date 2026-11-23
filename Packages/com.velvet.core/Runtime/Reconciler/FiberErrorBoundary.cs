@@ -263,10 +263,12 @@ namespace Velvet
             if (isRenderError && fiber.CatchesInTheWalk) return CatchInTheWalk(fiber, throwingFiber, exception);
             if (FiberExecutionContext.IsSet) return SwapInTheFallback(fiber, throwingFiber, exception, isRenderError);
             // A failure delivered with no entry on the stack (a UseFrame callback's, say) opens one, since the swap
-            // renders and commits.
+            // renders and commits. The passive flush the entry starts with can unmount the boundary, which then
+            // catches nothing.
             return FiberExecutionContext.Enter(fiber.Reconciler.Context.BatchScheduler,
                 (Fiber: fiber, Thrower: throwingFiber, Error: exception, IsRenderError: isRenderError),
-                static failure => SwapInTheFallback(failure.Fiber, failure.Thrower, failure.Error, failure.IsRenderError));
+                static failure => failure.Fiber.Reconciler != null
+                    && SwapInTheFallback(failure.Fiber, failure.Thrower, failure.Error, failure.IsRenderError));
         }
 
         private static bool SwapInTheFallback(

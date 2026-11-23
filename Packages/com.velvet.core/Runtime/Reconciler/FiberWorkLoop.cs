@@ -730,15 +730,15 @@ namespace Velvet
                     static resumed => ContinueReconcile(resumed));
                 return;
             }
-            FiberExecutionContext.Enter(scheduler, fiber, static resumed => ContinueReconcileWork(resumed));
+            // Read before the entry: its start runs the passive effects whose updates render ahead of the resume.
+            FiberExecutionContext.Enter(scheduler, (Fiber: fiber, Intake: scheduler?.ImmediateIntake ?? 0),
+                static resumed => ContinueReconcileWork(resumed.Fiber, resumed.Intake));
         }
 
-        private static void ContinueReconcileWork(ComponentFiber fiber)
+        private static void ContinueReconcileWork(ComponentFiber fiber, int intake)
         {
-            // A resumed slice renders, so pending passive effects run before it as they do before a drain
-            // (FiberBatchScheduler.Drain), and ahead of the guards below, which read what those effects leave.
-            fiber.Reconciler?.Context.BatchScheduler.FlushPendingPassiveEffectsAheadOfAResume();
-            // Ahead of the guards below, since the flush can unmount the fiber or finish its pass.
+            // Both ahead of the guards below, since each can unmount the fiber or finish its pass.
+            fiber.Reconciler?.Context.BatchScheduler.FlushUpdatesQueuedAheadOfAResume(intake);
             fiber.Reconciler?.Context.BatchScheduler.FlushOwedExternalStoreRendersWork();
             if (!fiber.IsMounted) return;
             if (fiber.Reconciler == null) return;

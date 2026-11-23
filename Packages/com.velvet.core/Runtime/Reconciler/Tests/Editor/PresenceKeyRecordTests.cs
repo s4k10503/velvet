@@ -50,6 +50,9 @@ namespace Velvet.Tests
             s_exitCallbacks = new List<int>();
         }
 
+        // GREEN_ON_BASE(characterization): the base put both finished exits back in their order after the abort as well.
+        // The removing render goes through one drain, since a later fiber's door in FlushStateForTest's walk would run
+        // the settles and render the owner's drop before the render the boundary aborts.
         [Test]
         public void Given_TwoFinishedExitsWhoseDropAnAbortedRenderSkipped_When_TheDropIsPutBack_Then_TheCommittedChildrenKeepTheirOrder()
         {
@@ -58,7 +61,7 @@ namespace Velvet.Tests
             s_abortAt = 2;
             using var mounted = Mount();
             s_setTick.Invoke(1);
-            mounted.FlushStateForTest();
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
             mounted.FlushEffectsForTest();
 
             // Act — the render dropping both is the one the boundary aborts
@@ -90,15 +93,15 @@ namespace Velvet.Tests
             Assert.That(CommittedKeys(mounted), Is.EqualTo("x,y,k"));
         }
 
-        // GREEN_ON_BASE(characterization): the base's state flush already left both exits waiting on the passive flush.
-        // FlushStateForTest now runs pending passive effects first, so the act takes the variant that does not.
+        // GREEN_ON_BASE(characterization): the base put the withheld key's records back after the abort as well.
+        // A settle a committed removal staged now runs where the next entry starts, ahead of the next render, so the
+        // removing render is aborted as well, which takes its settles back and leaves both exits pending.
         [TestCase("Exiting")]
         [TestCase("PendingSettles")]
         public void Given_AWaitModeRenderWithholdingAKeyStillLeavingThatAnAbortStopped_When_ItsRemovalsArePutBack_Then_ThePresenceHoldsTheKeysRecordAgain(
             string record)
         {
-            // Arrange — "x" and "k" leave with nothing to animate, and both exits wait on a passive flush nothing here
-            // runs
+            // Arrange — "x" and "k" leave with nothing to animate in a render one boundary aborts
             s_mode = AnimatePresenceMode.Wait;
             s_children = tick => tick switch
             {
@@ -106,14 +109,13 @@ namespace Velvet.Tests
                 1 => Array.Empty<VNode>(),
                 _ => new[] { Plain("x") },
             };
-            s_abortAt = 2;
-            using var mounted = Mount();
+            using var mounted = V.Mount(_root, V.Component(TwiceAbortingHostRender, key: "host"), CaughtErrors.Unlogged);
             s_setTick.Invoke(1);
             mounted.FlushStateForTest();
 
-            // Act — "x" comes back while "k" is still leaving, so the render withholds it, and the boundary aborts it
+            // Act — "x" comes back while "k" is still leaving, so the render withholds it, and the other boundary aborts it
             s_setTick.Invoke(2);
-            mounted.FlushStateKeepingPassiveEffectsForTest();
+            mounted.FlushStateForTest();
 
             // Assert
             Assert.That(Holds(mounted, record, "x"), Is.True);
@@ -385,6 +387,20 @@ namespace Velvet.Tests
                 s_abortAt == int.MaxValue
                     ? null
                     : V.Component(AbortingBoundaryRender, tick >= s_abortAt ? 1 : 0, key: "o"),
+            });
+        }
+
+        // As HostRender with one boundary aborting the render at tick 1 and another the render at tick 2.
+        [Component(Compiler = false)]
+        private static VNode TwiceAbortingHostRender()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setTick = setTick;
+            return V.Div(children: new VNode[]
+            {
+                V.Component(PresenceOwnerRender, tick, key: "p"),
+                V.Component(AbortingBoundaryRender, tick >= 1 ? 1 : 0, key: "o1"),
+                V.Component(AbortingBoundaryRender, tick >= 2 ? 1 : 0, key: "o2"),
             });
         }
 
