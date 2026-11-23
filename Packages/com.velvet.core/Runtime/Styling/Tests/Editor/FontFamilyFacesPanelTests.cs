@@ -91,14 +91,9 @@ namespace Velvet.Tests
         {
             var ruled = NewAsset();
             var ruledBold = NewAsset();
-            // The asset database refuses to save an object flagged DontSaveInEditor, so none of what is saved carries it.
-            ruled.hideFlags = HideFlags.None;
-            foreach (var atlas in ruled.atlasTextures)
-            {
-                atlas.hideFlags = HideFlags.None;
-            }
-
-            ruled.material.hideFlags = HideFlags.None;
+            // Made from the built-in font, the asset is given the operating system's fonts as fallbacks, built for one editor
+            // session and not saved with an asset; the asset database refuses to save one flagged so.
+            ruled.fallbackFontAssetTable?.Clear();
             AssetDatabase.CreateAsset(ruled, RuledPath);
             AssetDatabase.AddObjectToAsset(ruled.atlasTexture, ruled);
             AssetDatabase.AddObjectToAsset(ruled.material, ruled);
@@ -561,6 +556,57 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(holds, Is.True);
+        }
+
+        [Test]
+        public void Given_ABoldLabelUnderAnAncestorWithAnInlineLegacyFont_When_ItMountsUnderADefaultFamily_Then_TheLabelsDefinitionIsThatLegacyFont()
+        {
+            // Arrange
+            VelvetFonts.DefaultFamily = "sans";
+            var legacy = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            var root = new VisualElement();
+            _host.Root.Add(root);
+
+            // Act
+            _mounted = V.Mount(root, V.Div(children: new[]
+            {
+                V.Div(name: "mid", children: new[] { V.Label(className: "font-bold", text: "target", name: "target") }),
+            }));
+            root.Q("mid").style.unityFont = legacy;
+            RunAFrame();
+
+            // Assert
+            Assert.That(Target(root).style.unityFontDefinition.value.font, Is.Not.Null.And.SameAs(legacy));
+        }
+
+        // GREEN_ON_BASE(characterization): the base takes its write off with the class whatever copies it. Leave
+        // `LineBoxFont.SourceOf(shown.fontAsset)` out of WrittenFont in the ledger and the copy of the legacy write reads as
+        // the author's, which the removal then leaves on the label.
+        [Test]
+        public void Given_ALabelWhoseLegacyFontWriteWasCopiedByALineBoxFont_When_ItsFontClassIsRemoved_Then_TheWriteIsTakenOff()
+        {
+            // Arrange
+            VelvetFonts.DefaultFamily = "sans";
+            var legacy = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            var root = new VisualElement();
+            _host.Root.Add(root);
+            _mounted = V.Mount(root, ClassedBoldLabel(string.Empty));
+            RunAFrame();
+            var label = Target(root);
+            label.style.unityFont = legacy;
+            _mounted.Render(ClassedBoldLabel("font-bold"));
+            RunAFrame();
+            var user = new object();
+            var copy = LineBoxFont.Acquire(user, StyleCascade.CachedFontAsset(label, legacy), 24f, 16f);
+            label.style.unityFontDefinition = FontDefinition.FromSDFFont(copy);
+
+            // Act
+            _mounted.Render(ClassedBoldLabel(string.Empty));
+            RunAFrame();
+            LineBoxFont.Release(user, copy);
+
+            // Assert
+            Assert.That(label.style.unityFontDefinition.keyword, Is.EqualTo(StyleKeyword.Null));
         }
     }
 }

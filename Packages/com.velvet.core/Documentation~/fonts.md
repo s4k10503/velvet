@@ -136,10 +136,11 @@ entry of `serif`.
 - The element's own font decides first: an inline font the author gave it, or a rule of a stylesheet other than a default
   one that sets its `-unity-font-definition` or the legacy `-unity-font`. The class writes the registered face of that
   font's family, and a font no registered family holds is left in place with the weight or italic emulated on it. A
-  legacy `-unity-font` of that kind, on the element or on an ancestor between it and the root, is written as the
-  element's definition when no family holds it, since the engine draws a definition inherited from above, the default
-  family's among them, ahead of a legacy font. An inline font the class replaced is given back when the last font class
-  is removed.
+  legacy `-unity-font` of that kind is written as the element's definition, since the engine draws a definition
+  inherited from above, the default family's among them, ahead of a legacy font. That holds for one the element
+  itself has, and for one an ancestor has, inline or by a rule, below the nearest ancestor that names a family: the walk
+  stops at an ancestor that names a family, at one with a font class of its own, and at one with a definition of the
+  author's. An inline font the class replaced is given back when the last font class is removed.
 - Otherwise the font the element's parent resolves to decides, as the engine's cascade gives it, wherever the rule,
   class, pseudo-state or inline style that set it sits (a descendant or sibling selector included, and a stylesheet
   attached above the element). The family is the one that holds that font, and one no registered family holds is kept in

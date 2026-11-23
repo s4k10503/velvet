@@ -5,5 +5,6 @@
   face rather than the parent's; removing the font classes gives an inline font the class replaced back. Otherwise the
   font the parent resolves to decides, so an author font set on an element between the element and its `font-<name>`
   ancestor, by a rule, a class, a pseudo-state or inline style, wins over that ancestor's class. A font given as a font
-  file, or by the legacy `-unity-font`, decides too, and where no registered family holds it the author's font stays,
-  with the weight or italic emulated on it. A change reaches the element within the next updates of its panel.
+  file, or by the legacy `-unity-font` on the element or an ancestor, decides too. Where no registered family holds
+  it, the element's definition is that font, written over a definition inherited from above, with the weight or italic
+  emulated on it. A change reaches the element within the next updates of its panel.

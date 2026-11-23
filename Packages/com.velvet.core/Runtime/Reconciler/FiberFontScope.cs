@@ -28,9 +28,11 @@ namespace Velvet
     // there being no event of its own for a stylesheet, a class or a pseudo-state changing a font above an element. What
     // an author can change on the element itself without one is read the same way: its inline font and the key the
     // engine holds its matched rules under. That key also moves with the inherited styles of its parent, so a move of it
-    // resolves the element again only where the fonts its rules and parent give it differ (RuleKey), read only where a
-    // stylesheet other than a default one is attached above the element. A resolve asks the engine's rule matcher
-    // (BorderPreflight.AuthorRuleSets) for the element's own rule; where it cannot be built, only inline fonts are read.
+    // resolves the element again only where the fonts its rules and parent give it differ (RuleKey, two reads of the
+    // engine's cached style), read only where a stylesheet other than a default one is attached above the element. A
+    // resolve asks the engine's rule matcher (BorderPreflight.AuthorRuleFonts) for the element's own rules and, where
+    // the parent resolves a definition and a legacy font, once for each ancestor up to the one naming a family, an
+    // inheritor or an author's definition (AncestorLegacy); where the matcher cannot be built, only inline fonts are read.
     //
     // A change to the registry resolves every element the tables hold again: one naming a family, or inheriting a
     // named one, at once; one inheriting its parent's font once that font has been read again.
@@ -271,8 +273,8 @@ namespace Velvet
         {
             var own = InlineFontLedger.AuthorFont(element);
             var sheeted = BorderPreflight.HasAuthorSheet(element) == true;
-            var ruledDefinition = own == null && sheeted && BorderPreflight.AuthorRuleSets(element, s_definition) == true;
-            if (own != null || ruledDefinition)
+            var rules = own == null && sheeted ? BorderPreflight.AuthorRuleFonts(element) ?? 0 : 0;
+            if (own != null || (rules & 1) != 0)
             {
                 var inlineLegacy = own as UnityEngine.Font;
                 if (inlineLegacy != null && InlineFontLedger.AuthorDefinition(element) != null)
@@ -283,14 +285,14 @@ namespace Velvet
                 return new Located(null, DeclaredAsset(element, own), inlineLegacy);
             }
 
-            if (sheeted && BorderPreflight.AuthorRuleSets(element, s_legacy) == true)
+            if ((rules & 2) != 0)
             {
                 return Declared(element, StyleCascade.RulesLegacyFont(element));
             }
 
             var peek = ParentPeek(element);
             var named = NamedAncestor(element);
-            var ancestorLegacy = sheeted ? AncestorLegacy(element, named) : null;
+            var ancestorLegacy = AncestorLegacy(element, named, sheeted);
             if (ancestorLegacy != null)
             {
                 return Declared(element, ancestorLegacy);
@@ -316,13 +318,22 @@ namespace Velvet
         private static Located Declared(VisualElement element, UnityEngine.Font? font)
             => new(null, font == null ? null : StyleCascade.CachedFontAsset(element, font), font);
 
-        // The legacy font an author's rule gives the nearest ancestor that sets one, below the one naming a family, when no
-        // definition between that ancestor and the element is declared by an author or written by Velvet, since such a
-        // definition decides instead. Looked for only where the parent resolves a legacy font.
-        private UnityEngine.Font? AncestorLegacy(VisualElement element, VisualElement? named)
+        // The legacy font an author gives the nearest ancestor that sets one, inline or by a rule, below the one naming a
+        // family. The walk stops at an ancestor that is a family member or an inheritor, or that has a definition of the
+        // author's, since that definition decides instead. It is made only where the parent resolves a definition, which
+        // the engine draws ahead of a legacy font, and a legacy font. An ancestor's rules are asked of the matcher once,
+        // and only where a stylesheet other than a default one is attached.
+        private UnityEngine.Font? AncestorLegacy(VisualElement element, VisualElement? named, bool sheeted)
         {
             var parent = ChildListWrites.ParentOf(element);
-            if (parent == null || parent.resolvedStyle.unityFont == null)
+            if (parent == null)
+            {
+                return null;
+            }
+
+            var resolved = parent.resolvedStyle;
+            var definition = resolved.unityFontDefinition;
+            if (resolved.unityFont == null || (definition.fontAsset == null && definition.font == null))
             {
                 return null;
             }
@@ -330,13 +341,24 @@ namespace Velvet
             for (var ancestor = parent; ancestor != null && ancestor != named; ancestor = ChildListWrites.ParentOf(ancestor))
             {
                 if (Families.ContainsKey(ancestor) || Inheritors.ContainsKey(ancestor)
-                    || InlineFontLedger.AuthorDefinition(ancestor) != null
-                    || BorderPreflight.AuthorRuleSets(ancestor, s_definition) == true)
+                    || InlineFontLedger.AuthorDefinition(ancestor) != null)
                 {
                     return null;
                 }
 
-                if (BorderPreflight.AuthorRuleSets(ancestor, s_legacy) == true)
+                var rules = sheeted ? BorderPreflight.AuthorRuleFonts(ancestor) ?? 0 : 0;
+                if ((rules & 1) != 0)
+                {
+                    return null;
+                }
+
+                var inline = ancestor.style.unityFont;
+                if (inline.keyword != StyleKeyword.Null)
+                {
+                    return inline.value;
+                }
+
+                if ((rules & 2) != 0)
                 {
                     return StyleCascade.RulesLegacyFont(ancestor);
                 }

@@ -999,6 +999,27 @@ namespace Velvet
             return false;
         }
 
+        // Which font properties a rule of a non-default stylesheet matching element sets, from one run of the matcher: 1 for
+        // -unity-font-definition and 2 for the legacy -unity-font; null where the matcher cannot be built.
+        internal static int? AuthorRuleFonts(VisualElement element)
+        {
+            if (s_extractor == null) return null;
+
+            var found = 0;
+            foreach (var (_, _, name) in AuthorProperties(element))
+            {
+                if (name == "-unity-font-definition")
+                {
+                    found |= 1;
+                }
+                else if (name == "-unity-font")
+                {
+                    found |= 2;
+                }
+            }
+            return found;
+        }
+
         // Each property of each rule of a non-default stylesheet matching element, with the sheet the rule sits in and
         // the property's name. The matcher is cleared again however the walk ends.
         private static System.Collections.Generic.IEnumerable<(object Sheet, object Property, string Name)>

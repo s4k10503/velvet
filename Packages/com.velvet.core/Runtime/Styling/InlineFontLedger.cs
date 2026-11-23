@@ -16,6 +16,7 @@ namespace Velvet
         {
             public FontAsset? Written;
             public UnityEngine.Font? WrittenFont;
+            public FontAsset? WrittenFontAsset;
             public UnityEngine.Object? Replaced;
         }
 
@@ -27,6 +28,7 @@ namespace Velvet
             var entry = s_entries.GetValue(element, static _ => new Entry());
             entry.Written = written;
             entry.WrittenFont = null;
+            entry.WrittenFontAsset = null;
             entry.Replaced = replaced;
         }
 
@@ -36,6 +38,7 @@ namespace Velvet
             var entry = s_entries.GetValue(element, static _ => new Entry());
             entry.Written = null;
             entry.WrittenFont = font;
+            entry.WrittenFontAsset = StyleCascade.CachedFontAsset(element, font);
             entry.Replaced = replaced;
         }
 
@@ -48,7 +51,14 @@ namespace Velvet
             }
 
             var shown = element.style.unityFontDefinition.value;
-            return shown.fontAsset == null && shown.font == entry.WrittenFont ? entry.WrittenFont : null;
+            if (shown.fontAsset == null)
+            {
+                return shown.font == entry.WrittenFont ? entry.WrittenFont : null;
+            }
+
+            // A copy LineBoxFontOwner made of the asset the engine draws that font in.
+            var source = LineBoxFont.SourceOf(shown.fontAsset);
+            return source != null && source == entry.WrittenFontAsset ? entry.WrittenFont : null;
         }
 
         // Whether the inline definition is one Velvet wrote.
@@ -95,9 +105,9 @@ namespace Velvet
                 return WrittenFont(element) != null ? Replaced(element) : value.font;
             }
 
-            if (Written(element) != null)
+            if (Owns(element))
             {
-                return s_entries.TryGetValue(element, out var entry) ? entry.Replaced : null;
+                return Replaced(element);
             }
 
             if (LineBoxFontOwner.CopiesInherited(element))
