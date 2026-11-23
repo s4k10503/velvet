@@ -1,0 +1,38 @@
+{
+ "detail": "EditMode: 2 failed in Velvet.Tests.Reconciler.Editor: Given_ARemovedLabel_When_ALaterRowIsCreatedInThePass_Then_TheLabelIsNotResetYet, Given_ARemovedLabel_When_ALaterRowOfThePassRentsALabel_Then_ItIsNotTheRemovedOne",
+ "file": "37d0bdf0a9dd787fbe064d47693a69606a27344665d04a269c1ea58d1df7d385",
+ "killers": [
+  {
+   "case": "Velvet.Tests.RecordedRemovalTests.Given_ARemovedLabel_When_ALaterRowIsCreatedInThePass_Then_TheLabelIsNotResetYet",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/RecordedRemovalTests.cs": "4efb27d62b5055bdb4c8958c5279d4fbde89006e0f349a4b6cf498ee6b8a87d6",
+    "Packages/com.velvet.core/TestUtilities/VNodePoolTestAccess.cs": "0b34227c0501b0b06aafcc9acba0c02b9136f4cc2959498d5f22b3db63a22681"
+   }
+  },
+  {
+   "case": "Velvet.Tests.RecordedRemovalTests.Given_ARemovedLabel_When_ALaterRowOfThePassRentsALabel_Then_ItIsNotTheRemovedOne",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/RecordedRemovalTests.cs": "4efb27d62b5055bdb4c8958c5279d4fbde89006e0f349a4b6cf498ee6b8a87d6",
+    "Packages/com.velvet.core/TestUtilities/VNodePoolTestAccess.cs": "0b34227c0501b0b06aafcc9acba0c02b9136f4cc2959498d5f22b3db63a22681"
+   }
+  }
+ ],
+ "measured_by": "45127352104",
+ "mutant": {
+  "after": "false",
+  "before": "true",
+  "column": 69,
+  "line": 515,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ChildListWrites.cs",
+  "shadowed": [
+   "literal"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "e91fee95980d3238888e42c5b5ddc01dcb9e7cc0ee2e6bc7bc67a39503c0991f",
+ "verdict": "killed"
+}

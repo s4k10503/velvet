@@ -1,0 +1,44 @@
+{
+ "detail": "EditMode: 2 failed: Given_AChildWithAdvancedState_When_TheParentReRendersWithTheChildAtTheSameKey_Then_TheChildsStateIsPreserved, Given_AComponentWithAdvancedState_When_ItsKeyChanges_Then_ItRemountsWithFreshState",
+ "file": "d79abc5fb1de5a36ba58845b1e4c0e65acf06a361b0e6a9859d7080ada8f2326",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ComponentStateReparityTests.Given_AChildWithAdvancedState_When_TheParentReRendersWithTheChildAtTheSameKey_Then_TheChildsStateIsPreserved",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/ComponentStateReparityTests.cs": "5848db1a13261519be8f8c82b4567b19e9427f2acd2ac2cee81944b3910e6271",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/RuntimeStateProbe.cs": "f5d4ec6298d8c5f2eb33b23fa83fc5788fc9c99583dc56c3cdc4243476aa9fce",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ComponentStateReparityTests.Given_AComponentWithAdvancedState_When_ItsKeyChanges_Then_ItRemountsWithFreshState",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/ComponentStateReparityTests.cs": "5848db1a13261519be8f8c82b4567b19e9427f2acd2ac2cee81944b3910e6271",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/RuntimeStateProbe.cs": "f5d4ec6298d8c5f2eb33b23fa83fc5788fc9c99583dc56c3cdc4243476aa9fce",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  }
+ ],
+ "measured_by": "45127352104",
+ "mutant": {
+  "after": ";",
+  "before": "_mountSlotStart = value;",
+  "column": 16,
+  "line": 903,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Component/ComponentFiber.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "e91fee95980d3238888e42c5b5ddc01dcb9e7cc0ee2e6bc7bc67a39503c0991f",
+ "verdict": "killed"
+}

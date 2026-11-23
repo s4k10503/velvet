@@ -1,0 +1,36 @@
+{
+ "detail": "EditMode: 2 failed: Given_AKeyedPassParkedAheadOfItsChangedRow_When_ARowIsInsertedAheadOfTheList_Then_TheChangedRowsOwnElementTakesThePatch, Given_AnIndexedPassParkedAheadOfItsChangedRow_When_ARowIsInsertedAheadOfTheList_Then_TheChangedRowsOwnElementTakesThePatch",
+ "file": "37d0bdf0a9dd787fbe064d47693a69606a27344665d04a269c1ea58d1df7d385",
+ "killers": [
+  {
+   "case": "Velvet.Tests.FlatPassOldInstanceReadTests.Given_AKeyedPassParkedAheadOfItsChangedRow_When_ARowIsInsertedAheadOfTheList_Then_TheChangedRowsOwnElementTakesThePatch",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/FlatPassOldInstanceReadTests.cs": "59b1ae18c7eb21e46c5c440557e3f09dfd09282607a64340c3d5fb541f9e52ee",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  },
+  {
+   "case": "Velvet.Tests.FlatPassOldInstanceReadTests.Given_AnIndexedPassParkedAheadOfItsChangedRow_When_ARowIsInsertedAheadOfTheList_Then_TheChangedRowsOwnElementTakesThePatch",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/FlatPassOldInstanceReadTests.cs": "59b1ae18c7eb21e46c5c440557e3f09dfd09282607a64340c3d5fb541f9e52ee",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  }
+ ],
+ "measured_by": "45127352104",
+ "mutant": {
+  "after": ";",
+  "before": "pass.PendingContainers.Clear();",
+  "column": 16,
+  "line": 785,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ChildListWrites.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "e91fee95980d3238888e42c5b5ddc01dcb9e7cc0ee2e6bc7bc67a39503c0991f",
+ "verdict": "killed"
+}

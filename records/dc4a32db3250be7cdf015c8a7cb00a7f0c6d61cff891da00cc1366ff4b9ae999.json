@@ -1,0 +1,38 @@
+{
+ "detail": "EditMode: 2 failed among the 4 case(s) that ran the site: Given_AnIndexedFiber_When_ItIsRestampedWithAnotherPlaceholder_Then_TheOldPlaceholderHoldsNoFiber, Given_ThreeFibersIndexedUnderOnePlaceholder_When_TheFirstIsRestampedAway_Then_TheOtherTwoStayInStampOrder",
+ "file": "b3279094c09fea1f05be59e3cd1cbe57acc71728ef084fc7e2696dfa2eab3d2d",
+ "killers": [
+  {
+   "case": "Velvet.Tests.PortalOwnedFiberIndexTests.Given_AnIndexedFiber_When_ItIsRestampedWithAnotherPlaceholder_Then_TheOldPlaceholderHoldsNoFiber",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PortalOwnedFiberIndexTests.cs": "1ceea98d526728597826cc308a08a01a0c131a36b38136e4041bd64ea2efc245",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921"
+   }
+  },
+  {
+   "case": "Velvet.Tests.PortalOwnedFiberIndexTests.Given_ThreeFibersIndexedUnderOnePlaceholder_When_TheFirstIsRestampedAway_Then_TheOtherTwoStayInStampOrder",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PortalOwnedFiberIndexTests.cs": "1ceea98d526728597826cc308a08a01a0c131a36b38136e4041bd64ea2efc245",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921"
+   }
+  }
+ ],
+ "measured_by": "45127352104",
+ "mutant": {
+  "after": ";",
+  "before": "if (indexed) RemoveFromOwningPortalIndex(fiber);",
+  "column": 12,
+  "line": 344,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Component/ComponentRegistry.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "e91fee95980d3238888e42c5b5ddc01dcb9e7cc0ee2e6bc7bc67a39503c0991f",
+ "verdict": "killed"
+}

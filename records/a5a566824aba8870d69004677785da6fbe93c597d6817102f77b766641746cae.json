@@ -1,0 +1,32 @@
+{
+ "detail": "EditMode: 1 failed among the 43 case(s) that ran the site: Given_APortalChildRenderingAComponentAheadOfAnElementWithARef_When_Mounted_Then_TheRefAttachesBetweenTheirLayoutEffects",
+ "file": "31c92875f38f0dc22b67cea70926fd6994f22957ef181c4ef407ca746ea426dc",
+ "killers": [
+  {
+   "case": "Velvet.Tests.PortalCommitOrderEventLogTests(UIToolkit).Given_APortalChildRenderingAComponentAheadOfAnElementWithARef_When_Mounted_Then_TheRefAttachesBetweenTheirLayoutEffects",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PortalCommitOrderEventLogTests.cs": "567a7dfa711b17eb1923c57057a1c8066bf888d10302ebd95166741ed026261c",
+    "Packages/com.velvet.core/TestUtilities/EventLog.cs": "e191b8d91d56ab6eb1633a8f37e5282dd11f4cbfd649b59ab27deab3a1e4b490",
+    "Packages/com.velvet.core/TestUtilities/EventLogRenderer.cs": "59fbaf33c955e917c5359940c3d0a0f090fefdc0d2a41b370a75eb6ce7304abe",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921"
+   }
+  }
+ ],
+ "measured_by": "45127352104",
+ "mutant": {
+  "after": ";",
+  "before": "at = mid;",
+  "column": 20,
+  "line": 333,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberRefPlacement.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "e91fee95980d3238888e42c5b5ddc01dcb9e7cc0ee2e6bc7bc67a39503c0991f",
+ "verdict": "killed"
+}

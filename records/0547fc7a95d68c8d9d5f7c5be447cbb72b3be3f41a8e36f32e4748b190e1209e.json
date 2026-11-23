@@ -1,0 +1,95 @@
+{
+ "detail": "EditMode: 11 failed: Given_ARingBracketOfAnotherTypeHoldingAColourWithAModifier_When_Extracted_Then_TheRingIsDrawn(\"ring-2 ring-[number:#ff0000]/50\"), Given_ARingBracketOfAnotherTypeHoldingAColourWithAModifier_When_Extracted_Then_TheRingIsDrawn(\"ring ring-offset-2 ring-offset-[number:#ff0000]/50\"), Given_ARingBracketOfAnotherTypeWithAModifierReadingAColour_When_Mounted_Then_TheRingIsDrawn; 1 other editor(s) were up",
+ "file": "e5699b531c8a9c86e930c4c61a54a7043312de815fc6e5c3362e373e56f621c3",
+ "killers": [
+  {
+   "case": "Velvet.Tests.BoxShadowCustomPropertyTests.Given_ARingBracketOfAnotherTypeHoldingAColourWithAModifier_When_Extracted_Then_TheRingIsDrawn(\"ring ring-offset-2 ring-offset-[number:#ff0000]/50\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BoxShadowCustomPropertyTests.cs": "a35149c967993d8b7355c17c6536b5a77db3220d329067c9cc6a2e772829655c",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  },
+  {
+   "case": "Velvet.Tests.BoxShadowCustomPropertyTests.Given_ARingBracketOfAnotherTypeHoldingAColourWithAModifier_When_Extracted_Then_TheRingIsDrawn(\"ring-2 ring-[number:#ff0000]/50\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BoxShadowCustomPropertyTests.cs": "a35149c967993d8b7355c17c6536b5a77db3220d329067c9cc6a2e772829655c",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  },
+  {
+   "case": "Velvet.Tests.BoxShadowCustomPropertyTests.Given_ARingBracketOfAnotherTypeWithAModifierReadingAColour_When_Mounted_Then_TheRingIsDrawn",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BoxShadowCustomPropertyTests.cs": "a35149c967993d8b7355c17c6536b5a77db3220d329067c9cc6a2e772829655c",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  },
+  {
+   "case": "Velvet.Tests.BoxShadowCustomPropertyTests.Given_ARingColourWithAModifierReadingAPercentage_When_Mounted_Then_ItIsThatColourAtThatOpacity",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BoxShadowCustomPropertyTests.cs": "a35149c967993d8b7355c17c6536b5a77db3220d329067c9cc6a2e772829655c",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  },
+  {
+   "case": "Velvet.Tests.BoxShadowCustomPropertyTests.Given_ARingColourWithAModifierThatIsAMathFunctionComingToAPercentage_When_Mounted_Then_ItIsThatColourAtThatOpacity(\"[--a:calc(50%)] ring-2 ring-[red]/(--a)\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BoxShadowCustomPropertyTests.cs": "a35149c967993d8b7355c17c6536b5a77db3220d329067c9cc6a2e772829655c",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  },
+  {
+   "case": "Velvet.Tests.BoxShadowCustomPropertyTests.Given_ARingColourWithAModifierThatIsAMathFunctionComingToAPercentage_When_Mounted_Then_ItIsThatColourAtThatOpacity(\"[--a:calc(50%)] ring-2 ring-[red]/[var(--a)]\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BoxShadowCustomPropertyTests.cs": "a35149c967993d8b7355c17c6536b5a77db3220d329067c9cc6a2e772829655c",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  },
+  {
+   "case": "Velvet.Tests.BoxShadowCustomPropertyTests.Given_ARingColourWithAModifierThatIsAMathFunctionComingToAPercentage_When_Mounted_Then_ItIsThatColourAtThatOpacity(\"ring-2 ring-[red]/[calc(50%)]\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BoxShadowCustomPropertyTests.cs": "a35149c967993d8b7355c17c6536b5a77db3220d329067c9cc6a2e772829655c",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  },
+  {
+   "case": "Velvet.Tests.BoxShadowDiscardTests.Given_ABracketColourWithABracketModifier_When_TheRingIsExtracted_Then_ItsBandIsDrawnAtTheModifiersAlpha(\"ring-2 ring-[#f00]/[0.5]\",\"ring\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BoxShadowDiscardTests.cs": "ce84d0c14856ab92d407a6e3b3043381682b4e20efdc59649956c43054825770",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.BoxShadowDiscardTests.Given_ABracketColourWithABracketModifier_When_TheRingIsExtracted_Then_ItsBandIsDrawnAtTheModifiersAlpha(\"ring-2 ring-[#f00]/[50%]\",\"ring\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BoxShadowDiscardTests.cs": "ce84d0c14856ab92d407a6e3b3043381682b4e20efdc59649956c43054825770",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.BoxShadowDiscardTests.Given_ABracketColourWithABracketModifier_When_TheRingIsExtracted_Then_ItsBandIsDrawnAtTheModifiersAlpha(\"ring-2 ring-offset-2 ring-offset-[#f00]/[50%]\",\"offset\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BoxShadowDiscardTests.cs": "ce84d0c14856ab92d407a6e3b3043381682b4e20efdc59649956c43054825770",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  }
+ ],
+ "measured_by": "45127352104",
+ "mutant": {
+  "after": "",
+  "before": " && StyleColorValueParser.RejectsAsColour(value.ToString())",
+  "column": 15,
+  "line": 452,
+  "operator": "clause removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleRingClass.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "e91fee95980d3238888e42c5b5ddc01dcb9e7cc0ee2e6bc7bc67a39503c0991f",
+ "verdict": "killed"
+}

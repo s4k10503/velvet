@@ -1,0 +1,31 @@
+{
+ "detail": "EditMode: 1 failed among the 535 case(s) that ran the site: Given_APortalWhoseTargetIsInsideTheRemovedRow_When_TheRowIsCleared_Then_TheBindingOfAChildItHeldIsUnregistered",
+ "file": "c97edacce27616a7cdcd5c4e55a8f5b9495de63dbd351a09b67bd27c127b78ca",
+ "killers": [
+  {
+   "case": "Velvet.Tests.DiscardedSubtreeTeardownTests.Given_APortalWhoseTargetIsInsideTheRemovedRow_When_TheRowIsCleared_Then_TheBindingOfAChildItHeldIsUnregistered",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/DiscardedSubtreeTeardownTests.cs": "a42855ca38fe4a4e8efcffee09f31cd3a2d2527f70c85bdcc3d0b8f3364ef5f9",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerContextProbe.cs": "ff50974275702aaaf62e00d84d5f39dc9ff1606a93351bee15d28e7ddc87cb83",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/VNodePoolTestAccess.cs": "0b34227c0501b0b06aafcc9acba0c02b9136f4cc2959498d5f22b3db63a22681"
+   }
+  }
+ ],
+ "measured_by": "45127352104",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 21,
+  "line": 136,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ReconcilerContext.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "e91fee95980d3238888e42c5b5ddc01dcb9e7cc0ee2e6bc7bc67a39503c0991f",
+ "verdict": "killed"
+}

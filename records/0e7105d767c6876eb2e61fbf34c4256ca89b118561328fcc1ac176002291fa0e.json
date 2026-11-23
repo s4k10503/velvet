@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "8cc26e4f8cd5bd87276721b13c03b7165c11d520189b51cd34da225bd46591a1",
+ "killers": [],
+ "measured_by": "45127352104",
+ "mutant": {
+  "after": ";",
+  "before": "ctx.ErrorsDuringRootDisposal.Add((error, FiberErrorBoundary.InfoFor(boundary, thrower)));",
+  "column": 16,
+  "line": 22,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/CommitErrors.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "e91fee95980d3238888e42c5b5ddc01dcb9e7cc0ee2e6bc7bc67a39503c0991f",
+ "verdict": "survived"
+}

@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed: Given_AnElementTheMountDidNotCreate_When_AWriteNamesItWhileChildrenAreCreated_Then_TheWriteIsRecordedBehindThePass; 1 other editor(s) were up",
+ "file": "37d0bdf0a9dd787fbe064d47693a69606a27344665d04a269c1ea58d1df7d385",
+ "killers": [
+  {
+   "case": "Velvet.Tests.CreatedContainerHierarchyWriteTests.Given_AnElementTheMountDidNotCreate_When_AWriteNamesItWhileChildrenAreCreated_Then_TheWriteIsRecordedBehindThePass",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/CreatedContainerHierarchyWriteTests.cs": "fe85bf5f60af89bb74ea2f8462a30c5c44891a96757e1c4c0845257099caaf7c"
+   }
+  }
+ ],
+ "measured_by": "45127352104",
+ "mutant": {
+  "after": "false",
+  "before": "true",
+  "column": 29,
+  "line": 526,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ChildListWrites.cs",
+  "shadowed": [
+   "line removed"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "e91fee95980d3238888e42c5b5ddc01dcb9e7cc0ee2e6bc7bc67a39503c0991f",
+ "verdict": "killed"
+}

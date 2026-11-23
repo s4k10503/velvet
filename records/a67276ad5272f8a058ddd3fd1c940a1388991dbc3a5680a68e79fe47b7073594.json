@@ -1,0 +1,28 @@
+{
+ "detail": "EditMode: 1 failed: Given_ARowPatchedToAbsoluteZ10_When_ThePassAlsoReordersItAmongKeyedSiblings_Then_TheSlotsAndTheFrontBandHoldTheFinalOrder",
+ "file": "a99ecb7e2efb67a6db33ffff499d3b72484eb1722a8a5430a24b55a82ea81431",
+ "killers": [
+  {
+   "case": "Velvet.Tests.PatchReadBackTests.Given_ARowPatchedToAbsoluteZ10_When_ThePassAlsoReordersItAmongKeyedSiblings_Then_TheSlotsAndTheFrontBandHoldTheFinalOrder",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PatchReadBackTests.cs": "7b11a49c5c7ea7c3f38e7074a32050c1fd786de9a2ecd7f23abe691965fc2f97"
+   }
+  }
+ ],
+ "measured_by": "45127352104",
+ "mutant": {
+  "after": ";",
+  "before": "FiberZLayerCoordinator.SettlePatched(_ctx);",
+  "column": 20,
+  "line": 401,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/Reconciler.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "e91fee95980d3238888e42c5b5ddc01dcb9e7cc0ee2e6bc7bc67a39503c0991f",
+ "verdict": "killed"
+}

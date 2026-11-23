@@ -1,0 +1,122 @@
+{
+ "detail": "EditMode: 62 failed in Velvet.Tests.Reconciler.Editor: Given_AnElementABoundaryRendersItselfWhoseRefSetupFails_When_ItMounts_Then_ThatBoundaryCatchesIt, Given_APresenceBesideABoundaryWhoseOnExitCompleteFails_When_OneRenderRemovesBothChildren_Then_TheOtherPresencesChildLeavesAndItsExitCompletes, Given_APresenceInABoundaryWhoseOnExitCompleteFails_When_AMotionWithAnInstantExitPoseAndAPlainChildLeaveTogether_Then_TheBoundaryCatches",
+ "file": "387445f6def54f4d7effa31e9cd5b48961593a8ea1c6577a906f5db35292b1ba",
+ "killers": [
+  {
+   "case": "Velvet.Tests.BoundaryCatchScopeTests.Given_APresenceBesideABoundaryWhoseOnExitCompleteFails_When_OneRenderRemovesBothChildren_Then_TheOtherPresencesChildLeavesAndItsExitCompletes",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/BoundaryCatchScopeTests.cs": "0c57faccc1e3b07381880f10178fcd8181496fa99f22e18d8d28abf5a3e26176",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921"
+   }
+  },
+  {
+   "case": "Velvet.Tests.BoundaryCatchScopeTests.Given_APresenceInABoundaryWhoseOnExitCompleteFails_When_AMotionWithAnInstantExitPoseAndAPlainChildLeaveTogether_Then_TheBoundaryCatches",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/BoundaryCatchScopeTests.cs": "0c57faccc1e3b07381880f10178fcd8181496fa99f22e18d8d28abf5a3e26176",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921"
+   }
+  },
+  {
+   "case": "Velvet.Tests.BoundaryCatchScopeTests.Given_APresenceInABoundaryWhoseOnExitCompleteFails_When_APlainChildAndAMotionWithNoExitTargetLeaveTogether_Then_TheBoundaryCatches",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/BoundaryCatchScopeTests.cs": "0c57faccc1e3b07381880f10178fcd8181496fa99f22e18d8d28abf5a3e26176",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921"
+   }
+  },
+  {
+   "case": "Velvet.Tests.BoundaryCatchScopeTests.Given_APresenceInABoundaryWhoseOnExitCompleteFails_When_ItsChildHoldsAPortalBesideAnotherPortalsMotion_Then_TheBoundaryCatches",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/BoundaryCatchScopeTests.cs": "0c57faccc1e3b07381880f10178fcd8181496fa99f22e18d8d28abf5a3e26176",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921"
+   }
+  },
+  {
+   "case": "Velvet.Tests.BoundaryCatchScopeTests.Given_APresenceInABoundaryWhoseOnExitCompleteFails_When_ItsChildHoldsOnlyAnInnerPresencesMotion_Then_TheBoundaryCatches",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/BoundaryCatchScopeTests.cs": "0c57faccc1e3b07381880f10178fcd8181496fa99f22e18d8d28abf5a3e26176",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921"
+   }
+  },
+  {
+   "case": "Velvet.Tests.BoundaryCatchScopeTests.Given_APresenceInABoundaryWhoseOnExitCompleteFails_When_ItsChildIsAnElementHoldingNoMotion_Then_TheBoundaryCatches",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/BoundaryCatchScopeTests.cs": "0c57faccc1e3b07381880f10178fcd8181496fa99f22e18d8d28abf5a3e26176",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921"
+   }
+  },
+  {
+   "case": "Velvet.Tests.BoundaryCatchScopeTests.Given_APresenceInABoundaryWhoseOnExitCompleteFails_When_ItsParentsRenderRemovesItsChild_Then_TheBoundaryCatchesOnceThatRenderHasCommitted",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/BoundaryCatchScopeTests.cs": "0c57faccc1e3b07381880f10178fcd8181496fa99f22e18d8d28abf5a3e26176",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921"
+   }
+  },
+  {
+   "case": "Velvet.Tests.BoundaryCatchScopeTests.Given_AnElementABoundaryRendersItselfWhoseRefSetupFails_When_ItMounts_Then_ThatBoundaryCatchesIt",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/BoundaryCatchScopeTests.cs": "0c57faccc1e3b07381880f10178fcd8181496fa99f22e18d8d28abf5a3e26176",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921"
+   }
+  },
+  {
+   "case": "Velvet.Tests.CaughtErrorHandlerTests.Given_ABoundaryCommittedBeforeATransitionThatParksAheadOfIt_When_ItCatchesAPassiveEffectsErrorWhileThePassIsParked_Then_ItReportsAfterItsFallbacksLayoutEffectWithoutWaitingForThePass",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/CaughtErrorHandlerTests.cs": "e2726f69e5bc62f598be666bd69da1fc922e354fd420385e66e17932e68d10a7",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/UseFrameFakeClockHost.cs": "832e6d1a29eac04e37d6f7a12601c3572a72772621452748e332bb8c2d3d1194",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.CaughtErrorHandlerTests.Given_ABoundaryHoldingAReportFromARender_When_AnEarlierSiblingsLayoutEffectThrowsIntoAnOuterBoundaryInTheSameCommit_Then_TheInnerReportsInThatCommitAndTheOuterInTheFollowUp",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/CaughtErrorHandlerTests.cs": "e2726f69e5bc62f598be666bd69da1fc922e354fd420385e66e17932e68d10a7",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/UseFrameFakeClockHost.cs": "832e6d1a29eac04e37d6f7a12601c3572a72772621452748e332bb8c2d3d1194",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  }
+ ],
+ "measured_by": "45127352104",
+ "mutant": {
+  "after": ";",
+  "before": "TakeCaptures(fiber);",
+  "column": 12,
+  "line": 404,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberErrorBoundary.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "e91fee95980d3238888e42c5b5ddc01dcb9e7cc0ee2e6bc7bc67a39503c0991f",
+ "verdict": "killed"
+}

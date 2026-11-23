@@ -1,0 +1,36 @@
+{
+ "detail": "EditMode: 2 failed among the 2009 case(s) that ran the site: Given_HundredKeysScopedUnderOneScope_When_TheyAreHashed_Then_EveryHashIsDistinct, Given_TwoKeysAgreeingUpToADelimiter_When_TheyAreHashed_Then_TheHashesDiffer",
+ "file": "b53cc07b7718023ee1c8d79b001609352a03c4f517581cc69dcf6e1f62348a10",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ChildKeyHashTests.Given_HundredKeysScopedUnderOneScope_When_TheyAreHashed_Then_EveryHashIsDistinct",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ChildKeyHashTests.cs": "bcea15fda9ba9209157f48ee8d5239e3823b48ae82fc62727198d8182e596395"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ChildKeyHashTests.Given_TwoKeysAgreeingUpToADelimiter_When_TheyAreHashed_Then_TheHashesDiffer",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ChildKeyHashTests.cs": "bcea15fda9ba9209157f48ee8d5239e3823b48ae82fc62727198d8182e596395"
+   }
+  }
+ ],
+ "measured_by": "45127352104",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 19,
+  "line": 207,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ReconcileState.cs",
+  "shadowed": [
+   "guard removed"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "e91fee95980d3238888e42c5b5ddc01dcb9e7cc0ee2e6bc7bc67a39503c0991f",
+ "verdict": "killed"
+}

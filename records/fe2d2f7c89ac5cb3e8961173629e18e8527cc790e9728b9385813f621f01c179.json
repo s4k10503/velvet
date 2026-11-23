@@ -1,0 +1,31 @@
+{
+ "detail": "EditMode: 1 failed among the 490 case(s) that ran the site: Given_APortalIntoAContainer_When_ItUnmounts_Then_TheContainerKeepsNoBridgeListener",
+ "file": "c97edacce27616a7cdcd5c4e55a8f5b9495de63dbd351a09b67bd27c127b78ca",
+ "killers": [
+  {
+   "case": "Velvet.Tests.PortalClickAndChangeBubblingTests.Given_APortalIntoAContainer_When_ItUnmounts_Then_TheContainerKeepsNoBridgeListener",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PortalClickAndChangeBubblingTests.cs": "230522f9dfb815e3d5a7cc68c54a5a53d1dcc883b0e5b8cd2f8adf34742fc193",
+    "Packages/com.velvet.core/TestUtilities/CallbackRegistryProbe.cs": "0bf11bf8f5b161e389e815cf4be1a5f33269e05d2fed160868b58bb1f3629b46",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  }
+ ],
+ "measured_by": "45127352104",
+ "mutant": {
+  "after": ";",
+  "before": "CountOn(old.Target, -1);",
+  "column": 12,
+  "line": 106,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ReconcilerContext.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "e91fee95980d3238888e42c5b5ddc01dcb9e7cc0ee2e6bc7bc67a39503c0991f",
+ "verdict": "killed"
+}

@@ -1,0 +1,29 @@
+{
+ "detail": "EditMode: 1 failed: Given_ASliceThatParkedAfterOneRow_When_TheResumedSliceCreatesTheRest_Then_EachSeesTheRowsTheParkedSliceApplied",
+ "file": "a99ecb7e2efb67a6db33ffff499d3b72484eb1722a8a5430a24b55a82ea81431",
+ "killers": [
+  {
+   "case": "Velvet.Tests.RecordedChildListWriteTests.Given_ASliceThatParkedAfterOneRow_When_TheResumedSliceCreatesTheRest_Then_EachSeesTheRowsTheParkedSliceApplied",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/RecordedChildListWriteTests.cs": "31ec058199d470927c17c0799a5049e7b5882417e503d75387862e62be93ca5e",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/RowModelAccess.cs": "c9281ca1bc8930756e7b643acf56772495143054fc02c02792727059325b4674"
+   }
+  }
+ ],
+ "measured_by": "45127352104",
+ "mutant": {
+  "after": ";",
+  "before": "if (isTopLevel) ChildListWrites.BeginRecording(_ctx.Pass);",
+  "column": 12,
+  "line": 539,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/Reconciler.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "e91fee95980d3238888e42c5b5ddc01dcb9e7cc0ee2e6bc7bc67a39503c0991f",
+ "verdict": "killed"
+}

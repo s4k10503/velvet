@@ -1,0 +1,28 @@
+{
+ "detail": "EditMode: 1 failed among the 391 case(s) that ran the site: Given_AReleasedElement_When_TheFontsChange_Then_ItsInlineFontIsNotWrittenAgain",
+ "file": "6c90bf259cea1db260bc01aa82f1065cf5321ffa5614aa5500be18829e0ea8ef",
+ "killers": [
+  {
+   "case": "Velvet.Tests.DefaultFamilyHeldRootsTests.Given_AReleasedElement_When_TheFontsChange_Then_ItsInlineFontIsNotWrittenAgain",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/DefaultFamilyHeldRootsTests.cs": "401c31ee0a8881809c592c8eb4a23869db1cbba4cd9057ebe02eb930b44870e9"
+   }
+  }
+ ],
+ "measured_by": "45127352104",
+ "mutant": {
+  "after": ";",
+  "before": "s_held.RemoveAll(s_collected);",
+  "column": 16,
+  "line": 144,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/DefaultFamilyRoots.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "e91fee95980d3238888e42c5b5ddc01dcb9e7cc0ee2e6bc7bc67a39503c0991f",
+ "verdict": "killed"
+}

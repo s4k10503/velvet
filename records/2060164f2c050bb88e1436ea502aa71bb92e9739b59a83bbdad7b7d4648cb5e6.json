@@ -1,0 +1,28 @@
+{
+ "detail": "EditMode: 1 failed: Given_AnotherPassBeganOverARecordingOne_When_ItEnds_Then_TheOuterPassIsRecordingAgain",
+ "file": "37d0bdf0a9dd787fbe064d47693a69606a27344665d04a269c1ea58d1df7d385",
+ "killers": [
+  {
+   "case": "Velvet.Tests.PassOwnershipTests.Given_AnotherPassBeganOverARecordingOne_When_ItEnds_Then_TheOuterPassIsRecordingAgain",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PassOwnershipTests.cs": "a9f41aead8c76a9429d2526c0d002c866312eea06274d25d87bd4636cdf605d1"
+   }
+  }
+ ],
+ "measured_by": "45127352104",
+ "mutant": {
+  "after": ";",
+  "before": "pass.Enclosing = open;",
+  "column": 16,
+  "line": 529,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ChildListWrites.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "e91fee95980d3238888e42c5b5ddc01dcb9e7cc0ee2e6bc7bc67a39503c0991f",
+ "verdict": "killed"
+}

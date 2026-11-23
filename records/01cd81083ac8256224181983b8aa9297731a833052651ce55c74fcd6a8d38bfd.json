@@ -1,0 +1,32 @@
+{
+ "detail": "EditMode: 1 failed in Velvet.Tests.Reconciler.Editor: Given_AClearMadeWhileTheRecordedWritesApply_When_TheCallbackReadsTheList_Then_TheChildIsStillThere",
+ "file": "37d0bdf0a9dd787fbe064d47693a69606a27344665d04a269c1ea58d1df7d385",
+ "killers": [
+  {
+   "case": "Velvet.Tests.RecordedWritesDuringApplyTests.Given_AClearMadeWhileTheRecordedWritesApply_When_TheCallbackReadsTheList_Then_TheChildIsStillThere",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/RecordedWritesDuringApplyTests.cs": "f3efa7febcf4a0ff9db9d765df86b40db64c13864b0754f5a1211c29ca08a44e",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  }
+ ],
+ "measured_by": "45127352104",
+ "mutant": {
+  "after": "false",
+  "before": "true",
+  "column": 42,
+  "line": 450,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ChildListWrites.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "e91fee95980d3238888e42c5b5ddc01dcb9e7cc0ee2e6bc7bc67a39503c0991f",
+ "verdict": "killed"
+}

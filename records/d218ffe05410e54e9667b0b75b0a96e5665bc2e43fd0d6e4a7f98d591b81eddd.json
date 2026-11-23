@@ -1,0 +1,78 @@
+{
+ "detail": "EditMode: 8 failed among the 4996 case(s) that ran the site: Given_AMotionWithExit_When_Removed_Then_ItAnimatesToTheExitVariant, Given_AnExitingChild_When_ItsKeyIsReAddedBeforeCompletion_Then_TheExitIsCancelledAndTheSameElementIsRetained, Given_AnExitingVariantMotion_When_ReAddedMidExit_Then_ItReturnsToTheRestingAnimateVariant",
+ "file": "00f431967987647dddc5a4c81e17ea87f2081a10bf2ba1eac1672e7792ea4568",
+ "killers": [
+  {
+   "case": "Velvet.Tests.AnimatePresenceAnimationTests.Given_AMotionWithExit_When_Removed_Then_ItAnimatesToTheExitVariant",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/AnimatePresenceAnimationTests.cs": "a7ff95ec31fa180d58adaecff71bbaaaf3f7e0961ca58e218d0a694974b935a8",
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/SimulatedPanelTestBase.cs": "a06149cf212c91277fd1442580aee292a959fef6bf985e77628aabdbb0acacc8"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AnimatePresenceAnimationTests.Given_AnExitingChild_When_ItsKeyIsReAddedBeforeCompletion_Then_TheExitIsCancelledAndTheSameElementIsRetained",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/AnimatePresenceAnimationTests.cs": "a7ff95ec31fa180d58adaecff71bbaaaf3f7e0961ca58e218d0a694974b935a8",
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/SimulatedPanelTestBase.cs": "a06149cf212c91277fd1442580aee292a959fef6bf985e77628aabdbb0acacc8"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AnimatePresenceAnimationTests.Given_AnExitingVariantMotion_When_ReAddedMidExit_Then_ItReturnsToTheRestingAnimateVariant",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/AnimatePresenceAnimationTests.cs": "a7ff95ec31fa180d58adaecff71bbaaaf3f7e0961ca58e218d0a694974b935a8",
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/SimulatedPanelTestBase.cs": "a06149cf212c91277fd1442580aee292a959fef6bf985e77628aabdbb0acacc8"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AnimatePresenceAnimationTests.Given_ExitingElement_When_ExitTransitionCompletes_Then_ElementIsRemovedFromDom",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/AnimatePresenceAnimationTests.cs": "a7ff95ec31fa180d58adaecff71bbaaaf3f7e0961ca58e218d0a694974b935a8",
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/SimulatedPanelTestBase.cs": "a06149cf212c91277fd1442580aee292a959fef6bf985e77628aabdbb0acacc8"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AnimatePresenceAnimationTests.Given_OnExitCompleteThrowsBelowABoundary_When_AnExitTransitionCompletes_Then_NoBoundaryTakesTheError",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/AnimatePresenceAnimationTests.cs": "a7ff95ec31fa180d58adaecff71bbaaaf3f7e0961ca58e218d0a694974b935a8",
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/SimulatedPanelTestBase.cs": "a06149cf212c91277fd1442580aee292a959fef6bf985e77628aabdbb0acacc8"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AnimatePresenceAnimationTests.Given_OnExitCompleteThrows_When_ExitTransitionCompletes_Then_TheElementIsStillRemovedFromTheDom",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/AnimatePresenceAnimationTests.cs": "a7ff95ec31fa180d58adaecff71bbaaaf3f7e0961ca58e218d0a694974b935a8",
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/SimulatedPanelTestBase.cs": "a06149cf212c91277fd1442580aee292a959fef6bf985e77628aabdbb0acacc8"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AnimatePresenceAnimationTests.Given_RapidRekey_When_SettledOnKnownTab_Then_AllCardsPresent_NoneDisappeared",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/AnimatePresenceAnimationTests.cs": "a7ff95ec31fa180d58adaecff71bbaaaf3f7e0961ca58e218d0a694974b935a8",
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/SimulatedPanelTestBase.cs": "a06149cf212c91277fd1442580aee292a959fef6bf985e77628aabdbb0acacc8"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AnimatePresenceAnimationTests.Given_WaitMode_When_OldChildExitCompletes_Then_TheWithheldNewChildEnters",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/AnimatePresenceAnimationTests.cs": "a7ff95ec31fa180d58adaecff71bbaaaf3f7e0961ca58e218d0a694974b935a8",
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/SimulatedPanelTestBase.cs": "a06149cf212c91277fd1442580aee292a959fef6bf985e77628aabdbb0acacc8"
+   }
+  }
+ ],
+ "measured_by": "45127352104",
+ "mutant": {
+  "after": "<=",
+  "before": "<",
+  "column": 29,
+  "line": 49,
+  "operator": "boundary",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/PreOrderTeardown.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "e91fee95980d3238888e42c5b5ddc01dcb9e7cc0ee2e6bc7bc67a39503c0991f",
+ "verdict": "killed"
+}

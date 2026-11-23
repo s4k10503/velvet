@@ -1,0 +1,42 @@
+{
+ "detail": "EditMode: 3 failed among the 35 case(s) that ran the site: Given_TheLastRangeReadOnce_When_ItIsRemoved_Then_TheLastEndIsTheEarlierOnes, Given_TheLastRangeReadOnce_When_ItMovesToAnotherTarget_Then_TheFirstTargetEndsWhereTheEarlierRangeDoes, Given_TheLastRangeReadOnce_When_ItShrinks_Then_TheLastEndIsTheShorterOnes",
+ "file": "c97edacce27616a7cdcd5c4e55a8f5b9495de63dbd351a09b67bd27c127b78ca",
+ "killers": [
+  {
+   "case": "Velvet.Tests.PortalRangeStoreTests.Given_TheLastRangeReadOnce_When_ItIsRemoved_Then_TheLastEndIsTheEarlierOnes",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PortalRangeStoreTests.cs": "afba00d1374923abeb02c1983f4836485c731914fb2c0ffe9a12cf827bcff9b6"
+   }
+  },
+  {
+   "case": "Velvet.Tests.PortalRangeStoreTests.Given_TheLastRangeReadOnce_When_ItMovesToAnotherTarget_Then_TheFirstTargetEndsWhereTheEarlierRangeDoes",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PortalRangeStoreTests.cs": "afba00d1374923abeb02c1983f4836485c731914fb2c0ffe9a12cf827bcff9b6"
+   }
+  },
+  {
+   "case": "Velvet.Tests.PortalRangeStoreTests.Given_TheLastRangeReadOnce_When_ItShrinks_Then_TheLastEndIsTheShorterOnes",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PortalRangeStoreTests.cs": "afba00d1374923abeb02c1983f4836485c731914fb2c0ffe9a12cf827bcff9b6"
+   }
+  }
+ ],
+ "measured_by": "45127352104",
+ "mutant": {
+  "after": "<=",
+  "before": "<",
+  "column": 22,
+  "line": 190,
+  "operator": "boundary",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ReconcilerContext.cs",
+  "shadowed": [
+   "guard removed"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "e91fee95980d3238888e42c5b5ddc01dcb9e7cc0ee2e6bc7bc67a39503c0991f",
+ "verdict": "killed"
+}

@@ -1,0 +1,25 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "1b998c116bdf952d63e178216d6ed2ae36f286278046ec56efa9d3f4bb5e7c82",
+ "killers": [],
+ "measured_by": "45127352104",
+ "mutant": {
+  "after": "<=",
+  "before": "<",
+  "column": 28,
+  "line": 27,
+  "operator": "boundary",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleCustomProperties.Shorthand.cs",
+  "shadowed": [
+   "arithmetic",
+   "clause removed",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "e91fee95980d3238888e42c5b5ddc01dcb9e7cc0ee2e6bc7bc67a39503c0991f",
+ "verdict": "survived"
+}

@@ -1,0 +1,37 @@
+{
+ "detail": "EditMode: 2 failed in Velvet.Tests.Styling.Editor: Given_AHeldElementBelowAnotherHeldOne_When_TheOuterElementIsReleased_Then_TheInnerOneWritesTheDefaultFamily, Given_ATreeMountedOnAnElementInsideAnotherTreesRoot_When_TheOuterTreeIsDisposed_Then_TheInnerRootCarriesTheDefaultFamily",
+ "file": "6c90bf259cea1db260bc01aa82f1065cf5321ffa5614aa5500be18829e0ea8ef",
+ "killers": [
+  {
+   "case": "Velvet.Tests.DefaultFamilyHoldScopeTests.Given_AHeldElementBelowAnotherHeldOne_When_TheOuterElementIsReleased_Then_TheInnerOneWritesTheDefaultFamily",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/DefaultFamilyHoldScopeTests.cs": "70c0549333f04d4761c11c41ae21faa5804050ef543df8a73865c23c7c9637e1"
+   }
+  },
+  {
+   "case": "Velvet.Tests.DefaultFamilyScopePanelTests.Given_ATreeMountedOnAnElementInsideAnotherTreesRoot_When_TheOuterTreeIsDisposed_Then_TheInnerRootCarriesTheDefaultFamily",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/DefaultFamilyScopePanelTests.cs": "d82d0c9ba183556265e727ef466b98e0f3eecb0c0a64e96408296c4f0367cdc5",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26"
+   }
+  }
+ ],
+ "measured_by": "45127352104",
+ "mutant": {
+  "after": ";",
+  "before": "Apply(_element);",
+  "column": 16,
+  "line": 125,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/DefaultFamilyRoots.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "e91fee95980d3238888e42c5b5ddc01dcb9e7cc0ee2e6bc7bc67a39503c0991f",
+ "verdict": "killed"
+}
