@@ -58,6 +58,19 @@ namespace Velvet.Tests
             Assert.That(inside ? past : true, Is.False);
         }
 
+        // GREEN_ON_BASE(characterization): the base discards a bracket box-shadow with an empty layer, as a browser drops the declaration. Reading `text.Length >= 0` in WithoutMark throws out of the extract on the empty layer.
+        [TestCase("shadow-[0_1px_red,]")]
+        [TestCase("shadow-[0_1px_red,_]")]
+        [TestCase("inset-shadow-[0_1px_red,]")]
+        public void Given_ABracketShadowWithAnEmptyLayer_When_Extracted_Then_TheShadowIsDiscarded(string emptyLayer)
+        {
+            // Act — the control is the same bracket without the trailing comma.
+            var drawn = Shadow(emptyLayer.Replace(",_]", "]").Replace(",]", "]")) ? Shadow(emptyLayer) : true;
+
+            // Assert
+            Assert.That(drawn, Is.False);
+        }
+
         [Test]
         public void Given_ASizeModifierPast100_When_Extracted_Then_ItsOwnColourIsOpaque()
         {

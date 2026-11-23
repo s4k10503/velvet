@@ -422,6 +422,7 @@ namespace Velvet
         internal static bool TryResolveColorWithModifier(string token, out Color colour)
         {
             var slash = ColorModifierSlashIndex(token, 0);
+            // MUTANT_SURVIVES(equivalent, boundary): a slash at index 0 leaves an empty colour, which TryResolveColorToken refuses as `/...` is no palette name or bracket.
             if (slash < 0)
             {
                 return VelvetPalette.TryResolveColorToken(token, out colour);

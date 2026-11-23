@@ -662,6 +662,7 @@ namespace Velvet
             var physicalSlotStart = LogicalChildSlots.ToPhysical(target, portalInfo.SlotStart);
             var slotEnd = LogicalChildSlots.ToPhysical(target, portalInfo.SlotStart + portalInfo.SlotLength);
             var targetCount = ChildListWrites.ChildCount(target);
+            // MUTANT_SURVIVES(equivalent, boundary): at slotEnd == targetCount the assignment writes the value slotEnd already holds.
             if (slotEnd > targetCount) slotEnd = targetCount;
             // Read before any is cleaned: a cleanup can take a child hosted before its element out of the target
             // (RemoveCleaned), which would move the indices still to be visited.

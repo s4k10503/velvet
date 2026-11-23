@@ -97,6 +97,7 @@ namespace Velvet
                 try
                 {
                     ChildListWrites.Rows(parent!, range.ScanStart, slotStart + Math.Max(range.OldLen, range.LogicalNewLen), rows);
+                    // MUTANT_SURVIVES(equivalent, arithmetic): each of the three callers sets ScanStart to SlotStart plus a count of zero or more, so the positions stay at or above zero either way; the sum moves every one of them by the same 2 * SlotStart, and what reads them afterwards compares their order and tests them against the -1 that marks an absent element.
                     var logicalPos = range.ScanStart - slotStart;
                     foreach (var child in rows)
                     {
