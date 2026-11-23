@@ -91,6 +91,14 @@ namespace Velvet.Tests
         {
             var ruled = NewAsset();
             var ruledBold = NewAsset();
+            // The asset database refuses to save an object flagged DontSaveInEditor, so none of what is saved carries it.
+            ruled.hideFlags = HideFlags.None;
+            foreach (var atlas in ruled.atlasTextures)
+            {
+                atlas.hideFlags = HideFlags.None;
+            }
+
+            ruled.material.hideFlags = HideFlags.None;
             AssetDatabase.CreateAsset(ruled, RuledPath);
             AssetDatabase.AddObjectToAsset(ruled.atlasTexture, ruled);
             AssetDatabase.AddObjectToAsset(ruled.material, ruled);
@@ -358,10 +366,9 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ABoldLabelWhoseOwnRuleGivesItALegacyFont_When_ItMounts_Then_TheLabelWritesNoFontOfItsOwn()
+        public void Given_ABoldLabelWhoseOwnRuleGivesItALegacyFont_When_ItMountsWithNoDefaultFamily_Then_TheLabelWritesNoFontOfItsOwn()
         {
             // Arrange
-            VelvetFonts.DefaultFamily = "sans";
             AttachSheet(".legacy { -unity-font: " + EngineFont + "; }");
             var root = new VisualElement();
             _host.Root.Add(root);
