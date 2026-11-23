@@ -1844,7 +1844,7 @@ namespace Velvet
             public Dictionary<ArbitraryProperty, long>? Floors;
 
             // See WrittenSizeExpressions. Allocated by the first width, height or maximum written.
-            public StyleLengthExpression?[]? WrittenSizes;
+            public StyleArbitraryValueResolver.WrittenSize[]? WrittenSizes;
 
             // Per property, the longhands its winning layer writes that a class claims at a key above the layer's.
             // Absent means no class does.
@@ -3448,10 +3448,10 @@ namespace Velvet
             return !AutoLayerWins(element, property);
         }
 
-        // The length expressions last written into an element's width, height, maximum width and maximum height, by
-        // WriteLength and cleared by ClearInline, so a reader sees what the resolver settled on after its ordering,
-        // floors and class claims rather than rebuilding it. Null where the slot last took a plain length or was
-        // cleared.
+        // The length expressions WriteLength last wrote into an element's width, height, maximum width and maximum
+        // height, each with the pixels it resolved to, cleared by ClearInline. A writer that bypasses both (the
+        // Motion driver, a style write of the element's own, a clip-path wrapper taking the write) leaves the record
+        // behind, so a reader takes an expression only while the inline slot still holds the pixels recorded with it.
         internal readonly struct SizeExpressions
         {
             public SizeExpressions(StyleLengthExpression? specified, StyleLengthExpression? maximum)
@@ -3474,9 +3474,25 @@ namespace Velvet
                 return default;
             }
             var sizes = map.WrittenSizes;
+            var style = element.style;
             return horizontal
-                ? new SizeExpressions(sizes[(int)SizeSlot.Width], sizes[(int)SizeSlot.MaxWidth])
-                : new SizeExpressions(sizes[(int)SizeSlot.Height], sizes[(int)SizeSlot.MaxHeight]);
+                ? new SizeExpressions(
+                    StillHeld(sizes[(int)SizeSlot.Width], style.width), StillHeld(sizes[(int)SizeSlot.MaxWidth], style.maxWidth))
+                : new SizeExpressions(
+                    StillHeld(sizes[(int)SizeSlot.Height], style.height), StillHeld(sizes[(int)SizeSlot.MaxHeight], style.maxHeight));
+        }
+
+        // The pixels compared are the same float WriteLength handed the setter, so equality is exact.
+        private static StyleLengthExpression? StillHeld(in WrittenSize written, StyleLength inline)
+            => written.Expression != null && inline.keyword == StyleKeyword.Undefined
+                && inline.value.unit == LengthUnit.Pixel && inline.value.value == written.Pixels
+                ? written.Expression
+                : null;
+
+        internal struct WrittenSize
+        {
+            public StyleLengthExpression? Expression;
+            public float Pixels;
         }
 
         private enum SizeSlot
@@ -3487,33 +3503,41 @@ namespace Velvet
             MaxHeight,
         }
 
-        // The slots a property writes among the four, as a bit set over SizeSlot.
-        private static int SizeSlotsOf(ArbitraryProperty property) => property switch
+        // The slot a property's setter at index writes among the four, or -1.
+        private static int SizeSlotOf(ArbitraryProperty property, int index) => property switch
         {
-            ArbitraryProperty.Width => 1 << (int)SizeSlot.Width,
-            ArbitraryProperty.Height => 1 << (int)SizeSlot.Height,
-            ArbitraryProperty.MaxWidth => 1 << (int)SizeSlot.MaxWidth,
-            ArbitraryProperty.MaxHeight => 1 << (int)SizeSlot.MaxHeight,
-            ArbitraryProperty.Size => (1 << (int)SizeSlot.Width) | (1 << (int)SizeSlot.Height),
-            _ => 0,
+            ArbitraryProperty.Width => (int)SizeSlot.Width,
+            ArbitraryProperty.Height => (int)SizeSlot.Height,
+            ArbitraryProperty.MaxWidth => (int)SizeSlot.MaxWidth,
+            ArbitraryProperty.MaxHeight => (int)SizeSlot.MaxHeight,
+            ArbitraryProperty.Size => index,
+            _ => -1,
         };
 
-        private static void NoteSizeExpression(VisualElement element, ArbitraryProperty property, StyleLengthExpression? expression)
+        // Records an expression with its pixels; a plain length records nothing and drops what an earlier
+        // expression left, which allocates no record where none was ever made.
+        private static void NoteSizeWritten(
+            VisualElement element, ArbitraryProperty property, int index, StyleLengthExpression? expression, float pixels)
         {
-            var slots = SizeSlotsOf(property);
-            if (slots == 0)
+            var slot = SizeSlotOf(property, index);
+            if (slot < 0)
             {
                 return;
             }
-            var map = s_layers.GetValue(element, static _ => new LayerMap());
-            var sizes = map.WrittenSizes ??= new StyleLengthExpression?[4];
-            for (var i = 0; i < sizes.Length; i++)
+            LayerMap? map;
+            if (expression == null)
             {
-                if ((slots & (1 << i)) != 0)
+                if (!s_layers.TryGetValue(element, out map) || map.WrittenSizes == null)
                 {
-                    sizes[i] = expression;
+                    return;
                 }
             }
+            else
+            {
+                map = s_layers.GetValue(element, static _ => new LayerMap());
+                map.WrittenSizes ??= new WrittenSize[4];
+            }
+            map.WrittenSizes![slot] = new WrittenSize { Expression = expression, Pixels = pixels };
         }
 
         // Whether the layer that holds property over the element's classes is the `auto` keyword.
@@ -5005,27 +5029,24 @@ namespace Velvet
         {
             if (style.Expression != null)
             {
-                var written = false;
-                foreach (var setter in setters)
+                for (var i = 0; i < setters.Length; i++)
                 {
+                    var setter = setters[i];
                     if (StyleRelativeLengths.TryResolve(element, style.Expression, setter.Axis, setter.Indefinite, out var resolved))
                     {
                         setter.Set(target, resolved);
-                        written = true;
+                        NoteSizeWritten(element, style.Property, i, style.Expression,
+                            resolved.keyword == StyleKeyword.Undefined ? resolved.value.value : float.NaN);
                     }
-                }
-                if (written)
-                {
-                    NoteSizeExpression(element, style.Property, style.Expression);
                 }
                 return;
             }
             var length = style.ToStyleLength();
-            foreach (var setter in setters)
+            for (var i = 0; i < setters.Length; i++)
             {
-                setter.Set(target, length);
+                setters[i].Set(target, length);
+                NoteSizeWritten(element, style.Property, i, null, 0f);
             }
-            NoteSizeExpression(element, style.Property, null);
         }
 
         // Clears the inline style for the given property (StyleKeyword.Null reverts to the USS default), fanning
@@ -5093,9 +5114,9 @@ namespace Velvet
             {
                 setter.Set(s, nullStyle);
             }
-            if (SizeSlotsOf(property) != 0 && s_layers.TryGetValue(element, out var written) && written.WrittenSizes != null)
+            for (var i = 0; i < setters.Length; i++)
             {
-                NoteSizeExpression(element, property, null);
+                NoteSizeWritten(element, property, i, null, 0f);
             }
         }
 

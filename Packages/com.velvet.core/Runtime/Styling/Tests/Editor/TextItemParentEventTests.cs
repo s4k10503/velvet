@@ -548,6 +548,23 @@ namespace Velvet.Tests
             Assert.That(minimum, Is.EqualTo(40f).Within(0.01f));
         }
 
+        // GREEN_ON_BASE(characterization): the base reads the live inline width, which the overwrite set to 40. A width taken from the
+        // percentage the layer last wrote instead caps the minimum at 1002.
+        [Test]
+        public void Given_ALabelWithABracketCalcPercentWidth_When_ItsInlineWidthIsOverwrittenAndItsOwnGeometryEventFires_Then_ItsMinWidthFollowsTheOverwrittenWidth()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var label = MountLabel(scope, WideRow, "shrink-0 w-[calc(50%+2px)]", Sentence);
+            label.style.width = 40f;
+
+            // Act
+            FireGeometry(label);
+
+            // Assert
+            Assert.That(label.style.minWidth.value.value, Is.EqualTo(40f).Within(0.01f));
+        }
+
         // GREEN_ON_BASE(characterization): the base reads a text whose widest run is as wide as the whole text as one a minimum can reach. Change `>=` to `>` in MinimumCanReach and the equal widths no longer do.
         [Test]
         public void Given_ATextWithABreakInItWhoseWidestRunIsItsWholeWidth_When_AskedWhetherTheMinimumCanReachIt_Then_ItCan()
