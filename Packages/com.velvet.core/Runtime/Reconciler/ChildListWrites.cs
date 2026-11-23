@@ -330,6 +330,7 @@ namespace Velvet
             {
                 Exit(container);
             }
+            ForgetRemovalThrew(child);
             if (left != null && !ReferenceEquals(left, container)) PruneIfEmpty(left);
         }
 
@@ -352,6 +353,10 @@ namespace Velvet
             {
                 if (ReferenceEquals(child.hierarchy.parent, container)) rows.Remove(child);
                 parent.Remove(child);
+            }
+            catch (Exception exception)
+            {
+                if (!FileRemovalFailure(child, exception)) throw;
             }
             finally
             {
@@ -379,6 +384,10 @@ namespace Velvet
                 if (ReferenceEquals(child.hierarchy.parent, parent)) rows.Remove(child);
                 parent.hierarchy.Remove(child);
             }
+            catch (Exception exception)
+            {
+                if (!FileRemovalFailure(child, exception)) throw;
+            }
             finally
             {
                 Exit(parent);
@@ -400,10 +409,15 @@ namespace Velvet
                 return;
             }
             var rows = Enter(container, index);
+            var child = index >= 0 && index < container.hierarchy.childCount ? container.hierarchy[index] : null;
             try
             {
-                if (index >= 0 && index < container.hierarchy.childCount) rows.Remove(container.hierarchy[index]);
+                if (child != null) rows.Remove(child);
                 parent.RemoveAt(index);
+            }
+            catch (Exception exception)
+            {
+                if (child == null || !FileRemovalFailure(child, exception)) throw;
             }
             finally
             {
@@ -437,6 +451,10 @@ namespace Velvet
                 rows.Remove(child);
                 child.RemoveFromHierarchy();
             }
+            catch (Exception exception)
+            {
+                if (!FileRemovalFailure(child, exception)) throw;
+            }
             finally
             {
                 Exit(parent);
@@ -458,16 +476,35 @@ namespace Velvet
                 return;
             }
             var rows = Enter(container, -1);
+            System.Runtime.ExceptionServices.ExceptionDispatchInfo? first = null;
             try
             {
                 rows.Clear();
-                parent.Clear();
+                // A child at a time, in order, so one whose removal throws leaves the ones after it to be removed.
+                for (var left = container.hierarchy.childCount; left > 0; left--)
+                {
+                    var child = container.hierarchy[0];
+                    try
+                    {
+                        container.hierarchy.RemoveAt(0);
+                    }
+                    catch (Exception exception)
+                    {
+                        // A throw ahead of the child leaving the list leaves it where the next round would take it again.
+                        if (ReferenceEquals(child.hierarchy.parent, container)) throw;
+                        if (!FileRemovalFailure(child, exception))
+                        {
+                            first ??= System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(exception);
+                        }
+                    }
+                }
             }
             finally
             {
                 Exit(container);
             }
             PruneIfEmpty(container);
+            first?.Throw();
         }
 
         // ---- Recorded writes ----
@@ -641,9 +678,10 @@ namespace Velvet
         private static void RecordRemoveAt(ReconcilePass pass, VisualElement container, VisualElement caller, int index)
         {
             var rows = Synced(container, -1);
+            VisualElement? element = null;
             if (index >= 0 && index < rows.TotalCount)
             {
-                var element = rows.ElementAt(index);
+                element = rows.ElementAt(index);
                 rows.Remove(element);
                 pass.PendingParent[element] = null;
             }
@@ -651,7 +689,7 @@ namespace Velvet
             RecordBehindApplyingRoot(pass);
             pass.Ops.Add(new ReconcilePass.Op
             {
-                Container = container, Caller = caller, Index = index, Kind = ReconcilePass.OpKind.RemoveAt,
+                Container = container, Caller = caller, Child = element!, Index = index, Kind = ReconcilePass.OpKind.RemoveAt,
             });
             Touch(container);
         }
@@ -735,9 +773,7 @@ namespace Velvet
 
         // Puts the recorded writes on the live lists in the order they were made. An op that throws
         // does not stop the ones behind it: the walk has moved on from each of them, so the live tree has to take every
-        // one. The first exception is rethrown once they have, except where a wave recorded the ops: there each is kept
-        // for the wave to route (ReconcilePass.Failures), filed under the component that rendered the element an insert
-        // adds, or else under the root whose render recorded the op.
+        // one. The first exception FileFailure does not file is rethrown once they have.
         private static void Apply(ReconcilePass pass)
         {
             pass.Applying = true;
@@ -756,7 +792,12 @@ namespace Velvet
                     }
                     catch (Exception exception)
                     {
-                        var added = pass.Ops[i].Kind == ReconcilePass.OpKind.Insert ? pass.Ops[i].Child : null;
+                        var op = pass.Ops[i];
+                        var removed = op.Kind == ReconcilePass.OpKind.RemoveAt || op.Kind == ReconcilePass.OpKind.RemoveChild
+                            ? op.Child
+                            : null;
+                        if (removed != null) NoteRemovalThrew(removed);
+                        var added = op.Kind == ReconcilePass.OpKind.Insert ? op.Child : null;
                         if (!FileFailure(pass, added, exception))
                         {
                             first ??= System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(exception);
@@ -798,9 +839,10 @@ namespace Velvet
             first?.Throw();
         }
 
-        // Files an insert of an element the wave created under the component that rendered it, its search starting where
-        // React's commit starts a placement's (ComponentBoundarySearch.PlacementSearchStart), at the place the element's
-        // walk ended at, and any other op under the root of its run, at the op's. False where the pass is no wave's.
+        // Files the failure of an insert of an element a wave created under the component that rendered it, for the wave
+        // to route (ReconcilePass.Failures), its search starting where React's commit starts a placement's
+        // (ComponentBoundarySearch.PlacementSearchStart), at the place the element's walk ended at, and that of any other
+        // op as FileUnderTheRun files it, at the op's place.
         private static bool FileFailure(ReconcilePass pass, VisualElement? added, Exception exception)
         {
             if (added != null)
@@ -812,9 +854,70 @@ namespace Velvet
                     return true;
                 }
             }
-            if (pass.ApplyingRoot == null) return false;
-            pass.Fail(pass.ApplyingRoot, pass.ApplyingRoot, exception, added, pass.PlaceNow);
+            return FileUnderTheRun(pass, pass.ApplyingRoot, added, exception);
+        }
+
+        // With root, the root of the run of a wave's pass the failure belongs to, keeps it for the wave to route
+        // (ReconcilePass.Failures) at the place the pass meets now. Without one, it goes to the fiber whose unmount the pass
+        // reconciles, which takes it where that is the root MountedTree.Dispose is unmounting (CommitErrors.Capture
+        // declines a fiber whose unmount has cleared IsMounted otherwise), as React's root.unmount() captures what a
+        // removal throws at the root. False where nothing takes it.
+        internal static bool FileUnderTheRun(ReconcilePass pass, ComponentFiber? root, VisualElement? element,
+            Exception exception)
+        {
+            if (root == null)
+            {
+                return pass.UnmountingFiber != null && CommitErrors.Capture(pass.UnmountingFiber, null, exception);
+            }
+            pass.Fail(root, root, exception, element, pass.PlaceNow);
             return true;
+        }
+
+        // What a removal made at once threw, filed as the current pass files a failed op (FileUnderTheRun), with the element
+        // noted as one whose removal threw. False where nothing takes it, which leaves the caller to rethrow.
+        private static bool FileRemovalFailure(VisualElement element, Exception exception)
+        {
+            NoteRemovalThrew(element);
+            var pass = s_current;
+            return pass != null && FileUnderTheRun(pass, RunRootOf(pass), null, exception);
+        }
+
+        // The elements a removal of which threw, which FiberElementCleaner's pool returns and z-* release read, until
+        // an insert puts one in a tree again.
+        private static readonly ConditionalWeakTable<VisualElement, object> s_removalThrew = new();
+        private static readonly object s_threw = new();
+        private static bool s_anyRemovalThrew;
+
+        private static void NoteRemovalThrew(VisualElement element)
+        {
+            s_anyRemovalThrew = true;
+            s_removalThrew.AddOrUpdate(element, s_threw);
+        }
+
+        private static void ForgetRemovalThrew(VisualElement element)
+        {
+            // MUTANT_SURVIVES(equivalent, guard removed): until a note is made, Remove finds nothing to remove.
+            if (s_anyRemovalThrew) s_removalThrew.Remove(element);
+        }
+
+        internal static bool RemovalThrew(VisualElement element) => s_removalThrew.TryGetValue(element, out _);
+
+        // Whether the removal of element, or of an element above it, threw.
+        internal static bool RemovalThrewAbove(VisualElement element)
+        {
+            for (VisualElement? at = element; at != null; at = at.hierarchy.parent)
+            {
+                if (RemovalThrew(at)) return true;
+            }
+            return false;
+        }
+
+        // The root of the run a removal decided now belongs to, as Apply reads runs: that of the op the pass is applying,
+        // and otherwise that of the op it would record next. Null where no wave owns the pass.
+        internal static ComponentFiber? RunRootOf(ReconcilePass pass)
+        {
+            if (pass.Applying) return pass.ApplyingRoot;
+            return pass.Segments.Count > 0 ? pass.Segments[^1].Root : null;
         }
 
         // Records where a turn begins among the ops, for the teardowns attached to the anchor to run at (RecordTeardown).
@@ -920,6 +1023,7 @@ namespace Velvet
                 s_flight.RemoveAt(s_flight.Count - 1);
                 s_open--;
             }
+            if (op.Kind == ReconcilePass.OpKind.Insert) ForgetRemovalThrew(op.Child);
         }
 
         // Applies what the pass recorded and ends it. FinishPass of a range rendered outside any pass ends the context's

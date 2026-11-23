@@ -81,6 +81,9 @@ namespace Velvet
         // parent — mirroring the rollback-orphan path, which already unwraps before reclaiming.
         private void ReturnOccupantNow(VisualElement removed, VisualElement poolable)
         {
+            // A removal of it threw: it is neither unwrapped, which would remove its inner a second time, nor handed to a
+            // pool as that removal left it.
+            if (ChildListWrites.RemovalThrew(removed)) return;
             if (!ReferenceEquals(poolable, removed))
             {
                 ChildListWrites.RemoveFromHierarchy(poolable);
@@ -824,14 +827,16 @@ namespace Velvet
             CleanupElement(real, element.panel, discardedRoot: null, plan);
             if (stillPlaced)
             {
-                _ctx.PendingZLayerDeadReals.Add((real, poolable));
+                _ctx.PendingZLayerDeadReals.Add((real, poolable, ChildListWrites.RunRootOf(_ctx.Pass)));
                 return;
             }
             ReturnOccupantToPool(real, poolable);
         }
 
-        // Removes and pools the relocated elements CleanupZLayerPlaceholder left standing. Runs from
-        // Reconciler.FinishTopLevelPass, where no diff holds a physical index into their parents.
+        // Removes and pools the relocated elements CleanupZLayerPlaceholder left standing. Runs from Reconciler.FinishPass,
+        // where no diff holds a physical index into their parents. A removal that throws does not stop the ones behind
+        // it; its failure is filed under the run that retired the element (ChildListWrites.FileUnderTheRun), and the
+        // first one nothing files is rethrown once every removal has run.
         internal void ReleaseRetiredZLayerReals()
         {
             if (_ctx.PendingZLayerDeadReals.Count == 0)
@@ -840,12 +845,30 @@ namespace Velvet
             }
             var retired = _ctx.PendingZLayerDeadReals.ToArray();
             _ctx.PendingZLayerDeadReals.Clear();
-            foreach (var (real, poolable) in retired)
+            ExceptionDispatchInfo? first = null;
+            foreach (var (real, poolable, root) in retired)
             {
+                // Read ahead of ForgetRetired, which drops the note with the role.
+                var detachSent = FiberZLayerCoordinator.DetachSent(real);
                 FiberZLayerCoordinator.ForgetRetired(real);
-                ChildListWrites.RemoveFromHierarchy(real);
+                // Taken off the panel with a container whose removal threw after the real's own detach went out: removing
+                // it again would send that detach a second time. One the throw stopped short of still names the panel
+                // (DisposeDetachErrorTests' engine case pins that), and is removed again, which sends it once.
+                if (detachSent && ChildListWrites.RemovalThrewAbove(real)) continue;
+                try
+                {
+                    ChildListWrites.RemoveFromHierarchy(real);
+                }
+                catch (Exception exception)
+                {
+                    if (!ChildListWrites.FileUnderTheRun(_ctx.Pass, root, null, exception))
+                    {
+                        first ??= ExceptionDispatchInfo.Capture(exception);
+                    }
+                }
                 ReturnOccupantNow(real, poolable);
             }
+            first?.Throw();
         }
 
         // Recursively cleans up the descendants of an element. DOM operations are the caller's
