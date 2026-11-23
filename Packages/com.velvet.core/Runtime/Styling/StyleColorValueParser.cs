@@ -451,6 +451,21 @@ namespace Velvet
             return true;
         }
 
+        // Whether an opacity modifier is written as a percentage, which a modifier read from a var() has to be for the
+        // color-mix() Tailwind writes to hold: `[50%]`, or a math function coming to one, where `[0.5]` is no
+        // percentage.
+        internal static bool ModifierIsPercentage(ReadOnlySpan<char> modifier)
+        {
+            if (!TryParseModifierPercent(modifier, out _))
+            {
+                return false;
+            }
+            StyleArbitraryValueResolver.TryStripBrackets(modifier, 0, out var inner);
+            return inner.EndsWith("%".AsSpan(), StringComparison.Ordinal)
+                ? true
+                : StyleLengthExpression.OpensMathFunction(inner.Trim("_ ".AsSpan()));
+        }
+
         // The percent an opacity modifier names, in the forms Tailwind generates: a number in steps of 0.25 written
         // as a number prints (50, 2.25, 0.5 — not 05, .5 or 50.0), or a bracketed number, which is a fraction of
         // 100% ([0.32]), or a bracketed percentage ([33.3%]). A bracket may hold any value, a negative one or one
@@ -464,6 +479,14 @@ namespace Velvet
             }
             if (StyleArbitraryValueResolver.TryStripBrackets(span, 0, out var inner))
             {
+                if (StyleLengthExpression.OpensMathFunction(inner.Trim("_ ".AsSpan())))
+                {
+                    if (!StyleLengthExpression.TryParseNumberOrPercentage(inner, out percent, out var isMathPercent))
+                    {
+                        return false;
+                    }
+                    return isMathPercent;
+                }
                 var isPercent = inner.Length > 0 && inner[inner.Length - 1] == '%';
                 var number = isPercent ? inner.Slice(0, inner.Length - 1) : inner;
                 if (!float.TryParse(number, NumberStyles.Float, CultureInfo.InvariantCulture, out var value) || !float.IsFinite(value))

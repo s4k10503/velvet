@@ -446,8 +446,8 @@ namespace Velvet
 
         // ---- Recorded writes ----
         //
-        // Inside a pass, an insert or a move the walk makes through HostCommitQueue into a container the pass did not
-        // create updates the model and is recorded; the live list takes it no later than where FinishPass starts
+        // Inside a pass, an insert, a move or a removal the walk makes through HostCommitQueue into a container the pass
+        // did not create updates the model and is recorded; the live list takes it no later than where FinishPass starts
         // (ApplyRecorded), in the order recorded. A node's patch halves are recorded in the same list (PatchPre and
         // PatchPost, the children's ops between them); they name no container, so a reader of the element's parent does
         // not apply them, and the post-children passes of an element patched at once apply
@@ -479,6 +479,10 @@ namespace Velvet
 
         // Raised by HostCommitQueue around the writes it makes, which are the ones recorded.
         internal static int ViaQueue;
+
+        // Whether a pass is recording or its recorded writes are applying, whatever it has recorded. The flag belongs to
+        // the process and not to one context, so another context's pass raises it too.
+        internal static bool PassIsOpen => s_recording || s_applying;
 
         // A pass starting where another is still recording applies the other's writes first.
         internal static void BeginRecording()
@@ -558,6 +562,19 @@ namespace Velvet
                 ViaHierarchy = viaHierarchy,
             });
             Touch(container);
+        }
+
+        // Takes a row out of its container at the index the model holds it at, which is found by reference for the reason
+        // FiberElementCleaner.RemoveCleaned gives. A recorded removal names that index and not the element: the ops apply
+        // in the order recorded, so the live list holds the row there when it comes up, and an apply by element would
+        // search the list for it.
+        internal static void RemoveRow(VisualElement parent, VisualElement element)
+        {
+            var at = PhysicalIndexOf(parent, element);
+            if (at < 0) return;
+            var container = ContentOf(parent);
+            if (ShouldRecord(container, element)) RecordRemoveAt(container, parent, at);
+            else RemoveAt(parent, at);
         }
 
         // The removal half of a move HostCommitQueue.Reorder makes.
