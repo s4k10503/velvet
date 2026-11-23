@@ -106,7 +106,9 @@ namespace Velvet.Tests
         [Test]
         public void Given_APercentSizeLayerBesideAnMdWidthClass_When_WiderThanMd_Then_ThePartiallyClaimedWidthCapsTheMinWidthAtTheClass()
         {
-            // Arrange
+            // Arrange — the sheet is attached because `flex-row` and `shrink-0` come from it: without it the parent is a
+            // column, which writes a minimum height, and the label shrinks to its text, which writes none.
+            VelvetStyleUtilities.AttachTo(_window.rootVisualElement);
             _window.position = new Rect(0, 0, 1000f, 600f);
             _mounted = V.Mount(_window.rootVisualElement,
                 V.Div("flex flex-row w-[2000px]",

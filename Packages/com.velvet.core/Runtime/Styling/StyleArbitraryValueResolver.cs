@@ -3503,16 +3503,27 @@ namespace Velvet
             MaxHeight,
         }
 
-        // The slot a property's setter at index writes among the four, or -1.
-        private static int SizeSlotOf(ArbitraryProperty property, int index) => property switch
+        private static readonly StyleLonghand[] s_sizeLonghands =
         {
-            ArbitraryProperty.Width => (int)SizeSlot.Width,
-            ArbitraryProperty.Height => (int)SizeSlot.Height,
-            ArbitraryProperty.MaxWidth => (int)SizeSlot.MaxWidth,
-            ArbitraryProperty.MaxHeight => (int)SizeSlot.MaxHeight,
-            ArbitraryProperty.Size => index,
-            _ => -1,
+            StyleLonghand.Width, StyleLonghand.Height, StyleLonghand.MaxWidth, StyleLonghand.MaxHeight,
         };
+
+        // The slot a property's setter at index writes among the four, or -1 for a property that writes none of them.
+        // Read off the longhands the property writes (StyleArbitraryLonghands), taking them in SizeSlot order, which is
+        // the order the setters of `size` are listed in, so a new property is decided by what it writes.
+        private static int SizeSlotOf(ArbitraryProperty property, int index)
+        {
+            var longhands = StyleArbitraryLonghands.Of(property);
+            var seen = 0;
+            for (var slot = 0; slot < s_sizeLonghands.Length; slot++)
+            {
+                if (longhands.Contains(s_sizeLonghands[slot]) && seen++ == index)
+                {
+                    return slot;
+                }
+            }
+            return -1;
+        }
 
         // Records an expression with its pixels; a plain length records nothing and drops what an earlier
         // expression left, which allocates no record where none was ever made.
