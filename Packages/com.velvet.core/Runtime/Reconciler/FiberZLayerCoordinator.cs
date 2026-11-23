@@ -797,10 +797,10 @@ namespace Velvet
             ChildListWrites.Reclassify(element);
         }
 
-        // Whether UI Toolkit has sent real a DetachFromPanelEvent since it last attached, which
-        // FiberElementCleaner.ReleaseRetiredZLayerReals reads where a removal above the element threw. Noted in the
-        // trickle-down phase, ahead of the callbacks the element registers itself, so one of those that throws still
-        // finds it noted; DisposeDetachErrorTests' case of a z-* element throwing inside a row fails where it is not.
+        // Whether UI Toolkit has sent real a DetachFromPanelEvent since it last attached, while it held a real role,
+        // which FiberElementCleaner.ReleaseRetiredZLayerReals reads where a removal above the element threw. Noted in the
+        // trickle-down phase, ahead of the bubble-up callbacks the element registers itself, so one of those that throws
+        // still finds it noted; DisposeDetachErrorTests' case of a z-* element throwing inside a row fails where it is not.
         internal static bool DetachSent(VisualElement real) => s_detachSent.TryGetValue(real, out _);
 
         private static readonly ConditionalWeakTable<VisualElement, object> s_detachSent = new();
@@ -822,6 +822,10 @@ namespace Velvet
         private static void Release(VisualElement element)
         {
             s_held.Remove(element);
+            // What Watch registered and noted goes with the role, so a pool never hands either to a later tenant.
+            element.UnregisterCallback(s_noteDetach, TrickleDown.TrickleDown);
+            element.UnregisterCallback(s_noteAttach, TrickleDown.TrickleDown);
+            s_detachSent.Remove(element);
             ChildListWrites.Reclassify(element);
         }
 

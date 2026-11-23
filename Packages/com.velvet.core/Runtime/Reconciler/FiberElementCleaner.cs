@@ -848,11 +848,13 @@ namespace Velvet
             ExceptionDispatchInfo? first = null;
             foreach (var (real, poolable, root) in retired)
             {
+                // Read ahead of ForgetRetired, which drops the note with the role.
+                var detachSent = FiberZLayerCoordinator.DetachSent(real);
                 FiberZLayerCoordinator.ForgetRetired(real);
                 // Taken off the panel with a container whose removal threw after the real's own detach went out: removing
                 // it again would send that detach a second time. One the throw stopped short of still names the panel
                 // (DisposeDetachErrorTests' engine case pins that), and is removed again, which sends it once.
-                if (ChildListWrites.RemovalThrewAbove(real) && FiberZLayerCoordinator.DetachSent(real)) continue;
+                if (detachSent && ChildListWrites.RemovalThrewAbove(real)) continue;
                 try
                 {
                     ChildListWrites.RemoveFromHierarchy(real);

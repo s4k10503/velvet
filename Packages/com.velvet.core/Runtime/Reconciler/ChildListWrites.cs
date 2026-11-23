@@ -330,6 +330,7 @@ namespace Velvet
             {
                 Exit(container);
             }
+            ForgetRemovalThrew(child);
             if (left != null && !ReferenceEquals(left, container)) PruneIfEmpty(left);
         }
 
@@ -881,11 +882,23 @@ namespace Velvet
             return pass != null && FileUnderTheRun(pass, RunRootOf(pass), null, exception);
         }
 
-        // The elements a removal of which threw, which FiberElementCleaner's pool returns and z-* release read.
+        // The elements a removal of which threw, which FiberElementCleaner's pool returns and z-* release read, until
+        // an insert puts one in a tree again.
         private static readonly ConditionalWeakTable<VisualElement, object> s_removalThrew = new();
         private static readonly object s_threw = new();
+        private static bool s_anyRemovalThrew;
 
-        private static void NoteRemovalThrew(VisualElement element) => s_removalThrew.AddOrUpdate(element, s_threw);
+        private static void NoteRemovalThrew(VisualElement element)
+        {
+            s_anyRemovalThrew = true;
+            s_removalThrew.AddOrUpdate(element, s_threw);
+        }
+
+        private static void ForgetRemovalThrew(VisualElement element)
+        {
+            // MUTANT_SURVIVES(equivalent, guard removed): until a note is made, Remove finds nothing to remove.
+            if (s_anyRemovalThrew) s_removalThrew.Remove(element);
+        }
 
         internal static bool RemovalThrew(VisualElement element) => s_removalThrew.TryGetValue(element, out _);
 
@@ -1010,6 +1023,7 @@ namespace Velvet
                 s_flight.RemoveAt(s_flight.Count - 1);
                 s_open--;
             }
+            if (op.Kind == ReconcilePass.OpKind.Insert) ForgetRemovalThrew(op.Child);
         }
 
         // Applies what the pass recorded and ends it. FinishPass of a range rendered outside any pass ends the context's
