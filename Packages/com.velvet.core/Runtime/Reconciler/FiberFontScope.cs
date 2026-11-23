@@ -27,9 +27,9 @@ namespace Velvet
     // a stamp of the elements from the inheritor up to its named ancestor (classes, name, stylesheets, inline fonts, and
     // the key the engine holds the matched rules of the element a rule gave the font to), which allocates nothing.
     // Author rules are asked of the engine's matcher (BorderPreflight.AuthorRuleSets) only where a stylesheet other than a
-    // default one is attached above the element; where the matcher cannot be built only inline fonts are read. A rule
-    // that matches only in a pseudo-state and sets the font of an element between an inheritor and its named ancestor is
-    // not seen until another change moves the stamp.
+    // default one is attached above the element; where the matcher cannot be built only inline fonts are read. The stamp
+    // holds each element's pseudo-states, so the matcher runs again on the update a hover, focus or active state changes
+    // there and not while an inherited style of an ancestor animates.
     //
     // A change to the registry resolves every element the tables hold again: one naming a family, or inheriting a
     // named one, at once; one inheriting its parent's font once that font has been read again.
@@ -204,10 +204,14 @@ namespace Velvet
         private static UnityEngine.Object? AuthorInline(VisualElement element, in Inheritor prior)
         {
             var inline = InlineFont(element);
-            if (inline is FontAsset shown && prior.Written != null
-                && (shown == prior.Written || LineBoxFont.SourceOf(shown) == prior.Written))
+            var shown = inline as FontAsset;
+            var wrote = prior.Written;
+            if (shown != null && wrote != null)
             {
-                return prior.Own;
+                if (shown == wrote || LineBoxFont.SourceOf(shown) == wrote)
+                {
+                    return prior.Own;
+                }
             }
 
             return inline;
@@ -266,15 +270,19 @@ namespace Velvet
 
         private int LinkStamp(VisualElement link)
         {
-            if (_inTick && _linkStamps.TryGetValue(link, out var known))
+            if (_inTick)
             {
-                return known;
+                if (_linkStamps.TryGetValue(link, out var known))
+                {
+                    return known;
+                }
             }
 
             var style = link.style;
             var definition = style.unityFontDefinition;
             var stamp = HashCode.Combine(link, link.name, (int)definition.keyword, definition.value.fontAsset,
                 definition.value.font, (int)style.unityFont.keyword, style.unityFont.value);
+            stamp = HashCode.Combine(stamp, StyleCascade.PseudoStates(link));
             stamp = VelvetStyleUtilities.ClassStamp(stamp, link);
             for (var i = 0; i < link.styleSheets.count; i++)
             {
@@ -304,8 +312,19 @@ namespace Velvet
         }
 
         private bool Moved(VisualElement element, in Inheritor entry)
-            => (entry.Named == null && ParentFont(element) != entry.Seen)
-                || (entry.Chain is { } chain && ChainStamp(element, entry.Rule) != chain);
+        {
+            if (entry.Named == null && ParentFont(element) != entry.Seen)
+            {
+                return true;
+            }
+
+            if (entry.Chain is { } chain)
+            {
+                return ChainStamp(element, entry.Rule) != chain;
+            }
+
+            return false;
+        }
 
         private void Resolve(VisualElement element, in FontIntent intent, bool force)
         {

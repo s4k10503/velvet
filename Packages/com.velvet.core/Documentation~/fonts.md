@@ -145,10 +145,9 @@ class below it takes the family that holds the font that root resolves to, the d
 gives it one.
 
 An element's declarations are read again at each update of its panel: an author font an element gains or loses
-after the label resolved, by a class, a stylesheet or an inline write, reaches the label within the next updates of its panel. Two
-cases are the exception: a rule that matches an element between a label and its `font-<name>` ancestor only in a
-pseudo-state, and sets that element's font, is not seen until another change to the classes, stylesheets or inline
-fonts there; and where the engine's rule matcher cannot be built, only inline fonts are read.
+after the label resolved, by a class, a pseudo-state, a stylesheet or an inline write, reaches the label within the
+next updates of its panel. Where the engine's rule matcher cannot be built, only inline fonts are read, which is how
+the package stays usable on an editor whose internals moved; `EngineMemberResolutionTests` fails when one of the members it reads stops resolving.
 `InheritedFontFamilyPanelTests` and `FontFamilyFacesPanelTests` pin the inheritance.
 
 Glyphs the assigned asset lacks still go through TextCore's fallback chain, which

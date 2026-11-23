@@ -95,7 +95,8 @@ namespace Velvet.Tests
             AssetDatabase.AddObjectToAsset(ruled.atlasTexture, ruled);
             AssetDatabase.AddObjectToAsset(ruled.material, ruled);
             VelvetFonts.Register(Family("ruled", ruled, ruledBold));
-            AttachSheet(".ruled { -unity-font-definition: url(\"project://database/" + RuledPath + "\"); }");
+            var ruledFont = "-unity-font-definition: url(\"project://database/" + RuledPath + "\");";
+            AttachSheet(".ruled { " + ruledFont + " } .ruled-hover:hover { " + ruledFont + " }");
             return ruledBold;
         }
 
@@ -427,6 +428,30 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(Target(root).style.unityFontDefinition.value.fontAsset, Is.SameAs(s_serifBold));
+        }
+
+        [Test]
+        public void Given_ABoldLabelUnderAFamilyContainer_When_AnAncestorBetweenThemIsHoveredAndAHoverRuleGivesItAFont_Then_TheLabelFollows()
+        {
+            // Arrange
+            var ruledBold = AttachSheetGivingTheRuledFont();
+            var root = new VisualElement();
+            _host.Root.Add(root);
+            _mounted = V.Mount(root, V.Div(className: "font-serif", children: new[]
+            {
+                V.Div(className: "ruled-hover", name: "mid", children: new[] { V.Label(className: "font-bold", text: "target", name: "target") }),
+            }));
+            RunAFrame();
+
+            // Act
+            var pseudo = EngineMember.PseudoStates.ResolveProperty()!;
+            var hover = Convert.ToInt32(Enum.Parse(pseudo.PropertyType, "Hover"));
+            var states = Convert.ToInt32(pseudo.GetValue(root.Q("mid")));
+            pseudo.SetValue(root.Q("mid"), Enum.ToObject(pseudo.PropertyType, states | hover));
+            RunAFrame();
+
+            // Assert
+            Assert.That(Target(root).style.unityFontDefinition.value.fontAsset, Is.SameAs(ruledBold));
         }
     }
 }
