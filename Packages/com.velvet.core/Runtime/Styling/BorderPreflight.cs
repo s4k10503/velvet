@@ -967,6 +967,21 @@ namespace Velvet
             return false;
         }
 
+        // A sheet is read once, since reading the engine's flag boxes it on every call; a sheet read before the engine marked it a
+        // default one is read as an author's, which only lets a caller ask the matcher what it would have skipped.
+        private static readonly ConditionalWeakTable<StyleSheet, object> s_defaultSheets = new();
+
+        private static bool IsDefaultSheet(StyleSheet sheet)
+        {
+            if (!s_defaultSheets.TryGetValue(sheet, out var known))
+            {
+                known = (bool)s_isDefault!.GetValue(sheet);
+                s_defaultSheets.Add(sheet, known);
+            }
+
+            return (bool)known;
+        }
+
         // Whether a stylesheet other than a default one is attached to element or to an element above it, which is where the
         // matcher reads the rules it can find from; null where the matcher cannot be built. Lets a caller skip AuthorRuleSets,
         // which allocates, where no rule of an author could match.
@@ -978,7 +993,7 @@ namespace Velvet
             {
                 for (var i = 0; i < link.styleSheets.count; i++)
                 {
-                    if (!(bool)s_isDefault!.GetValue(link.styleSheets[i])) return true;
+                    if (!IsDefaultSheet(link.styleSheets[i])) return true;
                 }
             }
             return false;

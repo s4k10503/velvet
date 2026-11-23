@@ -536,6 +536,89 @@ namespace Velvet.Tests
             Assert.That(TargetAsset(), Is.SameAs(_monoNormal));
         }
 
+
+        // GREEN_ON_BASE(characterization): the base resolves a bold label under a font-<name> ancestor the moment that
+        // class changes, with a weight element between them. Settle the pending inheritors in `_pending`'s own order
+        // instead of SettleInTreeOrder and the label can settle before the element between and read its old font.
+        [Test]
+        public void Given_AWeightElementBetweenAFamilyContainerAndABoldLabel_When_TheContainersFamilyChanges_Then_TheLabelFollowsAtOnce()
+        {
+            // Arrange
+            VNode Tree(string containerClass) => V.Div(className: containerClass, children: new VNode[]
+            {
+                V.Div(className: "font-normal", children: new[] { Target("font-bold") }),
+            });
+            _mounted = V.Mount(_host.Root, Tree("font-serif"));
+            RunAFrame();
+
+            // Act
+            _mounted.Render(Tree("font-mono"));
+
+            // Assert
+            Assert.That(TargetAsset(), Is.SameAs(_monoBold));
+        }
+
+        // GREEN_ON_BASE(characterization): the base writes no asset for a family nothing is registered under. Drop
+        // `!VelvetFonts.Resolve(family, VelvetFontWeight.Normal, false).HasAsset` from `kept` in Locate and the label takes
+        // the default family's Bold, the font the unnamed container inherits.
+        [Test]
+        public void Given_AFamilyContainerNamingNoRegisteredFamily_When_ABoldLabelMounts_Then_TheLabelWritesNoAsset()
+        {
+            // Arrange
+            var tree = V.Div(className: "font-ghost", children: new[] { Target("font-bold") });
+
+            // Act
+            _mounted = V.Mount(_host.Root, tree);
+            RunAFrame();
+            RunAFrame();
+
+            // Assert
+            Assert.That(_host.Root.Q<Label>("target").style.unityFontDefinition.keyword, Is.EqualTo(StyleKeyword.Null));
+        }
+
+        [Test]
+        public void Given_AFontListNamingTwoFamilies_When_AskedWhetherItHoldsTheSecondsFont_Then_ItDoes()
+        {
+            // Act
+            var holds = VelvetFonts.NamedHolds("serif,mono", _monoBold);
+
+            // Assert
+            Assert.That(holds, Is.True);
+        }
+
+        [Test]
+        public void Given_AFontListNamingTwoFamilies_When_AskedWhetherItHoldsAThirdFamilysFont_Then_ItDoesNot()
+        {
+            // Act
+            var holds = VelvetFonts.NamedHolds("serif,mono", _sansBold);
+
+            // Assert
+            Assert.That(holds, Is.False);
+        }
+
+        [Test]
+        public void Given_ALabelWhoseInlineFontTheBoldClassReplacedAndALineBoxCopyOfThatWrite_When_TheFontClassIsRemoved_Then_TheAuthorsInlineFontIsBack()
+        {
+            // Arrange
+            _mounted = V.Mount(_host.Root, V.Div(children: new[] { Target(string.Empty) }));
+            RunAFrame();
+            var label = _host.Root.Q<Label>("target");
+            label.style.unityFontDefinition = FontDefinition.FromSDFFont(_monoNormal);
+            _mounted.Render(V.Div(children: new[] { Target("font-bold") }));
+            RunAFrame();
+            var user = new object();
+            var copy = LineBoxFont.Acquire(user, _monoBold, 24f, 16f);
+            label.style.unityFontDefinition = FontDefinition.FromSDFFont(copy);
+
+            // Act
+            _mounted.Render(V.Div(children: new[] { Target(string.Empty) }));
+            RunAFrame();
+            LineBoxFont.Release(user, copy);
+
+            // Assert
+            Assert.That(TargetAsset(), Is.SameAs(_monoNormal));
+        }
+
         #endregion
     }
 }

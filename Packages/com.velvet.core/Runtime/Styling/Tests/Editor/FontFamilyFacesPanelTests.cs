@@ -516,5 +516,18 @@ namespace Velvet.Tests
             // Assert
             Assert.That(Target(root).style.unityFontDefinition.value.fontAsset, Is.SameAs(s_serif));
         }
+
+        [Test]
+        public void Given_AnAddressNamedFamily_When_AskedWhetherItHoldsTheAssetTheAddressLoads_Then_ItDoes()
+        {
+            // Arrange
+            SeedAddress("Fonts/Sans", s_sans);
+
+            // Act
+            var holds = VelvetFonts.NamedHolds("addr:Fonts/Sans", s_sans);
+
+            // Assert
+            Assert.That(holds, Is.True);
+        }
     }
 }

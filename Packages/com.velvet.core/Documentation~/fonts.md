@@ -142,7 +142,8 @@ entry of `serif`.
   attached above the element). The family is the one that holds that font, and one no registered family holds is kept in
   the same way. `DefaultFamily` applies where the parent resolves to no font.
 - A `font-<name>` ancestor that Velvet rendered keeps its family, a font list's fallbacks included, for as long as the
-  parent's font is one the named family holds. A parent's font it does not hold is an author's and decides instead. An
+  parent's font is one the named family holds. A parent's font it does not hold is an author's and decides instead,
+  except where no font is registered under the name, which the label then follows by writing no asset of its own. An
   ancestor that has only a weight class names nothing.
 - A root whose `font-<name>` class Velvet did not render (a portal target, layer root or world-space panel root, or the
   root of another `V.Mount`) names no family: a weight class below it takes the family that holds the font that root
@@ -150,7 +151,8 @@ entry of `serif`.
 
 The parent's resolved font, and the element's own inline font and matched rules, are read again at each update of its
 panel, so a change to any of them reaches the label within the next updates of the panel. Until the panel has resolved
-a font Velvet wrote above the element, the named family stands. An author rule of the element itself is read through the
+a font Velvet wrote above the element, the named family stands. Pending elements settle ancestor first, so an element
+between a container and a label is given its font before the label reads it. An author rule of the element itself is read through the
 engine's rule matcher, only where a stylesheet other than a default one is attached above it; where the matcher cannot be
 built (an editor whose internals moved; `EngineMemberResolutionTests` fails when a member it reads stops resolving), only
 inline fonts are read.
