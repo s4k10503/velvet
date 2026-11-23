@@ -232,6 +232,21 @@ namespace Velvet.Tests
             });
 
         [Test]
+        public void Given_ABoldLabelInASansContainer_When_AnElementBetweenThemGainsAnInlineMonoFont_Then_TheLabelResolvesMonosBold()
+        {
+            // Arrange
+            _mounted = V.Mount(_host.Root, FamilyContainerWithAnAuthoredMiddle("font-bold"));
+            RunAFrame();
+
+            // Act
+            _host.Root.Q("mid").style.unityFontDefinition = FontDefinition.FromSDFFont(_monoNormal);
+            RunAFrame();
+
+            // Assert
+            Assert.That(TargetAsset(), Is.SameAs(_monoBold));
+        }
+
+        [Test]
         public void Given_AnInlineMonoFontOnAnElementBetweenASansContainerAndALabel_When_TheLabelBecomesBold_Then_TheLabelResolvesMonosBold()
         {
             // Arrange
@@ -241,6 +256,72 @@ namespace Velvet.Tests
 
             // Act
             _mounted.Render(FamilyContainerWithAnAuthoredMiddle("font-bold"));
+            RunAFrame();
+
+            // Assert
+            Assert.That(TargetAsset(), Is.SameAs(_monoBold));
+        }
+
+        [Test]
+        public void Given_ABoldLabelInASansContainer_When_ABoldElementBetweenThemGainsAnInlineMonoFont_Then_TheLabelResolvesMonosBold()
+        {
+            // Arrange
+            VNode Tree() => V.Div(className: "font-sans", children: new[]
+            {
+                V.Div(className: "font-bold", name: "mid", children: new[] { Target("font-bold") }),
+            });
+            _mounted = V.Mount(_host.Root, Tree());
+            RunAFrame();
+
+            // Act
+            _host.Root.Q("mid").style.unityFontDefinition = FontDefinition.FromSDFFont(_monoNormal);
+            RunAFrame();
+            RunAFrame();
+
+            // Assert
+            Assert.That(TargetAsset(), Is.SameAs(_monoBold));
+        }
+
+        // GREEN_ON_BASE(characterization): the base takes the nearest font-<name> ancestor's family. Read an inheritor
+        // ancestor's inline font as an author's in Locate (`InlineFont(ancestor)` where it takes `inheritor.Own`) and the
+        // label takes the family that holds that write, the default one here, since the asset is registered under both.
+        [Test]
+        public void Given_AWeightContainerWhoseFaceTheDefaultFamilyAlsoHolds_When_ANormalLabelMountsInASerifContainer_Then_TheSerifFamilyDecides()
+        {
+            // Arrange
+            VelvetFonts.Clear();
+            var shared = NewAsset();
+            var serifNormal = NewAsset();
+            VelvetFonts.Register(new VelvetFontFamily("serif",
+                new VelvetFontWeightEntry { weight = VelvetFontWeight.Normal, upright = serifNormal },
+                new VelvetFontWeightEntry { weight = VelvetFontWeight.Bold, upright = shared }));
+            VelvetFonts.Register(new VelvetFontFamily("sans",
+                new VelvetFontWeightEntry { weight = VelvetFontWeight.Normal, upright = NewAsset() },
+                new VelvetFontWeightEntry { weight = VelvetFontWeight.Bold, upright = shared }));
+            VelvetFonts.DefaultFamily = "sans";
+            var tree = V.Div(className: "font-serif", children: new VNode[]
+            {
+                V.Div(className: "font-bold", children: new[] { Target("font-normal") }),
+            });
+
+            // Act
+            _mounted = V.Mount(_host.Root, tree);
+            RunAFrame();
+
+            // Assert
+            Assert.That(TargetAsset(), Is.SameAs(serifNormal));
+        }
+
+        [Test]
+        public void Given_ALabelWithAnInlineMonoFontInASansContainer_When_ItBecomesBold_Then_TheLabelResolvesMonosBold()
+        {
+            // Arrange
+            _mounted = V.Mount(_host.Root, V.Div(className: "font-sans", children: new[] { Target("font-normal") }));
+            RunAFrame();
+            _host.Root.Q<Label>("target").style.unityFontDefinition = FontDefinition.FromSDFFont(_monoNormal);
+
+            // Act
+            _mounted.Render(V.Div(className: "font-sans", children: new[] { Target("font-bold") }));
             RunAFrame();
 
             // Assert

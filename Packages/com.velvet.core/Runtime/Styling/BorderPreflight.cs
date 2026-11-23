@@ -967,6 +967,23 @@ namespace Velvet
             return false;
         }
 
+        // Whether a stylesheet other than a default one is attached to element or to an element above it, which is where the
+        // matcher reads the rules it can find from; null where the matcher cannot be built. Lets a caller skip AuthorRuleSets,
+        // which allocates, where no rule of an author could match.
+        internal static bool? HasAuthorSheet(VisualElement element)
+        {
+            if (s_extractor == null) return null;
+
+            for (var link = element; link != null; link = link.hierarchy.parent)
+            {
+                for (var i = 0; i < link.styleSheets.count; i++)
+                {
+                    if (!(bool)s_isDefault!.GetValue(link.styleSheets[i])) return true;
+                }
+            }
+            return false;
+        }
+
         // Each property of each rule of a non-default stylesheet matching element, with the sheet the rule sits in and
         // the property's name. The matcher is cleared again however the walk ends.
         private static System.Collections.Generic.IEnumerable<(object Sheet, object Property, string Name)>

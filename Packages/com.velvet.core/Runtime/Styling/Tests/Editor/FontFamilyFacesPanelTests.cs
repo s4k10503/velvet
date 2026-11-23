@@ -68,8 +68,25 @@ namespace Velvet.Tests
         private const string RuledPath = "Assets/VelvetFontFamilyFacesRuled.asset";
         private StyleSheet _ruledSheet;
 
-        // Registers a family "ruled" whose normal font is saved where a sheet can name it, and attaches a sheet of the
-        // app's own, imported as the editor imports a .uss file, whose .ruled rule gives that font. Returns the family's bold.
+        // Attaches a sheet of the app's own, imported as the editor imports a .uss file.
+        private void AttachSheet(string uss)
+        {
+            _ruledSheet = ScriptableObject.CreateInstance<StyleSheet>();
+            var impl = Activator.CreateInstance(StockStyleSheetImport.Impl!, true)!;
+            try
+            {
+                StockStyleSheetImport.Import!.Invoke(impl, new object[] { _ruledSheet, uss });
+            }
+            catch (TargetInvocationException)
+            {
+                // The importer reports through its context, which this instance has none of; what it stored is used.
+            }
+
+            _host.Root.styleSheets.Add(_ruledSheet);
+        }
+
+        // Registers a family "ruled" whose normal font is saved where a sheet can name it, and attaches a sheet whose
+        // .ruled rule gives that font. Returns the family's bold.
         private FontAsset AttachSheetGivingTheRuledFont()
         {
             var ruled = NewAsset();
@@ -78,21 +95,7 @@ namespace Velvet.Tests
             AssetDatabase.AddObjectToAsset(ruled.atlasTexture, ruled);
             AssetDatabase.AddObjectToAsset(ruled.material, ruled);
             VelvetFonts.Register(Family("ruled", ruled, ruledBold));
-            _ruledSheet = ScriptableObject.CreateInstance<StyleSheet>();
-            var impl = Activator.CreateInstance(StockStyleSheetImport.Impl!, true)!;
-            try
-            {
-                StockStyleSheetImport.Import!.Invoke(impl, new object[]
-                {
-                    _ruledSheet, ".ruled { -unity-font-definition: url(\"project://database/" + RuledPath + "\"); }",
-                });
-            }
-            catch (TargetInvocationException)
-            {
-                // The importer reports through its context, which this instance has none of; what it stored is used.
-            }
-
-            _host.Root.styleSheets.Add(_ruledSheet);
+            AttachSheet(".ruled { -unity-font-definition: url(\"project://database/" + RuledPath + "\"); }");
             return ruledBold;
         }
 
@@ -286,6 +289,144 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(Target(root).style.unityFontDefinition.value.fontAsset, Is.SameAs(ruledBold));
+        }
+
+        private const string EngineFont = "resource(\"UIPackageResources/Fonts/NotInter/NotInter-Regular.ttf\")";
+
+        private static VNode ClassedBoldLabel(string className) => V.Div(children: new[]
+        {
+            V.Label(className: className, text: "target", name: "target"),
+        });
+
+        [Test]
+        public void Given_ABoldLabel_When_AClassGivingItARuleFontIsPatchedInWhileItsParentFontStays_Then_TheLabelResolvesThatFontsFamilysBold()
+        {
+            // Arrange
+            VelvetFonts.DefaultFamily = "sans";
+            var ruledBold = AttachSheetGivingTheRuledFont();
+            var root = new VisualElement();
+            _host.Root.Add(root);
+            _mounted = V.Mount(root, ClassedBoldLabel("font-bold"));
+            RunAFrame();
+
+            // Act
+            _mounted.Render(ClassedBoldLabel("ruled font-bold"));
+            RunAFrame();
+
+            // Assert
+            Assert.That(Target(root).style.unityFontDefinition.value.fontAsset, Is.SameAs(ruledBold));
+        }
+
+        [Test]
+        public void Given_ABoldLabelUnderAFamilyContainer_When_AnAncestorBetweenThemGainsARuleFontAfterTheLabelResolved_Then_TheLabelFollows()
+        {
+            // Arrange
+            var ruledBold = AttachSheetGivingTheRuledFont();
+            var root = new VisualElement();
+            _host.Root.Add(root);
+            VNode Tree(string middleClass) => V.Div(className: "font-serif", children: new[]
+            {
+                V.Div(className: middleClass, name: "mid", children: new[] { V.Label(className: "font-bold", text: "target", name: "target") }),
+            });
+            _mounted = V.Mount(root, Tree("p-1"));
+            RunAFrame();
+
+            // Act
+            root.Q("mid").AddToClassList("ruled");
+            RunAFrame();
+
+            // Assert
+            Assert.That(Target(root).style.unityFontDefinition.value.fontAsset, Is.SameAs(ruledBold));
+        }
+
+        [Test]
+        public void Given_ABoldLabelWhoseOwnRuleGivesItAFontFile_When_ItMounts_Then_TheLabelWritesNoFontOfItsOwn()
+        {
+            // Arrange
+            VelvetFonts.DefaultFamily = "sans";
+            AttachSheet(".file { -unity-font-definition: " + EngineFont + "; }");
+            var root = new VisualElement();
+            _host.Root.Add(root);
+
+            // Act
+            _mounted = V.Mount(root, ClassedBoldLabel("file font-bold"));
+            RunAFrame();
+
+            // Assert
+            Assert.That(Target(root).style.unityFontDefinition.keyword, Is.EqualTo(StyleKeyword.Null));
+        }
+
+        [Test]
+        public void Given_ABoldLabelWhoseOwnRuleGivesItALegacyFont_When_ItMounts_Then_TheLabelWritesNoFontOfItsOwn()
+        {
+            // Arrange
+            VelvetFonts.DefaultFamily = "sans";
+            AttachSheet(".legacy { -unity-font: " + EngineFont + "; }");
+            var root = new VisualElement();
+            _host.Root.Add(root);
+
+            // Act
+            _mounted = V.Mount(root, ClassedBoldLabel("legacy font-bold"));
+            RunAFrame();
+
+            // Assert
+            Assert.That(Target(root).style.unityFontDefinition.keyword, Is.EqualTo(StyleKeyword.Null));
+        }
+
+        [Test]
+        public void Given_ABoldLabelUnderAnAncestorGivenAFontFile_When_ItMounts_Then_TheLabelWritesNoFontOfItsOwn()
+        {
+            // Arrange
+            VelvetFonts.DefaultFamily = "sans";
+            AttachSheet(".file { -unity-font-definition: " + EngineFont + "; }");
+            var root = new VisualElement();
+            root.AddToClassList("file");
+            _host.Root.Add(root);
+
+            // Act
+            _mounted = V.Mount(root, ClassedBoldLabel("font-bold"));
+            RunAFrame();
+
+            // Assert
+            Assert.That(Target(root).style.unityFontDefinition.keyword, Is.EqualTo(StyleKeyword.Null));
+        }
+
+        [Test]
+        public void Given_ABoldLabelWithAnInlineFontNoFamilyHolds_When_ItsClassIsPatched_Then_TheInlineFontStays()
+        {
+            // Arrange
+            VelvetFonts.DefaultFamily = "sans";
+            var root = new VisualElement();
+            _host.Root.Add(root);
+            _mounted = V.Mount(root, ClassedBoldLabel("font-normal"));
+            RunAFrame();
+            Target(root).style.unityFontDefinition = FontDefinition.FromSDFFont(s_unregistered);
+
+            // Act
+            _mounted.Render(ClassedBoldLabel("font-bold"));
+            RunAFrame();
+
+            // Assert
+            Assert.That(Target(root).style.unityFontDefinition.value.fontAsset, Is.SameAs(s_unregistered));
+        }
+
+        [Test]
+        public void Given_ABoldLabelWithAnInlineFontOfAFamily_When_ItsClassIsPatched_Then_TheLabelResolvesThatFamilysBold()
+        {
+            // Arrange
+            VelvetFonts.DefaultFamily = "sans";
+            var root = new VisualElement();
+            _host.Root.Add(root);
+            _mounted = V.Mount(root, ClassedBoldLabel("font-normal"));
+            RunAFrame();
+            Target(root).style.unityFontDefinition = FontDefinition.FromSDFFont(s_serif);
+
+            // Act
+            _mounted.Render(ClassedBoldLabel("font-bold"));
+            RunAFrame();
+
+            // Assert
+            Assert.That(Target(root).style.unityFontDefinition.value.fontAsset, Is.SameAs(s_serifBold));
         }
     }
 }

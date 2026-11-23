@@ -188,9 +188,10 @@ namespace Velvet
 
         // inherited is the family an ancestor names or an inherited font belongs to, read only when the request names
         // none of its own. foreign is an inherited font no family holds, which a weight or italic request then
-        // emulates on that font where DefaultFamily would otherwise have been chosen.
+        // emulates on that font where DefaultFamily would otherwise have been chosen. keepFont leaves the inline font
+        // definition as it is where no asset is written, for a font the author gave the element inline.
         internal static void ApplyResolved(VisualElement element, in FontIntent intent, string? inherited,
-            bool foreign)
+            bool foreign, bool keepFont = false)
         {
             var weight = intent.HasWeight ? intent.Weight : VelvetFontWeight.Normal;
             var family = intent.HasFamily ? intent.Family : inherited;
@@ -232,7 +233,10 @@ namespace Velvet
             }
             else
             {
-                element.style.unityFontDefinition = StyleKeyword.Null;
+                if (!keepFont)
+                {
+                    element.style.unityFontDefinition = StyleKeyword.Null;
+                }
                 bold = intent.HasWeight && (int)weight >= 600;
                 ital = intent.Italic;
                 needStyle = intent.HasWeight || intent.HasItalic;

@@ -129,23 +129,26 @@ disposed or the element leaves the portal. `DefaultFamilyScopePanelTests` pins w
 out and taken off, on a panel with no theme stylesheet; `DefaultFamilyThemePlaybackTests` pins a label with no font
 class on the runtime theme this project ships.
 
-A weight, italic or width class on an element with no `font-<name>` of its own keeps the family it inherits,
-as in CSS: `font-bold` inside a `font-serif` container selects the registered `Bold` entry of `serif`.
-The family is the one named by the nearest ancestor carrying a `font-<name>` class that Velvet rendered;
-an ancestor that has only a weight class names none. A font an author declares comes first where it is nearer: a rule
-of a stylesheet other than a default one that sets `-unity-font-definition` on the element itself, or that, or an
-inline font, on an element between it and that ancestor, as the nearest `font-family` declaration does in CSS.
-The family is then the one that holds that font, and the weight class never changes which family applies. Where no
-`font-<name>` ancestor names one, the family is the one that holds the font the element's own rule gives it, else the
-font the element's parent resolves to, read after the panel has resolved its styles, so a font an author's stylesheet or inline
-style gives an element above it is the family the class keeps; a font no registered family holds is kept, and the
-weight or italic is emulated on it. `DefaultFamily` applies where the parent resolves to no font. A root whose
-`font-<name>` class Velvet did not render (a portal target, layer root or world-space panel root, or the root of
-another `V.Mount`) names no family: a weight class below it takes the family that holds the font that root resolves
-to, the default family's where nothing else gives it one.
-An inline font on the element itself is replaced by the one its classes write, and the author fonts
-between an element and the `font-<name>` ancestor naming its family are read when the element resolves, not at each update
-of the panel: one an element gains afterwards reaches it when the element next resolves.
+A weight, italic or width class on an element with no `font-<name>` of its own keeps the `font-family` CSS gives
+the element, and selects a face within it: `font-bold` inside a `font-serif` container selects the registered `Bold`
+entry of `serif`. The family comes from the nearest declaration, the element itself counting. A declaration is a
+`font-<name>` class on an ancestor that Velvet rendered (an ancestor that has only a weight class names none), or a
+font an author gives an element: a rule of a stylesheet other than a default one that sets `-unity-font-definition` or
+the legacy `-unity-font`, or an inline font. Where a `font-<name>` class is nearest, the family is the one it names;
+where a font is, it is the family that holds that font, and a font no registered family holds is kept, with the weight
+or italic emulated on it. An inline font the author gives the element itself is kept in the same way: the class
+writes the registered face of its family over it, and the family stays. Where nothing is declared, the family is the
+one that holds the font the element's parent resolves to, read after the panel has resolved its styles, and
+`DefaultFamily` applies where the parent resolves to no font. A root whose `font-<name>` class Velvet did not render
+(a portal target, layer root or world-space panel root, or the root of another `V.Mount`) names no family: a weight
+class below it takes the family that holds the font that root resolves to, the default family's where nothing else
+gives it one.
+
+An element's declarations are read again at each update of its panel: an author font an element gains or loses
+after the label resolved, by a class, a stylesheet or an inline write, reaches the label within the next updates of its panel. Two
+cases are the exception: a rule that matches an element between a label and its `font-<name>` ancestor only in a
+pseudo-state, and sets that element's font, is not seen until another change to the classes, stylesheets or inline
+fonts there; and where the engine's rule matcher cannot be built, only inline fonts are read.
 `InheritedFontFamilyPanelTests` and `FontFamilyFacesPanelTests` pin the inheritance.
 
 Glyphs the assigned asset lacks still go through TextCore's fallback chain, which
