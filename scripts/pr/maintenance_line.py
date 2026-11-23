@@ -39,6 +39,14 @@ def is_line(branch):
     return bool(LINE.fullmatch(branch or ""))
 
 
+def line_of(major):
+    return f"{major}.x"
+
+
+def major_of(line):
+    return int(line.split(".")[0])
+
+
 def lookalike(branch):
     """Whether `branch` is named like a line without being one."""
     return not is_line(branch) and bool(LOOKALIKE.fullmatch(branch or ""))
@@ -70,14 +78,14 @@ def main_state(cwd, rev=f"origin/{MAIN}"):
 
 def maintained(state):
     """The lines `state` maintains, newest first: each supported major below main's own."""
-    return [f"{major}.x" for major in sorted(state.supported, reverse=True) if major < state.series]
+    return [line_of(major) for major in sorted(state.supported, reverse=True) if major < state.series]
 
 
 def unmaintained(line, state):
     """Why `line` is not a line `state` maintains, or None where it is one."""
     if not is_line(line):
         return None
-    major = int(line.split(".")[0])
+    major = major_of(line)
     if major >= state.series:
         return (f"{line} is not a line main maintains: main is building {state.series}.x, a line is "
                 f"a series before main's, and {line} becomes one once main holds a breaking entry "

@@ -696,19 +696,17 @@ namespace Velvet
         // Defers an action until the element attaches to a panel — shared by any animation that can start
         // while its element is off-panel (freshly created but not yet inserted, or transiently detached by a
         // keyed reorder) and therefore has no working schedule / panel-root host to run on yet. The callback
-        // unregisters itself once it fires; pending.PendingAttach is tracked so a cancel-before-attach (see
-        // CancelPending) can remove the still-dangling registration instead of leaking it — and the closure
-        // pinning the caller's PendingAnimation — on the element across pool reuse.
+        // registers Once; pending.PendingAttach is tracked so a cancel-before-attach (see CancelPending) can
+        // remove the still-dangling registration instead of leaking it — and the closure pinning the caller's
+        // PendingAnimation — on the element across pool reuse.
         private static void DeferUntilAttached(VisualElement element, PendingAnimation pending, Action onAttach)
         {
-            EventCallback<AttachToPanelEvent>? handler = null;
-            handler = _ =>
+            EventCallback<AttachToPanelEvent> handler = _ =>
             {
-                element.UnregisterCallback(handler);
                 pending.PendingAttach = null;
                 onAttach();
             };
-            element.RegisterCallback(handler);
+            element.RegisterCallback(handler, CallbackOptions.Once);
             pending.PendingAttach = handler;
         }
 
@@ -2501,7 +2499,7 @@ namespace Velvet
             // the animating element carries no band.
             public IVisualElementScheduledItem? RingTick;
             // For an exit started while the element was off-panel: the AttachToPanelEvent callback that defers
-            // scheduling until attach. The callback unregisters itself when it fires, but a cancel-before-attach
+            // scheduling until attach. The callback is registered Once, but a cancel-before-attach
             // never fires it, so it must be unregistered on cancel — otherwise it (and the closure pinning this
             // PendingAnimation) lingers on the element, surviving even pool reuse. Null for on-panel exits.
             public EventCallback<AttachToPanelEvent>? PendingAttach;

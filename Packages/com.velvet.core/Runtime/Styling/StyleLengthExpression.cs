@@ -22,6 +22,9 @@ namespace Velvet
         public readonly float Percent;
         public readonly float ViewportWidth;
         public readonly float ViewportHeight;
+        // The content width of the nearest container, NaN where there is none: a container-relative unit then reads the
+        // panel, as CSS reads the small viewport.
+        public readonly float ContainerWidth;
 
         public RelativeLengthBasis(float em, float percent, float viewportWidth, float viewportHeight)
             : this(FontUnitPixels.WithoutMetrics(em), FontUnitPixels.WithoutMetrics(StyleLengthExpression.RootFontSize),
@@ -30,8 +33,9 @@ namespace Velvet
         }
 
         public RelativeLengthBasis(in FontUnitPixels font, in FontUnitPixels root, float percent, float viewportWidth,
-            float viewportHeight)
+            float viewportHeight, float containerWidth = float.NaN)
         {
+            ContainerWidth = containerWidth;
             Font = font;
             Root = root;
             Percent = percent;
@@ -41,7 +45,11 @@ namespace Velvet
 
         public float Em => Font.Em;
 
-        public RelativeLengthBasis WithPercent(float percent) => new(Font, Root, percent, ViewportWidth, ViewportHeight);
+        public RelativeLengthBasis WithPercent(float percent)
+            => new(Font, Root, percent, ViewportWidth, ViewportHeight, ContainerWidth);
+
+        // What cqw and cqi measure: the container's width, or the panel's where there is no container.
+        public float InlineSize => float.IsNaN(ContainerWidth) ? ViewportWidth : ContainerWidth;
     }
 
     // A length as an element measures it, whose percentage is taken of what a caller hands Of: a clip-path's or a
@@ -360,6 +368,14 @@ namespace Velvet
                 units[prefix + "vmin"] = (b => Math.Min(b.ViewportWidth, b.ViewportHeight) / 100d, ReadsElement | ReadsViewportBit, CalcType.Length);
                 units[prefix + "vmax"] = (b => Math.Max(b.ViewportWidth, b.ViewportHeight) / 100d, ReadsElement | ReadsViewportBit, CalcType.Length);
             }
+            // A container is inline-size only (StyleResponsiveScope.ContainerClass), so its block axis is not one a unit can
+            // read and cqh and cqb read the panel's height, the small viewport CSS falls back to.
+            units["cqw"] = (b => b.InlineSize / 100d, ReadsElement | ReadsViewportBit, CalcType.Length);
+            units["cqi"] = (b => b.InlineSize / 100d, ReadsElement | ReadsViewportBit, CalcType.Length);
+            units["cqh"] = (b => b.ViewportHeight / 100d, ReadsElement | ReadsViewportBit, CalcType.Length);
+            units["cqb"] = (b => b.ViewportHeight / 100d, ReadsElement | ReadsViewportBit, CalcType.Length);
+            units["cqmin"] = (b => Math.Min(b.InlineSize, b.ViewportHeight) / 100d, ReadsElement | ReadsViewportBit, CalcType.Length);
+            units["cqmax"] = (b => Math.Max(b.InlineSize, b.ViewportHeight) / 100d, ReadsElement | ReadsViewportBit, CalcType.Length);
             return units;
         }
 
