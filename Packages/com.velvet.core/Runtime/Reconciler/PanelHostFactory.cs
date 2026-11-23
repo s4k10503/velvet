@@ -1,4 +1,5 @@
 #nullable enable
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UIElements;
 // Below 6.5 the enum is nested in UIDocument; Test ▸ newest-editor-compile compiles the side above it.
@@ -22,6 +23,7 @@ namespace Velvet
         public readonly UIDocument Document;
         public float BaseOrder;
         public bool DeclaringResolved;
+        public IPanel? DeclaringPanel;
 
         // Lets go of the holds the host's root takes: on FiberCrossPanelEventDispatcher's listeners, which
         // the event manager keeps for as long as its reconciler lives, and on DefaultFamilyRoots.
@@ -95,10 +97,9 @@ namespace Velvet
             record.DeclaringResolved = declaring != null;
             settings.sortingOrder = baseOrder + offset;
             AttachDocument(record.Document, settings);
-            RecordDeclaringRoot(record, declaringPanel);
-            record.ReleaseBridge = FiberCrossPanelEventDispatcher.AttachBridge(record.Document.rootVisualElement, ctx);
-            record.ReleaseBridge += DefaultFamilyRoots.Hold(record.Document.rootVisualElement).Dispose;
-            FiberFocusNavigator.EnsureAttached(record.Document.rootVisualElement, ctx);
+            record.DeclaringPanel = declaringPanel;
+            ApplyRootSetup(record, null, ctx);
+            PanelHostRootWatch.Watch(record, ctx);
             return record;
         }
 
@@ -127,10 +128,9 @@ namespace Velvet
             settings.renderMode = PanelRenderMode.WorldSpace;
             record.Document.transform.SetPositionAndRotation(node.Position, node.Rotation);
             AttachDocument(record.Document, settings);
-            RecordDeclaringRoot(record, declaringPanel);
-            record.ReleaseBridge = FiberCrossPanelEventDispatcher.AttachBridge(record.Document.rootVisualElement, ctx);
-            record.ReleaseBridge += DefaultFamilyRoots.Hold(record.Document.rootVisualElement).Dispose;
-            FiberFocusNavigator.EnsureAttached(record.Document.rootVisualElement, ctx);
+            record.DeclaringPanel = declaringPanel;
+            ApplyRootSetup(record, null, ctx);
+            PanelHostRootWatch.Watch(record, ctx);
             // The document derives its root sizing from (settings, size mode, size) but only
             // re-derives on a VALUE change, and the attach itself never re-runs it — so both size
             // settings are driven after the attach, with the mode round-tripped so the fixed
@@ -140,6 +140,53 @@ namespace Velvet
             record.Document.worldSpaceSize = node.PanelSize;
             record.Document.worldSpaceSizeMode = WorldSpaceSizeMode.Fixed;
             return record;
+        }
+
+        // What a host's root carries, applied to the first root and again to each root the document builds after it,
+        // so a rebuilt root is set up as the first was. previousRoot is the root being replaced, null for the first.
+        internal static void ApplyRootSetup(PanelHostRecord record, VisualElement? previousRoot, ReconcilerContext ctx)
+        {
+            var root = record.Document.rootVisualElement;
+            RecordDeclaringRoot(record, record.DeclaringPanel);
+            record.ReleaseBridge?.Invoke();
+            record.ReleaseBridge = FiberCrossPanelEventDispatcher.AttachBridge(root, ctx);
+            record.ReleaseBridge += DefaultFamilyRoots.Hold(root).Dispose;
+            FiberFocusNavigator.EnsureAttached(root, ctx);
+            if (previousRoot != null)
+            {
+                FiberFocusNavigator.RekeyChainedHost(previousRoot, root, ctx);
+                RenderPortalsInto(previousRoot, ctx);
+            }
+        }
+
+        // The children of a layer or world-space portal into the replaced root stand on that dead root. Its declaring
+        // component renders again, as ReconcilerContext.OnPortalTargetRegistered asks for a registered element, and
+        // where the render returns the portal, the patch puts it onto the host's current root: PortalRetargetOwed
+        // keeps the identity skip off, and ChildrenPending makes the patch mount the children from nothing. A portal
+        // naming a registry id is left out.
+        private static void RenderPortalsInto(VisualElement previousRoot, ReconcilerContext ctx)
+        {
+            List<VisualElement>? placeholders = null;
+            foreach (var entry in ctx.PortalState.Stored)
+            {
+                if (ReferenceEquals(entry.Value.Target, previousRoot) && entry.Value.TargetId == null
+                    && entry.Value.DeclaringFiber != null)
+                {
+                    (placeholders ??= new List<VisualElement>()).Add(entry.Key);
+                }
+            }
+            if (placeholders == null)
+            {
+                return;
+            }
+            foreach (var placeholder in placeholders)
+            {
+                var info = ctx.PortalState.Stored[placeholder];
+                ctx.PortalState.Stored[placeholder] = info with { ChildrenPending = true };
+                info.DeclaringFiber!.PortalRetargetOwed = true;
+                info.DeclaringFiber.InvalidateMemoCache();
+                FiberWorkLoop.RequestRenderFromHook(info.DeclaringFiber);
+            }
         }
 
         // The host's breakpoints answer the declaring panel's width: StyleResponsiveScope owns why.
@@ -160,6 +207,7 @@ namespace Velvet
         // depth-sort in the scene, not by sorting order).
         public static void SyncDeclaring(PanelHostRecord record, UILayer? layer, IPanel? declaringPanel, ReconcilerContext ctx)
         {
+            record.DeclaringPanel = declaringPanel ?? record.DeclaringPanel;
             RecordDeclaringRoot(record, declaringPanel);
             var (declaring, baseOrder) = ResolveDeclaring(declaringPanel, ctx);
             var settings = record.Settings;

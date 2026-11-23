@@ -28,7 +28,7 @@ namespace Velvet
     // Expression.Compile() emits and JITs IL at compile time; the IL2CPP AOT backend has no JIT to
     // target, so a compiled expression there either runs through a slow interpreter or fails
     // outright — neither is acceptable for a hot-path predicate. IL2CPP players therefore use the
-    // reflection implementation unconditionally.
+    // reflection implementation, for a props type the source generator emitted no comparer for.
     // Not thread-safe — the Velvet Reconciler is main-thread only.
     internal static class ComponentPropsComparer
     {
@@ -80,6 +80,11 @@ namespace Velvet
                 return ValueEquals(prev, next);
             }
 
+            if (PropsComparerRegistry.TryGet(type, out var generated))
+            {
+                return generated(prev, next);
+            }
+
 #if ENABLE_IL2CPP
             return CompareMembersByReflection(type, prev, next);
 #else
@@ -99,7 +104,7 @@ namespace Velvet
         // member set, so a props bag is walked once whatever its members hold.
         // Strengthening the type's equality rather than replacing it with a field walk is what leaves a
         // struct holding a record class decided by that record's content.
-        private static bool ValueEquals(object? prev, object? next)
+        internal static bool ValueEquals(object? prev, object? next)
         {
             if (!ObjectIs.AreEqualObjects(prev, next))
             {

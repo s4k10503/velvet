@@ -16,6 +16,11 @@ namespace Velvet.Tests
     /// </remarks>
     internal sealed class CornerRadiusFitPanelTests : PanelTestBase
     {
+        // A type of the application's own, which the factory builds through Activator.
+        internal sealed class RadiusWatchProbeBox : VisualElement
+        {
+        }
+
         private const string WideBox = "w-[330px] h-[34px]";
 
         private const string OwnRadiusSheet = "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/LayoutIdTestRules.uss";
@@ -64,6 +69,39 @@ namespace Velvet.Tests
             s_setClass = setClass;
             return V.Div(name: "box", className: className);
         }
+
+        private static string s_kind;
+
+        // The box of RenderSwitchable as the element type s_kind names.
+        [Component]
+        private static VNode RenderSwitchableOfKind()
+        {
+            var (className, setClass) = Hooks.UseState(s_initialClass);
+            s_setClass = setClass;
+            return s_kind switch
+            {
+                "label" => V.Label(name: "box", className: className),
+                "button" => V.Button(name: "box", className: className),
+                "textfield" => V.TextField(name: "box", className: className),
+                "toggle" => V.Toggle(name: "box", className: className),
+                "motion" => V.Motion(name: "box", className: className),
+                "custom" => V.Custom<RadiusWatchProbeBox>(name: "box", className: className),
+                _ => V.ScrollView(name: "box", className: className),
+            };
+        }
+
+        // Mounts the box RenderSwitchableOfKind builds as kind, laid out at WideBox before any class brings a radius in.
+        private VisualElement MountSwitchableOfKind(string kind)
+        {
+            s_kind = kind;
+            s_initialClass = WideBox;
+            _mounted = V.Mount(_window.rootVisualElement, V.Component(RenderSwitchableOfKind));
+            ForcePanelUpdate(Box.panel);
+            return Box;
+        }
+
+        private void AttachOwnRadiusSheet() => _window.rootVisualElement.styleSheets.Add(
+            UnityEditor.AssetDatabase.LoadAssetAtPath<StyleSheet>(OwnRadiusSheet));
 
         private static float[] Radii(VisualElement element)
         {
@@ -431,6 +469,193 @@ namespace Velvet.Tests
 
             // Assert — 90 down a 34px side scales every corner by 34/90.
             Assert.That(Radii(box), Is.EqualTo(new[] { 34f, 30f * 34f / 90f, 0f, 0f }).Within(1e-3f));
+        }
+
+        // The rule gives the top-left corner 90 and the top-right 30; 90 down a 34px side scales every corner by 34/90.
+        private static readonly float[] s_unevenRadiiFittedToWideBox = { 34f, 30f * 34f / 90f, 0f, 0f };
+
+        [Test]
+        public void Given_ALaidOutBoxWithNoRadius_When_ItsClassBecomesOneWhoseOwnRuleOverflowsItsHeight_Then_ItsCornersAreScaledWithNoSizeChange()
+        {
+            // Arrange — the box keeps its 330 x 34 through the swap, so no size change reaches the fit.
+            AttachOwnRadiusSheet();
+            var box = MountSwitchable(WideBox);
+
+            // Act
+            SwitchClass($"{WideBox} layout-id-test-uneven");
+
+            // Assert
+            Assert.That(Radii(box), Is.EqualTo(s_unevenRadiiFittedToWideBox).Within(1e-3f));
+        }
+
+        // The class declares all four corners, so the expected radii do not depend on a radius a control's own style gives a
+        // corner the class leaves out. Each kind is a type the factory builds a different way: a Label and a Button are hosts
+        // of the fit, a TextField and a Toggle are pooled, a ScrollView is built directly, a Motion goes through the
+        // factory's other entry point, and RadiusWatchProbeBox reaches its Activator fallback.
+        [TestCase("label")]
+        [TestCase("button")]
+        [TestCase("textfield")]
+        [TestCase("toggle")]
+        [TestCase("scroll")]
+        [TestCase("motion")]
+        [TestCase("custom")]
+        public void Given_ALaidOutElementWithNoRadius_When_ItsClassBecomesOneWhoseOwnRuleOverflowsItsHeight_Then_ItsCornersAreScaledWithNoSizeChange(string kind)
+        {
+            // Arrange
+            AttachOwnRadiusSheet();
+            var box = MountSwitchableOfKind(kind);
+
+            // Act
+            SwitchClass($"{WideBox} radius-watch-uneven");
+
+            // Assert
+            Assert.That(Radii(box), Is.EqualTo(s_unevenRadiiFittedToWideBox).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_ALaidOutBoxFittedFromAClassOfItsOwn_When_ThatClassIsRemovedWithNoSizeChange_Then_TheFittedSlotsAreGivenBack()
+        {
+            // Arrange — the box keeps its 330 x 34, so the removal reaches the fit by no size change.
+            AttachOwnRadiusSheet();
+            var box = MountSwitchable($"{WideBox} layout-id-test-uneven");
+
+            // Act
+            SwitchClass(WideBox);
+
+            // Assert
+            Assert.That(Radii(box), Is.EqualTo(new[] { 0f, 0f, 0f, 0f }).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_ALaidOutBoxFittedFromAClassOfItsOwn_When_AnAnimationChannelRemovesItWithNoSizeChange_Then_TheFittedSlotsAreGivenBack()
+        {
+            // Arrange — animation classes leave through StyleAnimationClassUtils rather than the patcher.
+            AttachOwnRadiusSheet();
+            var box = MountBox($"{WideBox} layout-id-test-uneven");
+
+            // Act
+            StyleAnimationClassUtils.RemoveClasses(box, new[] { "layout-id-test-uneven" });
+            ForcePanelUpdate(box.panel);
+
+            // Assert
+            Assert.That(Radii(box), Is.EqualTo(new[] { 0f, 0f, 0f, 0f }).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_ALaidOutBoxWithAHoverVariantOfAClassOfItsOwn_When_ItIsHoveredWithNoSizeChange_Then_ItsCornersAreScaled()
+        {
+            // Arrange
+            AttachOwnRadiusSheet();
+            var box = MountBox($"{WideBox} hover:layout-id-test-uneven");
+
+            // Act
+            using (var over = PointerOverEvent.GetPooled())
+            {
+                box.SimulateEvent(over);
+            }
+            ForcePanelUpdate(box.panel);
+
+            // Assert
+            Assert.That(Radii(box), Is.EqualTo(s_unevenRadiiFittedToWideBox).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_ALaidOutBoxWithNoRadius_When_CodeAddsAClassWhoseRuleOverflowsItsHeightDirectly_Then_ItsCornersAreScaledWithNoSizeChange()
+        {
+            // Arrange — a class change Velvet never sees, on a box that keeps its 330 x 34.
+            AttachOwnRadiusSheet();
+            var box = MountBox(WideBox);
+
+            // Act
+            box.AddToClassList("layout-id-test-uneven");
+            ForcePanelUpdate(box.panel);
+
+            // Assert
+            Assert.That(Radii(box), Is.EqualTo(s_unevenRadiiFittedToWideBox).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_ALaidOutBoxWithNoRadius_When_CodeAddsABundledRadiusClassDirectly_Then_ItsCornersAreScaledWithNoSizeChange()
+        {
+            // Arrange — the bundled radius classes are watched through the custom properties that restate them, and the class
+            // reaches the element through no funnel of Velvet's.
+            var box = MountBox(WideBox);
+
+            // Act
+            box.AddToClassList("rounded-full");
+            ForcePanelUpdate(box.panel);
+
+            // Assert
+            Assert.That(Radii(box), Is.EqualTo(new[] { 17f, 17f, 17f, 17f }).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_ALaidOutBoxFittedFromAClassOfItsOwn_When_CodeRemovesThatClassDirectly_Then_TheFittedSlotsAreGivenBack()
+        {
+            // Arrange
+            AttachOwnRadiusSheet();
+            var box = MountBox($"{WideBox} layout-id-test-uneven");
+
+            // Act
+            box.RemoveFromClassList("layout-id-test-uneven");
+            ForcePanelUpdate(box.panel);
+
+            // Assert
+            Assert.That(Radii(box), Is.EqualTo(new[] { 0f, 0f, 0f, 0f }).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_ALaidOutBoxUnderAnAncestorRuleThatGivesARadius_When_TheAncestorGainsItsClass_Then_ItsCornersAreScaledWithNoSizeChange()
+        {
+            // Arrange — the rule is `.radius-watch-parent .radius-watch-child`, so the box is styled by a class on its parent.
+            AttachOwnRadiusSheet();
+            _mounted = V.Mount(_window.rootVisualElement, V.Div(name: "parent", children: new VNode?[]
+            {
+                V.Div(name: "box", className: $"{WideBox} radius-watch-child"),
+            }));
+            ForcePanelUpdate(Box.panel);
+
+            // Act
+            Box.parent.AddToClassList("radius-watch-parent");
+            ForcePanelUpdate(Box.panel);
+
+            // Assert
+            Assert.That(Radii(Box), Is.EqualTo(s_unevenRadiiFittedToWideBox).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_ALaidOutBoxUnderAHoverRuleThatGivesARadius_When_ItIsHovered_Then_ItsCornersAreScaledWithNoSizeChange()
+        {
+            // Arrange — `.radius-watch-hover:hover` matches only while the pseudo-state is set.
+            AttachOwnRadiusSheet();
+            var box = MountBox($"{WideBox} radius-watch-hover");
+
+            // Act
+            var pseudo = EngineMember.PseudoStates.ResolveProperty()!;
+            var hover = System.Convert.ToInt32(System.Enum.Parse(pseudo.PropertyType, "Hover"));
+            var states = System.Convert.ToInt32(pseudo.GetValue(box));
+            pseudo.SetValue(box, System.Enum.ToObject(pseudo.PropertyType, states | hover));
+            ForcePanelUpdate(box.panel);
+
+            // Assert
+            Assert.That(Radii(box), Is.EqualTo(s_unevenRadiiFittedToWideBox).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_ALaidOutBoxWhoseCodeWroteARadiusBeyondItsHeight_When_AClassOfTheApplicationsOwnArrivesWithNoSizeChange_Then_ItsCornersAreScaled()
+        {
+            // Arrange
+            var box = MountSwitchable(WideBox);
+            box.style.borderTopLeftRadius = 400f;
+            box.style.borderTopRightRadius = 400f;
+            box.style.borderBottomRightRadius = 400f;
+            box.style.borderBottomLeftRadius = 400f;
+
+            // Act — a class no sheet defines arrives with the box still 330 x 34, which no size change follows.
+            SwitchClass($"{WideBox} unrelated-class");
+
+            // Assert
+            Assert.That(Radii(box), Is.EqualTo(new[] { 17f, 17f, 17f, 17f }).Within(1e-3f));
         }
 
         [Test]
