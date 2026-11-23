@@ -390,6 +390,8 @@ namespace Velvet.Tests
         private Label MountPolled(ReconcilerScope scope, string containerClass, string labelClass)
         {
             var label = MountLabel(scope, containerClass, labelClass, Sentence);
+            // The parent keeps its declared size along the root's own axis, which the percentages are taken of.
+            label.parent.style.flexShrink = 0f;
             EditorPanelTestHelpers.DriveRelativeLengthPoll(label.panel);
             FireGeometry(label);
             FireGeometry(label.parent);

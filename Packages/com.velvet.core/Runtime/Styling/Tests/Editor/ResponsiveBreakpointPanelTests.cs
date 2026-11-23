@@ -111,7 +111,7 @@ namespace Velvet.Tests
             VelvetStyleUtilities.AttachTo(_window.rootVisualElement);
             _window.position = new Rect(0, 0, 1000f, 600f);
             _mounted = V.Mount(_window.rootVisualElement,
-                V.Div("flex flex-row w-[2000px] h-[2000px]",
+                V.Div("flex flex-row shrink-0 w-[2000px] h-[2000px]",
                     V.Label(name: "leaf", className: "shrink-0 size-[calc(50%+2px)] md:w-10", text: "internationalization is long")));
             var leaf = _window.rootVisualElement.Q<Label>("leaf");
             ResolveAt(1000f, leaf);
