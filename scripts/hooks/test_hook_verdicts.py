@@ -650,6 +650,37 @@ class MergeUnprovenHeadVerdicts(MergeWorldFixture):
         self.assertEqual(verdict, ALLOWED)
 
 
+class MergeOffMilestoneVerdicts(MergeWorldFixture):
+    HOOK = "refuse/merge_off_milestone.py"
+
+    def under(self, title, phrase=""):
+        """A merge onto 2.x of a head changing nothing, carrying the open milestone `title`."""
+        pull = worlds.at(self.current, "topic", "2.x")
+        pull["milestone"] = {"number": 7, "title": title, "state": "open"} if title else None
+        unmodelled = self.root / "unmodelled"
+        unmodelled.write_text("", encoding="utf-8")
+        environment = {"VELVET_BASE_CHECK_PULLS": json.dumps({"1": pull}),
+                       "VELVET_BASE_CHECK_RUNS": json.dumps(worlds.push_runs(self.current)),
+                       worlds.UNMODELLED: str(unmodelled)}
+        stubs = {"gh": f'exec "{sys.executable}" "{self.stub}" "$@"'}
+        return self.pose(bash(worlds.COMMAND, self.current), self.current, phrase, stubs,
+                         environment)
+
+    def test_Given_APullRequestCarryingNoMilestone_When_Merged_Then_ItRefuses(self):
+        # Arrange / Act
+        answer = self.under(None, phrase="carries no milestone")
+
+        # Assert
+        self.assertEqual(answer, (REFUSED, True))
+
+    def test_Given_TheSamePullRequestUnderInfrastructure_When_Merged_Then_ItAllows(self):
+        # Arrange / Act
+        verdict, _ = self.under("Infrastructure")
+
+        # Assert
+        self.assertEqual(verdict, ALLOWED)
+
+
 class MergeWithoutBranchDeletionVerdicts(VerdictFixture):
     HOOK = "refuse/merge_without_branch_deletion.py"
 

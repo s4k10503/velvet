@@ -128,6 +128,30 @@ namespace Velvet.Tests
             Assert.That(widthSource, Is.SameAs(_secondPanel.Root));
         }
 
+        // GREEN_ON_BASE(characterization): the base keeps the panel a host was last declared on, which a root setup run
+        // afterwards records again. Drop `record.DeclaringPanel = declaringPanel ?? record.DeclaringPanel;` from
+        // SyncDeclaring and the setup records the first panel.
+        [Test]
+        public void Given_ALayerHostRedeclaredOnAnotherPanel_When_ItsRootSetupRunsAgain_Then_ItsChildsBreakpointsAnswerTheOtherPanel()
+        {
+            // Arrange
+            _secondPanel = new HeadlessEditorPanelHost();
+            s_secondPanelTarget = new VisualElement();
+            _secondPanel.Root.Add(s_secondPanelTarget);
+            _mounted = V.Mount(_host.Root, V.Component(SwitchingDeclarerRender, key: "host"));
+            s_declareOnSecondPanel.Invoke(true);
+            _mounted.FlushStateForTest();
+            var child = HostedElement("second-child");
+            var ctx = _mounted.Root.Reconciler.Context;
+
+            // Act
+            PanelHostFactory.ApplyRootSetup(ctx.LayerHosts[UILayer.Overlay], null, ctx);
+            var widthSource = StyleResponsiveScope.ResolveWidthSource(child, child.panel.visualTree);
+
+            // Assert
+            Assert.That(widthSource, Is.SameAs(_secondPanel.Root));
+        }
+
         // GREEN_ON_BASE(characterization): the base mounts a layer portal declared on no panel as well.
         // This pins that recording the declaring panel passes over a portal that has none.
         [Test]

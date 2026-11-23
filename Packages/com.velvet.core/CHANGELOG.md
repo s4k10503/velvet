@@ -5,6 +5,204 @@ All notable changes to this package are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.2] - 2026-11-19
+
+### Highlights
+
+- A ring on every row of a list no longer ends up between rows. Appending a row to a list of ringed rows put the new
+  row ahead of the last row's ring band, and a keyed move to the end left a band behind the moved row. Each band now
+  stays directly after its own row.
+
+- A `V.FocusScope` with `autoFocus` takes focus in the cases where it never did or took it too early. One that mounted
+  after its parent, in the tree or inside a `V.Portal` that already held content, now takes focus on mount; one inside
+  a `V.Portal` whose `V.Suspense` still hid its children now waits for the reveal.
+
+- A layer or world-space host whose `UIDocument` was disabled and enabled again comes back whole. It showed nothing
+  until its portal was patched and lost focus navigation, the focus ring, the event bridge, the default font family
+  and the viewport; the portal's children now mount into the new root and the rest is applied with it.
+
+- Shadows, rings and colour brackets that read a custom property follow Tailwind where they were ignored or drawn
+  wrong. An unresolved property draws no box-shadow, an opacity modifier on a `var()` bracket is read, container-query
+  lengths are measured, and `!`-important readers rank in Tailwind's order. `font-[var(--w)]` no longer names a family.
+
+- Corner radii, dividers and class-driven stacking settle correctly. An overflowing radius that arrives with a class
+  change is fitted in the same update; a `divide-dashed` child with a dashed border or shadow and `overflow-hidden`
+  draws both; and `hover:z-*` on a `wrapElement` target stacks the wrapper.
+
+- Transitions keep the curve the element's classes give. A layoutId crossfade or a take-over of rotate, translate,
+  scale or radius no longer falls back to UI Toolkit's curve, a list of timing keywords gets Tailwind's curve for
+  each, and a variant swap honours the swap's timing on the properties a layoutId move writes.
+
+- `Hooks.UseQueries` and `Hooks.UseSuspenseQueries` return the right value. The first render after a mount no longer
+  runs `combine` again for nothing, and a retry after a suspended first render returns what `combine` makes of the
+  current data.
+
+- The USS importer stores custom-property values the way CSS reads them. A `resource()` with only whitespace, a string
+  beside a value UI Toolkit fails on and glued tokens are stored as text, and `rgb()` channels are clamped.
+
+- Recycled elements start clean and re-rendering costs less. A pooled element no longer keeps any inline style or a
+  deferred class, a component re-rendering on its own state no longer scales with its siblings, and a text label's
+  minimum width is derived only where it can bind.
+
+### Changed
+
+- A container of text labels and buttons carries one geometry callback rather than one per child. A row child that
+  can shrink, wraps, has more than one run of text and already holds the width of its whole text no longer carries an
+  inline `min-width`; it is written again once the row squeezes the child below that width. A patch that changes
+  neither a label's text nor its classes no longer re-derives its minimum.
+
+- A callback that runs while a pass is still creating rows, such as the `onCreated` of `V.ScrollView`, reads the
+  child list of a container the pass did not create without the rows the pass has inserted so far. The pass applies
+  them no later than the end of its time slice, and the child list can show them earlier than that. For example, in a
+  container that held one row, a row created after two inserted rows read a `childCount` of 3 before and reads 1 now;
+  and with a pass that parks after its first row, the rows created in the resumed slice read the count the parked slice
+  left, where each used to read one more than the row before it.
+
+- A component re-rendering on its own state no longer spends time that grows with the number of siblings in its
+  parent's output when that output holds no `V.Provider`, `Motion` or memoized node (`V.Memoized`,
+  `[MemoizeMethod]`). In a list of 2,000 memoized rows, a row updating its own state took about 0.58 ms against
+  0.13 ms at 250 rows, and now takes about 0.05 ms at both.
+
+### Fixed
+
+- Appending a row to a list whose rows each carry a ring (`ring-*`) put the new row between the last row and that
+  row's ring band. With two ringed rows and a third appended, the children read `r0, band, r1, r2, band, band`; where
+  the append leaves the last row's rectangle unchanged, as with fixed-size rows in a column, they still read so after a
+  layout pass. The band of `r1` now stays directly after `r1`. A keyed move of a row to the end of such a list left the
+  band of the row before it behind the moved row in the same way, until a layout pass placed it again.
+
+- A corner radius that overflows its box and comes in with no size change is scaled down the way CSS does it
+  (Backgrounds 3 §5.5) in the same update, where it kept its unfitted value until the box next resized. This holds
+  when a class changes, whether your code or Velvet changed it, when a class on an ancestor that a rule of yours keys
+  on changes, and when a pseudo-class like `:hover` begins to match. Velvet reads the stylesheets above a mount, the
+  panel's own and an element inside the tree, with what they import, and attaches a runtime-only sheet beside each one
+  that has a radius rule; your own sheets are not edited. A sheet attached later to an ancestor of an element Velvet
+  built is read within 16 ms; one attached to a leaf that held none at its last geometry change waits for the next. A
+  write to `style.border*Radius` after layout is fitted at the element's next size change, the next time a radius rule
+  starts or stops matching it, or when Velvet adds or removes a class on it.
+
+- A layoutId crossfade, or a rotate, translate, scale or corner-radius take-over, that took over a transition in the
+  frame it started carried it on UI Toolkit's own curve where the element's classes or an `ease-[...]` class give a
+  different one, such as Tailwind's `ease-in-out` on a `transition-*` utility. It now carries it on the curve the
+  classes give, as the transition itself runs once its run event arrives. A transition that started before the element's
+  timing classes were watched keeps UI Toolkit's curve.
+
+- A child of a `divide-dashed` (or `divide-dotted`) parent that also carried a dashed border or a shadow and clipped its
+  content (`overflow-hidden`) drew only one of the two. Its divider never settled onto the shared overlay where the
+  border's was already up, so the divider edge was painted by nothing; where it did, it replaced the border. The border
+  and the divider are now both drawn.
+
+- A `V.FocusScope` with `autoFocus` that mounted after its parent, in the tree or inside a `V.Portal` that already held
+  content, never took focus. It now takes focus when it mounts.
+
+- A `hover:z-*` class on an element a `wrapElement` wraps moved the element inside its wrapper instead of stacking the
+  wrapper among its siblings, so the element stayed behind them. A `z-*` class that reads a CSS custom property did
+  nothing there when the property's value arrived or changed after the mount. The wrapper now stacks in both cases, as
+  it already did for an element patched with the same class.
+
+- A `V.FocusScope` with `autoFocus` inside a `V.Portal` that mounted while its `V.Suspense` kept its children hidden
+  could take focus while `display: none` hid its button. Its `autoFocus` now waits for the boundary to reveal the
+  scope and takes focus then, as React runs the `autoFocus` of a host that appears with a reveal.
+
+- A layer or world-space host whose `UIDocument` was disabled long enough for the engine to drop its panel and then
+  enabled again showed nothing until a render of the component that declared its portal patched the portal, and came
+  back without what its first root carried: Velvet's focus navigation, the chained focus ring, the event bridge to the
+  portal's logical ancestors, the default font family and the declaring panel's viewport. Some of that returned on the
+  next patch and some never did, as the navigator for an `Isolated` portal. The portal's children now mount into the
+  new root and the rest is applied to it as soon as the document builds the root. Components inside the host mount
+  again, so their state starts over.
+
+- A `shadow-[…]`, `shadow-(--x)`, `inset-shadow-[…]`, `ring-[length:…]` or `inset-ring-[length:…]` reading a custom
+  property that resolves to nothing now draws no box-shadow at all, as the browser does. It kept the ring beside a
+  shadow, and the shadow beside a ring width. A bracket typed as a colour (`shadow-[color:var(--x)]`) or, on a ring,
+  any type but a length (`ring-[number:var(--w)]`) is a colour and still leaves the rest drawn.
+- A colour class, a `/N` or a `-inherit` beside a bracketed shadow now reaches only the layers Tailwind writes the
+  colour variable into. `shadow-[+1px_+1px] shadow-red-500`, `shadow-[round(1px,1px)_round(2px,1px)] shadow-red-500`
+  and `shadow-[0_0_hypot(1px)_hypot(2px)]` are drawn in the element's text colour, where they were painted red, and a
+  layer written with no colour (`shadow-[0_4px_8px]`) is drawn in the text colour, where it took `rgb(4 12 24 / 0.2)`.
+  A layer coming from a `var()` is judged by its source: `shadow-[var(--x)] shadow-blue-500` keeps the colour `--x`
+  holds, and `[--a:5px] [--b:red] ring shadow-[#ggg] shadow-[0_0_var(--a)_var(--b)]` draws the ring and the shadow
+  rather than discarding both.
+- `shadow-[var(--x)]/50`, and the same on `inset-shadow-`, `drop-shadow-`, `bg-`, `text-`, `border-`,
+  `ring-`, `ring-offset-`, `inset-ring-`, `outline-`, `from-`, `via-`, `to-`, a border side's (`border-t-`), `caret-` and
+  `divide-` brackets, the families
+  Tailwind writes a rule for with an opacity modifier, is read as a reader: it was ignored. A utility Tailwind writes
+  no rule for with one (`gap-[var(--g)]/50`) is still ignored.
+- An important shadow reader (`!shadow-[var(--x)]`) now ranks among the element's important shadow sizes by Tailwind's
+  order: beside `!shadow-2xs`, which Tailwind emits before it, the reader holds the layers, where the size did.
+- A reader of a custom property (`inset-shadow-[var(--x)]`, `gap-[var(--g)]`, …) resolved to a payload that was put
+  ahead of a utility of its own family Tailwind emits before it, where a class of another family came earlier in the
+  class list: `ring-2 inset-shadow-2xs inset-shadow-[var(--x)]` drew `inset-shadow-2xs` where Tailwind draws the layer
+  `--x` holds. A class of another family no longer moves it.
+- `font-[var(--w)]` and `font-(--w)` named the family `var(--w)` and `(--w)` beside the weight the variable resolved
+  to.
+- A length in `cqw`, `cqi`, `cqh`, `cqb`, `cqmin` or `cqmax` (`shadow-[0_0_4px_1cqw_#000]/50`, `w-[50cqw]`) was
+  ignored. It is now measured against the content width of the nearest `@container` ancestor, and against the panel
+  where there is none.
+- A `shadow-lg/[var(--a)]` or `shadow-lg/(--a)` whose property resolves to nothing now draws no box-shadow, as the
+  browser does.
+- An important reader of a custom property in `gap-*`, `skew-*`, `font-*` or `divide-*` now ranks among the element's
+  important utilities of its family by Tailwind's order: `!gap-4 !gap-[var(--g)]` computes the variable's gap, as it
+  does in the browser, where the literal's was kept.
+- A `shadow-[var(--x)]`, `ring-[length:var(--w)]` or `inset-ring-[length:var(--w)]` whose property a stylesheet
+  declares no longer drops the element's ring and shadow before the property is first read: the unset is written after the
+  element's styles are applied and the property is read again.
+- A `ring-`, `ring-offset-` or `inset-ring-` bracket typed as anything but a length, or holding a CSS-wide keyword,
+  with an opacity modifier that reads no variable (`/50`, `/[50%]`), is a colour Tailwind mixes the value into: a
+  value that is none (`ring-[number:5px]/50`, `ring-[unset]/50`) now discards the box-shadow, as the browser does,
+  where the class was ignored; a colour under that hint is drawn as before.
+- A `bg-`, `border-`, `outline-`, `text-`, `caret-` or `divide-` bracket reading a `var()`, typed as something else, with an
+  opacity modifier (`bg-[number:var(--x)]/50`) is read as the colour the variable holds, at that opacity, where Velvet's
+  colour grammar reads it. Where the variable is undeclared, holds a length, a number, a word that names no colour, or the colour at
+  a modifier past 100%, the property takes its unset: the parent's colour for a
+  caret and a text colour, currentcolor for a border, an outline and a divider, transparent for a background, and for a
+  `from-`, `via-` or `to-` stop, which also takes it for a literal bracket of that kind holding a length, a number or a word that names no colour. A divider and a
+  stop take a modifier on a bracket and on a palette name (`divide-red-500/50`, `from-red-500/50`, `from-[#f00]/50`),
+  where the class was ignored; a stop with a literal colour at a modifier past 100% is transparent.
+
+- On an element with a timing class (`transition`, a `transition-*` utility, `ease-in`, `ease-out` or `ease-in-out`),
+  the transitions UI Toolkit runs kept UI Toolkit's own curve wherever the element's rules listed more than one timing
+  keyword, as a stylesheet's `transition-timing-function: ease-in, ease-out` does. Each `ease-in`, `ease-out` and
+  `ease-in-out` in such a list now runs on Tailwind's curve, as it does where the list names one keyword.
+- A change to a property a layoutId Motion's move writes (its rotate, a corner radius, its translate or scale, or the
+  opacity the move fades) landed at once during a variant swap, the swap's own pose included, where the Motion's
+  classes or stylesheet transition that property. It now runs on the swap's timing, as it did where they do not
+  transition it, both while the move runs and while what the move carries runs on past its landing.
+
+- Velvet's USS importer stores a custom property holding a `resource()` with only whitespace or comments between its
+  parentheses, such as `resource( )`, as text, as it stores one holding `resource()`. Such a value used to reach UI
+  Toolkit's importer as written.
+
+- At the first render after a mount over one query or more, `Hooks.UseQueries` and `Hooks.UseSuspenseQueries` ran
+  their `combine` again where no query's result, no key and not the function itself had changed. That render now
+  returns the value the mount's render combined, as TanStack Query v5's `useQueries` does.
+- When a component's first render suspended after `Hooks.UseQueries` or `Hooks.UseSuspenseQueries` had run its
+  `combine`, and a query's data changed before the render was retried, the retry returned the earlier value and showed
+  it until the component rendered again. The retry now returns what `combine` makes of the data it reads.
+
+- Velvet's USS importer stores a custom property holding a string beside a value UI Toolkit's importer fails on, such as
+  `"a" 1rem`, as text, as it stores one without a string. Such a value used to reach UI Toolkit's importer as written,
+  and fail the file; a plain string such as `"Inter"` is stored as it was.
+- Velvet's USS importer clamps the channels of an `rgb()` or `rgba()` of integers in a custom property to 0 to 255 and
+  its alpha to 0 to 1 as CSS does, so `rgb(300, 0, 0)` is stored as `rgb(255, 0, 0)`. One it stores as text keeps its
+  numbers, which Velvet's colour reader clamps.
+- Velvet's USS importer stores the path of a `resource()` in a custom property as the author wrote it, comments left
+  out, where it held a range (`resource(u+1)`), a dimension (`resource(icon@2x.png)`), a percentage, a `#`, an `@`, a
+  function or a comment. The importer stored another path for each. A path holding a quote, or a backslash outside a
+  string, is still left as written.
+- Velvet's USS importer stores a custom property holding tokens UI Toolkit's importer joins into one string, such as a
+  string glued to an identifier or another string (`"a"b`) or identifiers with only a comment between them (`a/**/b`),
+  as text.
+- A `resource()` path holding a quote or a backslash is read back from a stylesheet's custom property escaped, so it
+  reads as it was written.
+
+- A recycled element kept any inline style property the pool reset did not name — a cursor or a text shadow written to
+  it, for one — and showed it on its next use. The reset now clears every inline style property.
+
+- An element that was given a class of the application's own before it was in a panel, and was recycled before it
+  attached, took that class up on the attach its next use gave it and read the class's rules for a probe nobody still
+  needed. A recycled element now forgets what it deferred.
+
 ## [Unreleased — breaking]
 
 ## [3.0.1] - 2026-11-17

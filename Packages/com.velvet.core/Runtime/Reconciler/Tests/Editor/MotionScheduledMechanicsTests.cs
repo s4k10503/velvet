@@ -4772,6 +4772,32 @@ namespace Velvet.Tests
             Assert.That(own, Is.InRange(0.55f, 0.85f));
         }
 
+        [Test]
+        public void Given_ALeadCrossfadingInWhoseRulesTransitionItsOpacity_When_ItsPoseTweensItsOpacityToZero_Then_ItsOwnIsCarriedOnThePoseTweensTiming()
+        {
+            // Arrange — the bundled sheet and the test's own; "b", whose rules transition its opacity linearly over a
+            // second, visible on its variants, takes the id on a three-second tween, its poses on a linear 0.4 s.
+            VelvetStyleUtilities.AttachTo(Root);
+            Root.styleSheets.Add(AssetDatabase.LoadAssetAtPath<StyleSheet>(TestRulesPath));
+            (s_bClasses, s_bPose) = ("layout-id-test-fade", "visible");
+            s_bTransition = new StyleTransitionConfig
+            {
+                DurationSec = 0.4f, Easing = EasingMode.Linear, Layout = new StyleTransitionConfig { DurationSec = 3f, Easing = EasingMode.Linear },
+            };
+            using var mounted = MountBOverA();
+            for (var i = 0; i < 15; i++) Tick();
+
+            // Act — its hidden pose; ten frames on.
+            s_bPose = "hidden";
+            RenderShared(mounted);
+            for (var i = 0; i < 9; i++) Tick();
+
+            // Assert — its own opacity, under the crossfade's circOut, as far down as ten frames of 0.4 s take it, rather
+            // than landed, or as far as the second its rules give.
+            var own = WrittenOpacity(Root.Q<VisualElement>("b")) / Mathf.Sin(Mathf.Acos(1f - BProgress() / 0.5f));
+            Assert.That(own, Is.EqualTo(1f - 10 * 0.016f / 0.4f).Within(0.06f));
+        }
+
 
         // "a", alone under "card" with the given classes, moving 100px right on a second's tween; its code writes a
         // transition-delay of a tenth of a second some way in. Returns the delay "a" holds inline once the move lands.
@@ -5866,6 +5892,36 @@ namespace Velvet.Tests
             Assert.That(b, Is.EqualTo(control > 30f && control < 80f ? control : float.NaN).Within(1.5f));
         }
 
+        [Test]
+        public void Given_ALeadWhoseTurnRunsOnPastItsLanding_When_ItsPoseTweensAsItsClassesTurnItBack_Then_ItTurnsOnThePoseTweensTiming()
+        {
+            // Arrange — the bundled sheet and the test's own; "b", whose rules transition its rotate linearly over a
+            // second, visible on its variants, takes the id from an unrotated "a" on a one-second tween, its poses on a
+            // linear 0.4 s; it turns a quarter round 0.6 s in, and the move lands with the turn running on.
+            VelvetStyleUtilities.AttachTo(Root);
+            Root.styleSheets.Add(AssetDatabase.LoadAssetAtPath<StyleSheet>(TestRulesPath));
+            (s_bClasses, s_bPose) = ("layout-id-test-turn", "visible");
+            s_bTransition = new StyleTransitionConfig { DurationSec = 0.4f, Easing = EasingMode.Linear, Layout = s_slowTween };
+            using var mounted = MountBOverA();
+            for (var i = 0; i < 36; i++) Tick();
+            s_bClasses = "layout-id-test-turn rotate-90";
+            RenderShared(mounted);
+            for (var i = 0; i < 30; i++) Tick();
+            var b = Root.Q<VisualElement>("b");
+            var from = b.style.rotate.value.angle.ToDegrees();
+            var runningOn = !mounted.Root.Reconciler.Context.LayoutIdProjections.ContainsKey(b) && from < 80f;
+
+            // Act — one render swaps it to its hidden pose and turns it to twelve degrees; ten frames on.
+            (s_bPose, s_bClasses) = ("hidden", "layout-id-test-turn rotate-12");
+            RenderShared(mounted);
+            for (var i = 0; i < 9; i++) Tick();
+
+            // Assert — as far from where it stood towards twelve degrees as ten frames of 0.4 s take it, rather than at
+            // twelve, or as far as the second its rules give; where its move had ended with the turn running on.
+            var rotate = b.style.rotate.value.angle.ToDegrees();
+            Assert.That(rotate, Is.EqualTo(runningOn ? Mathf.Lerp(from, 12f, 10 * 0.016f / 0.4f) : float.NaN).Within(3f));
+        }
+
 
         [Test]
         public void Given_ALayoutIdMotionJoiningARotatedHolder_When_AQuarterOfItsTweenHasPassed_Then_ItsRotateIsMixingFromTheHolders()
@@ -6066,6 +6122,76 @@ namespace Velvet.Tests
             var own = 40f * 16 * 0.016f;
             var rotate = Root.Q<VisualElement>("b").style.rotate.value.angle.ToDegrees();
             Assert.That(rotate, Is.EqualTo(Mathf.Lerp(20f, own, BProgress())).Within(1.5f));
+        }
+
+        [Test]
+        public void Given_ALeadMixingARotateItsRulesTransition_When_ItsPoseTweensItsRotateMidMove_Then_ItMixesTowardsThePosesRotateOnThePoseTweensTiming()
+        {
+            // Arrange — the test's rules transitioning "b"'s rotate over a second, which its move takes out of its
+            // transitions as it writes the rotate; "b" level at its first pose, some way from "a" at twenty degrees, on a
+            // linear second, its poses on a linear 0.4 s.
+            Root.styleSheets.Add(AssetDatabase.LoadAssetAtPath<StyleSheet>(TestRulesPath));
+            (s_aClasses, s_bClasses) = ("rotate-[20deg]", "layout-id-test-turn");
+            s_bVariants = new Dictionary<string, MotionVariant> { ["level"] = "rotate-[0deg]", ["tilted"] = "rotate-[40deg]" };
+            s_bPose = "level";
+            s_bTransition = new StyleTransitionConfig { DurationSec = 0.4f, Easing = EasingMode.Linear, Layout = s_slowTween };
+            using var mounted = MountBOverA();
+            for (var i = 0; i < 10; i++) Tick();
+
+            // Act — the tilted pose, about a quarter of a second on.
+            s_bPose = "tilted";
+            RenderShared(mounted);
+            for (var i = 0; i < 15; i++) Tick();
+
+            // Assert — mixed from "a"'s twenty degrees towards "b"'s own as far towards forty as 0.4 s takes it, rather
+            // than towards forty, or as far as the second its rules give.
+            var own = 40f * 16 * 0.016f / 0.4f;
+            var rotate = Root.Q<VisualElement>("b").style.rotate.value.angle.ToDegrees();
+            Assert.That(rotate, Is.EqualTo(Mathf.Lerp(20f, own, BProgress())).Within(1.5f));
+        }
+
+        [Test]
+        public void Given_ALeadWhoseOpacityAndRotateRunOnPastItsLanding_When_APoseSwapChangesItsOpacityBeforeItsOpacityTailSteps_Then_ItsOpacityIsCarriedOnThePoseSwapsTiming()
+        {
+            // Arrange — the bundled sheet and a sheet of the test's own, whose class transitions rotate and opacity
+            // linearly over a second; "b" takes the id from "a" on a one-second tween, its poses on a linear 0.4 s. Its
+            // classes turn it and fade it to three quarters 0.6 s in, so that both run on past the move's landing.
+            VelvetStyleUtilities.AttachTo(Root);
+            Root.styleSheets.Add(AssetDatabase.LoadAssetAtPath<StyleSheet>("Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/LayoutIdTailTestRules.uss"));
+            (s_bClasses, s_bPose) = ("layout-id-test-turn-fade", "first");
+            s_bVariants = new Dictionary<string, MotionVariant> { ["first"] = "w-[100px]", ["second"] = "opacity-25" };
+            s_bTransition = new StyleTransitionConfig { DurationSec = 0.4f, Easing = EasingMode.Linear, Layout = s_slowTween };
+            using var mounted = MountBOverA();
+            for (var i = 0; i < 36; i++) Tick();
+            s_bClasses = "layout-id-test-turn-fade rotate-90 opacity-75";
+            RenderShared(mounted);
+            for (var i = 0; i < 29; i++) Tick();
+            var b = Root.Q<VisualElement>("b");
+            const System.Reflection.BindingFlags Hidden = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static;
+            var drawings = typeof(MotionOpacity).GetField("s_drawing", Hidden)!.GetValue(null);
+            var drawing = new object[] { b, null };
+            var opacityTail = (bool)drawings.GetType().GetMethod("TryGetValue")!.Invoke(drawings, drawing)!
+                ? (IVisualElementScheduledItem)drawing[1].GetType().GetField("Tail")!.GetValue(drawing[1])
+                : null;
+            var looks = typeof(LayoutIdLook).GetField("s_tails", Hidden)!.GetValue(null);
+            var look = (bool)looks.GetType().GetMethod("TryGetValue")!.Invoke(looks, new object[] { b, null })!;
+            var bothRunOn = opacityTail != null && look;
+            var from = WrittenOpacity(b);
+
+            // Act — the opacity tail held back while the look tail steps, so that it steps after the narrowing has taken
+            // opacity out of the swap's list rather than before; "b" takes its second pose, which gives opacity 0.25 in
+            // place of the class's.
+            opacityTail?.Pause();
+            (s_bPose, s_bClasses) = ("second", "layout-id-test-turn-fade rotate-90");
+            RenderShared(mounted);
+            for (var i = 0; i < 2; i++) Tick();
+            opacityTail?.Resume();
+            for (var i = 0; i < 4; i++) Tick();
+
+            // Assert — as far from where it stood towards 0.25 as the 0.4 s of the swap, from the frames the tail was held
+            // back for on, takes it, rather than at 0.25.
+            var own = WrittenOpacity(b);
+            Assert.That(own, Is.EqualTo(bothRunOn ? Mathf.Lerp(from, 0.25f, 0.28f) : float.NaN).Within(0.12f));
         }
 
         [Test]

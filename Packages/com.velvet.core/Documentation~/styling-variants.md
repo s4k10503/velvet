@@ -435,9 +435,22 @@ declared radius, and a radius your code writes to `style` is scaled with the oth
 no longer needs the fit. A keyword written there (`initial`) is left alone. A change of class under
 `transition-all` animates between the fitted radii rather than the declared ones. An element with no such class and
 no arbitrary radius is fitted all the same, from a radius your own stylesheet gives it or your code writes to `style`
-(`border-radius: 400px` on a `.pill` rule). It is checked each time its size changes, first layout included, so a
-radius that appears with no size change, a class swap or a write to `style` after layout, is fitted when the size next
-changes.
+(`border-radius: 400px` on a `.pill` rule). It is checked each time its size changes, first layout included, and each
+time a rule that declares a radius starts or stops matching it, so a radius that arrives with no size change is fitted
+in the same update when a class changes, whether your code or Velvet changed it, when a class on an ancestor that a rule
+of yours keys on changes, or when a pseudo-class such as `:hover` begins to match. Velvet finds those rules by reading the
+stylesheets of the element a tree is mounted on and of its ancestors, with what they import, and of an element inside the
+tree once it lays out. For each sheet with such a rule it attaches a second sheet that exists only at runtime, with the
+same selectors and one custom property, which is what makes UI Toolkit report the match; your own sheet is never
+edited. `VelvetStyleUtilities.AttachTo` reads the root's sheets at once. A sheet attached later to an ancestor of an element Velvet
+built is read within a tick of the panel's sheet watch (16 ms), and one attached to the mount's ancestors within 100 ms. A
+sheet attached later to a leaf that held none at its last geometry change is read at its next one: UI
+Toolkit raises no event for a sheet attached to an element. The sheets on the panel's own root are read too, whatever imports they bring; the bundled
+utilities are covered by the rules that restate their radii. The elements a radius rule matches get a style event for
+each restyle, and the fit does nothing for it while the rules that match are the same ones; one that no such rule matches
+is restyled as before. A write to `style` after layout is the exception: UI Toolkit reports it to nobody, so it is fitted
+at the element's next size change, the next time a radius rule starts or stops matching it, or when Velvet adds or
+removes a class on it.
 
 **The wrapper-less paints under a hidden overflow.** UI Toolkit applies an element's own overflow clip to the
 element's own painted content, and cuts it at the **padding** box, while CSS clips neither a box-shadow nor a border

@@ -68,3 +68,20 @@
 .layout-id-test-eighth-turn {
     rotate: 0.125turn;
 }
+
+.radius-watch-parent .radius-watch-child {
+    border-top-left-radius: 90px;
+    border-top-right-radius: 30px;
+}
+
+.radius-watch-hover:hover {
+    border-top-left-radius: 90px;
+    border-top-right-radius: 30px;
+}
+
+.radius-watch-uneven {
+    border-top-left-radius: 90px;
+    border-top-right-radius: 30px;
+    border-bottom-right-radius: 0;
+    border-bottom-left-radius: 0;
+}

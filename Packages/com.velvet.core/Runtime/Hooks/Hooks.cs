@@ -3654,7 +3654,7 @@ namespace Velvet
             // suspending query waits.
             UseSuspendWhileAnyPending(read, queryClient, boundary);
             read.ThrowFirstError(boundary);
-            return combine == null ? project(read.Results) : observer.Combine(read.Results, read.Keys, combine, project);
+            return combine == null ? project(read.Results) : observer.Combine(read, combine, project);
         }
 
         // UseSuspendWhilePending over every query whose result is pending: the render starts each one's request and
