@@ -464,8 +464,8 @@ namespace Velvet
             // on, as a CSS transition keeps its timing function.
             foreach (var name in evt.stylePropertyNames)
             {
-                // Eased on the curve TakenOver gives instead, whichever of the two run-event callbacks comes first: a
-                // curve StyleTransitionInterpolation wraps can match a keyword's here and be swapped out.
+                // Left to StyleTransitionInterpolation, which eases them on the curve TakenOver gives: a curve it has
+                // wrapped can match a keyword's here, where this callback comes second, and be swapped out.
                 if (StyleTransitionInterpolation.Interpolates(name))
                 {
                     continue;
