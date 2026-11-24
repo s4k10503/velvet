@@ -12,10 +12,11 @@ namespace Velvet.Tests
     /// cleanup or a ref cleanup as a Suspense hides the children it showed, and a layout cleanup as a
     /// <c>V.VirtualList</c> row is taken out of the range. That root renders it before control returns from the
     /// work that ran the commit, as React runs its mutation phase at the discrete event priority, which gives an
-    /// update made there outside a transition the sync lane whichever root it targets. So does an update a layout
-    /// effect makes as a transition callback mounts its root, as React clears the transition for a commit, while an
-    /// update that callback makes after the mount is still the transition's. An update a removed row's passive
-    /// cleanup makes takes no sync lane, and the row's insertion cleanup still runs as it leaves.
+    /// update made there outside a transition the sync lane whichever root it targets; so does the list's own root,
+    /// for an update the row's layout cleanup makes on it. So does an update a layout effect makes as a transition
+    /// callback mounts its root, as React clears the transition for a commit, while an update that callback makes
+    /// after the mount is still the transition's. An update a removed row's passive cleanup makes takes no sync
+    /// lane, and the row's insertion cleanup still runs as it leaves.
     /// </summary>
     [TestFixture]
     internal sealed class MutationPhaseUpdateOnAnotherRootTests
@@ -27,6 +28,8 @@ namespace Velvet.Tests
         private static TransitionStarter s_start;
         private static bool s_passiveCleanupRan;
         private static int s_insertionCleanups;
+        private static StateUpdater<int> s_setListHost;
+        private static int s_listHostShown;
 
         [SetUp]
         public void SetUp()
@@ -38,6 +41,8 @@ namespace Velvet.Tests
             s_start = default;
             s_passiveCleanupRan = false;
             s_insertionCleanups = 0;
+            s_setListHost = default;
+            s_listHostShown = -1;
         }
 
         [TearDown]
@@ -274,6 +279,47 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(s_insertionCleanups, Is.EqualTo(1));
+        }
+
+        [Component]
+        private static VNode SetsItsListsHostFromItsLayoutCleanup()
+        {
+            Hooks.UseLayoutEffect(() => () => s_setListHost.Invoke(1), Array.Empty<object>());
+            return V.Div();
+        }
+
+        // The root that holds the list: records the value it last rendered and hands out its setter.
+        [Component]
+        private static VNode HostsAList()
+        {
+            var (value, setValue) = Hooks.UseState(0);
+            s_setListHost = setValue;
+            s_listHostShown = value;
+            return V.VirtualList(
+                items: new[] { "first", "second" },
+                keySelector: item => item,
+                itemHeight: 50f,
+                renderer: item => V.Div(key: item, children: new VNode[]
+                {
+                    V.Component(SetsItsListsHostFromItsLayoutCleanup, key: "row"),
+                }),
+                overscan: 0);
+        }
+
+        [Test]
+        public void Given_AListRowWhoseLayoutCleanupSetsItsOwnRootsState_When_ARangeUpdateTakesTheRowOut_Then_ThatRootHasRenderedTheUpdateWhenTheUpdateReturns()
+        {
+            // Arrange
+            var host = new VisualElement();
+            s_mounts.Add(V.Mount(host, V.Component(HostsAList)));
+            var list = s_mounts[0].Root.Reconciler.Context.VirtualListControllers[host.Q<ScrollView>()];
+            list.UpdateVisibleRange(scrollY: 0f, viewportHeight: 50f);
+
+            // Act
+            list.UpdateVisibleRange(scrollY: 50f, viewportHeight: 50f);
+
+            // Assert
+            Assert.That(s_listHostShown, Is.EqualTo(1));
         }
 
         // --- A transition open around the work that runs a commit ---
