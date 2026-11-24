@@ -24,13 +24,8 @@ namespace Velvet
     // font read while an ancestor holds a write of Velvet's that the panel has not resolved yet is not read: the named
     // family stands until the next update of the panel.
     //
-    // The parent's resolved font is read again in each style pass that restyles an inheritor (Restyled), which the
-    // element hears through MarkerClass as ColorReferenceWatch's elements hear theirs, and at every update of the panel
-    // (Tick) for as long as an inheritor exists, there being no event of its own for a stylesheet, a class or a
-    // pseudo-state changing a font above an element. The pass is where such a change reaches the element in the update
-    // that shows it on the ancestor
-    // (Given_ABoldLabelUnderAClasslessElement_When_AnAncestorGainsAClassWhoseRuleGivesItAFont_Then_TheLabelFollowsInThatStylePass);
-    // the update is what reads it where the bundled stylesheet is not attached above the element. What
+    // The parent's resolved font is read again at every update of the panel (Tick) for as long as an inheritor exists,
+    // there being no event of its own for a stylesheet, a class or a pseudo-state changing a font above an element. What
     // an author can change on the element itself without one is read the same way: its inline font and the key the
     // engine holds its matched rules under. That key also moves with the inherited styles of its parent, so a move of it
     // resolves the element again only where the fonts its rules and parent give it differ (RuleKey, two reads of the
@@ -38,6 +33,12 @@ namespace Velvet
     // resolve asks the engine's rule matcher (BorderPreflight.AuthorRuleFonts) for the element's own rules and, where
     // the parent resolves a definition and a legacy font, once for each ancestor up to the one naming a family, an
     // inheritor or an author's definition (AncestorLegacy); where the matcher cannot be built, only inline fonts are read.
+    //
+    // Where the bundled stylesheet is attached above an inheritor, the same reads are also taken in each style pass that
+    // restyles it (Restyled), which it hears through MarkerClass as ColorReferenceWatch's elements hear theirs. That pass
+    // is what brings a font a class, a pseudo-state or a stylesheet gives an ancestor to the inheritor in the update that
+    // shows it on the ancestor
+    // (Given_ABoldLabelUnderAClasslessElement_When_AnAncestorGainsAClassWhoseRuleGivesItAFont_Then_TheLabelFollowsInThatStylePass).
     //
     // A resolve reads the font of the nearest ancestor that declares one rather than the parent's where the parent only
     // inherits its own (InheritedPeek), and an inheritor resolved in a Tick whose family changed reads again those below
@@ -132,9 +133,9 @@ namespace Velvet
 
         private const int ChangeWait = 2;
 
-        // Not ColorReferenceWatch's marker, which is counted: an inheritor's entry leaves with the element's other
-        // side-tables, through no call here that could count it down.
-        internal const string MarkerClass = "velvet-font-inherit";
+        // Not ColorReferenceWatch's marker, which is counted: an inheritor's entry can leave with the element's other
+        // side-tables, where no call here could count it down.
+        private const string MarkerClass = "velvet-font-inherit";
 
         private static readonly EventCallback<CustomStyleResolvedEvent> s_restyled = Restyled;
 
@@ -545,7 +546,8 @@ namespace Velvet
                 FarLegacy(element));
             if (!hadPrior)
             {
-                // Trickling down, to come ahead of TextLineBox's handler for the same event, which reads the font written here.
+                // Trickling down, to come ahead of TextLineBox's handler for the same event, which can read the font
+                // written here.
                 element.RegisterCallback(s_restyled, TrickleDown.TrickleDown);
                 element.AddToClassList(MarkerClass);
             }
