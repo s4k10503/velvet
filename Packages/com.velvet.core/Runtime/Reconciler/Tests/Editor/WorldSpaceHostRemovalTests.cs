@@ -50,7 +50,7 @@ namespace Velvet.Tests
             _host = null;
         }
 
-        // Stands in for a V.Custom<T> whose element registers a panel-detach callback, which throws on every call. Its
+        // Stands in for a V.Custom<T> whose element registers a panel-detach callback, which throws on every call while armed. Its
         // message says whether the element attached as a relocated z-* element, so the case about one fails where the
         // arrangement stops making one, and numbers every call after the first, so a callback run twice reads as two
         // messages.
