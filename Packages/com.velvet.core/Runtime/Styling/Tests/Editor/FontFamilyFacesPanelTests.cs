@@ -595,6 +595,157 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AMarkedBoldLabelLeftMounted_When_ItsReconcilerIsDisposed_Then_ItNoLongerCarriesTheMarker()
+        {
+            // Arrange
+            var scope = new ReconcilerScope();
+            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(),
+                new VNode[] { V.Label(className: "font-bold", text: "a") });
+            var label = scope.Root[0];
+            var marked = label.ClassListContains(FontInheritMarker);
+
+            // Act
+            scope.Dispose();
+
+            // Assert
+            Assert.That(marked ? label.ClassListContains(FontInheritMarker) : (bool?)null, Is.False);
+        }
+
+        [Test]
+        public void Given_AMarkedBoldLabel_When_ItsMarkerStylesheetIsRead_Then_ItsRuleCountsAsDeclaringNoVariable()
+        {
+            // Arrange
+            _mounted = V.Mount(_host.Root, ClassedBoldLabel("font-bold"));
+            var label = Target(_host.Root);
+            var rules = EngineMember.StyleSheetRules.ResolveProperty()!;
+            var count = EngineMember.StyleRuleCustomPropertiesCount.ResolveField()!;
+
+            // Act
+            var counted = label.styleSheets.count > 0
+                ? (int)count.GetValue(((Array)rules.GetValue(label.styleSheets[0])).GetValue(0))
+                : -1;
+
+            // Assert — -1 where the label was given no stylesheet, which no count of variables is.
+            Assert.That(counted, Is.Zero);
+        }
+
+        [Test]
+        public void Given_AMarkedBoldLabel_When_ItsMarkerStylesheetIsRead_Then_ItIsHiddenAndNotSaved()
+        {
+            // Arrange
+            _mounted = V.Mount(_host.Root, ClassedBoldLabel("font-bold"));
+            var label = Target(_host.Root);
+
+            // Act
+            var flags = label.styleSheets.count > 0 ? label.styleSheets[0].hideFlags : (HideFlags?)null;
+
+            // Assert
+            Assert.That(flags, Is.EqualTo(HideFlags.HideAndDontSave));
+        }
+
+        [Test]
+        public void Given_AMarkedBoldLabel_When_ItsStylesheetsAreReadForABorderRule_Then_TheMarkerStylesheetIsNotCounted()
+        {
+            // Arrange
+            _mounted = V.Mount(_host.Root, ClassedBoldLabel("font-bold"));
+            var label = Target(_host.Root);
+            var sheetsOf = typeof(BorderPreflight).GetMethod("SheetsOf", BindingFlags.NonPublic | BindingFlags.Static)!;
+
+            // Act
+            var read = label.styleSheets.count > 0 ? (int)sheetsOf.Invoke(null, new object[] { label }) : -1;
+
+            // Assert — -1 where the label was given no stylesheet, which a read of none is not.
+            Assert.That(read, Is.Zero);
+        }
+
+        // One rule, as MarkerSheet builds it, for a sheet that stands for one an earlier domain built: those are known by
+        // their name alone.
+        private const string MarkerRule = ".velvet-font-inherit { --velvet-font-inherit: 1; }";
+
+        [Test]
+        public void Given_AStylesheetNamedAsAFontMarkerSheet_When_ItIsStamped_Then_TheStampDoesNotMove()
+        {
+            // Arrange
+            AttachSheet(MarkerRule);
+            _ruledSheet.name = FontInheritMarker;
+
+            // Act
+            var stamp = VelvetStyleUtilities.SheetStamp(17, _ruledSheet);
+
+            // Assert
+            Assert.That(stamp, Is.EqualTo(17));
+        }
+
+        [Test]
+        public void Given_AStylesheetNamedAsAFontMarkerSheetOnAnElement_When_TheThemeSignatureAboveItIsRead_Then_ItIsLeftOut()
+        {
+            // Arrange — the element has no parent, so its own sheets are all the signature reads.
+            AttachSheet(MarkerRule);
+            _ruledSheet.name = FontInheritMarker;
+            var holder = new VisualElement();
+            holder.styleSheets.Add(_ruledSheet);
+            var signatureAbove = typeof(StyleThemeTokens).GetMethod("SignatureAbove", BindingFlags.NonPublic | BindingFlags.Static)!;
+
+            // Act
+            var signature = (int)signatureAbove.Invoke(null, new object[] { holder });
+
+            // Assert — what an element holding no sheet reads.
+            Assert.That(signature, Is.EqualTo(17));
+        }
+
+        [Test]
+        public void Given_AStylesheetNamedAsAFontMarkerSheetAboveAMount_When_ItsThemeTokensAreRead_Then_ItsCustomPropertyIsNoProjectToken()
+        {
+            // Arrange
+            AttachSheet(MarkerRule);
+            _ruledSheet.name = FontInheritMarker;
+            _mounted = V.Mount(_host.Root, V.Div());
+
+            // Act
+            var scope = StyleThemeTokens.Refresh(_mounted.Root.Reconciler.Context);
+
+            // Assert — null where no scope was read, which the expected value never is.
+            Assert.That(scope?.Project.Contains("--velvet-font-inherit"), Is.False);
+        }
+
+        [Test]
+        public void Given_AStylesheetNamedAsAFontMarkerSheetWhereAPortalIsDeclared_When_SheetsAreCarriedToItsHost_Then_ThatOneIsNot()
+        {
+            // Arrange
+            AttachSheet(MarkerRule);
+            _ruledSheet.name = FontInheritMarker;
+            var declaredAt = new VisualElement();
+            declaredAt.styleSheets.Add(_ruledSheet);
+            var hostRoot = new VisualElement();
+
+            // Act
+            VelvetStyleUtilities.CarryToHost(declaredAt, hostRoot);
+
+            // Assert
+            Assert.That(hostRoot.styleSheets.Contains(_ruledSheet), Is.False);
+        }
+
+        [Test]
+        public void Given_AStylesheetNamedAsAFontMarkerSheetOnAnElement_When_RadiusWatchSheetsAreEnsuredOnIt_Then_NoneIsDerivedFromIt()
+        {
+            // Arrange
+            AttachSheet(MarkerRule);
+            _ruledSheet.name = FontInheritMarker;
+            var holder = new VisualElement();
+            holder.styleSheets.Add(_ruledSheet);
+            var derived = typeof(RadiusWatchSheets).GetField("s_derived", BindingFlags.NonPublic | BindingFlags.Static)!
+                .GetValue(null);
+            var lookup = new object[] { _ruledSheet, null };
+
+            // Act
+            RadiusWatchSheets.EnsureOn(holder);
+            var found = (bool)derived.GetType().GetMethod("TryGetValue")!.Invoke(derived, lookup);
+
+            // Assert
+            Assert.That(found, Is.False);
+        }
+
+        [Test]
         public void Given_ABoldLabelOnTheDefaultFamily_When_TheDefaultFamilyChanges_Then_TheLabelResolvesTheNewFamilysBold()
         {
             // Arrange

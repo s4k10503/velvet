@@ -50,8 +50,9 @@ namespace Velvet
     // A change to the registry resolves every element the tables hold again: one naming a family, or inheriting a
     // named one, at once; one inheriting its parent's font once that font has been read again.
     //
-    // Both tables are keyed by element and torn down with it, so they are enrolled in
-    // ReconcilerContext's pure side-tables.
+    // Both tables are keyed by element and torn down with it: Families as one of ReconcilerContext's pure side-tables,
+    // Inheritors through Forget and ForgetAll, since an entry holds the element's MarkerClass, MarkerSheet and restyle
+    // callback.
     internal sealed class FiberFontScope
     {
         // What an inheritor was last resolved against. Named is the family a font-<name> ancestor names and kept; Seen and
@@ -158,6 +159,8 @@ namespace Velvet
         private static readonly MethodInfo? s_endProperty = EngineMember.StyleSheetBuilderEndProperty.ResolveMethod();
         private static readonly MethodInfo? s_endRule = EngineMember.StyleSheetBuilderEndRule.ResolveMethod();
         private static readonly MethodInfo? s_buildTo = EngineMember.StyleSheetBuilderBuildTo.ResolveMethod();
+        private static readonly PropertyInfo? s_sheetRules = EngineMember.StyleSheetRules.ResolveProperty();
+        private static readonly FieldInfo? s_declaredVariables = EngineMember.StyleRuleCustomPropertiesCount.ResolveField();
         private static readonly PropertyInfo? s_isDefault = EngineMember.StyleSheetIsDefault.ResolveProperty();
         private static readonly FieldInfo? s_style = EngineMember.ElementComputedStyle.ResolveField();
         private static readonly FieldInfo? s_inheritedData = EngineMember.ComputedStyleInheritedData.ResolveField();
@@ -166,7 +169,8 @@ namespace Velvet
         private static readonly bool s_watches = s_builderType != null && s_beginRule != null && s_beginSelector != null
             && s_addSelector != null && s_endSelector != null && s_beginProperty != null && s_addFloat != null
             && s_endProperty != null && s_endRule != null && s_buildTo != null && s_createClass != null && s_isDefault != null
-            && s_style != null && s_inheritedData != null && s_inheritedHash != null;
+            && s_sheetRules != null && s_declaredVariables != null && s_style != null && s_inheritedData != null
+            && s_inheritedHash != null;
 
         private static StyleSheet? s_markerSheet;
 
@@ -617,6 +621,19 @@ namespace Velvet
             }
         }
 
+        // The tree is disposed, which can leave its elements mounted (Reconciler.Dispose).
+        internal void ForgetAll()
+        {
+            foreach (var element in new List<VisualElement>(Inheritors.Keys))
+            {
+                Forget(element);
+            }
+        }
+
+        // A sheet MarkerSheet built, in this domain or, by its name, an earlier one, as RadiusWatchSheets.IsWatch knows
+        // its own; the readers that pass over those sheets pass over this one too.
+        internal static bool IsMarker(StyleSheet? sheet) => sheet != null && sheet.name == MarkerClass;
+
         // Marked a default sheet, as a theme is, so that the matcher's readers do not take its rule for an author's
         // (BorderPreflight.HasAuthorSheet).
         private static StyleSheet? MarkerSheet()
@@ -643,11 +660,11 @@ namespace Velvet
             s_endProperty!.Invoke(builder, null);
             s_endRule!.Invoke(builder, null);
             var sheet = UnityEngine.ScriptableObject.CreateInstance<StyleSheet>();
-            // MUTANT_SURVIVES(equivalent): the name changes nothing a case reads; it is what a debugger lists the sheet under.
             sheet.name = MarkerClass;
-            // MUTANT_SURVIVES(equivalent): no case lists, edits, saves or unloads a sheet, which is what the flags decide.
             sheet.hideFlags = UnityEngine.HideFlags.HideAndDontSave;
             s_buildTo!.Invoke(builder, new object[] { sheet });
+            // Counted as declaring no variable, as RadiusWatchSheets.Build counts its rules.
+            s_declaredVariables!.SetValue(((Array)s_sheetRules!.GetValue(sheet)).GetValue(0), 0);
             s_isDefault!.SetValue(sheet, true);
             s_markerSheet = sheet;
             return sheet;
@@ -683,8 +700,7 @@ namespace Velvet
         }
 
         // The pass hashed what the element passes down before the event this writes in, and keys the cached style of each
-        // child it styles after it on that hash, so without this such a child would be built from the face written here and
-        // cached under the hash of the face it replaced
+        // child it styles after it on that hash, which without this would name the face this replaced
         // (Given_TwoBoldContainersOfOneColourUnderAnElementARuleGivesAFontAndUnderNone_When_TheirStylePassRuns_Then_TheLabelUnderTheSecondKeepsItsContainersFace).
         private static void Rehash(VisualElement element)
             => s_inheritedHash!.SetValue(element, s_inheritedData!.GetValue(s_style!.GetValue(element)).GetHashCode());

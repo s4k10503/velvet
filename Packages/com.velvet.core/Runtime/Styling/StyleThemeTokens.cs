@@ -497,6 +497,10 @@ namespace Velvet
                     {
                         continue;
                     }
+                    if (FiberFontScope.IsMarker(sheet))
+                    {
+                        continue;
+                    }
                     hash = unchecked(hash * 31 + (sheet == null ? 0 : RuntimeHelpers.GetHashCode(sheet)) * 7 + (sheet == null ? 0 : sheet.contentHash));
                 }
             }
@@ -507,6 +511,10 @@ namespace Velvet
         private static void Observe(Scope scope, StyleSheet? sheet, bool bundled)
         {
             if (sheet == null || RadiusWatchSheets.IsWatch(sheet))
+            {
+                return;
+            }
+            if (FiberFontScope.IsMarker(sheet))
             {
                 return;
             }
