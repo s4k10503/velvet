@@ -37,7 +37,8 @@ namespace Velvet
 
         private static bool s_isInDiscreteEvent;
 
-        // The transition calls whose callback is running synchronously right now. A Transition-lane enrolment
+        // The transition calls whose callback is running synchronously right now, less those the mutation and
+        // layout work running inside them has set aside (EnterMutationOrLayoutWork). A Transition-lane enrolment
         // made while these are open is credited to each of them that still owns its slot (see
         // MarkTransitionWorkQueued), so a nested or joined call credits the calls it sits inside as well.
         // Ambient rather than per-fiber, because the fiber owning the state a callback writes need not be the
@@ -46,7 +47,48 @@ namespace Velvet
         // Nothing re-opens the scope for an async action's continuation: inferring one from the fiber's
         // in-flight transitions instead gave the Transition lane to unrelated writes in that window.
         // Unsynchronised, so it holds only while one caller pushes and pops at a time.
-        private static readonly List<HookTransitionSlot> OpenTransitionScopes = new();
+        private static List<HookTransitionSlot> OpenTransitionScopes = new();
+
+        // Raised by a layout commit of any root (ReconcilerContext.SetCommitDepths) and by the mutation-phase
+        // callbacks run through RunAsMutationOrLayoutWork. React runs both phases at the discrete event priority
+        // with no transition current, so an update made inside them takes the sync lane whichever root it targets
+        // (FiberBatchScheduler.ScheduleImmediate), unless a StartTransition called inside them makes it a
+        // transition's.
+        private static int s_mutationOrLayoutDepth;
+
+        // Swapped with OpenTransitionScopes where the outermost mutation or layout work begins and again where it
+        // ends, which sets the scopes open around that work aside for its span. A scope opened inside the work
+        // closes before the work ends, so the list swapped out at the end is empty. The swap leaves
+        // AwaitContinuationGate.OpenScopes alone, since the callbacks it sets aside are still running.
+        private static List<HookTransitionSlot> s_scopesSetAsideByCommit = new();
+
+        internal static bool IsInMutationOrLayoutWork => s_mutationOrLayoutDepth > 0;
+
+        // An enter left without its exit would give later updates the sync lane, so each is exited in a finally.
+        internal static void EnterMutationOrLayoutWork()
+        {
+            if (s_mutationOrLayoutDepth++ > 0) return;
+            (OpenTransitionScopes, s_scopesSetAsideByCommit) = (s_scopesSetAsideByCommit, OpenTransitionScopes);
+        }
+
+        internal static void ExitMutationOrLayoutWork()
+        {
+            if (--s_mutationOrLayoutDepth > 0) return;
+            (OpenTransitionScopes, s_scopesSetAsideByCommit) = (s_scopesSetAsideByCommit, OpenTransitionScopes);
+        }
+
+        internal static void RunAsMutationOrLayoutWork<TState>(TState state, Action<TState> work)
+        {
+            EnterMutationOrLayoutWork();
+            try
+            {
+                work(state);
+            }
+            finally
+            {
+                ExitMutationOrLayoutWork();
+            }
+        }
 
         // UseDeferredValue has to tell the deferred commit from an ordinary render it must keep withholding
         // from, and with no lane visible to it the pending value promotes on whatever renders next, urgent or

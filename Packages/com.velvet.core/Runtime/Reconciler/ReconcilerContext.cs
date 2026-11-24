@@ -2404,19 +2404,16 @@ namespace Velvet
         private int _effectCommitDepth;
         private int _passiveDrainDepth;
 
-        // Kept by SetCommitDepths alone: a depth written past it leaves this count wrong for every root.
-        private static int s_contextsInLayoutCommit;
-
-        // React runs a commit's mutation and layout phases at the discrete event priority, which gives an update made
-        // there outside a transition the sync lane whichever root it targets (FiberBatchScheduler.ScheduleImmediate).
-        internal static bool AnyInLayoutCommit => s_contextsInLayoutCommit > 0;
-
+        // The one writer of both depths: one written past it leaves FiberWorkLoop.IsInMutationOrLayoutWork wrong for
+        // every root.
         private void SetCommitDepths(int effectCommitDepth, int passiveDrainDepth)
         {
             var was = InLayoutCommit;
             _effectCommitDepth = effectCommitDepth;
             _passiveDrainDepth = passiveDrainDepth;
-            if (InLayoutCommit != was) s_contextsInLayoutCommit += was ? -1 : 1;
+            if (InLayoutCommit == was) return;
+            if (was) FiberWorkLoop.ExitMutationOrLayoutWork();
+            else FiberWorkLoop.EnterMutationOrLayoutWork();
         }
 
         // Whether a layout or passive commit is running, where an error an effect or a ref callback throws is captured
@@ -2582,7 +2579,7 @@ namespace Velvet
             RefCallbacks.Remove(element);
             try
             {
-                installed.Cleanup?.Invoke();
+                FiberWorkLoop.RunAsMutationOrLayoutWork(installed.Cleanup, static cleanup => cleanup?.Invoke());
             }
             catch (System.Exception exception)
             {

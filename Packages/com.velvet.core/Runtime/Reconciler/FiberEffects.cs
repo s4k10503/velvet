@@ -122,7 +122,8 @@ namespace Velvet
             // clear a ref another component has written since.
             if (fiber.LayoutEffectsHidden) return;
             fiber.LayoutEffectsHidden = true;
-            HookEffectExecutor.RunCleanups(fiber, fiber.LayoutEffects);
+            FiberWorkLoop.RunAsMutationOrLayoutWork(
+                fiber, static hidden => HookEffectExecutor.RunCleanups(hidden, hidden.LayoutEffects));
             if (fiber.ImperativeHandleSlots == null) return;
             foreach (var slot in fiber.ImperativeHandleSlots) slot.HandleRef?.Set(null);
         }
@@ -680,8 +681,12 @@ namespace Velvet
         // nothing left.
         internal static void CleanUpDeleted(ComponentFiber fiber)
         {
-            CleanupAllInsertionEffects(fiber);
-            CleanupAllLayoutEffects(fiber);
+            FiberWorkLoop.RunAsMutationOrLayoutWork(fiber, static deleted =>
+            {
+                CleanupAllInsertionEffects(deleted);
+                CleanupAllLayoutEffects(deleted);
+            });
+            // Outside the mutation work, as React runs a deleted component's passive cleanups in its passive phase.
             CleanupAllEffects(fiber);
         }
 

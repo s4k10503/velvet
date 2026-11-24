@@ -110,9 +110,10 @@ namespace Velvet
         private Action? _flushPassiveEffects;
 
         // Set by intake React would give the sync lane — an update a discrete event's handler makes, a write made
-        // while any root's layout commit runs, a UseSyncExternalStore change — and taken by the pass that renders it,
-        // which then flushes the passive effects of its commits as it ends (DrainImmediatePasses). Intake from anywhere
-        // else, a passive effect's included, leaves it as it is.
+        // while any root's mutation or layout work runs (FiberWorkLoop.IsInMutationOrLayoutWork), a
+        // UseSyncExternalStore change — and taken by the pass that renders it, which then flushes the passive effects
+        // of its commits as it ends (DrainImmediatePasses). Intake from anywhere else, a passive effect's included,
+        // leaves it as it is.
         private bool _syncLaneQueued;
 
         // Raised while DrainImmediate runs, whose own passes render the sync-lane work its passive flushes queue.
@@ -219,7 +220,7 @@ namespace Velvet
             ArmImmediateDrain();
         }
 
-        private static bool TakesSyncLane => FiberWorkLoop.IsInDiscreteEvent || ReconcilerContext.AnyInLayoutCommit;
+        private static bool TakesSyncLane => FiberWorkLoop.IsInDiscreteEvent || FiberWorkLoop.IsInMutationOrLayoutWork;
 
         internal void MarkSyncLaneIfTaken()
         {
