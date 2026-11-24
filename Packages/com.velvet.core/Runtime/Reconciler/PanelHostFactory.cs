@@ -17,7 +17,7 @@ namespace Velvet
     // panel settings were resolvable yet; the passes that touch the host keep re-syncing through
     // PanelHostFactory.SyncDeclaring (late resolution and runtime drift alike). Held in
     // ReconcilerContext.LayerHosts / WorldSpaceBindings; destroyed by FiberElementCleaner
-    // (world-space, with its placeholder) and the reconciler dispose sweep.
+    // (world-space, behind its placeholder) and the reconciler dispose sweep.
     internal sealed class PanelHostRecord
     {
         public readonly UIDocument Document;

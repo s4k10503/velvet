@@ -491,9 +491,17 @@ namespace Velvet
                     }
                     finally
                     {
-                        ElementCleaner.ReleaseRetiredZLayerReals();
-                        FiberZLayerCoordinator.DrainTeardowns(_ctx);
-                        FiberZLayerCoordinator.ResortLayers(_ctx);
+                        try
+                        {
+                            ElementCleaner.ReleaseRetiredZLayerReals();
+                            FiberZLayerCoordinator.DrainTeardowns(_ctx);
+                            FiberZLayerCoordinator.ResortLayers(_ctx);
+                        }
+                        finally
+                        {
+                            // Behind the z-* release, which takes a relocated element out of a host's root itself.
+                            ElementCleaner.ReleaseRetiredWorldSpaceHosts();
+                        }
                     }
                 }
                 applyFailure?.Throw();
@@ -1264,6 +1272,7 @@ namespace Velvet
                 PanelHostFactory.Destroy(record);
             }
             _ctx.WorldSpaceBindings.Clear();
+            ElementCleaner.ReleaseRetiredWorldSpaceHosts();
             foreach (var controller in _ctx.VirtualListControllers.Values)
             {
                 controller.Dispose();
