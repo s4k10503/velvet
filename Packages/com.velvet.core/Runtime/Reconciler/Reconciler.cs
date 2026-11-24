@@ -774,6 +774,11 @@ namespace Velvet
             FinishPass(container, walked: true);
         }
 
+        void IReconcilerBridge.RefreshHasVariantsForController(VisualElement container)
+        {
+            if (_ctx.SharedReconcileDepth == 0) FiberWave.RefreshHasVariants(_ctx, container);
+        }
+
         // What a detached item scope hands from Begin to Stamp and End: where in the host's append log the item fibers
         // not yet stamped begin, and the spine Begin pushed.
         private sealed class DetachedItemScope
