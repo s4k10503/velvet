@@ -196,7 +196,7 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): nothing on the base refreshes this element's hash, so the one this case writes stays.
-        // Drop `&& Inherits(property)` from HoldsInheritedLayer and the width the element reads makes it refresh.
+        // Drop `&& Inherits(consumer.Property.Value)` from HoldsInheritedLayer and the width the element reads makes it refresh.
         [Test]
         public void Given_AnElementReadingItsOwnVariableForAWidth_When_ItsStyleEventGivesItTheWidth_Then_ItKeepsTheHashTheEventLeft()
         {

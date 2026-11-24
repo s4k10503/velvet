@@ -444,7 +444,7 @@ namespace Velvet
             }
             foreach (var consumer in consumers.Entries)
             {
-                if (consumer.Property is { } property && Inherits(property))
+                if (consumer.Property.HasValue && Inherits(consumer.Property.Value))
                 {
                     return true;
                 }
