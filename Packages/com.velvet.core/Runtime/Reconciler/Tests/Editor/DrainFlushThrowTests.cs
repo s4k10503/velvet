@@ -14,9 +14,8 @@ namespace Velvet.Tests
     /// The exception is a <see cref="BoundaryCaughtSignal"/> naming no boundary, thrown by the first component's body.
     /// Rendering rethrows the signal for the walk of the boundary it names; naming none, this one leaves the drain. A
     /// render's own error would not serve: a boundary takes it, or the root, which unmounts the tree
-    /// (<see cref="UncaughtErrorRootTests"/>).
-    /// Each assertion folds in that the drain threw, so a change that stops the signal leaving the flush reddens the case
-    /// rather than passing it with nothing measured.
+    /// (<see cref="UncaughtErrorRootTests"/>). Each assertion folds in that the drain threw, so a change that stops the
+    /// signal leaving the flush reddens the case rather than passing it with nothing measured.
     /// </remarks>
     [TestFixture]
     internal sealed class DrainFlushThrowTests
@@ -71,8 +70,8 @@ namespace Velvet.Tests
             var threw = DrainThrows(scheduler.DrainDelayedForTest);
             s_firstThrows = false;
 
-            // Act — started by the first component: a transition also gives its starter an Urgent update, which enqueues
-            // a component holding only the Transition lane however the drain left it
+            // Act — started by the first component: the Urgent update that shows a transition pending outranks the
+            // second's Transition lane, so it would put the second back on a tier had the second started it
             s_startTransition.Invoke(() => s_setSecond.Invoke(2));
             scheduler.DrainDelayedForTest();
 
@@ -116,8 +115,8 @@ namespace Velvet.Tests
             s_startTransition = start;
             if (s_firstThrows && value > 0)
             {
-                throw new BoundaryCaughtSignal(
-                    null, Array.Empty<VNode>(), null, new InvalidOperationException("first"), new ErrorInfo(string.Empty));
+                throw new BoundaryCaughtSignal(null, Array.Empty<VNode>(), null, new InvalidOperationException("first"),
+                    new ErrorInfo(string.Empty));
             }
             return V.Label(name: "first", text: "first:" + value);
         }
