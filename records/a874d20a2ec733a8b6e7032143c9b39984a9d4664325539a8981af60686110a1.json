@@ -1,0 +1,31 @@
+{
+ "detail": "EditMode: 1 failed: Given_ARangeOnATargetBelowARoot_When_TheRootIsAsked_Then_ATargetIsBelowIt",
+ "file": "c9ca7261e282751921f9bc5b2cea1ba096c95e27587785cbc006d18b4ffa30e6",
+ "killers": [
+  {
+   "case": "Velvet.Tests.PortalRangeStoreTests.Given_ARangeOnATargetBelowARoot_When_TheRootIsAsked_Then_ATargetIsBelowIt",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PortalRangeStoreTests.cs": "afba00d1374923abeb02c1983f4836485c731914fb2c0ffe9a12cf827bcff9b6"
+   }
+  }
+ ],
+ "measured_by": "45405988130",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 31,
+  "line": 172,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ReconcilerContext.cs",
+  "shadowed": [
+   "guard removed",
+   "literal"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "d4a520e33507ade1d94cd4305baa010a19d5e5cd85566d56f233d7a122fa7a9c",
+ "verdict": "killed"
+}

@@ -1,0 +1,32 @@
+{
+ "detail": "EditMode: 1 failed among the 19 case(s) that ran the site: Given_FirstOfTwoSubscriptionsThrowsOnUnsubscribe_When_Unmounted_Then_TheSecondIsStillRemoved",
+ "file": "c22510083cf3a1ff39a0c0625fefe1dcbc261bb93eea0fdf59fd3b93aba8716e",
+ "killers": [
+  {
+   "case": "Velvet.Tests.UseSyncExternalStoreTests.Given_FirstOfTwoSubscriptionsThrowsOnUnsubscribe_When_Unmounted_Then_TheSecondIsStillRemoved",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseSyncExternalStoreTests.cs": "3ac613ebe9aafe90780ce7633ce3c0efe72174d48aff04e1e585f760028ce6d0",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  }
+ ],
+ "measured_by": "45405988130",
+ "mutant": {
+  "after": ";",
+  "before": "ctx.ErrorsDuringRootDisposal.Add((error, FiberErrorBoundary.InfoFor(boundary, thrower)));",
+  "column": 16,
+  "line": 22,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/CommitErrors.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "d4a520e33507ade1d94cd4305baa010a19d5e5cd85566d56f233d7a122fa7a9c",
+ "verdict": "killed"
+}

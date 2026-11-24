@@ -1,0 +1,32 @@
+{
+ "detail": "EditMode: 1 failed among the 40 case(s) that ran the site: Given_AHostWithChildComponents_When_ItsRefCallbackIsReplaced_Then_TheOldDetachesAfterTheChildrensCleanups",
+ "file": "c9ca7261e282751921f9bc5b2cea1ba096c95e27587785cbc006d18b4ffa30e6",
+ "killers": [
+  {
+   "case": "Velvet.Tests.HandleAndRefDetachEventLogTests(UIToolkit).Given_AHostWithChildComponents_When_ItsRefCallbackIsReplaced_Then_TheOldDetachesAfterTheChildrensCleanups",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/HandleAndRefDetachEventLogTests.cs": "d96f03e1f850a12fbc711c29d7cf3ac4c9622e7618a36c6a778ebca1b6a41899",
+    "Packages/com.velvet.core/TestUtilities/EventLog.cs": "e191b8d91d56ab6eb1633a8f37e5282dd11f4cbfd649b59ab27deab3a1e4b490",
+    "Packages/com.velvet.core/TestUtilities/EventLogRenderer.cs": "59fbaf33c955e917c5359940c3d0a0f090fefdc0d2a41b370a75eb6ce7304abe",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae"
+   }
+  }
+ ],
+ "measured_by": "45405988130",
+ "mutant": {
+  "after": ";",
+  "before": "RefCallbacks[element] = (callback, null, owner);",
+  "column": 12,
+  "line": 2831,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ReconcilerContext.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "d4a520e33507ade1d94cd4305baa010a19d5e5cd85566d56f233d7a122fa7a9c",
+ "verdict": "killed"
+}

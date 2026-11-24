@@ -1,0 +1,35 @@
+{
+ "detail": "EditMode: 1 failed among the 466 case(s) that ran the site: Given_AComponentWhosePortalMountsAheadOfOneThatPatchesALabel_When_OneDrainRendersBothAndALaterComponentReadingTheLabel_Then_TheLaterComponentReadsTheTextFromBeforeThePatch",
+ "file": "15727093b3432e78ff0dae9afa0f0d7be491bb2c7163c684a858476ae1c1c1db",
+ "killers": [
+  {
+   "case": "Velvet.Tests.OneCommitPerWaveTests.Given_AComponentWhosePortalMountsAheadOfOneThatPatchesALabel_When_OneDrainRendersBothAndALaterComponentReadingTheLabel_Then_TheLaterComponentReadsTheTextFromBeforeThePatch",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/OneCommitPerWaveTests.cs": "73ee1362f1718dd47831f9bf3e53159d49bbb2bfceff7c74164c3e2d9176e78a",
+    "Packages/com.velvet.core/TestUtilities/AsyncActionsInFlightTestAccess.cs": "11111385db8b74b91d046342600e4a605fdce6c8f8ceb54e28adf8c204136034",
+    "Packages/com.velvet.core/TestUtilities/EventLog.cs": "e191b8d91d56ab6eb1633a8f37e5282dd11f4cbfd649b59ab27deab3a1e4b490",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  }
+ ],
+ "measured_by": "45405988130",
+ "mutant": {
+  "after": "false",
+  "before": "true",
+  "column": 35,
+  "line": 376,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/Reconciler.cs",
+  "shadowed": [
+   "line removed"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "d4a520e33507ade1d94cd4305baa010a19d5e5cd85566d56f233d7a122fa7a9c",
+ "verdict": "killed"
+}

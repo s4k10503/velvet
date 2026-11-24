@@ -1,0 +1,55 @@
+{
+ "detail": "EditMode: 3 failed: Given_APromotedTransitionBehindUrgentWork_When_TheUpdateDepthCapDropsTheImmediateIntake_Then_ItsFlagStaysLit, Given_APromotedTransitionBehindUrgentWork_When_TheUpdateDepthCapDropsTheImmediateIntake_Then_ThePromotedMarkerRetires, Given_APromotedTransitionBehindUrgentWork_When_TheUpdateDepthCapDropsTheImmediateIntake_Then_TheTransitionLaneIsQueuedAgain",
+ "file": "34cfe5ec9f0668b22bf9faedcf4ed3df69f6877cffc7d9fd47982f24267a39a0",
+ "killers": [
+  {
+   "case": "Velvet.Tests.HookUpdateQueueTests.Given_APromotedTransitionBehindUrgentWork_When_TheUpdateDepthCapDropsTheImmediateIntake_Then_ItsFlagStaysLit",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/HookUpdateQueueTests.cs": "a5bf90916304489bd3cc38975a0494b2d015cfc990d14c015ba6a0cc3da23e9c",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/StarvationThreshold.cs": "7f2d08bb480961ac4c948800224506535ea9d187982da91de79993ab1103367b",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.HookUpdateQueueTests.Given_APromotedTransitionBehindUrgentWork_When_TheUpdateDepthCapDropsTheImmediateIntake_Then_ThePromotedMarkerRetires",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/HookUpdateQueueTests.cs": "a5bf90916304489bd3cc38975a0494b2d015cfc990d14c015ba6a0cc3da23e9c",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/StarvationThreshold.cs": "7f2d08bb480961ac4c948800224506535ea9d187982da91de79993ab1103367b",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.HookUpdateQueueTests.Given_APromotedTransitionBehindUrgentWork_When_TheUpdateDepthCapDropsTheImmediateIntake_Then_TheTransitionLaneIsQueuedAgain",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/HookUpdateQueueTests.cs": "a5bf90916304489bd3cc38975a0494b2d015cfc990d14c015ba6a0cc3da23e9c",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/StarvationThreshold.cs": "7f2d08bb480961ac4c948800224506535ea9d187982da91de79993ab1103367b",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  }
+ ],
+ "measured_by": "45405988130",
+ "mutant": {
+  "after": "==",
+  "before": "!=",
+  "column": 43,
+  "line": 208,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberEffects.cs",
+  "shadowed": [
+   "clause removed",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "d4a520e33507ade1d94cd4305baa010a19d5e5cd85566d56f233d7a122fa7a9c",
+ "verdict": "killed"
+}

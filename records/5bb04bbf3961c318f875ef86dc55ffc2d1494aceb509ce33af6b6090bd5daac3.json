@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode: the editor was killed at 1475s, 1.5 times the baseline's 979s plus 5s, with no readable result",
+ "file": "d7a8d8afc571ba6a60fcc038157ece1f488413b5f4071dae65143ce966d62c5e",
+ "killers": [],
+ "measured_by": "45405988130",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 32,
+  "line": 433,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/GeneralPathReconciler.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "d4a520e33507ade1d94cd4305baa010a19d5e5cd85566d56f233d7a122fa7a9c",
+ "verdict": "killed (timed out)"
+}

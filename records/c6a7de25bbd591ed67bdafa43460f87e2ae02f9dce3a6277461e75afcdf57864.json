@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed: Given_AFallbackWhoseOwnUpdateSuspends_When_TheImmediateTierDrains_Then_TheSuspenseAboveShowsItsFallbackWithoutTheFallbacksOwnerRendering",
+ "file": "c4548be5ef4420002de7815c13ea74d63370251c6f1b4235e670c8f04c970d0c",
+ "killers": [
+  {
+   "case": "Velvet.Tests.SelfScheduledResuspendTests.Given_AFallbackWhoseOwnUpdateSuspends_When_TheImmediateTierDrains_Then_TheSuspenseAboveShowsItsFallbackWithoutTheFallbacksOwnerRendering",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/SelfScheduledResuspendTests.cs": "51fe3f30601af175194bf265952d4275d66386dd8383a2aa89ce6c241f7b23f8",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae"
+   }
+  }
+ ],
+ "measured_by": "45405988130",
+ "mutant": {
+  "after": ";",
+  "before": "_suspenseFallbackOf = value;",
+  "column": 16,
+  "line": 354,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Component/ComponentFiber.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "d4a520e33507ade1d94cd4305baa010a19d5e5cd85566d56f233d7a122fa7a9c",
+ "verdict": "killed"
+}

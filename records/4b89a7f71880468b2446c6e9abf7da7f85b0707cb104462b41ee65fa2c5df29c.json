@@ -1,0 +1,28 @@
+{
+ "detail": "EditMode: 1 failed among the 624 case(s) that ran the site: Given_TheLastReaderHasClosedTheLog_When_AChildIsAppended_Then_TheParentKeepsNoLog",
+ "file": "c4548be5ef4420002de7815c13ea74d63370251c6f1b4235e670c8f04c970d0c",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ComponentFiberAppendLogTests.Given_TheLastReaderHasClosedTheLog_When_AChildIsAppended_Then_TheParentKeepsNoLog",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/ComponentFiberAppendLogTests.cs": "b9c9f1477d5fc5cc9d70eb3a1d361cd0f5d8185c94999e456657a47361d573fe"
+   }
+  }
+ ],
+ "measured_by": "45405988130",
+ "mutant": {
+  "after": ";",
+  "before": "_appendLogReaders++;",
+  "column": 12,
+  "line": 1407,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Component/ComponentFiber.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "d4a520e33507ade1d94cd4305baa010a19d5e5cd85566d56f233d7a122fa7a9c",
+ "verdict": "killed"
+}

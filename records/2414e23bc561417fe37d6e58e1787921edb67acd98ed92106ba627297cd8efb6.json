@@ -1,5 +1,5 @@
 {
- "detail": "EditMode: 2 failed among the 231 case(s) that ran the site: Given_ThreeFibersIndexedUnderOnePlaceholder_When_TheFirstIsRestampedAway_Then_TheOtherTwoStayInStampOrder, Given_TwoMountedPortals_When_OneIsRenderedAway_Then_OnlyTheOthersPlaceholderIsIndexed",
+ "detail": "EditMode: 2 failed among the 238 case(s) that ran the site: Given_ThreeFibersIndexedUnderOnePlaceholder_When_TheFirstIsRestampedAway_Then_TheOtherTwoStayInStampOrder, Given_TwoMountedPortals_When_OneIsRenderedAway_Then_OnlyTheOthersPlaceholderIsIndexed",
  "file": "e43293b8f264cbd6fc8714a7011b9934666f6732613fb8e5d8b42d2288c9e0cd",
  "killers": [
   {
@@ -7,7 +7,7 @@
    "files": {
     "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PortalOwnedFiberIndexTests.cs": "1ceea98d526728597826cc308a08a01a0c131a36b38136e4041bd64ea2efc245",
     "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
-    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921"
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae"
    }
   },
   {
@@ -15,11 +15,11 @@
    "files": {
     "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PortalOwnedFiberIndexTests.cs": "1ceea98d526728597826cc308a08a01a0c131a36b38136e4041bd64ea2efc245",
     "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
-    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921"
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae"
    }
   }
  ],
- "measured_by": "45199843515",
+ "measured_by": "45405988130",
  "mutant": {
   "after": "!=",
   "before": "==",
@@ -35,6 +35,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "75aa5e777f60caf8d1dcee6850e99a3441f60400a702e0372fbab264963ade25",
+ "tests": "d4a520e33507ade1d94cd4305baa010a19d5e5cd85566d56f233d7a122fa7a9c",
  "verdict": "killed"
 }

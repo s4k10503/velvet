@@ -1,0 +1,31 @@
+{
+ "detail": "EditMode: 1 failed: Given_EffectWithCleanupReadingRef_When_Unmounted_Then_CleanupSeesValidRef",
+ "file": "d7a8d8afc571ba6a60fcc038157ece1f488413b5f4071dae65143ce966d62c5e",
+ "killers": [
+  {
+   "case": "Velvet.Tests.UseLayoutEffectTests.Given_EffectWithCleanupReadingRef_When_Unmounted_Then_CleanupSeesValidRef",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseLayoutEffectTests.cs": "7e70af3d41972f440274aece540b9741d9c994cb0dbff4b19b3f340cafb4b860",
+    "Packages/com.velvet.core/TestUtilities/ActionDisposable.cs": "e95e072a106d4d4a77b0e090c5bdd56a05df277aa99aeb1d28e41c5ce3d3e1ea",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae"
+   }
+  }
+ ],
+ "measured_by": "45405988130",
+ "mutant": {
+  "after": ";",
+  "before": "whole.Order(oldLength);",
+  "column": 16,
+  "line": 661,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/GeneralPathReconciler.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "d4a520e33507ade1d94cd4305baa010a19d5e5cd85566d56f233d7a122fa7a9c",
+ "verdict": "killed"
+}

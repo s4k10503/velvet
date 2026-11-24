@@ -1,0 +1,34 @@
+{
+ "detail": "EditMode: 2 failed: Given_AHeldElementBelowAnotherHeldOne_When_TheOuterElementIsReleased_Then_TheInnerOneWritesTheDefaultFamily, Given_AHeldElementBelowWhereAnotherIsHeld_When_TheOuterElementIsHeld_Then_TheInnerOneTakesBackItsWrite",
+ "file": "8bf0319faea977ea3022ee21ae6d9eb14288705e52cfa5be955cf581248428b1",
+ "killers": [
+  {
+   "case": "Velvet.Tests.DefaultFamilyHoldScopeTests.Given_AHeldElementBelowAnotherHeldOne_When_TheOuterElementIsReleased_Then_TheInnerOneWritesTheDefaultFamily",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/DefaultFamilyHoldScopeTests.cs": "70c0549333f04d4761c11c41ae21faa5804050ef543df8a73865c23c7c9637e1"
+   }
+  },
+  {
+   "case": "Velvet.Tests.DefaultFamilyHoldScopeTests.Given_AHeldElementBelowWhereAnotherIsHeld_When_TheOuterElementIsHeld_Then_TheInnerOneTakesBackItsWrite",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/DefaultFamilyHoldScopeTests.cs": "70c0549333f04d4761c11c41ae21faa5804050ef543df8a73865c23c7c9637e1"
+   }
+  }
+ ],
+ "measured_by": "45405988130",
+ "mutant": {
+  "after": ";",
+  "before": "CollectHeldAtOrUnder(ChildListWrites.HierarchyChild(element, i));",
+  "column": 16,
+  "line": 184,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/DefaultFamilyRoots.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "d4a520e33507ade1d94cd4305baa010a19d5e5cd85566d56f233d7a122fa7a9c",
+ "verdict": "killed"
+}

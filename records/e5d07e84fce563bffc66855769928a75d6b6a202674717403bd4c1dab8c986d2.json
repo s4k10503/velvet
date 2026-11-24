@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode: the editor was killed at 1100s, 1.5 times the baseline's 730s plus 5s, with no readable result",
+ "file": "d9b89f81daf69d5be4dd3e5d76fac9a839fa05722158ceba5cf960e996870bfd",
+ "killers": [],
+ "measured_by": "45405988130",
+ "mutant": {
+  "after": ";",
+  "before": "source = up;",
+  "column": 16,
+  "line": 303,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberFontScope.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "d4a520e33507ade1d94cd4305baa010a19d5e5cd85566d56f233d7a122fa7a9c",
+ "verdict": "killed (timed out)"
+}

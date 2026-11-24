@@ -6,7 +6,7 @@
    "case": "Velvet.Tests.TextItemParentEventTests.Given_ALabelWithABracketCalcPercentHeight_When_ItsParentShrinksAndOnlyItsParentsGeometryEventFires_Then_ItsMinHeightFollowsTheHeight",
    "files": {
     "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/TextItemParentEventTests.cs": "1e6e54e6ba1bf4b2bc17bf250f72b2e68aeb93bfb3860be2fdaa4e68d0247ff2",
-    "Packages/com.velvet.core/TestUtilities/CallbackRegistryProbe.cs": "0bf11bf8f5b161e389e815cf4be1a5f33269e05d2fed160868b58bb1f3629b46",
+    "Packages/com.velvet.core/TestUtilities/CallbackRegistryProbe.cs": "4ac8fc3f649426af994aed9c0e339fad2aeaee821bb887625c427dbc49a63792",
     "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "18b6b404187836003ea0db593918596c4ed3d84ab35733a088284926133a8987",
     "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
     "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
@@ -20,7 +20,7 @@
    "case": "Velvet.Tests.TextItemParentEventTests.Given_ALabelWithABracketCalcPercentMaxHeight_When_ItsParentShrinksAndOnlyItsParentsGeometryEventFires_Then_ItsMinHeightFollowsTheCap",
    "files": {
     "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/TextItemParentEventTests.cs": "1e6e54e6ba1bf4b2bc17bf250f72b2e68aeb93bfb3860be2fdaa4e68d0247ff2",
-    "Packages/com.velvet.core/TestUtilities/CallbackRegistryProbe.cs": "0bf11bf8f5b161e389e815cf4be1a5f33269e05d2fed160868b58bb1f3629b46",
+    "Packages/com.velvet.core/TestUtilities/CallbackRegistryProbe.cs": "4ac8fc3f649426af994aed9c0e339fad2aeaee821bb887625c427dbc49a63792",
     "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "18b6b404187836003ea0db593918596c4ed3d84ab35733a088284926133a8987",
     "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
     "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
@@ -34,7 +34,7 @@
    "case": "Velvet.Tests.TextItemParentEventTests.Given_ALabelWithABracketCalcPercentMaxWidth_When_ItsParentShrinksAndOnlyItsParentsGeometryEventFires_Then_ItsMinWidthFollowsTheCap",
    "files": {
     "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/TextItemParentEventTests.cs": "1e6e54e6ba1bf4b2bc17bf250f72b2e68aeb93bfb3860be2fdaa4e68d0247ff2",
-    "Packages/com.velvet.core/TestUtilities/CallbackRegistryProbe.cs": "0bf11bf8f5b161e389e815cf4be1a5f33269e05d2fed160868b58bb1f3629b46",
+    "Packages/com.velvet.core/TestUtilities/CallbackRegistryProbe.cs": "4ac8fc3f649426af994aed9c0e339fad2aeaee821bb887625c427dbc49a63792",
     "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "18b6b404187836003ea0db593918596c4ed3d84ab35733a088284926133a8987",
     "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
     "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
@@ -48,7 +48,7 @@
    "case": "Velvet.Tests.TextItemParentEventTests.Given_ALabelWithABracketCalcPercentSizeInAColumn_When_ItsParentShrinksAndOnlyItsParentsGeometryEventFires_Then_ItsMinHeightFollowsTheSize",
    "files": {
     "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/TextItemParentEventTests.cs": "1e6e54e6ba1bf4b2bc17bf250f72b2e68aeb93bfb3860be2fdaa4e68d0247ff2",
-    "Packages/com.velvet.core/TestUtilities/CallbackRegistryProbe.cs": "0bf11bf8f5b161e389e815cf4be1a5f33269e05d2fed160868b58bb1f3629b46",
+    "Packages/com.velvet.core/TestUtilities/CallbackRegistryProbe.cs": "4ac8fc3f649426af994aed9c0e339fad2aeaee821bb887625c427dbc49a63792",
     "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "18b6b404187836003ea0db593918596c4ed3d84ab35733a088284926133a8987",
     "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
     "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
@@ -62,7 +62,7 @@
    "case": "Velvet.Tests.TextItemParentEventTests.Given_ALabelWithABracketCalcPercentSizeInARow_When_ItsParentShrinksAndOnlyItsParentsGeometryEventFires_Then_ItsMinWidthFollowsTheSize",
    "files": {
     "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/TextItemParentEventTests.cs": "1e6e54e6ba1bf4b2bc17bf250f72b2e68aeb93bfb3860be2fdaa4e68d0247ff2",
-    "Packages/com.velvet.core/TestUtilities/CallbackRegistryProbe.cs": "0bf11bf8f5b161e389e815cf4be1a5f33269e05d2fed160868b58bb1f3629b46",
+    "Packages/com.velvet.core/TestUtilities/CallbackRegistryProbe.cs": "4ac8fc3f649426af994aed9c0e339fad2aeaee821bb887625c427dbc49a63792",
     "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "18b6b404187836003ea0db593918596c4ed3d84ab35733a088284926133a8987",
     "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
     "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
@@ -76,7 +76,7 @@
    "case": "Velvet.Tests.TextItemParentEventTests.Given_ALabelWithABracketCalcPercentWidth_When_ItsParentShrinksAndOnlyItsParentsGeometryEventFires_Then_ItsMinWidthFollowsTheWidth",
    "files": {
     "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/TextItemParentEventTests.cs": "1e6e54e6ba1bf4b2bc17bf250f72b2e68aeb93bfb3860be2fdaa4e68d0247ff2",
-    "Packages/com.velvet.core/TestUtilities/CallbackRegistryProbe.cs": "0bf11bf8f5b161e389e815cf4be1a5f33269e05d2fed160868b58bb1f3629b46",
+    "Packages/com.velvet.core/TestUtilities/CallbackRegistryProbe.cs": "4ac8fc3f649426af994aed9c0e339fad2aeaee821bb887625c427dbc49a63792",
     "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "18b6b404187836003ea0db593918596c4ed3d84ab35733a088284926133a8987",
     "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
     "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
@@ -87,7 +87,7 @@
    }
   }
  ],
- "measured_by": "45199843515",
+ "measured_by": "45405988130",
  "mutant": {
   "after": "!=",
   "before": "==",
@@ -103,6 +103,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "75aa5e777f60caf8d1dcee6850e99a3441f60400a702e0372fbab264963ade25",
+ "tests": "d4a520e33507ade1d94cd4305baa010a19d5e5cd85566d56f233d7a122fa7a9c",
  "verdict": "killed"
 }

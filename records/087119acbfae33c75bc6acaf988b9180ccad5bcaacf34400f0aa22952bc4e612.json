@@ -1,0 +1,32 @@
+{
+ "detail": "EditMode: 1 failed: Given_ADisposedRoot_When_ItsTargetIsAskedForItsThemeScope_Then_ItHasNone",
+ "file": "12803ae3d88f8acfc463c85c2fde0c56f89bd3076294f003c111e4815e08c35e",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ExecutionContextEntryTests.Given_ADisposedRoot_When_ItsTargetIsAskedForItsThemeScope_Then_ItHasNone",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ExecutionContextEntryTests.cs": "f82991ea5901feae788486d19a940f3783e5c5b8b9d283e254eb3b38e54cea4d",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  }
+ ],
+ "measured_by": "45405988130",
+ "mutant": {
+  "after": ";",
+  "before": "StyleThemeTokens.Release(state.Context);",
+  "column": 16,
+  "line": 215,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Component/V.Mount.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "d4a520e33507ade1d94cd4305baa010a19d5e5cd85566d56f233d7a122fa7a9c",
+ "verdict": "killed"
+}

@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "f242a40b715db1dfdfe3f04f53522e493d220027799f809b1648ffa948c2fb34",
+ "killers": [],
+ "measured_by": "45405988130",
+ "mutant": {
+  "after": ";",
+  "before": "first ??= ExceptionDispatchInfo.Capture(exception);",
+  "column": 20,
+  "line": 108,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberElementCleaner.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "d4a520e33507ade1d94cd4305baa010a19d5e5cd85566d56f233d7a122fa7a9c",
+ "verdict": "survived"
+}

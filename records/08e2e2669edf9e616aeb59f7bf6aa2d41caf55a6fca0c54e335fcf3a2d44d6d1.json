@@ -1,0 +1,24 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "d9b89f81daf69d5be4dd3e5d76fac9a839fa05722158ceba5cf960e996870bfd",
+ "killers": [],
+ "measured_by": "45405988130",
+ "mutant": {
+  "after": "",
+  "before": " && !Families.ContainsKey(child)",
+  "column": 30,
+  "line": 846,
+  "operator": "clause removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberFontScope.cs",
+  "shadowed": [
+   "clause removed",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "d4a520e33507ade1d94cd4305baa010a19d5e5cd85566d56f233d7a122fa7a9c",
+ "verdict": "survived"
+}

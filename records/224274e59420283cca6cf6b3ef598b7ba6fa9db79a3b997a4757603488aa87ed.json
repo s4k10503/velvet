@@ -1,0 +1,40 @@
+{
+ "detail": "EditMode: 2 failed among the 205 case(s) that ran the site: Given_MemoizedBoundary_When_ResourceResolves_Then_ChildDisplaysResolvedValue, Given_MemoizedBoundary_When_ResourceResolves_Then_FallbackIsRemoved",
+ "file": "9da0eace5b2e63488971b1f7d7a7b2865434024222272ff7ed9bc109e60bf580",
+ "killers": [
+  {
+   "case": "Velvet.Tests.MemoizePropsBailInteractionTests.Given_MemoizedBoundary_When_ResourceResolves_Then_ChildDisplaysResolvedValue",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/MemoizePropsBailInteractionTests.cs": "e349f878fe1a8c7c127e8dd20112613cafb2ec2c6bab6ba094fabb747abbf48c",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae"
+   }
+  },
+  {
+   "case": "Velvet.Tests.MemoizePropsBailInteractionTests.Given_MemoizedBoundary_When_ResourceResolves_Then_FallbackIsRemoved",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/MemoizePropsBailInteractionTests.cs": "e349f878fe1a8c7c127e8dd20112613cafb2ec2c6bab6ba094fabb747abbf48c",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae"
+   }
+  }
+ ],
+ "measured_by": "45405988130",
+ "mutant": {
+  "after": ";",
+  "before": "FiberExecutionContext.Enter(scheduler, fiber, static resolved => NotifyAsyncResourceCompletedWork(resolved));",
+  "column": 12,
+  "line": 999,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberRenderer.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "d4a520e33507ade1d94cd4305baa010a19d5e5cd85566d56f233d7a122fa7a9c",
+ "verdict": "killed"
+}
