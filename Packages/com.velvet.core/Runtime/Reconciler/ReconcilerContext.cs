@@ -50,6 +50,7 @@ namespace Velvet
         private readonly Dictionary<VisualElement, TargetEnd> _ends = new();
         private readonly Dictionary<VisualElement, int> _rangesOn = new();
         private readonly Dictionary<VisualElement, int> _growth = new();
+        private readonly Dictionary<VisualElement, int> _shiftedBehindOpen = new();
         private readonly Dictionary<VisualElement, long> _recordedAt = new();
         private long _recorded;
 
@@ -114,20 +115,39 @@ namespace Velvet
             _ends.Clear();
             _rangesOn.Clear();
             _growth.Clear();
+            // MUTANT_SURVIVES(equivalent): the only caller is Reconciler.Dispose, and a disposed context runs no patch to
+            // read an entry left here.
+            _shiftedBehindOpen.Clear();
             _recordedAt.Clear();
         }
 
         // Orders placeholders by when their range was first recorded.
         internal int ByRecordedOrder(VisualElement a, VisualElement b) => _recordedAt[a].CompareTo(_recordedAt[b]);
 
-        // The rows Portal patches have recorded as their own on target so far, so a Portal patched around another on
-        // the same target leaves them out of its own length. The entry goes with the last range on target.
+        // The change in rows the ranges on target have recorded by their patches, and taken with them as they left
+        // (PortalRangeTable.Remove), so a Portal patched around another on the same target leaves them out of its own
+        // length. The entry goes with the last range on target.
         internal int GrowthOn(VisualElement target) => _growth.GetValueOrDefault(target);
 
         internal void AddGrowth(VisualElement target, int by)
         {
             if (_rangesOn.ContainsKey(target)) _growth[target] = _growth.GetValueOrDefault(target) + by;
         }
+
+        // What a component of a range has moved the starts behind that range by (FiberCommitWork.ShiftPortalRangesAround)
+        // while a patch of the range is open, which that patch's own shift leaves out
+        // (FiberNodePatcher.RecordPatchedPortalRange).
+        internal void OpenShiftedBehind(VisualElement placeholder) => _shiftedBehindOpen[placeholder] = 0;
+
+        internal void AddShiftedBehind(VisualElement placeholder, int by)
+        {
+            if (_shiftedBehindOpen.TryGetValue(placeholder, out var shifted)) _shiftedBehindOpen[placeholder] = shifted + by;
+        }
+
+        internal int CloseShiftedBehind(VisualElement placeholder)
+            => _shiftedBehindOpen.Remove(placeholder, out var shifted)
+                ? shifted
+                : throw new System.InvalidOperationException("A Portal range's shift was closed without being opened.");
 
         private void CountOn(VisualElement? target, int by)
         {
@@ -211,7 +231,15 @@ namespace Velvet
 
         public bool ContainsKey(VisualElement placeholder) => _stored.ContainsKey(placeholder);
 
-        public bool Remove(VisualElement placeholder) => _stored.Remove(placeholder);
+        // Only for a range whose rows leave the target with it. They leave the count a Portal patched around this one
+        // reads, as its own growth would, so its length comes off the target's growth ahead of the range itself, whose
+        // removal takes the entry with the last one.
+        public void Remove(VisualElement placeholder)
+        {
+            if (!TryGetValue(placeholder, out var range)) return;
+            if (range.Target != null) _stored.AddGrowth(range.Target, -range.SlotLength);
+            _stored.Remove(placeholder);
+        }
 
         public void Clear() => _stored.Clear();
 

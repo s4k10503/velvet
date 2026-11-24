@@ -12,8 +12,8 @@ namespace Velvet.Tests
     /// <list type="bullet">
     /// <item>A component growing inside the component ahead of it, or ahead of the component holding it.</item>
     /// <item>A neighbouring Portal on the same target growing — whether that Portal's own children changed, a
-    /// component inside it grew, or its patch drained a parked component — or unmounting; and a Portal whose
-    /// component grew removes every row it added when it goes.</item>
+    /// component inside it grew, or its patch drained a parked component — unmounting, or dropping a Portal nested
+    /// in it on that target; and a Portal whose component grew removes every row it added when it goes.</item>
     /// <item>A pass that moves it and in which a boundary behind it catches, which commits the move.</item>
     /// <item>A walk that drains a parked component ahead of a boundary it has not reached yet, whose catch
     /// then lands on the boundary's own rows.</item>
@@ -46,6 +46,7 @@ namespace Velvet.Tests
             s_setPortalChildTick = null;
             s_setPortalGrowerRows = null;
             s_setShowGrowingPortal = null;
+            s_setNestedPortalShown = null;
             s_setMoverTick = null;
             s_setMoveOrder = null;
             s_bombThrows = false;
@@ -414,6 +415,47 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(Names(s_portalTarget), Is.EqualTo("b-1"));
+        }
+
+        private static Action<int> s_setNestedPortalShown;
+
+        [Component]
+        private static VNode NestingPortalRender()
+        {
+            var (shown, setShown) = Hooks.UseState(1);
+            s_setNestedPortalShown = setShown;
+            return V.Portal(s_portalTarget, children: shown == 1
+                ? new VNode[]
+                {
+                    V.Label(name: "o", key: "o"),
+                    V.Portal(s_portalTarget, key: "nested", children: new VNode[] { V.Label(name: "n", key: "n") }),
+                }
+                : new VNode[] { V.Label(name: "o", key: "o") });
+        }
+
+        [Component]
+        private static VNode NestingPortalNeighboursHostRender()
+            => V.Fragment(children: new VNode[]
+            {
+                V.Component(NestingPortalRender, key: "first"),
+                V.Component(PortalWithChildRender, key: "second"),
+            });
+
+        [Test]
+        public void Given_APortalAheadOfAnotherDroppedOneNestedInItOnTheirTarget_When_TheSecondPortalsChildRerenders_Then_ItRewritesItsOwnRow()
+        {
+            // Arrange — the nested Portal mounted behind the second one, and the patch of the first one drops it.
+            s_portalTarget = new VisualElement();
+            using var mounted = V.Mount(_root, V.Component(NestingPortalNeighboursHostRender, key: "host"));
+            s_setNestedPortalShown.Invoke(0);
+            mounted.FlushStateForTest();
+
+            // Act
+            s_setPortalChildTick.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Names(s_portalTarget), Is.EqualTo("o,b-1"));
         }
 
         private static Action<int> s_setAheadPortalChildTick;
