@@ -518,7 +518,7 @@ namespace Velvet.Tests
         [TestCase("nothing")]
         [TestCase("a label")]
         [TestCase("an element holding the thrower")]
-        public void Given_ARowOfTheFailedOutputWhoseOwnBuildThrows_When_TheBoundaryCatchesOnAnUpdate_Then_NoDuplicateKeyIsReported(
+        public void Given_AFailedOutputWhoseFirstRowThrowsOutOfItsOwnBuild_When_TheBoundaryCatchesOnAnUpdate_Then_NoDuplicateKeyIsReported(
             string rowBefore)
         {
             // Arrange — what the row's position held before decides whether the row is created, replaces it, or
@@ -546,7 +546,7 @@ namespace Velvet.Tests
 
             // Assert — the fallback is read beside the count for the reason the case above gives
             Assert.That(Texts() + " | duplicate warnings " + duplicateWarnings,
-                Is.EqualTo("fallback,fallback-row | duplicate warnings 0"));
+                Is.EqualTo("fallback | duplicate warnings 0"));
         }
 
         // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
@@ -674,20 +674,23 @@ namespace Velvet.Tests
 
         private static string s_failingRowBefore;
 
-        // The fallback's second row sits where the failing row does, both unwrapped in a fragment at the root of the
-        // boundary's tree, so the two share a key. The row throws out of its own build, from the component inside it.
+        // The failing row is the first node of the boundary's output once its unkeyed fragment is unwrapped, and the
+        // fallback a bare element, the one node of the tree FiberErrorBoundary.CatchInTheWalk hands the walk: both
+        // sit at position 0 of the boundary's root, so the two share a key. A row further in, or a fallback wrapped
+        // in a fragment, would not. The row throws out of its own build, from the component inside it.
         [Component(Compiler = false, IsErrorBoundary = true)]
         private static VNode FailingRowBoundaryRender(int tick)
         {
-            Hooks.UseFallback(_ => V.Fragment(new VNode[] { V.Label(text: "fallback"), V.Label(text: "fallback-row") }));
+            Hooks.UseFallback(_ => V.Label(text: "fallback"));
             var failingRow = V.Div(children: new VNode[] { V.Component(ThrowerRender, key: "thrower") });
-            var rowBefore = s_failingRowBefore switch
+            VNode rowBefore = s_failingRowBefore switch
             {
+                "nothing" => null,
                 "a label" => V.Label(text: "row"),
                 "an element holding the thrower" => failingRow,
-                _ => null,
+                _ => throw new ArgumentException("No row is named " + s_failingRowBefore),
             };
-            return V.Fragment(new VNode[] { V.Label(text: "t" + tick), tick == 0 ? rowBefore : failingRow });
+            return V.Fragment(new VNode[] { tick == 0 ? rowBefore : failingRow, V.Label(text: "t" + tick) });
         }
 
         [Component(Compiler = false)]
