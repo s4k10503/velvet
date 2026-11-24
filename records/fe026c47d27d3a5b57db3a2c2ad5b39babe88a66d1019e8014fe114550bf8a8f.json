@@ -1,0 +1,32 @@
+{
+ "detail": "EditMode: 1 failed among the 74 case(s) that ran the site: Given_APendingValueUnderAParkedTransitionSlice_When_TheSliceResumes_Then_ItCommitsTheDeferredValue",
+ "file": "8f8c946449682856b3d71196e2b9974b6933da33158b2b07c6f3d2022687f33d",
+ "killers": [
+  {
+   "case": "Velvet.Tests.UseDeferredValueTests.Given_APendingValueUnderAParkedTransitionSlice_When_TheSliceResumes_Then_ItCommitsTheDeferredValue",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseDeferredValueTests.cs": "ad9028f5a38a46e03ae98eade6364debbc3bf94b140daef50fb0fb59aef70f19",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae"
+   }
+  }
+ ],
+ "measured_by": "45276843260",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 48,
+  "line": 903,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberWorkLoop.cs",
+  "shadowed": [
+   "literal"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "f6b301223c93d14082e1e896c480e62a901c380bf94fcf65b015f9d57b83b156",
+ "verdict": "killed"
+}

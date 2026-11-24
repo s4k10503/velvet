@@ -1,0 +1,31 @@
+{
+ "detail": "EditMode: 1 failed: Given_ATimeSlicedPassWhoseLaterSliceParksAndThenSuspendsInThePortalDrain_When_TheSliceEnds_Then_TheParkedPassStillHoldsItsBaseline",
+ "file": "c4548be5ef4420002de7815c13ea74d63370251c6f1b4235e670c8f04c970d0c",
+ "killers": [
+  {
+   "case": "Velvet.Tests.SuspendWithoutBoundaryTests.Given_ATimeSlicedPassWhoseLaterSliceParksAndThenSuspendsInThePortalDrain_When_TheSliceEnds_Then_TheParkedPassStillHoldsItsBaseline",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/SuspendWithoutBoundaryTests.cs": "124ee0eb8b5296ac77b0f972ac0da83f3b63994b674d6038fba527ccc17590ed",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  }
+ ],
+ "measured_by": "45276843260",
+ "mutant": {
+  "after": ";",
+  "before": "_pendingOldTree = value;",
+  "column": 16,
+  "line": 1089,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Component/ComponentFiber.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "f6b301223c93d14082e1e896c480e62a901c380bf94fcf65b015f9d57b83b156",
+ "verdict": "killed"
+}

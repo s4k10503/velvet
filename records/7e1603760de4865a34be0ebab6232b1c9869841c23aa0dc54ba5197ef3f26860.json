@@ -1,89 +1,30 @@
 {
- "detail": "EditMode: 1620 failed in Velvet.Tests.Reconciler.Editor: Given_AncestorReExpandsKeyedChild_When_BusyClearedWithMessage_Then_DynamicElementDoesNotDuplicate, Given_AncestorReExpandsKeyedChild_When_BusyClearedWithMessage_Then_ListContainerDoesNotDuplicate, Given_AncestorReExpandsKeyedChild_When_BusyClearedWithMessage_Then_NestedEmptyFragmentListItemDoesNotDuplicate",
+ "detail": "EditMode: 3 failed among the 2090 case(s) that ran the site: Given_AMotionWithInitial_When_EnterCompletes_Then_ItRestsAtTheAnimateVariant, Given_AnExitingChild_When_ItsKeyIsReAddedBeforeCompletion_Then_TheExitIsCancelledAndTheSameElementIsRetained, Given_EnterTransition_When_Completed_Then_EnterToClassIsRemoved",
  "file": "b53cc07b7718023ee1c8d79b001609352a03c4f517581cc69dcf6e1f62348a10",
  "killers": [
   {
-   "case": "Velvet.Tests.AncestorDescendantStoreRerenderTests.Given_AncestorReExpandsKeyedChild_When_BusyClearedWithMessage_Then_DynamicElementDoesNotDuplicate",
+   "case": "Velvet.Tests.AnimatePresenceAnimationTests.Given_AMotionWithInitial_When_EnterCompletes_Then_ItRestsAtTheAnimateVariant",
    "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/AncestorDescendantStoreRerenderTests.cs": "adc1876ff0d9b96323088d1a025f0dfd35e5cbe43a88fa4f6fec70d68d5d997b",
-    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
-    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921"
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/AnimatePresenceAnimationTests.cs": "a7ff95ec31fa180d58adaecff71bbaaaf3f7e0961ca58e218d0a694974b935a8",
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/SimulatedPanelTestBase.cs": "a06149cf212c91277fd1442580aee292a959fef6bf985e77628aabdbb0acacc8"
    }
   },
   {
-   "case": "Velvet.Tests.AncestorDescendantStoreRerenderTests.Given_AncestorReExpandsKeyedChild_When_BusyClearedWithMessage_Then_ListContainerDoesNotDuplicate",
+   "case": "Velvet.Tests.AnimatePresenceAnimationTests.Given_AnExitingChild_When_ItsKeyIsReAddedBeforeCompletion_Then_TheExitIsCancelledAndTheSameElementIsRetained",
    "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/AncestorDescendantStoreRerenderTests.cs": "adc1876ff0d9b96323088d1a025f0dfd35e5cbe43a88fa4f6fec70d68d5d997b",
-    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
-    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921"
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/AnimatePresenceAnimationTests.cs": "a7ff95ec31fa180d58adaecff71bbaaaf3f7e0961ca58e218d0a694974b935a8",
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/SimulatedPanelTestBase.cs": "a06149cf212c91277fd1442580aee292a959fef6bf985e77628aabdbb0acacc8"
    }
   },
   {
-   "case": "Velvet.Tests.AncestorDescendantStoreRerenderTests.Given_AncestorReExpandsKeyedChild_When_BusyClearedWithMessage_Then_NestedEmptyFragmentListItemDoesNotDuplicate",
+   "case": "Velvet.Tests.AnimatePresenceAnimationTests.Given_EnterTransition_When_Completed_Then_EnterToClassIsRemoved",
    "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/AncestorDescendantStoreRerenderTests.cs": "adc1876ff0d9b96323088d1a025f0dfd35e5cbe43a88fa4f6fec70d68d5d997b",
-    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
-    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921"
-   }
-  },
-  {
-   "case": "Velvet.Tests.AncestorDescendantStoreRerenderTests.Given_AncestorReExpandsKeyedChild_When_BusyClearedWithMessage_Then_OverlayIsRemoved",
-   "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/AncestorDescendantStoreRerenderTests.cs": "adc1876ff0d9b96323088d1a025f0dfd35e5cbe43a88fa4f6fec70d68d5d997b",
-    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
-    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921"
-   }
-  },
-  {
-   "case": "Velvet.Tests.AncestorDescendantStoreRerenderTests.Given_AncestorReExpandsKeyedChild_When_BusyClearedWithMessage_Then_ResultToastAppearsOnce",
-   "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/AncestorDescendantStoreRerenderTests.cs": "adc1876ff0d9b96323088d1a025f0dfd35e5cbe43a88fa4f6fec70d68d5d997b",
-    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
-    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921"
-   }
-  },
-  {
-   "case": "Velvet.Tests.AncestorDescendantStoreRerenderTests.Given_AncestorReExpandsKeyedChild_When_BusyClearedWithMessage_Then_ScreenDoesNotStack",
-   "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/AncestorDescendantStoreRerenderTests.cs": "adc1876ff0d9b96323088d1a025f0dfd35e5cbe43a88fa4f6fec70d68d5d997b",
-    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
-    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921"
-   }
-  },
-  {
-   "case": "Velvet.Tests.AncestorDescendantStoreRerenderTests.Given_AncestorReExpandsKeyedChild_When_BusyTrueViaFrameDrain_Then_ExactlyOneOverlayShows",
-   "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/AncestorDescendantStoreRerenderTests.cs": "adc1876ff0d9b96323088d1a025f0dfd35e5cbe43a88fa4f6fec70d68d5d997b",
-    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
-    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921"
-   }
-  },
-  {
-   "case": "Velvet.Tests.AncestorDescendantStoreRerenderTests.Given_AncestorReExpandsKeyedChild_When_FirstToggleRunsInADiscreteEvent_Then_DynamicElementDoesNotDuplicate",
-   "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/AncestorDescendantStoreRerenderTests.cs": "adc1876ff0d9b96323088d1a025f0dfd35e5cbe43a88fa4f6fec70d68d5d997b",
-    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
-    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921"
-   }
-  },
-  {
-   "case": "Velvet.Tests.AncestorDescendantStoreRerenderTests.Given_AncestorReExpandsKeyedChild_When_FirstToggleRunsInADiscreteEvent_Then_ListContainerDoesNotDuplicate",
-   "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/AncestorDescendantStoreRerenderTests.cs": "adc1876ff0d9b96323088d1a025f0dfd35e5cbe43a88fa4f6fec70d68d5d997b",
-    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
-    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921"
-   }
-  },
-  {
-   "case": "Velvet.Tests.AncestorDescendantStoreRerenderTests.Given_AncestorReExpandsKeyedChild_When_FirstToggleRunsInADiscreteEvent_Then_NestedEmptyFragmentListItemDoesNotDuplicate",
-   "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/AncestorDescendantStoreRerenderTests.cs": "adc1876ff0d9b96323088d1a025f0dfd35e5cbe43a88fa4f6fec70d68d5d997b",
-    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
-    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921"
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/AnimatePresenceAnimationTests.cs": "a7ff95ec31fa180d58adaecff71bbaaaf3f7e0961ca58e218d0a694974b935a8",
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/SimulatedPanelTestBase.cs": "a06149cf212c91277fd1442580aee292a959fef6bf985e77628aabdbb0acacc8"
    }
   }
  ],
- "measured_by": "45127352104",
+ "measured_by": "45276843260",
  "mutant": {
   "after": "<=",
   "before": "<",
@@ -97,6 +38,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "e91fee95980d3238888e42c5b5ddc01dcb9e7cc0ee2e6bc7bc67a39503c0991f",
+ "tests": "f6b301223c93d14082e1e896c480e62a901c380bf94fcf65b015f9d57b83b156",
  "verdict": "killed"
 }

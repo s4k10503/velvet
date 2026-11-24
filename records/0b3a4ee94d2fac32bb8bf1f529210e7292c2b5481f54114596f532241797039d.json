@@ -1,0 +1,32 @@
+{
+ "detail": "EditMode: 1 failed: Given_AComponentInAPortalDeclaredInsideAScope_When_FocusFirstIsCalled_Then_TheScopesFirstMemberTakesFocus",
+ "file": "c4548be5ef4420002de7815c13ea74d63370251c6f1b4235e670c8f04c970d0c",
+ "killers": [
+  {
+   "case": "Velvet.Tests.UseFocusManagerTests.Given_AComponentInAPortalDeclaredInsideAScope_When_FocusFirstIsCalled_Then_TheScopesFirstMemberTakesFocus",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseFocusManagerTests.cs": "8de89deaa3dfb52c6f400dbad0f6a0742db77059e307fd0bf362b6b7fda90a3f",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "18b6b404187836003ea0db593918596c4ed3d84ab35733a088284926133a8987",
+    "Packages/com.velvet.core/TestUtilities/FocusScopeElement.cs": "caee04a0e47cefaac0d9a6a30491bbf026426ccdbc1185e3ac842f7d698edb34",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26"
+   }
+  }
+ ],
+ "measured_by": "45276843260",
+ "mutant": {
+  "after": ";",
+  "before": "_owningPortalPlaceholder = value;",
+  "column": 16,
+  "line": 966,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Component/ComponentFiber.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "f6b301223c93d14082e1e896c480e62a901c380bf94fcf65b015f9d57b83b156",
+ "verdict": "killed"
+}

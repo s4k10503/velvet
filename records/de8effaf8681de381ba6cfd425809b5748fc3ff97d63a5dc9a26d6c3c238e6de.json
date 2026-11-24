@@ -1,0 +1,32 @@
+{
+ "detail": "EditMode: 1 failed: Given_AParentWithTwoChildrenEachWithEffectsAndARef_When_Mounted_Then_RendersRunTopDownAndEachEffectPhaseRunsPostOrder",
+ "file": "c4548be5ef4420002de7815c13ea74d63370251c6f1b4235e670c8f04c970d0c",
+ "killers": [
+  {
+   "case": "Velvet.Tests.CommitOrderEventLogTests(UIToolkit).Given_AParentWithTwoChildrenEachWithEffectsAndARef_When_Mounted_Then_RendersRunTopDownAndEachEffectPhaseRunsPostOrder",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/CommitOrderEventLogTests.cs": "9ad01bb3023d16569584a134961329ac02e5370680f8f5c62fa523c15ebbae7c",
+    "Packages/com.velvet.core/TestUtilities/EventLog.cs": "e191b8d91d56ab6eb1633a8f37e5282dd11f4cbfd649b59ab27deab3a1e4b490",
+    "Packages/com.velvet.core/TestUtilities/EventLogRenderer.cs": "59fbaf33c955e917c5359940c3d0a0f090fefdc0d2a41b370a75eb6ce7304abe",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae"
+   }
+  }
+ ],
+ "measured_by": "45276843260",
+ "mutant": {
+  "after": ";",
+  "before": "_mountSlotCount = value;",
+  "column": 16,
+  "line": 934,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Component/ComponentFiber.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "f6b301223c93d14082e1e896c480e62a901c380bf94fcf65b015f9d57b83b156",
+ "verdict": "killed"
+}

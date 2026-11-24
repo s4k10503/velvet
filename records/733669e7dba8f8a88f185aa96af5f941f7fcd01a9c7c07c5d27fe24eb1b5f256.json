@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed: Given_AMotionInsideAZManagedElementExiting_When_ItsExitCompletes_Then_TheChildIsRemoved; 1 other editor(s) were up",
+ "file": "d75cfe72d64fd50ecccee7a8a9d3e7a134cccd7ac769146b5844a138199df2b8",
+ "killers": [
+  {
+   "case": "Velvet.Tests.AnimatePresenceAnchorTests.Given_AMotionInsideAZManagedElementExiting_When_ItsExitCompletes_Then_TheChildIsRemoved",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/AnimatePresenceAnchorTests.cs": "0a520fcd3e93e0a8d23c2b0b140583dcb4e42b19eaa5b3486ac8c0c364e19ac2",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae"
+   }
+  }
+ ],
+ "measured_by": "45276843260",
+ "mutant": {
+  "after": ";",
+  "before": "if (!JoinsTheWavesPass()) ChildListWrites.BeginRecording(_ctx.Pass);",
+  "column": 12,
+  "line": 386,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/Reconciler.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "f6b301223c93d14082e1e896c480e62a901c380bf94fcf65b015f9d57b83b156",
+ "verdict": "killed"
+}

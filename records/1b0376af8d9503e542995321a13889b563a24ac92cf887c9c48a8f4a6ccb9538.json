@@ -1,0 +1,125 @@
+{
+ "detail": "EditMode: 1118 failed in Velvet.Tests.Styling.Editor: Given_AColumnFlexParentAligningItemsCenter_When_AnAbsoluteChildHasNoInsets_Then_ItIsCenteredAcrossTheColumn, Given_AColumnFlexParentJustifyingCenter_When_AnAbsoluteChildHasNoInsets_Then_ItIsCenteredAlongTheColumn, Given_AColumnFlexParentJustifyingEnd_When_AnAbsoluteChildHasNoInsets_Then_ItSitsAtTheColumnsEnd",
+ "file": "2f376e971b0a125e89874ce6dee04680c1e1ae6e516da38b6cfedf4f1248e654",
+ "killers": [
+  {
+   "case": "Velvet.Tests.AbsoluteStaticPositionPanelTests.Given_AColumnFlexParentAligningItemsCenter_When_AnAbsoluteChildHasNoInsets_Then_ItIsCenteredAcrossTheColumn",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/AbsoluteStaticPositionPanelTests.cs": "c937edb2efefa76588761d4addc6b0d1a1a2798c54ac7a0d04648f62873e9a00",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "18b6b404187836003ea0db593918596c4ed3d84ab35733a088284926133a8987",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AbsoluteStaticPositionPanelTests.Given_AColumnFlexParentJustifyingCenter_When_AnAbsoluteChildHasNoInsets_Then_ItIsCenteredAlongTheColumn",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/AbsoluteStaticPositionPanelTests.cs": "c937edb2efefa76588761d4addc6b0d1a1a2798c54ac7a0d04648f62873e9a00",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "18b6b404187836003ea0db593918596c4ed3d84ab35733a088284926133a8987",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AbsoluteStaticPositionPanelTests.Given_AColumnFlexParentJustifyingEnd_When_AnAbsoluteChildHasNoInsets_Then_ItSitsAtTheColumnsEnd",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/AbsoluteStaticPositionPanelTests.cs": "c937edb2efefa76588761d4addc6b0d1a1a2798c54ac7a0d04648f62873e9a00",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "18b6b404187836003ea0db593918596c4ed3d84ab35733a088284926133a8987",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AbsoluteStaticPositionPanelTests.Given_AColumnFlexParentWithAPrecedingSibling_When_AnAbsoluteChildHasNoInsets_Then_ItSitsAtTheContentStart",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/AbsoluteStaticPositionPanelTests.cs": "c937edb2efefa76588761d4addc6b0d1a1a2798c54ac7a0d04648f62873e9a00",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "18b6b404187836003ea0db593918596c4ed3d84ab35733a088284926133a8987",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AbsoluteStaticPositionPanelTests.Given_APaddedColumnFlexParent_When_AnAbsoluteChildHasNoInsets_Then_ItSitsAtTheContentStart",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/AbsoluteStaticPositionPanelTests.cs": "c937edb2efefa76588761d4addc6b0d1a1a2798c54ac7a0d04648f62873e9a00",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "18b6b404187836003ea0db593918596c4ed3d84ab35733a088284926133a8987",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AbsoluteStaticPositionPanelTests.Given_APaddedColumnFlexParent_When_AnAbsoluteChildSetsOnlyTop_Then_ItTakesTheStaticPositionHorizontally",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/AbsoluteStaticPositionPanelTests.cs": "c937edb2efefa76588761d4addc6b0d1a1a2798c54ac7a0d04648f62873e9a00",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "18b6b404187836003ea0db593918596c4ed3d84ab35733a088284926133a8987",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AbsoluteStaticPositionPanelTests.Given_APaddedColumnFlexParent_When_AnAbsoluteChildSetsTopAutoAndLeftAuto_Then_ItSitsAtTheStaticPosition",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/AbsoluteStaticPositionPanelTests.cs": "c937edb2efefa76588761d4addc6b0d1a1a2798c54ac7a0d04648f62873e9a00",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "18b6b404187836003ea0db593918596c4ed3d84ab35733a088284926133a8987",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AbsoluteStaticPositionPanelTests.Given_APaddedRowFlexParent_When_AnAbsoluteChildHasNoInsets_Then_ItSitsAtTheContentStart",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/AbsoluteStaticPositionPanelTests.cs": "c937edb2efefa76588761d4addc6b0d1a1a2798c54ac7a0d04648f62873e9a00",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "18b6b404187836003ea0db593918596c4ed3d84ab35733a088284926133a8987",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AbsoluteStaticPositionPanelTests.Given_APaddedRowFlexParent_When_AnAbsoluteChildSetsOnlyLeft_Then_ItTakesTheStaticPositionVertically",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/AbsoluteStaticPositionPanelTests.cs": "c937edb2efefa76588761d4addc6b0d1a1a2798c54ac7a0d04648f62873e9a00",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "18b6b404187836003ea0db593918596c4ed3d84ab35733a088284926133a8987",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AbsoluteStaticPositionPanelTests.Given_ARowFlexParentWithAPrecedingSibling_When_AnAbsoluteChildHasNoInsets_Then_ItSitsAtTheContentStart",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/AbsoluteStaticPositionPanelTests.cs": "c937edb2efefa76588761d4addc6b0d1a1a2798c54ac7a0d04648f62873e9a00",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "18b6b404187836003ea0db593918596c4ed3d84ab35733a088284926133a8987",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  }
+ ],
+ "measured_by": "45276843260",
+ "mutant": {
+  "after": "==",
+  "before": "!=",
+  "column": 84,
+  "line": 3548,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleArbitraryValueResolver.cs",
+  "shadowed": [
+   "clause removed",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "f6b301223c93d14082e1e896c480e62a901c380bf94fcf65b015f9d57b83b156",
+ "verdict": "killed"
+}

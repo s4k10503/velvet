@@ -1,0 +1,24 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "1e5e5b03b02cf857b49839683b7ab443e89843a5eb26d4976361e742a97b065f",
+ "killers": [],
+ "measured_by": "45276843260",
+ "mutant": {
+  "after": "<=",
+  "before": "<",
+  "column": 48,
+  "line": 635,
+  "operator": "boundary",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/GeneralPathReconciler.cs",
+  "shadowed": [
+   "clause removed",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "f6b301223c93d14082e1e896c480e62a901c380bf94fcf65b015f9d57b83b156",
+ "verdict": "survived"
+}

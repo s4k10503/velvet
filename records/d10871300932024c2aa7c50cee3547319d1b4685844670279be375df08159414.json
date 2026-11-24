@@ -1,5 +1,5 @@
 {
- "detail": "EditMode: 1 failed among the 247 case(s) that ran the site: Given_ADeletedRowHoldingAPortalOfALabel_When_ThePassEnds_Then_TheLabelWasResetForReuse",
+ "detail": "EditMode: 1 failed among the 258 case(s) that ran the site: Given_ADeletedRowHoldingAPortalOfALabel_When_ThePassEnds_Then_TheLabelWasResetForReuse",
  "file": "7c766ded0441d96074c558bca6536e129f8d9294ce282fbc7edb621199b9e36c",
  "killers": [
   {
@@ -10,11 +10,11 @@
     "Packages/com.velvet.core/TestUtilities/EventLog.cs": "e191b8d91d56ab6eb1633a8f37e5282dd11f4cbfd649b59ab27deab3a1e4b490",
     "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
     "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
-    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "14fa7526001548fc06a2da43fab0ac5215104414f2b1a1b92286bff317588921"
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae"
    }
   }
  ],
- "measured_by": "45199843515",
+ "measured_by": "45276843260",
  "mutant": {
   "after": ";",
   "before": "ReturnOccupantToPool(child, poolable);",
@@ -28,6 +28,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "75aa5e777f60caf8d1dcee6850e99a3441f60400a702e0372fbab264963ade25",
+ "tests": "f6b301223c93d14082e1e896c480e62a901c380bf94fcf65b015f9d57b83b156",
  "verdict": "killed"
 }

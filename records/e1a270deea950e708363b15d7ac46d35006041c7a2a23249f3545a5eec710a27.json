@@ -1,0 +1,43 @@
+{
+ "detail": "EditMode: 3 failed: Given_RapidRekey_When_SettledOnKnownTab_Then_AllCardsPresent_NoneDisappeared, Given_StaggeredChildren_When_AllTransitionsComplete_Then_LastChildEnterToClassIsRemoved, Given_StaggeredChildren_When_AllTransitionsComplete_Then_LastChildInlineStylesAreCleared",
+ "file": "ef32a5b81d00ab67fce39293667779671a00971d7acf7100bffb00a372028d44",
+ "killers": [
+  {
+   "case": "Velvet.Tests.AnimatePresenceAnimationTests.Given_RapidRekey_When_SettledOnKnownTab_Then_AllCardsPresent_NoneDisappeared",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/AnimatePresenceAnimationTests.cs": "a7ff95ec31fa180d58adaecff71bbaaaf3f7e0961ca58e218d0a694974b935a8",
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/SimulatedPanelTestBase.cs": "a06149cf212c91277fd1442580aee292a959fef6bf985e77628aabdbb0acacc8"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AnimatePresenceAnimationTests.Given_StaggeredChildren_When_AllTransitionsComplete_Then_LastChildEnterToClassIsRemoved",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/AnimatePresenceAnimationTests.cs": "a7ff95ec31fa180d58adaecff71bbaaaf3f7e0961ca58e218d0a694974b935a8",
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/SimulatedPanelTestBase.cs": "a06149cf212c91277fd1442580aee292a959fef6bf985e77628aabdbb0acacc8"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AnimatePresenceAnimationTests.Given_StaggeredChildren_When_AllTransitionsComplete_Then_LastChildInlineStylesAreCleared",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/AnimatePresenceAnimationTests.cs": "a7ff95ec31fa180d58adaecff71bbaaaf3f7e0961ca58e218d0a694974b935a8",
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/SimulatedPanelTestBase.cs": "a06149cf212c91277fd1442580aee292a959fef6bf985e77628aabdbb0acacc8"
+   }
+  }
+ ],
+ "measured_by": "45276843260",
+ "mutant": {
+  "after": ";",
+  "before": "rows.Pending++;",
+  "column": 16,
+  "line": 577,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ChildListWrites.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "f6b301223c93d14082e1e896c480e62a901c380bf94fcf65b015f9d57b83b156",
+ "verdict": "killed"
+}

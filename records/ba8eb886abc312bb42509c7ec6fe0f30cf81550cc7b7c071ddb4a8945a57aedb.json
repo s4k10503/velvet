@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed: Given_ANegatedBackdropFunctionOtherThanHueRotate_When_Extracted_Then_NothingIsDeclared",
+ "file": "6d090cf71d3945585f4219d98a3f9346c24ddd5b1700565b72aaacf06b3caced",
+ "killers": [
+  {
+   "case": "Velvet.Tests.BackdropClassExtractTests.Given_ANegatedBackdropFunctionOtherThanHueRotate_When_Extracted_Then_NothingIsDeclared",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BackdropClassExtractTests.cs": "95f7cf2cbe822128640fb2a9978ce4e41851d0a4d38190d354e395678570a282"
+   }
+  }
+ ],
+ "measured_by": "45276843260",
+ "mutant": {
+  "after": "",
+  "before": " || core.StartsWith((\"-\" + Prefix).AsSpan(), StringComparison.Ordinal)",
+  "column": 15,
+  "line": 123,
+  "operator": "clause removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleBackdropClass.cs",
+  "shadowed": [
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "f6b301223c93d14082e1e896c480e62a901c380bf94fcf65b015f9d57b83b156",
+ "verdict": "killed"
+}

@@ -1,0 +1,56 @@
+{
+ "detail": "EditMode: 2 failed among the 8 case(s) that ran the site: Given_AnEffectThatRendersAnotherTreeAndThenDisposesIt_When_TheEffectRuns_Then_TheTreeItWasHandedNeverRenders, Given_AnEffectThatSetsStateOnItsOwnTreeAndThenDisposesIt_When_TheDrainRunsIt_Then_TheUpdateNeverRenders",
+ "file": "43bb804eb8337c8a5eb1cefae784078df3aeaa5b9a0513b2fe66cbe8917a43c4",
+ "killers": [
+  {
+   "case": "Velvet.Tests.PassiveEffectFlushAtEntryTests.Given_AnEffectThatRendersAnotherTreeAndThenDisposesIt_When_TheEffectRuns_Then_TheTreeItWasHandedNeverRenders",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PassiveEffectFlushAtEntryTests.cs": "4023fbe9f4357bbb200eea62447db75c53cfa19b09f6e1bb8472acad4fa619f2",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "18b6b404187836003ea0db593918596c4ed3d84ab35733a088284926133a8987",
+    "Packages/com.velvet.core/TestUtilities/EventLog.cs": "e191b8d91d56ab6eb1633a8f37e5282dd11f4cbfd649b59ab27deab3a1e4b490",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/FiberExecutionContextTestAccess.cs": "01fd5656127b069cd16cb704c9e880d6ace1c94b3811a1e258c662a405aa4eb2",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/UseFrameFakeClockHost.cs": "832e6d1a29eac04e37d6f7a12601c3572a72772621452748e332bb8c2d3d1194"
+   }
+  },
+  {
+   "case": "Velvet.Tests.PassiveEffectFlushAtEntryTests.Given_AnEffectThatSetsStateOnItsOwnTreeAndThenDisposesIt_When_TheDrainRunsIt_Then_TheUpdateNeverRenders",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PassiveEffectFlushAtEntryTests.cs": "4023fbe9f4357bbb200eea62447db75c53cfa19b09f6e1bb8472acad4fa619f2",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "18b6b404187836003ea0db593918596c4ed3d84ab35733a088284926133a8987",
+    "Packages/com.velvet.core/TestUtilities/EventLog.cs": "e191b8d91d56ab6eb1633a8f37e5282dd11f4cbfd649b59ab27deab3a1e4b490",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/FiberExecutionContextTestAccess.cs": "01fd5656127b069cd16cb704c9e880d6ace1c94b3811a1e258c662a405aa4eb2",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/UseFrameFakeClockHost.cs": "832e6d1a29eac04e37d6f7a12601c3572a72772621452748e332bb8c2d3d1194"
+   }
+  }
+ ],
+ "measured_by": "45276843260",
+ "mutant": {
+  "after": "==",
+  "before": "!=",
+  "column": 27,
+  "line": 194,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Component/V.Mount.cs",
+  "shadowed": [
+   "line removed"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "f6b301223c93d14082e1e896c480e62a901c380bf94fcf65b015f9d57b83b156",
+ "verdict": "killed"
+}

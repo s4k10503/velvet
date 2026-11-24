@@ -1,0 +1,34 @@
+{
+ "detail": "EditMode: 1 failed among the 62 case(s) that ran the site: Given_ParkedPassCreatingRowsUnderAFamilyContainer_When_Resumed_Then_EveryBoldLabelResolvesThatFamily",
+ "file": "4228ec748ad50d522abbd11bed32dd09ab9520e33392040ffe9ca722bccfe2cc",
+ "killers": [
+  {
+   "case": "Velvet.Tests.TimeSlicedFiberTests.Given_ParkedPassCreatingRowsUnderAFamilyContainer_When_Resumed_Then_EveryBoldLabelResolvesThatFamily",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/TimeSlicedFiberTests.cs": "d16f86d1751decdd946024fd89a5fc009aa144b02209ac1f1abe67a6e4c0b26d",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "18b6b404187836003ea0db593918596c4ed3d84ab35733a088284926133a8987",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/FiberExecutionContextTestAccess.cs": "01fd5656127b069cd16cb704c9e880d6ace1c94b3811a1e258c662a405aa4eb2",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26"
+   }
+  }
+ ],
+ "measured_by": "45276843260",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 21,
+  "line": 84,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Styling/InlineFontLedger.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "f6b301223c93d14082e1e896c480e62a901c380bf94fcf65b015f9d57b83b156",
+ "verdict": "killed"
+}

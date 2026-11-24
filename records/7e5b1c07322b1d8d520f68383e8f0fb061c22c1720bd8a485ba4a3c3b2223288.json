@@ -1,0 +1,112 @@
+{
+ "detail": "EditMode: 30 failed in Velvet.Tests.Reconciler.Editor: Given_AChildsOnlyMotionReplacedInTheRenderRemovingIt_When_ItsExitSettles_Then_TheChildIsRemoved, Given_ABoundaryThatCaughtInItsParentsUpdate_When_TheParentUpdatesAgain_Then_TheBoundaryKeepsItsFallbackAndTheSiblingUpdates, Given_AComponentAheadOfTheThrowInsideTheBoundary_When_TheBoundaryCatchesOnAnUpdate_Then_ARenderLaterInThePassSeesNoCleanup",
+ "file": "1e5e5b03b02cf857b49839683b7ab443e89843a5eb26d4976361e742a97b065f",
+ "killers": [
+  {
+   "case": "Velvet.Tests.AnimatePresenceAnchorTests.Given_AChildsOnlyMotionReplacedInTheRenderRemovingIt_When_ItsExitSettles_Then_TheChildIsRemoved",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/AnimatePresenceAnchorTests.cs": "0a520fcd3e93e0a8d23c2b0b140583dcb4e42b19eaa5b3486ac8c0c364e19ac2",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae"
+   }
+  },
+  {
+   "case": "Velvet.Tests.BoundaryCatchScopeTests.Given_ABoundaryThatCaughtInItsParentsUpdate_When_TheParentUpdatesAgain_Then_TheBoundaryKeepsItsFallbackAndTheSiblingUpdates",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/BoundaryCatchScopeTests.cs": "71a99f73acc7fab0b31520a579a70258034deecff95af68283408b0f80a17648",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae"
+   }
+  },
+  {
+   "case": "Velvet.Tests.BoundaryCatchScopeTests.Given_AComponentAheadOfTheThrowInsideTheBoundary_When_TheBoundaryCatchesOnAnUpdate_Then_ARenderLaterInThePassSeesNoCleanup",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/BoundaryCatchScopeTests.cs": "71a99f73acc7fab0b31520a579a70258034deecff95af68283408b0f80a17648",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae"
+   }
+  },
+  {
+   "case": "Velvet.Tests.BoundaryCatchScopeTests.Given_AComponentInAPresenceBehindABoundaryThatCaughtAnElementCallbackError_When_TheNextRenderReachesIt_Then_ItKeepsItsState",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/BoundaryCatchScopeTests.cs": "71a99f73acc7fab0b31520a579a70258034deecff95af68283408b0f80a17648",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae"
+   }
+  },
+  {
+   "case": "Velvet.Tests.BoundaryCatchScopeTests.Given_AFallbackRowKeyedLikeARowTheFailedOutputCommitted_When_TheBoundaryCatchesOnAnUpdate_Then_NoDuplicateKeyIsReported",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/BoundaryCatchScopeTests.cs": "71a99f73acc7fab0b31520a579a70258034deecff95af68283408b0f80a17648",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae"
+   }
+  },
+  {
+   "case": "Velvet.Tests.BoundaryCatchScopeTests.Given_APortalWhoseChildrenGrowAheadOfAThrow_When_TheBoundaryCatchesOnAnUpdate_Then_TheTargetKeepsNothing",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/BoundaryCatchScopeTests.cs": "71a99f73acc7fab0b31520a579a70258034deecff95af68283408b0f80a17648",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae"
+   }
+  },
+  {
+   "case": "Velvet.Tests.BoundaryCatchScopeTests.Given_APresenceBehindABoundaryCatchingAnElementCallbackError_When_ThatRenderRemovesItsChild_Then_TheChildLeavesTheTailUpdatesAndTheExitCompletes",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/BoundaryCatchScopeTests.cs": "71a99f73acc7fab0b31520a579a70258034deecff95af68283408b0f80a17648",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae"
+   }
+  },
+  {
+   "case": "Velvet.Tests.BoundaryCatchScopeTests.Given_ASiblingBehindABoundaryTakingItsParentsState_When_TheBoundaryCatchesInTheParentsUpdate_Then_TheSiblingRendersTheUpdate",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/BoundaryCatchScopeTests.cs": "71a99f73acc7fab0b31520a579a70258034deecff95af68283408b0f80a17648",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae"
+   }
+  },
+  {
+   "case": "Velvet.Tests.BoundaryCatchScopeTests.Given_AnElementABoundaryRendersItselfWhoseCallbackFails_When_ItsParentsRenderCreatesIt_Then_ThatBoundaryCatchesIt",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/BoundaryCatchScopeTests.cs": "71a99f73acc7fab0b31520a579a70258034deecff95af68283408b0f80a17648",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ErrorBoundaryTests.Given_AParentWhoseRenderDropsAChildBesideACatch_When_ItRendersTheChildAgain_Then_TheChildMountsAfresh",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ErrorBoundaryTests.cs": "11f78a1c42e849ec31ac1664d934bec900e810c717bb545caa72bb35c7521f84",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  }
+ ],
+ "measured_by": "45276843260",
+ "mutant": {
+  "after": ";",
+  "before": "if (!_ctx.IsAborted) MarkPatchedOldLeaves(commit);",
+  "column": 12,
+  "line": 630,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/GeneralPathReconciler.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "f6b301223c93d14082e1e896c480e62a901c380bf94fcf65b015f9d57b83b156",
+ "verdict": "killed"
+}

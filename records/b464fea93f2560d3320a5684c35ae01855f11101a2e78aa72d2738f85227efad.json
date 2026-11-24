@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed: Given_DepsChangeOnReRender_When_Flushed_Then_FactoryReInvokes",
+ "file": "8f8c946449682856b3d71196e2b9974b6933da33158b2b07c6f3d2022687f33d",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ComponentRefForwardingTests.Given_DepsChangeOnReRender_When_Flushed_Then_FactoryReInvokes",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/ComponentRefForwardingTests.cs": "8522e9cf094f34cd933caaffc6b6501642aa7571d4296a330bd10f3047842c6a",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae"
+   }
+  }
+ ],
+ "measured_by": "45276843260",
+ "mutant": {
+  "after": "false",
+  "before": "true",
+  "column": 19,
+  "line": 662,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberWorkLoop.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "f6b301223c93d14082e1e896c480e62a901c380bf94fcf65b015f9d57b83b156",
+ "verdict": "killed"
+}

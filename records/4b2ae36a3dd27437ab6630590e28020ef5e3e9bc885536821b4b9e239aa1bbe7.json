@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "34cfe5ec9f0668b22bf9faedcf4ed3df69f6877cffc7d9fd47982f24267a39a0",
+ "killers": [],
+ "measured_by": "45276843260",
+ "mutant": {
+  "after": ";",
+  "before": "CommitErrors.DropUnmounted(ctx);",
+  "column": 12,
+  "line": 200,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberEffects.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "f6b301223c93d14082e1e896c480e62a901c380bf94fcf65b015f9d57b83b156",
+ "verdict": "survived"
+}

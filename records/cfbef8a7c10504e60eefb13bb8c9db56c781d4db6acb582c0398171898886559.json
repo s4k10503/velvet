@@ -1,0 +1,112 @@
+{
+ "detail": "EditMode: 9 failed: Given_ABoundaryOverAChild_When_ThePassInWhichTheChildThrowsIsRolledBack_Then_NothingTheJournalRecordedDiffersFromBefore, Given_AComponentAheadOfAnother_When_ThePassThatMountsAPortalInItIsRolledBack_Then_NothingTheJournalRecordedDiffersFromBefore, Given_AComponentAheadOfAnotherReplacedByOneOfMoreRows_When_ThatPassIsRolledBack_Then_NothingTheJournalRecordedDiffersFromBefore",
+ "file": "5dd953e4885d7966c9d0adf820a26bdbdcc571fbd9a2a28a1c141340749f6d7e",
+ "killers": [
+  {
+   "case": "Velvet.Tests.PassDropFiberSideTests.Given_ABoundaryOverAChild_When_ThePassInWhichTheChildThrowsIsRolledBack_Then_NothingTheJournalRecordedDiffersFromBefore",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PassDropFiberSideTests.cs": "005d90b1f98968716edba0880f108b99fbfc4e622d7b358bd0d13bb55967132b",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae",
+    "Packages/com.velvet.core/TestUtilities/PassDropHarness.cs": "81faab4015d25872cb6a3f6723db56b307eaa918bad5f0225591c50b51f7c705"
+   }
+  },
+  {
+   "case": "Velvet.Tests.PassDropFiberSideTests.Given_AComponentAheadOfAnotherReplacedByOneOfMoreRows_When_ThatPassIsRolledBack_Then_NothingTheJournalRecordedDiffersFromBefore",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PassDropFiberSideTests.cs": "005d90b1f98968716edba0880f108b99fbfc4e622d7b358bd0d13bb55967132b",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae",
+    "Packages/com.velvet.core/TestUtilities/PassDropHarness.cs": "81faab4015d25872cb6a3f6723db56b307eaa918bad5f0225591c50b51f7c705"
+   }
+  },
+  {
+   "case": "Velvet.Tests.PassDropFiberSideTests.Given_AComponentAheadOfAnother_When_ThePassThatMountsAPortalInItIsRolledBack_Then_NothingTheJournalRecordedDiffersFromBefore",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PassDropFiberSideTests.cs": "005d90b1f98968716edba0880f108b99fbfc4e622d7b358bd0d13bb55967132b",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae",
+    "Packages/com.velvet.core/TestUtilities/PassDropHarness.cs": "81faab4015d25872cb6a3f6723db56b307eaa918bad5f0225591c50b51f7c705"
+   }
+  },
+  {
+   "case": "Velvet.Tests.PassDropFiberSideTests.Given_AComponentThatGrowsAheadOfAnother_When_ItsOwnUpdatePassIsRolledBack_Then_NothingTheJournalRecordedDiffersFromBefore",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PassDropFiberSideTests.cs": "005d90b1f98968716edba0880f108b99fbfc4e622d7b358bd0d13bb55967132b",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae",
+    "Packages/com.velvet.core/TestUtilities/PassDropHarness.cs": "81faab4015d25872cb6a3f6723db56b307eaa918bad5f0225591c50b51f7c705"
+   }
+  },
+  {
+   "case": "Velvet.Tests.PassDropFiberSideTests.Given_AComponentWhoseGrowthParksOnTheTransitionLane_When_ThePassesThatPlaceItsRowsAreRolledBack_Then_NothingTheJournalRecordedDiffersFromBefore",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PassDropFiberSideTests.cs": "005d90b1f98968716edba0880f108b99fbfc4e622d7b358bd0d13bb55967132b",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae",
+    "Packages/com.velvet.core/TestUtilities/PassDropHarness.cs": "81faab4015d25872cb6a3f6723db56b307eaa918bad5f0225591c50b51f7c705"
+   }
+  },
+  {
+   "case": "Velvet.Tests.PassDropFiberSideTests.Given_AFallbackShownForAWaitingChild_When_ThePassThatRevealsTheChildIsRolledBack_Then_NothingTheJournalRecordedDiffersFromBefore",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PassDropFiberSideTests.cs": "005d90b1f98968716edba0880f108b99fbfc4e622d7b358bd0d13bb55967132b",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae",
+    "Packages/com.velvet.core/TestUtilities/PassDropHarness.cs": "81faab4015d25872cb6a3f6723db56b307eaa918bad5f0225591c50b51f7c705"
+   }
+  },
+  {
+   "case": "Velvet.Tests.PassDropFiberSideTests.Given_APrimaryWhoseReaderStartsWaiting_When_ThePassThatHidesItIsRolledBack_Then_NothingTheJournalRecordedDiffersFromBefore",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PassDropFiberSideTests.cs": "005d90b1f98968716edba0880f108b99fbfc4e622d7b358bd0d13bb55967132b",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae",
+    "Packages/com.velvet.core/TestUtilities/PassDropHarness.cs": "81faab4015d25872cb6a3f6723db56b307eaa918bad5f0225591c50b51f7c705"
+   }
+  },
+  {
+   "case": "Velvet.Tests.PassDropFiberSideTests.Given_ThreeKeyedChildrenUnderAPresence_When_ThePassThatStartsTheMiddleOnesExitIsRolledBack_Then_NothingTheJournalRecordedDiffersFromBefore",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PassDropFiberSideTests.cs": "005d90b1f98968716edba0880f108b99fbfc4e622d7b358bd0d13bb55967132b",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae",
+    "Packages/com.velvet.core/TestUtilities/PassDropHarness.cs": "81faab4015d25872cb6a3f6723db56b307eaa918bad5f0225591c50b51f7c705"
+   }
+  },
+  {
+   "case": "Velvet.Tests.PassDropFiberSideTests.Given_TwoKeyedComponentsOnOneContainer_When_ThePassThatSwapsThemIsRolledBack_Then_NothingTheJournalRecordedDiffersFromBefore",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PassDropFiberSideTests.cs": "005d90b1f98968716edba0880f108b99fbfc4e622d7b358bd0d13bb55967132b",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae",
+    "Packages/com.velvet.core/TestUtilities/PassDropHarness.cs": "81faab4015d25872cb6a3f6723db56b307eaa918bad5f0225591c50b51f7c705"
+   }
+  }
+ ],
+ "measured_by": "45276843260",
+ "mutant": {
+  "after": ";",
+  "before": "_slots.Clear();",
+  "column": 16,
+  "line": 238,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberPassJournal.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "f6b301223c93d14082e1e896c480e62a901c380bf94fcf65b015f9d57b83b156",
+ "verdict": "killed"
+}

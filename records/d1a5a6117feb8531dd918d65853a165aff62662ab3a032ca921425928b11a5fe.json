@@ -1,0 +1,40 @@
+{
+ "detail": "EditMode: 2 failed among the 17 case(s) that ran the site: Given_ABoldLabelInAFamilyContainer_When_TheFamilyIsRegisteredAgain_Then_TheLabelResolvesTheNewBold, Given_ABoldLabelWhoseInlineFontReplacedByTheClassIsOfAFamily_When_ThatFamilyIsUnregistered_Then_TheInlineFontIsGivenBack",
+ "file": "7be2f01290b0b72c0be9b5979d55efba9646a28a365fa630788027aa586fefd4",
+ "killers": [
+  {
+   "case": "Velvet.Tests.FontFamilyFacesPanelTests.Given_ABoldLabelInAFamilyContainer_When_TheFamilyIsRegisteredAgain_Then_TheLabelResolvesTheNewBold",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/FontFamilyFacesPanelTests.cs": "6c5e54bc5fd3dd203bf21736a6294c646aada2907d58902cc01e23348d785bd7",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "18b6b404187836003ea0db593918596c4ed3d84ab35733a088284926133a8987",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26"
+   }
+  },
+  {
+   "case": "Velvet.Tests.FontFamilyFacesPanelTests.Given_ABoldLabelWhoseInlineFontReplacedByTheClassIsOfAFamily_When_ThatFamilyIsUnregistered_Then_TheInlineFontIsGivenBack",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/FontFamilyFacesPanelTests.cs": "6c5e54bc5fd3dd203bf21736a6294c646aada2907d58902cc01e23348d785bd7",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "18b6b404187836003ea0db593918596c4ed3d84ab35733a088284926133a8987",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26"
+   }
+  }
+ ],
+ "measured_by": "45276843260",
+ "mutant": {
+  "after": ";",
+  "before": "Enqueue(_refreshOrder, key);",
+  "column": 16,
+  "line": 182,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberFontScope.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "f6b301223c93d14082e1e896c480e62a901c380bf94fcf65b015f9d57b83b156",
+ "verdict": "killed"
+}

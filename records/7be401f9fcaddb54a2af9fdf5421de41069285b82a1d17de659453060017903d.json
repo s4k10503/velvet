@@ -1,0 +1,29 @@
+{
+ "detail": "EditMode: 1 failed among the 4 case(s) that ran the site: Given_ARecordedInsertIntoAContainer_When_AChildOfItIsRemovedAndThePassEnds_Then_OnlyTheInsertedChildIsLeft",
+ "file": "ef32a5b81d00ab67fce39293667779671a00971d7acf7100bffb00a372028d44",
+ "killers": [
+  {
+   "case": "Velvet.Tests.RecordedChildListWritesTests.Given_ARecordedInsertIntoAContainer_When_AChildOfItIsRemovedAndThePassEnds_Then_OnlyTheInsertedChildIsLeft",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/RecordedChildListWritesTests.cs": "6bdc4cf2e1a9033166c485204308fc513acb891175a840cc97c2bef8d28e976a",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/RowModelAccess.cs": "c9281ca1bc8930756e7b643acf56772495143054fc02c02792727059325b4674"
+   }
+  }
+ ],
+ "measured_by": "45276843260",
+ "mutant": {
+  "after": ";",
+  "before": "RecordRemoveChild(holding, child);",
+  "column": 16,
+  "line": 347,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ChildListWrites.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "f6b301223c93d14082e1e896c480e62a901c380bf94fcf65b015f9d57b83b156",
+ "verdict": "killed"
+}
