@@ -154,13 +154,16 @@ entry of `serif`.
   resolves to, the default family's where nothing else gives it one.
 
 The parent's resolved font, and the element's own inline font and matched rules, are read again at each update of its
-panel, so a change to any of them reaches the label within the next updates of the panel. Where the bundled stylesheet
-is attached ([setup.md](setup.md)), they are also read in each style pass that restyles the label, so a change to the
-font that a class, a pseudo-state or a stylesheet gives an element above the label, as a class is added, the element
-is hovered or a stylesheet is attached or removed, reaches the label in the update that shows it on that element, and
-a label mounted under an element a rule gives a font starts in that font's family. A label with a weight, italic or
-width class and no family class of its own carries the `velvet-font-inherit` class for as long as it does, whose rule
-in the bundled stylesheet is what makes UI Toolkit report its restyles.
+panel, so a change to any of them reaches the label within the next updates of the panel. They are also read in each
+style pass that restyles the label, so a change to the font that a class, a pseudo-state or a stylesheet gives an
+element above the label, as a class is added, the element is hovered or a stylesheet is attached or removed, reaches
+the label, and an element with a weight, italic or width class of its own between them, in the update that shows it on
+that element, and a label mounted under an element a rule gives a font starts in that font's family. To be told of
+those passes, an element Velvet renders with a weight, italic or width class and no family class of its own carries
+the `velvet-font-inherit` class and a stylesheet Velvet builds that declares a custom property for it, which makes UI
+Toolkit report the element's restyles with or without the bundled stylesheet; both come off when the class goes, when
+a family class is added and when the element is removed. Where an engine member this reads does not resolve, neither is
+given, and only the updates of the panel read them.
 Until the panel has resolved a font Velvet wrote above the element, the named family stands. Pending elements settle
 ancestor first, so an element between a container and a label is given its font before the label reads it. An element between them that declares no
 font (no inline font, no rule of any stylesheet setting one) and runs no transition of it is read through to the

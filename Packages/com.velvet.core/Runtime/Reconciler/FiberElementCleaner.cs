@@ -371,6 +371,8 @@ namespace Velvet
             {
                 ((StyleChildVariantManipulator)variantOwner).ReleasePayloads(element);
             }
+            // Must run before ClearElementSideTables, which drops the entry Forget finds the element's font marker by.
+            _ctx.FontScope.Forget(element);
             // The pure side-tables (structural / has-[.class]: / data-/aria- rules + their attribute store /
             // supports- / Motion applied-classes) carry no manipulator and no disposable resource — their
             // applied payloads die with the element — so dropping the element's entry is the whole teardown.

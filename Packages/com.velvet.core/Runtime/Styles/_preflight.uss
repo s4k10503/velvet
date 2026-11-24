@@ -25,7 +25,3 @@
 /* Gives an element whose colour is read off a live source (border-current, text-inherit, ...) the custom property
    that makes UI Toolkit send it CustomStyleResolvedEvent; see ColorReferenceWatch. */
 .velvet-color-reference { --velvet-color-reference: 1; }
-
-/* Gives an element with a weight, italic or width class and no family class of its own the custom property that makes
-   UI Toolkit send it CustomStyleResolvedEvent; see FiberFontScope. */
-.velvet-font-inherit { --velvet-font-inherit: 1; }
