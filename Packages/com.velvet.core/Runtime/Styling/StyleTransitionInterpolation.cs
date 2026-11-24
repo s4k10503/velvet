@@ -260,7 +260,7 @@ namespace Velvet
                 if (shows != _shows)
                 {
                     _shows = shows;
-                    _shown.Changed(shows, Now);
+                    _shown.Flip(shows, Now);
                 }
                 return selected;
             }
@@ -310,7 +310,7 @@ namespace Velvet
             public int Value = -1;
             public VisibilityRun? Last;
 
-            public void Changed(int value, double at)
+            public void Flip(int value, double at)
             {
                 Value = value;
                 ChangedAt = at;
@@ -350,7 +350,7 @@ namespace Velvet
                 var (duration, delay, _) = StyleCascade.Transition(element, "visibility", null);
                 shown.Origin = now - duration - delay;
             }
-            shown.Changed(value, now);
+            shown.Flip(value, now);
         }
 
         private static double Now(VisualElement element)
