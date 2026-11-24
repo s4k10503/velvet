@@ -246,8 +246,8 @@ namespace Velvet
             private readonly Shown _shown;
             private int _shows;
 
-            // UI Toolkit cancelled it, for a reversal that replaces it or for good.
-            public bool Cancelled;
+            // The update a hold saw UI Toolkit cancel it in, for a reversal that replaces it or for good.
+            public double CancelledAt = double.NaN;
 
             public VisibilityRun(Parts parts, int from, int to) : base(parts)
             {
@@ -298,9 +298,9 @@ namespace Velvet
                 return (startTime, shortening);
             }
             // CSS shortens a run that reverses one still running at the origin, by that one's progress there. The
-            // element's last run stands for it where UI Toolkit has not cancelled it, or where UI Toolkit's own factor
-            // below 1 says this run is its reversal.
-            var factor = shown.Last is { } last && (shortening < 1f || !last.Cancelled)
+            // element's last run stands for it unless a hold saw it cancelled in an update before this run's: the
+            // cancel of a run a reversal replaces arrives in the reversal's own.
+            var factor = shown.Last is { } last && (double.IsNaN(last.CancelledAt) || last.CancelledAt == Now(element))
                 ? last.ShorteningAt(origin)
                 : shortening;
             var start = origin + Lag(delay, factor);
@@ -339,16 +339,22 @@ namespace Velvet
         }
 
         /// <summary>
-        /// Records that UI Toolkit cancelled the element's last visibility run, once it cancels a transition of the
-        /// property.
+        /// Records, against the element's last visibility run, the update a cancel of a transition of the property
+        /// reaches a hold in.
         /// </summary>
         internal static void Cancelled(VisualElement element, StylePropertyName property)
         {
             if (property == s_visibility && s_shown.TryGetValue(element, out var shown) && shown.Last is { } last)
             {
-                last.Cancelled = true;
+                last.CancelledAt = Now(element);
             }
         }
+
+        /// <summary>
+        /// Drops what the element's visibility runs recorded, for an element put back in a pool: no run of its next
+        /// consumer's reverses one of them.
+        /// </summary>
+        internal static void Forget(VisualElement element) => s_shown.Remove(element);
 
         /// <summary>
         /// Records what the element shows once a transition of the property ends, where that is a visibility its run

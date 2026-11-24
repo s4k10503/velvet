@@ -900,5 +900,89 @@ namespace Velvet.Tests
             // Assert — 2.8s after the parent's change, within the child's three seconds from it.
             Assert.That(VisibilityWhileItRuns(child), Is.EqualTo(Visibility.Visible));
         }
+
+        [Test]
+        public void Given_AStepChildUnderAParentReversedMidFadeIn_When_TheParentsReversalEnds_Then_TheChildIsHiddenWithIt()
+        {
+            // Arrange — two seconds each, the child on steps(4,jump-start), whose output is 1 from three quarters in;
+            // the parent is reversed at 0.75s, which shortens its reversal to 0.75s, ending with the update at 1.51s,
+            // where the child's own run, at an output of 1, is replaced by its reversal.
+            var child = MountedWithChild("transition-all invisible duration-[2000ms] ease-linear",
+                "transition-all duration-[2000ms] ease-[steps(4,jump-start)]", out var parent);
+            Swap(parent, "invisible", "visible");
+            RunFor(parent, 0.1);
+            RunFor(parent, 0.65);
+            Swap(parent, "visible", "invisible");
+            RunFor(parent, 0.1);
+            RunFor(parent, 0.66);
+
+            // Act
+            RunFor(parent, 0.09);
+
+            // Assert — 1.6s after the change: the child's reversal from 0.75s, shortened by its output of a half there
+            // to a second, shows its end from 1.5s.
+            Assert.That(VisibilityWhileItRuns(child), Is.EqualTo(Visibility.Hidden));
+        }
+
+        private readonly record struct PoolPhase(int Phase);
+
+        private sealed class PoolPhaseStore : Store<PoolPhase>
+        {
+            public PoolPhaseStore() : base(new PoolPhase(0)) { }
+            public void Set(int phase) => SetState(_ => new PoolPhase(phase));
+            protected override void ResetCore() => SetState(_ => new PoolPhase(0));
+        }
+
+        private static PoolPhaseStore s_poolPhase;
+
+        // Phase 0 puts a pooled label in a first parent, phase 1 removes it, phase 2 rents a label into a second.
+        [Component]
+        private static VNode PooledChildScreen()
+        {
+            var phase = Hooks.UseStore(s_poolPhase, s => s.Phase);
+            return V.Div(name: "screen", children: new VNode[]
+            {
+                V.Div(name: "first", className: "transition-all " + OneSecond, children: phase == 0
+                    ? new VNode[] { V.Label(name: "child", className: "transition-all duration-[3000ms] ease-linear") }
+                    : Array.Empty<VNode>()),
+                V.Div(name: "second", className: "transition-all " + OneSecond, children: phase == 2
+                    ? new VNode[] { V.Label(name: "child", className: "transition-all duration-[3000ms] ease-linear") }
+                    : Array.Empty<VNode>()),
+            });
+        }
+
+        [Test]
+        public void Given_APooledChildRemovedMidFadeOut_When_ItsReuseUnderAnotherParentInheritsAFadeOut_Then_ItRunsItsWholeDuration()
+        {
+            // Arrange — with the pool emptied, the label removed is the one rented back. Its own three-second fade-out
+            // starts at 0s and it is removed at 0.05s; the second parent's change comes at 0.1s and shows at 1.11s,
+            // where the label takes it up, and the label's run is dated at 1.21s.
+            VNodePoolTestAccess.ClearLabelPoolForTest();
+            s_poolPhase = new PoolPhaseStore();
+            _mounted = V.Mount(_window.rootVisualElement, V.Component(PooledChildScreen, key: "screen"));
+            var first = Attached(_window.rootVisualElement.Q<VisualElement>("first"));
+            var removed = first.Q<Label>("child");
+            removed.AddToClassList("invisible");
+            RunFor(first, 0.05);
+            s_poolPhase.Set(1);
+            _mounted.GetSchedulerForTest().DrainImmediateForTest();
+            s_poolPhase.Set(2);
+            _mounted.GetSchedulerForTest().DrainImmediateForTest();
+            var second = _window.rootVisualElement.Q<VisualElement>("second");
+            var child = second.Q<Label>("child");
+            RunFor(second, 0.05);
+            second.AddToClassList("invisible");
+            RunFor(second, 0.3);
+            RunFor(second, 0.71);
+            RunFor(second, 0.1);
+
+            // Act
+            RunFor(second, 1.69);
+
+            // Assert — 2.8s after the second parent's change, within the label's three seconds from it; -2 where the
+            // pool handed back another label.
+            Assert.That(ReferenceEquals(child, removed) ? VisibilityWhileItRuns(child) : (Visibility)(-2),
+                Is.EqualTo(Visibility.Visible));
+        }
     }
 }

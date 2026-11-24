@@ -149,6 +149,8 @@ namespace Velvet
             StyleEaseCurve.Release(element);
             // The clock its last mount recorded would otherwise answer for the next consumer's filter tweens.
             MotionClock.Forget(element);
+            // Its last visibility run would otherwise shorten the next consumer's.
+            StyleTransitionInterpolation.Forget(element);
             // A skew composed into the rotate and scale would otherwise outlive the element's last use.
             AuthoredTransform.Release(element);
             ClearLateClearedStyle(element.style);
