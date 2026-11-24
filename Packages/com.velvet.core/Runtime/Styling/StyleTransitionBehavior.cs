@@ -11,7 +11,7 @@ namespace Velvet
     /// <see cref="LandedAtOnce"/> on an element under a <see cref="Hold"/> is cancelled, which lands the new value,
     /// where CSS's default <c>normal</c> changes such a property at once, unless <c>transition-discrete</c> outranks
     /// <c>transition-normal</c> on the element. TransitionDiscretePanelTests fails when a cancel stops landing the value.
-    /// A transition of visibility or background-position under a hold, and the end of one, go to
+    /// A transition of visibility or background-position under a hold, and the end or cancel of one, go to
     /// <see cref="StyleTransitionInterpolation"/>.
     /// </summary>
     internal static class StyleTransitionBehavior
@@ -42,6 +42,9 @@ namespace Velvet
             new();
         private static readonly EventCallback<TransitionRunEvent> s_onRun = OnRun;
         private static readonly EventCallback<TransitionEndEvent> s_onEnd = OnEnd;
+        private static readonly EventCallback<TransitionCancelEvent> s_onCancel = OnCancel;
+        private static readonly Action<VisualElement, StylePropertyName> s_ended = StyleTransitionInterpolation.Ended;
+        private static readonly Action<VisualElement, StylePropertyName> s_cancelled = StyleTransitionInterpolation.Cancelled;
         private static readonly MethodInfo? s_cancel = EngineMember.CancelStyleAnimation.ResolveMethod();
         // The cancel's argument for each of LandedAtOnce; none where an engine member does not resolve, which leaves
         // UI Toolkit's transitions as they run.
@@ -76,6 +79,7 @@ namespace Velvet
             {
                 root.RegisterCallback(s_onRun);
                 root.RegisterCallback(s_onEnd);
+                root.RegisterCallback(s_onCancel);
             }
             return new Release(root, listener);
         }
@@ -99,19 +103,25 @@ namespace Velvet
                 {
                     _root.UnregisterCallback(s_onRun);
                     _root.UnregisterCallback(s_onEnd);
+                    _root.UnregisterCallback(s_onCancel);
                 }
             }
         }
 
-        private static void OnEnd(TransitionEndEvent evt)
+        private static void OnEnd(TransitionEndEvent evt) => Forward(evt.target, evt.stylePropertyNames, s_ended);
+
+        private static void OnCancel(TransitionCancelEvent evt) => Forward(evt.target, evt.stylePropertyNames, s_cancelled);
+
+        private static void Forward(IEventHandler target, StylePropertyNameCollection names,
+            Action<VisualElement, StylePropertyName> to)
         {
-            if (evt.target is not VisualElement element)
+            if (target is not VisualElement element)
             {
                 return;
             }
-            foreach (var name in evt.stylePropertyNames)
+            foreach (var name in names)
             {
-                StyleTransitionInterpolation.Ended(element, name);
+                to(element, name);
             }
         }
 

@@ -877,5 +877,28 @@ namespace Velvet.Tests
             // Assert — 0.35s after the reversal, which a child's reversal shortened by its progress at 0.51s outlasts.
             Assert.That(VisibilityWhileItRuns(child), Is.EqualTo(Visibility.Hidden));
         }
+
+        [Test]
+        public void Given_AChildsOwnFadeOutUndoneBeforeItsParentTurnsInvisible_When_TheChildInheritsTheChange_Then_ItRunsItsWholeDuration()
+        {
+            // Arrange — the child's own fade-out starts at 0s and is cancelled at 0.05s; the parent's change comes at
+            // 0.1s and shows at 1.11s, where the child takes it up, and the child's run is dated at 1.21s.
+            var child = MountedWithChild("transition-all " + OneSecond, "transition-all duration-[3000ms] ease-linear",
+                out var parent);
+            child.AddToClassList("invisible");
+            RunFor(parent, 0.05);
+            child.RemoveFromClassList("invisible");
+            RunFor(parent, 0.05);
+            parent.AddToClassList("invisible");
+            RunFor(parent, 0.3);
+            RunFor(parent, 0.71);
+            RunFor(parent, 0.1);
+
+            // Act
+            RunFor(parent, 1.69);
+
+            // Assert — 2.8s after the parent's change, within the child's three seconds from it.
+            Assert.That(VisibilityWhileItRuns(child), Is.EqualTo(Visibility.Visible));
+        }
     }
 }

@@ -11,8 +11,8 @@ namespace Velvet
 {
     /// <summary>
     /// CSS's interpolation of <c>visibility</c>, which shows <c>visible</c> wherever a transition with a visible end has
-    /// an eased progress strictly between 0 and 1, and of <c>background-position-x</c> / <c>-y</c>, which slide: two of
-    /// the longhands UI Toolkit only switches partway through a transition, where CSS transitions both under
+    /// an eased progress strictly between 0 and 1, and of <c>background-position-x</c> / <c>-y</c>, which slide: longhands
+    /// UI Toolkit only switches partway through a transition, where CSS transitions them under
     /// <c>transition-behavior: normal</c> (<see cref="StyleTransitionBehavior.LandedAtOnce"/> says what becomes of the
     /// others). From a transition's run event (<see cref="StyleTransitionBehavior"/>), UI Toolkit eases it along a curve
     /// that wraps the one it would otherwise ease on.
@@ -100,7 +100,7 @@ namespace Velvet
                 {
                     // Eased once the slot holds the curve and read again after: Run.Write writes the factor into it. A
                     // start dated back can leave the run past its end, which UI Toolkit ends on its next update.
-                    var eased = eases(Math.Min((float)elapsed / duration, 1f));
+                    var eased = eases(Math.Min(Progress(elapsed, duration), 1f));
                     timing = timings.GetValue(index)!;
                     set.Eased.SetValue(timing, eased);
                     timings.SetValue(timing, index);
@@ -112,6 +112,10 @@ namespace Velvet
             {
             }
         }
+
+        // How far through a run of duration the time elapsed is, a duration of 0 read as the smallest above it: UI
+        // Toolkit runs a run of no duration where a delay comes before it, and dividing by 0 gives NaN at its start.
+        private static float Progress(double elapsed, float duration) => (float)(elapsed / Math.Max(duration, float.Epsilon));
 
         // The set UI Toolkit keeps the element's transitions of the property in, or null where a member does not resolve,
         // the element is on no panel or the panel has run none of them.
@@ -242,6 +246,9 @@ namespace Velvet
             private readonly Shown _shown;
             private int _shows;
 
+            // UI Toolkit cancelled it, for a reversal that replaces it or for good.
+            public bool Cancelled;
+
             public VisibilityRun(Parts parts, int from, int to) : base(parts)
             {
                 _from = from;
@@ -269,7 +276,7 @@ namespace Velvet
             // it started with.
             public float ShorteningAt(double time)
             {
-                var progress = Mathf.Clamp01((float)((time - Taken.Start) / Taken.Duration));
+                var progress = Mathf.Clamp01(Progress(time - Taken.Start, Taken.Duration));
                 return Mathf.Clamp01(Math.Abs(1f - (1f - Taken.Inner(progress)) * Taken.Shortening));
             }
         }
@@ -290,7 +297,12 @@ namespace Velvet
             {
                 return (startTime, shortening);
             }
-            var factor = shown.Last?.ShorteningAt(origin) ?? shortening;
+            // CSS shortens a run that reverses one still running at the origin, by that one's progress there. The
+            // element's last run stands for it where UI Toolkit has not cancelled it, or where UI Toolkit's own factor
+            // below 1 says this run is its reversal.
+            var factor = shown.Last is { } last && (shortening < 1f || !last.Cancelled)
+                ? last.ShorteningAt(origin)
+                : shortening;
             var start = origin + Lag(delay, factor);
             set.StartTime.SetValue(timing, start);
             set.Duration.SetValue(timing, (float)set.Duration.GetValue(timing)! / shortening * factor);
@@ -323,6 +335,18 @@ namespace Velvet
             if (property == s_visibility)
             {
                 s_shown.GetValue(element, static _ => new Shown()).Origin = double.NaN;
+            }
+        }
+
+        /// <summary>
+        /// Records that UI Toolkit cancelled the element's last visibility run, once it cancels a transition of the
+        /// property.
+        /// </summary>
+        internal static void Cancelled(VisualElement element, StylePropertyName property)
+        {
+            if (property == s_visibility && s_shown.TryGetValue(element, out var shown) && shown.Last is { } last)
+            {
+                last.Cancelled = true;
             }
         }
 
