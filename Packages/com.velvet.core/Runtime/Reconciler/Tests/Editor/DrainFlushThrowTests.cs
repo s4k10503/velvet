@@ -11,11 +11,12 @@ namespace Velvet.Tests
     /// received after the exception. Held on the immediate tier and on the Transition tier.
     /// </summary>
     /// <remarks>
-    /// The exception is a <see cref="BoundaryCaughtSignal"/> naming no boundary, thrown by the first component's render.
-    /// A render rethrows the signal, and only the walk of the boundary it names catches it, so this one leaves the drain.
-    /// A render's own error does not serve: a boundary takes it, or the root, which unmounts the tree
-    /// (<see cref="UncaughtErrorRootTests"/>). Each assertion folds in that the drain threw, so a change that stops the
-    /// signal leaving the flush reddens the case rather than passing it with nothing measured.
+    /// The exception is a <see cref="BoundaryCaughtSignal"/> naming no boundary, thrown by the first component's body.
+    /// Rendering rethrows the signal for the walk of the boundary it names; naming none, this one leaves the drain. A
+    /// render's own error would not serve: a boundary takes it, or the root, which unmounts the tree
+    /// (<see cref="UncaughtErrorRootTests"/>).
+    /// Each assertion folds in that the drain threw, so a change that stops the signal leaving the flush reddens the case
+    /// rather than passing it with nothing measured.
     /// </remarks>
     [TestFixture]
     internal sealed class DrainFlushThrowTests
