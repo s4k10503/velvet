@@ -99,6 +99,24 @@ namespace Velvet.Tests
             Assert.That(LabelTexts(), Is.EqualTo(new[] { "A", "C" }));
         }
 
+        // GREEN_ON_BASE(characterization): the base's tail removal starts at the last old row and never reads past it.
+        // More rows stay than one block of the container's row model holds, where a removal handed no element throws.
+        [Test]
+        public void Given_AKeyedListLongerThanARowBlock_When_ItsTailIsRemoved_Then_TheRowsItKeepsStay()
+        {
+            // Arrange
+            var kept = 2 * ContainerRows.BlockMax;
+            var oldTree = new VNode[kept + 3];
+            for (var i = 0; i < oldTree.Length; i++) oldTree[i] = V.Label(text: "x", key: "k" + i);
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), oldTree);
+
+            // Act
+            Reconciler.Reconcile(Root, oldTree, oldTree.Take(kept).ToArray());
+
+            // Assert
+            Assert.That(Root.childCount, Is.EqualTo(kept));
+        }
+
         [Test]
         public void Given_KeyedList_When_Reordered_Then_ElementsFollowKeysToNewOrder()
         {

@@ -99,15 +99,15 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ThreeUnkeyedRowsOnAPanel_When_AReconcileRemovesThemAll_Then_TheyDetachFirstToLast()
+        public void Given_ThreeUnkeyedRowsBehindOneThatStays_When_AReconcileRemovesThem_Then_TheyDetachFirstToLast()
         {
-            // Arrange
-            var before = Rows(keyed: false, "a", "b", "c");
+            // Arrange — k is patched where it stands, so it stays on the panel.
+            var before = Rows(keyed: false, "k", "a", "b", "c");
             _reconciler.Reconcile(_container, Array.Empty<VNode>(), before);
-            LogDetachOf(_container, "a", "b", "c");
+            LogDetachOf(_container, "k", "a", "b", "c");
 
             // Act
-            _reconciler.Reconcile(_container, before, Array.Empty<VNode>());
+            _reconciler.Reconcile(_container, before, Rows(keyed: false, "k"));
 
             // Assert
             Assert.That(Left(), Is.EqualTo("a b c"));
@@ -131,10 +131,11 @@ namespace Velvet.Tests
         [Test]
         public void Given_ThreeKeyedRowsBetweenTwoThatStay_When_AReconcileRemovesThem_Then_TheyDetachFirstToLast()
         {
-            // Arrange — x matches at the head and y at the tail, which leaves the middle to the suffix trim.
+            // Arrange — x matches at the head and y at the tail, which leaves the middle to the suffix trim. Both are
+            // patched where they stand, so they stay on the panel.
             var before = Rows(keyed: true, "x", "a", "b", "c", "y");
             _reconciler.Reconcile(_container, Array.Empty<VNode>(), before);
-            LogDetachOf(_container, "a", "b", "c");
+            LogDetachOf(_container, "x", "a", "b", "c", "y");
 
             // Act
             _reconciler.Reconcile(_container, before, Rows(keyed: true, "x", "y"));

@@ -1098,6 +1098,7 @@ namespace Velvet
             var oldLength = inputs.OldNodes.Length;
             var budgeted = frameBudgetMs > 0;
 
+            // MUTANT_SURVIVES(equivalent, boundary): past the last old row Occupant reads null, which is skipped.
             for (var i = startIndex; i < oldLength; i++)
             {
                 if (_ctx.IsAborted) return true;
