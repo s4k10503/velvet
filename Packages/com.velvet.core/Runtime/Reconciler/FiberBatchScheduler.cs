@@ -738,6 +738,11 @@ namespace Velvet
                 // MUTANT_SURVIVES(equivalent, line removed): the next walk clears the list before reading it, so the entries only keep their fibers reachable until then.
                 _aboveRows.Clear();
             }
+            catch
+            {
+                RequeueDirtyEntries();
+                throw;
+            }
             finally
             {
                 // _onDrainEnd applies the pass the drain's renders recorded into and flushes their deferred layout
@@ -752,6 +757,17 @@ namespace Velvet
                 {
                     _draining = false;
                 }
+            }
+        }
+
+        // ScheduleRerender enqueues a dirty fiber only for an immediate-tier lane outranking every lane it holds, so a
+        // further update of a lane it holds does not put back an entry this drain took off its tier and left dirty.
+        private void RequeueDirtyEntries()
+        {
+            for (var i = 0; i < _drainBuffer.Count; i++)
+            {
+                var fiber = _drainBuffer[i];
+                if (fiber.IsDirty) FiberWorkLoop.ScheduleFlush(fiber, fiber.LaneQueue.Min);
             }
         }
 
