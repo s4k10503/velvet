@@ -475,8 +475,9 @@ namespace Velvet
                 // In a finally because an exception leaves a drain too (DrainExceptionRecoveryTests throws one from
                 // an imperative-handle factory), and a flag left raised has ArmImmediateDrain register nothing for a
                 // later request until the registered callback lowers it. Intake still queued here was requested by a
-                // settle on a drop, or enqueued before the exception, and the loop that would have consumed it has
-                // exited. Only the registered callback lowers the flag; see _inImmediateCallback.
+                // settle on a drop, enqueued before the exception, or put back by the drain it left
+                // (RequeueDirtyEntries), and the loop that would have consumed it has exited. Only the registered
+                // callback lowers the flag; see _inImmediateCallback.
                 if (_inImmediateCallback) _immediateScheduled = false;
                 CountRun(completed);
                 if (_immediateOrder.Count == 0) _externalStoreRenderQueued = false;
