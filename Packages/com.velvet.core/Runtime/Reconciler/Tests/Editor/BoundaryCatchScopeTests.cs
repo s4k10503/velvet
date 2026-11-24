@@ -115,6 +115,7 @@ namespace Velvet.Tests
             s_setDeletedPanelTick = null;
             s_setOrderedExitTick = null;
             s_exitOrder.Clear();
+            s_failingRowBefore = null;
         }
 
         [TearDown]
@@ -514,6 +515,39 @@ namespace Velvet.Tests
             Assert.That((Texts(), duplicateWarnings), Is.EqualTo(("fallback", 0)));
         }
 
+        [TestCase("nothing")]
+        [TestCase("a label")]
+        [TestCase("an element holding the thrower")]
+        public void Given_ARowOfTheFailedOutputWhoseOwnBuildThrows_When_TheBoundaryCatchesOnAnUpdate_Then_NoDuplicateKeyIsReported(
+            string rowBefore)
+        {
+            // Arrange — what the row's position held before decides whether the row is created, replaces it, or patches it
+            s_failingRowBefore = rowBefore;
+            using var mounted = V.Mount(_root, V.Component(FailingRowHostRender, key: "host"), CaughtErrors.Unlogged);
+            s_throws = true;
+            var duplicateWarnings = 0;
+            void OnLog(string condition, string stackTrace, LogType type)
+            {
+                if (type == LogType.Warning && condition.Contains("Duplicate key detected")) duplicateWarnings++;
+            }
+
+            // Act
+            Application.logMessageReceived += OnLog;
+            try
+            {
+                s_setTick.Invoke(1);
+                mounted.FlushStateForTest();
+            }
+            finally
+            {
+                Application.logMessageReceived -= OnLog;
+            }
+
+            // Assert — the fallback is read beside the count for the reason the case above gives
+            Assert.That(Texts() + " | duplicate warnings " + duplicateWarnings,
+                Is.EqualTo("fallback,fallback-row | duplicate warnings 0"));
+        }
+
         // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
         // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
         [Test]
@@ -635,6 +669,32 @@ namespace Velvet.Tests
             var (tick, setTick) = Hooks.UseState(0);
             s_setTick = setTick;
             return V.Div(children: new VNode[] { V.Component(SameKeyBoundaryRender, tick, key: "boundary") });
+        }
+
+        private static string s_failingRowBefore;
+
+        // The fallback's second row sits where the failing row does, both unwrapped in a fragment at the root of the
+        // boundary's tree, so the two share a key. The row throws out of its own build, from the component inside it.
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        private static VNode FailingRowBoundaryRender(int tick)
+        {
+            Hooks.UseFallback(_ => V.Fragment(new VNode[] { V.Label(text: "fallback"), V.Label(text: "fallback-row") }));
+            var failingRow = V.Div(children: new VNode[] { V.Component(ThrowerRender, key: "thrower") });
+            var rowBefore = s_failingRowBefore switch
+            {
+                "a label" => V.Label(text: "row"),
+                "an element holding the thrower" => failingRow,
+                _ => null,
+            };
+            return V.Fragment(new VNode[] { V.Label(text: "t" + tick), tick == 0 ? rowBefore : failingRow });
+        }
+
+        [Component(Compiler = false)]
+        private static VNode FailingRowHostRender()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setTick = setTick;
+            return V.Div(children: new VNode[] { V.Component(FailingRowBoundaryRender, tick, key: "boundary") });
         }
 
         #endregion
