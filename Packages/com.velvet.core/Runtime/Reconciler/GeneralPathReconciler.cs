@@ -356,7 +356,7 @@ namespace Velvet
             var key = emittedKey.OwnedBy(_ctx.FiberStack.Current);
             var oldNodes = commit.OldNodes!;
 
-            if (!commit.NewKeys.Add(key))
+            if (commit.NewKeys.Contains(key))
             {
                 FiberLogger.LogWarning("GeneralPathReconciler",
                     $"Duplicate key detected among new siblings: {key}. " +
@@ -392,6 +392,9 @@ namespace Velvet
                 var newElement = _factory.CreateElement(node);
                 commit.NewElements.Add((newElement, false));
             }
+            // Claimed with the Committed entry rather than at the check above, because RollbackCommitTo takes back
+            // only the keys of Committed entries, which a leaf whose create or patch throws never reaches.
+            commit.NewKeys.Add(key);
             commit.Committed.Add(new CommittedLeaf(oldIndex, linear && oldIndex == ordinal, key));
         }
 
