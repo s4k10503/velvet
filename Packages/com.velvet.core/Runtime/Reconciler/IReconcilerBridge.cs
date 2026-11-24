@@ -46,6 +46,10 @@ namespace Velvet
         bool BeginRangeForController();
         void EndRangeForController(VisualElement container, bool opened);
 
+        // Inside a pass this does nothing, so that no has- element reads a tree the pass has not finished. Outside one it
+        // does for a range's container what the end of a flush does for the flush's region (FiberWave.RefreshHasVariants).
+        void RefreshHasVariantsForController(VisualElement container);
+
         // Brackets a controller's item create/patch loop so the items inherit the context that enclosed the
         // V.VirtualList. Items mount outside the reconcile pass (scroll / geometry callbacks), where the
         // context cursor is empty and FiberStack.Current is null — which would give each item fiber a null
