@@ -295,12 +295,12 @@ namespace Velvet
                 // one a consumer's refCallback wrote style.whiteSpace on directly — is never touched either way.
                 if (write != null)
                 {
-                    te.style.whiteSpace = write.Value;
+                    WriteWhiteSpace(te, write.Value);
                     ctx.TextWhitespaceOwned[te] = true;
                 }
                 else if (ctx.TextWhitespaceOwned.Remove(te))
                 {
-                    te.style.whiteSpace = StyleKeyword.Null;
+                    WriteWhiteSpace(te, StyleKeyword.Null);
                 }
 
                 // Overline paint, off the SAME resolved decoration the string rewrite above just used (it
@@ -663,6 +663,17 @@ namespace Velvet
             ctx.TextBalanceManipulators[element] = created;
             element.AddManipulator(created);
             return created;
+        }
+
+        // A leaf with a white-space effect is written at every resolve, so a value it already holds is skipped rather
+        // than refreshing InheritedStyleHash each time.
+        private static void WriteWhiteSpace(TextElement te, StyleEnum<WhiteSpace> whiteSpace)
+        {
+            if (te.style.whiteSpace != whiteSpace)
+            {
+                te.style.whiteSpace = whiteSpace;
+                InheritedStyleHash.Refresh(te);
+            }
         }
 
         // Re-resolves one text leaf, for the manipulator that reacts to its width.

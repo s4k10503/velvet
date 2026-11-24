@@ -162,15 +162,11 @@ namespace Velvet
         private static readonly PropertyInfo? s_sheetRules = EngineMember.StyleSheetRules.ResolveProperty();
         private static readonly FieldInfo? s_declaredVariables = EngineMember.StyleRuleCustomPropertiesCount.ResolveField();
         private static readonly PropertyInfo? s_isDefault = EngineMember.StyleSheetIsDefault.ResolveProperty();
-        private static readonly FieldInfo? s_style = EngineMember.ElementComputedStyle.ResolveField();
-        private static readonly FieldInfo? s_inheritedData = EngineMember.ComputedStyleInheritedData.ResolveField();
-        private static readonly FieldInfo? s_inheritedHash = EngineMember.ElementInheritedStylesHash.ResolveField();
 
         private static readonly bool s_watches = s_builderType != null && s_beginRule != null && s_beginSelector != null
             && s_addSelector != null && s_endSelector != null && s_beginProperty != null && s_addFloat != null
             && s_endProperty != null && s_endRule != null && s_buildTo != null && s_createClass != null && s_isDefault != null
-            && s_sheetRules != null && s_declaredVariables != null && s_style != null && s_inheritedData != null
-            && s_inheritedHash != null;
+            && s_sheetRules != null && s_declaredVariables != null && InheritedStyleHash.Resolves;
 
         private static StyleSheet? s_markerSheet;
 
@@ -695,15 +691,9 @@ namespace Velvet
             if (Stale(element, entry))
             {
                 Resolve(element, entry.Intent, entry.Wait == 1);
-                Rehash(element);
+                InheritedStyleHash.Refresh(element);
             }
         }
-
-        // The pass hashed what the element passes down before the event this writes in, and keys the cached style of each
-        // child it styles after it on that hash, which without this would name the face this replaced
-        // (Given_TwoBoldContainersOfOneColourUnderAnElementARuleGivesAFontAndUnderNone_When_TheirStylePassRuns_Then_TheLabelUnderTheSecondKeepsItsContainersFace).
-        private static void Rehash(VisualElement element)
-            => s_inheritedHash!.SetValue(element, s_inheritedData!.GetValue(s_style!.GetValue(element)).GetHashCode());
 
         // Starts the per-update read once an inheritor exists and an anchor to schedule it on is known.
         private void Follow()

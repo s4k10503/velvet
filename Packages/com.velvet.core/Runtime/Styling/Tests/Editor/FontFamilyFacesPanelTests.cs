@@ -454,8 +454,8 @@ namespace Velvet.Tests
             Assert.That(Target(root).style.unityFontDefinition.value.fontAsset, Is.SameAs(ruledBold));
         }
 
-        // GREEN_ON_BASE(characterization): the base writes no face inside a style pass, so each label is cached under its own container's face.
-        // Leave out `Rehash(element);` in Restyled and the label under the second container draws the face written on the first.
+        // GREEN_ON_BASE(refactor): the base refreshes the hash after this face's write with the copy this change moves into InheritedStyleHash.
+        // Leave out `InheritedStyleHash.Refresh(element);` in Restyled and the label under the second container draws the face written on the first.
         [Test]
         public void Given_TwoBoldContainersOfOneColourUnderAnElementARuleGivesAFontAndUnderNone_When_TheirStylePassRuns_Then_TheLabelUnderTheSecondKeepsItsContainersFace()
         {

@@ -430,6 +430,26 @@ namespace Velvet
             {
                 (s_traversed, s_traversedPrevious) = (null, null);
             }
+            if (HoldsInheritedLayer(declaring))
+            {
+                InheritedStyleHash.Refresh(declaring);
+            }
+        }
+
+        private static bool HoldsInheritedLayer(VisualElement element)
+        {
+            if (!s_consumers.TryGetValue(element, out var consumers))
+            {
+                return false;
+            }
+            foreach (var consumer in consumers.Entries)
+            {
+                if (consumer.Property.HasValue && Inherits(consumer.Property.Value))
+                {
+                    return true;
+                }
+            }
+            return false;
         }
 
         private static void ReresolveInlineSubtree(VisualElement root)

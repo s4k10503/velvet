@@ -622,7 +622,7 @@ namespace Velvet
                 return;
             }
             _owned = wanted;
-            element.style.unityTextAlign = wanted;
+            Write(element, wanted);
         }
 
         public void Release(VisualElement element)
@@ -632,7 +632,13 @@ namespace Velvet
                 return;
             }
             _owned = null;
-            element.style.unityTextAlign = StyleKeyword.Null;
+            Write(element, StyleKeyword.Null);
+        }
+
+        private static void Write(VisualElement element, StyleEnum<TextAnchor> align)
+        {
+            element.style.unityTextAlign = align;
+            InheritedStyleHash.Refresh(element);
         }
 
         // The middle-* anchor with the horizontal part of align.
