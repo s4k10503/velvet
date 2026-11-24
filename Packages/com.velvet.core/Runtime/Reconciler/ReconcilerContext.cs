@@ -115,6 +115,8 @@ namespace Velvet
             _ends.Clear();
             _rangesOn.Clear();
             _growth.Clear();
+            // MUTANT_SURVIVES(equivalent): the only caller is Reconciler.Dispose, and a disposed context runs no patch to
+            // read an entry left here.
             _shiftedBehindOpen.Clear();
             _recordedAt.Clear();
         }
@@ -143,7 +145,9 @@ namespace Velvet
         }
 
         internal int CloseShiftedBehind(VisualElement placeholder)
-            => _shiftedBehindOpen.Remove(placeholder, out var shifted) ? shifted : 0;
+            => _shiftedBehindOpen.Remove(placeholder, out var shifted)
+                ? shifted
+                : throw new System.InvalidOperationException("A Portal range's shift was closed without being opened.");
 
         private void CountOn(VisualElement? target, int by)
         {
@@ -230,11 +234,11 @@ namespace Velvet
         // Only for a range whose rows leave the target with it. They leave the count a Portal patched around this one
         // reads, as its own growth would, so its length comes off the target's growth ahead of the range itself, whose
         // removal takes the entry with the last one.
-        public bool Remove(VisualElement placeholder)
+        public void Remove(VisualElement placeholder)
         {
-            if (!TryGetValue(placeholder, out var range)) return false;
+            if (!TryGetValue(placeholder, out var range)) return;
             if (range.Target != null) _stored.AddGrowth(range.Target, -range.SlotLength);
-            return _stored.Remove(placeholder);
+            _stored.Remove(placeholder);
         }
 
         public void Clear() => _stored.Clear();
