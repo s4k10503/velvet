@@ -17,6 +17,8 @@ namespace Velvet.Tests
     /// <item>Resuming a parked diff with a sufficient budget completes in a single call.</item>
     /// <item>Committed order is preserved across park/resume for the add, remove, and patch phases, including a
     /// full removal to an empty list (the resume terminates without looping).</item>
+    /// <item>A removal parks only where another old row remains for it, so one that removes the last row over budget
+    /// leaves nothing pending, and the keyed tail removal reads no row past the old list.</item>
     /// <item>The keyed path park/resumes correctly across every sub-phase — the linear scan, tail-only add and
     /// remove, the reorder over a reversed list, a mixed add/remove/reorder, and duplicate keys (which warn) —
     /// and produces the new list's exact order.</item>
@@ -231,6 +233,22 @@ namespace Velvet.Tests
                 "A full removal drains to an empty list and clears pending work without looping");
         }
 
+        // GREEN_ON_BASE(characterization): the base parks a removal only where another old row remains to remove.
+        // One parked after the last would leave the pass pending for a slice with nothing left in it.
+        [Test]
+        public void Given_OneUnkeyedRow_When_ATimeSlicedReconcileRemovesItOverBudget_Then_NothingIsLeftPending()
+        {
+            // Arrange
+            var initialChildren = BuildLabelArray(1);
+            _reconciler.Reconcile(_root, Array.Empty<VNode>(), initialChildren);
+
+            // Act
+            _reconciler.Reconcile(_root, initialChildren, Array.Empty<VNode>(), frameBudgetMs: 0.001);
+
+            // Assert
+            Assert.That(_reconciler.HasPendingWork, Is.False);
+        }
+
         [Test]
         public void Given_CommonPhaseParked_When_Resumed_Then_PatchesEveryNodeInPlace()
         {
@@ -424,6 +442,56 @@ namespace Velvet.Tests
             // Assert
             Assert.That(LabelTexts(), Is.EqualTo(ExpectedTexts("x", 5)),
                 "A keyed tail-remove park/resumes to keep the head and drop the tail");
+        }
+
+        // GREEN_ON_BASE(characterization): the base's tail removal starts at the last old row and never reads past it.
+        // More rows stay than one block of the container's row model holds, where a removal handed no element throws.
+        [Test]
+        public void Given_AKeyedListLongerThanARowBlock_When_ATimeSlicedReconcileRemovesItsTail_Then_TheRowsItKeepsStay()
+        {
+            // Arrange
+            var kept = 2 * ContainerRows.BlockMax;
+            var oldChildren = BuildKeyedLabelArray(kept + 3, "x");
+            _reconciler.Reconcile(_root, Array.Empty<VNode>(), oldChildren);
+
+            // Act
+            _reconciler.Reconcile(_root, oldChildren, BuildKeyedLabelArray(kept, "x"), frameBudgetMs: 0.001);
+            DrainPendingWork(maxIterations: 1000);
+
+            // Assert
+            Assert.That(_root.childCount, Is.EqualTo(kept));
+        }
+
+        // GREEN_ON_BASE(characterization): the base parks a tail removal only where another old row remains to remove.
+        // One parked after the last would leave the pass pending for a slice with nothing left in it.
+        [Test]
+        public void Given_OneKeyedRow_When_ATimeSlicedReconcileRemovesItOverBudget_Then_NothingIsLeftPending()
+        {
+            // Arrange — the linear scan has nothing to match, which leaves the row to the tail removal.
+            var oldChildren = BuildKeyedLabelArray(1, "x");
+            _reconciler.Reconcile(_root, Array.Empty<VNode>(), oldChildren);
+
+            // Act
+            _reconciler.Reconcile(_root, oldChildren, Array.Empty<VNode>(), frameBudgetMs: 0.001);
+
+            // Assert
+            Assert.That(_reconciler.HasPendingWork, Is.False);
+        }
+
+        // GREEN_ON_BASE(characterization): the base parks Pass 2's removal only where another old row remains to visit.
+        // One parked after the last would leave the pass pending for a slice with nothing left in it.
+        [Test]
+        public void Given_OneKeyedRowReplacedByAnotherKey_When_ATimeSlicedReconcileRemovesItOverBudget_Then_NothingIsLeftPending()
+        {
+            // Arrange — the keys differ, which sends the diff to Pass 2.
+            var oldChildren = BuildKeyedLabelArray(1, "x");
+            _reconciler.Reconcile(_root, Array.Empty<VNode>(), oldChildren);
+
+            // Act
+            _reconciler.Reconcile(_root, oldChildren, new VNode[] { V.Label(text: "z", key: "z") }, frameBudgetMs: 0.001);
+
+            // Assert
+            Assert.That(_reconciler.HasPendingWork, Is.False);
         }
 
         [Test]

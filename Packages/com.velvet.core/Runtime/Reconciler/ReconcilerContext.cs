@@ -433,6 +433,10 @@ namespace Velvet
             return startsPortal != null && PrecedesInTree(changedPlaceholder, startsPortal);
         }
 
+        // ShiftRangesBehind's list of the ranges it moves, kept between calls: nothing either of its passes calls
+        // reaches it again, and it empties the list before it returns.
+        private static readonly List<VisualElement> s_behind = new();
+
         // Moves by delta the other ranges on target that lie behind the one changedPlaceholder held before its
         // change. The changed entry is excluded whether or not it is still recorded. Mutate-while-iterate is
         // avoided via a deferred 2-pass scan.
@@ -450,7 +454,7 @@ namespace Velvet
                 if (ReferenceEquals(entry.Key, changedPlaceholder)) continue;
                 if (!ReferenceEquals(entry.Value.Target, target)) continue;
                 if (!IsBehind(entry.Value.SlotStart, entry.Value.SlotLength > 0, entry.Key, changedPlaceholder, changed)) continue;
-                placeholders ??= new List<VisualElement>();
+                placeholders ??= s_behind;
                 placeholders.Add(entry.Key);
             }
             if (placeholders == null) return;
@@ -459,6 +463,7 @@ namespace Velvet
                 var state = portalState[ph];
                 portalState[ph] = state with { SlotStart = state.SlotStart + delta };
             }
+            placeholders.Clear();
         }
 
         // The rows target holds behind the end of the last range on it, or null when no range is on target.

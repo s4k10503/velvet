@@ -18,7 +18,7 @@ namespace Velvet
         internal readonly Dictionary<VisualElement, PlannedRoot> Roots = new();
         internal readonly Dictionary<VisualElement, DetachedPortal> Portals = new();
 
-        // The Portal's target and the rows it held there, from the last to the first.
+        // The Portal's target and the rows it held there, from the first to the last.
         internal readonly struct DetachedPortal
         {
             internal readonly VisualElement Target;

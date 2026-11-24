@@ -23,8 +23,8 @@ namespace Velvet
         // What the walk decides, which the removals after it read (FiberElementCleaner.CleanupElement).
         private DeletionPlan _deletion = null!;
         private readonly HashSet<VisualElement> _portalsUnderRoots = new();
-        // The rows of the Portals DetachPortals detached, each with the target it is a row of, from the last row of
-        // each Portal to its first, which is the order Queue records their removals in.
+        // The rows of the Portals DetachPortals detached, each with the target it is a row of, from the first row of
+        // each Portal to its last, which is the order Queue records their removals in.
         private readonly List<(VisualElement Target, VisualElement Row)> _portalRows = new();
         private readonly HashSet<ComponentFiber> _orphans = new();
         private readonly HashSet<ComponentFiber> _collected = new();
@@ -117,7 +117,7 @@ namespace Velvet
                 if (target == null) continue;
                 var rendered = RenderedChildrenOf(target);
                 var rows = new List<VisualElement>(portal.SlotLength);
-                for (var slot = portal.SlotStart + portal.SlotLength - 1; slot >= portal.SlotStart; slot--)
+                for (var slot = portal.SlotStart; slot < portal.SlotStart + portal.SlotLength; slot++)
                 {
                     if (slot < rendered.Count) rows.Add(rendered[slot]);
                 }
