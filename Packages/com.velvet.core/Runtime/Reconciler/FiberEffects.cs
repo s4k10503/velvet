@@ -122,7 +122,8 @@ namespace Velvet
             // clear a ref another component has written since.
             if (fiber.LayoutEffectsHidden) return;
             fiber.LayoutEffectsHidden = true;
-            HookEffectExecutor.RunCleanups(fiber, fiber.LayoutEffects);
+            FiberWorkLoop.RunAsMutationOrLayoutWork(
+                fiber, static hidden => HookEffectExecutor.RunCleanups(hidden, hidden.LayoutEffects));
             if (fiber.ImperativeHandleSlots == null) return;
             foreach (var slot in fiber.ImperativeHandleSlots) slot.HandleRef?.Set(null);
         }
@@ -680,8 +681,12 @@ namespace Velvet
         // nothing left.
         internal static void CleanUpDeleted(ComponentFiber fiber)
         {
-            CleanupAllInsertionEffects(fiber);
-            CleanupAllLayoutEffects(fiber);
+            FiberWorkLoop.RunAsMutationOrLayoutWork(fiber, static deleted =>
+            {
+                CleanupAllInsertionEffects(deleted);
+                CleanupAllLayoutEffects(deleted);
+            });
+            // Outside the mutation work, as React runs a deleted component's passive cleanups in its passive phase.
             CleanupAllEffects(fiber);
         }
 
@@ -832,6 +837,7 @@ namespace Velvet
             if (context.PendingPassiveEffectFibers.Count == 0 && context.PendingPassiveCompletions.Count == 0) return;
             context.EffectCommitDepth++;
             context.PassiveDrainDepth++;
+            FiberWorkLoop.SetTransitionsAside();
             try
             {
                 RunPassivePhases(context);
@@ -839,6 +845,7 @@ namespace Velvet
             }
             finally
             {
+                FiberWorkLoop.HandTransitionsBack();
                 context.PassiveDrainDepth--;
                 context.EffectCommitDepth--;
             }
@@ -1101,9 +1108,18 @@ namespace Velvet
 #endif
         }
 
+        // Run for a deleted component, whose passive cleanups React's passive flush runs with no transition current.
         internal static void CleanupAllEffects(ComponentFiber fiber)
         {
-            HookEffectExecutor.CleanupAll(fiber, fiber.Effects, fiber.PendingEffects);
+            FiberWorkLoop.SetTransitionsAside();
+            try
+            {
+                HookEffectExecutor.CleanupAll(fiber, fiber.Effects, fiber.PendingEffects);
+            }
+            finally
+            {
+                FiberWorkLoop.HandTransitionsBack();
+            }
             fiber.EffectFlushScheduled = false;
         }
 

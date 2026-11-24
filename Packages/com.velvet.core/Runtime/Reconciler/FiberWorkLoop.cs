@@ -37,7 +37,8 @@ namespace Velvet
 
         private static bool s_isInDiscreteEvent;
 
-        // The transition calls whose callback is running synchronously right now. A Transition-lane enrolment
+        // The transition calls whose callback is running synchronously right now, less those the commit or passive
+        // flush running inside them has set aside (SetTransitionsAside). A Transition-lane enrolment
         // made while these are open is credited to each of them that still owns its slot (see
         // MarkTransitionWorkQueued), so a nested or joined call credits the calls it sits inside as well.
         // Ambient rather than per-fiber, because the fiber owning the state a callback writes need not be the
@@ -46,7 +47,72 @@ namespace Velvet
         // Nothing re-opens the scope for an async action's continuation: inferring one from the fiber's
         // in-flight transitions instead gave the Transition lane to unrelated writes in that window.
         // Unsynchronised, so it holds only while one caller pushes and pops at a time.
-        private static readonly List<HookTransitionSlot> OpenTransitionScopes = new();
+        private static List<HookTransitionSlot> OpenTransitionScopes = new();
+
+        // Raised by a layout commit of any root (ReconcilerContext.SetCommitDepths) and by the mutation-phase
+        // callbacks run through RunAsMutationOrLayoutWork. React runs both phases at the discrete event priority
+        // with no transition current, so an update made inside them takes the sync lane whichever root it targets
+        // (FiberBatchScheduler.ScheduleImmediate), unless a StartTransition called inside them makes it a
+        // transition's.
+        private static int s_mutationOrLayoutDepth;
+
+        // Raised by that mutation or layout work, by a passive drain (FiberEffects.DrainPassiveEffects) and by a
+        // deleted component's passive cleanups (FiberEffects.CleanupAllEffects), the last two giving no sync lane:
+        // React clears the current transition for its passive flush as for its commit.
+        private static int s_transitionsSetAsideDepth;
+
+        // Swapped with OpenTransitionScopes where the outermost of that work begins and again where it ends, which
+        // sets the scopes open around that work aside for its span. A scope opened inside the work closes before the
+        // work ends, so the list swapped out at the end is empty. The swap leaves AwaitContinuationGate.OpenScopes
+        // alone (TransitionCallbacksRunning).
+        private static List<HookTransitionSlot> s_scopesSetAside = new();
+
+        // What RunInTransitionScope sets AwaitContinuationGate.OpenScopes to. The scopes set aside are callbacks still
+        // running, so a scope that opens and closes inside the work must not let an await of a completed VelvetTask
+        // later in one of them continue inline.
+        private static int TransitionCallbacksRunning => OpenTransitionScopes.Count + s_scopesSetAside.Count;
+
+        internal static bool IsInMutationOrLayoutWork => s_mutationOrLayoutDepth > 0;
+
+        // An enter left without its exit would give later updates the sync lane, so where code runs between the
+        // two the exit is in a finally.
+        internal static void EnterMutationOrLayoutWork()
+        {
+            s_mutationOrLayoutDepth++;
+            SetTransitionsAside();
+        }
+
+        internal static void ExitMutationOrLayoutWork()
+        {
+            s_mutationOrLayoutDepth--;
+            HandTransitionsBack();
+        }
+
+        // Paired with HandTransitionsBack, in a finally where code runs between the two.
+        internal static void SetTransitionsAside()
+        {
+            if (s_transitionsSetAsideDepth++ > 0) return;
+            (OpenTransitionScopes, s_scopesSetAside) = (s_scopesSetAside, OpenTransitionScopes);
+        }
+
+        internal static void HandTransitionsBack()
+        {
+            if (--s_transitionsSetAsideDepth > 0) return;
+            (OpenTransitionScopes, s_scopesSetAside) = (s_scopesSetAside, OpenTransitionScopes);
+        }
+
+        internal static void RunAsMutationOrLayoutWork<TState>(TState state, Action<TState> work)
+        {
+            EnterMutationOrLayoutWork();
+            try
+            {
+                work(state);
+            }
+            finally
+            {
+                ExitMutationOrLayoutWork();
+            }
+        }
 
         // UseDeferredValue has to tell the deferred commit from an ordinary render it must keep withholding
         // from, and with no lane visible to it the pending value promotes on whatever renders next, urgent or
@@ -954,7 +1020,8 @@ namespace Velvet
 
         // Wrapper that runs internal SetState at Transition priority.
         // UseState setters (etc.) called during updates are scheduled on the lowest-priority Lane, whichever
-        // fiber owns the state slot they write.
+        // fiber owns the state slot they write, short of those called where a commit or passive flush it runs
+        // has set the transition aside (SetTransitionsAside).
         // A re-entrant call on the SAME slot joins the call that owns it: the inner call runs its updates at
         // Transition priority but does not start a new transition or independently clear isPending. A call on
         // a different slot is a concurrent transition and owns its own pending flag, whether or not another
@@ -1079,7 +1146,7 @@ namespace Velvet
         private static void RunInTransitionScope(HookTransitionSlot slot, Action body)
         {
             OpenTransitionScopes.Add(slot);
-            AwaitContinuationGate.OpenScopes = OpenTransitionScopes.Count;
+            AwaitContinuationGate.OpenScopes = TransitionCallbacksRunning;
             try
             {
                 body();
@@ -1087,7 +1154,7 @@ namespace Velvet
             finally
             {
                 OpenTransitionScopes.RemoveAt(OpenTransitionScopes.Count - 1);
-                AwaitContinuationGate.OpenScopes = OpenTransitionScopes.Count;
+                AwaitContinuationGate.OpenScopes = TransitionCallbacksRunning;
                 ScheduleDeferredAwaitContinuations();
             }
         }
@@ -1100,7 +1167,7 @@ namespace Velvet
         private static T RunInTransitionScope<T>(HookTransitionSlot slot, Func<T> body)
         {
             OpenTransitionScopes.Add(slot);
-            AwaitContinuationGate.OpenScopes = OpenTransitionScopes.Count;
+            AwaitContinuationGate.OpenScopes = TransitionCallbacksRunning;
             try
             {
                 return body();
@@ -1108,7 +1175,7 @@ namespace Velvet
             finally
             {
                 OpenTransitionScopes.RemoveAt(OpenTransitionScopes.Count - 1);
-                AwaitContinuationGate.OpenScopes = OpenTransitionScopes.Count;
+                AwaitContinuationGate.OpenScopes = TransitionCallbacksRunning;
                 ScheduleDeferredAwaitContinuations();
             }
         }
@@ -1120,7 +1187,8 @@ namespace Velvet
         // cap. Unmounting the declaring component clears the flag ahead of any of that, the release taking
         // the slot off this call (ReleaseTransitionSlotOwnership). The
         // updates the action makes before it first suspends are scheduled on the Transition lane (see
-        // RunInTransitionScope for where that boundary falls); reaching it past a suspension means wrapping
+        // RunInTransitionScope for where that boundary falls), short of those made where a commit or passive flush
+        // it runs has set the transition aside; reaching it past a suspension means wrapping
         // those updates in a further StartTransition call, which joins this transition. A call on another
         // slot does not.
         // fiber: Fiber whose transition slot tracks this call's pending state.

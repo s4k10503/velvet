@@ -5,8 +5,10 @@ namespace Velvet
     /// as an argument. A <c>UseDeferredValue</c> derivation asks for the Transition lane directly, and a
     /// <c>StartTransition</c> call asks for the Urgent lane directly for the render that shows its
     /// <c>isPending</c>. A hook-driven state update is classified from its context, tested in this order:
-    /// the Transition lane while a <c>StartTransition</c> callback is running and has not yet suspended;
-    /// failing that, the Urgent lane while a discrete event handler runs; failing that, the Normal lane.
+    /// the Transition lane while a <c>StartTransition</c> callback is running and has not yet suspended, short of
+    /// the callbacks of a commit or passive effect flush it runs that the migration guide's <c>useTransition</c>
+    /// row names; failing that, the Urgent lane while a discrete event handler runs; failing that, the Normal
+    /// lane.
     /// A starved Transition lane is promoted to Normal. Lower numeric values indicate higher priority; a
     /// fiber's lane queue drains lowest-value-first.
     /// </summary>
@@ -28,7 +30,8 @@ namespace Velvet
         Normal = 1,
         /// <summary>
         /// Lowest priority. Taken by the updates a <c>StartTransition</c> callback schedules before it first
-        /// suspends, and by <c>UseDeferredValue</c> derivations.
+        /// suspends, short of those the migration guide's <c>useTransition</c> row leaves unmarked, and by
+        /// <c>UseDeferredValue</c> derivations.
         /// Its flush runs in a later panel scheduler pass than the request that queued it, within the bound
         /// <c>FiberBatchScheduler.ScheduleDelayed</c> describes, behind any higher-priority lanes still queued,
         /// which commit first, and once it has been starved for a

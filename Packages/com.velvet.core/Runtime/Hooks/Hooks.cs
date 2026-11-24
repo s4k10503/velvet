@@ -3939,7 +3939,9 @@ namespace Velvet
         /// <paramref name="passthroughState"/> folded through the outstanding entries by
         /// <paramref name="applyOptimistic"/>, in the order they were added — so an entry lands on whatever
         /// the authoritative state has become while it is outstanding. An entry added inside a
-        /// <c>startTransition</c> callback belongs to the innermost transition open there whose
+        /// <c>startTransition</c> callback, other than from the callbacks of a commit or passive effect flush the
+        /// callback runs that the migration guide's <c>useTransition</c> row names, where it finds no transition
+        /// open, belongs to the innermost transition open there whose
         /// <c>isPending</c> is lit, and is discarded when that transition settles (or, with an async action in
         /// flight, when none is left), whether or not
         /// <paramref name="passthroughState"/> changed and whether the action succeeded or faulted; one
@@ -3962,8 +3964,9 @@ namespace Velvet
         /// <returns>
         /// 2-tuple:
         /// - <c>optimisticState</c>: the pass-through state folded through the outstanding entries.
-        /// - <c>addOptimistic</c>: records an entry owned by the transition whose callback is running, or by the
-        ///   async actions in flight, if either.
+        /// - <c>addOptimistic</c>: records an entry owned by the transition whose callback is running, outside the
+        ///   callbacks the migration guide's <c>useTransition</c> row names, or by the async actions in flight, if
+        ///   either.
         /// </returns>
         public static (TState optimisticState, Action<TAction> addOptimistic) UseOptimistic<TState, TAction>(
             TState passthroughState, Func<TState, TAction, TState> applyOptimistic)

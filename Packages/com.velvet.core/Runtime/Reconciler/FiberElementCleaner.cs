@@ -313,7 +313,7 @@ namespace Velvet
             // to start from.
             try
             {
-                installedRef.Cleanup?.Invoke();
+                FiberWorkLoop.RunAsMutationOrLayoutWork(installedRef.Cleanup, static cleanup => cleanup?.Invoke());
             }
             catch (System.Exception exception)
             {
