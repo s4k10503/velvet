@@ -246,7 +246,9 @@ namespace Velvet
             private readonly Shown _shown;
             private int _shows;
 
-            // The update a hold saw UI Toolkit cancel it in, for a reversal that replaces it or for good.
+            // How a hold saw it stop: by ending, or by UI Toolkit cancelling it in the update given, for a reversal that
+            // replaces it or for good.
+            public bool Ended;
             public double CancelledAt = double.NaN;
 
             public VisibilityRun(Parts parts, int from, int to) : base(parts)
@@ -298,9 +300,9 @@ namespace Velvet
                 return (startTime, shortening);
             }
             // CSS shortens a run that reverses one still running at the origin, by that one's progress there. The
-            // element's last run stands for it unless a hold saw it cancelled in an update before this run's: the
-            // cancel of a run a reversal replaces arrives in the reversal's own.
-            var factor = shown.Last is { } last && (double.IsNaN(last.CancelledAt) || last.CancelledAt == Now(element))
+            // element's last run stands for it only where a hold saw how it stopped: by ending, or by a cancel arriving
+            // in this run's own update, as the cancel of a run a reversal replaces does.
+            var factor = shown.Last is { } last && (last.Ended || last.CancelledAt == Now(element))
                 ? last.ShorteningAt(origin)
                 : shortening;
             var start = origin + Lag(delay, factor);
@@ -351,20 +353,19 @@ namespace Velvet
         }
 
         /// <summary>
-        /// Drops what the element's visibility runs recorded, for an element put back in a pool: no run of its next
-        /// consumer's reverses one of them.
-        /// </summary>
-        internal static void Forget(VisualElement element) => s_shown.Remove(element);
-
-        /// <summary>
-        /// Records what the element shows once a transition of the property ends, where that is a visibility its run
-        /// had not shown, for a descendant's transition the change starts.
+        /// Once a transition of the property ends, marks the element's last visibility run as ended, and records what the
+        /// element shows where that is a visibility its run had not shown, for a descendant's transition the change
+        /// starts.
         /// </summary>
         internal static void Ended(VisualElement element, StylePropertyName property)
         {
             if (property != s_visibility || !s_shown.TryGetValue(element, out var shown))
             {
                 return;
+            }
+            if (shown.Last is { } last)
+            {
+                last.Ended = true;
             }
             var value = (int)element.resolvedStyle.visibility;
             if (value == shown.Value)

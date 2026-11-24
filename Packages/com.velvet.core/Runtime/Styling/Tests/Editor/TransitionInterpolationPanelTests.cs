@@ -924,22 +924,23 @@ namespace Velvet.Tests
             Assert.That(VisibilityWhileItRuns(child), Is.EqualTo(Visibility.Hidden));
         }
 
-        private readonly record struct PoolPhase(int Phase);
+        private readonly record struct Phase(int Value);
 
-        private sealed class PoolPhaseStore : Store<PoolPhase>
+        // The phase a store-driven screen below renders.
+        private sealed class PhaseStore : Store<Phase>
         {
-            public PoolPhaseStore() : base(new PoolPhase(0)) { }
-            public void Set(int phase) => SetState(_ => new PoolPhase(phase));
-            protected override void ResetCore() => SetState(_ => new PoolPhase(0));
+            public PhaseStore() : base(new Phase(0)) { }
+            public void Set(int phase) => SetState(_ => new Phase(phase));
+            protected override void ResetCore() => SetState(_ => new Phase(0));
         }
 
-        private static PoolPhaseStore s_poolPhase;
+        private static PhaseStore s_phase;
 
         // Phase 0 puts a pooled label in a first parent, phase 1 removes it, phase 2 rents a label into a second.
         [Component]
         private static VNode PooledChildScreen()
         {
-            var phase = Hooks.UseStore(s_poolPhase, s => s.Phase);
+            var phase = Hooks.UseStore(s_phase, s => s.Value);
             return V.Div(name: "screen", children: new VNode[]
             {
                 V.Div(name: "first", className: "transition-all " + OneSecond, children: phase == 0
@@ -958,15 +959,15 @@ namespace Velvet.Tests
             // starts at 0s and it is removed at 0.05s; the second parent's change comes at 0.1s and shows at 1.11s,
             // where the label takes it up, and the label's run is dated at 1.21s.
             VNodePoolTestAccess.ClearLabelPoolForTest();
-            s_poolPhase = new PoolPhaseStore();
+            s_phase = new PhaseStore();
             _mounted = V.Mount(_window.rootVisualElement, V.Component(PooledChildScreen, key: "screen"));
             var first = Attached(_window.rootVisualElement.Q<VisualElement>("first"));
             var removed = first.Q<Label>("child");
             removed.AddToClassList("invisible");
             RunFor(first, 0.05);
-            s_poolPhase.Set(1);
+            s_phase.Set(1);
             _mounted.GetSchedulerForTest().DrainImmediateForTest();
-            s_poolPhase.Set(2);
+            s_phase.Set(2);
             _mounted.GetSchedulerForTest().DrainImmediateForTest();
             var second = _window.rootVisualElement.Q<VisualElement>("second");
             var child = second.Q<Label>("child");
@@ -983,6 +984,77 @@ namespace Velvet.Tests
             // pool handed back another label.
             Assert.That(ReferenceEquals(child, removed) ? VisibilityWhileItRuns(child) : (Visibility)(-2),
                 Is.EqualTo(Visibility.Visible));
+        }
+
+        // Phase 1 fades the list in, phase 2 moves its last item to the front and phase 3 fades it out.
+        [Component]
+        private static VNode ReorderedScreen()
+        {
+            var phase = Hooks.UseStore(s_phase, s => s.Value);
+            return V.Div(name: "list", className: (phase is 1 or 2 ? "transition-all visible " : "transition-all invisible ")
+                + OneSecond, children: phase < 2
+                ? new[] { ListItem("a"), ListItem("b"), ListItem("c") }
+                : new[] { ListItem("c"), ListItem("a"), ListItem("b") });
+        }
+
+        private static VNode ListItem(string key)
+            => V.Div(key: key, name: key, className: "transition-all duration-[3000ms] ease-linear");
+
+        private void ToPhase(int phase)
+        {
+            s_phase.Set(phase);
+            _mounted.GetSchedulerForTest().DrainImmediateForTest();
+        }
+
+        [Test]
+        public void Given_AnItemMovedWhileItFadesIn_When_ItsListFadesOut_Then_ItRunsItsWholeDuration()
+        {
+            // Arrange — the list fades in at 0s and its items' runs are dated back to that at 0.2s, where the last item
+            // is moved to the front; the list fades out at 0.5s, which shows at 1.01s, and the items' runs are dated
+            // back to that at 1.11s.
+            s_phase = new PhaseStore();
+            _mounted = V.Mount(_window.rootVisualElement, V.Component(ReorderedScreen, key: "screen"));
+            var list = Attached(_window.rootVisualElement.Q<VisualElement>("list"));
+            var moved = list.Q<VisualElement>("c");
+            ToPhase(1);
+            RunFor(list, 0.1);
+            RunFor(list, 0.1);
+            ToPhase(2);
+            RunFor(list, 0.3);
+            ToPhase(3);
+            RunFor(list, 0.1);
+            RunFor(list, 0.41);
+            RunFor(list, 0.1);
+
+            // Act
+            RunFor(list, 1.89);
+
+            // Assert — 2.5s after the list's change, within the moved item's three seconds from it.
+            Assert.That(VisibilityWhileItRuns(moved), Is.EqualTo(Visibility.Visible));
+        }
+
+        [Test]
+        public void Given_AChildsFadeInEndingBetweenItsParentsReversalAndItsEnd_When_TheChildInheritsTheReversal_Then_ItIsHiddenWithTheParent()
+        {
+            // Arrange — the parent fades in for a second and the child for 0.6s, dated back to the parent's change at
+            // 0.2s; the parent is reversed at 0.5s, shortening its reversal to 0.5s, which ends with the update at
+            // 1.01s; the child's run ends with the update at 0.6s, before that.
+            var child = MountedWithChild("transition-all invisible " + OneSecond, "transition-all duration-[600ms] ease-linear",
+                out var parent);
+            Swap(parent, "invisible", "visible");
+            RunFor(parent, 0.1);
+            RunFor(parent, 0.1);
+            RunFor(parent, 0.3);
+            Swap(parent, "visible", "invisible");
+            RunFor(parent, 0.1);
+            RunFor(parent, 0.41);
+
+            // Act
+            RunFor(parent, 0.05);
+
+            // Assert — 1.06s after the change: the child's reversal from 0.5s, shortened by its progress there, ended at
+            // 1s, where a fresh run of 0.6s from 0.5s would still show it.
+            Assert.That(VisibilityWhileItRuns(child), Is.EqualTo(Visibility.Hidden));
         }
     }
 }
