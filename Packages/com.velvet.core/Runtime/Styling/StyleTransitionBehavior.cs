@@ -75,9 +75,6 @@ namespace Velvet
             if (listener.Holds++ == 0)
             {
                 root.RegisterCallback(s_onRun);
-                // Not given back with s_onRun: a visibility run taken under a hold can end once none is left, and what
-                // its end records is what a descendant's run under a later hold dates itself by
-                // (StyleTransitionInterpolation.Ended).
                 root.RegisterCallback(s_onEnd);
             }
             return new Release(root, listener);
@@ -101,6 +98,7 @@ namespace Velvet
                 if (--_listener.Holds == 0)
                 {
                     _root.UnregisterCallback(s_onRun);
+                    _root.UnregisterCallback(s_onEnd);
                 }
             }
         }

@@ -554,12 +554,10 @@ applies, Velvet takes such a transition over at the panel's next animation updat
 elsewhere, as CSS does: a fade-out stays painted until its curve reaches 1, which on `transition-all`'s own curve is
 its end, and a fade-in paints from the first update its curve is above 0, which on that curve and with no delay is the
 first update later than its start; a step that jumps at its start (`ease-[step-start]`) hides a fade-out at once, and
-one that jumps at its end (`ease-[steps(4)]`) keeps a fade-in hidden until its first step. An element that inherits
-`visibility` and transitions it too runs its transition from the style change its ancestor's came from, as CSS starts
-the two together. A `background-position-x` or `-y` transition slides from one position to the other, its percentage
-and its length each taken from one end to the other as CSS takes them, so `left 10px` to `right` passes through every
-point between. A reversal of either is shortened as CSS shortens one. The font properties keep switching partway
-through.
+one that jumps at its end (`ease-[steps(4)]`) keeps a fade-in hidden until its first step. A `background-position-x`
+or `-y` transition slides from one position to the other, its percentage and its length each taken from one end to the
+other as CSS takes them, so `left 10px` to `right` passes through every point between. A reversal of either is
+shortened as CSS shortens one. The font properties keep switching partway through.
 
 `transition-discrete` (`transition-behavior: allow-discrete`) leaves UI Toolkit's transition running, so the
 property switches to the new value partway through, as CSS switches a discrete property; `transition-normal` takes

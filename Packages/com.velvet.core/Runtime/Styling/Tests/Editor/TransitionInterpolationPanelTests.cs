@@ -120,7 +120,7 @@ namespace Velvet.Tests
         }
 
         // The same, as a row a portal puts in an element of another mounted tree, so that two holds are above it.
-        private VisualElement PortedUnderAMount(string classNames)
+        private VisualElement PortedUnderAMount(string classNames, VNode[] children = null)
         {
             var outer = new VisualElement();
             _window.rootVisualElement.Add(outer);
@@ -128,8 +128,26 @@ namespace Velvet.Tests
             var target = outer.Q<VisualElement>("target");
             var source = new VisualElement();
             _window.rootVisualElement.Add(source);
-            _portalMount = V.Mount(source, V.Portal(target, new VNode[] { V.Div(name: "leaf", className: classNames) }));
+            _portalMount = V.Mount(source, V.Portal(target, new VNode[]
+            {
+                V.Div(name: "leaf", className: classNames, children: children),
+            }));
             return Attached(target.Q<VisualElement>("leaf"));
+        }
+
+        // A top element, its child and that child's own, given the classes in that order; returns the last.
+        private VisualElement MountedThreeDeep(string topClasses, string middleClasses, string bottomClasses,
+            out VisualElement top)
+        {
+            _mounted = V.Mount(_window.rootVisualElement, V.Div(name: "leaf", className: topClasses, children: new VNode[]
+            {
+                V.Div(name: "middle", className: middleClasses, children: new VNode[]
+                {
+                    V.Div(name: "bottom", className: bottomClasses),
+                }),
+            }));
+            top = Attached(_window.rootVisualElement.Q<VisualElement>("leaf"));
+            return top.Q<VisualElement>("bottom");
         }
 
         private VisualElement Attached(VisualElement element)
@@ -599,8 +617,9 @@ namespace Velvet.Tests
         [Test]
         public void Given_ASpriteBackground_When_TenPixelsFromTheLeftBecomesTheRightEdge_Then_ItsRectSizesTheTile()
         {
-            // Arrange — a 40px by 20px sprite 15px high is 30px wide, leaving 90px: 22.5px plus 7.5px.
-            var sprite = Kept(Sprite.Create(Kept(new Texture2D(40, 20)), new Rect(0f, 0f, 40f, 20f), Vector2.zero));
+            // Arrange — a 40px by 20px rect of a 64px square texture, 15px high, is 30px wide, leaving 90px: 22.5px
+            // plus 7.5px.
+            var sprite = Kept(Sprite.Create(Kept(new Texture2D(64, 64)), new Rect(0f, 0f, 40f, 20f), Vector2.zero));
 
             // Act
             var offset = AQuarterIntoTenPixelsToRight("app-size-auto-15", new StyleBackground(sprite));
@@ -685,10 +704,10 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AChildTransitioningLongerThanItsParent_When_TheParentTurnsInvisible_Then_TheChildStaysVisibleUntilItsOwnEnd()
+        public void Given_AChildTransitioningLongerThanItsParent_When_TheParentTurnsInvisible_Then_ThreeQuartersOfASecondPastTheParentsEndTheChildIsVisible()
         {
-            // Arrange — a second for the parent and two for the child, both from the parent's style change; frames at
-            // 0.6s and 1.01s.
+            // Arrange — a second for the parent and two for the child; updates at 0.6s and at 1.01s, where the parent's
+            // run ends.
             var child = MountedWithChild("transition-all " + OneSecond, "transition-all duration-[2000ms] ease-linear",
                 out var parent);
             parent.AddToClassList("invisible");
@@ -698,8 +717,27 @@ namespace Velvet.Tests
             // Act
             RunFor(parent, 0.74);
 
-            // Assert — 1.75s after the change.
+            // Assert — 1.75s after the change, past the parent's end and before the child's.
             Assert.That(VisibilityWhileItRuns(child), Is.EqualTo(Visibility.Visible));
+        }
+
+        [Test]
+        public void Given_AChildTransitioningLongerThanItsParent_When_TheParentTurnsInvisible_Then_TheChildsTransitionHasEndedTwoAndAHalfSecondsAfterTheChange()
+        {
+            // Arrange — a second for the parent and two for the child; updates at 0.6s, at 1.01s, where the parent's
+            // run ends and the child's starts, and at 1.75s.
+            var child = MountedWithChild("transition-all " + OneSecond, "transition-all duration-[2000ms] ease-linear",
+                out var parent);
+            parent.AddToClassList("invisible");
+            RunFor(parent, 0.6);
+            RunFor(parent, 0.41);
+            RunFor(parent, 0.74);
+
+            // Act
+            RunFor(parent, 0.75);
+
+            // Assert — a run of two seconds from the update the parent's ended in would still be running.
+            Assert.That(Runs(child, "visibility"), Is.False);
         }
 
         [Test]
@@ -765,6 +803,79 @@ namespace Velvet.Tests
 
             // Assert — 0.6s after the change, a tenth into the child's run.
             Assert.That(VisibilityWhileItRuns(child), Is.EqualTo(Visibility.Visible));
+        }
+
+        [Test]
+        public void Given_ADelayedChildUnderAPortalRowFadingIn_When_ItsDelayHasPassedSinceTheRowsChange_Then_TheChildIsVisible()
+        {
+            // Arrange — the row's run events reach its own hold and its mount's.
+            var parent = PortedUnderAMount("transition-all invisible " + OneSecond,
+                new[] { V.Div(name: "child", className: "transition-all app-delay-half " + OneSecond) });
+            var child = parent.Q<VisualElement>("child");
+            Swap(parent, "invisible", "visible");
+            RunFor(parent, 0.1);
+
+            // Act
+            RunFor(parent, 0.5);
+
+            // Assert — 0.6s after the change, a tenth into the child's run.
+            Assert.That(VisibilityWhileItRuns(child), Is.EqualTo(Visibility.Visible));
+        }
+
+        [Test]
+        public void Given_ADelayedGrandchildUnderTwoGenerationsFadingIn_When_ItsDelayHasPassedSinceTheTopsChange_Then_ItIsVisible()
+        {
+            // Arrange — the middle element's run is dated back to the top's change, and the bottom one's to the same.
+            var bottom = MountedThreeDeep("transition-all invisible " + OneSecond, "transition-all " + OneSecond,
+                "transition-all app-delay-half " + OneSecond, out var top);
+            Swap(top, "invisible", "visible");
+            RunFor(top, 0.1);
+            RunFor(top, 0.1);
+
+            // Act
+            RunFor(top, 0.5);
+
+            // Assert — 0.7s after the change, a fifth into the bottom element's run.
+            Assert.That(VisibilityWhileItRuns(bottom), Is.EqualTo(Visibility.Visible));
+        }
+
+        [Test]
+        public void Given_AParentFadingInAfterHalfASecond_When_ItsChildInheritsTheChange_Then_TheChildsTransitionHasEndedASecondAfterTheChange()
+        {
+            // Arrange — updates at 0.6s, where the parent shows its change, and at 0.7s, where the child's run is dated
+            // back.
+            var child = MountedWithChild("transition-all invisible app-delay-half " + OneSecond, "transition-all " + OneSecond,
+                out var parent);
+            Swap(parent, "invisible", "visible");
+            RunFor(parent, 0.6);
+            RunFor(parent, 0.1);
+
+            // Act
+            RunFor(parent, 0.6);
+
+            // Assert — 1.3s after the change, which a run of a second from the update the parent shows its change in
+            // would still be in.
+            Assert.That(Runs(child, "visibility"), Is.False);
+        }
+
+        [Test]
+        public void Given_AParentAndChildFadingInForASecond_When_TheParentIsReversedAQuarterIn_Then_ItsChildIsHiddenOnceAQuarterSecondHasPassed()
+        {
+            // Arrange — the parent's reversal runs a quarter second from 0.25s and ends with the update at 0.51s, where
+            // the child takes the change up.
+            var child = MountedWithChild("transition-all invisible " + OneSecond, "transition-all " + OneSecond, out var parent);
+            Swap(parent, "invisible", "visible");
+            RunFor(parent, 0.1);
+            RunFor(parent, 0.15);
+            Swap(parent, "visible", "invisible");
+            RunFor(parent, 0.1);
+            RunFor(parent, 0.16);
+
+            // Act
+            RunFor(parent, 0.09);
+
+            // Assert — 0.35s after the reversal, which a child's reversal shortened by its progress at 0.51s outlasts.
+            Assert.That(VisibilityWhileItRuns(child), Is.EqualTo(Visibility.Hidden));
         }
     }
 }

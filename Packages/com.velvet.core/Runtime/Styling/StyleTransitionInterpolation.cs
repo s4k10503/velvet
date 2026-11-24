@@ -10,10 +10,11 @@ using UnityEngine.UIElements;
 namespace Velvet
 {
     /// <summary>
-    /// CSS's interpolation of the longhands UI Toolkit runs a transition of as a switch where CSS transitions them under
-    /// <c>transition-behavior: normal</c>: <c>visibility</c>, which shows <c>visible</c> wherever a transition with a
-    /// visible end has an eased progress strictly between 0 and 1, and <c>background-position-x</c> / <c>-y</c>, which
-    /// slide. From a transition's run event (<see cref="StyleTransitionBehavior"/>), UI Toolkit eases it along a curve
+    /// CSS's interpolation of <c>visibility</c>, which shows <c>visible</c> wherever a transition with a visible end has
+    /// an eased progress strictly between 0 and 1, and of <c>background-position-x</c> / <c>-y</c>, which slide: two of
+    /// the longhands UI Toolkit only switches partway through a transition, where CSS transitions both under
+    /// <c>transition-behavior: normal</c> (<see cref="StyleTransitionBehavior.LandedAtOnce"/> says what becomes of the
+    /// others). From a transition's run event (<see cref="StyleTransitionBehavior"/>), UI Toolkit eases it along a curve
     /// that wraps the one it would otherwise ease on.
     /// </summary>
     /// <remarks>
@@ -53,7 +54,6 @@ namespace Velvet
         /// </summary>
         internal static void Take(VisualElement element, StylePropertyName property)
         {
-            Restarted(element, property);
             if (s_updateValues == null || s_updateComputedStyleAt == null)
             {
                 return;
@@ -62,6 +62,7 @@ namespace Velvet
             {
                 if (Locate(element, property) is not { } entry || !entry.TryLocate(out var running, out var index))
                 {
+                    Unlocated(element, property);
                     return;
                 }
                 var set = entry.Set;
@@ -69,26 +70,28 @@ namespace Velvet
                 var timing = timings.GetValue(index)!;
                 var style = ((Array)set.Styles.GetValue(running)!).GetValue(index)!;
                 // A run event can reach more than one hold on the element's way up: a portal row's and a mount root's
-                // above the row's target.
+                // above the row's target. The first takes the run, and a later one returns before writing over what the
+                // first dated.
                 if (set.Curve.GetValue(timing) is not Func<float, float> current || current.Target is Run)
                 {
                     return;
                 }
                 var startTime = (double)set.StartTime.GetValue(timing)!;
-                var duration = (float)set.Duration.GetValue(timing)!;
                 // The curve StyleEaseCurve gives such a run, which it leaves to this class to give.
                 var curve = StyleEaseCurve.TakenOver(element, property.ToString(), entry.Id, startTime, current);
                 var shortening = (float)set.Shortening.GetValue(timing)!;
-                var run = Shape(property, new Run.Parts(entry, curve, shortening), set.Start.GetValue(style)!,
-                    set.End.GetValue(style)!);
+                var from = set.Start.GetValue(style)!;
+                var to = set.End.GetValue(style)!;
+                if (property == s_visibility)
+                {
+                    (startTime, shortening) = Dated(element, (int)to, set, timing, startTime, shortening);
+                }
+                var duration = (float)set.Duration.GetValue(timing)!;
+                var run = Shape(property, new Run.Parts(entry, curve, shortening, startTime, duration), from, to);
                 var eases = run?.Curve ?? curve;
                 if (ReferenceEquals(eases, current))
                 {
                     return;
-                }
-                if (run is VisibilityRun visibility)
-                {
-                    startTime = visibility.Dated(set, timing, startTime);
                 }
                 set.Curve.SetValue(timing, eases);
                 timings.SetValue(timing, index);
@@ -140,35 +143,40 @@ namespace Velvet
         private abstract class Run
         {
             private readonly Parts _parts;
-            private float _shortening;
+            // The factor last written into the slot: none yet, so the first ease writes the one the run started with,
+            // which Dated can have changed from the slot's.
+            private float _shortening = float.NaN;
             public readonly Func<float, float> Curve;
 
             protected Run(Parts parts)
             {
                 _parts = parts;
-                // MUTANT_SURVIVES(equivalent, line removed): left at zero, its extra writes put the slot's own factor back.
-                _shortening = parts.Shortening;
                 Curve = Ease;
             }
 
-            // The transition, the curve it would otherwise ease on and the shortening factor it started with.
+            // The transition, the curve it would otherwise ease on, the shortening factor it started with, and when it
+            // starts and for how long it runs.
             public readonly struct Parts
             {
                 public readonly Entry Entry;
                 public readonly Func<float, float> Inner;
                 public readonly float Shortening;
+                public readonly double Start;
+                public readonly float Duration;
 
-                public Parts(Entry entry, Func<float, float> inner, float shortening)
+                public Parts(Entry entry, Func<float, float> inner, float shortening, double start, float duration)
                 {
                     Entry = entry;
                     Inner = inner;
                     Shortening = shortening;
+                    Start = start;
+                    Duration = duration;
                 }
             }
 
-            protected VisualElement Element => _parts.Entry.Element;
+            protected Parts Taken => _parts;
 
-            protected float Shortening => _parts.Shortening;
+            protected VisualElement Element => _parts.Entry.Element;
 
             // UI Toolkit's time for the update the curve is eased in.
             protected double Now => (double)s_systemTime!.GetValue(_parts.Entry.AnimationSystem)!;
@@ -189,6 +197,8 @@ namespace Velvet
                 var timing = timings.GetValue(index)!;
                 set.Shortening.SetValue(timing, shortening);
                 timings.SetValue(timing, index);
+                // MUTANT_SURVIVES(equivalent, line removed): left at NaN, every ease writes the factor again, the one it
+                // would otherwise skip as already written.
                 _shortening = shortening;
                 if (start == null)
                 {
@@ -238,6 +248,7 @@ namespace Velvet
                 _to = to;
                 _shows = from;
                 _shown = s_shown.GetValue(parts.Entry.Element, static _ => new Shown());
+                _shown.Last = this;
             }
 
             // Visible strictly between the ends, the nearer end outside them.
@@ -254,29 +265,50 @@ namespace Velvet
                 return selected;
             }
 
-            // The start the run eases from, written into timing: for a value inherited from an ancestor's visibility
-            // transition, dated back to that transition's style change, where CSS starts a descendant's transition of
-            // an inherited value with its ancestor's; UI Toolkit starts it once the ancestor shows the change.
-            public double Dated(Set set, object timing, double startTime)
+            // The factor CSS shortens a reversal of this run by at time: from its curve's own progress then and the factor
+            // it started with.
+            public float ShorteningAt(double time)
             {
-                var delay = (float)set.Delay.GetValue(timing)!;
-                var lag = Math.Min(delay, 0f) * Shortening + Math.Max(delay, 0f);
-                var origin = Inherited(Element, _to, startTime, lag) ?? startTime - lag;
-                _shown.Origin = origin;
-                var start = origin + lag;
-                set.StartTime.SetValue(timing, start);
-                return start;
+                var progress = Mathf.Clamp01((float)((time - Taken.Start) / Taken.Duration));
+                return Mathf.Clamp01(Math.Abs(1f - (1f - Taken.Inner(progress)) * Taken.Shortening));
             }
         }
 
+        // The start a visibility run eases from, written into timing with its duration, and the factor a reversal of it
+        // is shortened by: for a value inherited from an ancestor's visibility transition, those of the run CSS starts at
+        // that transition's style change, where UI Toolkit starts it once the ancestor shows the change and shortens it
+        // by the element's progress there.
+        private static (double Start, float Shortening) Dated(VisualElement element, int to, Set set, object timing,
+            double startTime, float shortening)
+        {
+            var shown = s_shown.GetValue(element, static _ => new Shown());
+            var delay = set.Delay?.GetValue(timing) is float listed ? listed : 0f;
+            var lag = Lag(delay, shortening);
+            var inherited = Inherited(element, to, startTime, lag);
+            shown.Origin = inherited ?? startTime - lag;
+            if (inherited is not { } origin)
+            {
+                return (startTime, shortening);
+            }
+            var factor = shown.Last?.ShorteningAt(origin) ?? shortening;
+            var start = origin + Lag(delay, factor);
+            set.StartTime.SetValue(timing, start);
+            set.Duration.SetValue(timing, (float)set.Duration.GetValue(timing)! / shortening * factor);
+            return (start, factor);
+        }
+
+        // How far a run starts after the style change it came from.
+        private static float Lag(float delay, float shortening) => Math.Min(delay, 0f) * shortening + Math.Max(delay, 0f);
+
         // What an element's visibility transitions last showed, which a descendant's run of the change it inherits dates
         // itself by (Inherited): the style change the element's run came from, when what it shows last changed, and to
-        // what.
+        // what; and the element's last run, by whose progress a later one dated back is shortened (Dated).
         private sealed class Shown
         {
             public double Origin = double.NaN;
             public double ChangedAt = double.NaN;
             public int Value = -1;
+            public VisibilityRun? Last;
 
             public void Changed(int value, double at)
             {
@@ -285,8 +317,8 @@ namespace Velvet
             }
         }
 
-        // A new visibility run of the element: its style change is unknown until Dated gives it or Ended reads it back.
-        private static void Restarted(VisualElement element, StylePropertyName property)
+        // A visibility run of the element Take found nothing of: its style change is unknown until Ended reads it back.
+        private static void Unlocated(VisualElement element, StylePropertyName property)
         {
             if (property == s_visibility)
             {
@@ -312,8 +344,9 @@ namespace Velvet
             var now = Now(element);
             if (double.IsNaN(shown.Origin))
             {
-                // A run that ended in the update its run event came in, which Take could not date: its style change is
-                // taken as this update's time less the duration and delay the element's transition lists.
+                // A run Take could not locate, one that ended in the update its run event came in or one a member that
+                // does not resolve hides: its style change is taken as this update's time less the duration and delay
+                // the element's transition lists.
                 var (duration, delay, _) = StyleCascade.Transition(element, "visibility", null);
                 shown.Origin = now - duration - delay;
             }
@@ -457,7 +490,7 @@ namespace Velvet
             public readonly FieldInfo Curve;
             public readonly FieldInfo Eased;
             public readonly FieldInfo Shortening;
-            public readonly FieldInfo Delay;
+            public readonly FieldInfo? Delay;
             public readonly FieldInfo Start;
             public readonly FieldInfo End;
 
@@ -477,13 +510,27 @@ namespace Velvet
                 Curve = Closed(EngineMember.AnimationTimingEasing, timing);
                 Eased = Closed(EngineMember.AnimationTimingEased, timing);
                 Shortening = Closed(EngineMember.AnimationTimingReversingShortening, timing);
-                Delay = Closed(EngineMember.AnimationTimingDelay, timing);
+                // Read by Dated alone, so where it does not resolve the rest of the set still runs and a delay reads as
+                // none.
+                Delay = ClosedIfResolved(EngineMember.AnimationTimingDelay, timing);
                 Start = Closed(EngineMember.AnimationStyleStart, style);
                 End = Closed(EngineMember.AnimationStyleEnd, style);
             }
 
             private static FieldInfo Closed(EngineMember member, Type type)
                 => NativeTransitionVelocity.Closed(Resolved(member.ResolveField()), type);
+
+            private static FieldInfo? ClosedIfResolved(EngineMember member, Type type)
+            {
+                try
+                {
+                    return Closed(member, type);
+                }
+                catch (Exception exception) when (exception is ArgumentException or MissingMemberException)
+                {
+                    return null;
+                }
+            }
 
             private static T Resolved<T>(T? member) where T : MemberInfo
                 => member ?? throw new MissingMemberException(nameof(StyleTransitionInterpolation));

@@ -339,8 +339,23 @@ namespace Velvet.Tests
         [UnityTest]
         public IEnumerator Given_ASpriteAtItsOwnSize_When_PlacedAtAPercentAndAtRoomsShareOfIt_Then_BothTurnBlueOnOneColumn()
         {
-            // Arrange
-            var sprite = Kept(Sprite.Create(Halves(40, 20), new Rect(0f, 0f, 40f, 20f), Vector2.zero, 100f, 0,
+            // Arrange — the sprite is the 40px by 20px corner of a 64px by 32px texture whose rest is green.
+            var texture = Kept(new Texture2D(64, 32, TextureFormat.RGBA32, false)
+            {
+                filterMode = FilterMode.Point,
+                wrapMode = TextureWrapMode.Clamp,
+            });
+            var texels = new Color32[64 * 32];
+            for (var i = 0; i < texels.Length; i++)
+            {
+                // Texel rows run bottom-up, as a sprite's rect does.
+                var x = i % 64;
+                texels[i] = x >= 40 || i / 64 >= 20 ? new Color32(0, 255, 0, 255)
+                    : x < 20 ? new Color32(255, 0, 0, 255) : new Color32(0, 0, 255, 255);
+            }
+            texture.SetPixels32(texels);
+            texture.Apply();
+            var sprite = Kept(Sprite.Create(texture, new Rect(0f, 0f, 40f, 20f), Vector2.zero, 100f, 0,
                 SpriteMeshType.FullRect));
 
             // Act
