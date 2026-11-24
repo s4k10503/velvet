@@ -13,10 +13,14 @@ namespace Velvet.Tests
     /// <c>V.VirtualList</c> row is taken out of the range. That root renders it before control returns from the
     /// work that ran the commit, as React runs its mutation phase at the discrete event priority, which gives an
     /// update made there outside a transition the sync lane whichever root it targets; so does the list's own root,
-    /// for an update the row's layout cleanup makes on it. So does an update a layout effect makes as a transition
-    /// callback mounts its root, as React clears the transition for a commit, while an update that callback makes
-    /// after the mount is still the transition's. An update a removed row's passive cleanup makes takes no sync
-    /// lane, and the row's insertion cleanup still runs as it leaves.
+    /// for an update the row's layout cleanup makes on it, and a ref cleanup the disposal of a bare reconciler runs
+    /// leaves that root owing the sync lane. So does an update a layout effect makes as a transition callback
+    /// mounts its root, as React clears the transition for a commit, while an update that callback makes after the
+    /// mount is still the transition's. An update a <c>UseEffect</c> makes in a passive flush a transition callback
+    /// runs, at the start of a mount or as a mount flushes its sync work, is no transition's either, as React
+    /// clears the transition for its passive flush, while the callback's own update after that flush still is. An
+    /// update a removed row's passive cleanup makes takes no sync lane, and the row's insertion cleanup still runs
+    /// as it leaves.
     /// </summary>
     [TestFixture]
     internal sealed class MutationPhaseUpdateOnAnotherRootTests
@@ -30,6 +34,7 @@ namespace Velvet.Tests
         private static int s_insertionCleanups;
         private static StateUpdater<int> s_setListHost;
         private static int s_listHostShown;
+        private static bool s_effectRan;
 
         [SetUp]
         public void SetUp()
@@ -43,6 +48,7 @@ namespace Velvet.Tests
             s_insertionCleanups = 0;
             s_setListHost = default;
             s_listHostShown = -1;
+            s_effectRan = false;
         }
 
         [TearDown]
@@ -125,6 +131,22 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(s_shown, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_ARefWhoseCleanupSetsAnotherRootsStateOnABareReconciler_When_TheReconcilerIsDisposed_Then_TheOtherRootOwesTheSyncLane()
+        {
+            // Arrange
+            var other = Mount(V.Component(ShowsItsValue));
+            var scope = new ReconcilerScope();
+            scope.Reconciler.Reconcile(
+                scope.Root, Array.Empty<VNode>(), new VNode[] { V.Div(refCallback: s_refSettingTheOtherRootAsItDetaches) });
+
+            // Act — no entry is open around the disposal, so nothing renders what the cleanup queued
+            scope.Dispose();
+
+            // Assert
+            Assert.That(other.GetSchedulerForTest().OwesSyncLane, Is.True);
         }
 
         // --- A Suspense hiding the children it showed ---
@@ -382,6 +404,105 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(other.GetSchedulerForTest().DelayedPendingCount, Is.EqualTo(1));
+        }
+
+        // --- A passive flush a transition callback runs ---
+
+        [Component]
+        private static VNode SetsTheOtherRootFromItsMountEffect()
+        {
+            Hooks.UseEffect(() =>
+            {
+                s_effectRan = true;
+                s_setShown.Invoke(1);
+                return (Action)null;
+            }, Array.Empty<object>());
+            return V.Div();
+        }
+
+        [Test]
+        public void Given_ARootWhoseMountEffectSetsAnotherRootsStateIsPending_When_ATransitionCallbackMountsARoot_Then_TheEffectsUpdateIsNotOnTheTransitionTier()
+        {
+            // Arrange
+            Mount(V.Component(StartsTransitions));
+            var other = Mount(V.Component(ShowsItsValue));
+            Mount(V.Component(SetsTheOtherRootFromItsMountEffect));
+
+            // Act — the mount's entry starts by running the effects the roots left pending
+            s_start.Invoke(() => Mount(V.Div()));
+
+            // Assert — -1 where the effect did not run
+            Assert.That(s_effectRan ? other.GetSchedulerForTest().DelayedPendingCount : -1, Is.Zero);
+        }
+
+        [Component]
+        private static VNode HasAMountEffect()
+        {
+            Hooks.UseEffect(() =>
+            {
+                s_effectRan = true;
+                return (Action)null;
+            }, Array.Empty<object>());
+            return V.Div();
+        }
+
+        // GREEN_ON_BASE(characterization): the base gives the transition lane to a callback's update after its mount.
+        // The passive flush that mount starts with now sets the open transition aside, and this pins that it hands
+        // the transition back.
+        [Test]
+        public void Given_ATransitionCallbackWhoseMountRanPendingEffects_When_ItSetsAnotherRootsStateAfterTheMount_Then_ThatUpdateWaitsOnTheTransitionTier()
+        {
+            // Arrange
+            Mount(V.Component(StartsTransitions));
+            var other = Mount(V.Component(ShowsItsValue));
+            Mount(V.Component(HasAMountEffect));
+
+            // Act
+            s_start.Invoke(() =>
+            {
+                Mount(V.Div());
+                s_setShown.Invoke(1);
+            });
+
+            // Assert — -1 where the pending effect did not run
+            Assert.That(s_effectRan ? other.GetSchedulerForTest().DelayedPendingCount : -1, Is.EqualTo(1));
+        }
+
+        [Component]
+        private static VNode SetsItsOwnStateFromItsLayoutEffectAndTheOtherRootsFromItsEffect()
+        {
+            var (own, setOwn) = Hooks.UseState(0);
+            Hooks.UseLayoutEffect((Func<Action>)(() =>
+            {
+                if (own == 0) setOwn.Invoke(1);
+                return null;
+            }), Array.Empty<object>());
+            Hooks.UseEffect(() =>
+            {
+                s_effectRan = true;
+                s_setShown.Invoke(1);
+                return (Action)null;
+            }, Array.Empty<object>());
+            return V.Div();
+        }
+
+        // GREEN_ON_BASE(characterization): the base runs this UseEffect after the callback returns, outside the transition.
+        // The layout effect's update now takes the sync lane, whose flush at the end of the mount runs the effect
+        // inside the callback, and this pins that the effect's update is no transition's there either.
+        [Test]
+        public void Given_ATransitionCallbackThatMountsARootWhoseLayoutEffectSetsItsOwnState_When_ItsUseEffectSetsAnotherRootsState_Then_ThatUpdateIsNotOnTheTransitionTier()
+        {
+            // Arrange
+            Mount(V.Component(StartsTransitions));
+            var other = Mount(V.Component(ShowsItsValue));
+            MountedTree mounted = null;
+
+            // Act — the flush after the callback runs the effect wherever the callback left it pending
+            s_start.Invoke(() => mounted = Mount(V.Component(SetsItsOwnStateFromItsLayoutEffectAndTheOtherRootsFromItsEffect)));
+            mounted.FlushEffectsForTest();
+
+            // Assert — -1 where the effect did not run
+            Assert.That(s_effectRan ? other.GetSchedulerForTest().DelayedPendingCount : -1, Is.Zero);
         }
     }
 }

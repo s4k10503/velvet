@@ -837,6 +837,7 @@ namespace Velvet
             if (context.PendingPassiveEffectFibers.Count == 0 && context.PendingPassiveCompletions.Count == 0) return;
             context.EffectCommitDepth++;
             context.PassiveDrainDepth++;
+            FiberWorkLoop.SetTransitionsAside();
             try
             {
                 RunPassivePhases(context);
@@ -844,6 +845,7 @@ namespace Velvet
             }
             finally
             {
+                FiberWorkLoop.HandTransitionsBack();
                 context.PassiveDrainDepth--;
                 context.EffectCommitDepth--;
             }

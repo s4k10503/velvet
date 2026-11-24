@@ -10,8 +10,8 @@ namespace Velvet.Tests
     /// <summary>
     /// Pins when a completed <c>VelvetTask</c>'s awaiter holds a continuation back around a <c>startTransition</c>
     /// callback on the main thread: while a synchronous callback runs, and while an action runs up to its first
-    /// suspension, past a commit it ran whose layout effect started and finished a transition of its own; and not once
-    /// either kind of callback has returned.
+    /// suspension, past a commit it ran whose layout effect started and finished a transition of its own included;
+    /// and not once either kind of callback has returned.
     /// </summary>
     [TestFixture]
     internal sealed class TransitionAwaitGateTests
@@ -82,6 +82,30 @@ namespace Velvet.Tests
 
             // Assert — null where the action did not reach its await past a layout effect that started a transition
             Assert.That(reachedTheAwait && s_innerTransitionStarted ? continuedBeforeTheTick : (bool?)null, Is.False);
+        }
+
+        // GREEN_ON_BASE(characterization): the base holds back an action's await of a completed VelvetTask.
+        // This change rewrote the assignment that raises the gate as the action's scope opens.
+        [Test]
+        public void Given_AnAction_When_ItAwaitsACompletedVelvetTask_Then_ItsContinuationWaitsForTheMainThreadsNextTick()
+        {
+            // Arrange
+            Mount(V.Component(StartsTransitions));
+            var reachedTheAwait = false;
+            var continued = false;
+
+            // Act — the hand-offs then run the continuation held back, so it does not outlive the case
+            s_start.Invoke(async () =>
+            {
+                reachedTheAwait = true;
+                await VelvetTask.CompletedTask;
+                continued = true;
+            });
+            var continuedBeforeTheTick = continued;
+            VelvetMainThread.RunHandoffs();
+
+            // Assert — null where the action did not reach its await
+            Assert.That(reachedTheAwait ? continuedBeforeTheTick : (bool?)null, Is.False);
         }
 
         // GREEN_ON_BASE(characterization): the base holds back a continuation a synchronous callback hands over.
