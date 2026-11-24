@@ -139,7 +139,7 @@ namespace Velvet
             protected Run(Parts parts)
             {
                 _parts = parts;
-                // MUTANT_SURVIVES(equivalent, line removed): its only extra write, at zero, puts the slot's own factor back.
+                // MUTANT_SURVIVES(equivalent, line removed): left at zero, its extra writes put the slot's own factor back.
                 _shortening = parts.Shortening;
                 Curve = Ease;
             }
