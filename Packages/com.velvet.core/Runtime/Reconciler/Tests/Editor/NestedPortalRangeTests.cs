@@ -8,12 +8,14 @@ namespace Velvet.Tests
     /// <summary>
     /// Specifies the ranges recorded for a Portal declared inside another Portal's children on the same target, once
     /// the inner one's rows change in a pass that patches the outer one too: each records the rows its own children
-    /// put on the target, and the ranges do not overlap.
+    /// put on the target, and the ranges do not overlap. An outer one that dropped an inner one held in an element of
+    /// its own takes every row it still renders off the target when it unmounts.
     /// </summary>
     [TestFixture]
     internal sealed class NestedPortalRangeTests
     {
         private static StateUpdater<int> s_setInner;
+        private static StateUpdater<int> s_setStage;
         private static VisualElement s_target;
         private static int s_initialInner = 1;
 
@@ -95,6 +97,46 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(ranges[0].Length, Is.EqualTo(1));
+        }
+
+        // Stage 0 mounts both Portals, 1 drops the inner one, and 2 unmounts the outer one. The inner one is held in an
+        // element of the outer's and dropped for a null, so its range leaves through DeletionCommit.DetachPortals;
+        // dropped from among the outer's own children, it leaves through FiberElementCleaner.CleanupPortal.
+        [Component]
+        private static VNode HeldInnerHost()
+        {
+            var (stage, setStage) = Hooks.UseState(0);
+            s_setStage = setStage;
+            if (stage == 2) return V.Div();
+            return V.Div(children: new VNode[]
+            {
+                V.Portal(s_target, key: "outer", children: new VNode[]
+                {
+                    V.Label(text: "a", key: "a"),
+                    V.Div(key: "holder", children: new VNode[]
+                    {
+                        stage == 0 ? V.Portal(s_target, key: "inner", children: new VNode[] { V.Label(text: "b", key: "b") }) : null,
+                    }),
+                }),
+            });
+        }
+
+        [Test]
+        public void Given_AnOuterPortalWhosePatchDroppedAnInnerOneHeldInAnElementOfItsOwn_When_TheOuterUnmounts_Then_TheTargetIsLeftEmpty()
+        {
+            // Arrange
+            using var mounted = V.Mount(new VisualElement(), V.Component(HeldInnerHost, key: "host"));
+            s_setStage.Invoke(1);
+            mounted.FlushStateForTest();
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Act
+            s_setStage.Invoke(2);
+            mounted.FlushStateForTest();
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert
+            Assert.That(s_target.childCount, Is.EqualTo(0));
         }
     }
 }

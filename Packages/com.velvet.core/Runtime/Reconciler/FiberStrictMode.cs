@@ -31,8 +31,19 @@ namespace Velvet
         internal static string ComputeSignature(VNode?[] tree)
         {
             var sb = new StringBuilder();
-            AppendTree(sb, tree);
-            return sb.ToString();
+            try
+            {
+                AppendTree(sb, tree);
+                return sb.ToString();
+            }
+            catch (Exception)
+            {
+                // A value whose ToString throws leaves the output unreadable. It is signed as the empty string, which
+                // no readable output's signature equals, so an output unreadable on both passes compares equal and one
+                // unreadable on one pass is reported as impure. Thrown, it would leave the render the diagnostic runs
+                // after: FiberRenderer.DoubleInvokeRenderForStrictMode signs the committed output outside its try.
+                return string.Empty;
+            }
         }
 
         private static void AppendTree(StringBuilder sb, VNode?[] tree)
