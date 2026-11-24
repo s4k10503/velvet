@@ -10,8 +10,9 @@ namespace Velvet.Tests
     /// <summary>
     /// Specifies that each of <see cref="InheritedStyleHash"/>'s two paths stores the hash UI Toolkit's own style pass
     /// stored for an element: the compiled accessor an editor builds, and the reflection an IL2CPP player reads through,
-    /// reached here past the editor's dispatch. And that a refresh through the first allocates nothing. Each case
-    /// replaces the stored hash with one the pass did not store before it refreshes. GWT, one assert per case.
+    /// reached here past the editor's dispatch. And that <see cref="InheritedStyleHash.Refresh"/> takes the second where
+    /// there is no first, and through the first allocates nothing. Each case replaces the stored hash with one the pass
+    /// did not store before it refreshes. GWT, one assert per case.
     /// </summary>
     [TestFixture]
     internal sealed class InheritedStyleHashTests
@@ -22,6 +23,13 @@ namespace Velvet.Tests
 
         private static readonly MethodInfo? ReflectionPath = typeof(InheritedStyleHash).GetMethod("RefreshByReflection", Hidden);
 
+#if !ENABLE_IL2CPP
+        private static readonly FieldInfo? CompiledField = typeof(InheritedStyleHash).GetField("s_compiled", Hidden);
+
+        // The accessor the editor built, put back after a case takes it away.
+        private object? _compiled;
+#endif
+
         private HeadlessEditorPanelHost _host;
         private VisualElement _element;
         private int _passStored;
@@ -29,6 +37,9 @@ namespace Velvet.Tests
         [SetUp]
         public void SetUp()
         {
+#if !ENABLE_IL2CPP
+            _compiled = CompiledField?.GetValue(null);
+#endif
             _host = new HeadlessEditorPanelHost();
             _element = new VisualElement();
             _element.style.color = new Color(0.7891f, 0.2346f, 0.5679f);
@@ -41,6 +52,9 @@ namespace Velvet.Tests
         [TearDown]
         public void TearDown()
         {
+#if !ENABLE_IL2CPP
+            CompiledField?.SetValue(null, _compiled);
+#endif
             _host?.Dispose();
             _host = null;
         }
@@ -67,12 +81,31 @@ namespace Velvet.Tests
             Assert.That(ReflectionPath != null ? StoredHash(_element) : (int?)null, Is.EqualTo(_passStored));
         }
 
+        [Test]
+        public void Given_NoCompiledAccessor_When_AReplacedHashIsRefreshed_Then_RefreshStoresTheHashTheStylePassStored()
+        {
+            // Arrange — no accessor, as an IL2CPP player has none.
+#if !ENABLE_IL2CPP
+            CompiledField?.SetValue(null, null);
+            var withoutAccessor = CompiledField != null && CompiledField.GetValue(null) == null;
+#else
+            var withoutAccessor = true;
+#endif
+            ReplaceStoredHash();
+
+            // Act
+            InheritedStyleHash.Refresh(_element);
+
+            // Assert — null where the accessor could not be taken away, which a hash can never equal.
+            Assert.That(withoutAccessor ? StoredHash(_element) : (int?)null, Is.EqualTo(_passStored));
+        }
+
 #if !ENABLE_IL2CPP
         [Test]
         public void Given_AStyledElementWhoseStoredHashWasReplaced_When_TheCompiledAccessorRefreshesIt_Then_ItStoresTheHashTheStylePassStored()
         {
             // Arrange
-            var compiled = (Action<VisualElement>)typeof(InheritedStyleHash).GetField("s_compiled", Hidden)?.GetValue(null);
+            var compiled = (Action<VisualElement>?)CompiledField?.GetValue(null);
             ReplaceStoredHash();
 
             // Act

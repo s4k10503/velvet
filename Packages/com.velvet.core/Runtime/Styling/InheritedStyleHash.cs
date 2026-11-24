@@ -27,7 +27,6 @@ namespace Velvet
                 return;
             }
 #endif
-            // MUTANT_SURVIVES(unreachable, line removed): an editor that builds the compiled accessor never reaches this line; InheritedStyleHashTests calls RefreshByReflection directly.
             RefreshByReflection(element);
         }
 
@@ -42,8 +41,9 @@ namespace Velvet
 
 #if !ENABLE_IL2CPP
         // Compiled once, as StyleCascade's readers are, so that a refresh allocates nothing (InheritedStyleHashTests).
-        // Null where a member does not resolve.
-        private static readonly System.Action<VisualElement>? s_compiled = Compile();
+        // Null where a member does not resolve. Not readonly: InheritedStyleHashTests nulls it, as an IL2CPP player has
+        // none, to drive Refresh down the reflection path.
+        private static System.Action<VisualElement>? s_compiled = Compile();
 
         private static System.Action<VisualElement>? Compile()
         {
