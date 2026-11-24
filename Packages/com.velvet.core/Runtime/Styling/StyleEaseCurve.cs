@@ -125,7 +125,8 @@ namespace Velvet
     // Runs a USS transition along an easing function transition-timing-function cannot name: it takes only an
     // EasingMode. UI Toolkit still runs the transition, with the duration, delay and reversal the element's transition
     // lists give it, per property; this class replaces the curve it eases by once the engine reports the transition
-    // running (RunningStyleTransition.Retime).
+    // running (RunningStyleTransition.Retime), but for the properties StyleTransitionInterpolation interpolates, which
+    // wraps the curve TakenOver gives.
     //
     // Two sources give an element a function: the ease-[...] layer, which StyleArbitraryValueResolver resolves (and a
     // theme class, ease-snappy for --ease-snappy, resolves to), and the keyword the element's rules resolve, read when
@@ -463,6 +464,12 @@ namespace Velvet
             // on, as a CSS transition keeps its timing function.
             foreach (var name in evt.stylePropertyNames)
             {
+                // Eased on the curve TakenOver gives instead, whichever of the two run-event callbacks comes first: a
+                // curve StyleTransitionInterpolation wraps can match a keyword's here and be swapped out.
+                if (StyleTransitionInterpolation.Interpolates(name))
+                {
+                    continue;
+                }
                 if (RunningStyleTransition.Retime(element, name,
                         classes ?? (OnWebAnimations(element, name.ToString()) ? s_engineToAcceleratedMotion : s_engineToMotion))
                     is { } run)

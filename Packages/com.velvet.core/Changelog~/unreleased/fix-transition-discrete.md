@@ -12,4 +12,4 @@
   animation update, which lands the new value; it switched the property partway through the transition, where CSS's
   default `transition-behavior` changes it at once. That holds whatever gave the element the transition:
   `transition-all`, a `duration-*` alone, a stylesheet's own `transition-property`, an inline write or a `V.Motion`
-  `Tween` variant swap UI Toolkit's own transition runs. `visibility`, `background-position` and the font properties keep switching partway through.
+  `Tween` variant swap UI Toolkit's own transition runs. The font properties keep switching partway through.

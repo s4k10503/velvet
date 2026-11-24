@@ -11,6 +11,7 @@ namespace Velvet
     /// <see cref="LandedAtOnce"/> on an element under a <see cref="Hold"/> is cancelled, which lands the new value,
     /// where CSS's default <c>normal</c> changes such a property at once, unless <c>transition-discrete</c> outranks
     /// <c>transition-normal</c> on the element. TransitionDiscretePanelTests fails when a cancel stops landing the value.
+    /// A transition of visibility or background-position under a hold goes to <see cref="StyleTransitionInterpolation"/>.
     /// </summary>
     internal static class StyleTransitionBehavior
     {
@@ -106,6 +107,11 @@ namespace Velvet
             }
             foreach (var name in evt.stylePropertyNames)
             {
+                // Whether transition-discrete applies or not, as allow-discrete changes neither in CSS.
+                if (StyleTransitionInterpolation.Interpolates(name))
+                {
+                    StyleTransitionInterpolation.Take(element, name);
+                }
                 if (s_cancelArguments.TryGetValue(name, out var arguments) && !AllowsDiscrete(element))
                 {
                     try
