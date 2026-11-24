@@ -787,11 +787,11 @@ namespace Velvet
             _ctx.SamePanelPortalBridges.Remove(target);
         }
 
-        // Destroys the framework-owned world-space host bound to a departing placeholder, once the rows of its root have
-        // left it through removals of their own (WorldSpaceHostRemovalTests). A pass that records those removals
-        // (CleanupPortal's, and those DeletionCommit.Queue records for a Portal its deletion detached) applies them after
-        // this, so while one is open the host waits for ReleaseRetiredWorldSpaceHosts. Layer hosts are deliberately NOT
-        // torn down here: they are shared per layer and persist until reconciler disposal.
+        // The host goes only once the rows of its root have left it through removals of their own
+        // (WorldSpaceHostRemovalTests). A pass that records those removals (CleanupPortal's, and those DeletionCommit.Queue
+        // records for a Portal its deletion detached) applies them after this, so while one is open the host waits for
+        // ReleaseRetiredWorldSpaceHosts. Layer hosts are deliberately NOT torn down here: they are shared per layer and
+        // persist until reconciler disposal.
         private void CleanupWorldSpaceHost(VisualElement element)
         {
             if (!_ctx.WorldSpaceBindings.TryGetValue(element, out var record))
@@ -800,7 +800,7 @@ namespace Velvet
             }
 
             _ctx.WorldSpaceBindings.Remove(element);
-            // Focus, if the host held any, was handed back by RescueFocusFromWorldSpaceHost (see CleanupElementCore).
+            // Focus, if the host held any, was already rescued by RescueFocusFromWorldSpaceHost (see CleanupElementCore).
             if (ChildListWrites.PassIsOpen)
             {
                 _ctx.RetiredWorldSpaceHosts.Enqueue(record);
@@ -809,8 +809,8 @@ namespace Velvet
             PanelHostFactory.Destroy(record);
         }
 
-        // Destroys the world-space hosts CleanupWorldSpaceHost left for the end of the pass. Runs from Reconciler.FinishPass,
-        // where the pass's recorded writes have applied, and from the reconciler's dispose sweep.
+        // Runs from Reconciler.FinishPass, where the pass's recorded writes have applied, and from the reconciler's dispose
+        // sweep.
         internal void ReleaseRetiredWorldSpaceHosts()
         {
             var retired = _ctx.RetiredWorldSpaceHosts;

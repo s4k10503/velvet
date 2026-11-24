@@ -499,7 +499,7 @@ namespace Velvet
                         }
                         finally
                         {
-                            // Behind the z-* release, which takes a relocated element out of a host's root itself.
+                            // Behind the z-* release, which removes a relocated element a host's root still holds.
                             ElementCleaner.ReleaseRetiredWorldSpaceHosts();
                         }
                     }
