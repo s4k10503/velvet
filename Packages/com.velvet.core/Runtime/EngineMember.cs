@@ -333,6 +333,9 @@ namespace Velvet
         internal static readonly EngineMember AnimationTimingReversingShortening = Field(UIElements,
             AnimationSystemType + "+Values`1+TimingData", "reversingShorteningFactor", "System.Single");
 
+        internal static readonly EngineMember AnimationTimingDelay =
+            Field(UIElements, AnimationSystemType + "+Values`1+TimingData", "delay", "System.Single");
+
         internal static readonly EngineMember AnimationStyleStart =
             Field(UIElements, AnimationSystemType + "+Values`1+StyleData", "startValue", "*");
 

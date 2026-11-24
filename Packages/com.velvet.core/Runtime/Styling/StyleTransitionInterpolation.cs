@@ -3,24 +3,26 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using UnityEngine;
 using UnityEngine.UIElements;
 
 namespace Velvet
 {
     /// <summary>
-    /// CSS's interpolation of the two longhands UI Toolkit runs a transition of as a switch where CSS transitions them
-    /// under <c>transition-behavior: normal</c>: <c>visibility</c>, visible for the whole of a transition either end of
-    /// which is visible, and <c>background-position-x</c> / <c>-y</c>, which slide. From a transition's run event
-    /// (<see cref="StyleTransitionBehavior"/>), UI Toolkit eases it along a curve that wraps the one it would otherwise
-    /// ease on.
+    /// CSS's interpolation of the longhands UI Toolkit runs a transition of as a switch where CSS transitions them under
+    /// <c>transition-behavior: normal</c>: <c>visibility</c>, which shows <c>visible</c> wherever a transition with a
+    /// visible end has an eased progress strictly between 0 and 1, and <c>background-position-x</c> / <c>-y</c>, which
+    /// slide. From a transition's run event (<see cref="StyleTransitionBehavior"/>), UI Toolkit eases it along a curve
+    /// that wraps the one it would otherwise ease on.
     /// </summary>
     /// <remarks>
     /// The curve returns a progress on the side of a half that shows CSS's value, and for a slide writes CSS's position
-    /// over the start UI Toolkit shows below a half. A reversal is shortened by the reversed transition's eased progress
-    /// times its shortening factor, so where the progress returned is not the curve's own, the factor is rewritten to
-    /// keep that product. TransitionInterpolationPanelTests fails when the side stops showing CSS's value, and its
-    /// reversal cases when the product stops being kept.
+    /// over the start UI Toolkit shows below a half. A reversal of a transition gets the shortening factor
+    /// clamp01(|1 - (1 - eased progress) * factor|) from it, so where the progress returned is not the curve's own, the
+    /// factor is rewritten to keep (1 - eased progress) * factor what the curve's own progress gives.
+    /// TransitionInterpolationPanelTests fails when the side stops showing CSS's value, and its reversal cases when that
+    /// product stops being kept.
     /// </remarks>
     internal static class StyleTransitionInterpolation
     {
@@ -39,6 +41,8 @@ namespace Velvet
         private static readonly MethodInfo? s_updateComputedStyleAt =
             EngineMember.AnimationValuesUpdateComputedStyleAt.ResolveMethod();
 
+        private static readonly ConditionalWeakTable<VisualElement, Shown> s_shown = new();
+
         internal static bool Interpolates(StylePropertyName property)
             => property == s_visibility || property == s_positionX || property == s_positionY;
 
@@ -49,6 +53,7 @@ namespace Velvet
         /// </summary>
         internal static void Take(VisualElement element, StylePropertyName property)
         {
+            Restarted(element, property);
             if (s_updateValues == null || s_updateComputedStyleAt == null)
             {
                 return;
@@ -63,8 +68,8 @@ namespace Velvet
                 var timings = (Array)set.Timings.GetValue(running)!;
                 var timing = timings.GetValue(index)!;
                 var style = ((Array)set.Styles.GetValue(running)!).GetValue(index)!;
-                // A run event reaches every hold on the element's way up, which can be more than one: a portal row's and
-                // a mount root's above the row's target.
+                // A run event can reach more than one hold on the element's way up: a portal row's and a mount root's
+                // above the row's target.
                 if (set.Curve.GetValue(timing) is not Func<float, float> current || current.Target is Run)
                 {
                     return;
@@ -74,19 +79,25 @@ namespace Velvet
                 // The curve StyleEaseCurve gives such a run, which it leaves to this class to give.
                 var curve = StyleEaseCurve.TakenOver(element, property.ToString(), entry.Id, startTime, current);
                 var shortening = (float)set.Shortening.GetValue(timing)!;
-                var eases = Shape(property, new Run.Parts(entry, curve, shortening), set.Start.GetValue(style)!,
-                    set.End.GetValue(style)!)?.Curve ?? curve;
+                var run = Shape(property, new Run.Parts(entry, curve, shortening), set.Start.GetValue(style)!,
+                    set.End.GetValue(style)!);
+                var eases = run?.Curve ?? curve;
                 if (ReferenceEquals(eases, current))
                 {
                     return;
+                }
+                if (run is VisibilityRun visibility)
+                {
+                    startTime = visibility.Dated(set, timing, startTime);
                 }
                 set.Curve.SetValue(timing, eases);
                 timings.SetValue(timing, index);
                 var elapsed = (double)s_systemTime!.GetValue(entry.AnimationSystem)! - startTime;
                 if (elapsed >= 0.0)
                 {
-                    // Eased once the slot holds the curve and read again after: Run.Write writes the factor into it.
-                    var eased = eases((float)elapsed / duration);
+                    // Eased once the slot holds the curve and read again after: Run.Write writes the factor into it. A
+                    // start dated back can leave the run past its end, which UI Toolkit ends on its next update.
+                    var eased = eases(Math.Min((float)elapsed / duration, 1f));
                     timing = timings.GetValue(index)!;
                     set.Eased.SetValue(timing, eased);
                     timings.SetValue(timing, index);
@@ -121,8 +132,7 @@ namespace Velvet
         {
             if (property == s_visibility)
             {
-                var toVisible = (int)to == (int)Visibility.Visible;
-                return toVisible == ((int)from == (int)Visibility.Visible) ? null : new VisibilityRun(parts, toVisible);
+                return (int)to == (int)from ? null : new VisibilityRun(parts, (int)from, (int)to);
             }
             return new SlideRun(parts, new Slide((BackgroundPosition)from, (BackgroundPosition)to, property == s_positionY));
         }
@@ -158,66 +168,181 @@ namespace Velvet
 
             protected VisualElement Element => _parts.Entry.Element;
 
+            protected float Shortening => _parts.Shortening;
+
+            // UI Toolkit's time for the update the curve is eased in.
+            protected double Now => (double)s_systemTime!.GetValue(_parts.Entry.AnimationSystem)!;
+
             protected abstract float Select(float progress);
 
             // The start UI Toolkit is to show at the progress, or null for the transition's own.
             protected virtual object? StartAt(float progress) => null;
 
-            // Inside UI Toolkit's animation update, so nothing escapes.
             private void Write(float shortening, object? start)
             {
-                try
+                if (!_parts.Entry.TryLocate(out var running, out var index))
                 {
-                    if (!_parts.Entry.TryLocate(out var running, out var index))
-                    {
-                        return;
-                    }
-                    var set = _parts.Entry.Set;
-                    var timings = (Array)set.Timings.GetValue(running)!;
-                    var timing = timings.GetValue(index)!;
-                    set.Shortening.SetValue(timing, shortening);
-                    timings.SetValue(timing, index);
-                    _shortening = shortening;
-                    if (start == null)
-                    {
-                        return;
-                    }
-                    var styles = (Array)set.Styles.GetValue(running)!;
-                    var style = styles.GetValue(index)!;
-                    set.Start.SetValue(style, start);
-                    styles.SetValue(style, index);
+                    return;
                 }
-                catch (Exception)
+                var set = _parts.Entry.Set;
+                var timings = (Array)set.Timings.GetValue(running)!;
+                var timing = timings.GetValue(index)!;
+                set.Shortening.SetValue(timing, shortening);
+                timings.SetValue(timing, index);
+                _shortening = shortening;
+                if (start == null)
                 {
+                    return;
                 }
+                var styles = (Array)set.Styles.GetValue(running)!;
+                var style = styles.GetValue(index)!;
+                set.Start.SetValue(style, start);
+                styles.SetValue(style, index);
             }
 
+            // Called inside UI Toolkit's animation update, so a failure in what this adds to the wrapped curve eases on
+            // that curve rather than escaping.
             private float Ease(float t)
             {
                 var progress = _parts.Inner(t);
-                var selected = Select(progress);
-                var start = StartAt(progress);
-                var shortening = selected == progress
-                    ? _parts.Shortening
-                    : _parts.Shortening * (1f - progress) / (1f - selected);
-                if (start != null || shortening != _shortening)
+                try
                 {
-                    Write(shortening, start);
+                    var selected = Select(progress);
+                    var start = StartAt(progress);
+                    var shortening = selected == progress
+                        ? _parts.Shortening
+                        : _parts.Shortening * (1f - progress) / (1f - selected);
+                    if (start != null || shortening != _shortening)
+                    {
+                        Write(shortening, start);
+                    }
+                    return selected;
                 }
-                return selected;
+                catch (Exception)
+                {
+                    return progress;
+                }
             }
         }
 
         private sealed class VisibilityRun : Run
         {
-            private readonly bool _toVisible;
+            private readonly int _from;
+            private readonly int _to;
+            private readonly Shown _shown;
+            private int _shows;
 
-            public VisibilityRun(Parts parts, bool toVisible) : base(parts) => _toVisible = toVisible;
+            public VisibilityRun(Parts parts, int from, int to) : base(parts)
+            {
+                _from = from;
+                _to = to;
+                _shows = from;
+                _shown = s_shown.GetValue(parts.Entry.Element, static _ => new Shown());
+            }
 
             // Visible strictly between the ends, the nearer end outside them.
             protected override float Select(float progress)
-                => progress <= 0f || progress >= 1f ? progress
-                    : _toVisible ? Math.Max(progress, 0.5f) : Math.Min(progress, BelowHalf);
+            {
+                var selected = progress <= 0f || progress >= 1f ? progress
+                    : _to == (int)Visibility.Visible ? Math.Max(progress, 0.5f) : Math.Min(progress, BelowHalf);
+                var shows = selected < 0.5f ? _from : _to;
+                if (shows != _shows)
+                {
+                    _shows = shows;
+                    _shown.Changed(shows, Now);
+                }
+                return selected;
+            }
+
+            // The start the run eases from, written into timing: for a value inherited from an ancestor's visibility
+            // transition, dated back to that transition's style change, where CSS starts a descendant's transition of
+            // an inherited value with its ancestor's; UI Toolkit starts it once the ancestor shows the change.
+            public double Dated(Set set, object timing, double startTime)
+            {
+                var delay = (float)set.Delay.GetValue(timing)!;
+                var lag = Math.Min(delay, 0f) * Shortening + Math.Max(delay, 0f);
+                var origin = Inherited(Element, _to, startTime, lag) ?? startTime - lag;
+                _shown.Origin = origin;
+                var start = origin + lag;
+                set.StartTime.SetValue(timing, start);
+                return start;
+            }
+        }
+
+        // What an element's visibility transitions last showed, which a descendant's run of the change it inherits dates
+        // itself by (Inherited): the style change the element's run came from, when what it shows last changed, and to
+        // what.
+        private sealed class Shown
+        {
+            public double Origin = double.NaN;
+            public double ChangedAt = double.NaN;
+            public int Value = -1;
+
+            public void Changed(int value, double at)
+            {
+                Value = value;
+                ChangedAt = at;
+            }
+        }
+
+        // A new visibility run of the element: its style change is unknown until Dated gives it or Ended reads it back.
+        private static void Restarted(VisualElement element, StylePropertyName property)
+        {
+            if (property == s_visibility)
+            {
+                s_shown.GetValue(element, static _ => new Shown()).Origin = double.NaN;
+            }
+        }
+
+        /// <summary>
+        /// Records what the element shows once a transition of the property ends, where that is a visibility its run
+        /// had not shown, for a descendant's transition the change starts.
+        /// </summary>
+        internal static void Ended(VisualElement element, StylePropertyName property)
+        {
+            if (property != s_visibility || !s_shown.TryGetValue(element, out var shown))
+            {
+                return;
+            }
+            var value = (int)element.resolvedStyle.visibility;
+            if (value == shown.Value)
+            {
+                return;
+            }
+            var now = Now(element);
+            if (double.IsNaN(shown.Origin))
+            {
+                // A run that ended in the update its run event came in, which Take could not date: its style change is
+                // taken as this update's time less the duration and delay the element's transition lists.
+                var (duration, delay, _) = StyleCascade.Transition(element, "visibility", null);
+                shown.Origin = now - duration - delay;
+            }
+            shown.Changed(value, now);
+        }
+
+        private static double Now(VisualElement element)
+            => element.panel != null && s_system?.GetValue(element.panel) is { } system
+                ? (double)s_systemTime!.GetValue(system)!
+                : double.NaN;
+
+        // The style change of the nearest ancestor whose own visibility transition changed what it shows to value in the
+        // update the element's run began after, its start lag past that update's time: a change the element inherits.
+        private static double? Inherited(VisualElement element, int value, double startTime, float lag)
+        {
+            for (var ancestor = element.hierarchy.parent; ancestor != null; ancestor = ancestor.hierarchy.parent)
+            {
+                if (!s_shown.TryGetValue(ancestor, out var shown) || shown.Value != value || double.IsNaN(shown.Origin))
+                {
+                    continue;
+                }
+                // Exact, as UI Toolkit takes a run's start as the same sum of its last update's time and the lag; the
+                // inherited-run cases of TransitionInterpolationPanelTests fail where it stops doing so.
+                if (shown.ChangedAt + lag == startTime)
+                {
+                    return shown.Origin;
+                }
+            }
+            return null;
         }
 
         private sealed class SlideRun : Run
@@ -249,7 +374,7 @@ namespace Velvet
             }
 
             // In the unit both ends share where they share one, which follows the element's size as it changes; a value
-            // holding both terms goes in pixels from the near edge, against the room on the frame it is written for.
+            // holding both terms goes in pixels from the left or top edge, against the room on the frame it is written for.
             public BackgroundPosition At(float progress, VisualElement element)
             {
                 var percent = Mathf.LerpUnclamped(_fromPercent, _toPercent, progress);
@@ -332,6 +457,7 @@ namespace Velvet
             public readonly FieldInfo Curve;
             public readonly FieldInfo Eased;
             public readonly FieldInfo Shortening;
+            public readonly FieldInfo Delay;
             public readonly FieldInfo Start;
             public readonly FieldInfo End;
 
@@ -351,6 +477,7 @@ namespace Velvet
                 Curve = Closed(EngineMember.AnimationTimingEasing, timing);
                 Eased = Closed(EngineMember.AnimationTimingEased, timing);
                 Shortening = Closed(EngineMember.AnimationTimingReversingShortening, timing);
+                Delay = Closed(EngineMember.AnimationTimingDelay, timing);
                 Start = Closed(EngineMember.AnimationStyleStart, style);
                 End = Closed(EngineMember.AnimationStyleEnd, style);
             }

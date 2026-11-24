@@ -11,7 +11,8 @@ namespace Velvet
     /// <see cref="LandedAtOnce"/> on an element under a <see cref="Hold"/> is cancelled, which lands the new value,
     /// where CSS's default <c>normal</c> changes such a property at once, unless <c>transition-discrete</c> outranks
     /// <c>transition-normal</c> on the element. TransitionDiscretePanelTests fails when a cancel stops landing the value.
-    /// A transition of visibility or background-position under a hold goes to <see cref="StyleTransitionInterpolation"/>.
+    /// A transition of visibility or background-position under a hold, and the end of one, go to
+    /// <see cref="StyleTransitionInterpolation"/>.
     /// </summary>
     internal static class StyleTransitionBehavior
     {
@@ -40,6 +41,7 @@ namespace Velvet
         private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<VisualElement, Listener> s_listeners =
             new();
         private static readonly EventCallback<TransitionRunEvent> s_onRun = OnRun;
+        private static readonly EventCallback<TransitionEndEvent> s_onEnd = OnEnd;
         private static readonly MethodInfo? s_cancel = EngineMember.CancelStyleAnimation.ResolveMethod();
         // The cancel's argument for each of LandedAtOnce; none where an engine member does not resolve, which leaves
         // UI Toolkit's transitions as they run.
@@ -73,6 +75,10 @@ namespace Velvet
             if (listener.Holds++ == 0)
             {
                 root.RegisterCallback(s_onRun);
+                // Not given back with s_onRun: a visibility run taken under a hold can end once none is left, and what
+                // its end records is what a descendant's run under a later hold dates itself by
+                // (StyleTransitionInterpolation.Ended).
+                root.RegisterCallback(s_onEnd);
             }
             return new Release(root, listener);
         }
@@ -96,6 +102,18 @@ namespace Velvet
                 {
                     _root.UnregisterCallback(s_onRun);
                 }
+            }
+        }
+
+        private static void OnEnd(TransitionEndEvent evt)
+        {
+            if (evt.target is not VisualElement element)
+            {
+                return;
+            }
+            foreach (var name in evt.stylePropertyNames)
+            {
+                StyleTransitionInterpolation.Ended(element, name);
             }
         }
 

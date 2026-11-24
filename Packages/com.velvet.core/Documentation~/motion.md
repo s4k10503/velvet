@@ -550,12 +550,16 @@ a tree is mounted on, a layer or world-space panel's root, or a row a portal put
 UI Toolkit switches `visibility` and `background-position` partway through as well, where CSS transitions both under
 `normal`. On an element Velvet renders, whatever gave it the transition and whether or not `transition-discrete`
 applies, Velvet takes such a transition over at the panel's next animation update. A `visibility` transition with a
-`visible` end then shows `visible` wherever its eased progress lies strictly between its ends, and the nearer end
-elsewhere: on a curve that stays within its ends, a fade-out stays painted until it ends, and a fade-in with no delay
-paints from that update. A `background-position-x` or `-y` transition slides from one position to the other, its
-percentage and its length each taken from one end to the other as CSS takes them, so `left 10px` to `right` passes
-through every point between. A reversal of either is shortened as CSS shortens one. The font properties keep switching
-partway through.
+`visible` end then shows `visible` wherever its eased progress lies strictly between 0 and 1, and the nearer end
+elsewhere, as CSS does: a fade-out stays painted until its curve reaches 1, which on `transition-all`'s own curve is
+its end, and a fade-in paints from the first update its curve is above 0, which on that curve and with no delay is the
+first update later than its start; a step that jumps at its start (`ease-[step-start]`) hides a fade-out at once, and
+one that jumps at its end (`ease-[steps(4)]`) keeps a fade-in hidden until its first step. An element that inherits
+`visibility` and transitions it too runs its transition from the style change its ancestor's came from, as CSS starts
+the two together. A `background-position-x` or `-y` transition slides from one position to the other, its percentage
+and its length each taken from one end to the other as CSS takes them, so `left 10px` to `right` passes through every
+point between. A reversal of either is shortened as CSS shortens one. The font properties keep switching partway
+through.
 
 `transition-discrete` (`transition-behavior: allow-discrete`) leaves UI Toolkit's transition running, so the
 property switches to the new value partway through, as CSS switches a discrete property; `transition-normal` takes
