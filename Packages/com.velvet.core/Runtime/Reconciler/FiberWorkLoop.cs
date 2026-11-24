@@ -59,8 +59,13 @@ namespace Velvet
         // Swapped with OpenTransitionScopes where the outermost mutation or layout work begins and again where it
         // ends, which sets the scopes open around that work aside for its span. A scope opened inside the work
         // closes before the work ends, so the list swapped out at the end is empty. The swap leaves
-        // AwaitContinuationGate.OpenScopes alone, since the callbacks it sets aside are still running.
+        // AwaitContinuationGate.OpenScopes alone (TransitionCallbacksRunning).
         private static List<HookTransitionSlot> s_scopesSetAsideByCommit = new();
+
+        // What RunInTransitionScope sets AwaitContinuationGate.OpenScopes to. The scopes set aside are callbacks still
+        // running, so a scope that opens and closes inside the work must not let an await of a completed VelvetTask
+        // later in one of them continue inline.
+        private static int TransitionCallbacksRunning => OpenTransitionScopes.Count + s_scopesSetAsideByCommit.Count;
 
         internal static bool IsInMutationOrLayoutWork => s_mutationOrLayoutDepth > 0;
 
@@ -1121,7 +1126,7 @@ namespace Velvet
         private static void RunInTransitionScope(HookTransitionSlot slot, Action body)
         {
             OpenTransitionScopes.Add(slot);
-            AwaitContinuationGate.OpenScopes = OpenTransitionScopes.Count;
+            AwaitContinuationGate.OpenScopes = TransitionCallbacksRunning;
             try
             {
                 body();
@@ -1129,7 +1134,7 @@ namespace Velvet
             finally
             {
                 OpenTransitionScopes.RemoveAt(OpenTransitionScopes.Count - 1);
-                AwaitContinuationGate.OpenScopes = OpenTransitionScopes.Count;
+                AwaitContinuationGate.OpenScopes = TransitionCallbacksRunning;
                 ScheduleDeferredAwaitContinuations();
             }
         }
@@ -1142,7 +1147,7 @@ namespace Velvet
         private static T RunInTransitionScope<T>(HookTransitionSlot slot, Func<T> body)
         {
             OpenTransitionScopes.Add(slot);
-            AwaitContinuationGate.OpenScopes = OpenTransitionScopes.Count;
+            AwaitContinuationGate.OpenScopes = TransitionCallbacksRunning;
             try
             {
                 return body();
@@ -1150,7 +1155,7 @@ namespace Velvet
             finally
             {
                 OpenTransitionScopes.RemoveAt(OpenTransitionScopes.Count - 1);
-                AwaitContinuationGate.OpenScopes = OpenTransitionScopes.Count;
+                AwaitContinuationGate.OpenScopes = TransitionCallbacksRunning;
                 ScheduleDeferredAwaitContinuations();
             }
         }
