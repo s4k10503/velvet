@@ -32,9 +32,6 @@ namespace Velvet.Tests
             s_startTransition = default;
         }
 
-        [TearDown]
-        public void TearDown() => s_firstThrows = false;
-
         [Test]
         public void Given_AnImmediateDrainWhoseFlushOfTheFirstOfTwoQueuedComponentsThrew_When_TheSecondUpdatesAgain_Then_TheNextDrainRendersIt()
         {
@@ -58,7 +55,7 @@ namespace Velvet.Tests
         [Test]
         public void Given_ATransitionDrainWhoseFlushOfTheFirstOfTwoQueuedComponentsThrew_When_TheSecondUpdatesAgainInATransition_Then_TheNextTransitionDrainRendersIt()
         {
-            // Arrange — one transition updates both
+            // Arrange
             using var mounted = V.Mount(_root, V.Component(HostRender, key: "host"));
             var scheduler = mounted.GetSchedulerForTest();
             s_firstThrows = true;
