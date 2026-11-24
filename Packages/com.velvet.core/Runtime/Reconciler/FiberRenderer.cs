@@ -58,7 +58,9 @@ namespace Velvet
 
         #region Lifecycle
 
-        // Attaches the fiber to mountPoint and runs the initial render + layout effects.
+        // Attaches the fiber to mountPoint and runs the initial render + layout effects. The first render of a root a
+        // pass of any context is open for is left to where the commit that follows that pass has ended, as React's
+        // root.render() only schedules inside a render or a commit (ChildListWrites.ReleaseHeld).
         // fiber: Fiber to mount. Must not already be mounted.
         // mountPoint: VisualElement that hosts the rendered tree. Must not be null.
         // sharedContext, onCaughtError, onUncaughtError, motionClock: see SetupMount.
@@ -68,6 +70,26 @@ namespace Velvet
             Action<Exception, ErrorInfo>? onUncaughtError = null)
         {
             SetupMount(fiber, mountPoint, sharedContext, onCaughtError, motionClock, onUncaughtError);
+            if (fiber.IsMountRoot)
+            {
+                Action render = () =>
+                {
+                    // MUTANT_SURVIVES(equivalent, line removed): a root whose render has been made is no longer in the held
+                    // list, so what a later dispose drops from it is nothing.
+                    fiber.HeldMount = null;
+                    RenderMounted(fiber);
+                };
+                if (ChildListWrites.HoldMount(render))
+                {
+                    fiber.HeldMount = render;
+                    return;
+                }
+            }
+            RenderMounted(fiber);
+        }
+
+        private static void RenderMounted(ComponentFiber fiber)
+        {
             var context = fiber.Reconciler!.Context;
             RenderAndReconcile(fiber);
             FiberEffects.CommitSubtreeEffects(fiber, mountDoubleInvoke: true);
@@ -75,7 +97,8 @@ namespace Velvet
             // The setState-in-commit guarantee is entry-point-agnostic: a callback ref or layout
             // effect that writes state during THIS mount (the measure-in-ref pattern) must commit
             // before the caller regains control, exactly as a drain-driven flush loops until quiet —
-            // otherwise the first painted frame shows the pre-write state. A mount inside a VirtualList
+            // otherwise the first painted frame shows the pre-write state. A root mounted while a pass is
+            // open renders where that pass's commit has ended (Mount), and this follows its render. A mount inside a VirtualList
             // range render has no write to flush, its layout work being held for the range
             // (IReconcilerBridge.HoldRowLayoutEffects), and what the queue holds there — the updates the
             // range's own passive flush scheduled among them — is the scheduler's to drain, not this row's.

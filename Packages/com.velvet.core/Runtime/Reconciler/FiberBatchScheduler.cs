@@ -686,8 +686,9 @@ namespace Velvet
         // is the reconcile already on the stack, not which tier is draining. A time-sliced resume
         // (Reconciler.ContinueReconcile) runs via schedule.Execute rather than through
         // Drain, so _draining is false during it; the reconcile-active probe
-        // (SetReconcileActiveProbe) catches that case via SharedReconcileDepth > 0. The
-        // update is not lost — it stays queued and commits on the next-frame callback that
+        // (SetReconcileActiveProbe) catches that case via SharedReconcileDepth > 0, and a pass of any context that
+        // records or applies its writes. The update is not lost — it stays queued, and commits where the commit that
+        // follows the pass has ended (ChildListWrites.ReleaseHeld) or on the next-frame callback that
         // ScheduleImmediate already registered.
         internal void FlushImmediate()
         {

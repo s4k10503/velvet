@@ -741,6 +741,12 @@ namespace Velvet.Tests
         private static int s_otherRenders;
         private static int s_otherBefore;
         private static string s_seenInside;
+        private static string s_shared;
+        private static string s_otherSaw;
+        private static int s_otherPassive;
+        private static int s_otherPassiveBefore;
+        private static bool s_otherClickQueues;
+        private static StateUpdater<int> s_setOther;
         private static ComponentFiber s_clickerOwner;
         private static StateUpdater<bool> s_showClicker;
 
@@ -748,8 +754,18 @@ namespace Velvet.Tests
         private static VNode AnotherRoot()
         {
             var (count, setCount) = Hooks.UseState(0);
+            s_setOther = setCount;
             s_otherRenders++;
-            return V.Button(text: count.ToString(), onClick: () => setCount.Invoke(count + 1), refCallback: element =>
+            s_otherSaw = s_shared;
+            Hooks.UseEffect(() =>
+            {
+                s_otherPassive++;
+                return (Action)null;
+            }, Array.Empty<object>());
+            return V.Button(text: count.ToString(), onClick: () =>
+            {
+                if (s_otherClickQueues) setCount.Invoke(count + 1);
+            }, refCallback: element =>
             {
                 s_otherButton = (Button)element;
                 return () => { };
@@ -774,15 +790,23 @@ namespace Velvet.Tests
             var (shown, setShown) = Hooks.UseState(true);
             s_clickerOwner = FiberAmbientStack.Current;
             s_showClicker = setShown;
+            Hooks.UseLayoutEffect(() =>
+            {
+                s_shared = "after the owner";
+                return (Action)null;
+            }, new object[] { shown });
             return V.Fragment(shown ? V.Component(ClicksAnotherRoot, key: "c") : null);
         }
 
         private static (MountedTree Owner, MountedTree Other) MountTheTwoRoots()
         {
             FiberStrictMode.Enabled = false;
+            s_shared = "before the owner";
+            s_otherClickQueues = true;
             var owner = V.Mount(new VisualElement(), V.Component(OwnerOfTheClicker));
             var other = V.Mount(new VisualElement(), V.Component(AnotherRoot));
             s_otherBefore = s_otherRenders;
+            s_otherPassiveBefore = s_otherPassive;
             return (owner, other);
         }
 
@@ -818,6 +842,61 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(s_otherRenders - s_otherBefore, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_AnApplyThatFiresAHandlerOfAnotherRoot_When_TheOtherRootRendersAfterIt_Then_ItSeesTheOwnersLayoutEffectWrite()
+        {
+            // Arrange
+            var (owner, other) = MountTheTwoRoots();
+            using var ownerTree = owner;
+            using var otherTree = other;
+            s_showClicker.Invoke(false);
+
+            // Act
+            FiberWorkLoop.FlushState(s_clickerOwner);
+
+            // Assert
+            Assert.That(s_otherSaw, Is.EqualTo("after the owner"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base never held the flush, so a later pass of the owner has nothing to make.
+        [Test]
+        public void Given_AFlushOfAnotherRootThatWasHeldAndMade_When_ItIsAskedToRenderLaterOutsideAnyPass_Then_ALaterPassOfTheOwnerDoesNotRenderIt()
+        {
+            // Arrange
+            var (owner, other) = MountTheTwoRoots();
+            using var ownerTree = owner;
+            using var otherTree = other;
+            s_showClicker.Invoke(false);
+            FiberWorkLoop.FlushState(s_clickerOwner);
+            s_setOther.Invoke(previous => previous + 1);
+            var before = s_otherRenders;
+            s_showClicker.Invoke(true);
+
+            // Act
+            FiberWorkLoop.FlushState(s_clickerOwner);
+
+            // Assert
+            Assert.That(s_otherRenders, Is.EqualTo(before));
+        }
+
+        // GREEN_ON_BASE(characterization): the base ran the pending effects where the event flushed them.
+        [Test]
+        public void Given_AnApplyThatFiresAHandlerOfAnotherRootWithPassiveEffectsPending_When_TheHandlerQueuesNothing_Then_TheOtherRootRanThemBeforeControlReturns()
+        {
+            // Arrange
+            var (owner, other) = MountTheTwoRoots();
+            using var ownerTree = owner;
+            using var otherTree = other;
+            s_otherClickQueues = false;
+            s_showClicker.Invoke(false);
+
+            // Act
+            FiberWorkLoop.FlushState(s_clickerOwner);
+
+            // Assert
+            Assert.That(s_otherPassive - s_otherPassiveBefore, Is.EqualTo(1));
         }
     }
 }

@@ -1,3 +1,4 @@
+using System;
 using NUnit.Framework;
 using UnityEngine.UIElements;
 
@@ -177,89 +178,90 @@ namespace Velvet.Tests
             Assert.That(ChildListWrites.IsRecording, Is.False);
         }
 
-        private static VNode[] ZRow()
+        private MountedTree? _mounted;
+
+        private VNode[] TreeMountingARootInsideTheWalk(VisualElement host, Action<VisualElement>? andThen = null)
             => new VNode[]
             {
-                V.Div(name: "parent", className: "relative", children: new VNode[]
+                V.ScrollView(onCreated: scroll =>
                 {
-                    V.Div(name: "z", className: "absolute z-10"),
-                    V.Div(name: "after"),
+                    _mounted = V.Mount(host, V.Div(name: "b"));
+                    andThen?.Invoke(scroll);
                 }),
             };
 
         [Test]
-        public void Given_APassOfAnotherContextBeginningInsideAWalk_When_ItEnds_Then_ItsRelocationWaitsForTheWalk()
+        public void Given_AMountAskedForInsideAWalk_When_TheWalkEnds_Then_TheRootHasNotRenderedInsideIt()
         {
             // Arrange
-            var rootB = new VisualElement();
-            bool? held = null;
-            var treeA = new VNode[]
+            var host = new VisualElement();
+            var seen = -1;
+            var tree = TreeMountingARootInsideTheWalk(host, _ => seen = host.childCount);
+
+            // Act
+            _first.Reconcile(new VisualElement(), Array.Empty<VNode>(), tree);
+            _mounted?.Dispose();
+
+            // Assert
+            Assert.That(seen, Is.Zero);
+        }
+
+        // GREEN_ON_BASE(characterization): the base rendered the root and unmounted it, which leaves the host as empty.
+        [Test]
+        public void Given_AMountAskedForInsideAWalk_When_TheRootIsDisposedBeforeThePassEnds_Then_ItNeverRenders()
+        {
+            // Arrange
+            var host = new VisualElement();
+            var tree = TreeMountingARootInsideTheWalk(host, _ => _mounted!.Dispose());
+
+            // Act
+            _first.Reconcile(new VisualElement(), Array.Empty<VNode>(), tree);
+
+            // Assert
+            Assert.That(host.childCount, Is.Zero);
+        }
+
+        // GREEN_ON_BASE(characterization): the base rendered the root where it was asked for, so it holds its row by the
+        // time control returns; the case pins that holding the render does not leave it for a frame.
+        [Test]
+        public void Given_AMountAskedForInsideAWalk_When_ThePassEnds_Then_TheRootHasRenderedBeforeControlReturns()
+        {
+            // Arrange
+            var host = new VisualElement();
+            var tree = TreeMountingARootInsideTheWalk(host);
+
+            // Act
+            _first.Reconcile(new VisualElement(), Array.Empty<VNode>(), tree);
+            var rendered = host.childCount;
+            _mounted?.Dispose();
+
+            // Assert
+            Assert.That(rendered, Is.EqualTo(1));
+        }
+
+        // GREEN_ON_BASE(characterization): as for the pass that ends without a throw.
+        [Test]
+        public void Given_AMountAskedForInsideAWalk_When_TheApplyOfThePassThrows_Then_TheRootHasStillRendered()
+        {
+            // Arrange
+            var host = new VisualElement();
+            var patcher = new FiberNodePatcher(_first.Context);
+            var tree = TreeMountingARootInsideTheWalk(host, _ => ChildListWrites.RecordPatchPre(
+                new PendingPatch(patcher, new Label(), null, new ElementNode(), 0)));
+
+            // Act
+            try
             {
-                V.ScrollView(onCreated: _ =>
-                {
-                    _second.Reconcile(rootB, System.Array.Empty<VNode>(), ZRow());
-                    held = FiberZLayerCoordinator.PlaceholderOf(_second.Context, rootB.Q<VisualElement>("z")) == null;
-                }),
-            };
-
-            // Act
-            _first.Reconcile(new VisualElement(), System.Array.Empty<VNode>(), treeA);
-
-            // Assert
-            Assert.That(held, Is.EqualTo(true));
-        }
-
-        // GREEN_ON_BASE(characterization): the base settled the nested pass where it ended, ahead of the walk's end.
-        [Test]
-        public void Given_APassOfAnotherContextBeginningInsideAWalk_When_TheWalksPassEnds_Then_ItsRelocationIsMade()
-        {
-            // Arrange
-            var rootB = new VisualElement();
-            var treeA = new VNode[]
+                _first.Reconcile(new VisualElement(), Array.Empty<VNode>(), tree);
+            }
+            catch (NullReferenceException)
             {
-                V.ScrollView(onCreated: _ => _second.Reconcile(rootB, System.Array.Empty<VNode>(), ZRow())),
-            };
-
-            // Act
-            _first.Reconcile(new VisualElement(), System.Array.Empty<VNode>(), treeA);
+            }
+            var rendered = host.childCount;
+            _mounted?.Dispose();
 
             // Assert
-            Assert.That(FiberZLayerCoordinator.PlaceholderOf(_second.Context, rootB.Q<VisualElement>("z")), Is.Not.Null);
-        }
-
-        [Test]
-        public void Given_APassOpenInOneContext_When_AnotherContextWithNoPassRestacksAnElement_Then_ItStaysRelocatedUntilThePassEnds()
-        {
-            // Arrange
-            var rootB = new VisualElement();
-            _second.Reconcile(rootB, System.Array.Empty<VNode>(), ZRow());
-            var z = rootB.Q<VisualElement>("z");
-            ChildListWrites.BeginRecording(_first.Context.Pass);
-
-            // Act
-            FiberZLayerCoordinator.Restack(_second.Context, z, null);
-
-            // Assert
-            Assert.That(FiberZLayerCoordinator.PlaceholderOf(_second.Context, z), Is.Not.Null);
-        }
-
-        // GREEN_ON_BASE(characterization): the base restacked at once, with no pass open, as it does where the open one ends.
-        [Test]
-        public void Given_ARestackLeftWhileAPassWasOpen_When_ThePassEnds_Then_TheElementIsBackInItsSlot()
-        {
-            // Arrange
-            var rootB = new VisualElement();
-            _second.Reconcile(rootB, System.Array.Empty<VNode>(), ZRow());
-            var z = rootB.Q<VisualElement>("z");
-            ChildListWrites.BeginRecording(_first.Context.Pass);
-            FiberZLayerCoordinator.Restack(_second.Context, z, null);
-
-            // Act
-            ChildListWrites.EndRecording(_first.Context.Pass);
-            FiberZLayerCoordinator.RunDeferred();
-
-            // Assert
-            Assert.That(FiberZLayerCoordinator.PlaceholderOf(_second.Context, z), Is.Null);
+            Assert.That(rendered, Is.EqualTo(1));
         }
 
         [Test]

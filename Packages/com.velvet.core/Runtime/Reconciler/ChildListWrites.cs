@@ -481,8 +481,8 @@ namespace Velvet
         // (ParentOf, ChildCount, ElementAtPhysical and the reads above) answer from it meanwhile, and a container with a recorded write is
         // skipped by the checks that compare the model with the live list. Insert, Remove, RemoveAt, RemoveFromHierarchy,
         // HierarchyRemove and Clear made into such a container, or of a child one holds, are recorded behind them too,
-        // and so is one made while they apply. HierarchySort sorts the live list, so it is called where no pass is open
-        // (FiberZLayerCoordinator waits for that), which an assertion checks.
+        // and so is one made while they apply. HierarchySort sorts the live list, so it is called where no pass records a
+        // write for the container, which an assertion checks.
         //
         // The list, and the parents it leaves pending, belong to the ReconcilePass that recorded them, and s_current is
         // the one that is recording or applying, innermost first. Outside every pass nothing is recorded: ParentOf
@@ -514,29 +514,52 @@ namespace Velvet
         // contexts are open at once this answers for the innermost.
         internal static bool PassIsOpen => s_current is { Recording: true } or { Applying: true };
 
-        // The schedulers of contexts that asked for a flush while a pass of another context was open, which they were
-        // refused (HoldsFlush) and which FlushHeld makes where the outermost pass has ended.
+        // What was asked for while a pass was open, which React would have scheduled and not run inside it: the
+        // schedulers whose flush was refused (HoldsFlush) and the mounts of a root (HoldMount). ReleaseHeld makes them
+        // where the commit that follows the pass has ended.
         private static readonly List<FiberBatchScheduler> s_heldFlushes = new();
+        private static readonly List<Action> s_heldMounts = new();
 
-        // Whether a flush asked for by the context whose pass is own is held back by an open pass: any context's, since
-        // none renders while another's writes are recorded or applying. A context other than the one holding the pass
-        // is flushed where the outermost pass ends; the one holding it renders what it queued by its own entry points.
-        internal static bool HoldsFlush(FiberBatchScheduler scheduler, ReconcilePass own)
+        // Whether a flush the scheduler was asked for is held back by an open pass, of any context, in which case it is
+        // remembered for ReleaseHeld.
+        internal static bool HoldsFlush(FiberBatchScheduler scheduler)
         {
             if (!PassIsOpen) return false;
-            if (!own.Recording && !own.Applying && !s_heldFlushes.Contains(scheduler)) s_heldFlushes.Add(scheduler);
+            if (!s_heldFlushes.Contains(scheduler)) s_heldFlushes.Add(scheduler);
             return true;
         }
 
-        // Makes the flushes HoldsFlush refused, once no pass is open.
-        internal static void FlushHeld()
+        // Whether the first render of a root is held back by an open pass, of any context, in which case it is left to
+        // ReleaseHeld.
+        internal static bool HoldMount(Action render)
         {
-            if (s_heldFlushes.Count == 0 || PassIsOpen) return;
-            var held = s_heldFlushes.ToArray();
-            // MUTANT_SURVIVES(equivalent, line removed): a scheduler left in the list is asked to flush again where the next
-            // pass ends and finds nothing queued.
-            s_heldFlushes.Clear();
-            foreach (var scheduler in held) scheduler.FlushImmediate();
+            if (!PassIsOpen) return false;
+            s_heldMounts.Add(render);
+            return true;
+        }
+
+        // Forgets a held render, for a root disposed before it was made.
+        internal static void DropHeldMount(Action render) => s_heldMounts.Remove(render);
+
+        private const int MaxHeldRounds = 50;
+
+        // Makes what was held while a pass was open once none is: the pending passive effects of each held context,
+        // then its flush, then the held renders, in the order they were asked for. What those ask for in turn is held
+        // by the pass they open and is made by the round after, up to a bound that stops a chain that never settles.
+        internal static void ReleaseHeld()
+        {
+            // MUTANT_SURVIVES(unreachable, boundary): no chain of held work in the suite runs to the bound, which only stops one
+            // that never settles.
+            for (var round = 0; round < MaxHeldRounds && !PassIsOpen && (s_heldFlushes.Count > 0 || s_heldMounts.Count > 0); round++)
+            {
+                var flushes = s_heldFlushes.ToArray();
+                var mounts = s_heldMounts.ToArray();
+                s_heldFlushes.Clear();
+                s_heldMounts.Clear();
+                foreach (var scheduler in flushes) scheduler.FlushPendingPassiveEffects();
+                foreach (var scheduler in flushes) scheduler.FlushImmediate();
+                foreach (var render in mounts) render();
+            }
         }
 
         // A pass that starts while another is open leaves the other's recorded writes where they are. It reads the
@@ -728,6 +751,9 @@ namespace Velvet
 
         // Whether a pass is recording writes it has not applied yet.
         internal static bool IsRecording => s_current is { Recording: true, Applying: false };
+
+        // Whether the recorded writes are being applied.
+        internal static bool IsApplying => s_current is { Applying: true };
 
         // Whether a patch of element waits for the pass to end: one made where a pass records, to an element that has a
         // live or a recorded parent. An element with neither is written at once.

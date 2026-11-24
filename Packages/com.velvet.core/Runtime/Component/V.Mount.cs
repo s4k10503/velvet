@@ -18,6 +18,11 @@ namespace Velvet
         /// cleanups run as on any unmount, <paramref name="target"/> is left without the tree's elements, and the
         /// error is reported to <see cref="MountOptions.OnUncaughtError"/>. The handle stays valid, and
         /// disposing it is still how the root is released.
+        /// <para>
+        /// Called while a pass of any root records or applies its writes (from an <c>onCreated</c> callback, say), it
+        /// returns the handle at once and renders the tree where the commit that follows the pass has ended, as React's
+        /// <c>root.render()</c> only schedules inside a render or a commit.
+        /// </para>
         /// </remarks>
         /// <param name="target">The VisualElement to mount onto.</param>
         /// <param name="tree">
@@ -162,6 +167,11 @@ namespace Velvet
             // before unmounting so IsDisposed-gated closures (UseMutation continuations,
             // optimistic update commits) short-circuit instead of mutating a torn-down fiber.
             var context = Root.Reconciler?.Context;
+            if (Root.HeldMount != null)
+            {
+                ChildListWrites.DropHeldMount(Root.HeldMount);
+                Root.HeldMount = null;
+            }
             FiberRenderer.Dispose(Root);
             StyleThemeTokens.Release(context);
             if (context != null) FiberErrorBoundary.ReportErrorsDuringDisposal(context);
