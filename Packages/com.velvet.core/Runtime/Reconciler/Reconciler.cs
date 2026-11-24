@@ -1006,6 +1006,7 @@ namespace Velvet
             {
                 TextShownWatch.Detach(_ctx, element);
             }
+            _ctx.FontScope.ForgetAll();
             // Gradient elements hold an inline background-image referencing a shared baked texture: clear
             // the inline image so a still-mounted element released at root disposal carries no residue
             // (the cached textures themselves are shared and outlive the reconciler).

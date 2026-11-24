@@ -1,6 +1,7 @@
 #nullable enable
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 using UnityEngine.TextCore.Text;
 using UnityEngine.UIElements;
 
@@ -34,6 +35,14 @@ namespace Velvet
     // the parent resolves a definition and a legacy font, once for each ancestor up to the one naming a family, an
     // inheritor or an author's definition (AncestorLegacy); where the matcher cannot be built, only inline fonts are read.
     //
+    // The same reads are also taken in each style pass that restyles an inheritor (Restyled), which it hears through
+    // MarkerClass and the sheet it carries (MarkerSheet) by ColorReferenceWatch's mechanism. That pass is what brings a
+    // font a class, a pseudo-state or a stylesheet gives an ancestor to the inheritor in the update that shows it on the
+    // ancestor
+    // (Given_ABoldLabelUnderAClasslessElement_When_AnAncestorGainsAClassWhoseRuleGivesItAFont_Then_TheLabelFollowsInThatStylePass),
+    // on a panel without the bundled stylesheet too. Where an engine member this reads does not resolve, no inheritor
+    // carries either, and only the update reads them.
+    //
     // A resolve reads the font of the nearest ancestor that declares one rather than the parent's where the parent only
     // inherits its own (InheritedPeek), and an inheritor resolved in a Tick whose family changed reads again those below
     // it through elements that only inherit (ResolveBelow).
@@ -41,8 +50,9 @@ namespace Velvet
     // A change to the registry resolves every element the tables hold again: one naming a family, or inheriting a
     // named one, at once; one inheriting its parent's font once that font has been read again.
     //
-    // Both tables are keyed by element and torn down with it, so they are enrolled in
-    // ReconcilerContext's pure side-tables.
+    // Both tables are keyed by element and torn down with it: Families as one of ReconcilerContext's pure side-tables,
+    // Inheritors through Forget and ForgetAll, since an entry holds the element's MarkerClass, MarkerSheet and restyle
+    // callback.
     internal sealed class FiberFontScope
     {
         // What an inheritor was last resolved against. Named is the family a font-<name> ancestor names and kept; Seen and
@@ -126,6 +136,43 @@ namespace Velvet
         internal Dictionary<VisualElement, Inheritor> Inheritors { get; } = new();
 
         private const int ChangeWait = 2;
+
+        // Not ColorReferenceWatch's marker, whose rule is the bundled stylesheet's: MarkerSheet holds this one's, so a
+        // panel without that stylesheet reports an inheritor's restyle as well.
+        private const string MarkerClass = "velvet-font-inherit";
+
+        private const string MarkerProperty = "--velvet-font-inherit";
+
+        // The specificity of a single class selector in a stylesheet the importer builds, as SnappedBorderSheets gives it.
+        private const int ClassSpecificity = 11;
+
+        private static readonly EventCallback<CustomStyleResolvedEvent> s_restyled = Restyled;
+
+        private static readonly Type? s_builderType = EngineMember.StyleSheetBuilderConstruct.ResolveType();
+        private static readonly MethodInfo? s_beginRule = EngineMember.StyleSheetBuilderBeginRule.ResolveMethod();
+        private static readonly MethodInfo? s_beginSelector = EngineMember.StyleSheetBuilderBeginComplexSelector.ResolveMethod();
+        private static readonly MethodInfo? s_createClass = EngineMember.StyleSelectorPartCreateClass.ResolveMethod();
+        private static readonly MethodInfo? s_addSelector = EngineMember.StyleSheetBuilderAddSimpleSelector.ResolveMethod();
+        private static readonly MethodInfo? s_endSelector = EngineMember.StyleSheetBuilderEndComplexSelector.ResolveMethod();
+        private static readonly MethodInfo? s_beginProperty = EngineMember.StyleSheetBuilderBeginProperty.ResolveMethod();
+        private static readonly MethodInfo? s_addFloat = EngineMember.StyleSheetBuilderAddFloat.ResolveMethod();
+        private static readonly MethodInfo? s_endProperty = EngineMember.StyleSheetBuilderEndProperty.ResolveMethod();
+        private static readonly MethodInfo? s_endRule = EngineMember.StyleSheetBuilderEndRule.ResolveMethod();
+        private static readonly MethodInfo? s_buildTo = EngineMember.StyleSheetBuilderBuildTo.ResolveMethod();
+        private static readonly PropertyInfo? s_sheetRules = EngineMember.StyleSheetRules.ResolveProperty();
+        private static readonly FieldInfo? s_declaredVariables = EngineMember.StyleRuleCustomPropertiesCount.ResolveField();
+        private static readonly PropertyInfo? s_isDefault = EngineMember.StyleSheetIsDefault.ResolveProperty();
+        private static readonly FieldInfo? s_style = EngineMember.ElementComputedStyle.ResolveField();
+        private static readonly FieldInfo? s_inheritedData = EngineMember.ComputedStyleInheritedData.ResolveField();
+        private static readonly FieldInfo? s_inheritedHash = EngineMember.ElementInheritedStylesHash.ResolveField();
+
+        private static readonly bool s_watches = s_builderType != null && s_beginRule != null && s_beginSelector != null
+            && s_addSelector != null && s_endSelector != null && s_beginProperty != null && s_addFloat != null
+            && s_endProperty != null && s_endRule != null && s_buildTo != null && s_createClass != null && s_isDefault != null
+            && s_sheetRules != null && s_declaredVariables != null && s_style != null && s_inheritedData != null
+            && s_inheritedHash != null;
+
+        private static StyleSheet? s_markerSheet;
 
         private static readonly string[] s_definition = { "-unity-font-definition" };
         private static readonly string[] s_legacy = { "-unity-font" };
@@ -532,9 +579,131 @@ namespace Velvet
             Inheritors[element] = new Inheritor(intent, found.Named, ParentPeek(element), 0, StyleCascade.RulesHash(element),
                 InlineFontLedger.AuthorFont(element), family, foreign, ruleKey, ParentLegacy(element), legacy, FarPeek(element),
                 FarLegacy(element));
+            if (!hadPrior)
+            {
+                Watch(element);
+            }
+
             _wantsFollow = true;
             return hadPrior && moved;
         }
+
+        private static void Watch(VisualElement element)
+        {
+            var sheet = MarkerSheet();
+            if (sheet == null)
+            {
+                return;
+            }
+
+            element.RegisterCallback(s_restyled, TrickleDown.TrickleDown);
+            element.AddToClassList(MarkerClass);
+            element.styleSheets.Add(sheet);
+        }
+
+        private static void Unwatch(VisualElement element)
+        {
+            element.UnregisterCallback(s_restyled, TrickleDown.TrickleDown);
+            element.RemoveFromClassList(MarkerClass);
+            if (s_markerSheet != null)
+            {
+                element.styleSheets.Remove(s_markerSheet);
+            }
+        }
+
+        // The element leaves the table: it no longer carries a font class of this kind, or it is torn down
+        // (FiberElementCleaner).
+        internal void Forget(VisualElement element)
+        {
+            if (Inheritors.Remove(element))
+            {
+                Unwatch(element);
+            }
+        }
+
+        // The tree is disposed, which can leave its elements mounted (Reconciler.Dispose).
+        internal void ForgetAll()
+        {
+            foreach (var element in new List<VisualElement>(Inheritors.Keys))
+            {
+                Forget(element);
+            }
+        }
+
+        // A sheet MarkerSheet built, in this domain or, by its name, an earlier one, as RadiusWatchSheets.IsWatch knows
+        // its own.
+        internal static bool IsMarker(StyleSheet? sheet) => sheet != null && sheet.name == MarkerClass;
+
+        // Marked a default sheet, as a theme is, so that the matcher's readers do not take its rule for an author's
+        // (BorderPreflight.HasAuthorSheet).
+        private static StyleSheet? MarkerSheet()
+        {
+            if (!s_watches)
+            {
+                return null;
+            }
+
+            if (s_markerSheet != null)
+            {
+                return s_markerSheet;
+            }
+
+            var builder = Activator.CreateInstance(s_builderType!)!;
+            s_beginRule!.Invoke(builder, new object[] { 0 });
+            s_beginSelector!.Invoke(builder, new object[] { ClassSpecificity });
+            var parts = Array.CreateInstance(s_createClass!.ReturnType, 1);
+            parts.SetValue(s_createClass.Invoke(null, new object[] { MarkerClass }), 0);
+            s_addSelector!.Invoke(builder, new[] { parts, Enum.ToObject(s_addSelector.GetParameters()[1].ParameterType, 0) });
+            s_endSelector!.Invoke(builder, null);
+            s_beginProperty!.Invoke(builder, new object[] { MarkerProperty, -1 });
+            s_addFloat!.Invoke(builder, new object[] { 1f });
+            s_endProperty!.Invoke(builder, null);
+            s_endRule!.Invoke(builder, null);
+            var sheet = UnityEngine.ScriptableObject.CreateInstance<StyleSheet>();
+            sheet.name = MarkerClass;
+            sheet.hideFlags = UnityEngine.HideFlags.HideAndDontSave;
+            s_buildTo!.Invoke(builder, new object[] { sheet });
+            // Counted as declaring no variable, as RadiusWatchSheets.Build counts its rules.
+            s_declaredVariables!.SetValue(((Array)s_sheetRules!.GetValue(sheet)).GetValue(0), 0);
+            s_isDefault!.SetValue(sheet, true);
+            s_markerSheet = sheet;
+            return sheet;
+        }
+
+        private static bool Stale(VisualElement element, in Inheritor entry)
+            => Moved(element, entry) || (RulesMoved(element, entry) && RuleFontMoved(element, entry));
+
+        private static void Restyled(CustomStyleResolvedEvent evt)
+        {
+            var element = (VisualElement)evt.currentTarget;
+            foreach (var reference in s_scopes)
+            {
+                if (reference.TryGetTarget(out var scope))
+                {
+                    scope.Restyled(element);
+                }
+            }
+        }
+
+        private void Restyled(VisualElement element)
+        {
+            if (!Inheritors.TryGetValue(element, out var entry))
+            {
+                return;
+            }
+
+            if (Stale(element, entry))
+            {
+                Resolve(element, entry.Intent, entry.Wait == 1);
+                Rehash(element);
+            }
+        }
+
+        // The pass hashed what the element passes down before the event this writes in, and keys the cached style of each
+        // child it styles after it on that hash, which without this would name the face this replaced
+        // (Given_TwoBoldContainersOfOneColourUnderAnElementARuleGivesAFontAndUnderNone_When_TheirStylePassRuns_Then_TheLabelUnderTheSecondKeepsItsContainersFace).
+        private static void Rehash(VisualElement element)
+            => s_inheritedHash!.SetValue(element, s_inheritedData!.GetValue(s_style!.GetValue(element)).GetHashCode());
 
         // Starts the per-update read once an inheritor exists and an anchor to schedule it on is known.
         private void Follow()
@@ -554,7 +723,7 @@ namespace Velvet
             {
                 // MUTANT_SURVIVES(equivalent, literal): this branch runs only for an intent that names a family, and ApplyResolved tests foreign only in a conjunction with !intent.HasFamily, which such an intent makes false.
                 StyleFontResolver.ApplyResolved(element, intent, null, foreign: false);
-                Inheritors.Remove(element);
+                Forget(element);
                 var changed = !Families.TryGetValue(element, out var previous) || previous.Family != intent.Family;
                 Families[element] = (intent, intent.Family!);
                 if (changed && !created)
@@ -577,7 +746,7 @@ namespace Velvet
         // The element no longer carries a font class.
         internal void Untrack(VisualElement element)
         {
-            Inheritors.Remove(element);
+            Forget(element);
             if (Families.Remove(element))
             {
                 QueueInheritorsUnder(element);
@@ -639,7 +808,7 @@ namespace Velvet
             foreach (var element in _buffer)
             {
                 var entry = Inheritors[element];
-                if (entry.Wait == 1 || Moved(element, entry) || (RulesMoved(element, entry) && RuleFontMoved(element, entry)))
+                if (entry.Wait == 1 || Stale(element, entry))
                 {
                     ResolveDown(element, entry.Intent, entry.Wait == 1);
                 }
