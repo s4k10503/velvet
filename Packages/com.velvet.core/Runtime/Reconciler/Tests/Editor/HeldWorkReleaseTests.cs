@@ -14,8 +14,9 @@ namespace Velvet.Tests
     /// Specifies the release of what was held while a root rendered or committed: in the order it was asked for, what an
     /// item holds behind what was waiting, one item's exception logged without stopping the rest or replacing the entry's
     /// own, held work of a root that earlier held work took down left unmade, a request that keeps asking for itself
-    /// bounded per release while the rest still runs, a root listed as owing the sync lane flushed only while it still
-    /// owes it, and a render or commit step reached with no entry on the stack asserted.
+    /// bounded per release while the rest still runs, a root's flush refused there dropping what that root has queued,
+    /// a root listed as owing the sync lane flushed only while it still owes it, and a render or commit step reached
+    /// with no entry on the stack asserted.
     /// </summary>
     [TestFixture]
     internal sealed class HeldWorkReleaseTests
@@ -621,23 +622,74 @@ namespace Velvet.Tests
         }
 
         // The click leaves the root owing the sync lane, and its flush joins the request already held under the same key,
-        // which drains nothing; so the root still owes once the bound has refused that request and nothing else is held.
+        // which drains nothing until the bound refuses it. The refusal drops the click's update, so the root owes
+        // nothing once that request is refused, and its next frame has nothing of the click to render.
         [Test]
-        public void Given_ARootOwingTheSyncLaneWhoseFlushTheBoundRefused_When_ThePassEnds_Then_TheReleaseReturns()
+        public void Given_ARootOwingTheSyncLaneWhoseFlushTheBoundRefused_When_ThePassEnds_Then_ItsQueuedUpdateIsDroppedUnrendered()
         {
             // Arrange
             LogAssert.Expect(LogType.Exception, new Regex("Maximum update depth exceeded"));
             var root = MountTheEcho().GetSchedulerForTest();
+            var before = s_echoRenders;
 
             // Act
-            TestDelegate act = () => WalkAsking(() =>
+            WalkAsking(() =>
             {
                 AskingForItself(60, root: root)();
                 s_echoButton.SimulateClick();
             });
 
-            // Assert — a release that took the refused root again would not return
-            Assert.That(act, Throws.Nothing);
+            // Assert — 1 where the click's update survived queued, -1 where the release rendered it
+            Assert.That(s_echoRenders == before ? root.ImmediatePendingCount : -1, Is.Zero);
+        }
+
+        // GREEN_ON_BASE(characterization): the base drops nothing of a root whose flush the bound refuses.
+        // A root with nothing queued has no update to drop, and a drop would forget the captures waiting on it.
+        [Test]
+        public void Given_ARootWithNothingQueuedWhoseFlushTheBoundRefused_When_ThePassEnds_Then_NothingOfItIsDropped()
+        {
+            // Arrange
+            LogAssert.Expect(LogType.Exception, new Regex("Maximum update depth exceeded"));
+            var dropped = false;
+            Holder.SetIntakeDropCallback(() => dropped = true);
+
+            // Act
+            WalkAsking(AskingForItself(60));
+
+            // Assert
+            Assert.That(dropped, Is.False);
+        }
+
+        private static readonly FieldInfo s_externalStoreRenderQueued = typeof(FiberBatchScheduler)
+            .GetField("_externalStoreRenderQueued", BindingFlags.NonPublic | BindingFlags.Instance)!;
+
+        private static bool ExternalStoreRenderQueued(FiberBatchScheduler scheduler)
+            => (bool)s_externalStoreRenderQueued.GetValue(scheduler)!;
+
+        // The counter's change queues its reader's re-render and posts the store flush that owes it, and the bound then
+        // refuses the root's flush, which drops that re-render.
+        [Test]
+        public void Given_ARootWithAStoreRenderQueuedWhoseFlushTheBoundRefused_When_ThePassEnds_Then_ItOwesNoStoreFlush()
+        {
+            // Arrange
+            LogAssert.Expect(LogType.Exception, new Regex("Maximum update depth exceeded"));
+            s_counter = new Counter();
+            var host = V.Mount(new VisualElement(), V.Component(HostsACounterReader));
+            _roots.Add(host);
+            host.FlushEffectsForTest();
+            var scheduler = host.GetSchedulerForTest();
+            var owedInTheWalk = false;
+
+            // Act
+            WalkAsking(() =>
+            {
+                AskingForItself(60, root: scheduler)();
+                s_counter.Set(1);
+                owedInTheWalk = ExternalStoreRenderQueued(scheduler);
+            });
+
+            // Assert — null where the counter's change owed no store flush
+            Assert.That(owedInTheWalk ? ExternalStoreRenderQueued(scheduler) : (bool?)null, Is.False);
         }
 
         private static ComponentFiber s_counterReaderFiber = null!;
