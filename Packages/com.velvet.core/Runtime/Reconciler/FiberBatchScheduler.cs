@@ -213,10 +213,17 @@ namespace Velvet
             if (_draining) _immediateWorkArrivedMidDrain = true;
             // An empty tier holds no sync-lane work, whatever left it empty: a drain, a Remove, a drop or a Clear.
             if (_immediateOrder.Count == 0) _syncLaneQueued = false;
-            if (FiberWorkLoop.IsInDiscreteEvent || ReconcilerContext.AnyInLayoutCommit) MarkSyncLane();
+            if (TakesSyncLane) MarkSyncLane();
             _immediateIntake++;
             if (_immediateSet.Add(fiber)) _immediateOrder.Add(fiber);
             ArmImmediateDrain();
+        }
+
+        private static bool TakesSyncLane => FiberWorkLoop.IsInDiscreteEvent || ReconcilerContext.AnyInLayoutCommit;
+
+        internal void MarkSyncLaneIfTaken()
+        {
+            if (TakesSyncLane) MarkSyncLane();
         }
 
         // A UseSyncExternalStore re-render is React's sync-lane update, which React flushes in a microtask once

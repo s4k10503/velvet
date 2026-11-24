@@ -7,11 +7,12 @@ using Velvet.TestUtilities;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Specifies where a state update that one root's commit makes on an idle component of another root renders:
-    /// before control returns from the work that ran the commit, as React gives an update made inside a commit outside
-    /// a transition the sync lane whichever root it targets and renders every root's sync work as the commit ends. An
-    /// update a <c>UseEffect</c> makes there takes no sync lane, nor does one made outside every commit after a commit
-    /// an exception left.
+    /// Specifies where a state update that one root's commit makes on a component of another root renders: before
+    /// control returns from the work that ran the commit, whether or not that component already has an update queued,
+    /// as React gives an update made inside a commit outside a transition the sync lane whichever root it targets and
+    /// renders every root's sync work as the commit ends. An update a transition or a <c>UseEffect</c> makes there
+    /// takes no sync lane, nor does one made outside every commit and handler, after a commit an exception left
+    /// included. A click handler's update on another root renders where the click's flush ends.
     /// </summary>
     [TestFixture]
     internal sealed class CommitUpdateOnAnotherRootTests
@@ -85,6 +86,54 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(s_shown, Is.EqualTo(1));
+        }
+
+        // The other root's update of 5, made outside every commit, waits on its tier when the layout effect writes 1.
+        [Test]
+        public void Given_ALayoutEffectThatSetsAnotherRootsStateWhereAnUpdateIsQueued_When_ItsRootsDrainReturns_Then_TheOtherRootHasRenderedTheUpdate()
+        {
+            // Arrange
+            var writer = MountTheOtherRootThen(V.Component(WritesFromItsLayoutEffect));
+            s_setShown.Invoke(5);
+            s_setWriter.Invoke(1);
+
+            // Act
+            writer.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert — 0 where neither update rendered
+            Assert.That(s_shown, Is.EqualTo(1));
+        }
+
+        // Sets the other root's state inside a transition from the layout effect of its update.
+        [Component]
+        private static VNode WritesInATransitionFromItsLayoutEffect()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            var (_, start) = Hooks.UseTransition();
+            s_setWriter = setTick;
+            Hooks.UseLayoutEffect((Func<Action>)(() =>
+            {
+                if (tick > 0) start.Invoke(() => s_setShown.Invoke(2));
+                return null;
+            }), new object[] { tick });
+            return V.Div();
+        }
+
+        // GREEN_ON_BASE(characterization): the base leaves a transition's update and the one queued beside it waiting.
+        // React gives an update a commit makes inside a transition its transition lane, so neither is the sync lane's.
+        [Test]
+        public void Given_ALayoutEffectThatSetsAnotherRootsStateInATransitionWhereAnUpdateIsQueued_When_ItsRootsDrainReturns_Then_TheOtherRootHasNotRendered()
+        {
+            // Arrange
+            var writer = MountTheOtherRootThen(V.Component(WritesInATransitionFromItsLayoutEffect));
+            s_setShown.Invoke(5);
+            s_setWriter.Invoke(1);
+
+            // Act
+            writer.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert — 5 where the queued update rendered as the sync lane's
+            Assert.That(s_shown, Is.Zero);
         }
 
         private static readonly Func<VisualElement, Action> s_setsTheOtherRoot = _ =>
@@ -210,6 +259,45 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(other.GetSchedulerForTest().OwesSyncLane, Is.False);
+        }
+
+        // GREEN_ON_BASE(characterization): the base gives no sync lane to a second call outside commits and handlers.
+        // An update folded onto one already queued takes the lane its own call is made under, here no commit's.
+        [Test]
+        public void Given_AComponentWithAnUpdateQueued_When_ItsStateIsSetAgainOutsideEveryCommit_Then_ItsRootOwesNoSyncLane()
+        {
+            // Arrange
+            var other = Mount(V.Component(ShowsItsValue));
+            s_setShown.Invoke(1);
+
+            // Act
+            s_setShown.Invoke(2);
+
+            // Assert
+            Assert.That(other.GetSchedulerForTest().OwesSyncLane, Is.False);
+        }
+
+        // --- Updates a discrete handler makes ---
+
+        [Component]
+        private static VNode SetsTheOtherRootOnAClick()
+            => V.Button(name: "set", onClick: () => s_setShown.Invoke(1));
+
+        // GREEN_ON_BASE(characterization): the base renders another root a click updated where the click's flush ends.
+        // FiberWorkLoop.IsInDiscreteEvent's comment states it, and the sync lane a commit gives shares its mark.
+        [Test]
+        public void Given_AClickHandlerThatSetsAnotherRootsState_When_TheClickReturns_Then_TheOtherRootHasRenderedTheUpdate()
+        {
+            // Arrange
+            Mount(V.Component(ShowsItsValue));
+            var host = new VisualElement();
+            s_mounts.Add(V.Mount(host, V.Component(SetsTheOtherRootOnAClick)));
+
+            // Act
+            host.Q<Button>("set").SimulateClick();
+
+            // Assert
+            Assert.That(s_shown, Is.EqualTo(1));
         }
     }
 }
