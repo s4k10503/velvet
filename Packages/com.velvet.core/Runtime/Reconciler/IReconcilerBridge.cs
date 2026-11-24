@@ -46,9 +46,8 @@ namespace Velvet
         bool BeginRangeForController();
         void EndRangeForController(VisualElement container, bool opened);
 
-        // Re-derives the has- elements of a range rendered or cleared outside a pass, as the end of a flush does those of
-        // the flush's region (FiberWave.RefreshHasVariants), the container being the range's region. Inside a pass it
-        // does nothing, so that no has- element reads a tree the pass has not finished.
+        // Inside a pass this does nothing, so that no has- element reads a tree the pass has not finished. Outside one it
+        // does for a range's container what the end of a flush does for the flush's region (FiberWave.RefreshHasVariants).
         void RefreshHasVariantsForController(VisualElement container);
 
         // Brackets a controller's item create/patch loop so the items inherit the context that enclosed the
