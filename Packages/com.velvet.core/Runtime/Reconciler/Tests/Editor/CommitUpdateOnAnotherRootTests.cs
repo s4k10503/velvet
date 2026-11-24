@@ -9,14 +9,14 @@ using Velvet.TestUtilities;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Specifies where a state update that a layout effect, a layout cleanup an update runs, or a ref setup of one root
-    /// makes on a component of another root renders: before control returns from the work that ran the commit, whether
-    /// or not that component already has an update queued, as React gives an update made inside a commit outside a
-    /// transition the sync lane whichever root it targets and renders every root's sync work as the commit ends. An
-    /// update a transition or a <c>UseEffect</c> makes there takes no sync lane, nor does one made outside every commit
-    /// and handler, after a commit an exception left included. A click handler's update on another root renders where
-    /// the click's flush ends, and two roots whose layout effects update each other stop at the nested-update bound
-    /// without starting again at their next frame.
+    /// Specifies where a state update that a layout effect, the cleanup an update runs before it, or a ref setup of one
+    /// root makes on a component of another root renders: before control returns from the work that ran the commit,
+    /// whether or not that component already has an update queued, as React gives an update made inside a commit
+    /// outside a transition the sync lane whichever root it targets and renders every root's sync work as the commit
+    /// ends. An update a transition or a <c>UseEffect</c> makes there takes no sync lane, nor does one made outside
+    /// every commit and handler, after a commit an exception left included. A click handler's update on another root
+    /// renders where the click's flush ends, and two roots whose layout effects update each other stop at the
+    /// nested-update bound without starting again at their next frame.
     /// </summary>
     [TestFixture]
     internal sealed class CommitUpdateOnAnotherRootTests

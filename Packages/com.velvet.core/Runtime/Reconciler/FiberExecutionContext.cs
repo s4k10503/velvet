@@ -225,8 +225,12 @@ namespace Velvet
                         // effects updating each other ask for it, and each run is a drain of its own, whose cap
                         // (FiberBatchScheduler.DrainImmediatePassesUpTo) never counts the others. So what it queued is
                         // dropped as that cap drops it: left queued, the root's next frame callback renders it and can
-                        // start the loop again.
-                        if (kind == Request.Flush) target?.DropImmediateIntake();
+                        // start the loop again. An empty tier is left alone, as that cap leaves it: a drop also forgets
+                        // the captures waiting on the root's render.
+                        if (kind == Request.Flush && target is { ImmediatePendingCount: > 0 })
+                        {
+                            target.DropImmediateIntake();
+                        }
                         continue;
                     }
                     if (target != null && s_threw.Contains(target) && TakesUpQueuedUpdates(kind)) target.RunInNextFrame(run!, kind != Request.Resolve);
@@ -257,8 +261,8 @@ namespace Velvet
             s_capped.Add(request);
             UnityEngine.Debug.LogException(new InvalidOperationException(
                 "Maximum update depth exceeded. Work that waited for a root's render or commit to end ran "
-                + $"{MaxRunsPerRequest} times before control returned, and was asked for again. Velvet does not run it "
-                + "again before control returns, as React limits nested updates. Where it is a root's update drain, the "
+                + $"{MaxRunsPerRequest} times before control returned, and was asked for again. Velvet limits nested "
+                + "updates and does not run it again before control returns. Where it is a root's update drain, the "
                 + "updates queued for that root are dropped; otherwise the updates still queued for it stay queued."));
             return false;
         }

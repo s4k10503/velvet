@@ -76,8 +76,8 @@ namespace Velvet
         private bool _inImmediateCallback;
 
         // Set by a UseSyncExternalStore re-render entering the immediate tier and cleared once the tier is
-        // empty, by the drain or by Remove. It is also the one posted flush in flight: a post the main thread
-        // discards leaves it set only until then. See OweExternalStoreFlush.
+        // empty, by the drain, by Remove or by DropImmediateIntake. It is also the one posted flush in flight: a
+        // post the main thread discards leaves it set only until then. See OweExternalStoreFlush.
         private bool _externalStoreRenderQueued;
 
         // Guards against re-entering a drain. FlushImmediate runs at the end of a discrete event handler; when
@@ -578,6 +578,7 @@ namespace Velvet
             _onIntakeDropped?.Invoke();
             _immediateOrder.Clear();
             _immediateSet.Clear();
+            _externalStoreRenderQueued = false;
             for (var i = 0; i < droppedFibers.Length; i++)
             {
                 var dropped = droppedFibers[i];
