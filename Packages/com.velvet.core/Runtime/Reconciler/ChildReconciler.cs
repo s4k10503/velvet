@@ -2011,7 +2011,7 @@ namespace Velvet
         // keyed Pass-2 loops so their per-node match/patch/create semantics cannot drift; each loop keeps only
         // its own abort-handling and TryYield scaffolding around this call.
         // NOT folded into PatchOrReplaceAtSlot despite the same CanPatch gate: Pass 2 defers old-element
-        // removal (recorded in replacedKeys, actually removed by a later reverse pass) instead of removing
+        // removal (recorded in replacedKeys, actually removed by the later removal pass) instead of removing
         // eagerly, appends to a newElements list instead of inserting at a live DOM index, and records what
         // the patch left at the slot — three real differences in shape, not just
         // naming, so forcing this through the same helper would need as many bool flags as it has callers.
@@ -2076,7 +2076,7 @@ namespace Velvet
 
         // True when the old entry at index i is not retained by the new tree and must be removed: it was
         // orphaned by a duplicate key, its key was consumed by no new node, or its key was consumed but
-        // replaced because CanPatch returned false. Shared by both keyed Pass-2 reverse-removal loops.
+        // replaced because CanPatch returned false. Shared by both keyed Pass-2 removal loops.
         private static bool ShouldRemoveOldKeyedEntry(
             ChildKey key, int i, HashSet<ChildKey> usedKeys, HashSet<ChildKey> replacedKeys,
             HashSet<int> orphanedOldIndices)

@@ -116,7 +116,7 @@ namespace Velvet
         public KeyedReconcilePhase Phase;
         // Exclusive end of the prefix-match range fixed by Pass 1. Also serves as the Pass 2 start index.
         public int LinearEnd;
-        // Resume index within the current phase. Meaning differs per phase (Pass1: linear scan position, Pass2Remove: next old index to remove, etc.).
+        // Resume index within the current phase. Meaning differs per phase (Pass1: linear scan position, Pass2Remove: next old index it visits, etc.).
         public int ResumeIndex;
 
         #endregion
