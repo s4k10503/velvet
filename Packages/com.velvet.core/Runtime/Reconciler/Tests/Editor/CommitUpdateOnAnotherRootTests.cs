@@ -7,11 +7,11 @@ using Velvet.TestUtilities;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Specifies where a state update that one root's commit makes on another root renders: before control returns
-    /// from the work that ran the commit, as React gives an update made inside a commit outside a transition the sync
-    /// lane whichever root it targets and renders every root's sync work as the commit ends. An update a
-    /// <c>UseEffect</c> makes there takes no sync lane, nor does one made outside every commit after a commit an
-    /// exception left.
+    /// Specifies where a state update that one root's commit makes on an idle component of another root renders:
+    /// before control returns from the work that ran the commit, as React gives an update made inside a commit outside
+    /// a transition the sync lane whichever root it targets and renders every root's sync work as the commit ends. An
+    /// update a <c>UseEffect</c> makes there takes no sync lane, nor does one made outside every commit after a commit
+    /// an exception left.
     /// </summary>
     [TestFixture]
     internal sealed class CommitUpdateOnAnotherRootTests
