@@ -14,7 +14,7 @@ namespace Velvet.Tests
     /// The exception is a <see cref="BoundaryCaughtSignal"/> naming no boundary, thrown by the first component's body.
     /// Rendering rethrows the signal for the walk of the boundary it names; naming none, this one leaves the drain. A
     /// render's own error would not serve: a boundary takes it, or the root, which unmounts the tree
-    /// (<see cref="UncaughtErrorRootTests"/>). Each assertion folds in that the drain threw, so a change that stops the
+    /// (<see cref="UncaughtErrorHandlerTests"/>). Each assertion folds in that the drain threw, so a change that stops the
     /// signal leaving the flush reddens the case rather than passing it with nothing measured.
     /// </remarks>
     [TestFixture]
