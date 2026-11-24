@@ -7,12 +7,12 @@ using Velvet.TestUtilities;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Specifies that each removal below takes the sibling rows it removes off the panel first to last, so their
-    /// <c>DetachFromPanelEvent</c> callbacks run in tree order, as React commits a parent's deletions in the order its
-    /// child reconciler recorded them: the general walk's, of the rows one of its deletions takes, where the new side
-    /// leaves each row's slot empty; the indexed diff's, of an unkeyed list; the keyed diff's tail removal, its trimmed
-    /// middle and its map pass, with the tail removal and the map pass time-sliced as well; and that of the rows of a
-    /// Portal inside a removed row. One case for each.
+    /// Specifies that each removal below takes the rows it removes off the panel first to last, as React commits one
+    /// parent's deletions and one Portal's rows, so their <c>DetachFromPanelEvent</c> callbacks run in that order: the
+    /// general walk's, of the rows one of its deletions takes, where the new side leaves each row's slot empty; the
+    /// indexed diff's, of an unkeyed list; the keyed diff's tail removal, its trimmed middle and its map pass, with the
+    /// tail removal and the map pass time-sliced as well; and that of a deletion that waits for the pass to apply its
+    /// writes, of the rows of a Portal inside a deleted row. One case for each.
     /// </summary>
     /// <remarks>
     /// The rows sit on a real panel, which is what runs a detach callback.
@@ -51,7 +51,6 @@ namespace Velvet.Tests
             return rows;
         }
 
-        // Records each named element under root as its detach callback runs.
         private void LogDetachOf(VisualElement root, params string[] names)
         {
             foreach (var name in names)
