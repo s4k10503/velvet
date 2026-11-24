@@ -315,6 +315,175 @@ namespace Velvet.Tests
             Assert.That(Target(root).style.unityFontDefinition.value.fontAsset, Is.SameAs(s_sansBold));
         }
 
+        // The cases using this update the panel's styles after the change and read the label before the panel's scheduler,
+        // where the per-update read runs, is run again; the bundled stylesheet is what reports the label's restyle.
+        private static VNode AncestorAboveAClasslessElement(string ancestorClass) => V.Div(className: ancestorClass,
+            name: "ancestor", children: new[] { V.Div(children: new[] { BoldTarget() }) });
+
+        [Test]
+        public void Given_ABoldLabelUnderAClasslessElement_When_AnAncestorGainsAClassWhoseRuleGivesItAFont_Then_TheLabelFollowsInThatStylePass()
+        {
+            // Arrange
+            VelvetStyleUtilities.AttachTo(_host.Root);
+            var ruledBold = AttachSheetGivingTheRuledFont();
+            var root = NewRootGivenFont(s_sans);
+            _mounted = V.Mount(root, AncestorAboveAClasslessElement("p-1"));
+            RunAFrame();
+            RunAFrame();
+
+            // Act
+            _mounted.Render(AncestorAboveAClasslessElement("ruled"));
+            EditorPanelTestHelpers.ForcePanelUpdate(_host.Panel);
+
+            // Assert
+            Assert.That(Target(root).style.unityFontDefinition.value.fontAsset, Is.SameAs(ruledBold));
+        }
+
+        [Test]
+        public void Given_ABoldLabelUnderAClasslessElement_When_ASheetWhoseRuleGivesAnAncestorAFontIsAttached_Then_TheLabelFollowsInThatStylePass()
+        {
+            // Arrange
+            VelvetStyleUtilities.AttachTo(_host.Root);
+            var ruledBold = AttachSheetGivingTheRuledFont();
+            _host.Root.styleSheets.Remove(_ruledSheet);
+            var root = NewRootGivenFont(s_sans);
+            _mounted = V.Mount(root, AncestorAboveAClasslessElement("ruled"));
+            RunAFrame();
+            RunAFrame();
+
+            // Act
+            _host.Root.styleSheets.Add(_ruledSheet);
+            EditorPanelTestHelpers.ForcePanelUpdate(_host.Panel);
+
+            // Assert
+            Assert.That(Target(root).style.unityFontDefinition.value.fontAsset, Is.SameAs(ruledBold));
+        }
+
+        [Test]
+        public void Given_ABoldLabelUnderAClasslessElement_When_TheSheetWhoseRuleGaveAnAncestorAFontIsRemoved_Then_TheLabelFollowsInThatStylePass()
+        {
+            // Arrange
+            VelvetStyleUtilities.AttachTo(_host.Root);
+            AttachSheetGivingTheRuledFont();
+            var root = NewRootGivenFont(s_sans);
+            _mounted = V.Mount(root, AncestorAboveAClasslessElement("ruled"));
+            RunAFrame();
+            RunAFrame();
+
+            // Act
+            _host.Root.styleSheets.Remove(_ruledSheet);
+            EditorPanelTestHelpers.ForcePanelUpdate(_host.Panel);
+
+            // Assert
+            Assert.That(Target(root).style.unityFontDefinition.value.fontAsset, Is.SameAs(s_sansBold));
+        }
+
+        [Test]
+        public void Given_ABoldLabelUnderAClasslessElement_When_AnAncestorIsHoveredAndAHoverRuleGivesItAFont_Then_TheLabelFollowsInThatStylePass()
+        {
+            // Arrange
+            VelvetStyleUtilities.AttachTo(_host.Root);
+            var ruledBold = AttachSheetGivingTheRuledFont();
+            var root = NewRootGivenFont(s_sans);
+            _mounted = V.Mount(root, AncestorAboveAClasslessElement("ruled-hover"));
+            RunAFrame();
+            RunAFrame();
+            var ancestor = root.Q("ancestor");
+            var pseudo = EngineMember.PseudoStates.ResolveProperty()!;
+            var hover = Convert.ToInt32(Enum.Parse(pseudo.PropertyType, "Hover"));
+            var states = Convert.ToInt32(pseudo.GetValue(ancestor));
+
+            // Act
+            pseudo.SetValue(ancestor, Enum.ToObject(pseudo.PropertyType, states | hover));
+            EditorPanelTestHelpers.ForcePanelUpdate(_host.Panel);
+
+            // Assert
+            Assert.That(Target(root).style.unityFontDefinition.value.fontAsset, Is.SameAs(ruledBold));
+        }
+
+        [Test]
+        public void Given_AnElementGivenAFontInline_When_ABoldLabelMountsBelowItUnderAnElementARuleGivesAFont_Then_ItsFirstStylePassResolvesTheRulesFamily()
+        {
+            // Arrange
+            VelvetStyleUtilities.AttachTo(_host.Root);
+            var ruledBold = AttachSheetGivingTheRuledFont();
+            var root = NewRootGivenFont(s_sans);
+
+            // Act
+            _mounted = V.Mount(root, V.Div(className: "ruled", children: new[] { BoldTarget() }));
+            EditorPanelTestHelpers.ForcePanelUpdate(_host.Panel);
+
+            // Assert
+            Assert.That(Target(root).style.unityFontDefinition.value.fontAsset, Is.SameAs(ruledBold));
+        }
+
+        [Test]
+        public void Given_ABoldLabelWhoseFamilyIsRegisteredAgain_When_TheFontAboveItMovesWithinThatFamilyAsItsHeldReadFallsDue_Then_ThatStylePassResolvesTheNewBold()
+        {
+            // Arrange — the registry change holds the label's read back, and one update counts it down to the forced one.
+            VelvetStyleUtilities.AttachTo(_host.Root);
+            var root = NewRootGivenFont(s_sans);
+            _mounted = V.Mount(root, AncestorAboveAClasslessElement("p-1"));
+            RunAFrame();
+            RunAFrame();
+            VelvetFonts.Register(Family("sans", s_sans, s_serifBoldReplacement));
+            EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
+
+            // Act
+            root.style.unityFontDefinition = FontDefinition.FromSDFFont(s_serifBoldReplacement);
+            EditorPanelTestHelpers.ForcePanelUpdate(_host.Panel);
+
+            // Assert
+            Assert.That(Target(root).style.unityFontDefinition.value.fontAsset, Is.SameAs(s_serifBoldReplacement));
+        }
+
+        private const string FontInheritMarker = "velvet-font-inherit";
+
+        [Test]
+        public void Given_AMarkedBoldLabel_When_ItsWeightClassIsRemoved_Then_ItNoLongerCarriesTheMarker()
+        {
+            // Arrange
+            _mounted = V.Mount(_host.Root, ClassedBoldLabel("font-bold"));
+            var marked = Target(_host.Root).ClassListContains(FontInheritMarker);
+
+            // Act
+            _mounted.Render(ClassedBoldLabel(string.Empty));
+
+            // Assert
+            Assert.That(marked ? Target(_host.Root).ClassListContains(FontInheritMarker) : (bool?)null, Is.False);
+        }
+
+        [Test]
+        public void Given_ALabelGivenAWeightClass_When_TheClassIsRemoved_Then_NoTrickleDownCallbackItWasGivenRemains()
+        {
+            // Arrange
+            _mounted = V.Mount(_host.Root, ClassedBoldLabel(string.Empty));
+            var before = CallbackRegistryProbe.TrickleDownCallbackCount(Target(_host.Root));
+            _mounted.Render(ClassedBoldLabel("font-bold"));
+            var watched = CallbackRegistryProbe.TrickleDownCallbackCount(Target(_host.Root));
+
+            // Act
+            _mounted.Render(ClassedBoldLabel(string.Empty));
+
+            // Assert — -1 where the class registered nothing, which no count is.
+            Assert.That(watched > before ? CallbackRegistryProbe.TrickleDownCallbackCount(Target(_host.Root)) : -1,
+                Is.EqualTo(before));
+        }
+
+        [Test]
+        public void Given_AMarkedBoldLabel_When_AFamilyClassIsAddedToIt_Then_ItNoLongerCarriesTheMarker()
+        {
+            // Arrange
+            _mounted = V.Mount(_host.Root, ClassedBoldLabel("font-bold"));
+            var marked = Target(_host.Root).ClassListContains(FontInheritMarker);
+
+            // Act
+            _mounted.Render(ClassedBoldLabel("font-serif font-bold"));
+
+            // Assert
+            Assert.That(marked ? Target(_host.Root).ClassListContains(FontInheritMarker) : (bool?)null, Is.False);
+        }
+
         [Test]
         public void Given_ABoldLabelOnTheDefaultFamily_When_TheDefaultFamilyChanges_Then_TheLabelResolvesTheNewFamilysBold()
         {

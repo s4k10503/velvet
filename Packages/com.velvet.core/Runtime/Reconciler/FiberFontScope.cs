@@ -24,8 +24,13 @@ namespace Velvet
     // font read while an ancestor holds a write of Velvet's that the panel has not resolved yet is not read: the named
     // family stands until the next update of the panel.
     //
-    // The parent's resolved font is read again at every update of the panel (Tick) for as long as an inheritor exists,
-    // there being no event of its own for a stylesheet, a class or a pseudo-state changing a font above an element. What
+    // The parent's resolved font is read again in each style pass that restyles an inheritor (Restyled), which the
+    // element hears through MarkerClass as ColorReferenceWatch's elements hear theirs, and at every update of the panel
+    // (Tick) for as long as an inheritor exists, there being no event of its own for a stylesheet, a class or a
+    // pseudo-state changing a font above an element. The pass is where such a change reaches the element in the update
+    // that shows it on the ancestor
+    // (Given_ABoldLabelUnderAClasslessElement_When_AnAncestorGainsAClassWhoseRuleGivesItAFont_Then_TheLabelFollowsInThatStylePass);
+    // the update is what reads it where the bundled stylesheet is not attached above the element. What
     // an author can change on the element itself without one is read the same way: its inline font and the key the
     // engine holds its matched rules under. That key also moves with the inherited styles of its parent, so a move of it
     // resolves the element again only where the fonts its rules and parent give it differ (RuleKey, two reads of the
@@ -126,6 +131,12 @@ namespace Velvet
         internal Dictionary<VisualElement, Inheritor> Inheritors { get; } = new();
 
         private const int ChangeWait = 2;
+
+        // Not ColorReferenceWatch's marker, which is counted: an inheritor's entry leaves with the element's other
+        // side-tables, through no call here that could count it down.
+        internal const string MarkerClass = "velvet-font-inherit";
+
+        private static readonly EventCallback<CustomStyleResolvedEvent> s_restyled = Restyled;
 
         private static readonly string[] s_definition = { "-unity-font-definition" };
         private static readonly string[] s_legacy = { "-unity-font" };
@@ -532,8 +543,49 @@ namespace Velvet
             Inheritors[element] = new Inheritor(intent, found.Named, ParentPeek(element), 0, StyleCascade.RulesHash(element),
                 InlineFontLedger.AuthorFont(element), family, foreign, ruleKey, ParentLegacy(element), legacy, FarPeek(element),
                 FarLegacy(element));
+            if (!hadPrior)
+            {
+                // Trickling down, to come ahead of TextLineBox's handler for the same event, which reads the font written here.
+                element.RegisterCallback(s_restyled, TrickleDown.TrickleDown);
+                element.AddToClassList(MarkerClass);
+            }
+
             _wantsFollow = true;
             return hadPrior && moved;
+        }
+
+        private static void Unwatch(VisualElement element)
+        {
+            element.UnregisterCallback(s_restyled, TrickleDown.TrickleDown);
+            element.RemoveFromClassList(MarkerClass);
+        }
+
+        private static bool Stale(VisualElement element, in Inheritor entry)
+            => Moved(element, entry) || (RulesMoved(element, entry) && RuleFontMoved(element, entry));
+
+        private static void Restyled(CustomStyleResolvedEvent evt)
+        {
+            var element = (VisualElement)evt.currentTarget;
+            foreach (var reference in s_scopes)
+            {
+                if (reference.TryGetTarget(out var scope))
+                {
+                    scope.Restyled(element);
+                }
+            }
+        }
+
+        private void Restyled(VisualElement element)
+        {
+            if (!Inheritors.TryGetValue(element, out var entry))
+            {
+                return;
+            }
+
+            if (Stale(element, entry))
+            {
+                Resolve(element, entry.Intent, entry.Wait == 1);
+            }
         }
 
         // Starts the per-update read once an inheritor exists and an anchor to schedule it on is known.
@@ -554,7 +606,11 @@ namespace Velvet
             {
                 // MUTANT_SURVIVES(equivalent, literal): this branch runs only for an intent that names a family, and ApplyResolved tests foreign only in a conjunction with !intent.HasFamily, which such an intent makes false.
                 StyleFontResolver.ApplyResolved(element, intent, null, foreign: false);
-                Inheritors.Remove(element);
+                if (Inheritors.Remove(element))
+                {
+                    Unwatch(element);
+                }
+
                 var changed = !Families.TryGetValue(element, out var previous) || previous.Family != intent.Family;
                 Families[element] = (intent, intent.Family!);
                 if (changed && !created)
@@ -577,7 +633,11 @@ namespace Velvet
         // The element no longer carries a font class.
         internal void Untrack(VisualElement element)
         {
-            Inheritors.Remove(element);
+            if (Inheritors.Remove(element))
+            {
+                Unwatch(element);
+            }
+
             if (Families.Remove(element))
             {
                 QueueInheritorsUnder(element);
@@ -639,7 +699,7 @@ namespace Velvet
             foreach (var element in _buffer)
             {
                 var entry = Inheritors[element];
-                if (entry.Wait == 1 || Moved(element, entry) || (RulesMoved(element, entry) && RuleFontMoved(element, entry)))
+                if (entry.Wait == 1 || Stale(element, entry))
                 {
                     ResolveDown(element, entry.Intent, entry.Wait == 1);
                 }
