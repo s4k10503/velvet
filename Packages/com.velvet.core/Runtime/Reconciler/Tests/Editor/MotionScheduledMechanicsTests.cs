@@ -1871,8 +1871,9 @@ namespace Velvet.Tests
             V.Div(className: $"w-[10px] h-[{(Hooks.UseStore(s_shared, s => s.Index) == 1 ? 100 : 0)}px]");
 
         // Renders a pooled Label and the card while the first slot is selected; both render straight into the
-        // shared parent, having no element of their own. The Label comes first: the slot's rows are removed
-        // from the last, so the Label goes back to the pool after the card's teardown has left its box.
+        // shared parent, having no element of their own. The Label's return to the pool waits for the end of the
+        // pass that empties the slot (FiberElementCleaner.ReturnOccupantToPool), so it goes back to the pool after
+        // the card's teardown has left its box.
         [Component]
         private static VNode FirstSharedSlotRender() => Hooks.UseStore(s_shared, s => s.Index) == 0
             ? V.Fragment(children: new VNode[]

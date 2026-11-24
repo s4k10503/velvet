@@ -782,12 +782,13 @@ namespace Velvet
             var oldNodes = commit.OldNodes!;
             var newElements = commit.NewElements;
 
-            // Removal, from the last old leaf down, of the leaves each deletion took down.
+            // Removal of the leaves each deletion took down, each deletion's in tree order
+            // (DeletedSiblingDetachOrderTests).
             for (var deletion = deletions; deletion != null; deletion = deletion.NextGroup)
             {
                 var removed = deletion.RemovedRows;
                 var deferred = deletion.DefersTeardown;
-                for (var i = removed.Count - 1; i >= 0; i--)
+                for (var i = 0; i < removed.Count; i++)
                 {
                     var old = commit.OldOccupants.Occupant(removed[i].Index);
                     if (old == null) continue;

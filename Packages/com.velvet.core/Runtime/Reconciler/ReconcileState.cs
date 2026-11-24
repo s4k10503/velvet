@@ -9,7 +9,7 @@ namespace Velvet
     {
         // Patch (or replace) each slot the old and new lists share.
         Common,
-        // Remove the old tail beyond the shared length, from the end inward.
+        // Remove the old tail beyond the shared length, in tree order.
         Remove,
         // Create and insert the new tail beyond the shared length.
         Add,
@@ -116,7 +116,7 @@ namespace Velvet
         public KeyedReconcilePhase Phase;
         // Exclusive end of the prefix-match range fixed by Pass 1. Also serves as the Pass 2 start index.
         public int LinearEnd;
-        // Resume index within the current phase. Meaning differs per phase (Pass1: linear scan position, Pass2Remove: tail-remove position, etc.).
+        // Resume index within the current phase. Meaning differs per phase (Pass1: linear scan position, Pass2Remove: next old index to remove, etc.).
         public int ResumeIndex;
 
         #endregion

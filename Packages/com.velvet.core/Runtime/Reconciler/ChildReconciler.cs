@@ -21,11 +21,6 @@ namespace Velvet
     // FiberPortalRegistry.
     internal sealed class ChildReconciler
     {
-        // Sentinel marking the initial start of the Remove phase.
-        // When IndexedReconcileState.ResumeIndex equals this value, the Remove phase
-        // begins reverse traversal from oldNodes.Length - 1.
-        private const int RemovePhaseStartSentinel = -1;
-
         private readonly ReconcilerContext _ctx;
         private readonly FiberNodePatcher _patcher;
         private readonly NodePatchWalk _patchWalk;
@@ -975,7 +970,7 @@ namespace Velvet
                             parked = !CommonPhase(in inputs, index, frameBudgetMs);
                             if (parked) return;
                             phase = IndexedReconcilePhase.Remove;
-                            index = RemovePhaseStartSentinel;
+                            index = inputs.CommonLength;
                             break;
                         case IndexedReconcilePhase.Remove:
                             parked = !RemovePhase(in inputs, index, frameBudgetMs);
@@ -1096,17 +1091,14 @@ namespace Velvet
             return true;
         }
 
-        // Removal proceeds from the tail, so the resume index is "the tail index to process" and
-        // RemovePhaseStartSentinel means "begin at oldNodes.Length - 1". Decoding the sentinel and the
-        // guard against re-encoding it (below) describe the same encoding and must move together.
+        // The old rows past the shared length leave in tree order (DeletedSiblingDetachOrderTests).
         private bool RemovePhase(in IndexedPassInputs inputs, int startIndex, double frameBudgetMs)
         {
             var parent = inputs.Parent;
-            var commonLength = inputs.CommonLength;
+            var oldLength = inputs.OldNodes.Length;
             var budgeted = frameBudgetMs > 0;
 
-            var removeStart = startIndex == RemovePhaseStartSentinel ? inputs.OldNodes.Length - 1 : startIndex;
-            for (var i = removeStart; i >= commonLength; i--)
+            for (var i = startIndex; i < oldLength; i++)
             {
                 if (_ctx.IsAborted) return true;
 
@@ -1121,17 +1113,14 @@ namespace Velvet
 
                 if (budgeted && _stopwatch!.Elapsed.TotalMilliseconds > frameBudgetMs)
                 {
-                    var nextRemoveIndex = i - 1;
-                    if (nextRemoveIndex >= commonLength)
+                    var nextRemoveIndex = i + 1;
+                    if (nextRemoveIndex < oldLength)
                     {
-                        // Park only when another iteration remains. nextRemoveIndex ==
-                        // RemovePhaseStartSentinel (-1) is this phase's own "begin at the tail" encoding,
-                        // so parking that value would restart the whole phase instead of resuming it —
-                        // the nextRemoveIndex >= commonLength test is what keeps the two apart.
+                        // Park only when another iteration remains.
                         ParkIndexedResume(in inputs, IndexedReconcilePhase.Remove, nextRemoveIndex);
                         return false;
                     }
-                    // nextRemoveIndex < commonLength: no Remove iterations remain, so nothing is parked and
+                    // nextRemoveIndex == oldLength: no Remove iterations remain, so nothing is parked and
                     // the pass falls into Add already over budget. Deliberate, not an oversight — Add runs a
                     // budget check after its first element, bounding the overrun to one element. Do not
                     // "fix" this into a yield.
@@ -1327,7 +1316,7 @@ namespace Velvet
             // Tail-remove only.
             if (linearEnd == newNodes.Length)
             {
-                for (var i = oldNodes.Length - 1; i >= linearEnd; i--)
+                for (var i = linearEnd; i < oldNodes.Length; i++)
                     _host.Remove(parent, occupants.Occupant(i)!);
                 return false;
             }
@@ -1429,9 +1418,8 @@ namespace Velvet
             }
             else
             {
-                // New middle empty → pure remove of old[linearEnd, oldMidEnd). Reverse so each removal
-                // leaves the not-yet-removed indices intact.
-                for (var i = oldMidEnd - 1; i >= linearEnd; i--)
+                // New middle empty → pure remove of old[linearEnd, oldMidEnd), in tree order.
+                for (var i = linearEnd; i < oldMidEnd; i++)
                 {
                     _host.Remove(parent, occupants.Occupant(i)!);
                     if (_ctx.IsAborted) return;
@@ -1482,9 +1470,9 @@ namespace Velvet
                     if (ProcessKeyedNode(in slot, newNodes[i], in tables)) return;
                 }
 
-                // Reverse walk so each RemoveElement leaves not-yet-visited indices intact. An
-                // unkeyed node's key is its full sibling index i, the same value the build loop used.
-                for (var i = oldNodes.Length - 1; i >= linearEnd; i--)
+                // In tree order. An unkeyed node's key is its full sibling index i, the same value the build
+                // loop used.
+                for (var i = linearEnd; i < oldNodes.Length; i++)
                 {
                     if (ShouldRemoveOldKeyedEntry(OldKey(oldKeys, oldNodes, i), i, usedKeys, replacedKeys, orphanedOldIndices))
                     {
@@ -1694,7 +1682,7 @@ namespace Velvet
             if (linearEnd == newNodes.Length)
             {
                 state.Phase = KeyedReconcilePhase.TailRemove;
-                state.ResumeIndex = oldNodes.Length - 1;
+                state.ResumeIndex = linearEnd;
                 return true;
             }
             RentPass2Buffers(state);
@@ -1727,15 +1715,16 @@ namespace Velvet
         private bool Pass1TailRemove(KeyedReconcileState state, double frameBudgetMs)
         {
             var parent = state.Parent!;
+            var oldLength = state.OldNodes!.Length;
 
-            for (var i = state.ResumeIndex; i >= state.LinearEnd; i--)
+            for (var i = state.ResumeIndex; i < oldLength; i++)
             {
                 if (AbortIfCanceled(state)) return true;
 
                 _host.Remove(parent, state.OldOccupants!.Occupant(i)!);
 
-                var next = i - 1;
-                if (next >= state.LinearEnd && TryYield(state, next, frameBudgetMs)) return false;
+                var next = i + 1;
+                if (next < oldLength && TryYield(state, next, frameBudgetMs)) return false;
             }
             state.Phase = KeyedReconcilePhase.Done;
             return true;
@@ -1803,7 +1792,7 @@ namespace Velvet
             }
 
             state.Phase = KeyedReconcilePhase.Pass2Remove;
-            state.ResumeIndex = state.OldNodes!.Length - 1;
+            state.ResumeIndex = state.LinearEnd;
             return true;
         }
 
@@ -1819,7 +1808,7 @@ namespace Velvet
             var usedKeys = state.UsedKeys!;
             var replacedKeys = state.ReplacedKeys!;
 
-            for (var i = state.ResumeIndex; i >= state.LinearEnd; i--)
+            for (var i = state.ResumeIndex; i < oldNodes.Length; i++)
             {
                 if (AbortIfCanceled(state)) return true;
 
@@ -1828,8 +1817,8 @@ namespace Velvet
                     _host.Remove(parent, state.OldOccupants!.Occupant(i)!);
                 }
 
-                var next = i - 1;
-                if (next >= state.LinearEnd && TryYield(state, next, frameBudgetMs)) return false;
+                var next = i + 1;
+                if (next < oldNodes.Length && TryYield(state, next, frameBudgetMs)) return false;
             }
 
             // Remove completed → compute the LIS synchronously and store lisIndices in state.
