@@ -4043,6 +4043,7 @@ namespace Velvet
             }
             // A face the element itself holds in these slots has had its sentinel written over.
             SilhouetteFaceStash.Retake(element);
+            InheritedStyleHash.Refresh(element);
         }
 
         // Settles every longhand property shares with another property's layers (m-[4px] beside mt-[8px] and

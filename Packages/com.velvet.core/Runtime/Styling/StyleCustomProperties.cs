@@ -430,6 +430,7 @@ namespace Velvet
             {
                 (s_traversed, s_traversedPrevious) = (null, null);
             }
+            InheritedStyleHash.Refresh(declaring);
         }
 
         private static void ReresolveInlineSubtree(VisualElement root)
