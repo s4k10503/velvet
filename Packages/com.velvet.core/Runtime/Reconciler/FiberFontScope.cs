@@ -631,7 +631,7 @@ namespace Velvet
         }
 
         // A sheet MarkerSheet built, in this domain or, by its name, an earlier one, as RadiusWatchSheets.IsWatch knows
-        // its own; the readers that pass over those sheets pass over this one too.
+        // its own.
         internal static bool IsMarker(StyleSheet? sheet) => sheet != null && sheet.name == MarkerClass;
 
         // Marked a default sheet, as a theme is, so that the matcher's readers do not take its rule for an author's
