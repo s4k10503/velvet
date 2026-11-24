@@ -26,6 +26,8 @@ namespace Velvet.Tests
     /// mount-only diagnostic and never tears down a live resource mid-frame.</item>
     /// <item>When the diagnostic second render throws, the first commit stands (its output is retained) and the
     /// non-determinism is reported.</item>
+    /// <item>A value in a render's output whose <c>ToString</c> throws leaves neither that render nor the drain running
+    /// it, and a component queued behind it in the same drain renders its update.</item>
     /// <item>The committed effect factory is the first pass's closure, not the diagnostic pass's.</item>
     /// <item>The diagnostic pass returns pooled descendant objects, so repeated diagnostic re-renders never drain
     /// the pool or corrupt the committed tree.</item>
@@ -257,6 +259,24 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_GateOn_When_ADrainRendersAComponentWhoseChildsPropsThrowFromToStringAheadOfAnother_Then_TheOtherRendersItsUpdateAndNothingLeavesTheDrain()
+        {
+            // Arrange — armed after the mount, whose own diagnostic passes sign the same props
+            FiberStrictMode.Enabled = true;
+            using var mounted = V.Mount(_root, V.Component(UnreadablePropsHostRender, key: "host"));
+            var scheduler = mounted.GetSchedulerForTest();
+            s_unreadablePropsArmed = true;
+            s_setUnreadablePropsOwner.Invoke(1);
+            s_setBehind.Invoke(1);
+
+            // Act
+            var threw = ThrowsUnreadableProps(scheduler.RunImmediateCallbackForTest);
+
+            // Assert — the drain renders the two in tree order, so the second is the one queued behind
+            Assert.That(threw ? null : _root.Q<Label>("behind").text, Is.EqualTo("behind:1"));
+        }
+
+        [Test]
         public void Given_GateOn_When_DiagnosticPassRuns_Then_CommittedEffectUsesFirstPassClosure()
         {
             // Arrange
@@ -309,6 +329,9 @@ namespace Velvet.Tests
             s_effectCapturedOrdinal = 0;
             s_nestedBump = null;
             s_freshPortalContainers.Clear();
+            s_unreadablePropsArmed = false;
+            s_setUnreadablePropsOwner = default;
+            s_setBehind = default;
         }
 
         #region Pure component
@@ -472,6 +495,63 @@ namespace Velvet.Tests
             var container = new VisualElement();
             s_freshPortalContainers.Add(container);
             return V.Portal(container, children: new VNode?[] { V.Div(name: "in-portal") });
+        }
+
+        #endregion
+
+        #region Unreadable-props components (a props value whose ToString throws, ahead of a second component)
+
+        private const string UnreadablePropsMessage = "props unreadable";
+
+        private static bool s_unreadablePropsArmed;
+        private static StateUpdater<int> s_setUnreadablePropsOwner;
+        private static StateUpdater<int> s_setBehind;
+
+        private sealed record UnreadableProps(int Value)
+        {
+            public override string ToString() => s_unreadablePropsArmed
+                ? throw new InvalidOperationException(UnreadablePropsMessage)
+                : nameof(UnreadableProps);
+        }
+
+        private static bool ThrowsUnreadableProps(Action drain)
+        {
+            try
+            {
+                drain();
+            }
+            catch (InvalidOperationException thrown) when (thrown.Message == UnreadablePropsMessage)
+            {
+                return true;
+            }
+            return false;
+        }
+
+        [Component(Compiler = false)]
+        private static VNode UnreadablePropsHostRender()
+            => V.Div(children: new VNode[]
+            {
+                V.Component(UnreadablePropsOwnerRender, key: "owner"),
+                V.Component(BehindRender, key: "behind"),
+            });
+
+        [Component(Compiler = false)]
+        private static VNode UnreadablePropsOwnerRender()
+        {
+            var (value, setValue) = Hooks.UseState(0);
+            s_setUnreadablePropsOwner = setValue;
+            return V.Component(UnreadablePropsChildRender, new UnreadableProps(value), key: "child");
+        }
+
+        [Component(Compiler = false)]
+        private static VNode UnreadablePropsChildRender(UnreadableProps props) => V.Label(text: "child:" + props.Value);
+
+        [Component(Compiler = false)]
+        private static VNode BehindRender()
+        {
+            var (value, setValue) = Hooks.UseState(0);
+            s_setBehind = setValue;
+            return V.Label(name: "behind", text: "behind:" + value);
         }
 
         #endregion
