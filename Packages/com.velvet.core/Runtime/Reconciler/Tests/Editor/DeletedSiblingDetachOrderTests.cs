@@ -7,12 +7,12 @@ using Velvet.TestUtilities;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Specifies that the sibling rows one reconcile removes leave the panel first to last, so their
+    /// Specifies that each removal below takes the sibling rows it removes off the panel first to last, so their
     /// <c>DetachFromPanelEvent</c> callbacks run in tree order, as React commits a parent's deletions in the order its
-    /// child reconciler recorded them. One case for each of these removals: the general walk's, where the new side leaves
-    /// each row's slot empty; the indexed diff's, of an unkeyed list; the keyed diff's tail removal, its trimmed middle
-    /// and its map pass, with the tail removal and the map pass time-sliced as well; and that of the rows of a Portal
-    /// inside a removed row.
+    /// child reconciler recorded them: the general walk's, of the rows one of its deletions takes, where the new side
+    /// leaves each row's slot empty; the indexed diff's, of an unkeyed list; the keyed diff's tail removal, its trimmed
+    /// middle and its map pass, with the tail removal and the map pass time-sliced as well; and that of the rows of a
+    /// Portal inside a removed row. One case for each.
     /// </summary>
     /// <remarks>
     /// The rows sit on a real panel, which is what runs a detach callback.
