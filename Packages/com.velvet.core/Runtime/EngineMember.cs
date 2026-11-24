@@ -137,8 +137,8 @@ namespace Velvet
         internal static readonly EngineMember ComputedStyleMatchingRulesHash =
             Field(UIElements, ComputedStyleType, "matchingRulesHash", "System.Int64");
 
-        // InheritedStyleHash's refresh of an element's hash after Velvet writes an inherited property on it, and the data
-        // it hashes.
+        // InheritedStyleHash's refresh of an element's hash where Velvet may have written an inherited property on it, and
+        // the data it hashes.
         internal static readonly EngineMember ElementInheritedStylesHash =
             Field(UIElements, VisualElementType, "inheritedStylesHash", "System.Int32");
 

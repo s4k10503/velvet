@@ -61,14 +61,17 @@ namespace Velvet
 
         private readonly struct RestyledScope : IDisposable
         {
+            private readonly VisualElement? _outer;
+
             public RestyledScope(VisualElement element)
             {
+                _outer = Restyled;
                 Restyled = element;
             }
 
             public void Dispose()
             {
-                Restyled = null;
+                Restyled = _outer;
             }
         }
 

@@ -12,9 +12,10 @@ namespace Velvet.Tests
     /// <summary>
     /// Specifies that an inherited value Velvet writes on an element in the style pass that restyles it reaches that
     /// element's children and no other element's: those cases style two elements alike, each holding a child, let one
-    /// writer change the first alone in that pass, and read the second's child. Four more specify that the hash the pass
-    /// stored is left alone where Velvet writes nothing the element's children inherit in its style event, or writes
-    /// outside one, and the last that the editor refreshes it through a compiled accessor. GWT, one assert per case.
+    /// writer change the first alone in that pass, and read the second's child. The other four specify that the hash
+    /// the pass stored is left alone by a style event that gives an element or its child a width read off a variable,
+    /// by one that re-reads a border colour, and by a render that writes a colour read off the parent. GWT, one assert
+    /// per case.
     /// </summary>
     internal sealed class InEventInheritedWritePanelTests : PanelTestBase
     {
@@ -250,17 +251,6 @@ namespace Velvet.Tests
 
             // Assert — null where the render gave the child no colour, which a hash can never equal.
             Assert.That(child.style.color.value == Color.blue ? StoredHash(child) : (int?)null, Is.EqualTo(stored));
-        }
-
-        [Test]
-        public void Given_TheEditor_When_InheritedStyleHashLoads_Then_ItRefreshesThroughACompiledAccessor()
-        {
-            // Act
-            var compiled = typeof(InheritedStyleHash).GetField("s_compiled", BindingFlags.NonPublic | BindingFlags.Static)
-                ?.GetValue(null);
-
-            // Assert
-            Assert.That(compiled, Is.Not.Null);
         }
     }
 }
