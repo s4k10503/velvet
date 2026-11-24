@@ -1,6 +1,6 @@
 ### Fixed
 
-- An element no longer takes an inherited value Velvet wrote on an element other than its parent. Velvet writes some
+- An element no longer takes an inherited value Velvet wrote on an element that is not its ancestor. Velvet writes some
   inherited properties on an element inside the style pass that restyles it: the middle alignment of a label, a button
   or a field's input text and the copy of its font it is drawn in while it shows no rich text, a text colour
   `text-inherit` or `text-current` reads off the parent, a white-space a text effect writes, and a text colour, font

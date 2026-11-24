@@ -1,5 +1,6 @@
 using System;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.UIElements;
@@ -10,11 +11,15 @@ namespace Velvet.Tests
 {
     /// <summary>
     /// Specifies that an inherited value Velvet writes on an element in the style pass that restyles it reaches that
-    /// element's children and no other element's. Each case styles two elements alike, each holding a child, lets one
-    /// writer change the first alone in that pass, and reads the second's child. GWT, one assert per case.
+    /// element's children and no other element's: those cases style two elements alike, each holding a child, let one
+    /// writer change the first alone in that pass, and read the second's child. Four more specify that the hash the pass
+    /// stored is left alone where Velvet writes nothing the element's children inherit in its style event, or writes
+    /// outside one, and the last that the editor refreshes it through a compiled accessor. GWT, one assert per case.
     /// </summary>
     internal sealed class InEventInheritedWritePanelTests : PanelTestBase
     {
+        private static readonly FieldInfo s_storedHash = EngineMember.ElementInheritedStylesHash.ResolveField();
+
         private StyleSheet _appSheet;
 
         [TearDown]
@@ -58,6 +63,24 @@ namespace Velvet.Tests
             V.Div(name: "first", className: "restyled text-inherit", children: Holding(children, "a")),
             V.Div(name: "second", className: "restyled", children: Holding(children, "b")),
         });
+
+        private static VNode InheritorUnder(string parentClass) => V.Div(name: "parent", className: parentClass,
+            children: new VNode[] { V.Div(name: "child", className: "w-[40px] h-[40px] text-inherit") });
+
+        private static int StoredHash(VisualElement element) => (int)s_storedHash.GetValue(element);
+
+        // In each style event element is sent, replaces the hash the pass stored with another, and keeps the last one
+        // written. Registered trickle-down, so it runs before the bubble-up callbacks Velvet registers for the event.
+        private static StrongBox<int> ReplaceStoredHashInStyleEvents(VisualElement element)
+        {
+            var written = new StrongBox<int>();
+            element.RegisterCallback<CustomStyleResolvedEvent>(_ =>
+            {
+                written.Value = ~StoredHash(element);
+                s_storedHash.SetValue(element, written.Value);
+            }, TrickleDown.TrickleDown);
+            return written;
+        }
 
         [Test]
         public void Given_TwoButtonsOfOneStyleWhoseLineBoxAlignsOnlyTheFirst_When_TheirStylePassRuns_Then_TheChildOfTheSecondKeepsItsAlignment()
@@ -148,6 +171,96 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(Root.Q("b").resolvedStyle.letterSpacing, Is.EqualTo(Root.Q("second").resolvedStyle.letterSpacing));
+        }
+
+        // GREEN_ON_BASE(characterization): nothing on the base refreshes this element's hash, so the one this case writes stays.
+        // Call `InheritedStyleHash.Refresh(declaring);` in OnCustomStyle without its `HoldsInheritedLayer` test and it replaces that hash.
+        [Test]
+        public void Given_AnElementDeclaringAVariableOnlyItsChildReads_When_ItsStyleEventGivesTheChildItsWidth_Then_TheElementKeepsTheHashTheEventLeft()
+        {
+            // Arrange
+            AttachAppSheet(".declares { --w: 25px; }");
+            _mounted = V.Mount(Root, V.Div(name: "outer", className: "declares", children: new VNode[]
+            {
+                V.Div(name: "inner", className: "w-[var(--w)]"),
+            }));
+            var outer = Root.Q("outer");
+            var written = ReplaceStoredHashInStyleEvents(outer);
+
+            // Act
+            ForcePanelUpdate(Root.panel);
+
+            // Assert — null where the child was not given the width, which a hash can never equal.
+            Assert.That(Root.Q("inner").style.width.value.value == 25f ? StoredHash(outer) : (int?)null,
+                Is.EqualTo(written.Value));
+        }
+
+        // GREEN_ON_BASE(characterization): nothing on the base refreshes this element's hash, so the one this case writes stays.
+        // Drop `&& Inherits(property)` from HoldsInheritedLayer and the width the element reads makes it refresh.
+        [Test]
+        public void Given_AnElementReadingItsOwnVariableForAWidth_When_ItsStyleEventGivesItTheWidth_Then_ItKeepsTheHashTheEventLeft()
+        {
+            // Arrange
+            AttachAppSheet(".declares { --w: 25px; }");
+            _mounted = V.Mount(Root, V.Div(name: "self", className: "declares w-[var(--w)]"));
+            var self = Root.Q("self");
+            var written = ReplaceStoredHashInStyleEvents(self);
+
+            // Act
+            ForcePanelUpdate(Root.panel);
+
+            // Assert — null where the element was not given the width, which a hash can never equal.
+            Assert.That(self.style.width.value.value == 25f ? StoredHash(self) : (int?)null, Is.EqualTo(written.Value));
+        }
+
+        // GREEN_ON_BASE(characterization): nothing on the base refreshes this element's hash, so the one this case writes stays.
+        // Drop `textColour && ` from ReresolveColorReferences' condition and the border it re-reads makes it refresh.
+        [Test]
+        public void Given_AnElementWhoseBorderReadsItsTextColour_When_ItsStyleEventReReadsTheBorder_Then_ItKeepsTheHashTheEventLeft()
+        {
+            // Arrange
+            VelvetStyleUtilities.AttachTo(Root);
+            _mounted = V.Mount(Root, V.Div(name: "box", className: "w-[40px] h-[40px] border-2 border-current text-[#ff0000]"));
+            var box = Root.Q("box");
+            RunTwoUpdates();
+            var written = ReplaceStoredHashInStyleEvents(box);
+            box.style.color = Color.blue;
+
+            // Act
+            ForcePanelUpdate(Root.panel);
+
+            // Assert — null where the border did not follow the text colour, which a hash can never equal.
+            Assert.That(box.style.borderTopColor.value == Color.blue ? StoredHash(box) : (int?)null, Is.EqualTo(written.Value));
+        }
+
+        // GREEN_ON_BASE(characterization): nothing on the base refreshes the child's hash, so the one its last pass stored stays.
+        // Drop ` && ReferenceEquals(ColorReferenceWatch.Restyled, element)` from ReresolveColorReferences and it refreshes.
+        [Test]
+        public void Given_AnElementInheritingItsTextColour_When_ARenderWritesItsParentsColour_Then_ItKeepsTheHashItsLastStylePassStored()
+        {
+            // Arrange
+            VelvetStyleUtilities.AttachTo(Root);
+            _mounted = V.Mount(Root, InheritorUnder("text-[#ff0000]"));
+            RunTwoUpdates();
+            var child = Root.Q("child");
+            var stored = StoredHash(child);
+
+            // Act — no style pass follows the render, so the colour it gives the child is written outside one.
+            _mounted.Render(InheritorUnder("text-[#0000ff]"));
+
+            // Assert — null where the render gave the child no colour, which a hash can never equal.
+            Assert.That(child.style.color.value == Color.blue ? StoredHash(child) : (int?)null, Is.EqualTo(stored));
+        }
+
+        [Test]
+        public void Given_TheEditor_When_InheritedStyleHashLoads_Then_ItRefreshesThroughACompiledAccessor()
+        {
+            // Act
+            var compiled = typeof(InheritedStyleHash).GetField("s_compiled", BindingFlags.NonPublic | BindingFlags.Static)
+                ?.GetValue(null);
+
+            // Assert
+            Assert.That(compiled, Is.Not.Null);
         }
     }
 }

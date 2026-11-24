@@ -55,8 +55,26 @@ namespace Velvet
 
         private static readonly ConditionalWeakTable<VisualElement, Hub> s_hubs = new();
 
+        // The element whose style event the watches are reading in, null outside one: a re-read of that element's own
+        // text colour is the one a refresh of its hash follows (InheritedStyleHash).
+        internal static VisualElement? Restyled { get; private set; }
+
+        private readonly struct RestyledScope : IDisposable
+        {
+            public RestyledScope(VisualElement element)
+            {
+                Restyled = element;
+            }
+
+            public void Dispose()
+            {
+                Restyled = null;
+            }
+        }
+
         private static readonly EventCallback<CustomStyleResolvedEvent, Hub> s_onResolved = (evt, hub) =>
         {
+            using var restyling = new RestyledScope(hub.Element);
             for (var i = hub.Readers.Count - 1; i >= 0; i--)
             {
                 if (i < hub.Readers.Count)
