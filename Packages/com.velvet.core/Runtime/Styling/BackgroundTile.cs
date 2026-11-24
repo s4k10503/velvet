@@ -6,8 +6,8 @@ using UnityEngine.UIElements;
 namespace Velvet
 {
     // The tile an element's background image is drawn at: the image's own size under background-size, then refitted to a
-    // whole count by a round repeat. TransitionInterpolationPanelTests' slides between a length and a percentage fail
-    // where the room it gives stops being CSS's.
+    // whole count by a round repeat. BackgroundTilePlaybackTests holds the room it gives to the one UI Toolkit draws a
+    // percentage across.
     internal static class BackgroundTile
     {
         // The room a background-position percentage is of on the axis: the element's size less the tile's. Zero where the
