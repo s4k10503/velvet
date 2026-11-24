@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Reflection;
 using NUnit.Framework;
 using UnityEngine;
@@ -17,15 +18,26 @@ namespace Velvet.Tests
     {
         private const string OneSecond = "duration-1000 ease-linear";
 
+        // The box the slides between a length and a percentage run in.
+        private const string Box = "w-[120px] h-[60px] ";
+
         // Positions of the application's own, Velvet bundling no background-position utility.
         private const string PositionRules =
             ".app-left { background-position-x: left; } .app-right { background-position-x: right; }"
             + " .app-left-10 { background-position-x: left 10px; } .app-left-30 { background-position-x: left 30px; }"
             + " .app-right-10 { background-position-x: right 10px; } .app-right-30 { background-position-x: right 30px; }"
             + " .app-top { background-position-y: top; } .app-bottom { background-position-y: bottom; }"
-            + " .app-center { background-position-x: center; } .app-right-20p { background-position-x: right 20%; }";
+            + " .app-center { background-position-x: center; } .app-right-20p { background-position-x: right 20%; }"
+            + " .app-top-10 { background-position-y: top 10px; }"
+            + " .app-size-25-10 { background-size: 25px 10px; } .app-size-35-10 { background-size: 35px 10px; }"
+            + " .app-contain { background-size: contain; } .app-cover { background-size: cover; }"
+            + " .app-size-half { background-size: 50%; } .app-size-auto-15 { background-size: auto 15px; }"
+            + " .app-size-auto { background-size: auto; } .app-size-35 { background-size: 35px; }"
+            + " .app-round { background-repeat: round; } .app-round-y { background-repeat: no-repeat round; }"
+            + " .app-round-x { background-repeat: round no-repeat; }";
 
         private StyleSheet _sheet;
+        private readonly List<Texture2D> _images = new();
         private MountedTree _portalMount;
         private double _now;
 
@@ -54,14 +66,47 @@ namespace Velvet.Tests
                 UnityEngine.Object.DestroyImmediate(_sheet);
                 _sheet = null;
             }
-            base.TearDown();
+            try
+            {
+                base.TearDown();
+            }
+            finally
+            {
+                foreach (var image in _images)
+                {
+                    UnityEngine.Object.DestroyImmediate(image);
+                }
+                _images.Clear();
+            }
         }
 
-        // An element classNames give, in a tree mounted on the window's root, styled on a clock this fixture moves.
-        private VisualElement Mounted(string classNames)
+        // An element classNames give, in a tree mounted on the window's root, styled on a clock this fixture moves;
+        // showing image where one is given, and with what inline writes before its first style pass.
+        private VisualElement Mounted(string classNames, Texture2D image = null, Action<VisualElement> inline = null)
         {
-            _mounted = V.Mount(_window.rootVisualElement, V.Div(name: "leaf", className: classNames));
-            return Attached(_window.rootVisualElement.Q<VisualElement>("leaf"));
+            _mounted = V.Mount(_window.rootVisualElement, V.Div(name: "leaf", className: classNames,
+                styles: image == null ? null : new StyleOverrides { BackgroundImage = new StyleBackground(image) }));
+            var element = _window.rootVisualElement.Q<VisualElement>("leaf");
+            inline?.Invoke(element);
+            return Attached(element);
+        }
+
+        private Texture2D Image(int width, int height)
+        {
+            var image = new Texture2D(width, height);
+            _images.Add(image);
+            return image;
+        }
+
+        // A slide from ten pixels from the left to the right edge, a quarter of the way in: CSS's value there is a
+        // quarter of the room the image leaves plus 7.5px. The offset it reads is in pixels from the left edge.
+        private float AQuarterIntoTenPixelsToRight(string classNames, Texture2D image = null,
+            Action<VisualElement> inline = null)
+        {
+            var element = Mounted(Box + "transition-all app-left-10 " + classNames + " " + OneSecond, image, inline);
+            Swap(element, "app-left-10", "app-right");
+            RunFor(element, 0.25);
+            return OffsetWhileItRuns(element, "background-position-x", BackgroundPositionKeyword.Left, LengthUnit.Pixel);
         }
 
         // The same, as a row a portal puts in an element of another mounted tree, so that two holds are above it.
@@ -389,6 +434,156 @@ namespace Velvet.Tests
             // Assert
             Assert.That(OffsetWhileItRuns(element, "background-position-x", BackgroundPositionKeyword.Left,
                 LengthUnit.Percent), Is.EqualTo(57.5f).Within(0.01f));
+        }
+
+        [Test]
+        public void Given_TheDefaultBackgroundSize_When_TenPixelsFromTheLeftBecomesTheRightEdge_Then_AQuarterInItIsAQuarterOfTheWay()
+        {
+            // Arrange — the image stretched over the box leaves no room, so the length alone moves: 7.5px.
+            var image = Image(40, 20);
+
+            // Act
+            var offset = AQuarterIntoTenPixelsToRight("", image);
+
+            // Assert
+            Assert.That(offset, Is.EqualTo(7.5f).Within(0.01f));
+        }
+
+        [Test]
+        public void Given_AnElementShowingNoImage_When_CenterBecomesTenPixelsFromTheLeft_Then_AQuarterInItIsAQuarterOfTheWay()
+        {
+            // Arrange — from 50% to 10px, with no image to leave room: a quarter of the 10px.
+            var element = Mounted(Box + "transition-all app-center " + OneSecond);
+            Swap(element, "app-center", "app-left-10");
+
+            // Act
+            RunFor(element, 0.25);
+
+            // Assert
+            Assert.That(OffsetWhileItRuns(element, "background-position-x", BackgroundPositionKeyword.Left,
+                LengthUnit.Pixel), Is.EqualTo(2.5f).Within(0.01f));
+        }
+
+        [Test]
+        public void Given_ABackgroundSizeInPixels_When_TenPixelsFromTheLeftBecomesTheRightEdge_Then_AQuarterInItIsAQuarterOfTheWay()
+        {
+            // Arrange — a 25px tile leaves 95px: 23.75px plus 7.5px.
+            var image = Image(40, 20);
+
+            // Act
+            var offset = AQuarterIntoTenPixelsToRight("app-size-25-10", image);
+
+            // Assert
+            Assert.That(offset, Is.EqualTo(31.25f).Within(0.01f));
+        }
+
+        [Test]
+        public void Given_AContainedImage_When_TenPixelsFromTheLeftBecomesTheRightEdge_Then_AQuarterInItIsAQuarterOfTheWay()
+        {
+            // Arrange — a square image contained in 120px by 60px is 60px wide, leaving 60px: 15px plus 7.5px.
+            var image = Image(20, 20);
+
+            // Act
+            var offset = AQuarterIntoTenPixelsToRight("app-contain", image);
+
+            // Assert
+            Assert.That(offset, Is.EqualTo(22.5f).Within(0.01f));
+        }
+
+        [Test]
+        public void Given_ACoveringImage_When_TenPixelsFromTheLeftBecomesTheRightEdge_Then_AQuarterInItIsAQuarterOfTheWay()
+        {
+            // Arrange — a 4:1 image covering 120px by 60px is 240px wide, leaving -120px: -30px plus 7.5px.
+            var image = Image(40, 10);
+
+            // Act
+            var offset = AQuarterIntoTenPixelsToRight("app-cover", image);
+
+            // Assert
+            Assert.That(offset, Is.EqualTo(-22.5f).Within(0.01f));
+        }
+
+        [Test]
+        public void Given_ABackgroundWidthInPercent_When_TenPixelsFromTheLeftBecomesTheRightEdge_Then_AQuarterInItIsAQuarterOfTheWay()
+        {
+            // Arrange — half of 120px leaves 60px: 15px plus 7.5px.
+            var image = Image(40, 20);
+
+            // Act
+            var offset = AQuarterIntoTenPixelsToRight("app-size-half", image);
+
+            // Assert
+            Assert.That(offset, Is.EqualTo(22.5f).Within(0.01f));
+        }
+
+        [Test]
+        public void Given_ABackgroundHeightAlone_When_TenPixelsFromTheLeftBecomesTheRightEdge_Then_AQuarterInItIsAQuarterOfTheWay()
+        {
+            // Arrange — a 2:1 image 15px high is 30px wide, leaving 90px: 22.5px plus 7.5px.
+            var image = Image(40, 20);
+
+            // Act
+            var offset = AQuarterIntoTenPixelsToRight("app-size-auto-15", image);
+
+            // Assert
+            Assert.That(offset, Is.EqualTo(30f).Within(0.01f));
+        }
+
+        [Test]
+        public void Given_ARoundRepeat_When_TenPixelsFromTheLeftBecomesTheRightEdge_Then_AQuarterInItIsAQuarterOfTheWay()
+        {
+            // Arrange — three 35px tiles round to 40px in 120px, leaving 80px: 20px plus 7.5px.
+            var image = Image(40, 20);
+
+            // Act
+            var offset = AQuarterIntoTenPixelsToRight("app-size-35-10 app-round", image);
+
+            // Assert
+            Assert.That(offset, Is.EqualTo(27.5f).Within(0.01f));
+        }
+
+        [Test]
+        public void Given_AVerticalRoundRepeatOfAnAutoWidth_When_TenPixelsFromTheLeftBecomesTheRightEdge_Then_TheWidthKeepsTheProportions()
+        {
+            // Arrange — a 40px by 25px image rounds to two 30px rows in 60px and widens to 48px, leaving 72px: 18px
+            // plus 7.5px.
+            var image = Image(40, 25);
+
+            // Act
+            var offset = AQuarterIntoTenPixelsToRight("app-size-auto app-round-y", image);
+
+            // Assert
+            Assert.That(offset, Is.EqualTo(25.5f).Within(0.01f));
+        }
+
+        [Test]
+        public void Given_AHorizontalRoundRepeatOfAnAutoHeight_When_TenPixelsFromTheTopBecomesTheBottomEdge_Then_TheHeightKeepsTheProportions()
+        {
+            // Arrange — a 40px by 25px image 35px wide is 21.875px high; three columns round it to 40px, and 25px high,
+            // leaving 35px of 60px: 8.75px plus 7.5px.
+            var element = Mounted(Box + "transition-all app-top-10 app-size-35 app-round-x " + OneSecond, Image(40, 25));
+            Swap(element, "app-top-10", "app-bottom");
+
+            // Act
+            RunFor(element, 0.25);
+
+            // Assert
+            Assert.That(OffsetWhileItRuns(element, "background-position-y", BackgroundPositionKeyword.Top,
+                LengthUnit.Pixel), Is.EqualTo(16.25f).Within(0.01f));
+        }
+
+        [Test]
+        public void Given_ABackgroundSizeWithANoneHeight_When_TenPixelsFromTheLeftBecomesTheRightEdge_Then_TheImageKeepsItsOwnSize()
+        {
+            // Arrange — a none length leaves the 40px image as it is, leaving 80px: 20px plus 7.5px.
+            var image = Image(40, 20);
+
+            // Act
+            var offset = AQuarterIntoTenPixelsToRight("", image,
+                element => element.style.backgroundSize = new BackgroundSize(Length.Pixels(25f), Length.None()));
+
+            // Assert
+            Assert.That(offset, Is.EqualTo(27.5f).Within(0.01f));
         }
     }
 }

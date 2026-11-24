@@ -552,10 +552,10 @@ UI Toolkit switches `visibility` and `background-position` partway through as we
 applies, Velvet takes such a transition over at the panel's next animation update. A `visibility` transition with a
 `visible` end then shows `visible` wherever its eased progress lies strictly between its ends, and the nearer end
 elsewhere: on a curve that stays within its ends, a fade-out stays painted until it ends, and a fade-in with no delay
-paints from that update. A `background-position-x` or `-y` transition slides wherever each position between its ends
-is a percentage alone or a length from one edge, as between `left` and `right`, `center` and `20%`, or `right 10px`
-and `right 30px`. A reversal of either is shortened as CSS shortens one. The font properties keep switching partway
-through.
+paints from that update. A `background-position-x` or `-y` transition slides from one position to the other, its
+percentage and its length each taken from one end to the other as CSS takes them, so `left 10px` to `right` passes
+through every point between. A reversal of either is shortened as CSS shortens one. The font properties keep switching
+partway through.
 
 `transition-discrete` (`transition-behavior: allow-discrete`) leaves UI Toolkit's transition running, so the
 property switches to the new value partway through, as CSS switches a discrete property; `transition-normal` takes

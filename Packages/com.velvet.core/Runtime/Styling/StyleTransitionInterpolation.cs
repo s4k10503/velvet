@@ -44,9 +44,8 @@ namespace Velvet
 
         /// <summary>
         /// Has the transition UI Toolkit runs of the element's property, one <see cref="Interpolates"/> names, show CSS's
-        /// value from the frame on screen on. A slide CSS runs through a length plus a percentage, which a
-        /// <see cref="BackgroundPosition"/> cannot hold, is switched as UI Toolkit switches it, on StyleEaseCurve's curve;
-        /// a transition a member that does not resolve keeps from being read runs as it started.
+        /// value from the frame on screen on. A transition a member that does not resolve keeps from being read runs as it
+        /// started.
         /// </summary>
         internal static void Take(VisualElement element, StylePropertyName property)
         {
@@ -125,9 +124,7 @@ namespace Velvet
                 var toVisible = (int)to == (int)Visibility.Visible;
                 return toVisible == ((int)from == (int)Visibility.Visible) ? null : new VisibilityRun(parts, toVisible);
             }
-            return Slide.Of((BackgroundPosition)from, (BackgroundPosition)to, property == s_positionY) is { } slide
-                ? new SlideRun(parts, slide)
-                : null;
+            return new SlideRun(parts, new Slide((BackgroundPosition)from, (BackgroundPosition)to, property == s_positionY));
         }
 
         private abstract class Run
@@ -158,6 +155,8 @@ namespace Velvet
                     Shortening = shortening;
                 }
             }
+
+            protected VisualElement Element => _parts.Entry.Element;
 
             protected abstract float Select(float progress);
 
@@ -229,49 +228,44 @@ namespace Velvet
 
             protected override float Select(float progress) => Math.Min(progress, BelowHalf);
 
-            protected override object? StartAt(float progress) => _slide.At(progress);
+            protected override object? StartAt(float progress) => _slide.At(progress, Element);
         }
 
-        // Both ends of a slide as an offset in one unit from one edge.
+        // Both ends of a slide as CSS interpolates a position: a percentage of the room the image leaves plus a length,
+        // both from the left or top edge.
         private readonly struct Slide
         {
-            private readonly BackgroundPositionKeyword _edge;
-            private readonly LengthUnit _unit;
-            private readonly float _from;
-            private readonly float _to;
+            private readonly float _fromPercent;
+            private readonly float _fromPixels;
+            private readonly float _toPercent;
+            private readonly float _toPixels;
+            private readonly bool _vertical;
 
-            private Slide(BackgroundPositionKeyword edge, LengthUnit unit, float from, float to)
+            public Slide(BackgroundPosition from, BackgroundPosition to, bool vertical)
             {
-                _edge = edge;
-                _unit = unit;
-                _from = from;
-                _to = to;
+                EdgeTerms(from, out _fromPercent, out _fromPixels);
+                EdgeTerms(to, out _toPercent, out _toPixels);
+                _vertical = vertical;
             }
 
-            public BackgroundPosition At(float progress)
-                => new(_edge, new Length(Mathf.LerpUnclamped(_from, _to, progress), _unit));
-
-            // CSS interpolates a position as a percentage of the room the image leaves plus a length, both from the
-            // left or top edge; null where a value between the ends needs both terms.
-            public static Slide? Of(BackgroundPosition from, BackgroundPosition to, bool vertical)
+            // In the unit both ends share where they share one, which follows the element's size as it changes; a value
+            // holding both terms goes in pixels from the near edge, against the room on the frame it is written for.
+            public BackgroundPosition At(float progress, VisualElement element)
             {
-                EdgeTerms(from, out var fromPercent, out var fromPixels);
-                EdgeTerms(to, out var toPercent, out var toPixels);
-                var near = vertical ? BackgroundPositionKeyword.Top : BackgroundPositionKeyword.Left;
-                if (fromPixels == 0f && toPixels == 0f)
+                var percent = Mathf.LerpUnclamped(_fromPercent, _toPercent, progress);
+                var pixels = Mathf.LerpUnclamped(_fromPixels, _toPixels, progress);
+                if (_fromPixels == 0f && _toPixels == 0f)
                 {
-                    return new Slide(near, LengthUnit.Percent, fromPercent, toPercent);
+                    return new BackgroundPosition(_vertical ? BackgroundPositionKeyword.Top : BackgroundPositionKeyword.Left,
+                        new Length(percent, LengthUnit.Percent));
                 }
-                if (fromPercent == 0f && toPercent == 0f)
+                if (_fromPercent == 100f && _toPercent == 100f)
                 {
-                    return new Slide(near, LengthUnit.Pixel, fromPixels, toPixels);
+                    return new BackgroundPosition(_vertical ? BackgroundPositionKeyword.Bottom : BackgroundPositionKeyword.Right,
+                        new Length(-pixels));
                 }
-                if (fromPercent == 100f && toPercent == 100f)
-                {
-                    var far = vertical ? BackgroundPositionKeyword.Bottom : BackgroundPositionKeyword.Right;
-                    return new Slide(far, LengthUnit.Pixel, -fromPixels, -toPixels);
-                }
-                return null;
+                return new BackgroundPosition(_vertical ? BackgroundPositionKeyword.Top : BackgroundPositionKeyword.Left,
+                    new Length(BackgroundTile.Room(element, _vertical) * percent / 100f + pixels));
             }
 
             private static void EdgeTerms(BackgroundPosition position, out float percent, out float pixels)
@@ -297,8 +291,8 @@ namespace Velvet
         // Where UI Toolkit keeps one element's transition of one property.
         private sealed class Entry
         {
-            private readonly VisualElement _element;
             private readonly object?[] _arguments = new object?[3];
+            public readonly VisualElement Element;
             public readonly object AnimationSystem;
             public readonly object Values;
             public readonly object Id;
@@ -306,7 +300,7 @@ namespace Velvet
 
             public Entry(VisualElement element, object system, object values, object id, Set set)
             {
-                _element = element;
+                Element = element;
                 AnimationSystem = system;
                 Values = values;
                 Id = id;
@@ -316,7 +310,7 @@ namespace Velvet
             public bool TryLocate(out object running, out int index)
             {
                 running = Set.Running.GetValue(Values)!;
-                (_arguments[0], _arguments[1], _arguments[2]) = (_element, Id, null);
+                (_arguments[0], _arguments[1], _arguments[2]) = (Element, Id, null);
                 var found = Set.IndexOf.Invoke(running, _arguments) is true;
                 index = found ? (int)_arguments[2]! : -1;
                 return found;
