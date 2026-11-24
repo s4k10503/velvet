@@ -816,7 +816,8 @@ namespace Velvet
             var retired = _ctx.RetiredWorldSpaceHosts;
             while (retired.Count > 0)
             {
-                PanelHostFactory.Destroy(retired.Dequeue());
+                var record = retired.Dequeue();
+                PanelHostFactory.Destroy(record);
             }
         }
 
