@@ -137,6 +137,14 @@ namespace Velvet
         internal static readonly EngineMember ComputedStyleMatchingRulesHash =
             Field(UIElements, ComputedStyleType, "matchingRulesHash", "System.Int64");
 
+        // FiberFontScope's write of a face inside a style pass: the hash of what an element passes down, which the pass
+        // keys its children's cached styles on, and the data it hashes.
+        internal static readonly EngineMember ElementInheritedStylesHash =
+            Field(UIElements, VisualElementType, "inheritedStylesHash", "System.Int32");
+
+        internal static readonly EngineMember ComputedStyleInheritedData = Field(UIElements, ComputedStyleType,
+            "inheritedData", "UnityEngine.UIElements.StyleDataRef`1[UnityEngine.UIElements.InheritedData]");
+
         internal static readonly EngineMember TryGetComputedStyle = Method(UIElements,
             "UnityEngine.UIElements.StyleCache", "TryGetValue", "System.Boolean", "System.Int64", ComputedStyleType + "&");
 

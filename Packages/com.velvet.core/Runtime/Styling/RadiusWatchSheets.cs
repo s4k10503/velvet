@@ -141,6 +141,10 @@ namespace Velvet
             {
                 return;
             }
+            if (FiberFontScope.IsMarker(source))
+            {
+                return;
+            }
             var watch = DerivedOf(source);
             if (watch != null)
             {

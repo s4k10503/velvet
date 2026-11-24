@@ -522,6 +522,11 @@ namespace Velvet
             for (var i = 0; i < element.styleSheets.count; i++)
             {
                 var sheet = element.styleSheets[i];
+                if (FiberFontScope.IsMarker(sheet))
+                {
+                    continue;
+                }
+
                 if (!SnappedBorderSheets.IsSnapped(sheet) && !RadiusWatchSheets.IsWatch(sheet))
                 {
                     // The content hash too, which an edit of the sheet in place moves.

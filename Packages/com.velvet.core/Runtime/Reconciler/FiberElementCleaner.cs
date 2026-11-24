@@ -479,6 +479,7 @@ namespace Velvet
                 LeadingLengthProbe.Detach(_ctx, element, leadingProbe);
             }
             TextShownWatch.Detach(_ctx, element);
+            _ctx.FontScope.Forget(element);
             if (_ctx.GradientBackgrounds.TryGetValue(element, out var gradientBinding))
             {
                 // Clear the baked gradient background-image so a pooled element cannot ghost a prior

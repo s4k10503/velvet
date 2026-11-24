@@ -111,6 +111,8 @@ inherited velocity and the opacity, rotate, translate and scale a layoutId move 
 to write a filter change past a running transform-origin transition ([styling-filters.md](styling-filters.md#transitions)),
 the border colors an element's matching style
 rules give it, which a [dashed divider](styling-flexbox-and-gap.md) paints in,
+the hash of what an element's style passes down to its children, which Velvet brings up to date after writing a
+font-class element's face inside a style pass ([fonts.md](fonts.md)),
 and a panel's version, hierarchy version, layout-phase flag, style updater and that updater's traversal flag, an
 element's layout node, last layout and version increment, and the node's layout computation, dirty flag, new-layout
 flag and copy of another node's style, which a commit uses to lay the panel out before its layout effects and
