@@ -40,18 +40,17 @@ namespace Velvet.Tests
         {
             var (_, setRender) = Hooks.UseState(0);
             s_render = setRender;
-            return V.Div(children: new VNode[]
+            return V.Div(name: "outer", className: "has-[:checked]:bg-mark", children: new VNode[]
             {
-                V.Div(name: "parent", className: "has-[.selected]:bg-mark has-[:checked]:bg-checked",
-                    children: new VNode[]
-                    {
-                        V.VirtualList(
-                            items: s_items,
-                            keySelector: item => item,
-                            itemHeight: ItemHeight,
-                            renderer: item => item == "c" ? s_selectedRow(item) : V.Div(name: item),
-                            overscan: 0),
-                    }),
+                V.Div(name: "parent", className: "has-[.selected]:bg-mark", children: new VNode[]
+                {
+                    V.VirtualList(
+                        items: s_items,
+                        keySelector: item => item,
+                        itemHeight: ItemHeight,
+                        renderer: item => item == "c" ? s_selectedRow(item) : V.Div(name: item),
+                        overscan: 0),
+                }),
                 V.Div(name: "holder", className: "has-[.selected]:bg-mark", children: new VNode[]
                 {
                     V.Div(name: "target"),
@@ -69,6 +68,8 @@ namespace Velvet.Tests
             }, Array.Empty<object>());
             return V.Div(className: "selected");
         }
+
+        private VisualElement Outer => _root.Q<VisualElement>("outer");
 
         private VisualElement Parent => _root.Q<VisualElement>("parent");
 
@@ -116,7 +117,7 @@ namespace Velvet.Tests
             controller.UpdateVisibleRange(scrollY: 20f, viewportHeight: 10f);
 
             // Assert
-            Assert.That(Parent.ClassListContains("bg-checked"), Is.True);
+            Assert.That(Outer.ClassListContains("bg-mark"), Is.True);
         }
 
         [Test]
@@ -160,7 +161,7 @@ namespace Velvet.Tests
         [Test]
         public void Given_AHasElementAboveAPortalTarget_When_AScrollBringsARowPortallingTheClassThereIntoTheRange_Then_ItMatches()
         {
-            // Arrange — the row for "c" is a Portal into "target", which no ancestor of the list holds.
+            // Arrange — the row for "c" is a Portal into "target", which sits under "holder" rather than "parent".
             using var mounted = V.Mount(_root, V.Component(ListHost, key: "host"));
             s_target = _root.Q<VisualElement>("target");
             s_selectedRow = _ => V.Portal(s_target, new VNode[] { V.Div(className: "selected") });
