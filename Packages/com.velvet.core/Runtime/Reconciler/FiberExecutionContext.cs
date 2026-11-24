@@ -263,7 +263,7 @@ namespace Velvet
                 "Maximum update depth exceeded. Work that waited for a root's render or commit to end ran "
                 + $"{MaxRunsPerRequest} times before control returned, and was asked for again. Velvet limits nested "
                 + "updates and does not run it again before control returns. Where it is a root's update drain, the "
-                + "updates queued for that root are dropped; otherwise the updates still queued for it stay queued."));
+                + "updates queued for that root outside a transition are dropped; otherwise the updates still queued for it stay queued."));
             return false;
         }
 

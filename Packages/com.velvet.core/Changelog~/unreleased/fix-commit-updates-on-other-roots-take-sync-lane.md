@@ -15,4 +15,4 @@
 - Two roots whose layout effects or `refCallback:`s write each other a new value on every commit kept doing so, one
   update drain of a root at a time, with no end. With the updates above rendering before control returns, the
   exchange stops where one root is asked to render a 51st time by the other's commits before control returns: the
-  updates queued for that root are dropped and "Maximum update depth exceeded" is logged.
+  updates queued for that root outside a transition are dropped and "Maximum update depth exceeded" is logged.
