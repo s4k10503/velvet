@@ -219,7 +219,16 @@ namespace Velvet
                         key = target;
                     }
                     if (target is { IsDisposed: true }) continue;
-                    if (!Counted(kind, key)) continue;
+                    if (!Counted(kind, key))
+                    {
+                        // A root's flush refused here was asked for again after each run through work outside its own
+                        // drain, as two roots' layout effects updating each other ask for it, which the cap inside one
+                        // drain never counts. So what it queued is dropped as that cap drops it
+                        // (FiberBatchScheduler.DrainImmediatePassesUpTo): left queued, the root's next frame callback
+                        // renders it and can start the loop again.
+                        if (kind == Request.Flush) target?.DropImmediateIntake();
+                        continue;
+                    }
                     if (target != null && s_threw.Contains(target) && TakesUpQueuedUpdates(kind)) target.RunInNextFrame(run!, kind != Request.Resolve);
                     else if (run != null) RunIsolated(run, static held => held());
                     else RunIsolated(target!, static scheduler => scheduler.FlushImmediate());
@@ -249,8 +258,10 @@ namespace Velvet
             UnityEngine.Debug.LogException(new InvalidOperationException(
                 "Maximum update depth exceeded. Work that waited for a root's render or commit to end ran "
                 + $"{MaxRunsPerRequest} times before control returned, and was asked for again. Velvet does not run it "
-                + "again before control returns, as React limits nested updates, and the updates still queued for it "
-                + "stay queued."));
+                + "again before control returns, as React limits nested updates, and "
+                + (kind == Request.Flush
+                    ? "drops the updates queued for that root's render."
+                    : "the updates still queued for it stay queued.")));
             return false;
         }
 

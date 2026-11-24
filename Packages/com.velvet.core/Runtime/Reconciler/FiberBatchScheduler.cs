@@ -571,7 +571,7 @@ namespace Velvet
 
         // Which lanes go, and why only these, is the nested-update cap's comment in DrainImmediatePassesUpTo.
         // Copied out rather than walked in place: a settle below can request a render, which enqueues it again.
-        private void DropImmediateIntake()
+        internal void DropImmediateIntake()
         {
             var droppedFibers = _immediateOrder.ToArray();
             // A capture waiting for a render was waiting on a lane just dropped, or on one a boundary held back keeps.
