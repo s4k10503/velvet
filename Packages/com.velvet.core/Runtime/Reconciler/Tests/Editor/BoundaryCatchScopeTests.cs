@@ -521,7 +521,8 @@ namespace Velvet.Tests
         public void Given_ARowOfTheFailedOutputWhoseOwnBuildThrows_When_TheBoundaryCatchesOnAnUpdate_Then_NoDuplicateKeyIsReported(
             string rowBefore)
         {
-            // Arrange — what the row's position held before decides whether the row is created, replaces it, or patches it
+            // Arrange — what the row's position held before decides whether the row is created, replaces it, or
+            // patches it
             s_failingRowBefore = rowBefore;
             using var mounted = V.Mount(_root, V.Component(FailingRowHostRender, key: "host"), CaughtErrors.Unlogged);
             s_throws = true;
