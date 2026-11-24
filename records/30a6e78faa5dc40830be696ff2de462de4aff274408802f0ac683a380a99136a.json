@@ -1,0 +1,32 @@
+{
+ "detail": "EditMode: 1 failed among the 42 case(s) that ran the site: Given_AnElementAfterASiblingComponent_When_ItsRefCallbackIsSwapped_Then_TheOldDetachesAheadOfTheOwnersInsertionEffectAndTheNewAttachesBetweenTheirLayoutSetups",
+ "file": "96a4f4078eb53499a279e1848e8983cbe1d15c693892a796149fbbc8e0ea93b0",
+ "killers": [
+  {
+   "case": "Velvet.Tests.RefCommitOrderEventLogTests(UIToolkit).Given_AnElementAfterASiblingComponent_When_ItsRefCallbackIsSwapped_Then_TheOldDetachesAheadOfTheOwnersInsertionEffectAndTheNewAttachesBetweenTheirLayoutSetups",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/RefCommitOrderEventLogTests.cs": "287e45ac297db65e9d54de362c54e502febe172813dbd8703c4bd9a6f8f49a63",
+    "Packages/com.velvet.core/TestUtilities/EventLog.cs": "e191b8d91d56ab6eb1633a8f37e5282dd11f4cbfd649b59ab27deab3a1e4b490",
+    "Packages/com.velvet.core/TestUtilities/EventLogRenderer.cs": "59fbaf33c955e917c5359940c3d0a0f090fefdc0d2a41b370a75eb6ce7304abe",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae"
+   }
+  }
+ ],
+ "measured_by": "45337772381",
+ "mutant": {
+  "after": ";",
+  "before": "if (pass.RunsTurnEnds) op.Fiber!.Reconciler?.Context.DetachReplacedRefAtItsTurn(op.Child, op.Fiber);",
+  "column": 16,
+  "line": 1001,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ChildListWrites.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "b6d55c00a5e6200f1ee82e12baca3f58974259546fbac6143571e82567d50926",
+ "verdict": "killed"
+}

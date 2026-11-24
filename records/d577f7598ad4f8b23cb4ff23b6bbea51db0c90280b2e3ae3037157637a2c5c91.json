@@ -1,0 +1,40 @@
+{
+ "detail": "EditMode: 3 failed among the 617 case(s) that ran the site: Given_AChildAppendedAfterAMarkAndThenRemoved_When_AppendedSinceIsRead_Then_ItIsNotReturned, Given_ChildrenAppendedBeforeAndAfterAMark_When_AppendedSinceIsRead_Then_OnlyTheOnesAfterItAreReturned, Given_TwoReadersOnOneParent_When_TheInnerOneCloses_Then_TheOuterOneStillReadsItsChildren",
+ "file": "c4548be5ef4420002de7815c13ea74d63370251c6f1b4235e670c8f04c970d0c",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ComponentFiberAppendLogTests.Given_AChildAppendedAfterAMarkAndThenRemoved_When_AppendedSinceIsRead_Then_ItIsNotReturned",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/ComponentFiberAppendLogTests.cs": "b9c9f1477d5fc5cc9d70eb3a1d361cd0f5d8185c94999e456657a47361d573fe"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ComponentFiberAppendLogTests.Given_ChildrenAppendedBeforeAndAfterAMark_When_AppendedSinceIsRead_Then_OnlyTheOnesAfterItAreReturned",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/ComponentFiberAppendLogTests.cs": "b9c9f1477d5fc5cc9d70eb3a1d361cd0f5d8185c94999e456657a47361d573fe"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ComponentFiberAppendLogTests.Given_TwoReadersOnOneParent_When_TheInnerOneCloses_Then_TheOuterOneStillReadsItsChildren",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/ComponentFiberAppendLogTests.cs": "b9c9f1477d5fc5cc9d70eb3a1d361cd0f5d8185c94999e456657a47361d573fe"
+   }
+  }
+ ],
+ "measured_by": "45337772381",
+ "mutant": {
+  "after": "<=",
+  "before": "<",
+  "column": 32,
+  "line": 1422,
+  "operator": "boundary",
+  "path": "Packages/com.velvet.core/Runtime/Component/ComponentFiber.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "b6d55c00a5e6200f1ee82e12baca3f58974259546fbac6143571e82567d50926",
+ "verdict": "killed"
+}

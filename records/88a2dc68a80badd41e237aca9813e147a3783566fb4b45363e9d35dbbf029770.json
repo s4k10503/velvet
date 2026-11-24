@@ -1,0 +1,31 @@
+{
+ "detail": "EditMode: 1 failed among the 41 case(s) that ran the site: Given_AVirtualListRowWhoseClassesGainedAZIndexWithNoRender_When_AScrollPlacesItAgain_Then_ItPaintsInFrontOfTheRowAfterIt",
+ "file": "84c3ab58c69ac3ab7943165aa5aa21b0e6cfc320e05f0bbd1b39baa10e2c665f",
+ "killers": [
+  {
+   "case": "Velvet.Tests.VirtualListZLayerTests.Given_AVirtualListRowWhoseClassesGainedAZIndexWithNoRender_When_AScrollPlacesItAgain_Then_ItPaintsInFrontOfTheRowAfterIt",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/VirtualListZLayerTests.cs": "540f623c764d56bd9838afdbd5ce48e85512b52ea54458de11c6c847d76b9baa",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae",
+    "Packages/com.velvet.core/TestUtilities/ZBandProbe.cs": "89b5305bd9e43f72156f5a3d8c6f121f5ebcbee121486fdbb8e4b04b315feaaa"
+   }
+  }
+ ],
+ "measured_by": "45337772381",
+ "mutant": {
+  "after": ";",
+  "before": "Settle(ctx, real, Record(ctx, real, classElement, declared, resolved, anchored));",
+  "column": 12,
+  "line": 413,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberZLayerCoordinator.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "b6d55c00a5e6200f1ee82e12baca3f58974259546fbac6143571e82567d50926",
+ "verdict": "killed"
+}

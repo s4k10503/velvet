@@ -1,0 +1,32 @@
+{
+ "detail": "EditMode: 1 failed among the 378 case(s) that ran the site: Given_AChildDirtiedBeforeItsParentInOneBatch_When_Drained_Then_TheParentRendersBeforeTheChildAndTheChildRendersOnce",
+ "file": "96a4ed24a151e18a8668adc0a75e077735d94267e08477ee8c142daa69bbb8d7",
+ "killers": [
+  {
+   "case": "Velvet.Tests.RenderPhaseEventLogTests(UIToolkit).Given_AChildDirtiedBeforeItsParentInOneBatch_When_Drained_Then_TheParentRendersBeforeTheChildAndTheChildRendersOnce",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/RenderPhaseEventLogTests.cs": "5cbf26c0a6748b6cc74def09d79ca565b2540b5a0089329ad7cd6b639e0be040",
+    "Packages/com.velvet.core/TestUtilities/EventLog.cs": "e191b8d91d56ab6eb1633a8f37e5282dd11f4cbfd649b59ab27deab3a1e4b490",
+    "Packages/com.velvet.core/TestUtilities/EventLogRenderer.cs": "59fbaf33c955e917c5359940c3d0a0f090fefdc0d2a41b370a75eb6ce7304abe",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae"
+   }
+  }
+ ],
+ "measured_by": "45337772381",
+ "mutant": {
+  "after": "==",
+  "before": "!=",
+  "column": 51,
+  "line": 839,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberBatchScheduler.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "b6d55c00a5e6200f1ee82e12baca3f58974259546fbac6143571e82567d50926",
+ "verdict": "killed"
+}

@@ -1,0 +1,33 @@
+{
+ "detail": "EditMode: 1 failed among the 464 case(s) that ran the site: Given_AComponentWhosePortalsChildSuspendsWithNothingToCatchIt_When_TheReadResolves_Then_ThePortalsChildRenders",
+ "file": "15727093b3432e78ff0dae9afa0f0d7be491bb2c7163c684a858476ae1c1c1db",
+ "killers": [
+  {
+   "case": "Velvet.Tests.OneCommitPerWaveTests.Given_AComponentWhosePortalsChildSuspendsWithNothingToCatchIt_When_TheReadResolves_Then_ThePortalsChildRenders",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/OneCommitPerWaveTests.cs": "73ee1362f1718dd47831f9bf3e53159d49bbb2bfceff7c74164c3e2d9176e78a",
+    "Packages/com.velvet.core/TestUtilities/AsyncActionsInFlightTestAccess.cs": "11111385db8b74b91d046342600e4a605fdce6c8f8ceb54e28adf8c204136034",
+    "Packages/com.velvet.core/TestUtilities/EventLog.cs": "e191b8d91d56ab6eb1633a8f37e5282dd11f4cbfd649b59ab27deab3a1e4b490",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  }
+ ],
+ "measured_by": "45337772381",
+ "mutant": {
+  "after": ";",
+  "before": "FinishPass(reconciledInto, walked, Owner);",
+  "column": 16,
+  "line": 371,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/Reconciler.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "b6d55c00a5e6200f1ee82e12baca3f58974259546fbac6143571e82567d50926",
+ "verdict": "killed"
+}

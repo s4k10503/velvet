@@ -1,0 +1,28 @@
+{
+ "detail": "EditMode: 1 failed among the 79 case(s) that ran the site: Given_AnAnchoredElementLiftedInFrontOfAnUnpositionedRow_When_ItIsPatchedWithNoStackingClass_Then_ItStaysInFrontOfTheRow(False)",
+ "file": "dc4067dff85eeed1507e4ef054dbf2d90cd1364119630422ccce516903a1d404",
+ "killers": [
+  {
+   "case": "Velvet.Tests.PatchReadBackTests.Given_AnAnchoredElementLiftedInFrontOfAnUnpositionedRow_When_ItIsPatchedWithNoStackingClass_Then_ItStaysInFrontOfTheRow(False)",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PatchReadBackTests.cs": "c3899adf4e1d18a675511c65cabb044fa35ca635a806b1cefbe5988ed7c26ff1"
+   }
+  }
+ ],
+ "measured_by": "45337772381",
+ "mutant": {
+  "after": "==",
+  "before": "!=",
+  "column": 43,
+  "line": 447,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberNodePatcher.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "b6d55c00a5e6200f1ee82e12baca3f58974259546fbac6143571e82567d50926",
+ "verdict": "killed"
+}

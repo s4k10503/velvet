@@ -1,0 +1,40 @@
+{
+ "detail": "EditMode: 2 failed among the 19 case(s) that ran the site: Given_APortalRowNamingAFamily_When_ARenderTakesTheFamilyClassOff_Then_TheRowCarriesTheDefaultFamilyBeforeThePanelUpdates, Given_APortalRowNamingAFamily_When_ARenderTakesTheFamilyClassOff_Then_TheRowResolvesTheDefaultFamily",
+ "file": "699fc7ddeed3903d2e35766713331d9f18b68fd22394fa39d72e0735b8b26de7",
+ "killers": [
+  {
+   "case": "Velvet.Tests.DefaultFamilyScopePanelTests.Given_APortalRowNamingAFamily_When_ARenderTakesTheFamilyClassOff_Then_TheRowCarriesTheDefaultFamilyBeforeThePanelUpdates",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/DefaultFamilyScopePanelTests.cs": "d82d0c9ba183556265e727ef466b98e0f3eecb0c0a64e96408296c4f0367cdc5",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "18b6b404187836003ea0db593918596c4ed3d84ab35733a088284926133a8987",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26"
+   }
+  },
+  {
+   "case": "Velvet.Tests.DefaultFamilyScopePanelTests.Given_APortalRowNamingAFamily_When_ARenderTakesTheFamilyClassOff_Then_TheRowResolvesTheDefaultFamily",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/DefaultFamilyScopePanelTests.cs": "d82d0c9ba183556265e727ef466b98e0f3eecb0c0a64e96408296c4f0367cdc5",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "18b6b404187836003ea0db593918596c4ed3d84ab35733a088284926133a8987",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26"
+   }
+  }
+ ],
+ "measured_by": "45337772381",
+ "mutant": {
+  "after": ";",
+  "before": "InlineFontLedger.TakeOff(element);",
+  "column": 12,
+  "line": 175,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleFontResolver.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "b6d55c00a5e6200f1ee82e12baca3f58974259546fbac6143571e82567d50926",
+ "verdict": "killed"
+}

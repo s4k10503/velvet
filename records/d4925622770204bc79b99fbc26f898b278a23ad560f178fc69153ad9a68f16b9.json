@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed: Given_ATokenAddedByALaterRenderThatSortsAheadOfTheOnesThere_When_Reconciled_Then_TheLiveClassListIsInTheOrderAFreshMountGives(\"pointer-events-none\",\"pointer-events-none pointer-events-auto\",\"pointer-events-auto pointer-events-none\")",
+ "file": "590a675fd275aa4e25a49daa297c2a17ba7abede864766a0af35b5e1bd4240d9",
+ "killers": [
+  {
+   "case": "Velvet.Tests.FamilyOrderTests.Given_ATokenAddedByALaterRenderThatSortsAheadOfTheOnesThere_When_Reconciled_Then_TheLiveClassListIsInTheOrderAFreshMountGives(\"pointer-events-none\",\"pointer-events-none pointer-events-auto\",\"pointer-events-auto pointer-events-none\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/FamilyOrderTests.cs": "b6d8a9d14208edbfbcd5fbd174674d3404086ea792f0c8974eb6e948545682fa"
+   }
+  }
+ ],
+ "measured_by": "45337772381",
+ "mutant": {
+  "after": "",
+  "before": " || core.SequenceEqual(AutoClassName.AsSpan())",
+  "column": 57,
+  "line": 32,
+  "operator": "clause removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StylePointerEventsClass.cs",
+  "shadowed": [
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "b6d55c00a5e6200f1ee82e12baca3f58974259546fbac6143571e82567d50926",
+ "verdict": "killed"
+}

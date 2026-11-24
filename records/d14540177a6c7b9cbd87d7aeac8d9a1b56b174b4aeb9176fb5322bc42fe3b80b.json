@@ -1,0 +1,58 @@
+{
+ "detail": "EditMode: 4 failed in Velvet.Tests.Reconciler.Editor: Given_AnUpdateAStoreRendersEffectScheduled_When_AnOrdinaryDrainRendersIt_Then_ItsEffectIsStillPending, Given_AnUpdateAStoreRendersEffectScheduled_When_TheStoreChangesAgain_Then_ThePostedWorkRendersTheReader, Given_AStoreChangeAndThenAnOrdinaryUpdate_When_TheMainThreadRendersBoth_Then_TheReadersEffectHasRun",
+ "file": "96a4ed24a151e18a8668adc0a75e077735d94267e08477ee8c142daa69bbb8d7",
+ "killers": [
+  {
+   "case": "Velvet.Tests.PassiveEffectFlushBeforeRenderTests.Given_AStoreChangeAndThenAnOrdinaryUpdate_When_TheMainThreadRendersBoth_Then_TheReadersEffectHasRun",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PassiveEffectFlushBeforeRenderTests.cs": "be5cc99ec2d6008bc8115ab1e12184eb8531f0eb29d64470e8714a4e7db61a67",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.PassiveEffectFlushBeforeRenderTests.Given_AStoreChangeTheMainThreadRenders_When_ItsCommitEnds_Then_TheReadersEffectHasRun",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PassiveEffectFlushBeforeRenderTests.cs": "be5cc99ec2d6008bc8115ab1e12184eb8531f0eb29d64470e8714a4e7db61a67",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.PassiveEffectFlushBeforeRenderTests.Given_AnUpdateAStoreRendersEffectScheduled_When_AnOrdinaryDrainRendersIt_Then_ItsEffectIsStillPending",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PassiveEffectFlushBeforeRenderTests.cs": "be5cc99ec2d6008bc8115ab1e12184eb8531f0eb29d64470e8714a4e7db61a67",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.PassiveEffectFlushBeforeRenderTests.Given_AnUpdateAStoreRendersEffectScheduled_When_TheStoreChangesAgain_Then_ThePostedWorkRendersTheReader",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PassiveEffectFlushBeforeRenderTests.cs": "be5cc99ec2d6008bc8115ab1e12184eb8531f0eb29d64470e8714a4e7db61a67",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  }
+ ],
+ "measured_by": "45337772381",
+ "mutant": {
+  "after": ";",
+  "before": "FiberExecutionContext.Enter(this, this, static scheduler => scheduler.FlushOwedExternalStoreRendersWork());",
+  "column": 12,
+  "line": 244,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberBatchScheduler.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "b6d55c00a5e6200f1ee82e12baca3f58974259546fbac6143571e82567d50926",
+ "verdict": "killed"
+}

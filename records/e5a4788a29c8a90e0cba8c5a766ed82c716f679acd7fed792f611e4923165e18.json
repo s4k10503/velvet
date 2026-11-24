@@ -1,0 +1,34 @@
+{
+ "detail": "EditMode: 2 failed among the 27 case(s) that ran the site: Given_AnEarlierRangeReadOnce_When_ItGrowsPastTheLastOne_Then_TheLastEndIsTheGrownOnes, Given_ARangeReadOnce_When_ALaterRangeIsRecordedOnTheTarget_Then_TheLastEndIsTheLaterOnes",
+ "file": "c9ca7261e282751921f9bc5b2cea1ba096c95e27587785cbc006d18b4ffa30e6",
+ "killers": [
+  {
+   "case": "Velvet.Tests.PortalRangeStoreTests.Given_ARangeReadOnce_When_ALaterRangeIsRecordedOnTheTarget_Then_TheLastEndIsTheLaterOnes",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PortalRangeStoreTests.cs": "afba00d1374923abeb02c1983f4836485c731914fb2c0ffe9a12cf827bcff9b6"
+   }
+  },
+  {
+   "case": "Velvet.Tests.PortalRangeStoreTests.Given_AnEarlierRangeReadOnce_When_ItGrowsPastTheLastOne_Then_TheLastEndIsTheGrownOnes",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PortalRangeStoreTests.cs": "afba00d1374923abeb02c1983f4836485c731914fb2c0ffe9a12cf827bcff9b6"
+   }
+  }
+ ],
+ "measured_by": "45337772381",
+ "mutant": {
+  "after": "-",
+  "before": "+",
+  "column": 45,
+  "line": 96,
+  "operator": "arithmetic",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ReconcilerContext.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "b6d55c00a5e6200f1ee82e12baca3f58974259546fbac6143571e82567d50926",
+ "verdict": "killed"
+}
