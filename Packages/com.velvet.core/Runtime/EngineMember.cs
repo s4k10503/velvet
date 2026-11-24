@@ -271,7 +271,8 @@ namespace Velvet
             StylePropertyIdShape, StylePropertyIdShape);
 
         // The transitions a panel's style animation system is running, read by NativeTransitionVelocity (a running
-        // transition's timing and values) and RunningStyleTransition (the same, and what a reversal of it runs back to).
+        // transition's timing and values), RunningStyleTransition (the same, and what a reversal of it runs back to) and
+        // StyleTransitionInterpolation (the same, and the factor a reversal of it is shortened by).
         // The generic members declare the shape "*", which any type satisfies, because a field typed by a generic
         // parameter has no spelling.
         private const string AnimationSystemType = "UnityEngine.UIElements.StylePropertyAnimationSystem";
@@ -311,7 +312,8 @@ namespace Velvet
             AnimationSystemType + "+AnimationDataSet`2", "IndexOf", "System.Boolean",
             "UnityEngine.UIElements.VisualElement", StylePropertyIdShape, "System.Int32&");
 
-        // RunningStyleTransition.Retime's write of a retimed transition's current frame.
+        // RunningStyleTransition.Retime's and StyleTransitionInterpolation.Take's write of a retimed transition's current
+        // frame.
         internal static readonly EngineMember AnimationValuesUpdateValues =
             Method(UIElements, AnimationSystemType + "+Values", "UpdateValues", "System.Void");
 
@@ -338,6 +340,9 @@ namespace Velvet
 
         internal static readonly EngineMember AnimationTimingReversingShortening = Field(UIElements,
             AnimationSystemType + "+Values`1+TimingData", "reversingShorteningFactor", "System.Single");
+
+        internal static readonly EngineMember AnimationTimingDelay =
+            Field(UIElements, AnimationSystemType + "+Values`1+TimingData", "delay", "System.Single");
 
         internal static readonly EngineMember AnimationStyleStart =
             Field(UIElements, AnimationSystemType + "+Values`1+StyleData", "startValue", "*");
