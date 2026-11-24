@@ -3965,7 +3965,8 @@ namespace Velvet
         /// 2-tuple:
         /// - <c>optimisticState</c>: the pass-through state folded through the outstanding entries.
         /// - <c>addOptimistic</c>: records an entry owned by the transition whose callback is running, outside the
-        ///   callbacks of a commit or passive effect flush it runs, or by the async actions in flight, if either.
+        ///   callbacks the migration guide's <c>useTransition</c> row names, or by the async actions in flight, if
+        ///   either.
         /// </returns>
         public static (TState optimisticState, Action<TAction> addOptimistic) UseOptimistic<TState, TAction>(
             TState passthroughState, Func<TState, TAction, TState> applyOptimistic)
