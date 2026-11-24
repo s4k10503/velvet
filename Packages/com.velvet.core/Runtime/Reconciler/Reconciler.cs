@@ -491,9 +491,17 @@ namespace Velvet
                     }
                     finally
                     {
-                        ElementCleaner.ReleaseRetiredZLayerReals();
-                        FiberZLayerCoordinator.DrainTeardowns(_ctx);
-                        FiberZLayerCoordinator.ResortLayers(_ctx);
+                        try
+                        {
+                            ElementCleaner.ReleaseRetiredZLayerReals();
+                            FiberZLayerCoordinator.DrainTeardowns(_ctx);
+                            FiberZLayerCoordinator.ResortLayers(_ctx);
+                        }
+                        finally
+                        {
+                            // Behind the z-* release, which removes a relocated element a host's root still holds.
+                            ElementCleaner.ReleaseRetiredWorldSpaceHosts();
+                        }
                     }
                 }
                 applyFailure?.Throw();
@@ -1269,6 +1277,9 @@ namespace Velvet
                 PanelHostFactory.Destroy(record);
             }
             _ctx.WorldSpaceBindings.Clear();
+            // MUTANT_SURVIVES(unreachable, line removed): no fixture leaves a retired host to the sweep.
+            // Each one a fixture retires goes in the FinishPass of the pass it was retired in.
+            ElementCleaner.ReleaseRetiredWorldSpaceHosts();
             foreach (var controller in _ctx.VirtualListControllers.Values)
             {
                 controller.Dispose();

@@ -787,11 +787,11 @@ namespace Velvet
             _ctx.SamePanelPortalBridges.Remove(target);
         }
 
-        // Destroys the framework-owned world-space host bound to a departing placeholder. Runs
-        // AFTER CleanupPortal, which already removed and released the children living inside the
-        // host's root — what remains is the host GameObject and its runtime-created panel assets.
-        // Layer hosts are deliberately NOT torn down here: they are shared per layer and persist
-        // until reconciler disposal.
+        // The host goes only once the removals of its root's rows have run (WorldSpaceHostRemovalTests). A pass that
+        // records those removals (CleanupPortal's, and those DeletionCommit.Queue records for a Portal its deletion
+        // detached) applies them after this, so while one is open the host waits for ReleaseRetiredWorldSpaceHosts.
+        // Layer hosts are deliberately NOT torn down here: they are shared per layer and persist until reconciler
+        // disposal.
         private void CleanupWorldSpaceHost(VisualElement element)
         {
             if (!_ctx.WorldSpaceBindings.TryGetValue(element, out var record))
@@ -800,11 +800,26 @@ namespace Velvet
             }
 
             _ctx.WorldSpaceBindings.Remove(element);
-            // Focus, if the host held any, was already rescued by RescueFocusFromWorldSpaceHost
-            // before CleanupPortal removed this panel's content (see CleanupElementCore) — by this
-            // point the host's FocusController.focusedElement is already null regardless, since UI
-            // Toolkit clears it as soon as the focused element leaves the panel's visual tree.
+            // Focus, if the host held any, was already rescued by RescueFocusFromWorldSpaceHost (see
+            // CleanupElementCore).
+            if (ChildListWrites.PassIsOpen)
+            {
+                _ctx.RetiredWorldSpaceHosts.Enqueue(record);
+                return;
+            }
             PanelHostFactory.Destroy(record);
+        }
+
+        // Runs from Reconciler.FinishPass, where the pass's recorded writes have applied, and from the reconciler's
+        // dispose sweep.
+        internal void ReleaseRetiredWorldSpaceHosts()
+        {
+            var retired = _ctx.RetiredWorldSpaceHosts;
+            while (retired.Count > 0)
+            {
+                var record = retired.Dequeue();
+                PanelHostFactory.Destroy(record);
+            }
         }
 
         // Tears down the real element owned by a departing z-layer placeholder — mirrors CleanupPortal: the real

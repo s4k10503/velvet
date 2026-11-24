@@ -1834,6 +1834,10 @@ namespace Velvet
         // recorded removals have landed, in the order the rows were taken down.
         internal Queue<(VisualElement Removed, VisualElement Poolable)> PendingPoolReturns { get; } = new();
 
+        // World-space hosts whose placeholder FiberElementCleaner tore down while a pass was open, destroyed once the
+        // pass's recorded removals have landed (FiberElementCleaner.ReleaseRetiredWorldSpaceHosts).
+        internal Queue<PanelHostRecord> RetiredWorldSpaceHosts { get; } = new();
+
         // The element FiberElementCleaner.RemoveElement is tearing down while nothing pools it afterwards: it and
         // everything below it are left to the collector. Null for every other teardown.
         internal VisualElement? DiscardedSubtreeRoot { get; set; }

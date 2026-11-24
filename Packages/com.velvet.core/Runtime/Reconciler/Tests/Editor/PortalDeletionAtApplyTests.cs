@@ -10,8 +10,8 @@ namespace Velvet.Tests
     /// <summary>
     /// Pins how a container's deletion of a row holding a Portal splits what removing the Portal does
     /// (<c>DeletionCommit.DetachPortals</c>): its range leaves the model where the deletion decides, so a row
-    /// the walk reaches afterwards reads the slots the removal leaves, and its world-space host is destroyed where the
-    /// pass applies its recorded writes, after the renders of the walk.
+    /// the walk reaches afterwards reads the slots the removal leaves, and its world-space host is destroyed once the
+    /// pass has applied its recorded writes, after the renders of the walk.
     /// </summary>
     [TestFixture]
     internal sealed class PortalDeletionAtApplyTests
