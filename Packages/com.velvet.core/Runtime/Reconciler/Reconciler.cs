@@ -1272,8 +1272,8 @@ namespace Velvet
                 PanelHostFactory.Destroy(record);
             }
             _ctx.WorldSpaceBindings.Clear();
-            // MUTANT_SURVIVES(unreachable, line removed): no fixture leaves a retired host to the sweep; each one a
-            // fixture retires goes in the FinishPass of the pass it was retired in.
+            // MUTANT_SURVIVES(unreachable, line removed): no fixture leaves a retired host to the sweep.
+            // Each one a fixture retires goes in the FinishPass of the pass it was retired in.
             ElementCleaner.ReleaseRetiredWorldSpaceHosts();
             foreach (var controller in _ctx.VirtualListControllers.Values)
             {
