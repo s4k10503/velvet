@@ -18,9 +18,10 @@ namespace Velvet.Tests
     /// mounts its root, as React clears the transition for a commit, while an update that callback makes after the
     /// mount is still the transition's. An update a <c>UseEffect</c> makes in a passive flush a transition callback
     /// runs, at the start of a mount or as a mount flushes its sync work, is no transition's either, as React
-    /// clears the transition for its passive flush, while the callback's own update after that flush still is. An
-    /// update a removed row's passive cleanup makes takes no sync lane, and the row's insertion cleanup still runs
-    /// as it leaves.
+    /// clears the transition for its passive flush, and nor is one a deleted component's <c>UseEffect</c> cleanup
+    /// makes, as the callback disposes its root or as a mount the callback runs removes it, while the callback's
+    /// own update after either still is. An update a removed row's passive cleanup makes takes no sync lane, and
+    /// the row's insertion cleanup still runs as it leaves.
     /// </summary>
     [TestFixture]
     internal sealed class MutationPhaseUpdateOnAnotherRootTests
@@ -35,6 +36,7 @@ namespace Velvet.Tests
         private static StateUpdater<int> s_setListHost;
         private static int s_listHostShown;
         private static bool s_effectRan;
+        private static bool s_cleanupRan;
 
         [SetUp]
         public void SetUp()
@@ -49,6 +51,7 @@ namespace Velvet.Tests
             s_setListHost = default;
             s_listHostShown = -1;
             s_effectRan = false;
+            s_cleanupRan = false;
         }
 
         [TearDown]
@@ -503,6 +506,98 @@ namespace Velvet.Tests
 
             // Assert — -1 where the effect did not run
             Assert.That(s_effectRan ? other.GetSchedulerForTest().DelayedPendingCount : -1, Is.Zero);
+        }
+
+        // --- A deleted component's effect cleanup a transition callback runs ---
+
+        [Component]
+        private static VNode SetsTheOtherRootFromItsEffectCleanup()
+        {
+            Hooks.UseEffect(() => () =>
+            {
+                s_cleanupRan = true;
+                s_setShown.Invoke(1);
+            }, Array.Empty<object>());
+            return V.Div();
+        }
+
+        [Test]
+        public void Given_ARootWhoseEffectCleanupSetsAnotherRootsState_When_ATransitionCallbackDisposesIt_Then_TheCleanupsUpdateIsNotOnTheTransitionTier()
+        {
+            // Arrange
+            Mount(V.Component(StartsTransitions));
+            var other = Mount(V.Component(ShowsItsValue));
+            var disposed = Mount(V.Component(SetsTheOtherRootFromItsEffectCleanup));
+            disposed.FlushEffectsForTest();
+
+            // Act
+            s_start.Invoke(disposed.Dispose);
+
+            // Assert — -1 where the cleanup did not run
+            Assert.That(s_cleanupRan ? other.GetSchedulerForTest().DelayedPendingCount : -1, Is.Zero);
+        }
+
+        [Component]
+        private static VNode RemovesItsChildFromItsLayoutEffect()
+        {
+            var (showsChild, setShowsChild) = Hooks.UseState(true);
+            Hooks.UseLayoutEffect((Func<Action>)(() =>
+            {
+                if (showsChild) setShowsChild.Invoke(false);
+                return null;
+            }), Array.Empty<object>());
+            return V.Div(children: new VNode[]
+            {
+                showsChild ? V.Component(SetsTheOtherRootFromItsEffectCleanup, key: "child") : null,
+            });
+        }
+
+        // GREEN_ON_BASE(characterization): the base removes the child after the callback returns, outside the transition.
+        // The layout effect's update now takes the sync lane, whose render at the end of the mount removes the child
+        // inside the callback, and this pins that the child's effect cleanup's update is no transition's there either.
+        [Test]
+        public void Given_ATransitionCallbackThatMountsARootWhoseLayoutEffectRemovesAChild_When_TheChildsEffectCleanupSetsAnotherRootsState_Then_ThatUpdateIsNotOnTheTransitionTier()
+        {
+            // Arrange
+            Mount(V.Component(StartsTransitions));
+            var other = Mount(V.Component(ShowsItsValue));
+            MountedTree mounted = null;
+
+            // Act — the drain after the callback renders the removal wherever the callback left it queued
+            s_start.Invoke(() => mounted = Mount(V.Component(RemovesItsChildFromItsLayoutEffect)));
+            mounted.GetSchedulerForTest().DrainDelayedForTest();
+
+            // Assert — -1 where the child's cleanup did not run
+            Assert.That(s_cleanupRan ? other.GetSchedulerForTest().DelayedPendingCount : -1, Is.Zero);
+        }
+
+        [Component]
+        private static VNode HasAnEffectCleanup()
+        {
+            Hooks.UseEffect(() => () => s_cleanupRan = true, Array.Empty<object>());
+            return V.Div();
+        }
+
+        // GREEN_ON_BASE(characterization): the base gives the transition lane to a callback's update after a disposal it ran.
+        // The disposal's effect cleanups now set the open transition aside, and this pins that they hand it back.
+        [Test]
+        public void Given_ATransitionCallbackThatDisposedARootWithAnEffectCleanup_When_ItThenSetsAnotherRootsState_Then_ThatUpdateWaitsOnTheTransitionTier()
+        {
+            // Arrange
+            Mount(V.Component(StartsTransitions));
+            var other = Mount(V.Component(ShowsItsValue));
+            var disposed = Mount(V.Component(HasAnEffectCleanup));
+            disposed.FlushEffectsForTest();
+
+            // Act
+            s_start.Invoke(() =>
+            {
+                disposed.Dispose();
+                s_setShown.Invoke(1);
+            });
+
+            // Assert — -1 where the cleanup did not run
+            Assert.That(s_cleanupRan ? other.GetSchedulerForTest().DelayedPendingCount : -1, Is.EqualTo(1));
         }
     }
 }

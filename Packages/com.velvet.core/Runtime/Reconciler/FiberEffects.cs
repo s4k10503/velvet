@@ -1108,9 +1108,18 @@ namespace Velvet
 #endif
         }
 
+        // Run for a deleted component, whose passive cleanups React's passive flush runs with no transition current.
         internal static void CleanupAllEffects(ComponentFiber fiber)
         {
-            HookEffectExecutor.CleanupAll(fiber, fiber.Effects, fiber.PendingEffects);
+            FiberWorkLoop.SetTransitionsAside();
+            try
+            {
+                HookEffectExecutor.CleanupAll(fiber, fiber.Effects, fiber.PendingEffects);
+            }
+            finally
+            {
+                FiberWorkLoop.HandTransitionsBack();
+            }
             fiber.EffectFlushScheduled = false;
         }
 

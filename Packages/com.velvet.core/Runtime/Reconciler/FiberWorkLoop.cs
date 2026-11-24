@@ -56,8 +56,9 @@ namespace Velvet
         // transition's.
         private static int s_mutationOrLayoutDepth;
 
-        // Raised by that mutation or layout work and by a passive drain (FiberEffects.DrainPassiveEffects), which
-        // gives no sync lane: React clears the current transition for its passive flush as for its commit.
+        // Raised by that mutation or layout work, by a passive drain (FiberEffects.DrainPassiveEffects) and by a
+        // deleted component's passive cleanups (FiberEffects.CleanupAllEffects), the last two giving no sync lane:
+        // React clears the current transition for its passive flush as for its commit.
         private static int s_transitionsSetAsideDepth;
 
         // Swapped with OpenTransitionScopes where the outermost of that work begins and again where it ends, which
@@ -73,7 +74,8 @@ namespace Velvet
 
         internal static bool IsInMutationOrLayoutWork => s_mutationOrLayoutDepth > 0;
 
-        // An enter left without its exit would give later updates the sync lane, so each is exited in a finally.
+        // An enter left without its exit would give later updates the sync lane, so where code runs between the
+        // two the exit is in a finally.
         internal static void EnterMutationOrLayoutWork()
         {
             s_mutationOrLayoutDepth++;
@@ -86,7 +88,7 @@ namespace Velvet
             HandTransitionsBack();
         }
 
-        // Each call is paired with HandTransitionsBack in a finally.
+        // Paired with HandTransitionsBack, in a finally where code runs between the two.
         internal static void SetTransitionsAside()
         {
             if (s_transitionsSetAsideDepth++ > 0) return;
