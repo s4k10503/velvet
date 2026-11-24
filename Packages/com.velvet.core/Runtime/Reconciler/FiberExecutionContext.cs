@@ -219,7 +219,20 @@ namespace Velvet
                         key = target;
                     }
                     if (target is { IsDisposed: true }) continue;
-                    if (!Counted(kind, key)) continue;
+                    if (!Counted(kind, key))
+                    {
+                        // A root's flush refused here was asked for again after each of its runs, as two roots' layout
+                        // effects updating each other ask for it, and each run is a drain of its own, whose cap
+                        // (FiberBatchScheduler.DrainImmediatePassesUpTo) never counts the others. So what it queued is
+                        // dropped as that cap drops it: left queued, the root's next frame callback renders it and can
+                        // start the loop again. An empty tier is left alone, as that cap leaves it: a drop also forgets
+                        // the captures waiting on the root's render.
+                        if (kind == Request.Flush && target is { ImmediatePendingCount: > 0 })
+                        {
+                            target.DropImmediateIntake();
+                        }
+                        continue;
+                    }
                     if (target != null && s_threw.Contains(target) && TakesUpQueuedUpdates(kind)) target.RunInNextFrame(run!, kind != Request.Resolve);
                     else if (run != null) RunIsolated(run, static held => held());
                     else RunIsolated(target!, static scheduler => scheduler.FlushImmediate());
@@ -248,9 +261,9 @@ namespace Velvet
             s_capped.Add(request);
             UnityEngine.Debug.LogException(new InvalidOperationException(
                 "Maximum update depth exceeded. Work that waited for a root's render or commit to end ran "
-                + $"{MaxRunsPerRequest} times before control returned, and was asked for again. Velvet does not run it "
-                + "again before control returns, as React limits nested updates, and the updates still queued for it "
-                + "stay queued."));
+                + $"{MaxRunsPerRequest} times before control returned, and was asked for again. Velvet limits nested "
+                + "updates and does not run it again before control returns. Where it is a root's update drain, the "
+                + "updates queued for that root outside a transition are dropped; otherwise the updates still queued for it stay queued."));
             return false;
         }
 

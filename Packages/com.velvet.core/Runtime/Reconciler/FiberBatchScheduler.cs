@@ -76,8 +76,8 @@ namespace Velvet
         private bool _inImmediateCallback;
 
         // Set by a UseSyncExternalStore re-render entering the immediate tier and cleared once the tier is
-        // empty, by the drain or by Remove. It is also the one posted flush in flight: a post the main thread
-        // discards leaves it set only until then. See OweExternalStoreFlush.
+        // empty, by the drain, by Remove or by DropImmediateIntake. It is also the one posted flush in flight: a
+        // post the main thread discards leaves it set only until then. See OweExternalStoreFlush.
         private bool _externalStoreRenderQueued;
 
         // Guards against re-entering a drain. FlushImmediate runs at the end of a discrete event handler; when
@@ -110,8 +110,8 @@ namespace Velvet
         private Action? _flushPassiveEffects;
 
         // Set by intake React would give the sync lane — an update a discrete event's handler makes, a write made
-        // while a layout commit runs, a UseSyncExternalStore change — and taken by the pass that renders it, which
-        // then flushes the passive effects of its commits as it ends (DrainImmediatePasses). Intake from anywhere
+        // while any root's layout commit runs, a UseSyncExternalStore change — and taken by the pass that renders it,
+        // which then flushes the passive effects of its commits as it ends (DrainImmediatePasses). Intake from anywhere
         // else, a passive effect's included, leaves it as it is.
         private bool _syncLaneQueued;
 
@@ -213,10 +213,17 @@ namespace Velvet
             if (_draining) _immediateWorkArrivedMidDrain = true;
             // An empty tier holds no sync-lane work, whatever left it empty: a drain, a Remove, a drop or a Clear.
             if (_immediateOrder.Count == 0) _syncLaneQueued = false;
-            if (FiberWorkLoop.IsInDiscreteEvent || fiber.Reconciler?.Context.InLayoutCommit == true) MarkSyncLane();
+            if (TakesSyncLane) MarkSyncLane();
             _immediateIntake++;
             if (_immediateSet.Add(fiber)) _immediateOrder.Add(fiber);
             ArmImmediateDrain();
+        }
+
+        private static bool TakesSyncLane => FiberWorkLoop.IsInDiscreteEvent || ReconcilerContext.AnyInLayoutCommit;
+
+        internal void MarkSyncLaneIfTaken()
+        {
+            if (TakesSyncLane) MarkSyncLane();
         }
 
         // A UseSyncExternalStore re-render is React's sync-lane update, which React flushes in a microtask once
@@ -564,13 +571,14 @@ namespace Velvet
 
         // Which lanes go, and why only these, is the nested-update cap's comment in DrainImmediatePassesUpTo.
         // Copied out rather than walked in place: a settle below can request a render, which enqueues it again.
-        private void DropImmediateIntake()
+        internal void DropImmediateIntake()
         {
             var droppedFibers = _immediateOrder.ToArray();
             // A capture waiting for a render was waiting on a lane just dropped, or on one a boundary held back keeps.
             _onIntakeDropped?.Invoke();
             _immediateOrder.Clear();
             _immediateSet.Clear();
+            _externalStoreRenderQueued = false;
             for (var i = 0; i < droppedFibers.Length; i++)
             {
                 var dropped = droppedFibers[i];

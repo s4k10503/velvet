@@ -27,8 +27,8 @@
 - Work that waited for another root's render or commit and throws has its exception logged, rather than thrown out of
   the call that ended that work; the waiting work after it still runs, and `V.Mount` still returns its handle. Waiting
   work that keeps asking for itself again is not run again once it has run 50 times before control returns, and
-  "Maximum update depth exceeded" is logged; the updates still queued for it stay queued, and the rest of the waiting
-  work, its own root's included, still runs.
+  "Maximum update depth exceeded" is logged; where that work is a root's update drain, the updates queued for it outside a
+  transition are dropped, and otherwise they stay queued, and the rest of the waiting work, its own root's included, still runs.
 - Once an exception leaves a root's render, commit or `UseEffect` flush, that root's update drain does not run again
   before control returns, even where another entry for this version says one of its updates would render. A
   `V.VirtualList` range of that root, or a `Hooks.Use` or query result of it, that would otherwise be taken up before

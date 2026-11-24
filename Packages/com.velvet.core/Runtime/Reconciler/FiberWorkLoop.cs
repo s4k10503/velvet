@@ -21,13 +21,8 @@ namespace Velvet
         // originating context's immediate batch is flushed synchronously when the handler returns, so the
         // UI updates before the next frame. Process-global because Unity dispatches one input event at a time on the main
         // thread; FiberEventBindingManager brackets each discrete handler to set and clear it.
-        // Known limitation, intentional: because the flag is process-global, an update to a *different*
-        // router/panel context that happens while some other context's discrete handler runs is also
-        // lane-classified as Urgent. This is harmless: the synchronous flush is performed only for the owning
-        // context (the one whose handler is running) — see the owning-context check at the flush site — so the
-        // misclassified context's update still drains on its normal frame boundary. A context-scoped flag
-        // would instead risk diverging lane classification from the actual synchronous-flush decision, so the
-        // process-global flag is kept deliberately.
+        // An update the handler makes on another root outside a transition takes the sync lane too, as React gives it,
+        // and renders where the handler's flush ends (FiberExecutionContext's release).
         internal static bool IsInDiscreteEvent
         {
             get => s_isInDiscreteEvent;
@@ -306,6 +301,13 @@ namespace Velvet
                 // actual drain. ScheduleImmediate dedups, so re-enrolling a fiber already on the immediate
                 // tier is a no-op.
                 ScheduleFlush(fiber, priority);
+            }
+            else if (FiberLane.SchedulesOnImmediateTier(priority))
+            {
+                // An update folded onto immediate-tier work the fiber already holds enqueues nothing, and takes the
+                // sync lane all the same where an enqueued one would (FiberBatchScheduler.ScheduleImmediate). The mark
+                // covers the whole tier, as React renders a root's pending sync, input and default lanes together.
+                fiber.Reconciler?.Context.BatchScheduler.MarkSyncLaneIfTaken();
             }
         }
 

@@ -884,12 +884,6 @@ namespace Velvet
 
         // The discrete-input bracket lives in FiberDiscreteEventScope (shared with the drag-and-drop
         // session, whose start/end/cancel commits must behave exactly like click handlers).
-        // Two deliberate limitations of its synchronous flush, which the single-context lane stays correct for
-        // but which differ in flush timing for edge configurations: (1) only the owning context's batch is
-        // drained synchronously, so Urgent updates a handler schedules on other ReconcilerContexts (e.g. a
-        // shared-Store subscriber in a separately mounted tree) still commit on their own next-frame drain;
-        // (2) layout-effect-scheduled updates during the synchronous flush take the Normal next-frame lane
-        // rather than being re-flushed synchronously before paint.
         private void RunDiscrete(Action? handler)
             => FiberDiscreteEventScope.Run(handler, _batchScheduler);
 

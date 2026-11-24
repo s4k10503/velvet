@@ -1834,6 +1834,10 @@ namespace Velvet
         // recorded removals have landed, in the order the rows were taken down.
         internal Queue<(VisualElement Removed, VisualElement Poolable)> PendingPoolReturns { get; } = new();
 
+        // World-space hosts whose placeholder FiberElementCleaner tore down while a pass was open, destroyed once the
+        // pass's recorded removals have landed (FiberElementCleaner.ReleaseRetiredWorldSpaceHosts).
+        internal Queue<PanelHostRecord> RetiredWorldSpaceHosts { get; } = new();
+
         // The element FiberElementCleaner.RemoveElement is tearing down while nothing pools it afterwards: it and
         // everything below it are left to the collector. Null for every other teardown.
         internal VisualElement? DiscardedSubtreeRoot { get; set; }
@@ -2377,12 +2381,38 @@ namespace Velvet
 
         // Layout commits and passive drains running on this context; a catch inside one leaves its commit to
         // it (FiberEffects.CommitStrandedLayoutWork).
-        internal int EffectCommitDepth;
+        internal int EffectCommitDepth
+        {
+            get => _effectCommitDepth;
+            set => SetCommitDepths(value, _passiveDrainDepth);
+        }
 
         // The passive drains among EffectCommitDepth, so a layout commit nested in one still reads as running.
-        internal int PassiveDrainDepth;
+        internal int PassiveDrainDepth
+        {
+            get => _passiveDrainDepth;
+            set => SetCommitDepths(_effectCommitDepth, value);
+        }
 
         internal bool InLayoutCommit => EffectCommitDepth > PassiveDrainDepth;
+
+        private int _effectCommitDepth;
+        private int _passiveDrainDepth;
+
+        // Kept by SetCommitDepths alone: a depth written past it leaves this count wrong for every root.
+        private static int s_contextsInLayoutCommit;
+
+        // React runs a commit's mutation and layout phases at the discrete event priority, which gives an update made
+        // there outside a transition the sync lane whichever root it targets (FiberBatchScheduler.ScheduleImmediate).
+        internal static bool AnyInLayoutCommit => s_contextsInLayoutCommit > 0;
+
+        private void SetCommitDepths(int effectCommitDepth, int passiveDrainDepth)
+        {
+            var was = InLayoutCommit;
+            _effectCommitDepth = effectCommitDepth;
+            _passiveDrainDepth = passiveDrainDepth;
+            if (InLayoutCommit != was) s_contextsInLayoutCommit += was ? -1 : 1;
+        }
 
         // Whether a layout or passive commit is running, where an error an effect or a ref callback throws is captured
         // for its boundary rather than caught at once (ComponentBoundarySearch.PropagateFrom).
