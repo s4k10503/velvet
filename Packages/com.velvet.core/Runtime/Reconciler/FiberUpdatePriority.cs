@@ -28,7 +28,8 @@ namespace Velvet
         Normal = 1,
         /// <summary>
         /// Lowest priority. Taken by the updates a <c>StartTransition</c> callback schedules before it first
-        /// suspends, and by <c>UseDeferredValue</c> derivations.
+        /// suspends, short of those the callbacks of a commit or passive effect flush it runs make, and by
+        /// <c>UseDeferredValue</c> derivations.
         /// Its flush runs in a later panel scheduler pass than the request that queued it, within the bound
         /// <c>FiberBatchScheduler.ScheduleDelayed</c> describes, behind any higher-priority lanes still queued,
         /// which commit first, and once it has been starved for a

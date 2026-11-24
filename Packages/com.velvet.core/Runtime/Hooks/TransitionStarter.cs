@@ -8,8 +8,10 @@ namespace Velvet
     /// either a synchronous callback (<c>startTransition(() =&gt; ...)</c>) or
     /// an async one (<c>startTransition(async () =&gt; ...)</c>). The state updates the callback schedules
     /// before it first suspends are put on the Transition lane, whichever component owns the state they
-    /// write; for the async form, <c>isPending</c> stays true across awaits until the task completes, while
-    /// the updates the action makes after an <c>await</c> that suspended it fall outside the scope this call
+    /// write, other than those the callbacks of a commit or passive effect flush it runs make, which the
+    /// migration guide's <c>useTransition</c> row names; for the async form, <c>isPending</c> stays true across
+    /// awaits until the task completes, while the updates the action makes after an <c>await</c> that
+    /// suspended it fall outside the scope this call
     /// opened — wrap them in a further <c>startTransition</c> to put them back in it. An <c>await</c> of a
     /// <see cref="VelvetTask"/> suspends even where the task had already completed, as JavaScript's does; an
     /// <c>await</c> of a completed <see cref="System.Threading.Tasks.Task"/> does not, so what follows it is
