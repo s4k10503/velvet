@@ -265,6 +265,7 @@ namespace Velvet
                 ClearRenderedItems();
                 _firstRenderedIndex = -1;
                 _lastRenderedIndex = -1;
+                _reconciler.RefreshHasVariantsForController(_visibleContainer);
                 return;
             }
 
@@ -330,6 +331,12 @@ namespace Velvet
                     {
                         FiberRenderer.SuspendPassOwner(_hostFiber, transitionPass: false);
                     }
+                }
+                finally
+                {
+                    // Behind the range's end, which places a Portal's children and a relocated row, and ahead of the
+                    // rows' layout effects (RenderRange).
+                    _reconciler.RefreshHasVariantsForController(_visibleContainer);
                 }
             }
         }
