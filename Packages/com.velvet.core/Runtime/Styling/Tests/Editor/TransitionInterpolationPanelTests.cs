@@ -22,9 +22,11 @@ namespace Velvet.Tests
             ".app-left { background-position-x: left; } .app-right { background-position-x: right; }"
             + " .app-left-10 { background-position-x: left 10px; } .app-left-30 { background-position-x: left 30px; }"
             + " .app-right-10 { background-position-x: right 10px; } .app-right-30 { background-position-x: right 30px; }"
-            + " .app-top { background-position-y: top; } .app-bottom { background-position-y: bottom; }";
+            + " .app-top { background-position-y: top; } .app-bottom { background-position-y: bottom; }"
+            + " .app-center { background-position-x: center; } .app-right-20p { background-position-x: right 20%; }";
 
         private StyleSheet _sheet;
+        private MountedTree _portalMount;
         private double _now;
 
         protected override void LoadStyleSheets()
@@ -45,6 +47,8 @@ namespace Velvet.Tests
 
         public override void TearDown()
         {
+            _portalMount?.Dispose();
+            _portalMount = null;
             if (_sheet != null)
             {
                 UnityEngine.Object.DestroyImmediate(_sheet);
@@ -57,7 +61,24 @@ namespace Velvet.Tests
         private VisualElement Mounted(string classNames)
         {
             _mounted = V.Mount(_window.rootVisualElement, V.Div(name: "leaf", className: classNames));
-            var element = _window.rootVisualElement.Q<VisualElement>("leaf");
+            return Attached(_window.rootVisualElement.Q<VisualElement>("leaf"));
+        }
+
+        // The same, as a row a portal puts in an element of another mounted tree, so that two holds are above it.
+        private VisualElement PortedUnderAMount(string classNames)
+        {
+            var outer = new VisualElement();
+            _window.rootVisualElement.Add(outer);
+            _mounted = V.Mount(outer, V.Div(name: "target"));
+            var target = outer.Q<VisualElement>("target");
+            var source = new VisualElement();
+            _window.rootVisualElement.Add(source);
+            _portalMount = V.Mount(source, V.Portal(target, new VNode[] { V.Div(name: "leaf", className: classNames) }));
+            return Attached(target.Q<VisualElement>("leaf"));
+        }
+
+        private VisualElement Attached(VisualElement element)
+        {
             _now = 100.0;
             EditorPanelTestHelpers.SetPanelTimeFunction(element.panel, () => _now);
             ForcePanelUpdate(element.panel);
@@ -272,6 +293,102 @@ namespace Velvet.Tests
             // Assert
             Assert.That(OffsetWhileItRuns(element, "background-position-y", BackgroundPositionKeyword.Top,
                 LengthUnit.Percent), Is.EqualTo(25f).Within(0.01f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base shows a fade-in's start at its first frame, as CSS does at progress 0.
+        // Changing `progress <= 0f` to `progress < 0f` in StyleTransitionInterpolation's VisibilityRun.Select reddens it.
+        [Test]
+        public void Given_AnInvisibleElementTransitioningAll_When_AnAnimationUpdateComesAtTheStartOfItsFadeIn_Then_ItIsHidden()
+        {
+            // Arrange
+            var element = Mounted("transition-all invisible " + OneSecond);
+            Swap(element, "invisible", "visible");
+
+            // Act
+            RunFor(element, 0.0);
+
+            // Assert
+            Assert.That(VisibilityWhileItRuns(element), Is.EqualTo(Visibility.Hidden));
+        }
+
+        [Test]
+        public void Given_AFadeInOnAJumpStartStep_When_AnAnimationUpdateComesAtItsStart_Then_ItIsVisible()
+        {
+            // Arrange — the step jumps to a quarter at progress 0, which CSS shows as visible.
+            var element = Mounted("transition-all invisible duration-1000 ease-[steps(4,jump-start)]");
+            Swap(element, "invisible", "visible");
+
+            // Act
+            RunFor(element, 0.0);
+
+            // Assert
+            Assert.That(VisibilityWhileItRuns(element), Is.EqualTo(Visibility.Visible));
+        }
+
+        [Test]
+        public void Given_AFadeInPastHalfWay_When_ItIsReversed_Then_ItIsVisibleUntilTheReversalItRanFor()
+        {
+            // Arrange — a frame a tenth in and one six tenths in; CSS shortens the reversal to 0.6s.
+            var element = Mounted("transition-all invisible " + OneSecond);
+            Swap(element, "invisible", "visible");
+            RunFor(element, 0.1);
+            RunFor(element, 0.5);
+            Swap(element, "visible", "invisible");
+
+            // Act
+            RunFor(element, 0.4);
+
+            // Assert
+            Assert.That(VisibilityWhileItRuns(element), Is.EqualTo(Visibility.Visible));
+        }
+
+        [Test]
+        public void Given_ASlideReversedHalfWayBack_When_ItIsReversedAgain_Then_HalfOfThatReversalInItIsHalfWayOut()
+        {
+            // Arrange — CSS runs the second reversal for 0.625s, from 37.5% back out to 100%.
+            var element = Mounted("transition-all app-left " + OneSecond);
+            Swap(element, "app-left", "app-right");
+            RunFor(element, 0.75);
+            Swap(element, "app-right", "app-left");
+            RunFor(element, 0.375);
+            Swap(element, "app-left", "app-right");
+
+            // Act
+            RunFor(element, 0.3125);
+
+            // Assert
+            Assert.That(OffsetWhileItRuns(element, "background-position-x", BackgroundPositionKeyword.Left,
+                LengthUnit.Percent), Is.EqualTo(68.75f).Within(0.01f));
+        }
+
+        [Test]
+        public void Given_ARowAPortalPutsUnderAMount_When_LeftBecomesRight_Then_ThreeQuartersInItIsThreeQuartersOfTheWay()
+        {
+            // Arrange
+            var element = PortedUnderAMount("transition-all app-left " + OneSecond);
+            Swap(element, "app-left", "app-right");
+
+            // Act
+            RunFor(element, 0.75);
+
+            // Assert
+            Assert.That(OffsetWhileItRuns(element, "background-position-x", BackgroundPositionKeyword.Left,
+                LengthUnit.Percent), Is.EqualTo(75f).Within(0.01f));
+        }
+
+        [Test]
+        public void Given_AnElementTransitioningAll_When_CenterBecomesTwentyPercentFromTheRight_Then_AQuarterInItIsAQuarterOfTheWay()
+        {
+            // Arrange — from 50% to 80%.
+            var element = Mounted("transition-all app-center " + OneSecond);
+            Swap(element, "app-center", "app-right-20p");
+
+            // Act
+            RunFor(element, 0.25);
+
+            // Assert
+            Assert.That(OffsetWhileItRuns(element, "background-position-x", BackgroundPositionKeyword.Left,
+                LengthUnit.Percent), Is.EqualTo(57.5f).Within(0.01f));
         }
     }
 }

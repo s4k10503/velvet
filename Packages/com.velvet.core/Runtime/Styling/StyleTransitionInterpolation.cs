@@ -112,8 +112,8 @@ namespace Velvet
             var system = s_system.GetValue(element.panel);
             return system != null && s_systemTime.DeclaringType!.IsInstanceOfType(system)
                 && s_valuesByProperty.GetValue(system) is IDictionary byProperty
-                && s_propertyId.GetValue(property) is { } id && byProperty.Contains(id)
-                && byProperty[id] is { } values && Set.Of(values) is { } set
+                && s_propertyId.GetValue(property) is { } id && byProperty[id] is { } values
+                && Set.Of(values) is { } set
                     ? new Entry(element, system, values, id, set)
                     : null;
         }
@@ -125,7 +125,7 @@ namespace Velvet
                 var toVisible = (int)to == (int)Visibility.Visible;
                 return toVisible == ((int)from == (int)Visibility.Visible) ? null : new VisibilityRun(parts, toVisible);
             }
-            return Slide.TryOf((BackgroundPosition)from, (BackgroundPosition)to, property == s_positionY, out var slide)
+            return Slide.Of((BackgroundPosition)from, (BackgroundPosition)to, property == s_positionY) is { } slide
                 ? new SlideRun(parts, slide)
                 : null;
         }
@@ -139,6 +139,7 @@ namespace Velvet
             protected Run(Parts parts)
             {
                 _parts = parts;
+                // MUTANT_SURVIVES(equivalent, line removed): its only extra write, at zero, puts the slot's own factor back.
                 _shortening = parts.Shortening;
                 Curve = Ease;
             }
@@ -251,60 +252,45 @@ namespace Velvet
                 => new(_edge, new Length(Mathf.LerpUnclamped(_from, _to, progress), _unit));
 
             // CSS interpolates a position as a percentage of the room the image leaves plus a length, both from the
-            // left or top edge; false where a value between the ends needs both terms, or an end holds neither unit.
-            public static bool TryOf(BackgroundPosition from, BackgroundPosition to, bool vertical, out Slide slide)
+            // left or top edge; null where a value between the ends needs both terms.
+            public static Slide? Of(BackgroundPosition from, BackgroundPosition to, bool vertical)
             {
-                slide = default;
-                if (!TryEdgeTerms(from, out var fromPercent, out var fromPixels)
-                    || !TryEdgeTerms(to, out var toPercent, out var toPixels))
-                {
-                    return false;
-                }
+                EdgeTerms(from, out var fromPercent, out var fromPixels);
+                EdgeTerms(to, out var toPercent, out var toPixels);
                 var near = vertical ? BackgroundPositionKeyword.Top : BackgroundPositionKeyword.Left;
                 if (fromPixels == 0f && toPixels == 0f)
                 {
-                    slide = new Slide(near, LengthUnit.Percent, fromPercent, toPercent);
+                    return new Slide(near, LengthUnit.Percent, fromPercent, toPercent);
                 }
-                else if (fromPercent == 0f && toPercent == 0f)
+                if (fromPercent == 0f && toPercent == 0f)
                 {
-                    slide = new Slide(near, LengthUnit.Pixel, fromPixels, toPixels);
+                    return new Slide(near, LengthUnit.Pixel, fromPixels, toPixels);
                 }
-                else if (fromPercent == 100f && toPercent == 100f)
+                if (fromPercent == 100f && toPercent == 100f)
                 {
                     var far = vertical ? BackgroundPositionKeyword.Bottom : BackgroundPositionKeyword.Right;
-                    slide = new Slide(far, LengthUnit.Pixel, -fromPixels, -toPixels);
+                    return new Slide(far, LengthUnit.Pixel, -fromPixels, -toPixels);
                 }
-                else
-                {
-                    return false;
-                }
-                return true;
+                return null;
             }
 
-            private static bool TryEdgeTerms(BackgroundPosition position, out float percent, out float pixels)
+            private static void EdgeTerms(BackgroundPosition position, out float percent, out float pixels)
             {
-                percent = 0f;
-                pixels = 0f;
                 if (position.keyword == BackgroundPositionKeyword.Center)
                 {
-                    percent = 50f;
-                    return true;
+                    (percent, pixels) = (50f, 0f);
+                    return;
                 }
-                var offset = position.offset;
                 var farEdge = position.keyword == BackgroundPositionKeyword.Right
                     || position.keyword == BackgroundPositionKeyword.Bottom;
+                var offset = position.offset;
                 if (offset.unit == LengthUnit.Percent)
                 {
-                    percent = farEdge ? 100f - offset.value : offset.value;
-                    return true;
+                    (percent, pixels) = (farEdge ? 100f - offset.value : offset.value, 0f);
+                    return;
                 }
-                if (offset.unit != LengthUnit.Pixel)
-                {
-                    return false;
-                }
-                percent = farEdge ? 100f : 0f;
-                pixels = farEdge ? -offset.value : offset.value;
-                return true;
+                var length = offset.unit == LengthUnit.Pixel ? offset.value : 0f;
+                (percent, pixels) = farEdge ? (100f, -length) : (0f, length);
             }
         }
 
