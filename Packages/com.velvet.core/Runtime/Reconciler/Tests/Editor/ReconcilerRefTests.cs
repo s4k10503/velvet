@@ -347,15 +347,17 @@ namespace Velvet.Tests
             Assert.That((escaped, NamesOf(Root)), Is.EqualTo((false, "")));
         }
 
+        // GREEN_ON_BASE(refactor): the base removes the head row last, so no row is left behind its throw there.
+        // The thrower moves from the tail to the head with the walk's direction, so two rows still follow the throw.
         [Test]
         public void Given_ARefCleanupThrowsOnTheRowRemovedFirst_When_TheBatchContinues_Then_TheRestOfTheRowsGoToo()
         {
-            // Arrange — the walk removes from the tail, so the throwing row is the one it reaches first.
+            // Arrange — the walk removes from the head, so the throwing row is the one it reaches first.
             var mounted = new VNode[]
             {
-                V.Div(name: "head"),
+                ThrowingCleanupRow("head"),
                 V.Div(name: "middle"),
-                ThrowingCleanupRow("tail"),
+                V.Div(name: "tail"),
             };
             Reconciler.Reconcile(Root, Array.Empty<VNode>(), mounted);
             ContainedFailureLog.Expect<InvalidOperationException>("FiberElementCleaner", CleanupFailureMessage);
