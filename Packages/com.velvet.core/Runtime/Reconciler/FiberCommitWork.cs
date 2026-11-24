@@ -252,6 +252,7 @@ namespace Velvet
                 // The rows the component added or removed are not the ones the range was read from.
                 table.Anchor(owning!);
                 PortalSlotTracker.ShiftRangesBehind(table.Stored, mountPoint, owning!, range, delta);
+                table.Stored.AddShiftedBehind(owning!, delta);
                 return;
             }
             // Rows of mountPoint's own, which every range on it follows. Only an inline fiber propagates, and

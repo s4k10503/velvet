@@ -114,8 +114,6 @@ namespace Velvet
             internal int ChildrenAppendedFrom;
             internal PortalSlotInfo PrevState;
             internal int BeforeTailCount;
-            internal InlineTenancy? Tenancy;
-            internal int ShiftedBefore;
             internal VNode?[]? StampedChildren;
         }
 
@@ -1672,10 +1670,11 @@ namespace Velvet
             // child gaining a filter, or a negative z — inflate the recorded length by one, which then
             // shifted every downstream portal's SlotStart and made the cleanup walk over-remove.
             patch.Portal.BeforeTailCount = LogicalChildSlots.Count(target) - _ctx.PortalState.Stored.GrowthOn(target);
-            // What a reconcile nested in this one already moved the starts on target for is left out of the
-            // shift below, for the reason FiberCommitWork.RowCountWindow gives.
-            patch.Portal.Tenancy = _ctx.ComponentRegistry.TenancyOf(target);
-            patch.Portal.ShiftedBefore = patch.Portal.Tenancy?.ShiftedRows ?? 0;
+            // What a component of this range moves the starts behind it by while the patch is open is left out of the
+            // shift the close makes, which would move them twice. The target's tenancy counts those moves too, and
+            // also the ones another range's change on the target makes (FiberCommitWork.ShiftTenantsAfterPortalRange),
+            // which are no part of this range's change.
+            _ctx.PortalState.Stored.OpenShiftedBehind(patch.Element);
             // Every patch stamps DetachedMountContext on the top-level children it creates, as
             // DrainPendingPortalMounts stamps a mount's: a Portal or a world-space panel can drain its first mount
             // with ZERO top-level children (e.g. `V.Portal(id, children: isOpen ? real : Array.Empty<VNode>())`) and
@@ -1699,7 +1698,7 @@ namespace Velvet
             {
                 RecordPatchedPortalRange(placeholder, target,
                     mounted ? portal.PrevState with { ChildrenPending = false } : portal.PrevState,
-                    portal.BeforeTailCount, portal.Tenancy, portal.ShiftedBefore);
+                    portal.BeforeTailCount, _ctx.PortalState.Stored.CloseShiftedBehind(placeholder));
                 if (!mounted && portal.PrevState.ChildrenPending)
                 {
                     TakeBackPendingPortalRows(placeholder, target);
@@ -1724,23 +1723,22 @@ namespace Velvet
             var inserted = _ctx.PortalState[placeholder];
             if (inserted.SlotLength == 0) return;
             _ctx.PortalState.Unanchor(placeholder);
-            var tenancy = _ctx.ComponentRegistry.TenancyOf(target);
-            var shiftedBefore = tenancy?.ShiftedRows ?? 0;
+            _ctx.PortalState.Stored.OpenShiftedBehind(placeholder);
             var beforeTailCount = LogicalChildSlots.Count(target);
             _host.RemoveRows(target, inserted.SlotStart, inserted.SlotLength);
-            RecordPatchedPortalRange(placeholder, target, inserted, beforeTailCount - _ctx.PortalState.Stored.GrowthOn(target), tenancy, shiftedBefore);
+            RecordPatchedPortalRange(placeholder, target, inserted, beforeTailCount - _ctx.PortalState.Stored.GrowthOn(target),
+                _ctx.PortalState.Stored.CloseShiftedBehind(placeholder));
         }
 
         private void RecordPatchedPortalRange(
             VisualElement placeholder, VisualElement target, PortalSlotInfo prevState, int beforeTailCount,
-            InlineTenancy? tenancy, int shiftedBefore)
+            int shiftedBehind)
         {
             // (beforeTailCount - prevState.SlotLength) is the count of target children that do NOT belong to
-            // this Portal's slot — unchanged by the reconcile above. Subtracting it from the new total
-            // isolates this Portal's new slot length without re-counting the foreign children.
-            // A Portal patched inside this one's reconcile on the same target adds its rows to the count, and
-            // they are its own: it recorded them as growth on the target.
-            // beforeTailCount is read net of what those had recorded by then, so the same net count is taken here.
+            // this Portal's slot, net of the growth on the target, and a change the reconcile above makes to those
+            // children has to reach that growth for the count to hold: a Portal patched inside it records the change
+            // in its own rows, and a range that leaves inside it takes its rows off (PortalRangeTable.Remove).
+            // Subtracting it from the new net total isolates this Portal's new slot length.
             var grown = _ctx.PortalState.Stored.GrowthOn(target);
             var newSlotLength = LogicalChildSlots.Count(target) - grown - (beforeTailCount - prevState.SlotLength);
             var delta = newSlotLength - prevState.SlotLength;
@@ -1753,8 +1751,7 @@ namespace Velvet
             _ctx.PortalState.Anchor(placeholder);
             _ctx.PortalState.Stored.AddGrowth(target, delta);
 
-            var unshifted = delta - ((tenancy?.ShiftedRows ?? 0) - shiftedBefore);
-            _ctx.HostCommit.ShiftBehindPortalRange(target, placeholder, prevState, unshifted);
+            _ctx.HostCommit.ShiftBehindPortalRange(target, placeholder, prevState, delta - shiftedBehind);
             FiberCommitWork.RebaseOwnRows(_ctx, target);
         }
 
