@@ -436,7 +436,7 @@ namespace Velvet
             }
             Drop();
             _written = variant;
-            element.style.unityFontDefinition = new StyleFontDefinition(FontDefinition.FromSDFFont(variant));
+            Write(element, new StyleFontDefinition(FontDefinition.FromSDFFont(variant)));
             s_shown.AddOrUpdate(element, this);
         }
 
@@ -448,10 +448,16 @@ namespace Velvet
             }
             if (element.style.unityFontDefinition.value.fontAsset == _written)
             {
-                element.style.unityFontDefinition = _underlying;
+                Write(element, _underlying);
             }
             Drop();
             _underlying = default;
+        }
+
+        private static void Write(VisualElement element, StyleFontDefinition font)
+        {
+            element.style.unityFontDefinition = font;
+            InheritedStyleHash.Refresh(element);
         }
 
         private void Drop()

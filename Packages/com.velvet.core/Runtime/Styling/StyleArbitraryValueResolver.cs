@@ -4034,15 +4034,22 @@ namespace Velvet
             }
             // Written colours notify the elements reading them (ColorReferenceWatch.NotifyWritten), which re-enter here.
             var winners = s_relativeWinners.ToArray();
+            var textColour = false;
             foreach (var property in winners)
             {
                 if (!BorderPreflight.YieldsToInline(element, property))
                 {
                     ResolveAndApply(element, property, map);
+                    textColour |= property == ArbitraryProperty.TextColor;
                 }
             }
             // A face the element itself holds in these slots has had its sentinel written over.
             SilhouetteFaceStash.Retake(element);
+            // Of the colours a reference writes, the text colour is the one children inherit.
+            if (textColour && ReferenceEquals(ColorReferenceWatch.Restyled, element))
+            {
+                InheritedStyleHash.Refresh(element);
+            }
         }
 
         // Settles every longhand property shares with another property's layers (m-[4px] beside mt-[8px] and
