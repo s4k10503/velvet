@@ -139,34 +139,13 @@ namespace Velvet
 
         // Not ColorReferenceWatch's marker, whose rule is the bundled stylesheet's: MarkerSheet holds this one's, so a
         // panel without that stylesheet reports an inheritor's restyle as well.
-        private const string MarkerClass = "velvet-font-inherit";
+        internal const string MarkerClass = "velvet-font-inherit";
 
         private const string MarkerProperty = "--velvet-font-inherit";
 
-        // The specificity of a single class selector in a stylesheet the importer builds, as SnappedBorderSheets gives it.
-        private const int ClassSpecificity = 11;
-
         private static readonly EventCallback<CustomStyleResolvedEvent> s_restyled = Restyled;
 
-        private static readonly Type? s_builderType = EngineMember.StyleSheetBuilderConstruct.ResolveType();
-        private static readonly MethodInfo? s_beginRule = EngineMember.StyleSheetBuilderBeginRule.ResolveMethod();
-        private static readonly MethodInfo? s_beginSelector = EngineMember.StyleSheetBuilderBeginComplexSelector.ResolveMethod();
-        private static readonly MethodInfo? s_createClass = EngineMember.StyleSelectorPartCreateClass.ResolveMethod();
-        private static readonly MethodInfo? s_addSelector = EngineMember.StyleSheetBuilderAddSimpleSelector.ResolveMethod();
-        private static readonly MethodInfo? s_endSelector = EngineMember.StyleSheetBuilderEndComplexSelector.ResolveMethod();
-        private static readonly MethodInfo? s_beginProperty = EngineMember.StyleSheetBuilderBeginProperty.ResolveMethod();
-        private static readonly MethodInfo? s_addFloat = EngineMember.StyleSheetBuilderAddFloat.ResolveMethod();
-        private static readonly MethodInfo? s_endProperty = EngineMember.StyleSheetBuilderEndProperty.ResolveMethod();
-        private static readonly MethodInfo? s_endRule = EngineMember.StyleSheetBuilderEndRule.ResolveMethod();
-        private static readonly MethodInfo? s_buildTo = EngineMember.StyleSheetBuilderBuildTo.ResolveMethod();
-        private static readonly PropertyInfo? s_sheetRules = EngineMember.StyleSheetRules.ResolveProperty();
-        private static readonly FieldInfo? s_declaredVariables = EngineMember.StyleRuleCustomPropertiesCount.ResolveField();
-        private static readonly PropertyInfo? s_isDefault = EngineMember.StyleSheetIsDefault.ResolveProperty();
-
-        private static readonly bool s_watches = s_builderType != null && s_beginRule != null && s_beginSelector != null
-            && s_addSelector != null && s_endSelector != null && s_beginProperty != null && s_addFloat != null
-            && s_endProperty != null && s_endRule != null && s_buildTo != null && s_createClass != null && s_isDefault != null
-            && s_sheetRules != null && s_declaredVariables != null && InheritedStyleHash.Resolves;
+        private static readonly bool s_watches = MarkerSheets.Builds && InheritedStyleHash.Resolves;
 
         private static StyleSheet? s_markerSheet;
 
@@ -626,45 +605,8 @@ namespace Velvet
             }
         }
 
-        // A sheet MarkerSheet built, in this domain or, by its name, an earlier one, as RadiusWatchSheets.IsWatch knows
-        // its own.
-        internal static bool IsMarker(StyleSheet? sheet) => sheet != null && sheet.name == MarkerClass;
-
-        // Marked a default sheet, as a theme is, so that the matcher's readers do not take its rule for an author's
-        // (BorderPreflight.HasAuthorSheet).
         private static StyleSheet? MarkerSheet()
-        {
-            if (!s_watches)
-            {
-                return null;
-            }
-
-            if (s_markerSheet != null)
-            {
-                return s_markerSheet;
-            }
-
-            var builder = Activator.CreateInstance(s_builderType!)!;
-            s_beginRule!.Invoke(builder, new object[] { 0 });
-            s_beginSelector!.Invoke(builder, new object[] { ClassSpecificity });
-            var parts = Array.CreateInstance(s_createClass!.ReturnType, 1);
-            parts.SetValue(s_createClass.Invoke(null, new object[] { MarkerClass }), 0);
-            s_addSelector!.Invoke(builder, new[] { parts, Enum.ToObject(s_addSelector.GetParameters()[1].ParameterType, 0) });
-            s_endSelector!.Invoke(builder, null);
-            s_beginProperty!.Invoke(builder, new object[] { MarkerProperty, -1 });
-            s_addFloat!.Invoke(builder, new object[] { 1f });
-            s_endProperty!.Invoke(builder, null);
-            s_endRule!.Invoke(builder, null);
-            var sheet = UnityEngine.ScriptableObject.CreateInstance<StyleSheet>();
-            sheet.name = MarkerClass;
-            sheet.hideFlags = UnityEngine.HideFlags.HideAndDontSave;
-            s_buildTo!.Invoke(builder, new object[] { sheet });
-            // Counted as declaring no variable, as RadiusWatchSheets.Build counts its rules.
-            s_declaredVariables!.SetValue(((Array)s_sheetRules!.GetValue(sheet)).GetValue(0), 0);
-            s_isDefault!.SetValue(sheet, true);
-            s_markerSheet = sheet;
-            return sheet;
-        }
+            => s_watches ? s_markerSheet ??= MarkerSheets.Build(MarkerClass, MarkerProperty) : null;
 
         private static bool Stale(VisualElement element, in Inheritor entry)
             => Moved(element, entry) || (RulesMoved(element, entry) && RuleFontMoved(element, entry));

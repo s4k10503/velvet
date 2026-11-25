@@ -522,7 +522,7 @@ namespace Velvet
             for (var i = 0; i < element.styleSheets.count; i++)
             {
                 var sheet = element.styleSheets[i];
-                if (FiberFontScope.IsMarker(sheet))
+                if (MarkerSheets.IsMarker(sheet))
                 {
                     continue;
                 }

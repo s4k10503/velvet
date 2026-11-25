@@ -322,7 +322,7 @@ namespace Velvet
                 for (var j = 0; j < chain[i].styleSheets.count; j++)
                 {
                     var sheet = chain[i].styleSheets[j];
-                    if (FiberFontScope.IsMarker(sheet)) continue;
+                    if (MarkerSheets.IsMarker(sheet)) continue;
                     // The host's panel has a scale of its own, which the host root's sheet follows.
                     if (SnappedBorderSheets.IsSnapped(sheet) || RadiusWatchSheets.IsWatch(sheet) || ReachesAbove(carry.HostRoot, sheet)) continue;
                     sheets.Remove(sheet);
@@ -393,7 +393,7 @@ namespace Velvet
         internal static int SheetStamp(int stamp, StyleSheet sheet)
         {
             if (RadiusWatchSheets.IsWatch(sheet)) return stamp;
-            if (FiberFontScope.IsMarker(sheet)) return stamp;
+            if (MarkerSheets.IsMarker(sheet)) return stamp;
             stamp = HashCode.Combine(stamp, sheet, sheet.contentHash);
             foreach (var imported in Facts(sheet).Imports) stamp = SheetStamp(stamp, imported);
             return stamp;

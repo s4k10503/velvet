@@ -187,6 +187,11 @@ namespace Velvet
         internal static readonly EngineMember HasRunningStyleAnimation = Method(UIElements,
             VisualElementType, "HasRunningAnimation", "System.Boolean", "enum:UnityEngine.UIElements.StyleSheets.StylePropertyId");
 
+        // StyleTransitionBehavior's read, in each style pass that restyles an element it watches, of whether any
+        // transition runs there.
+        internal static readonly EngineMember HasRunningStyleAnimations =
+            ReadProperty(UIElements, VisualElementType, "hasRunningAnimations", "System.Boolean");
+
         // StyleFilterEngineWrite's filter write past a running transform-origin transition.
         internal static readonly EngineMember CancelStyleAnimation = Method(UIElements,
             VisualElementType, "CancelAnimation", "System.Void", "enum:UnityEngine.UIElements.StyleSheets.StylePropertyId");

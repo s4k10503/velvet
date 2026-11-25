@@ -41,6 +41,7 @@ namespace Velvet
         private static void AddToModel(VisualElement element, string cls, long priority, Model? model)
         {
             CornerRadiusFit.TrackClass(element, cls);
+            StyleTransitionBehavior.TrackClass(element, cls);
             if (model == null)
             {
                 if (priority == StyleLayerPriority.Base)
