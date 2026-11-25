@@ -1,0 +1,23 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "20d586d878c78d9e7c28c4a695baaa12084924ae6b021d4711b9db755e31dc02",
+ "killers": [],
+ "measured_by": "45572161470",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 24,
+  "line": 542,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ChildReconciler.cs",
+  "shadowed": [
+   "guard removed"
+  ]
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "d469afc1902d871feda5241076bbaaacab767201a45fcd10c6e99b7d0183670e",
+ "verdict": "survived"
+}

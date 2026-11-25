@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed among the 141 case(s) that ran the site: Given_PropsComponentCallingAHookFromItsRefCallback_When_ItReRenders_Then_TheGuardNamesTheComponent",
+ "file": "60b88944350d10a5cc94ebf964a1f8d4cbe601b060413963a4e1a09d69830e81",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ComponentDisplayNameTests.Given_PropsComponentCallingAHookFromItsRefCallback_When_ItReRenders_Then_TheGuardNamesTheComponent",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/ComponentDisplayNameTests.cs": "b868828f80d29a6dbc22a8e1048f0b156a0a04765dabac9c9d40eb41a2b62893",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae"
+   }
+  }
+ ],
+ "measured_by": "45572161470",
+ "mutant": {
+  "after": "+",
+  "before": "-",
+  "column": 41,
+  "line": 541,
+  "operator": "arithmetic",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberErrorBoundary.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "d469afc1902d871feda5241076bbaaacab767201a45fcd10c6e99b7d0183670e",
+ "verdict": "killed"
+}

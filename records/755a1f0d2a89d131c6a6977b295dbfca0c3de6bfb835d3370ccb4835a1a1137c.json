@@ -1,0 +1,29 @@
+{
+ "detail": "EditMode: 1 failed: Given_ExitingElement_When_ExitTransitionCompletes_Then_ElementIsRemovedFromDom",
+ "file": "53f5f98e281bace9aa7fbaf861ef6097abe7b97ab5031bdae58fb1f16adbebef",
+ "killers": [
+  {
+   "case": "Velvet.Tests.AnimatePresenceAnimationTests.Given_ExitingElement_When_ExitTransitionCompletes_Then_ElementIsRemovedFromDom",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/AnimatePresenceAnimationTests.cs": "a7ff95ec31fa180d58adaecff71bbaaaf3f7e0961ca58e218d0a694974b935a8",
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/SimulatedPanelTestBase.cs": "a06149cf212c91277fd1442580aee292a959fef6bf985e77628aabdbb0acacc8"
+   }
+  }
+ ],
+ "measured_by": "45572161470",
+ "mutant": {
+  "after": ";",
+  "before": "ChildListWrites.RemoveRow(parent, element);",
+  "column": 12,
+  "line": 54,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/HostCommitQueue.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "d469afc1902d871feda5241076bbaaacab767201a45fcd10c6e99b7d0183670e",
+ "verdict": "killed"
+}

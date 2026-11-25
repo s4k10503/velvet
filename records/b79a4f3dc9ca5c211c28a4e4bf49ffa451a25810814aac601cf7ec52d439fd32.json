@@ -1,0 +1,82 @@
+{
+ "detail": "EditMode: 5 failed among the 52 case(s) that ran the site: Given_AnUnkeyedRowScrolledAwayAndBack_When_ItReturns_Then_WhatWasTypedIntoItIsGone, Given_ARendererReturningOneNodeForEveryItem_When_ARangeChangeKeepsARowInRange_Then_ThatRowKeepsItsElement, Given_ClipPathItems_When_OverlappingRangeRepatchesThem_Then_ItemsAreNotDoubleWrapped",
+ "file": "9c7d2d7fd4037a8ea6a376da5776142ea35b9c700c1eae0b68301120fd858fec",
+ "killers": [
+  {
+   "case": "Velvet.Tests.VirtualListTests.Given_ARendererReturningOneNodeForEveryItem_When_ARangeChangeKeepsARowInRange_Then_ThatRowKeepsItsElement",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/PublicApiSurfaceTests.cs": "047f093054d47bed7fe15f75060d6c41bed15da284c22b5ea31fd014c737fb54",
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/VirtualListTests.cs": "859bee6bec173819e6100b0a1b4ae6195b3031bf6182ee370312d01359132c0b",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae",
+    "Packages/com.velvet.core/TestUtilities/NullableAnnotationProbe.cs": "6f277d399cd33f1aabb4032f6fed2da4549d84671aacf822d7473dfde74f390c",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  },
+  {
+   "case": "Velvet.Tests.VirtualListTests.Given_AnUnkeyedRowScrolledAwayAndBack_When_ItReturns_Then_WhatWasTypedIntoItIsGone",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/PublicApiSurfaceTests.cs": "047f093054d47bed7fe15f75060d6c41bed15da284c22b5ea31fd014c737fb54",
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/VirtualListTests.cs": "859bee6bec173819e6100b0a1b4ae6195b3031bf6182ee370312d01359132c0b",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae",
+    "Packages/com.velvet.core/TestUtilities/NullableAnnotationProbe.cs": "6f277d399cd33f1aabb4032f6fed2da4549d84671aacf822d7473dfde74f390c",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  },
+  {
+   "case": "Velvet.Tests.VirtualListTests.Given_ClipPathItems_When_OverlappingRangeRepatchesThem_Then_ItemsAreNotDoubleWrapped",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/PublicApiSurfaceTests.cs": "047f093054d47bed7fe15f75060d6c41bed15da284c22b5ea31fd014c737fb54",
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/VirtualListTests.cs": "859bee6bec173819e6100b0a1b4ae6195b3031bf6182ee370312d01359132c0b",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae",
+    "Packages/com.velvet.core/TestUtilities/NullableAnnotationProbe.cs": "6f277d399cd33f1aabb4032f6fed2da4549d84671aacf822d7473dfde74f390c",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  },
+  {
+   "case": "Velvet.Tests.VirtualListTests.Given_MountedVirtualListItem_When_SameKeyRendersADifferentNodeType_Then_TheNewTypeIsCreatedInstead",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/PublicApiSurfaceTests.cs": "047f093054d47bed7fe15f75060d6c41bed15da284c22b5ea31fd014c737fb54",
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/VirtualListTests.cs": "859bee6bec173819e6100b0a1b4ae6195b3031bf6182ee370312d01359132c0b",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae",
+    "Packages/com.velvet.core/TestUtilities/NullableAnnotationProbe.cs": "6f277d399cd33f1aabb4032f6fed2da4549d84671aacf822d7473dfde74f390c",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  },
+  {
+   "case": "Velvet.Tests.VirtualListTests.Given_TwoItemsSharingAKey_When_BothAreScrolledAwayAndBack_Then_TheSecondReturnsAsANewElement",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/PublicApiSurfaceTests.cs": "047f093054d47bed7fe15f75060d6c41bed15da284c22b5ea31fd014c737fb54",
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/VirtualListTests.cs": "859bee6bec173819e6100b0a1b4ae6195b3031bf6182ee370312d01359132c0b",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae",
+    "Packages/com.velvet.core/TestUtilities/NullableAnnotationProbe.cs": "6f277d399cd33f1aabb4032f6fed2da4549d84671aacf822d7473dfde74f390c",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  }
+ ],
+ "measured_by": "45572161470",
+ "mutant": {
+  "after": ";",
+  "before": "ChildListWrites.Remove(_visibleContainer, row);",
+  "column": 16,
+  "line": 658,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberVirtualListController.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "d469afc1902d871feda5241076bbaaacab767201a45fcd10c6e99b7d0183670e",
+ "verdict": "killed"
+}

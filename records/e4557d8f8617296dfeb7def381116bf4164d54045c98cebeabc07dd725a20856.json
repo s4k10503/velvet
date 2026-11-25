@@ -1,0 +1,46 @@
+{
+ "detail": "EditMode: 2 failed among the 4 case(s) that ran the site: Given_ABoundaryRenderingAPortalWhoseChildIsABoundaryOverAZPlacedElementThatThrowsAsItAttaches_When_ItMounts_Then_TheBoundaryThatRendersThePortalReportsIt, Given_ATreeWhoseBoundaryRendersAPortalHoldingAZPlacedElementThatThrowsAsItAttaches_When_ItMounts_Then_ThatBoundaryReportsIt",
+ "file": "26ba85c5fb0240a6288b8384d6fe0f97d3d862250940d966990905330abdd894",
+ "killers": [
+  {
+   "case": "Velvet.Tests.WaveApplyFailureTests.Given_ABoundaryRenderingAPortalWhoseChildIsABoundaryOverAZPlacedElementThatThrowsAsItAttaches_When_ItMounts_Then_TheBoundaryThatRendersThePortalReportsIt",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/WaveApplyFailureTests.cs": "7313590ae84a00855b89881f02cfef2d0c6bc3e881aea3427819d7cf3327a1bb",
+    "Packages/com.velvet.core/TestUtilities/EventLog.cs": "e191b8d91d56ab6eb1633a8f37e5282dd11f4cbfd649b59ab27deab3a1e4b490",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae"
+   }
+  },
+  {
+   "case": "Velvet.Tests.WaveApplyFailureTests.Given_ATreeWhoseBoundaryRendersAPortalHoldingAZPlacedElementThatThrowsAsItAttaches_When_ItMounts_Then_ThatBoundaryReportsIt",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/WaveApplyFailureTests.cs": "7313590ae84a00855b89881f02cfef2d0c6bc3e881aea3427819d7cf3327a1bb",
+    "Packages/com.velvet.core/TestUtilities/EventLog.cs": "e191b8d91d56ab6eb1633a8f37e5282dd11f4cbfd649b59ab27deab3a1e4b490",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae"
+   }
+  }
+ ],
+ "measured_by": "45572161470",
+ "mutant": {
+  "after": "==",
+  "before": "!=",
+  "column": 26,
+  "line": 86,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Component/ComponentBoundarySearch.cs",
+  "shadowed": [
+   "clause removed",
+   "guard removed",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "d469afc1902d871feda5241076bbaaacab767201a45fcd10c6e99b7d0183670e",
+ "verdict": "killed"
+}

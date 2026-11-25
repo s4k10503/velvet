@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "60b88944350d10a5cc94ebf964a1f8d4cbe601b060413963a4e1a09d69830e81",
+ "killers": [],
+ "measured_by": "45572161470",
+ "mutant": {
+  "after": ";",
+  "before": "i++;",
+  "column": 20,
+  "line": 375,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberErrorBoundary.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "d469afc1902d871feda5241076bbaaacab767201a45fcd10c6e99b7d0183670e",
+ "verdict": "survived"
+}

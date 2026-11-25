@@ -1,0 +1,34 @@
+{
+ "detail": "EditMode: 1 failed among the 291 case(s) that ran the site: Given_SettingsThatClearTheirPanelAndABackgroundPortal_When_Rendered_Then_ThePortalsPixelsSurvive",
+ "file": "325715d5103df58e2c7c984b47afa4515663ac3d12ee58464756c1849eb442bf",
+ "killers": [
+  {
+   "case": "Velvet.Tests.VelvetPreviewPanelTests.Given_SettingsThatClearTheirPanelAndABackgroundPortal_When_Rendered_Then_ThePortalsPixelsSurvive",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Preview/Tests/Editor/VelvetPreviewPanelTests.cs": "9c2bfecefe49dd4ce3fff7c7b58e270edd9db674beab3a45449365b92a5c4215",
+    "Packages/com.velvet.core/TestUtilities/ActionDisposable.cs": "e95e072a106d4d4a77b0e090c5bdd56a05df277aa99aeb1d28e41c5ce3d3e1ea",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "18b6b404187836003ea0db593918596c4ed3d84ab35733a088284926133a8987",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/RenderTexturePanelHost.cs": "194e0d5bc1138e5ae5cdeeae94298ce65a10fe077c4a75c73599e7abfa531bb6",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff",
+    "Packages/com.velvet.core/TestUtilities/TestPanelSettings.cs": "c7a36f6a4acd48eb54e9b4c339d7caf0c56cbef64dacd018497182f9fadacc29"
+   }
+  }
+ ],
+ "measured_by": "45572161470",
+ "mutant": {
+  "after": "<=",
+  "before": "<",
+  "column": 29,
+  "line": 201,
+  "operator": "boundary",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ReconcilerContext.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "d469afc1902d871feda5241076bbaaacab767201a45fcd10c6e99b7d0183670e",
+ "verdict": "killed"
+}

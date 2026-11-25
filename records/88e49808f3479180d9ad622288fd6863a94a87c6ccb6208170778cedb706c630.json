@@ -1,0 +1,40 @@
+{
+ "detail": "EditMode: 3 failed among the 586 case(s) that ran the site: Given_ASeededRunOfWritesShiftsAndRemovals_When_EachStepIsAppliedToTheStoreAndToEveryRangeInTurn_Then_BothAnswerAlike(1), Given_ASeededRunOfWritesShiftsAndRemovals_When_EachStepIsAppliedToTheStoreAndToEveryRangeInTurn_Then_BothAnswerAlike(2), Given_ASeededRunOfWritesShiftsAndRemovals_When_EachStepIsAppliedToTheStoreAndToEveryRangeInTurn_Then_BothAnswerAlike(3)",
+ "file": "325715d5103df58e2c7c984b47afa4515663ac3d12ee58464756c1849eb442bf",
+ "killers": [
+  {
+   "case": "Velvet.Tests.PortalRangeShiftTests.Given_ASeededRunOfWritesShiftsAndRemovals_When_EachStepIsAppliedToTheStoreAndToEveryRangeInTurn_Then_BothAnswerAlike(1)",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PortalRangeShiftTests.cs": "6a65695c1c64a67fb703fe4501073f541611bc17a48d3ad93dd30a325dc29053"
+   }
+  },
+  {
+   "case": "Velvet.Tests.PortalRangeShiftTests.Given_ASeededRunOfWritesShiftsAndRemovals_When_EachStepIsAppliedToTheStoreAndToEveryRangeInTurn_Then_BothAnswerAlike(2)",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PortalRangeShiftTests.cs": "6a65695c1c64a67fb703fe4501073f541611bc17a48d3ad93dd30a325dc29053"
+   }
+  },
+  {
+   "case": "Velvet.Tests.PortalRangeShiftTests.Given_ASeededRunOfWritesShiftsAndRemovals_When_EachStepIsAppliedToTheStoreAndToEveryRangeInTurn_Then_BothAnswerAlike(3)",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PortalRangeShiftTests.cs": "6a65695c1c64a67fb703fe4501073f541611bc17a48d3ad93dd30a325dc29053"
+   }
+  }
+ ],
+ "measured_by": "45572161470",
+ "mutant": {
+  "after": ";",
+  "before": "Leave(entry.On, old, value);",
+  "column": 20,
+  "line": 110,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ReconcilerContext.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "d469afc1902d871feda5241076bbaaacab767201a45fcd10c6e99b7d0183670e",
+ "verdict": "killed"
+}

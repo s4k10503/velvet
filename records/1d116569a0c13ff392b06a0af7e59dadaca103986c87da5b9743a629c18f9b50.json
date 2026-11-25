@@ -1,0 +1,32 @@
+{
+ "detail": "EditMode: 1 failed among the 215 case(s) that ran the site: Given_AVerticalListShowingRows_When_ARenderTurnsItHorizontal_Then_TheRowsKeepNoHeightOfItsWriting(True)",
+ "file": "9c7d2d7fd4037a8ea6a376da5776142ea35b9c700c1eae0b68301120fd858fec",
+ "killers": [
+  {
+   "case": "Velvet.Tests.VirtualListHorizontalTests.Given_AVerticalListShowingRows_When_ARenderTurnsItHorizontal_Then_TheRowsKeepNoHeightOfItsWriting(True)",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/VirtualListHorizontalTests.cs": "0600c23d6087b4a93e22f9ef24014d9413cdd370a9d1a2546f1d6d0ec9fdddf4",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  }
+ ],
+ "measured_by": "45572161470",
+ "mutant": {
+  "after": "==",
+  "before": "!=",
+  "column": 34,
+  "line": 647,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberVirtualListController.cs",
+  "shadowed": [
+   "line removed"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "d469afc1902d871feda5241076bbaaacab767201a45fcd10c6e99b7d0183670e",
+ "verdict": "killed"
+}

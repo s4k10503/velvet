@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed among the 607 case(s) that ran the site: Given_APortalInsideTheChild_When_TheKeyIsRemoved_Then_ItsMotionExitsAndTheNextPortalsDoesNot",
+ "file": "325715d5103df58e2c7c984b47afa4515663ac3d12ee58464756c1849eb442bf",
+ "killers": [
+  {
+   "case": "Velvet.Tests.AnimatePresenceAnchorTests.Given_APortalInsideTheChild_When_TheKeyIsRemoved_Then_ItsMotionExitsAndTheNextPortalsDoesNot",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/AnimatePresenceAnchorTests.cs": "0a520fcd3e93e0a8d23c2b0b140583dcb4e42b19eaa5b3486ac8c0c364e19ac2",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae"
+   }
+  }
+ ],
+ "measured_by": "45572161470",
+ "mutant": {
+  "after": ";",
+  "before": "Attach(entry, value.Target, value.SlotStart);",
+  "column": 20,
+  "line": 127,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ReconcilerContext.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "d469afc1902d871feda5241076bbaaacab767201a45fcd10c6e99b7d0183670e",
+ "verdict": "killed"
+}

@@ -1,0 +1,58 @@
+{
+ "detail": "EditMode: 4 failed among the 1909 case(s) that ran the site: Given_ABackgroundClassOnATextField_When_Reconciled_Then_OnlyTheInputBoxTakesIt, Given_ABackgroundOnACustomFloatField_When_Reconciled_Then_OnlyTheInputBoxTakesIt, Given_ABackgroundOnADropdownField_When_Reconciled_Then_OnlyTheBoxTakesIt",
+ "file": "e92bcb721c53d77aeff89e463fb9ff08cb77571b2411f1c3af205dc3fb6fd89e",
+ "killers": [
+  {
+   "case": "Velvet.Tests.InputBoxSurfaceTests.Given_ABackgroundClassOnATextField_When_Reconciled_Then_OnlyTheInputBoxTakesIt",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/InputBoxSurfaceTests.cs": "d4c49a1a1b965dd12817918dcd25cd32875b71fc891fe0f9112249219736d70d",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.InputBoxSurfaceTests.Given_ABackgroundOnACustomFloatField_When_Reconciled_Then_OnlyTheInputBoxTakesIt",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/InputBoxSurfaceTests.cs": "d4c49a1a1b965dd12817918dcd25cd32875b71fc891fe0f9112249219736d70d",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.InputBoxSurfaceTests.Given_ABackgroundOnADropdownField_When_Reconciled_Then_OnlyTheBoxTakesIt",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/InputBoxSurfaceTests.cs": "d4c49a1a1b965dd12817918dcd25cd32875b71fc891fe0f9112249219736d70d",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.InputBoxSurfaceTests.Given_ABackgroundOnAnIntegerField_When_Reconciled_Then_OnlyTheInputBoxTakesIt",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/InputBoxSurfaceTests.cs": "d4c49a1a1b965dd12817918dcd25cd32875b71fc891fe0f9112249219736d70d",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  }
+ ],
+ "measured_by": "45572161470",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 66,
+  "line": 131,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleTransitionBehavior.cs",
+  "shadowed": [
+   "clause removed",
+   "equality",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "d469afc1902d871feda5241076bbaaacab767201a45fcd10c6e99b7d0183670e",
+ "verdict": "killed"
+}

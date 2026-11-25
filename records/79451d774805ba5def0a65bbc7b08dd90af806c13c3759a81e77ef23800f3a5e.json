@@ -1,0 +1,31 @@
+{
+ "detail": "EditMode: 1 failed: Given_APanelRootCarryingADurationUtility_When_ALayerPortalMounts_Then_TheHostRootIsMarkedForItsStylePasses",
+ "file": "e92bcb721c53d77aeff89e463fb9ff08cb77571b2411f1c3af205dc3fb6fd89e",
+ "killers": [
+  {
+   "case": "Velvet.Tests.PortalHostCarryTests.Given_APanelRootCarryingADurationUtility_When_ALayerPortalMounts_Then_TheHostRootIsMarkedForItsStylePasses",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/PortalHostCarryTests.cs": "b97cc2140e8e5445a0ffb19c142b28ffe97bfb159bcec1f10d9263dc7935bf78",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "18b6b404187836003ea0db593918596c4ed3d84ab35733a088284926133a8987",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26"
+   }
+  }
+ ],
+ "measured_by": "45572161470",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 38,
+  "line": 297,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleTransitionBehavior.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "d469afc1902d871feda5241076bbaaacab767201a45fcd10c6e99b7d0183670e",
+ "verdict": "killed"
+}

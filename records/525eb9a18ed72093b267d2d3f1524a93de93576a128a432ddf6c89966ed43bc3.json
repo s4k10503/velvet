@@ -1,0 +1,34 @@
+{
+ "detail": "EditMode: 2 failed among the 607 case(s) that ran the site: Given_TheFirstRangeRemovedAndAnotherRecorded_When_TheRecordedOrderIsRead_Then_TheNewerOneIsLast, Given_TwoRangesRecorded_When_TheEarlierIsRewritten_Then_ItStaysBeforeTheLater",
+ "file": "325715d5103df58e2c7c984b47afa4515663ac3d12ee58464756c1849eb442bf",
+ "killers": [
+  {
+   "case": "Velvet.Tests.PortalRangeStoreTests.Given_TheFirstRangeRemovedAndAnotherRecorded_When_TheRecordedOrderIsRead_Then_TheNewerOneIsLast",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PortalRangeStoreTests.cs": "afba00d1374923abeb02c1983f4836485c731914fb2c0ffe9a12cf827bcff9b6"
+   }
+  },
+  {
+   "case": "Velvet.Tests.PortalRangeStoreTests.Given_TwoRangesRecorded_When_TheEarlierIsRewritten_Then_ItStaysBeforeTheLater",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PortalRangeStoreTests.cs": "afba00d1374923abeb02c1983f4836485c731914fb2c0ffe9a12cf827bcff9b6"
+   }
+  }
+ ],
+ "measured_by": "45572161470",
+ "mutant": {
+  "after": ";",
+  "before": "_recordedAt[placeholder] = _recorded++;",
+  "column": 20,
+  "line": 126,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ReconcilerContext.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "d469afc1902d871feda5241076bbaaacab767201a45fcd10c6e99b7d0183670e",
+ "verdict": "killed"
+}

@@ -1,0 +1,32 @@
+{
+ "detail": "EditMode: 1 failed: Given_APooledPresenceParent_When_ItIsRentedBackForAFreshAnimatePresence_Then_TheDepartedChildIsNotResurrected",
+ "file": "e3d496acf3a3ac7a87b00afcd1b0cbeed6ba8f8d37cde45fa6f8d12bcfe63221",
+ "killers": [
+  {
+   "case": "Velvet.Tests.AnimatePresenceStateRetirementTests.Given_APooledPresenceParent_When_ItIsRentedBackForAFreshAnimatePresence_Then_TheDepartedChildIsNotResurrected",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/AnimatePresenceStateRetirementTests.cs": "563e37c166bc70d5f28ca71963843601f0651cf1461b142b8168d5d39db00561",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/ContainedFailureLog.cs": "623706a4b6e77e60fac7e83f93a59bf4d7050a549fd238f0de705adb0795fbae",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/RuntimeStateProbe.cs": "f5d4ec6298d8c5f2eb33b23fa83fc5788fc9c99583dc56c3cdc4243476aa9fce"
+   }
+  }
+ ],
+ "measured_by": "45572161470",
+ "mutant": {
+  "after": ";",
+  "before": "ReturnOccupantNow(removed, poolable);",
+  "column": 20,
+  "line": 104,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberElementCleaner.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "d469afc1902d871feda5241076bbaaacab767201a45fcd10c6e99b7d0183670e",
+ "verdict": "killed"
+}
