@@ -381,8 +381,10 @@ namespace Velvet.Tests
             element.AddToClassList("transition-normal");
             ForcePanelUpdate(element.panel);
 
-            // Assert
-            Assert.That(WhileItsTransitionRuns(element), Is.EqualTo(Justify.FlexStart));
+            // Assert — NoneRan where transition-normal is not on the element, which would leave the decision nothing to
+            // outlast.
+            Assert.That(element.ClassListContains("transition-normal") ? WhileItsTransitionRuns(element) : NoneRan,
+                Is.EqualTo(Justify.FlexStart));
         }
 
         [Test]
