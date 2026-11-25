@@ -176,6 +176,23 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AnInputCarryingADurationUtility_When_ItsSelectionIsDrawn_Then_TheDrawingIsMarkedForItsStylePasses()
+        {
+            // Arrange — under UI Toolkit's initial transition-property of all, the duration gives the drawing, which takes
+            // the input's classes, transitions of the properties it can only switch.
+            var field = Mount(TextColorHost);
+            Input(field).AddToClassList("duration-1000");
+
+            // Act
+            Select(field, 1, 3);
+
+            // Assert — null where no drawing took the duration, which leaves nothing to mark.
+            var drawing = Drawing(field);
+            Assert.That(drawing != null && drawing.ClassListContains("duration-1000")
+                ? drawing.ClassListContains("velvet-transition-watch") : (bool?)null, Is.True);
+        }
+
+        [Test]
         public void Given_AFocusedFieldWithASelectionUtility_When_ItsSelectionIsEmptied_Then_NoDrawingShows()
         {
             // Arrange

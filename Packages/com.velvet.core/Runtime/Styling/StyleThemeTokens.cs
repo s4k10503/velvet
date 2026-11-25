@@ -497,7 +497,7 @@ namespace Velvet
                     {
                         continue;
                     }
-                    if (FiberFontScope.IsMarker(sheet))
+                    if (MarkerSheets.IsMarker(sheet))
                     {
                         continue;
                     }
@@ -514,7 +514,7 @@ namespace Velvet
             {
                 return;
             }
-            if (FiberFontScope.IsMarker(sheet))
+            if (MarkerSheets.IsMarker(sheet))
             {
                 return;
             }

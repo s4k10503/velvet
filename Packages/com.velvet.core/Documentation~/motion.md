@@ -542,10 +542,18 @@ missing or cannot be invoked, the play uses the ordinary inline or resolved star
 UI Toolkit transitions a property it can only switch from one value to the other, such as `flex-direction`,
 `justify-content`, `position`, `white-space`, `-unity-text-align` or `background-image`, by switching it partway
 through, where CSS's default `transition-behavior: normal` changes it at once. On an element Velvet renders, such a
-transition is cancelled at the panel's next animation update, which lands the new value, whatever gave the element
-the transition: `transition-all`, a `duration-*` alone, a stylesheet's own `transition-property`, an inline write or
-a `Tween` variant swap UI Toolkit's own transition runs (*Clocks*). An element Velvet renders is one under the element
-a tree is mounted on, a layer or world-space panel's root, or a row a portal puts in its target.
+transition is cancelled, which lands the new value, whatever gave the element the transition: `transition-all`, a
+`duration-*` alone, a stylesheet's own `transition-property`, an inline write or a `Tween` variant swap UI Toolkit's
+own transition runs (*Clocks*). An element Velvet renders is one under the element a tree is mounted on, a layer or
+world-space panel's root, or a row a portal puts in its target.
+
+A transition a style pass starts, as a class change or a `Tween` swap does, is cancelled in that pass on an element
+Velvet gave a transition, through a `transition-*` or `duration-*` utility, a `duration-[…]` value or a `Tween`, and
+on one that has already run a transition under the element Velvet renders into. The frame that pass paints shows the
+new value, a child with no transition of its own that inherits the property, as one does `white-space`, takes it in
+the same pass, and no transition event is sent for it, as CSS sends none under `normal`. Any other is cancelled at the
+panel's next animation update: one an inline write starts, and the first one on an element Velvet gave no transition,
+such as one only a stylesheet of the application's gives.
 
 UI Toolkit switches `visibility` and `background-position` partway through as well, where CSS transitions both under
 `normal`. On an element Velvet renders, whatever gave it the transition and whether or not `transition-discrete`
@@ -562,8 +570,10 @@ shortened as CSS shortens one. The font properties keep switching partway throug
 `transition-discrete` (`transition-behavior: allow-discrete`) leaves UI Toolkit's transition running, so the
 property switches to the new value partway through, as CSS switches a discrete property; `transition-normal` takes
 that back. Of the two, the one that ranks later wins, as of two utilities writing one property: a variant's over the
-element's own, either way round (`transition-discrete md:transition-normal`), and a play's while it shows one. On a
-`V.TextField` both go to the input as well as to the field, as the `transition-*` utilities do.
+element's own, either way round (`transition-discrete md:transition-normal`), and a play's while it shows one. A
+transition `transition-discrete` let run keeps running when `transition-normal` comes to outrank it, as CSS keeps it,
+and a change of its end then starts one the new ranking applies to. On a `V.TextField` both go to the input as well
+as to the field, as the `transition-*` utilities do.
 
 ## Cubic-bezier easing
 

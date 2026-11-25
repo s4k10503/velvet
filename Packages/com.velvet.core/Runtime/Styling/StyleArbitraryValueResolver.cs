@@ -4404,6 +4404,11 @@ namespace Velvet
             {
                 box.style.transitionDuration = duration;
             }
+            if (duration.keyword != StyleKeyword.Null)
+            {
+                StyleTransitionBehavior.Watch(element);
+                StyleTransitionBehavior.Watch(box);
+            }
         }
 
         // transition-timing-function is a StyleList<EasingFunction>, which names a keyword and not a curve: the winning
