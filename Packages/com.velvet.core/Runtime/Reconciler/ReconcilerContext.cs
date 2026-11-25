@@ -3084,6 +3084,10 @@ namespace Velvet
             // Keyed children currently in the DOM (in DOM order), including exiting ghosts.
             public readonly List<(string key, VNode node)> Committed = new();
 
+            // The node whose expansion last wrote Committed, which is how FiberContextSpine tells this presence from
+            // another at the same SlotPath of one boundary.
+            public AnimatePresenceNode? Node;
+
             // Keys present at the first render under initial: false and not removed since (see LiveEntrySite).
             public readonly HashSet<string> InitialBlocked = new();
 
@@ -3461,6 +3465,8 @@ namespace Velvet
             if (!PresenceStates.Remove(key, out var state)) return;
             if (settlesExits) SettleExitsOf(state);
             state.Registration?.Gone();
+            // A fiber's EnclosingPresence can outlive the entry; the node it last expanded should not outlive it.
+            state.Node = null;
         }
 
         // Invoked from ComponentRegistry when the boundary fiber is unregistered, so a boundary that

@@ -625,8 +625,9 @@ namespace Velvet.Tests
     /// What a detached mount keeps from where it was created rather than reading where its host is now: a row a scroll
     /// mounts inside a presence child its presence's first render created under <c>initial: false</c> plays no mount
     /// enter; a Portal child whose presence child is exiting still reads the Provider the Portal's children put above
-    /// it; and where an exiting presence child holds the Portal's declarer or the list's host, the Portal's child and a
-    /// row a scroll mounts still read the Provider above the presence.
+    /// it; and where an exiting presence child holds a component, the Portal's declarer or the list's host, that
+    /// component, the Portal's child and a row read the nearest Provider above them, inside the exiting child or above
+    /// the presence, whichever of two presences at one SlotPath holds them.
     /// </summary>
     [TestFixture]
     internal sealed class DetachedContextMotionTests : MotionSimulatedPanelTestsBase
@@ -641,6 +642,9 @@ namespace Velvet.Tests
 
         private static readonly StyleTransitionConfig s_child = new() { DurationSec = 0.05f };
 
+        private static readonly Dictionary<string, string> s_taggedReadings = new();
+        private static readonly Dictionary<string, StateUpdater<int>> s_taggedSetters = new();
+
         private static string s_reading;
         private static StateUpdater<int> s_setReader;
         private static StateUpdater<bool> s_setPresent;
@@ -653,8 +657,88 @@ namespace Velvet.Tests
             s_reading = null;
             s_setReader = default;
             s_setPresent = default;
+            s_taggedReadings.Clear();
+            s_taggedSetters.Clear();
             s_portalTarget = new VisualElement();
             Root.Add(s_portalTarget);
+        }
+
+        [Test]
+        public void Given_AComponentInsideAnExitingPresenceChild_When_ItRendersOnItsOwn_Then_ItReadsTheProviderAboveThePresence()
+        {
+            // Arrange
+            using var mounted = V.Mount(Root, V.Component(PresenceOverReaderRender, key: "outer"));
+            s_setPresent.Invoke(false);
+            mounted.FlushStateForTest();
+            s_reading = null;
+
+            // Act
+            s_setReader.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert — null where the component did not render.
+            Assert.That(s_reading, Is.EqualTo("outer"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base pushes the child's whole snapshot over whatever the spine found.
+        // What this pins is that the Provider inside the exiting presence child, nearer than the one above the
+        // component rendering the presence, is read: walk only the children the presence is given and the child reads
+        // the farther one.
+        [Test]
+        public void Given_APortalDeclaredUnderAProviderInsideAnExitingPresenceChild_When_ThePortalsChildRendersAlone_Then_ItReadsThatProvider()
+        {
+            // Arrange
+            using var mounted = V.Mount(Root, V.Component(OuterOverLeavingPortalMidRender, key: "outer"));
+            s_setPresent.Invoke(false);
+            mounted.FlushStateForTest();
+            s_reading = null;
+
+            // Act
+            s_setReader.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(s_reading, Is.EqualTo("inner"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base pushes the row's whole snapshot over whatever the spine found.
+        // What this pins is the same read for a row of a list whose host sits under that Provider: walk only the
+        // children the presence is given and the row reads the farther one.
+        [Test]
+        public void Given_AListHostUnderAProviderInsideAnExitingPresenceChild_When_AMountedRowRendersAlone_Then_ItReadsThatProvider()
+        {
+            // Arrange
+            using var mounted = V.Mount(Root, V.Component(OuterOverLeavingListMidRender, key: "outer"));
+            mounted.Root.Reconciler.Context.VirtualListControllers[Root.Q<ScrollView>()]
+                .UpdateVisibleRange(scrollY: 0f, viewportHeight: 200f);
+            s_setPresent.Invoke(false);
+            mounted.FlushStateForTest();
+            s_reading = null;
+
+            // Act
+            s_setReader.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(s_reading, Is.EqualTo("inner"));
+        }
+
+        [Test]
+        public void Given_TwoPresencesAtOneSlotPathUnderDifferentElements_When_AComponentInTheSecondsExitingChildRendersAlone_Then_ItReadsTheProviderAboveTheSecond()
+        {
+            // Arrange — each element's children reconcile in a walk of their own, so both presences sit at one SlotPath
+            // of the component, and each exiting child holds the same component at the same place.
+            using var mounted = V.Mount(Root, V.Component(TwoLeavingPresencesRender, key: "outer"));
+            s_setPresent.Invoke(false);
+            mounted.FlushStateForTest();
+            s_taggedReadings["second"] = null;
+
+            // Act
+            s_taggedSetters["second"].Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert — null where the component did not render.
+            Assert.That(s_taggedReadings["second"], Is.EqualTo("second"));
         }
 
         // GREEN_ON_BASE(characterization): the base mounts these rows under the whole snapshot of the list.
@@ -750,6 +834,77 @@ namespace Velvet.Tests
                         : null,
                 }),
             });
+        }
+
+        [Component(Compiler = false)]
+        private static VNode PresenceOverReaderRender() => UseLeavingAround(V.Component(ReaderRender, key: "reader"));
+
+        [Component(Compiler = false)]
+        private static VNode OuterOverLeavingPortalMidRender()
+            => V.Provider(s_theme, "outer", new VNode[] { V.Component(LeavingPortalMidRender, key: "mid") });
+
+        [Component(Compiler = false)]
+        private static VNode LeavingPortalMidRender() => UseLeavingUnderInner(V.Component(PortalDeclarerRender, key: "declarer"));
+
+        [Component(Compiler = false)]
+        private static VNode OuterOverLeavingListMidRender()
+            => V.Provider(s_theme, "outer", new VNode[] { V.Component(LeavingListMidRender, key: "mid") });
+
+        [Component(Compiler = false)]
+        private static VNode LeavingListMidRender() => UseLeavingUnderInner(V.Component(ListHostRender, key: "host"));
+
+        // The exit holds the presence child until the panel ticks, which nothing here does.
+        private static VNode UseLeavingUnderInner(VNode child)
+        {
+            var (present, setPresent) = Hooks.UseState(true);
+            s_setPresent = setPresent;
+            return V.AnimatePresence(key: "presence", children: new VNode[]
+            {
+                present
+                    ? V.Motion(key: "dlg", name: "dlg", variants: s_fade, initial: "hidden", animate: "visible",
+                        exit: "hidden", transition: s_child, children: new VNode[]
+                        {
+                            V.Provider(s_theme, "inner", new[] { child }),
+                        })
+                    : null,
+            });
+        }
+
+        private sealed record TagProps(string Tag);
+
+        [Component(Compiler = false)]
+        private static VNode TwoLeavingPresencesRender()
+        {
+            var (present, setPresent) = Hooks.UseState(true);
+            s_setPresent = setPresent;
+            return V.Fragment(children: new VNode[] { LeavingSide("first", present), LeavingSide("second", present) });
+        }
+
+        private static VNode LeavingSide(string value, bool present)
+            => V.Provider(s_theme, value, new VNode[]
+            {
+                V.Div(name: value, children: new VNode[]
+                {
+                    V.AnimatePresence(key: "presence", children: new VNode[]
+                    {
+                        present
+                            ? V.Motion(key: "m", name: "m-" + value, variants: s_fade, initial: "hidden",
+                                animate: "visible", exit: "hidden", transition: s_child, children: new VNode[]
+                                {
+                                    V.Component(TaggedReaderRender, new TagProps(value), key: "r"),
+                                })
+                            : null,
+                    }),
+                }),
+            });
+
+        [Component(Compiler = false)]
+        private static VNode TaggedReaderRender(TagProps props)
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_taggedSetters[props.Tag] = setTick;
+            s_taggedReadings[props.Tag] = Hooks.UseContext(s_theme);
+            return V.Label(text: s_taggedReadings[props.Tag] + tick);
         }
 
         [Component(Compiler = false)]

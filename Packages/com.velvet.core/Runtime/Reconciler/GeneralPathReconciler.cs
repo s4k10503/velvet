@@ -2520,6 +2520,7 @@ namespace Velvet
                 //    not re-emitted this render (their leaves are being removed), so drop them.
                 state.Committed.Clear();
                 foreach (var entry in nextCommitted) state.Committed.Add(entry);
+                state.Node = presence;
                 state.ExitComplete.Clear();
 
                 // This pass's own bookkeeping has settled — a completion queued above is staged now, so its

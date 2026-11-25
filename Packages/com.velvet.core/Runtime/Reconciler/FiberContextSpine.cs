@@ -275,7 +275,8 @@ namespace Velvet
             {
                 switch (node)
                 {
-                    case ContextProviderNode or MotionNode or MemoNode:
+                    // An AnimatePresence's exiting children are not in the tree either.
+                    case ContextProviderNode or MotionNode or MemoNode or AnimatePresenceNode:
                         return false;
                     case FragmentNode fragment:
                         if (!HoldsNoPusher(fragment.Children)) return false;
@@ -286,9 +287,6 @@ namespace Velvet
                     case SuspenseNode suspense:
                         if (!HoldsNoPusher(suspense.Children)) return false;
                         if (suspense.Fallback != null && !HoldsNoPusher(new[] { suspense.Fallback })) return false;
-                        break;
-                    case AnimatePresenceNode presence:
-                        if (!HoldsNoPusher(presence.Children)) return false;
                         break;
                 }
             }
@@ -581,32 +579,63 @@ namespace Velvet
         // like an inline child — the only reason the canonical descent misses it is that the walker never
         // steps THROUGH the AnimatePresenceNode. Descend into each current child under the map key
         // FiberNodeFactory.PresenceChildMapKey assigns, so the ComponentNode arm matches the spine child
-        // and the enclosing Providers / MotionContext stay pushed. Only currently-present children are
-        // walked (not still-exiting ghosts): the covered case is an isolated re-render of a
-        // persisting descendant. Mirrors the Suspense arm.
+        // and the enclosing Providers / MotionContext stay pushed, then into each exiting child the presence's
+        // state holds. Mirrors the Suspense arm.
         private static bool PushPresenceChildren(
             AnimatePresenceNode presence,
             int nodeIndex,
             WalkPosition position,
             in SpineWalk walk)
         {
-            if (presence.Children == null) return false;
-
             var presencePosition = FiberKeying.Presence(position, presence.Key, nodeIndex);
-            var taken = new Dictionary<string, int>();
-            var autoIndex = 0;
-            foreach (var child in presence.Children)
+            if (presence.Children != null)
             {
-                if (child == null) continue;
-                var childKey = FiberNodeFactory.PresenceChildMapKey(child.Key, ref autoIndex, taken, out _);
-                var childPosition = FiberKeying.PresenceChild(presencePosition, childKey);
-                if (PushEnclosingProviders(new[] { child }, childPosition, in walk))
+                var taken = new Dictionary<string, int>();
+                var autoIndex = 0;
+                foreach (var child in presence.Children)
+                {
+                    if (child == null) continue;
+                    var childKey = FiberNodeFactory.PresenceChildMapKey(child.Key, ref autoIndex, taken, out _);
+                    var childPosition = FiberKeying.PresenceChild(presencePosition, childKey);
+                    if (PushEnclosingProviders(new[] { child }, childPosition, in walk))
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            // A child that is exiting is not among the children the presence is given: the expansion emits it from
+            // the presence's state, under the key it holds there.
+            if (StateOf(presence, presencePosition.SlotPath, in walk) is not { } state) return false;
+            foreach (var (key, node) in state.Committed)
+            {
+                if (!state.IsLeaving(key)) continue;
+                if (PushEnclosingProviders(new[] { node }, FiberKeying.PresenceChild(presencePosition, key), in walk))
                 {
                     return true;
                 }
             }
-
             return false;
+        }
+
+        // The expansion keys a presence's state by its boundary, the element it reconciles into and its SlotPath; the
+        // walk knows no element, so the state is the one at the boundary and SlotPath whose last expansion was of this
+        // node, or the only one there. One node instance placed at two such presences is ambiguous between them.
+        private static ReconcilerContext.PresenceBoundaryState? StateOf(
+            AnimatePresenceNode presence, long slotPath, in SpineWalk walk)
+        {
+            var states = walk.Ancestor.Reconciler?.Context.PresenceStates;
+            if (states == null) return null;
+            ReconcilerContext.PresenceBoundaryState? only = null;
+            var atThisSlot = 0;
+            foreach (var entry in states)
+            {
+                if (!ReferenceEquals(entry.Key.boundary, walk.Ancestor) || entry.Key.presenceKey != slotPath) continue;
+                if (ReferenceEquals(entry.Value.Node, presence)) return entry.Value;
+                only = entry.Value;
+                atThisSlot++;
+            }
+            return atThisSlot == 1 ? only : null;
         }
 
         // Element children, and a Provider reconciled as an element, open a walk of their own.
