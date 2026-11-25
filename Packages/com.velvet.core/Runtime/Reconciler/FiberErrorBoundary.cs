@@ -330,7 +330,7 @@ namespace Velvet
             var failure = TakeFallbackReconcileFailure(fiber);
             // Taken off the boundary ahead of the propagation below, whose replacement of it drops what it holds
             // (CommitErrors.DropUnmounted).
-            var captured = TakeTheSwapsCaptures(ctx, fiber, capturedFrom);
+            var captured = TakeTheSwapsCaptures(fiber, capturedFrom);
             if (failure == null)
             {
                 CaptureAgain(fiber, captured);
@@ -349,7 +349,7 @@ namespace Velvet
 
         // A swap no wave owns applies its takedown before the fallback renders, so what the takedown throws is captured on
         // the boundary at once (CaptureAgain owns why it is taken back where the swap fails).
-        private static List<Exception>? TakeTheSwapsCaptures(ReconcilerContext ctx, ComponentFiber boundary, long capturedFrom)
+        private static List<Exception>? TakeTheSwapsCaptures(ComponentFiber boundary, long capturedFrom)
         {
             var captures = boundary.PendingCaptures;
             if (captures == null) return null;
@@ -360,7 +360,6 @@ namespace Velvet
                 (taken ??= new List<Exception>()).Insert(0, captures[i].Error);
                 captures.RemoveAt(i);
             }
-            if (captures.Count == 0) ctx.DropCapturesOf(boundary);
             return taken;
         }
 
