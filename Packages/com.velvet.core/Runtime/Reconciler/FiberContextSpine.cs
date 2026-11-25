@@ -62,9 +62,9 @@ namespace Velvet
             // Both are therefore constants of one edge rather than readings of where the descent has
             // got to, so the key resolves SpineChild at every container holding the same position and
             // cannot say which of them the walk is in. MatchesInlineSpineChild separates them by the
-            // node instead, where OwnOutput says that node can be compared. Two occurrences a
-            // declaring body builds from one shared node instance are one node, so those stay
-            // unseparated and the walk still takes the first.
+            // node instead, where OwnOutput says that node can be compared, and where a stamp can stand in
+            // (CanFallBack), declines what the node cannot separate. Elsewhere two occurrences a declaring
+            // body builds from one shared node instance stay unseparated and the walk takes the first.
             internal VisualElement? PortalScope { get; init; }
             internal VisualElement? Container { get; init; }
 

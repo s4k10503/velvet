@@ -15,7 +15,7 @@
 - A component inside a child a `V.AnimatePresence` is still animating out that renders on its own reads a
   `V.Provider` inside that child or one the component rendering the `V.AnimatePresence` put around it, where it read
   a farther `V.Provider` of the same context above that component, or the context's default value where there was
-  none.
+  none. This holds where the component rendering it places that `V.AnimatePresence` node once.
 - Once a `V.Provider` a `V.VirtualList`'s renderer returns around a row had changed value with no render walking
   around that row — a component whose output is the list and nothing else is one such, a scroll that renders the row
   is another — a component under the same `V.Mount` that reads a context was told of at most one later change to a

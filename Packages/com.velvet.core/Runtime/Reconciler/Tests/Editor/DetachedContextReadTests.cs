@@ -14,8 +14,10 @@ namespace Velvet.Tests
     /// read the nearest Provider above it as it currently is. A row or child that re-renders on its own reads
     /// the new value of a Provider above a memoized host that bailed, and the new value its host put around the list
     /// or Portal, or the list's renderer around the row; a row a scroll mounts reads the Provider its host put around the list rather than a farther one of
-    /// the same context; and a parked pass resuming, an error boundary's fallback and a Portal's first render read the
-    /// current value where a row or a Portal encloses them.
+    /// the same context; a parked pass resuming, an error boundary's fallback and a Portal's first render read the
+    /// current value where a row or a Portal encloses them; a render of the host that aborts or that a Suspense
+    /// discards is passed over for the last one committed; and where one node instance stands at two places on the
+    /// way down, what the row or child was created under is read rather than the Providers around the other place.
     /// </summary>
     [TestFixture]
     internal sealed class DetachedContextReadTests
@@ -1057,13 +1059,11 @@ namespace Velvet.Tests
     }
 
     /// <summary>
-    /// What a detached mount keeps from where it was created rather than reading where its host is now: a row a scroll
-    /// mounts inside a presence child its presence's first render created under <c>initial: false</c> plays no mount
-    /// enter; a Portal child whose presence child is exiting still reads the Provider the Portal's children put above
-    /// it; and where an exiting presence child holds a component, the Portal's declarer or the list's host, that
-    /// component, the Portal's child and a row read the nearest Provider above them, inside the exiting child or above
-    /// the presence, whichever of two presences at one SlotPath holds them; and once a pass that expanded two such
-    /// presences aborts, a row of a host in one's exiting child reads what it was created under.
+    /// A row a scroll mounts inside a presence child its presence's first render created under <c>initial: false</c>
+    /// plays no mount enter; and where an exiting presence child holds a component, a Portal's declarer, a Portal's
+    /// children or a list's host, that component, the Portal's child and a row read the nearest Provider above them as
+    /// it is now, inside the exiting child or above the presence, whichever of two presences at one SlotPath holds
+    /// them, a pass that aborted after expanding both included.
     /// </summary>
     [TestFixture]
     internal sealed class DetachedContextMotionTests : MotionSimulatedPanelTestsBase
