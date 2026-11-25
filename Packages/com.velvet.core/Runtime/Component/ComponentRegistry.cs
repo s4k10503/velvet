@@ -530,7 +530,7 @@ namespace Velvet
         internal InlineTenancy? TenancyOf(VisualElement container)
             => _tenancies.TryGetValue(container, out var tenancy) ? tenancy : null;
 
-        // The wrapper-mounted fiber mounted on element, which a disposal no longer names.
+        // Null once a disposal has taken the fiber off element, so a list row whose component is gone names none.
         internal ComponentFiber? WrapperFiberOn(VisualElement element)
             => _wrapperIndex.TryGetValue(element, out var fiber) && ReferenceEquals(fiber.MountPoint, element) ? fiber : null;
 
