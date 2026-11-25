@@ -144,7 +144,11 @@ namespace Velvet
             var memoCache = ctx.FiberMemoCache;
             var claims = s_claims;
             claims.Reset();
-            var rawPushedKeys = PushNearestStampUnderneath(target, stack);
+            List<object>? rawPushedKeys = null;
+            // Under everything the edges push, the snapshot answers for a context no edge rebuilds, such as the enter
+            // flags.
+            var stamp = NearestStamp(target, out var stampDepth);
+            if (stamp != null) PushStamp(stack, stamp, ref rawPushedKeys);
 
             // For each spine edge (ancestor -> child), re-push the Providers in the ancestor's output
             // that enclose `child`. The deepest ancestor encloses `target` itself: a ComponentNode in the
@@ -154,6 +158,10 @@ namespace Velvet
                 claims.Clear();
                 var ancestor = spine[i];
                 var child = i + 1 < spine.Count ? spine[i + 1] : target;
+                // An edge that finds no node for a child the registry places rebuilds nothing between ancestor and
+                // child. Over what the edges above pushed then goes the stamp taken at or below child, so what encloses
+                // child reads as it was where that stamp was taken; the edges below still push over it.
+                var stampHoldsThisEdge = stamp != null && stampDepth < spine.Count - i;
 
                 // Detached-mount top-level child (a Portal's drained children, or a VirtualList's
                 // controller-rendered items): the subtree mounted outside the parent-walked reconcile, so
@@ -164,7 +172,9 @@ namespace Velvet
                 var detached = child.DetachedMountContext;
                 if (detached != null)
                 {
-                    registry.TryGetInlineKey(child, out _, out _, out var detachedScope, out var detachedContainer);
+                    // A row mounted into a wrapper of its own is the item node itself, with nothing around it to find.
+                    var placed = registry.TryGetInlineKey(
+                        child, out _, out _, out var detachedScope, out var detachedContainer);
                     var detachedWalk = new SpineWalk
                     {
                         Ancestor = detached.Anchor,
@@ -178,18 +188,21 @@ namespace Velvet
                         OwnOutput = null,
                         Claims = claims,
                     };
-                    PushDetachedEdge(detached, in detachedWalk, rawPushedKeys ??= new List<object>());
+                    if (!PushDetachedEdge(detached, in detachedWalk, rawPushedKeys ??= new List<object>())
+                        && placed && stampHoldsThisEdge)
+                    {
+                        PushStamp(stack, stamp!, ref rawPushedKeys);
+                    }
                     continue;
                 }
-
-                var tree = OwnOutput(ancestor, child);
-                if (tree == null || tree.Length == 0) continue;
-                if (PushesNoContext(ancestor, tree)) continue;
 
                 // A child mounted into a wrapper of its own is a VirtualList row's top
                 // (FiberNodeFactory.CreateForComponentNode), whose edge is the detached one above once the item loop
                 // has stamped it, and no node of an ancestor's output resolves to it.
                 if (!registry.TryGetInlineKey(child, out _, out _, out var childScope, out var childContainer)) continue;
+
+                var tree = OwnOutput(ancestor, child);
+                if (tree is { Length: > 0 } && PushesNoContext(ancestor, tree)) continue;
 
                 var walk = new SpineWalk
                 {
@@ -204,7 +217,11 @@ namespace Velvet
                     OwnOutput = tree,
                     Claims = claims,
                 };
-                PushEnclosingProviders(tree, FiberKeying.WalkRoot, in walk);
+                if ((tree is not { Length: > 0 } || !PushEnclosingProviders(tree, FiberKeying.WalkRoot, in walk))
+                    && stampHoldsThisEdge)
+                {
+                    PushStamp(stack, stamp!, ref rawPushedKeys);
+                }
             }
 
             bufferPool.ReturnFiberList(spine);
@@ -214,33 +231,30 @@ namespace Velvet
 
         private static readonly InlineKeyClaims s_claims = new();
 
-        // Goes under everything the edges push, so what an edge rebuilds from committed outputs reads as it is now and
-        // the snapshot answers for a context no edge pushes: the enter flags, which nothing rebuilds, and what lies
-        // above a fiber an edge finds no node for, such as a presence's exiting child, since PushPresenceChildren walks
-        // the children the presence is given. The nearest stamp's is the one taken last on the way down.
-        private static List<object>? PushNearestStampUnderneath(ComponentFiber target, ComponentContextStack stack)
+        // The stamp taken last on the way down to target, and how many edges above target its fiber sits.
+        private static DetachedMountContext? NearestStamp(ComponentFiber target, out int depth)
         {
-            for (var f = target; f != null; f = f.Parent)
+            depth = 0;
+            for (var f = target; f != null; f = f.Parent, depth++)
             {
-                if (f.DetachedMountContext is not { } detached) continue;
-                var pushedKeys = new List<object>();
-                DetachedHostCapture.PushSnapshot(stack, detached.EnclosingSnapshot, pushedKeys);
-                return pushedKeys;
+                if (f.DetachedMountContext is { } detached) return detached;
             }
             return null;
         }
 
-        private static void PushDetachedEdge(DetachedMountContext detached, in SpineWalk walk, List<object> pushedKeys)
+        private static void PushStamp(ComponentContextStack stack, DetachedMountContext stamp, ref List<object>? pushedKeys)
+            => DetachedHostCapture.PushSnapshot(stack, stamp.EnclosingSnapshot, pushedKeys ??= new List<object>());
+
+        // Whether the current nodes or, failing them, the creation nodes hold the walk's spine child.
+        private static bool PushDetachedEdge(DetachedMountContext detached, in SpineWalk walk, List<object> pushedKeys)
         {
             var resolved = detached.Host.Resolve();
             resolved?.PushChain(walk.Stack, pushedKeys);
             var current = detached.CurrentNodes(resolved);
-            if (PushDetachedDescent(current, detached, in walk) || ReferenceEquals(current, detached.DescendantNodes))
-            {
-                return;
-            }
+            if (PushDetachedDescent(current, detached, in walk)) return true;
+            if (ReferenceEquals(current, detached.DescendantNodes)) return false;
             walk.Claims.Clear();
-            PushDetachedDescent(detached.DescendantNodes, detached, in walk);
+            return PushDetachedDescent(detached.DescendantNodes, detached, in walk);
         }
 
         // Whether nodes hold the walk's spine child, with the Providers above it left pushed where they do.

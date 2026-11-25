@@ -627,7 +627,8 @@ namespace Velvet.Tests
     /// enter; a Portal child whose presence child is exiting still reads the Provider the Portal's children put above
     /// it; and where an exiting presence child holds a component, the Portal's declarer or the list's host, that
     /// component, the Portal's child and a row read the nearest Provider above them, inside the exiting child or above
-    /// the presence, whichever of two presences at one SlotPath holds them.
+    /// the presence, whichever of two presences at one SlotPath holds them; and once a pass that expanded two such
+    /// presences aborts, a row of a host in one's exiting child reads what it was created under.
     /// </summary>
     [TestFixture]
     internal sealed class DetachedContextMotionTests : MotionSimulatedPanelTestsBase
@@ -648,6 +649,10 @@ namespace Velvet.Tests
         private static string s_reading;
         private static StateUpdater<int> s_setReader;
         private static StateUpdater<bool> s_setPresent;
+        private static StateUpdater<bool> s_setFlipped;
+        private static StateUpdater<string> s_setHostValue;
+        private static ComponentFiber s_presencesFiber;
+        private static bool s_fallbackShown;
         private static VisualElement s_portalTarget;
 
         [SetUp]
@@ -657,6 +662,10 @@ namespace Velvet.Tests
             s_reading = null;
             s_setReader = default;
             s_setPresent = default;
+            s_setFlipped = default;
+            s_setHostValue = default;
+            s_presencesFiber = null;
+            s_fallbackShown = false;
             s_taggedReadings.Clear();
             s_taggedSetters.Clear();
             s_portalTarget = new VisualElement();
@@ -739,6 +748,58 @@ namespace Velvet.Tests
 
             // Assert — null where the component did not render.
             Assert.That(s_taggedReadings["second"], Is.EqualTo("second"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base pushes the row's whole snapshot over whatever the spine found.
+        // What this pins is that read where the spine cannot place the host: a pass that aborts after expanding both
+        // presences leaves each state's node ahead of the tree the component kept, so neither state is told apart,
+        // and without the stamp over the edges above the row reads the Provider above the component.
+        [Test]
+        public void Given_AListHostInAnExitingChildOfOneOfTwoPresencesAtOneSlotPath_When_ARowRendersAloneAfterAnAbortedPass_Then_ItReadsTheProviderInsideTheChild()
+        {
+            // Arrange — the flip's pass aborts on a ref cleanup that fails in its walk.
+            using var mounted = V.Mount(Root, V.Component(OuterOverAbortingPresencesRender, key: "outer"),
+                CaughtErrors.Unlogged);
+            mounted.Root.Reconciler.Context.VirtualListControllers[Root.Q<ScrollView>()]
+                .UpdateVisibleRange(scrollY: 0f, viewportHeight: 200f);
+            s_setPresent.Invoke(false);
+            mounted.FlushStateForTest();
+            s_setFlipped.Invoke(true);
+            mounted.FlushStateForTest();
+            s_reading = null;
+
+            // Act
+            s_setReader.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert — null where the pass did not abort, the component's tree is not the one from before it, or the
+            // two states do not share a SlotPath.
+            Assert.That(AbortLeftTwoStatesAtOneSlot(mounted) ? s_reading : null, Is.EqualTo("inner"));
+        }
+
+        [Test]
+        public void Given_AListHostWithItsOwnValueInAnExitingChildOfOneOfTwoPresencesAtOneSlotPath_When_ItChangesThatValueAfterAnAbortedPass_Then_ARowRenderingAloneReadsTheNewValue()
+        {
+            // Arrange — the flip's pass aborts as above, then the host puts a new value around the list.
+            using var mounted = V.Mount(Root, V.Component(OuterOverAbortingValuedPresencesRender, key: "outer"),
+                CaughtErrors.Unlogged);
+            mounted.Root.Reconciler.Context.VirtualListControllers[Root.Q<ScrollView>()]
+                .UpdateVisibleRange(scrollY: 0f, viewportHeight: 200f);
+            s_setPresent.Invoke(false);
+            mounted.FlushStateForTest();
+            s_setFlipped.Invoke(true);
+            mounted.FlushStateForTest();
+            s_setHostValue.Invoke("host-second");
+            mounted.FlushStateForTest();
+            s_reading = null;
+
+            // Act
+            s_setReader.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert — null where the pass did not abort, the component's tree is not the one from before it, or the
+            // two states do not share a SlotPath.
+            Assert.That(AbortLeftTwoStatesAtOneSlot(mounted) ? s_reading : null, Is.EqualTo("host-second"));
         }
 
         // GREEN_ON_BASE(characterization): the base mounts these rows under the whole snapshot of the list.
@@ -898,6 +959,85 @@ namespace Velvet.Tests
                 }),
             });
 
+        private static bool AbortLeftTwoStatesAtOneSlot(MountedTree mounted)
+            => s_fallbackShown
+                && (s_presencesFiber?.PreviousTree?[0] as BaseElementNode)?.Name == "initial"
+                && mounted.Root.Reconciler.Context.PresenceStates.Keys
+                    .Where(key => ReferenceEquals(key.boundary, s_presencesFiber))
+                    .GroupBy(key => key.presenceKey)
+                    .Any(slot => slot.Count() > 1);
+
+        [Component(Compiler = false)]
+        private static VNode OuterOverAbortingPresencesRender()
+            => V.Provider(s_theme, "outer", new VNode[] { V.Component(AbortingPresencesRender, key: "presences") });
+
+        [Component(Compiler = false)]
+        private static VNode AbortingPresencesRender() => UseAbortingPresences(V.Component(ListHostRender, key: "host"));
+
+        [Component(Compiler = false)]
+        private static VNode OuterOverAbortingValuedPresencesRender()
+            => V.Provider(s_theme, "outer", new VNode[]
+            {
+                V.Component(AbortingValuedPresencesRender, key: "presences"),
+            });
+
+        [Component(Compiler = false)]
+        private static VNode AbortingValuedPresencesRender()
+            => UseAbortingPresences(V.Component(ValuedListHostRender, key: "host"));
+
+        [Component(Compiler = false)]
+        private static VNode ValuedListHostRender()
+        {
+            var (value, setValue) = Hooks.UseState("host-first");
+            s_setHostValue = setValue;
+            return V.Provider(s_theme, value, new VNode[] { ReaderRows() });
+        }
+
+        // The host's presence comes first in the walk and the boundary last, so both presences expand before the
+        // ref cleanup fails.
+        private static VNode UseAbortingPresences(VNode host)
+        {
+            s_presencesFiber = FiberAmbientStack.Current;
+            var (present, setPresent) = Hooks.UseState(true);
+            var (flipped, setFlipped) = Hooks.UseState(false);
+            s_setPresent = setPresent;
+            s_setFlipped = setFlipped;
+            return V.Div(name: flipped ? "flipped" : "initial", children: new VNode[]
+            {
+                LeavingAround("first", present, V.Provider(s_theme, "inner", new[] { host })),
+                LeavingAround("second", present, V.Label(text: "second")),
+                V.Div(key: "boundary", children: new VNode[] { V.Component(RefDroppingBoundary, flipped, key: "b") }),
+            });
+        }
+
+        private static VNode LeavingAround(string value, bool present, VNode content)
+            => V.Div(key: value, name: value, children: new VNode[]
+            {
+                V.AnimatePresence(key: "presence", children: new VNode[]
+                {
+                    present
+                        ? V.Motion(key: "m", name: "m-" + value, variants: s_fade, initial: "hidden",
+                            animate: "visible", exit: "hidden", transition: s_child, children: new[] { content })
+                        : null,
+                }),
+            });
+
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        private static VNode RefDroppingBoundary(bool flipped)
+        {
+            Hooks.UseFallback(_ =>
+            {
+                s_fallbackShown = true;
+                return V.Label(name: "fallback", text: "caught");
+            });
+            return V.Component(RefDroppingChild, flipped, key: "child");
+        }
+
+        // A ref removed outright is cleaned up where the patch drops it — see ReconcilerContext.SyncRefCallback.
+        [Component(Compiler = false)]
+        private static VNode RefDroppingChild(bool flipped)
+            => V.Label(text: "child", refCallback: flipped ? null : _ => () => throw new Exception("ref cleanup"));
+
         [Component(Compiler = false)]
         private static VNode TaggedReaderRender(TagProps props)
         {
@@ -919,7 +1059,9 @@ namespace Velvet.Tests
         private static VNode PresenceOverListHostRender() => UseLeavingAround(V.Component(ListHostRender, key: "host"));
 
         [Component(Compiler = false)]
-        private static VNode ListHostRender()
+        private static VNode ListHostRender() => ReaderRows();
+
+        private static VNode ReaderRows()
             => V.VirtualList(new List<string> { "r0" }, id => id, itemHeight: 30f,
                 renderer: id => V.Component(ReaderRender, key: id), overscan: 0);
 
