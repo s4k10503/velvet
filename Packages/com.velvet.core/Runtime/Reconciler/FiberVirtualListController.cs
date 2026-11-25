@@ -15,6 +15,7 @@ namespace Velvet
         private readonly VisualElement _spacer;
         private readonly VisualElement _visibleContainer;
         private readonly List<VisualElement?> _slotRows = new();
+        private readonly HashSet<VisualElement> _rowsComingBack = new();
         private readonly IReconcilerBridge _reconciler;
         // The fiber that rendered V.VirtualList and the live context cursor, captured so item renders (which
         // happen outside the reconcile pass) can inherit the context enclosing the list. _enclosingContext is
@@ -262,7 +263,7 @@ namespace Velvet
             {
                 // Not gated on the tracked range, which cannot say whether rows are held — the reason
                 // _bufferFirstItemIndex exists.
-                ClearRenderedItems();
+                using (new ChildListWrites.RemovalOwnerScope(_hostFiber)) ClearRenderedItems();
                 _firstRenderedIndex = -1;
                 _lastRenderedIndex = -1;
                 _reconciler.RefreshHasVariantsForController(_visibleContainer);
@@ -617,7 +618,7 @@ namespace Velvet
 
             DisposeUntakenRows();
 
-            ChildListWrites.Clear(_visibleContainer);
+            using (new ChildListWrites.RemovalOwnerScope(_hostFiber)) ChildListWrites.Clear(_visibleContainer);
             _renderedNodes = Array.Empty<VNode>();
             _renderedKeys = Array.Empty<string?>();
             _renderedElements = Array.Empty<VisualElement>();
@@ -637,12 +638,24 @@ namespace Velvet
             // MUTANT_SURVIVES(unreachable, line removed): _slotRows is read and written only in this method and the Clear after the removal loop empties it on every exit but an exception out of that loop, so it enters empty, and ChildListWrites.Rows appends rather than clears.
             _slotRows.Clear();
             ChildListWrites.Rows(_visibleContainer, 0, ChildListWrites.RenderedCount(_visibleContainer), _slotRows);
+            // A row the range keeps goes and comes back below, so only one leaving the range is removed for the host
+            // (ChildListWrites.RemovalOwnerScope): what the round trip of a kept row throws is not handed to the host's
+            // boundary, which would replace the list with its fallback for a row that stays in the range.
+            _rowsComingBack.Clear();
+            for (var i = 0; i < newCount; i++)
+            {
+                if (newElements[i] != null) _rowsComingBack.Add(_reconciler.SlotOccupantForController(newElements[i]));
+            }
             for (var i = _slotRows.Count - 1; i >= 0; i--)
             {
-                if (_slotRows[i] is { } row)
+                if (_slotRows[i] is not { } row) continue;
+                if (_rowsComingBack.Contains(row))
                 {
                     ChildListWrites.Remove(_visibleContainer, row);
+                    continue;
                 }
+                using var leaving = new ChildListWrites.RemovalOwnerScope(_hostFiber);
+                ChildListWrites.Remove(_visibleContainer, row);
             }
             _slotRows.Clear();
             var offset = (float)OffsetOf(newFirst);

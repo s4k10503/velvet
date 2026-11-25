@@ -690,6 +690,7 @@ namespace Velvet
             pass.Ops.Add(new ReconcilePass.Op
             {
                 Container = container, Caller = caller, Child = element!, Index = index, Kind = ReconcilePass.OpKind.RemoveAt,
+                Fiber = s_removalOwner,
             });
             Touch(container);
         }
@@ -719,7 +720,11 @@ namespace Velvet
             }
             pass.PendingParent[child] = null;
             RecordBehindApplyingRoot(pass);
-            pass.Ops.Add(new ReconcilePass.Op { Container = container, Child = child, Kind = ReconcilePass.OpKind.RemoveChild });
+            pass.Ops.Add(new ReconcilePass.Op
+            {
+                Container = container, Child = child, Kind = ReconcilePass.OpKind.RemoveChild,
+                Fiber = s_removalOwner,
+            });
         }
 
         // An op recorded while the ops of a wave's pass apply belongs to the root whose op is applying.
@@ -798,7 +803,7 @@ namespace Velvet
                             : null;
                         if (removed != null) NoteRemovalThrew(removed);
                         var added = op.Kind == ReconcilePass.OpKind.Insert ? op.Child : null;
-                        if (!FileFailure(pass, added, exception))
+                        if (!FileFailure(pass, added, removed != null ? op.Fiber : null, exception))
                         {
                             first ??= System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(exception);
                         }
@@ -839,12 +844,15 @@ namespace Velvet
             first?.Throw();
         }
 
-        // Files the failure of an insert of an element a wave created under the component that rendered it, for the wave
+        // Files the failure of a removal recorded with an owner under it (FileUnderTheOwner), that of an
+        // insert of an element a wave created under the component that rendered it, for the wave
         // to route (ReconcilePass.Failures), its search starting where React's commit starts a placement's
         // (ComponentBoundarySearch.PlacementSearchStart), at the place the element's walk ended at, and that of any other
         // op as FileUnderTheRun files it, at the op's place.
-        private static bool FileFailure(ReconcilePass pass, VisualElement? added, Exception exception)
+        private static bool FileFailure(ReconcilePass pass, VisualElement? added, ComponentFiber? removedFrom,
+            Exception exception)
         {
+            if (removedFrom != null) return FileUnderTheOwner(removedFrom, exception);
             if (added != null)
             {
                 if (pass.Owners.TryGetValue(added, out var rendered))
@@ -873,13 +881,49 @@ namespace Velvet
             return true;
         }
 
-        // What a removal made at once threw, filed as the current pass files a failed op (FileUnderTheRun), with the element
-        // noted as one whose removal threw. False where nothing takes it, which leaves the caller to rethrow.
+        // What removing a row of owner's output threw (RemovalOwner), captured from owner, as React captures
+        // what a deletion throws from the nearest mounted ancestor of the deleted child (ComponentBoundarySearch.CaptureAt).
+        // Captured at once rather than filed for a wave to route (ReconcilePass.Failures), which nothing does outside a
+        // wave.
+        internal static bool FileUnderTheOwner(ComponentFiber owner, Exception exception)
+        {
+            ComponentBoundarySearch.CaptureAt(owner, owner, exception);
+            return true;
+        }
+
+        // What a removal made at once threw, filed as the current pass files a failed op (FileFailure), with the
+        // element noted as one whose removal threw. Filed under the removal's owner whether or not a pass is open, so a
+        // V.VirtualList range rendered outside one files it too. False where nothing takes it, which leaves the caller
+        // to rethrow.
         private static bool FileRemovalFailure(VisualElement element, Exception exception)
         {
             NoteRemovalThrew(element);
+            if (s_removalOwner is { } owner) return FileUnderTheOwner(owner, exception);
             var pass = s_current;
             return pass != null && FileUnderTheRun(pass, RunRootOf(pass), null, exception);
+        }
+
+        // The component whose output holds the rows a removal takes, while the removal is made or recorded and while the
+        // deletion that decided it cleans them up (RemovalOwnerScope): what the removal throws is captured from it
+        // (FileUnderTheOwner). Null where no reconcile names one, which leaves the failure to FileUnderTheRun. Held
+        // here rather than on a pass, which a removal outside every pass has none of.
+        private static ComponentFiber? s_removalOwner;
+
+        internal static ComponentFiber? RemovalOwner => s_removalOwner;
+
+        // Names the component whose output holds the rows removed while it is open (RemovalOwner), and puts back the one
+        // an enclosing removal named as it closes.
+        internal readonly struct RemovalOwnerScope : IDisposable
+        {
+            private readonly ComponentFiber? _enclosing;
+
+            internal RemovalOwnerScope(ComponentFiber? owner)
+            {
+                _enclosing = s_removalOwner;
+                s_removalOwner = owner;
+            }
+
+            public void Dispose() => s_removalOwner = _enclosing;
         }
 
         // The elements a removal of which threw, which FiberElementCleaner's pool returns and z-* release read, until

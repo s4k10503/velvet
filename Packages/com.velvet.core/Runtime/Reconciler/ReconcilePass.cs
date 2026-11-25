@@ -26,7 +26,8 @@ namespace Velvet
             // The turn a FiberBegin marks, where the teardowns of the deletions that run at it are attached.
             internal TurnAnchor? Anchor;
             // The fiber whose turn a FiberEnd ends; for a RefDetach, the component whose walk queued the ref that replaces
-            // Child's.
+            // Child's; for a RemoveAt or a RemoveChild, the component whose output held Child
+            // (ChildListWrites.RemovalOwner).
             internal ComponentFiber? Fiber;
             // The index into Patches of a PatchPre, a PatchPost or a PatchTail.
             internal int Index;

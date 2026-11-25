@@ -17,7 +17,8 @@ namespace Velvet
         private VisualElement? _container;
         private int _slotStart;
         private OldSlotOccupants? _occupants;
-        private readonly List<(int Index, VisualElement Row)> _removedRows = new();
+        // Each with the component whose output held it (ChildListWrites.RemovalOwner).
+        private readonly List<(int Index, VisualElement Row, ComponentFiber? Owner)> _removedRows = new();
         // The old leaves an orphan's output starts at, each with the element the walk takes the orphan down at.
         private readonly List<(int Index, VisualElement Start)> _orphanRows = new();
         // What the walk decides, which the removals after it read (FiberElementCleaner.CleanupElement).
@@ -28,15 +29,21 @@ namespace Velvet
         private readonly List<VisualElement> _rootsInOrder = new();
         private readonly List<VisualElement> _metPortals = new();
         private readonly List<VisualElement?> _portalRowsRead = new();
-        // The rows of the Portals DetachPortals detached, each with the target it is a row of, from the first row of
-        // each Portal to its last, which is the order Queue records their removals in.
-        private readonly List<(VisualElement Target, VisualElement Row)> _portalRows = new();
+        // The rows of the Portals DetachPortals detached, each with the target it is a row of and the component whose
+        // output held the removed row the Portal sat in, from the first row of each Portal to its last, which is the order
+        // Queue records their removals in.
+        private readonly List<(VisualElement Target, VisualElement Row, ComponentFiber? Owner)> _portalRows = new();
+        // Where DetachPortals detaches a Portal, the owner of each removed row and of each row it detached, the first named
+        // for a row kept, so that finding a Portal's owner costs the elements above its placeholder rather than every row
+        // named before it.
+        private readonly Dictionary<VisualElement, ComponentFiber?> _rowOwners = new();
         private readonly HashSet<ComponentFiber> _orphans = new();
         private readonly HashSet<ComponentFiber> _collected = new();
         private readonly List<ComponentFiber> _fibers = new();
         private bool _startsInsideARow;
         // The removed rows registered for Teardown before their removals are recorded, in the order registered.
-        private readonly List<(VisualElement Parent, VisualElement Element, VisualElement Poolable, VisualElement? DiscardedRoot)> _cleanups = new();
+        private readonly List<(VisualElement Parent, VisualElement Element, VisualElement Poolable, VisualElement? DiscardedRoot,
+            ComponentFiber? Owner)> _cleanups = new();
         // Where the deletion's teardown runs among the pass's recorded writes: the turn of the fiber or construct that owns it.
         private TurnAnchor? _anchor;
         private bool _deferred;
@@ -73,10 +80,10 @@ namespace Velvet
         private List<ComponentFiber>? _oldFibers;
         internal DeletionPlan Plan => _deletion;
 
-        internal void AddRemovedRow(int index, VisualElement row) => _removedRows.Add((index, row));
+        internal void AddRemovedRow(int index, VisualElement row, ComponentFiber? owner) => _removedRows.Add((index, row, owner));
 
         // The old leaves AddRemovedRow named, in the order it named them.
-        internal List<(int Index, VisualElement Row)> RemovedRows => _removedRows;
+        internal List<(int Index, VisualElement Row, ComponentFiber? Owner)> RemovedRows => _removedRows;
 
         // React deletes a parent's children in the order it reconciled them, so the rows are taken in theirs, each
         // removed row as a subtree, and an orphan whose row stays where that row is. The plan is built by BuildPlan, and
@@ -128,6 +135,11 @@ namespace Velvet
                 }
                 _deletion.Portals[placeholder] = new DeletionPlan.DetachedPortal(target, rows);
             }
+            // MUTANT_SURVIVES(equivalent, guard removed): with no Portal detached nothing looks an owner up in the table.
+            if (_deletion.Portals.Count > 0)
+            {
+                foreach (var (_, row, owner) in _removedRows) _rowOwners.TryAdd(row, owner);
+            }
             foreach (var (placeholder, detached) in _deletion.Portals)
             {
                 // The range as recorded, not as its rows place it (PortalRangeTable): the rows of the ranges removed before
@@ -136,24 +148,43 @@ namespace Velvet
                 Ctx.PortalState.Remove(placeholder);
                 if (portal.SlotLength > 0 && Ctx.SharedReconcileDepth > 0) Ctx.PortalTargetsToRestyle.Add(detached.Target);
                 Ctx.HostCommit.ShiftBehindPortalRange(detached.Target, placeholder, portal, -portal.SlotLength);
-                foreach (var row in detached.Rows) _portalRows.Add((detached.Target, row));
+                var owner = OwnerOfTheRemovedRowHolding(placeholder);
+                foreach (var row in detached.Rows)
+                {
+                    _portalRows.Add((detached.Target, row, owner));
+                    _rowOwners.TryAdd(row, owner);
+                }
             }
+        }
+
+        // The owner of the removed row element sits in, or of the Portal row it sits in, where DetachPortals has met that
+        // Portal; null where neither is met. A relocated element stands beside its placeholder rather than under it, and
+        // the placeholder is the row, so the walk goes on from there.
+        private ComponentFiber? OwnerOfTheRemovedRowHolding(VisualElement element)
+        {
+            for (VisualElement? ve = element; ve != null; ve = ChildListWrites.ParentOf(ve))
+            {
+                ve = FiberZLayerCoordinator.PlaceholderOf(Ctx, ve) ?? ve;
+                if (_rowOwners.TryGetValue(ve, out var owner)) return owner;
+            }
+            return null;
         }
 
         // Whether the deletion's cleanups and disposals wait for Teardown, so the walk records the removals of its rows
         // (AddCleanup) instead of making them.
         internal bool DefersTeardown => _deferred;
 
-        // Registers a removed row of the container for Teardown to clean up, where it is still the container's child.
-        internal void AddCleanup(VisualElement parent, VisualElement element)
+        // Registers a removed row of the container for Teardown to clean up, where it is still the container's child, with
+        // the component whose output held it.
+        internal void AddCleanup(VisualElement parent, VisualElement element, ComponentFiber? owner)
         {
             if (ChildListWrites.PhysicalIndexOf(parent, element) < 0) return;
             var (poolable, discardedRoot) = _cleaner.PlanRemoval(element, _deletion);
-            _cleanups.Add((parent, element, poolable, discardedRoot));
+            _cleanups.Add((parent, element, poolable, discardedRoot, owner));
         }
 
-        internal List<(VisualElement Parent, VisualElement Element, VisualElement Poolable, VisualElement? DiscardedRoot)> Cleanups
-            => _cleanups;
+        internal List<(VisualElement Parent, VisualElement Element, VisualElement Poolable, VisualElement? DiscardedRoot,
+            ComponentFiber? Owner)> Cleanups => _cleanups;
 
         // Hides the fibers the deletion disposes and queues Teardown at its owner's turn among the writes recorded so far,
         // ahead of the removals of the rows registered by AddCleanup and of the Portals' rows (DetachPortals), which follow
@@ -164,7 +195,7 @@ namespace Velvet
             _queued = true;
             Ctx.ComponentRegistry.HideFibers(_fibers);
             if (!ChildListWrites.RecordTeardown(this, _anchor)) Teardown();
-            foreach (var (target, row) in _portalRows) Ctx.HostCommit.RemoveRow(target, row);
+            foreach (var (target, row, owner) in _portalRows) Ctx.HostCommit.RemoveRow(target, row, owner);
         }
 
         // Where the deletion's walk is over. One that was never queued is now, so its fibers do not wait for a teardown
@@ -200,10 +231,14 @@ namespace Velvet
                 {
                     first ??= System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(exception);
                 }
-                foreach (var (_, element, poolable, discardedRoot) in _cleanups)
+                foreach (var (_, element, poolable, discardedRoot, owner) in _cleanups)
                 {
                     try
                     {
+                        // The owner of what this cleanup removes: the removals it records, as a V.VirtualList inside the
+                        // row clears its rows, and a relocated element it retires, which leaves after the pass
+                        // (FiberElementCleaner.ReleaseRetiredZLayerReals).
+                        using var removing = new ChildListWrites.RemovalOwnerScope(owner);
                         _cleaner.CleanupRemovedRow(element, poolable, discardedRoot, _deletion);
                     }
                     catch (System.Exception exception)
@@ -259,7 +294,7 @@ namespace Velvet
                 _collected.Add(fiber);
                 _fibers.Add(fiber);
             }
-            foreach (var (_, row) in _removedRows) AddRowAsRoot(row);
+            foreach (var (_, row, _) in _removedRows) AddRowAsRoot(row);
             CollectHeldFibers();
         }
 
@@ -271,7 +306,7 @@ namespace Velvet
             _orphanRows.Sort(static (a, b) => a.Index.CompareTo(b.Index));
             var walksRows = WalksRows();
             var next = 0;
-            foreach (var (index, row) in _removedRows)
+            foreach (var (index, row, _) in _removedRows)
             {
                 for (; next < _orphanRows.Count && _orphanRows[next].Index <= index; next++)
                 {
@@ -513,6 +548,7 @@ namespace Velvet
             ClearAndTrim(_metPortals);
             ClearAndTrim(_portalRowsRead);
             ClearAndTrim(_portalRows);
+            ClearAndTrim(_rowOwners);
             ClearAndTrim(_orphans);
             ClearAndTrim(_collected);
             _fibers.Clear();

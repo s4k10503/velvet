@@ -56,15 +56,17 @@ namespace Velvet
         internal static void PropagateFromOwner(ComponentFiber? owner, Exception exception, bool isRenderError = false)
             => PropagateFrom(owner?.CaughtError == null ? owner : owner.Parent, owner, exception, isRenderError);
 
-        // As PropagateFromOwner, queued for the boundary's follow-up commit wherever it is thrown, as React's
-        // captureCommitPhaseError queues it.
-        internal static void CaptureFromOwner(ComponentFiber owner, Exception exception)
-            => CaptureFrom(owner, owner, exception);
-
-        // As CaptureFromOwner, with the search starting at start rather than at the component the error belongs to; with
-        // no start, the error goes to ReportUncaught.
+        // As PropagateFromOwner, with the search starting at start rather than at the component the error belongs to, and
+        // queued for the boundary's follow-up commit wherever it is thrown, as React's captureCommitPhaseError queues it;
+        // with no start, the error goes to ReportUncaught.
         internal static void CaptureFrom(ComponentFiber? start, ComponentFiber owner, Exception exception)
-            => PropagateFrom(start == null || start.CaughtError == null ? start : start.Parent, owner, exception,
+            => CaptureAt(start == null || start.CaughtError == null ? start : start.Parent, owner, exception);
+
+        // CaptureFrom's search, starting at start even where start has caught, as React's captureCommitPhaseError checks
+        // the nearest mounted ancestor it is handed first: what a removal throws is captured this way from the component
+        // whose output held the row (ChildListWrites.FileUnderTheOwner).
+        internal static void CaptureAt(ComponentFiber? start, ComponentFiber owner, Exception exception)
+            => PropagateFrom(start, owner, exception,
                 // MUTANT_SURVIVES(equivalent, literal): isRenderError reaches only FiberErrorBoundary.TryCatch.
                 // A search queued for the commit does not call it.
                 isRenderError: false, inCommit: true);
