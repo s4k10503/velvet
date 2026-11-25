@@ -62,7 +62,8 @@ namespace Velvet
         private static readonly Action<VisualElement, StylePropertyName> s_cancelled = StyleTransitionInterpolation.Cancelled;
         private static readonly MethodInfo? s_cancel = EngineMember.CancelStyleAnimation.ResolveMethod();
         private static readonly MethodInfo? s_runs = EngineMember.HasRunningStyleAnimation.ResolveMethod();
-        private static readonly PropertyInfo? s_runsAny = EngineMember.HasRunningStyleAnimations.ResolveProperty();
+        private static readonly Func<VisualElement, bool>? s_runsAny =
+            EngineMember.HasRunningStyleAnimations.ResolveGetter<Func<VisualElement, bool>>();
 
         // The engine's id of each of LandedAtOnce, boxed as the reflected calls take it and as the int the compiled run
         // check takes; none where an engine member does not resolve, which leaves UI Toolkit's transitions as they run.
@@ -173,8 +174,9 @@ namespace Velvet
         }
 
         /// <summary>
-        /// Watches an element a class whose bundled rule declares a transition duration or delay is written on
-        /// (StyleClassProjection, StyleAnimationClassUtils).
+        /// Watches an element a class whose bundled rule declares a transition duration or delay is written on: by
+        /// StyleClassProjection and StyleAnimationClassUtils, and by the writers that copy one element's classes onto
+        /// another (ClipPathLayoutBox's wrapper, SelectionTextOverlay's drawing, VelvetStyleUtilities' host roots).
         /// </summary>
         internal static void TrackClass(VisualElement element, string cls)
         {
@@ -380,13 +382,11 @@ namespace Velvet
             }
         }
 
-        private static bool RunsAny(VisualElement element)
-        {
-#if !ENABLE_IL2CPP
-            if (s_compiledRunsAny != null) return s_compiledRunsAny(element);
-#endif
-            return s_runsAny != null && s_runsAny.GetValue(element) is true;
-        }
+        // Asked in every style pass restyling a watched element, so it reads through a delegate on either backend, which
+        // allocates nothing (Given_AWatchedElement_When_WhetherAnyTransitionRunsOnItIsRead_Then_TheReadAllocatesNothing).
+        // Where the runtime refuses the delegate it reads false, and the cancel waits for the run event, rather than
+        // allocating on each pass.
+        private static bool RunsAny(VisualElement element) => s_runsAny != null && s_runsAny(element);
 
         private static bool Runs(VisualElement element, object?[] arguments, int id)
         {
@@ -405,24 +405,9 @@ namespace Velvet
         }
 
 #if !ENABLE_IL2CPP
-        // Compiled once, as StyleCascade's readers are, since every style pass restyling a watched element asks.
-        private static readonly Func<VisualElement, bool>? s_compiledRunsAny = CompileRunsAny();
+        // Compiled once, as StyleCascade's readers are, since a style pass asks it for each of LandedAtOnce wherever a
+        // transition runs on a watched element it restyles.
         private static readonly Func<VisualElement, int, bool>? s_compiledRuns = CompileRuns();
-
-        private static Func<VisualElement, bool>? CompileRunsAny()
-        {
-            if (s_runsAny == null) return null;
-            try
-            {
-                var element = System.Linq.Expressions.Expression.Parameter(typeof(VisualElement), "element");
-                return System.Linq.Expressions.Expression.Lambda<Func<VisualElement, bool>>(
-                    System.Linq.Expressions.Expression.Property(element, s_runsAny), element).Compile();
-            }
-            catch (Exception)
-            {
-                return null;
-            }
-        }
 
         private static Func<VisualElement, int, bool>? CompileRuns()
         {

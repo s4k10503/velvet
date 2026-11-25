@@ -668,6 +668,48 @@ namespace Velvet.Tests
             Assert.That(released ? after : NoneRan, Is.EqualTo(Justify.FlexStart));
         }
 
+        private const string Triangle = "clip-path-[polygon(50%_0%,100%_100%,0%_100%)]";
+
+        private static string Clipped(string classes) => Triangle + " transition-all " + OneSecond + " " + classes;
+
+        [Test]
+        public void Given_AClippedElementTransitioningAll_When_ItsAlignSelfClassChanges_Then_TheStylePassThatRestylesItsWrapperLandsTheNewValue()
+        {
+            // Arrange — the clip wrapper takes the element's place in its parent's layout, align-self and width with
+            // it, from the classes it mirrors.
+            var root = NewRoot();
+            var mounted = Mount(root, V.Div(name: "clipped", className: Clipped("self-start w-4")));
+            var wrapper = Attached(root.Q<VisualElement>("clipped")).parent;
+            mounted.Render(V.Div(name: "clipped", className: Clipped("self-end w-8")));
+
+            // Act
+            ForcePanelUpdate(wrapper.panel);
+
+            // Assert — (Align)(-1) where no wrapper holds the element or the width it mirrors does not transition.
+            Assert.That(wrapper.ClassListContains(FiberWrapperElementAppliers.ClipPathWrapperClass) && Runs(wrapper, "width")
+                ? wrapper.resolvedStyle.alignSelf : (Align)(-1), Is.EqualTo(Align.FlexEnd));
+        }
+
+        private static bool s_ran;
+
+        [Test]
+        public void Given_AWatchedElement_When_WhetherAnyTransitionRunsOnItIsRead_Then_TheReadAllocatesNothing()
+        {
+            // Arrange — the read each style pass restyling the element makes, reached as that pass reaches it.
+            var element = Mounted("transition-all");
+            var method = typeof(StyleTransitionBehavior).GetMethod("RunsAny", BindingFlags.NonPublic | BindingFlags.Static);
+            var runsAny = method == null
+                ? null
+                : (Func<VisualElement, bool>)Delegate.CreateDelegate(typeof(Func<VisualElement, bool>), method);
+            var canary = GCAllocationProbe.MedianBlocksDuring(() => s_sink = new object());
+
+            // Act
+            var read = runsAny == null ? -1 : GCAllocationProbe.MedianBlocksDuring(() => s_ran = runsAny(element));
+
+            // Assert — -1 where there is no read to measure, or where the probe sees no allocation at all.
+            Assert.That(canary > 0 ? read : -1, Is.EqualTo(0));
+        }
+
         [Component]
         private static VNode LeafHost() => V.Div(children: new VNode[]
         {

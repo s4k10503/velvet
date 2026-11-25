@@ -790,6 +790,26 @@ namespace Velvet
 
         internal PropertyInfo? ResolveProperty() => Resolve() as PropertyInfo;
 
+        // An open-instance delegate over the property's getter, which reads a value-typed property without the box an
+        // invocation through the PropertyInfo returns; null where the member does not resolve or the runtime refuses
+        // to bind it.
+        internal TGetter? ResolveGetter<TGetter>() where TGetter : Delegate
+        {
+            if (ResolveProperty()?.GetMethod is not { } getter)
+            {
+                return null;
+            }
+            try
+            {
+                return (TGetter)Delegate.CreateDelegate(typeof(TGetter), getter);
+            }
+            catch (Exception exception) when (exception is ArgumentException or MemberAccessException
+                or MissingMethodException or NotSupportedException)
+            {
+                return null;
+            }
+        }
+
         internal Type? ResolveType() => Resolve() as Type;
 
         internal MethodInfo? ResolveMethod() => Resolve() as MethodInfo;

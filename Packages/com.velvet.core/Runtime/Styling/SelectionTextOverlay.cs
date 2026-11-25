@@ -156,6 +156,7 @@ namespace Velvet
                     if (cls != StyleTextInputColors.InputTextClass)
                     {
                         drawing.AddToClassList(cls);
+                        StyleTransitionBehavior.TrackClass(drawing, cls);
                     }
                 }
             }

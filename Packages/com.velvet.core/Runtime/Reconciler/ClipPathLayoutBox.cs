@@ -258,6 +258,7 @@ namespace Velvet
                 if (mirrored == null || !mirrored.Contains(cls))
                 {
                     wrapper.AddToClassList(cls);
+                    StyleTransitionBehavior.TrackClass(wrapper, cls);
                 }
             }
             binding.MirroredClasses = live;

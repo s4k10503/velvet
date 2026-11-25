@@ -231,7 +231,11 @@ namespace Velvet
                 if (!classes.Contains(name)) hostRoot.RemoveFromClassList(name);
             }
 
-            foreach (var name in classes) hostRoot.AddToClassList(name);
+            foreach (var name in classes)
+            {
+                hostRoot.AddToClassList(name);
+                StyleTransitionBehavior.TrackClass(hostRoot, name);
+            }
             carry.CarriedClasses = classes;
 
             var sheets = SheetsToCarry(carry);
