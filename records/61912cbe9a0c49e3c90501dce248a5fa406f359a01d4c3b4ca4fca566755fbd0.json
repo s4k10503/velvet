@@ -1,0 +1,92 @@
+{
+ "detail": "EditMode: 11 failed: Given_AKeySpelledLikeARepeatsKeyAheadOfTheRepeat_When_InitialRender_Then_AllThreeCommit, Given_ARepeatAndALaterKeySpelledLikeTheRepeatsKey_When_InitialRender_Then_AllThreeCommit, Given_AutoKeyedChildren_When_OrderReversed_Then_PositionKeyTreatsItAsContentChange",
+ "file": "9bffc5bfa203db799d15ec578a1fd242f2b6ccffd6f7a17a190c1946afb214de",
+ "killers": [
+  {
+   "case": "Velvet.Tests.AnimatePresenceTests.Given_AKeySpelledLikeARepeatsKeyAheadOfTheRepeat_When_InitialRender_Then_AllThreeCommit",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/AnimatePresenceTests.cs": "d68149d8e0f54e7a243f0b25f02b8add378a811d56dc3e6d820bd9b1a3cd8c2a",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AnimatePresenceTests.Given_ARepeatAndALaterKeySpelledLikeTheRepeatsKey_When_InitialRender_Then_AllThreeCommit",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/AnimatePresenceTests.cs": "d68149d8e0f54e7a243f0b25f02b8add378a811d56dc3e6d820bd9b1a3cd8c2a",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AnimatePresenceTests.Given_AutoKeyedChildren_When_OrderReversed_Then_PositionKeyTreatsItAsContentChange",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/AnimatePresenceTests.cs": "d68149d8e0f54e7a243f0b25f02b8add378a811d56dc3e6d820bd9b1a3cd8c2a",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AnimatePresenceTests.Given_DuplicateKeys_When_InitialRender_Then_BothChildrenCommit",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/AnimatePresenceTests.cs": "d68149d8e0f54e7a243f0b25f02b8add378a811d56dc3e6d820bd9b1a3cd8c2a",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AnimatePresenceTests.Given_DuplicateKeys_When_TheRepeatIsRemoved_Then_ItLeavesAtOnceWithoutAnExit",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/AnimatePresenceTests.cs": "d68149d8e0f54e7a243f0b25f02b8add378a811d56dc3e6d820bd9b1a3cd8c2a",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AnimatePresenceTests.Given_DuplicateKeys_When_UpdatedInTheSameOrder_Then_BothChildrenShowTheNewText",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/AnimatePresenceTests.cs": "d68149d8e0f54e7a243f0b25f02b8add378a811d56dc3e6d820bd9b1a3cd8c2a",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AnimatePresenceTests.Given_HeadInsertion_When_Patched_Then_NewElementLandsAtTheHead",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/AnimatePresenceTests.cs": "d68149d8e0f54e7a243f0b25f02b8add378a811d56dc3e6d820bd9b1a3cd8c2a",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AnimatePresenceTests.Given_KeyedChildren_When_OrderReversed_Then_ElementsAreReordered",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/AnimatePresenceTests.cs": "d68149d8e0f54e7a243f0b25f02b8add378a811d56dc3e6d820bd9b1a3cd8c2a",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AnimatePresenceTests.Given_WaitModeAndAnExitWithNothingToAnimate_When_KeySwapsAndReconcilesAgain_Then_TheNewChildMountsOnTheReconcileThatDropsTheOld",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/AnimatePresenceTests.cs": "d68149d8e0f54e7a243f0b25f02b8add378a811d56dc3e6d820bd9b1a3cd8c2a",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AnimatePresenceTests.Given_WaitModeWithAChildThatStays_When_AnotherChildIsRemovedAndReconciledAgain_Then_OnlyTheStayingChildRenders",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/AnimatePresenceTests.cs": "d68149d8e0f54e7a243f0b25f02b8add378a811d56dc3e6d820bd9b1a3cd8c2a",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  }
+ ],
+ "measured_by": "45647712129",
+ "mutant": {
+  "after": ";",
+  "before": "_cleanups.Clear();",
+  "column": 12,
+  "line": 557,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/DeletionCommit.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3e47cc6d3e0c5a88c43c95facce7a8ad2523b5ac88b50121b50f7361763b13ec",
+ "verdict": "killed"
+}

@@ -1,0 +1,40 @@
+{
+ "detail": "EditMode: 2 failed: Given_ADeletionOfAComponentRunInTheApply_When_TheSecondHasEnded_Then_TheSecondReturnedTheOnePlanItRented, Given_ADeletionRunTwice_When_TheSecondHasEnded_Then_TheSecondReturnedTheOnePlanItRented; 1 other editor(s) were up",
+ "file": "9bffc5bfa203db799d15ec578a1fd242f2b6ccffd6f7a17a190c1946afb214de",
+ "killers": [
+  {
+   "case": "Velvet.Tests.DeletionCommitStateTests.Given_ADeletionOfAComponentRunInTheApply_When_TheSecondHasEnded_Then_TheSecondReturnedTheOnePlanItRented",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/DeletionCommitStateTests.cs": "d8050535878075dc41d5d70cc123a362724f6fad48f2ff10a56941daaa870d56",
+    "Packages/com.velvet.core/TestUtilities/DeletionCommitPool.cs": "9906a3a5111d0c9012dd0a9c09d66ad2b0ff04b7b25056cafe11b88de750ec7e",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae"
+   }
+  },
+  {
+   "case": "Velvet.Tests.DeletionCommitStateTests.Given_ADeletionRunTwice_When_TheSecondHasEnded_Then_TheSecondReturnedTheOnePlanItRented",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/DeletionCommitStateTests.cs": "d8050535878075dc41d5d70cc123a362724f6fad48f2ff10a56941daaa870d56",
+    "Packages/com.velvet.core/TestUtilities/DeletionCommitPool.cs": "9906a3a5111d0c9012dd0a9c09d66ad2b0ff04b7b25056cafe11b88de750ec7e",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae"
+   }
+  }
+ ],
+ "measured_by": "45647712129",
+ "mutant": {
+  "after": ";",
+  "before": "_deletion.Release();",
+  "column": 12,
+  "line": 544,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/DeletionCommit.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3e47cc6d3e0c5a88c43c95facce7a8ad2523b5ac88b50121b50f7361763b13ec",
+ "verdict": "killed"
+}

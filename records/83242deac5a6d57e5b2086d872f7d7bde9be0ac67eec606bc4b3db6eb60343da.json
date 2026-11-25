@@ -1,0 +1,41 @@
+{
+ "detail": "EditMode: 2 failed among the 3 case(s) that ran the site: Given_AHasCheckedElementAboveARelocatedChildHoldingACheckedToggle_When_Mounted_Then_ItMatches, Given_AHasClassElementAboveARelocatedChildCarryingTheClass_When_Mounted_Then_ItMatches",
+ "file": "3d568b98698b0611267b3189e283246611ee80acb1a58c654463b2339696e9fa",
+ "killers": [
+  {
+   "case": "Velvet.Tests.HasVariantTreeChangeTests.Given_AHasCheckedElementAboveARelocatedChildHoldingACheckedToggle_When_Mounted_Then_ItMatches",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/HasVariantTreeChangeTests.cs": "85f749f7a38b9fd2967e594f034ad2804c81e94a3c271d3dee286c27adc402e4",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae"
+   }
+  },
+  {
+   "case": "Velvet.Tests.HasVariantTreeChangeTests.Given_AHasClassElementAboveARelocatedChildCarryingTheClass_When_Mounted_Then_ItMatches",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/HasVariantTreeChangeTests.cs": "85f749f7a38b9fd2967e594f034ad2804c81e94a3c271d3dee286c27adc402e4",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae"
+   }
+  }
+ ],
+ "measured_by": "45647712129",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 25,
+  "line": 103,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberZLayerCoordinator.cs",
+  "shadowed": [
+   "clause removed",
+   "equality"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3e47cc6d3e0c5a88c43c95facce7a8ad2523b5ac88b50121b50f7361763b13ec",
+ "verdict": "killed"
+}

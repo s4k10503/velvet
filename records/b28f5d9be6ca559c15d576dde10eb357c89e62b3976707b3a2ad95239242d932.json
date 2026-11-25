@@ -1,0 +1,41 @@
+{
+ "detail": "EditMode: 2 failed in Velvet.Tests.Reconciler.Editor: Given_AHandlerThatRemovesAChildItsContainersModelDoesNotHold_When_ItsCountIsReadInTheHandler_Then_TheLiveListAnswers, Given_AContainerWithARecordedRemoval_When_AnotherElementIsRemovedFromIt_Then_ItThrows",
+ "file": "bf4efa9b3f7b8a391042c263772633b74d9113e4c4a3a772c68d91146866cc0f",
+ "killers": [
+  {
+   "case": "Velvet.Tests.RecordedChildListWritesPanelTests.Given_AHandlerThatRemovesAChildItsContainersModelDoesNotHold_When_ItsCountIsReadInTheHandler_Then_TheLiveListAnswers",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ContainerRowsTests.cs": "2fed29c68b879f55293f95667cfed193691e8cdf98a29d08786239a9a4c8cae9",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/RecordedChildListWritesPanelTests.cs": "a28617c659af649beec8729ddf025057feb134d67a6f2d94c53c2fa5165351a4",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/RowModelAccess.cs": "c9281ca1bc8930756e7b643acf56772495143054fc02c02792727059325b4674",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "18b6b404187836003ea0db593918596c4ed3d84ab35733a088284926133a8987",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  },
+  {
+   "case": "Velvet.Tests.RecordedWritesOutsideTheQueueTests.Given_AContainerWithARecordedRemoval_When_AnotherElementIsRemovedFromIt_Then_ItThrows",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/RecordedWritesOutsideTheQueueTests.cs": "903bfd2a8ff4446972b99b0f265cfa52984d5d7bf4277defa5d649e7cc5ff67b"
+   }
+  }
+ ],
+ "measured_by": "45647712129",
+ "mutant": {
+  "after": "false",
+  "before": "true",
+  "column": 41,
+  "line": 339,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ChildListWrites.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3e47cc6d3e0c5a88c43c95facce7a8ad2523b5ac88b50121b50f7361763b13ec",
+ "verdict": "killed"
+}

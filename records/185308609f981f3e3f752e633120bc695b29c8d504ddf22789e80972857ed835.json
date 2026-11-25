@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed among the 1164 case(s) that ran the site: Given_TwoPortalsOnOneTarget_When_TheSecondUnmounts_Then_LastMovesToTheRemainingRow",
+ "file": "28c4745c238bef63728079c8e51013bfdf07b335178ae0754510f57d5394852e",
+ "killers": [
+  {
+   "case": "Velvet.Tests.MountHostStructuralVariantTests.Given_TwoPortalsOnOneTarget_When_TheSecondUnmounts_Then_LastMovesToTheRemainingRow",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MountHostStructuralVariantTests.cs": "802a88319559dadae6ae078dca9254e4d81e65c87d292ef8faeff481c22110a8",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae"
+   }
+  }
+ ],
+ "measured_by": "45647712129",
+ "mutant": {
+  "after": ";",
+  "before": "NodePatcher.ApplyStructuralVariants(seed);",
+  "column": 24,
+  "line": 476,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/Reconciler.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3e47cc6d3e0c5a88c43c95facce7a8ad2523b5ac88b50121b50f7361763b13ec",
+ "verdict": "killed"
+}
