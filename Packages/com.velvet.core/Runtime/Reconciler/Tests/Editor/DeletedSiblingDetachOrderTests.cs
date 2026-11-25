@@ -12,7 +12,9 @@ namespace Velvet.Tests
     /// general walk's, of the rows one of its deletions takes, where the new side leaves each row's slot empty; the
     /// indexed diff's, of an unkeyed list; the keyed diff's tail removal, its trimmed middle and its map pass, with the
     /// tail removal and the map pass time-sliced as well; and that of a deletion that waits for the pass to apply its
-    /// writes, of the rows of a Portal inside a deleted row. One case for each.
+    /// writes, of the rows of a Portal inside a deleted row. One case for each. That deletion also takes the rows of
+    /// sibling Portals in the order the Portals appear in the tree, whichever of them mounted first, and wherever the
+    /// records of Portals unmounted before them sat.
     /// </summary>
     /// <remarks>
     /// The rows sit on a real panel, which is what runs a detach callback.
@@ -212,6 +214,55 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(Left(), Is.EqualTo("a b c"));
+        }
+
+        private static VNode[] Holder(VisualElement target, params string[] portals)
+        {
+            var children = new VNode?[portals.Length];
+            for (var i = 0; i < portals.Length; i++)
+            {
+                children[i] = V.Portal(target, children: Rows(keyed: false, portals[i]), key: portals[i]);
+            }
+            return new VNode[] { V.Div(name: "holder", children: children) };
+        }
+
+        [Test]
+        public void Given_ARowHoldingTwoPortalsTheLaterOfWhichMountedFirst_When_AReconcileLeavesItsSlotEmpty_Then_TheirRowsDetachInTreeOrder()
+        {
+            // Arrange — the Portal written first mounts after the other, so its rows follow the other's in the target.
+            var target = new VisualElement();
+            _host.Root.Add(target);
+            var later = Holder(target, "b");
+            _reconciler.Reconcile(_container, Array.Empty<VNode>(), later);
+            var both = Holder(target, "a", "b");
+            _reconciler.Reconcile(_container, later, both);
+            LogDetachOf(target, "a", "b");
+
+            // Act
+            _reconciler.Reconcile(_container, both, new VNode?[] { null });
+
+            // Assert
+            Assert.That(Left(), Is.EqualTo("a b"));
+        }
+
+        [Test]
+        public void Given_TwoPortalsMountedInTreeOrderWhereTwoOthersWereUnmounted_When_AReconcileLeavesTheirRowsSlotEmpty_Then_TheirRowsDetachInTreeOrder()
+        {
+            // Arrange — the first pair's records are let go and the second pair's take their places.
+            var target = new VisualElement();
+            _host.Root.Add(target);
+            var first = Holder(target, "x", "y");
+            _reconciler.Reconcile(_container, Array.Empty<VNode>(), first);
+            _reconciler.Reconcile(_container, first, new VNode?[] { null });
+            var second = Holder(target, "a", "b");
+            _reconciler.Reconcile(_container, new VNode?[] { null }, second);
+            LogDetachOf(target, "a", "b");
+
+            // Act
+            _reconciler.Reconcile(_container, second, new VNode?[] { null });
+
+            // Assert
+            Assert.That(Left(), Is.EqualTo("a b"));
         }
     }
 }

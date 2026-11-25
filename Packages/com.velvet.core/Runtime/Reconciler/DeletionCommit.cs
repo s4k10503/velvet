@@ -351,8 +351,9 @@ namespace Velvet
         // The fibers mounted inside the roots, and a Portal's under them: its rows, which mount on its target and
         // become roots too, reached at its placeholder (IsRoot), and its top-level children, which mount on the
         // target among the rows. A Portal inside those rows is found by the next round. The Portals are met by
-        // walking the roots, so the cost is what the roots hold rather than every Portal placed, and a round takes
-        // the ones it met in the order their ranges were first recorded.
+        // walking the roots, so the cost is what the roots hold rather than every Portal placed. A round meets them in
+        // tree order, which is the order DetachPortals lets their rows go in, as React takes the sibling Portals of a
+        // deleted subtree.
         private void CollectHeldFibers()
         {
             List<ComponentFiber>? owned = null;
@@ -362,9 +363,6 @@ namespace Velvet
                 for (var walked = 0; walked < _rootsInOrder.Count;)
                 {
                     for (var end = _rootsInOrder.Count; walked < end; walked++) MeetPortalsUnder(_rootsInOrder[walked]);
-                    // MUTANT_SURVIVES(equivalent, boundary): a list of one is in order already; the bound spares a walk
-                    // that meets one Portal the comparison's delegate.
-                    if (_metPortals.Count > 1) _metPortals.Sort(Ctx.PortalState.Stored.ByRecordedOrder);
                     foreach (var placeholder in _metPortals)
                     {
                         Ctx.ComponentRegistry.CollectInlineFibersOwnedByPortal(placeholder, ref owned);
