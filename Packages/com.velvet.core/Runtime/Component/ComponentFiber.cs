@@ -1004,6 +1004,10 @@ namespace Velvet
         // that output; DetachedHost.CommitCapturesOf owns them.
         internal List<DetachedHostCapture>? CapturesAwaitingCommit { get; set; }
 
+        // Whether this fiber's last render waits for a Suspense or the pass to keep or discard it
+        // (FiberRenderer.SettleHooks), until FiberHookCommit hands the decision to DetachedHost.SettleCapturesOf.
+        internal bool RenderUndecided { get; set; }
+
         /// <summary>The VNode array fixed by the previous reconcile. Serves as the "old" side for the next reconcile.</summary>
         internal VNode?[]? PreviousTree
         {

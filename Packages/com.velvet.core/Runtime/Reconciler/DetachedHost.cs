@@ -25,10 +25,11 @@ namespace Velvet
         // collected is dropped at the next capture or resolve, except the latest.
         private readonly List<DetachedHostCapture> _captures = new(2);
 
-        // The latest capture named the owner's output where that output is committed (CommitCapturesOf), or by an owner
-        // rendered inline holding it where the capture is taken, less one whose render a Suspense or an abandoned pass
-        // then discarded (DiscardCapturesOf). Resolve reads it where no capture is of a render that is the owner's now:
-        // a render committed since that did not reach the node took none.
+        // The latest capture whose render was kept with the owner's output it names: marked where that output is
+        // committed (CommitCapturesOf), where the Suspense or the pass that held the render back keeps it
+        // (SettleCapturesOf), or where the capture is taken of output the owner holds already and nothing has still to
+        // decide. Resolve reads it where no capture is of a render that is the owner's now: a render committed since that
+        // did not reach the node took none.
         private DetachedHostCapture? _committed;
 
         // Tops is read only where a list's rows render outside a pass (Reconciler.BeginDetachedItemScope), so a Portal's
@@ -108,25 +109,34 @@ namespace Velvet
             DropDeadCaptures();
             if (_captures.Count > KeptCaptures) _captures.RemoveAt(0);
             if (capture.EnclosingCapture != null || Owner == null) return;
-            // An owner rendered inline in a walk holds the output that walk expands before it reaches the node. It
-            // waits all the same, for a Suspense that discards that render (DiscardCapturesOf).
-            if (ReferenceEquals(capture.Tree, Owner.PreviousTree)) MarkCommitted(capture);
-            (Owner.CapturesAwaitingCommit ??= new List<DetachedHostCapture>(1)).Add(capture);
+            // An owner rendered inline in a walk holds the output that walk expands before it reaches the node, and an
+            // owner that bailed holds the output it rendered last; neither needs a commit to come.
+            if (ReferenceEquals(capture.Tree, Owner.PreviousTree) && !Owner.RenderUndecided)
+            {
+                MarkCommitted(capture);
+                return;
+            }
+            var waiting = Owner.CapturesAwaitingCommit ??= new List<DetachedHostCapture>(1);
+            for (var i = waiting.Count - 1; i >= 0; i--)
+            {
+                if (ReferenceEquals(waiting[i].Host, this) && capture.SameRenderAs(waiting[i])) waiting.RemoveAt(i);
+            }
+            waiting.Add(capture);
         }
 
         private void MarkCommitted(DetachedHostCapture capture)
         {
-            capture.CommittedBefore = _committed;
             capture.WasCommitted = true;
             _committed = capture;
         }
 
         // Where tree becomes fiber's output — FiberRenderer's commit, and a fallback swap's (FiberErrorBoundary,
         // GeneralPathReconciler.ExpandBoundaryInline) — the latest capture of each host that names it becomes that
-        // host's committed one; a capture naming another tree stays unmarked.
+        // host's committed one; a capture naming another tree stays unmarked. A render the Suspense or the pass holds
+        // back is left to SettleCapturesOf.
         internal static void CommitCapturesOf(ComponentFiber fiber, VNode?[] tree)
         {
-            if (fiber.CapturesAwaitingCommit is not { Count: > 0 } captures) return;
+            if (fiber.RenderUndecided || fiber.CapturesAwaitingCommit is not { Count: > 0 } captures) return;
             foreach (var capture in captures)
             {
                 if (ReferenceEquals(capture.Tree, tree)) capture.Host.MarkCommitted(capture);
@@ -134,18 +144,17 @@ namespace Velvet
             captures.Clear();
         }
 
-        // Where a render of fiber is discarded (FiberHookCommit.DiscardRenderedWork): an owner rendered inline holds that
-        // render's output as its PreviousTree, so its captures read as the owner's own until they are marked, and each
-        // host's committed one goes back to the one before. Newest first, so two of one host's go back past both.
-        internal static void DiscardCapturesOf(ComponentFiber fiber)
+        // Where the Suspense or the pass that held fiber's render back decides it (FiberHookCommit): kept, the captures
+        // naming the output fiber holds are its hosts' committed ones; discarded, its captures are no render's that is
+        // kept, though an owner rendered inline holds that render's output as its PreviousTree still.
+        internal static void SettleCapturesOf(ComponentFiber fiber, bool kept)
         {
+            fiber.RenderUndecided = false;
             if (fiber.CapturesAwaitingCommit is not { Count: > 0 } captures) return;
-            for (var i = captures.Count - 1; i >= 0; i--)
+            foreach (var capture in captures)
             {
-                var capture = captures[i];
-                capture.Discarded = true;
-                capture.WasCommitted = false;
-                if (ReferenceEquals(capture.Host._committed, capture)) capture.Host._committed = capture.CommittedBefore;
+                if (!kept) capture.Discarded = true;
+                else if (ReferenceEquals(capture.Tree, fiber.PreviousTree)) capture.Host.MarkCommitted(capture);
             }
             captures.Clear();
         }
@@ -218,11 +227,9 @@ namespace Velvet
         // under this capture pushes under everything else, as FiberContextSpine pushes a stamp's. Null for a Portal's.
         internal readonly List<KeyValuePair<object, object>>? Tops;
 
-        // Set where its host takes it as the committed one, and cleared where its render is then discarded; what that
-        // host's committed one was before, for the discard to go back to. An enclosed capture is never set: one is read
-        // as committed while the capture it was taken under is.
+        // Set where its host takes it as the committed one. An enclosed capture is never set: one is read as committed
+        // while the capture it was taken under is.
         internal bool WasCommitted;
-        internal DetachedHostCapture? CommittedBefore;
         internal bool Discarded;
 
         internal DetachedHostCapture(

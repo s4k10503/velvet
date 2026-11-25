@@ -29,6 +29,7 @@ namespace Velvet.Tests
         private const int OwnerRenders = 6;
 
         private static readonly ComponentContext<string> s_theme = ComponentContext<string>.Create("default");
+        private static readonly ComponentContext<string> s_around = ComponentContext<string>.Create("around");
         private static readonly IReadOnlyList<string> s_oneItem = new[] { "row" };
         private static readonly Dictionary<int, string> s_rowReadings = new();
         private static readonly Dictionary<int, ComponentFiber> s_rowFibers = new();
@@ -51,6 +52,8 @@ namespace Velvet.Tests
         private static StateUpdater<HostTurn> s_setTurn;
         private static StateUpdater<string> s_setParentValue;
         private static StateUpdater<PortalRowsTurn> s_setPortalRowsTurn;
+        private static StateUpdater<int> s_setParentTick;
+        private static ComponentFiber s_bailingOwner;
         private static readonly Dictionary<string, VNode> s_portalRowLists = new();
         private static ComponentFiber s_abortingHost;
         private static bool s_fallbackShown;
@@ -91,6 +94,8 @@ namespace Velvet.Tests
             s_setTurn = default;
             s_setParentValue = default;
             s_setPortalRowsTurn = default;
+            s_setParentTick = default;
+            s_bailingOwner = null;
             s_portalRowLists.Clear();
             s_abortingHost = null;
             s_fallbackShown = false;
@@ -278,8 +283,9 @@ namespace Velvet.Tests
         [Test]
         public void Given_APortalInARowWhoseListWasPatchedOnlyForItsCapture_When_AnAbortedHostRenderRendersTheRow_Then_ThePortalsChildRenderingAloneReadsTheCommittedRowValue()
         {
-            // Arrange — the renderer's second value reaches the row in a committed render, a change around the list
-            // patches it for its capture alone, and the renderer's third reaches the row in a render that aborts.
+            // Arrange — the renderer's second value reaches the row in a committed render; a change around the list, of
+            // a context nothing below reads, patches it for its capture alone; and the renderer's third reaches the row
+            // in a render that aborts.
             using var mounted = V.Mount(_root, V.Component(AbortingPortalRowsHostRender, key: "host"),
                 s_ignoringCaughtErrors);
             RenderRange(mounted);
@@ -374,6 +380,26 @@ namespace Velvet.Tests
 
             // Assert — null where the child did not render.
             Assert.That(s_lastReading, Is.EqualTo("d"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base keeps no capture of a Portal.
+        // What this pins is that an owner that bails, while its parent keeps rendering, has nothing left waiting for a
+        // commit it will not make: have each capture wait whatever the owner holds, and one waits from then on.
+        [Test]
+        public void Given_APortalOwnerThatBailsUnderAParentRenderingAgain_When_TheParentHasRenderedSeveralTimes_Then_NoCaptureWaitsOnTheOwner()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(ParentOfBailingPortalOwnerRender, key: "parent"));
+
+            // Act
+            for (var render = 1; render <= OwnerRenders; render++)
+            {
+                s_setParentTick.Invoke(render);
+                mounted.FlushStateForTest();
+            }
+
+            // Assert — read by name, as the base has no such list.
+            Assert.That(CapturesWaitingOn(s_bailingOwner), Is.EqualTo(0));
         }
 
         // GREEN_ON_BASE(characterization): the base skips the list the host hands back by instance.
@@ -604,6 +630,11 @@ namespace Velvet.Tests
 
         // The viewport height a geometry pass would have left, without which the host's update renders no range
         // (FiberVirtualListController.ForceRefresh), so the rows are never handed the renderer's new node.
+        private static int CapturesWaitingOn(ComponentFiber fiber)
+            => typeof(ComponentFiber)
+                .GetProperty("CapturesAwaitingCommit", BindingFlags.NonPublic | BindingFlags.Instance)?
+                .GetValue(fiber) is System.Collections.ICollection waiting ? waiting.Count : 0;
+
         private void LayOutViewport(MountedTree mounted) => LayOutViewport(mounted, _root.Q<ScrollView>());
 
         private static void LayOutViewport(MountedTree mounted, ScrollView scrollView)
@@ -612,6 +643,22 @@ namespace Velvet.Tests
                 .SetValue(mounted.Root.Reconciler.Context.VirtualListControllers[scrollView], 200f);
 
         #region Components
+
+        [Component(Compiler = false)]
+        private static VNode ParentOfBailingPortalOwnerRender()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setParentTick = setTick;
+            return V.Div(name: "parent-" + tick, children: new VNode[] { V.Component(BailingPortalOwnerRender, key: "owner") });
+        }
+
+        // Bails on its equal props, so each render of the parent walks the output it rendered first.
+        [Component(Compiler = false, Memoize = true)]
+        private static VNode BailingPortalOwnerRender()
+        {
+            s_bailingOwner = FiberAmbientStack.Current;
+            return V.Portal(s_portalTarget, new VNode[] { V.Label(text: "in the portal") });
+        }
 
         private enum SharedNode
         {
@@ -723,8 +770,8 @@ namespace Velvet.Tests
             return V.Div(name: "parent", children: new VNode[] { V.Component(AbortingHostRender, value, key: "host") });
         }
 
-        // The value around the list, the one the renderer puts around each row's Portal, and whether a ref cleanup
-        // after the list fails in this render's walk.
+        // The value of another context around the list, the one the renderer puts around each row's Portal, and
+        // whether a ref cleanup after the list fails in this render's walk.
         private sealed record PortalRowsTurn(string Around, string Renderer, bool Aborts);
 
         // One list per renderer value, so a turn that keeps it hands the list back by instance.
@@ -742,7 +789,7 @@ namespace Velvet.Tests
                     V.Portal(s_portalTarget, new VNode[] { V.Component(ReaderRender, key: item) }),
                 }));
             }
-            return V.Provider(s_theme, turn.Around, new VNode[]
+            return V.Provider(s_around, turn.Around, new VNode[]
             {
                 V.Div(name: "rows", children: new[] { list }),
                 V.Div(key: "boundary", children: new VNode[]
@@ -1300,9 +1347,9 @@ namespace Velvet.Tests
         [Test]
         public void Given_AListWhoseHostIsInAnExitingPresenceChild_When_AScrollMountsARow_Then_TheRowReadsTheProviderAboveThePresenceAsItIsNow()
         {
-            // Arrange — the Provider above the presence changes value while the child is present; the host bails on
-            // its props, so the list's capture keeps the first value.
-            using var mounted = V.Mount(Root, V.Component(PresenceOverListHostRender, key: "outer"));
+            // Arrange — the Provider above the presence changes value while the child is present, and a farther one of
+            // the same context sits above the component rendering the presence.
+            using var mounted = V.Mount(Root, V.Component(FarOverPresenceListHostRender, key: "far"));
             s_setOuter.Invoke("outer-second");
             mounted.FlushStateForTest();
             s_setPresent.Invoke(false);
@@ -1498,11 +1545,11 @@ namespace Velvet.Tests
             => V.Portal(s_portalTarget, new VNode[] { V.Component(ReaderRender, key: "reader") });
 
         [Component(Compiler = false)]
-        private static VNode PresenceOverListHostRender()
-            => UseLeavingAround(V.Component(BailingListHostRender, key: "host"));
+        private static VNode FarOverPresenceListHostRender()
+            => V.Provider(s_theme, "far", new VNode[] { V.Component(PresenceOverListHostRender, key: "outer") });
 
-        [Component(Compiler = false, Memoize = true)]
-        private static VNode BailingListHostRender() => ReaderRows();
+        [Component(Compiler = false)]
+        private static VNode PresenceOverListHostRender() => UseLeavingAround(V.Component(ListHostRender, key: "host"));
 
         [Component(Compiler = false)]
         private static VNode ListHostRender() => ReaderRows();

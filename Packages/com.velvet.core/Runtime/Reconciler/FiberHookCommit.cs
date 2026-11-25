@@ -18,6 +18,7 @@ namespace Velvet
         internal static void CommitSuspenseRender(SuspenseRender render)
         {
             FiberBeginWork.CommitSettledEffects(render.Fiber);
+            DetachedHost.SettleCapturesOf(render.Fiber, kept: true);
         }
 
         // A render the Suspense does not show queues no effect and promotes no deps, so the next render compares
@@ -33,7 +34,7 @@ namespace Velvet
         internal static void DiscardRenderedWork(SuspenseRender render)
         {
             var fiber = render.Fiber;
-            DetachedHost.DiscardCapturesOf(fiber);
+            DetachedHost.SettleCapturesOf(fiber, kept: false);
             fiber.PendingLayoutEffects?.Clear();
             TruncateTo(fiber.PendingInsertionEffects, render.InsertionBefore);
             TruncateTo(fiber.PendingEffects, render.PassiveBefore);
