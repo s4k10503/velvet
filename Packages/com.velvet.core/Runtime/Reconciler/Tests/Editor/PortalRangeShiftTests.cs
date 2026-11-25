@@ -293,7 +293,7 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(refactor): the base reads every range at each shift, so no order among them can hide one.
-        // The first shift moves a range below one ahead that starts inside the changed range, and the second has to find both.
+        // The first shift moves a range below an empty one that starts inside the changed range, and the second has to move that one.
         [Test]
         public void Given_ARangeMovedBelowOneStartingInsideTheChangedRange_When_ALaterShiftReachesTheOne_Then_ItMoves()
         {

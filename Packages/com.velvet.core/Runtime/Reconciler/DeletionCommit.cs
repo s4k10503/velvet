@@ -362,15 +362,16 @@ namespace Velvet
                 for (var walked = 0; walked < _rootsInOrder.Count;)
                 {
                     for (var end = _rootsInOrder.Count; walked < end; walked++) MeetPortalsUnder(_rootsInOrder[walked]);
-                    // MUTANT_SURVIVES(equivalent, boundary): a list of one is in order already; the bound spares the
-                    // comparison its delegate for the walk of each removed element.
+                    // MUTANT_SURVIVES(equivalent, boundary): a list of one is in order already; the bound spares a walk
+                    // that meets one Portal the comparison's delegate.
                     if (_metPortals.Count > 1) _metPortals.Sort(Ctx.PortalState.Stored.ByRecordedOrder);
                     foreach (var placeholder in _metPortals)
                     {
                         Ctx.ComponentRegistry.CollectInlineFibersOwnedByPortal(placeholder, ref owned);
                         if (!Ctx.PortalState.TryGetValue(placeholder, out var portal) || portal.Target == null) continue;
-                        // By slot rather than through RenderedChildrenOf: a walk is made per removed element, and building
-                        // the target's whole list for each costs every row of every Portal sharing the target.
+                        // By slot rather than through RenderedChildrenOf: a removal outside a deletion's plan makes a walk
+                        // for each element it takes down (TakeDownLeaving), and building the target's whole list for each
+                        // costs every row of every Portal sharing the target.
                         _portalRowsRead.Clear();
                         ChildListWrites.Rows(portal.Target, portal.SlotStart, portal.SlotStart + portal.SlotLength, _portalRowsRead);
                         foreach (var row in _portalRowsRead) AddRowAsRoot(row!);

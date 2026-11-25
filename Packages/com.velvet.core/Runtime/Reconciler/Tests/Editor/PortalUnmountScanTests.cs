@@ -10,10 +10,10 @@ using Velvet.TestUtilities;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Specifies that an update removing many sibling Portals costs the same per Portal at every count, read as counts
-    /// over that update at three counts: how often the target the Portals share is read, how often the Portals' rows are
-    /// looked up, and how often the recorded ranges are. A cost per Portal that grows with the count shows as a
-    /// difference between consecutive counts that grows too.
+    /// Specifies that an update removing many sibling Portals costs the same per Portal from one count of them to the
+    /// next, read as counts over that update at three counts: how often the target the Portals share is read, how often
+    /// the Portals' rows are looked up, and how often the recorded ranges are. A cost per Portal that grows with the count
+    /// shows as a difference between consecutive counts that grows too.
     /// </summary>
     [TestFixture]
     internal sealed class PortalUnmountScanTests
@@ -40,7 +40,7 @@ namespace Velvet.Tests
             }
         }
 
-        // A Portal's row, counting the lookups of it in any table keyed by element.
+        // A Portal's row, counting each lookup of it that hashes it through its own GetHashCode.
         private sealed class CountedRow : VisualElement
         {
             public override int GetHashCode()
@@ -84,6 +84,21 @@ namespace Velvet.Tests
             return V.Div(children: portals);
         }
 
+        // The ref on the element holding the Portals is what keeps a removal's walk going past the Portals it finds
+        // (DeletionCommit.TakeDownLeaving), to their rows.
+        [Component(Compiler = false)]
+        private static VNode SiblingPortalsUnderARef()
+        {
+            var (count, setCount) = Hooks.UseState(s_initial);
+            s_setCount = setCount;
+            var portals = new VNode[count];
+            for (var i = 0; i < count; i++)
+            {
+                portals[i] = V.Portal(s_target, children: new VNode[] { V.Custom<CountedRow>() }, key: "p" + i);
+            }
+            return V.Div(refCallback: _ => () => { }, children: portals);
+        }
+
         // The component beside the Portals is what takes the container's reconcile off the flat diff.
         [Component(Compiler = false)]
         private static VNode SiblingPortalsBesideAComponent()
@@ -99,8 +114,8 @@ namespace Velvet.Tests
             return V.Div(children: children);
         }
 
-        // What the update removing every Portal of host, mounted with count of them, adds to read; arrange is handed
-        // the target and the mounted tree once the tree is mounted, and sets read's count going.
+        // What the update removing every Portal of host, mounted with count of them, adds to read. arrange is handed the
+        // mounted tree before the count is taken.
         private static int CountedWhileUnmounting(
             Func<VNode> host, int count, VisualElement target, Func<int> read, Action<MountedTree> arrange)
         {
@@ -123,6 +138,9 @@ namespace Velvet.Tests
 
         private static int RowLookupsWhileUnmounting(int count)
             => CountedWhileUnmounting(SiblingPortals, count, new VisualElement(), () => s_rowHashes, _ => { });
+
+        private static int RowLookupsUnderARefWhileUnmounting(int count)
+            => CountedWhileUnmounting(SiblingPortalsUnderARef, count, new VisualElement(), () => s_rowHashes, _ => { });
 
         // The recorded ranges are read through a table keyed by placeholder, which this swaps, entries and all, for one
         // that counts its lookups; -1 where the table cannot be swapped.
@@ -155,7 +173,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_SiblingPortalsOnOneTarget_When_AnUpdateRemovesThemAll_Then_TheTargetIsReadAsOftenPerPortalAtEveryCount()
+        public void Given_SiblingPortalsOnOneTarget_When_AnUpdateRemovesThemAll_Then_TheTargetIsReadAsOftenPerPortalAtThreeCounts()
         {
             // Arrange
             Func<int, int> reads = TargetReadsWhileUnmounting;
@@ -168,7 +186,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_SiblingPortalsOnOneTarget_When_AnUpdateRemovesThemAll_Then_TheirRowsAreLookedUpAsOftenPerPortalAtEveryCount()
+        public void Given_SiblingPortalsOnOneTarget_When_AnUpdateRemovesThemAll_Then_TheirRowsAreLookedUpAsOftenPerPortalAtThreeCounts()
         {
             // Arrange
             Func<int, int> lookups = RowLookupsWhileUnmounting;
@@ -181,7 +199,20 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_SiblingPortalsBesideAComponent_When_AnUpdateRemovesThePortals_Then_TheRangesAreLookedUpAsOftenPerPortalAtEveryCount()
+        public void Given_SiblingPortalsUnderAnElementWithARef_When_AnUpdateRemovesThemAll_Then_TheirRowsAreLookedUpAsOftenPerPortalAtThreeCounts()
+        {
+            // Arrange
+            Func<int, int> lookups = RowLookupsUnderARefWhileUnmounting;
+
+            // Act
+            var growth = GrowthOfTheGrowth(lookups);
+
+            // Assert
+            Assert.That(growth, Is.EqualTo(0));
+        }
+
+        [Test]
+        public void Given_SiblingPortalsBesideAComponent_When_AnUpdateRemovesThePortals_Then_TheRangesAreLookedUpAsOftenPerPortalAtThreeCounts()
         {
             // Arrange
             Func<int, int> lookups = RangeLookupsWhileUnmounting;
