@@ -142,7 +142,7 @@ namespace Velvet
             var logicalIndex = slot.SlotStart + slot.Index;
             if (slotExists && ReconcileKeying.CanPatch(oldNode, newNode))
             {
-                _patchWalk.PatchNode(occupants.Resolved(slot.Index)!, oldNode, newNode);
+                _patchWalk.PatchNode(occupants.Resolved(slot.Index)!, oldNode, newNode, CapturesOnly(oldNode, newNode));
                 return false;
             }
 
@@ -478,6 +478,8 @@ namespace Velvet
                 // ReconcilerContext.PortalChildKeyScope owns it. Entered after the push, so the nesting
                 // it records is the one the children below reconcile at.
                 if (declaringFiber != null) _ctx.FiberStack.Push(declaringFiber);
+                var detachedHost = DetachedHost.OfPlaceholder(placeholder, logicalParent);
+                var enclosingFrame = _ctx.ComponentContextStack.EnterFrame(detachedHost);
                 var enclosingChildScope = _ctx.EnterPortalChildKeyScope(placeholder);
                 // A presence in the Portal's children expands with no emission of its enclosing presence child
                 // around it, so the child is read off where the placeholder sits.
@@ -493,13 +495,13 @@ namespace Velvet
                         slotStart: slotStart);
                     // The mount half of the structural pass FiberNodePatcher.PatchSelfPost runs for a Portal.
                     _patcher.ApplyStructuralVariants(resolvedTarget);
-                    StampDrainedChildren(drainAnchor, appendedFrom, contextSnapshot, children, logicalParent);
+                    StampDrainedChildren(drainAnchor, appendedFrom, detachedHost, children);
                 }
                 catch (FiberSuspendSignal)
                 {
                     mountSuspended = true;
                     RemoveRowsFrom(resolvedTarget, slotStart);
-                    StampDrainedChildren(drainAnchor, appendedFrom, contextSnapshot, children, logicalParent);
+                    StampDrainedChildren(drainAnchor, appendedFrom, detachedHost, children);
                 }
                 catch (Exception exception) when (FiledForTheWave(wave, declaringFiber, exception))
                 {
@@ -512,6 +514,7 @@ namespace Velvet
                     drainAnchor?.EndAppendLog();
                     _ctx.EnclosingPresenceChild = enclosingPresenceChild;
                     _ctx.ExitPortalChildKeyScope(enclosingChildScope);
+                    _ctx.ComponentContextStack.ExitFrame(enclosingFrame);
                     if (declaringFiber != null) _ctx.FiberStack.Pop();
                     _ctx.CurrentPortalPlaceholder = enclosingPortal;
                     PopContextSnapshot(contextSnapshot);
@@ -617,15 +620,15 @@ namespace Velvet
         // Stamps the fibers this drain entry just added under anchor with what an isolated re-render needs
         // to rebuild their enclosing Providers — the same read of what was appended since a mark that
         // FiberNodePatcher.StampNewTopLevelChildren applies on the patch half of the pair.
-        private static void StampDrainedChildren(
-            ComponentFiber? anchor, int appendedFrom,
-            List<KeyValuePair<object, object>>? contextSnapshot, VNode?[] children, ComponentFiber? logicalParent)
+        private void StampDrainedChildren(
+            ComponentFiber? anchor, int appendedFrom, DetachedHost detachedHost, VNode?[] children)
         {
             if (anchor == null) return;
             DetachedMountContext? detachedContext = null;
             foreach (var f in anchor.AppendedSince(appendedFrom))
             {
-                detachedContext ??= new DetachedMountContext(contextSnapshot, children, anchor, logicalParent);
+                detachedContext ??= new DetachedMountContext(
+                    detachedHost, row: null, children, _ctx.ComponentContextStack, anchor);
                 f.DetachedMountContext = detachedContext;
             }
         }
@@ -1014,10 +1017,20 @@ namespace Velvet
         // Skipping a node the parent handed back by instance leaves every component in its subtree unreached, which
         // drops the render this pass owes one with work pending. Where the reconciling fiber is marked
         // (FiberPendingWork), or owes a Portal its retarget (OwesPortalRetarget), this reconcile skips
-        // only a node nothing below can be rendered by a fiber, and patches every other.
+        // only a node nothing below can be rendered by a fiber, and patches every other. Where a Provider of this walk,
+        // or of one around it, has changed value, it patches a node holding a Portal or a list too, whose capture
+        // (DetachedHost.Capture) is taken only where a walk reaches it.
         private bool SkipsIdentical(VNode? node)
             => !FiberPendingWork.MayHoldFiber(node)
-                || _ctx.FiberStack.Current is not { PendingWorkBelow: true } && !OwesPortalRetarget(_ctx.FiberStack.Current);
+                || NothingOwedBelow() && !(_ctx.ContextValueChanged && DetachedHost.HeldIn(node));
+
+        private bool NothingOwedBelow()
+            => _ctx.FiberStack.Current is not { PendingWorkBelow: true } && !OwesPortalRetarget(_ctx.FiberStack.Current);
+
+        // A list SkipsIdentical patches for its capture alone renders no row: nothing about it changed, and a row that
+        // reads the changed context is scheduled as every consumer is (GeneralPathReconciler.NotifyContextValueChange).
+        private bool CapturesOnly(VNode? oldNode, VNode? newNode)
+            => newNode is VirtualListNode && ReferenceEquals(oldNode, newNode) && NothingOwedBelow();
 
         // Read from the Portal entries, which clear ChildrenPending where the patch that mounts the children completes,
         // so a parked, aborted or subsumed reconcile of the fiber keeps patching until then. A fiber none of whose
@@ -1404,7 +1417,8 @@ namespace Velvet
                 var oi = oldMidEnd + k;
                 var ni = newMidEnd + k;
                 if (ReferenceEquals(oldNodes[oi], newNodes[ni]) && SkipsIdentical(newNodes[ni])) continue;
-                _patchWalk.PatchNode(occupants.Resolved(oi)!, oldNodes[oi], newNodes[ni]);
+                _patchWalk.PatchNode(
+                    occupants.Resolved(oi)!, oldNodes[oi], newNodes[ni], CapturesOnly(oldNodes[oi], newNodes[ni]));
                 if (_ctx.IsAborted) return;
             }
 
@@ -2047,7 +2061,8 @@ namespace Velvet
                     // element without patching.
                     if (!ReferenceEquals(old.node, newNode) || !SkipsIdentical(newNode))
                     {
-                        existingDomElement = _patchWalk.PatchNode(occupants.Resolved(old.index)!, old.node, newNode);
+                        existingDomElement = _patchWalk.PatchNode(
+                            occupants.Resolved(old.index)!, old.node, newNode, CapturesOnly(old.node, newNode));
                         if (_ctx.IsAborted) return true;
                     }
                     newElements.Add((existingDomElement, true));

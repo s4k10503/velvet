@@ -50,32 +50,30 @@ namespace Velvet
         // does for a range's container what the end of a flush does for the flush's region (FiberWave.RefreshHasVariants).
         void RefreshHasVariantsForController(VisualElement container);
 
-        // Brackets a controller's item create/patch loop so the items inherit the context that enclosed the
-        // V.VirtualList. Items mount outside the reconcile pass (scroll / geometry callbacks), where the
+        // Brackets a controller's item create/patch loop so the items inherit the context that encloses the
+        // V.VirtualList. Items a scroll or a geometry change renders mount outside any reconcile pass, where the
         // context cursor is empty and FiberStack.Current is null — which would give each item fiber a null
         // parent and hence its own fresh, empty ReconcilerContext. Begin pushes the host fiber that rendered
-        // the list onto FiberStack (so item fibers parent under it and share its context) and restores the
-        // captured enclosing-context snapshot onto the live cursor; End unwinds both and stamps the item
-        // fibers created within the scope with a DetachedMountContext so an isolated re-render can rebuild
-        // the same context via FiberContextSpine. host may be null (no enclosing host captured — e.g. a unit
-        // test driving the controller directly); then the scope is context-only and no stamping occurs. The
-        // returned token must be passed back to End (carries the pre-scope child set for stamping; supports
-        // nested VirtualLists).
+        // the list onto FiberStack (so item fibers parent under it and share its context), puts what encloses the
+        // list onto the live cursor where no walk has, and enters a frame naming detachedHost; End unwinds them
+        // and stamps the item fibers created within the scope with a DetachedMountContext so an isolated
+        // re-render can rebuild the same context via FiberContextSpine. host may be null (no enclosing host
+        // captured); then no stamping occurs. Nothing is entered without a detachedHost (a unit test driving the
+        // controller directly). The returned token must be passed back to End (carries the pre-scope child set
+        // for stamping; supports nested VirtualLists).
         // outsidePass is whether the range opened its bracket (BeginRangeForController). enclosingPortal is the Portal
         // placeholder the list was created under, which the items are stamped with outside a pass.
         object? BeginDetachedItemScope(
-            ComponentFiber? host, List<KeyValuePair<object, object>>? enclosingContext, VisualElement? enclosingPortal,
-            bool outsidePass);
+            ComponentFiber? host, DetachedHost? detachedHost, VisualElement? enclosingPortal, bool outsidePass);
 
         // Stamps the item fibers newly added under host since the last call with a DetachedMountContext whose
-        // DescendantNodes is THIS item's rendered vnode — so an isolated re-render can rebuild not just the
-        // list's enclosing context but also any Provider the renderer placed above the item's consumer (the
-        // VirtualList parallel to Portal's drained-children walk). Call once per item, after its create/patch;
-        // reused items add no fibers, so the per-item set diff stamps nothing for them. No-op when host is null.
-        void StampDetachedItemFibers(
-            ComponentFiber? host, List<KeyValuePair<object, object>>? enclosingContext, VNode itemVnode, object? scopeToken);
+        // DescendantNodes is THIS item's rendered vnode and whose Row is the row's own — so an isolated re-render
+        // can rebuild not just the list's enclosing context but also any Provider the renderer placed above the
+        // item's consumer (the VirtualList parallel to Portal's drained-children walk). Call once per item, after
+        // its create/patch; the per-item set diff stamps only the fibers that create or patch added. No-op when host
+        // is null.
+        void StampDetachedItemFibers(ComponentFiber? host, DetachedRow row, VNode itemVnode, object? scopeToken);
 
-        void EndDetachedItemScope(
-            ComponentFiber? host, List<KeyValuePair<object, object>>? enclosingContext, object? scopeToken);
+        void EndDetachedItemScope(ComponentFiber? host, object? scopeToken);
     }
 }

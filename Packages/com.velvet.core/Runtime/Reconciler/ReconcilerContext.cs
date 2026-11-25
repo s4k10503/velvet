@@ -624,44 +624,6 @@ namespace Velvet
         }
     }
 
-    // Captured on the top-level child fiber of a DETACHED mount — one whose children reconcile outside the
-    // normal parent-walked reconcile, so FiberContextSpine's parent-walk cannot reach the host that carries
-    // their enclosing Providers. Two cases:
-    //   Portal — children mount in the deferred drain (DrainPendingPortalMounts), after the pass that
-    //   reconciled the declaring component's own tree has already unwound past it.
-    //   VirtualList — items mount via the controller (FiberVirtualListController) on scroll, outside any pass.
-    // EnclosingSnapshot is the top value of every context active outside the detached mount (the base the
-    // consumer reads). DescendantNodes is the committed VNode subtree to walk to recover any Provider placed
-    // directly inside the detached subtree above this fiber. Anchor is the fiber the detached mount parented
-    // the children under (the registry-lookup parent the DescendantNodes walk matches against; null when no
-    // walk is needed). The snapshot reflects mount time; a host re-render that changes the enclosing context
-    // re-runs the detached mount with a correct cursor, so this stale copy only matters for the narrow case
-    // of an isolated re-render after such a change.
-    internal sealed class DetachedMountContext
-    {
-        internal readonly List<KeyValuePair<object, object>>? EnclosingSnapshot;
-        internal readonly VNode?[]? DescendantNodes;
-        internal readonly ComponentFiber Anchor;
-        internal readonly bool RootProviderChildrenStartAtWalkRoot;
-        // The ComponentFiber that logically called V.Portal/V.WorldSpace (captured at enqueue time — see
-        // PendingPortalMounts). Null for VirtualList's detached items (no portal call site to resolve)
-        // and for a bare Reconciler.Reconcile() drain with nothing on FiberStack. Anchor is the separate
-        // question of which fiber the detached mount parented the children under, which VirtualList
-        // answers with its host and a portal drain answers with this same declaring fiber.
-        internal readonly ComponentFiber? LogicalParent;
-
-        internal DetachedMountContext(
-            List<KeyValuePair<object, object>>? enclosingSnapshot, VNode?[]? descendantNodes, ComponentFiber anchor,
-            ComponentFiber? logicalParent = null, bool rootProviderChildrenStartAtWalkRoot = false)
-        {
-            EnclosingSnapshot = MotionContext.OutlivingPass(enclosingSnapshot);
-            DescendantNodes = descendantNodes;
-            Anchor = anchor;
-            LogicalParent = logicalParent;
-            RootProviderChildrenStartAtWalkRoot = rootProviderChildrenStartAtWalkRoot;
-        }
-    }
-
     // What FiberZLayerCoordinator last arranged a parent's children into: whether its positioned children paint in the
     // band after its unpositioned ones, and whether its layout list holds a relocated child's box at another child's
     // index.
@@ -3351,6 +3313,36 @@ namespace Velvet
             // Keyed children currently in the DOM (in DOM order), including exiting ghosts.
             public readonly List<(string key, VNode node)> Committed = new();
 
+            // The node whose expansion last wrote Committed; null once the state is retired. Each node an expansion
+            // writes here names its state for FiberContextSpine (Of), which a node one expansion writes at two
+            // presences names neither of.
+            public AnimatePresenceNode? Node
+            {
+                get => _node;
+                set
+                {
+                    _node = value;
+                    if (value == null) return;
+                    if (!s_ofNode.TryGetValue(value, out var named)) s_ofNode.Add(value, this);
+                    else if (!ReferenceEquals(named, this) && !ReferenceEquals(named, s_placedTwice))
+                    {
+                        s_ofNode.Remove(value);
+                        s_ofNode.Add(value, named._node == null ? this : s_placedTwice);
+                    }
+                }
+            }
+
+            private AnimatePresenceNode? _node;
+
+            private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<AnimatePresenceNode,
+                PresenceBoundaryState> s_ofNode = new();
+
+            private static readonly PresenceBoundaryState s_placedTwice = new();
+
+            // The state not retired whose expansion wrote node, where only one did.
+            internal static PresenceBoundaryState? Of(AnimatePresenceNode node)
+                => s_ofNode.TryGetValue(node, out var state) && state._node != null ? state : null;
+
             // Keys present at the first render under initial: false and not removed since (see LiveEntrySite).
             public readonly HashSet<string> InitialBlocked = new();
 
@@ -3728,6 +3720,8 @@ namespace Velvet
             if (!PresenceStates.Remove(key, out var state)) return;
             if (settlesExits) SettleExitsOf(state);
             state.Registration?.Gone();
+            // A fiber's EnclosingPresence can outlive the entry; the node it last expanded should not outlive it.
+            state.Node = null;
         }
 
         // Invoked from ComponentRegistry when the boundary fiber is unregistered, so a boundary that
@@ -4008,7 +4002,11 @@ namespace Velvet
         // Retires the whole table, as the owning Reconciler's disposal does.
         internal void RetireAllPresenceStates()
         {
-            foreach (var state in new List<PresenceBoundaryState>(PresenceStates.Values)) SettleExitsOf(state);
+            foreach (var state in new List<PresenceBoundaryState>(PresenceStates.Values))
+            {
+                SettleExitsOf(state);
+                state.Node = null;
+            }
             PresenceStates.Clear();
             _presenceBoundaries.Clear();
             _presenceParents.Clear();

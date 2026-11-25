@@ -607,11 +607,13 @@ namespace Velvet
         {
             var scrollView = new ScrollView(ScrollViewMode.Vertical);
             var bridge = _ctx.ReconcilerBridge;
-            // Capture the host fiber rendering this list and the live cursor (correct mid-reconcile, in
-            // this commit walk) so the controller can mount items under the host's shared context — its
-            // items render later, outside any reconcile pass, where the cursor is empty.
+            // Capture the host fiber rendering this list and what the live cursor holds around it (correct
+            // mid-reconcile, in this commit walk) so the controller can mount items under the host's shared
+            // context — the rows a scroll renders mount outside any reconcile pass, where the cursor is empty.
+            var detachedHost = new DetachedHost(_ctx.FiberStack.Current, takesTops: true);
+            detachedHost.Capture(_ctx, null);
             var controller = new FiberVirtualListController(
-                scrollView, virtualListNode, bridge, _ctx.FiberStack.Current, _ctx.ComponentContextStack,
+                scrollView, virtualListNode, bridge, _ctx.FiberStack.Current, detachedHost,
                 _ctx.CurrentPortalPlaceholder);
             _ctx.VirtualListControllers[scrollView] = controller;
             _ctx.FiberElementFactory.ApplyEvents(scrollView, virtualListNode.Events);
@@ -766,6 +768,12 @@ namespace Velvet
             // here is what makes it available at all: the pass that had it on the stack has unwound by
             // drain time, and the drain pushes this captured value back rather than reading one.
             var logicalParent = _ctx.FiberStack.Current;
+            DetachedHost.OfPlaceholder(placeholder, logicalParent).Capture(_ctx, node switch
+            {
+                PortalNode portal => portal.Children,
+                WorldSpaceNode worldSpace => worldSpace.Children,
+                _ => null,
+            });
             _ctx.PendingHostPlaceholders.Add(placeholder);
             _ctx.PendingPortalMounts.Enqueue((placeholder, node, target, contextSnapshot, logicalParent));
             return placeholder;

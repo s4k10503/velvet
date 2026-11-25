@@ -29,9 +29,9 @@ namespace Velvet
     {
         private readonly ComponentContextStack _stack;
         private readonly List<ContextProviderNode> _pushed;
-        // Keys raw-pushed from a Portal-top fiber's enclosing-context snapshot (no ContextProviderNode to
-        // pop). Always pushed before any _pushed Provider (the Portal edge is the spine's first), so per
-        // context key the raw base sits under the Providers and unwinds last.
+        // Keys raw-pushed from a stamp's snapshot and at a detached edge (no ContextProviderNode to pop). They can sit
+        // between Providers of the same context pushed by other edges; Unwind pops every one of them, and a pop
+        // discards a top whoever pushed it, so the cursor comes back to where it was.
         private readonly List<object>? _rawPushedKeys;
         private readonly ReconcilerBufferPool _bufferPool;
 
@@ -57,28 +57,37 @@ namespace Velvet
             internal List<ContextProviderNode> Pushed { get; init; }
             internal ComponentRegistry Registry { get; init; }
             internal FiberMemoCache MemoCache { get; init; }
-            internal bool IsInlineSpineChild { get; init; }
             // The Portal scope and container members of SpineChild's own registration key, read back
             // from the registry rather than derived here — ComponentRegistry.TryGetInlineKey owns why.
             // Both are therefore constants of one edge rather than readings of where the descent has
             // got to, so the key resolves SpineChild at every container holding the same position and
             // cannot say which of them the walk is in. MatchesInlineSpineChild separates them by the
-            // node instead, where OwnOutput says that node can be compared. Two occurrences a
-            // declaring body builds from one shared node instance are one node, so those stay
-            // unseparated and the walk still takes the first.
+            // node instead, where OwnOutput says that node can be compared, and where a stamp can stand in
+            // (CanFallBack), declines what the node cannot separate. Elsewhere two occurrences a declaring
+            // body builds from one shared node instance stay unseparated and the walk takes the first.
             internal VisualElement? PortalScope { get; init; }
             internal VisualElement? Container { get; init; }
 
             // The array being walked where it is Ancestor's own output, as FiberContextSpine.OwnOutput picks it for
-            // SpineChild. Null for a detached mount's captured DescendantNodes, which is
-            // stamped onto a fiber only on the drain that created it — so after the declaring body renders again
-            // that array still holds the nodes of the render that captured it, which ComponentFiber.SourceNode no
-            // longer names.
+            // SpineChild. Null at a detached edge, whose nodes are a Portal's children or a row's item node rather
+            // than the array a fiber's ComponentFiber.SourceTree is stamped from (ReconcilerContext.CurrentFiberTree).
             internal VNode?[]? OwnOutput { get; init; }
             // One instance shared by every Push, cleared at each edge. An element's children are reconciled by a
             // new walk, so PushScope starts their occurrence count over where that walk's claim does.
             internal InlineKeyClaims Claims { get; init; }
+            // Whether Push puts the stamp on where the edge cannot place SpineChild, which lets MatchesInlineSpineChild
+            // decline an occurrence it cannot tell from another.
+            internal bool CanFallBack { get; init; }
+            internal EdgeMatch Match { get; init; }
         }
+
+        // Set by MatchesInlineSpineChild where the occurrence it stopped at is one node placed at two of them.
+        private sealed class EdgeMatch
+        {
+            internal bool Ambiguous;
+        }
+
+        private static readonly EdgeMatch s_match = new();
 
         // Occurrence of an explicit component key while one spine edge is walked.
         private sealed class InlineKeyClaims
@@ -143,82 +152,71 @@ namespace Velvet
 
             var stack = ctx.ComponentContextStack;
             var pushed = bufferPool.RentProviderNodeList();
-            List<object>? rawPushedKeys = null;
             var registry = ctx.ComponentRegistry;
             var memoCache = ctx.FiberMemoCache;
             var claims = s_claims;
             claims.Reset();
+            List<object>? rawPushedKeys = null;
+            // Under everything the edges push, the snapshot answers for a context no edge rebuilds, such as the enter
+            // flags.
+            var stamp = NearestStamp(target, out var stampDepth);
+            if (stamp != null) PushStamp(stack, stamp, ref rawPushedKeys);
 
             // For each spine edge (ancestor -> child), re-push the Providers in the ancestor's output
-            // that enclose `child`. The deepest ancestor encloses `target` itself.
-            //
-            // INLINE-mounted spine children match the canonical wrapper-less Component path: a
-            // ComponentNode in the ancestor's output resolves to `child` via the registry's
-            // tree-position keying. A WRAPPER-mounted spine child is hosted by a wrapper-emitting node
-            // whose container VE is the child's MountPoint; the providers enclosing that container in the
-            // ancestor's output are the ones that enclose it.
+            // that enclose `child`. The deepest ancestor encloses `target` itself: a ComponentNode in the
+            // ancestor's output resolves to `child` via the registry's tree-position keying.
             for (var i = 0; i < spine.Count; i++)
             {
                 claims.Clear();
+                s_match.Ambiguous = false;
                 var ancestor = spine[i];
                 var child = i + 1 < spine.Count ? spine[i + 1] : target;
+                // An edge that finds no node for a child the registry places rebuilds nothing between ancestor and
+                // child. Over what the edges above pushed then goes the stamp taken at or below child, so what encloses
+                // child reads as it was where that stamp was taken; the edges below still push over it.
+                var stampHoldsThisEdge = stamp != null && stampDepth < spine.Count - i;
 
                 // Detached-mount top-level child (a Portal's drained children, or a VirtualList's
                 // controller-rendered items): the subtree mounted outside the parent-walked reconcile, so
                 // `ancestor`'s output hides this child behind a wrapper-emitting leaf the canonical
                 // descent skips (see the default arm of PushEnclosingProvidersForNode, which is where both
-                // kinds of host land). Rebuild from the captured snapshot instead: push the context that enclosed
-                // the detached mount as the base, then — when descendant VNodes were captured (Portal) — walk
-                // them to recover any Provider placed directly inside the subtree above this child. Deeper
-                // spine edges (this child -> target) then push the in-subtree Providers normally on top.
-                // Unwind is balanced per context key regardless of push origin (Pop discards the top), so the
-                // raw base pushes here coexist correctly with the Provider pushes the other edges add.
+                // kinds of host land). The edges above have pushed what encloses `ancestor`; on top go what the
+                // host's capture holds around the host, then the Providers inside the subtree above this child.
                 var detached = child.DetachedMountContext;
                 if (detached != null)
                 {
-                    var snapshot = detached.EnclosingSnapshot;
-                    if (snapshot != null)
+                    // A row mounted into a wrapper of its own is the item node itself, with nothing around it to find.
+                    var placed = registry.TryGetInlineKey(
+                        child, out _, out _, out var detachedScope, out var detachedContainer);
+                    var detachedWalk = new SpineWalk
                     {
-                        for (var s = 0; s < snapshot.Count; s++)
-                        {
-                            stack.PushRaw(snapshot[s].Key, snapshot[s].Value);
-                            (rawPushedKeys ??= new List<object>()).Add(snapshot[s].Key);
-                        }
-                    }
-                    if (detached.DescendantNodes is { Length: > 0 } && detached.Anchor != null)
-                    {
-                        registry.TryGetInlineKey(child, out _, out _, out var detachedScope, out var detachedContainer);
-                        var detachedWalk = new SpineWalk
-                        {
-                            Ancestor = detached.Anchor,
-                            SpineChild = child,
-                            Stack = stack,
-                            Pushed = pushed,
-                            Registry = registry,
-                            MemoCache = memoCache,
-                            IsInlineSpineChild = true,
-                            PortalScope = detachedScope,
-                            Container = detachedContainer,
-                            OwnOutput = null,
-                            Claims = claims,
-                        };
-                        // A VirtualList item is one rendered node rather than a reconciled child array.
-                        PushEnclosingProviders(
-                            detached.RootProviderChildrenStartAtWalkRoot
-                                ? detached.DescendantNodes
-                                : FiberKeying.UnwrapLoneFragment(detached.DescendantNodes!),
-                            FiberKeying.WalkRoot, in detachedWalk,
-                            detached.RootProviderChildrenStartAtWalkRoot);
-                    }
+                        Ancestor = detached.Anchor,
+                        SpineChild = child,
+                        Stack = stack,
+                        Pushed = pushed,
+                        Registry = registry,
+                        MemoCache = memoCache,
+                        PortalScope = detachedScope,
+                        Container = detachedContainer,
+                        OwnOutput = null,
+                        Claims = claims,
+                        CanFallBack = placed && stampHoldsThisEdge,
+                        Match = s_match,
+                    };
+                    var detachedMark = pushed.Count;
+                    FallBackUnlessPlaced(
+                        PushDetachedEdge(detached, in detachedWalk, rawPushedKeys ??= new List<object>()),
+                        in detachedWalk, detachedMark, stamp, ref rawPushedKeys);
                     continue;
                 }
 
-                var tree = OwnOutput(ancestor, child);
-                if (tree == null || tree.Length == 0) continue;
-                if (PushesNoContext(ancestor, tree)) continue;
+                // A child mounted into a wrapper of its own is a VirtualList row's top
+                // (FiberNodeFactory.CreateForComponentNode), whose edge is the detached one above once the item loop
+                // has stamped it, and no node of an ancestor's output resolves to it.
+                if (!registry.TryGetInlineKey(child, out _, out _, out var childScope, out var childContainer)) continue;
 
-                var isInline = registry.TryGetInlineKey(child, out _, out _, out var childScope, out var childContainer);
-                if (!isInline && child.MountPoint == null) continue;
+                var tree = OwnOutput(ancestor, child);
+                if (tree is { Length: > 0 } && PushesNoContext(ancestor, tree)) continue;
 
                 var walk = new SpineWalk
                 {
@@ -228,13 +226,17 @@ namespace Velvet
                     Pushed = pushed,
                     Registry = registry,
                     MemoCache = memoCache,
-                    IsInlineSpineChild = isInline,
                     PortalScope = childScope,
                     Container = childContainer,
                     OwnOutput = tree,
                     Claims = claims,
+                    CanFallBack = stampHoldsThisEdge,
+                    Match = s_match,
                 };
-                PushEnclosingProviders(tree, FiberKeying.WalkRoot, in walk);
+                var mark = pushed.Count;
+                FallBackUnlessPlaced(
+                    tree is { Length: > 0 } && PushEnclosingProviders(tree, FiberKeying.WalkRoot, in walk),
+                    in walk, mark, stamp, ref rawPushedKeys);
             }
 
             bufferPool.ReturnFiberList(spine);
@@ -244,10 +246,58 @@ namespace Velvet
 
         private static readonly InlineKeyClaims s_claims = new();
 
+        // An edge that stopped at an occurrence it cannot tell from another takes what it pushed from mark on back off,
+        // and reads as one that found nothing.
+        private static void FallBackUnlessPlaced(
+            bool found, in SpineWalk walk, int mark, DetachedMountContext? stamp, ref List<object>? rawPushedKeys)
+        {
+            if (found && !walk.Match.Ambiguous) return;
+            for (var i = walk.Pushed.Count - 1; i >= mark; i--) walk.Pushed[i].PopContext(walk.Stack);
+            walk.Pushed.RemoveRange(mark, walk.Pushed.Count - mark);
+            if (walk.CanFallBack) PushStamp(walk.Stack, stamp!, ref rawPushedKeys);
+        }
+
+        // The stamp taken last on the way down to target, and how many edges above target its fiber sits.
+        private static DetachedMountContext? NearestStamp(ComponentFiber target, out int depth)
+        {
+            depth = 0;
+            for (var f = target; f != null; f = f.Parent, depth++)
+            {
+                if (f.DetachedMountContext is { } detached) return detached;
+            }
+            return null;
+        }
+
+        private static void PushStamp(ComponentContextStack stack, DetachedMountContext stamp, ref List<object>? pushedKeys)
+            => DetachedHostCapture.PushSnapshot(stack, stamp.EnclosingSnapshot, pushedKeys ??= new List<object>());
+
+        // Whether the current nodes or, failing them, the creation nodes hold the walk's spine child.
+        private static bool PushDetachedEdge(DetachedMountContext detached, in SpineWalk walk, List<object> pushedKeys)
+        {
+            var resolved = detached.Host.Resolve();
+            resolved?.PushChain(walk.Stack, pushedKeys);
+            var current = detached.CurrentNodes(resolved);
+            if (PushDetachedDescent(current, detached, in walk)) return true;
+            if (ReferenceEquals(current, detached.DescendantNodes)) return false;
+            walk.Claims.Clear();
+            return PushDetachedDescent(detached.DescendantNodes, detached, in walk);
+        }
+
+        // Whether nodes hold the walk's spine child, with the Providers above it left pushed where they do.
+        private static bool PushDetachedDescent(VNode?[]? nodes, DetachedMountContext detached, in SpineWalk walk)
+        {
+            if (nodes is not { Length: > 0 }) return false;
+            // A VirtualList item is one rendered node rather than a reconciled child array.
+            return PushEnclosingProviders(
+                detached.RootProviderChildrenStartAtWalkRoot ? nodes : FiberKeying.UnwrapLoneFragment(nodes),
+                FiberKeying.WalkRoot, in walk,
+                detached.RootProviderChildrenStartAtWalkRoot);
+        }
+
         // Whether nothing in tree can push onto the cursor, so the walk of it would push nothing whichever child it
         // looked for. A walk visits every sibling before the one it wants, so skipping it keeps an isolated render's
-        // cost off the length of the list its output holds. Memo inner nodes are not in the tree, so a MemoNode
-        // counts as a pusher.
+        // cost off the length of the list its output holds. Memo inner nodes and an AnimatePresence's exiting children
+        // are not in the tree, so a MemoNode and an AnimatePresenceNode count as pushers.
         private static bool PushesNoContext(ComponentFiber ancestor, VNode?[] tree)
         {
             if (!ReferenceEquals(ancestor.ContextFreeOutput, tree))
@@ -265,7 +315,7 @@ namespace Velvet
             {
                 switch (node)
                 {
-                    case ContextProviderNode or MotionNode or MemoNode:
+                    case ContextProviderNode or MotionNode or MemoNode or AnimatePresenceNode:
                         return false;
                     case FragmentNode fragment:
                         if (!HoldsNoPusher(fragment.Children)) return false;
@@ -276,9 +326,6 @@ namespace Velvet
                     case SuspenseNode suspense:
                         if (!HoldsNoPusher(suspense.Children)) return false;
                         if (suspense.Fallback != null && !HoldsNoPusher(new[] { suspense.Fallback })) return false;
-                        break;
-                    case AnimatePresenceNode presence:
-                        if (!HoldsNoPusher(presence.Children)) return false;
                         break;
                 }
             }
@@ -307,8 +354,6 @@ namespace Velvet
                 }
                 _bufferPool.ReturnProviderNodeList(_pushed);
             }
-            // Pop the Portal snapshot base last: it was raw-pushed before every Provider, so per context key
-            // it sits at the bottom of the stack and must come off after the Providers layered above it.
             if (_rawPushedKeys != null)
             {
                 for (var i = _rawPushedKeys.Count - 1; i >= 0; i--)
@@ -321,10 +366,8 @@ namespace Velvet
         // Walks nodes (one reconcile scope of ancestor's
         // output) depth-first, pushing each Provider before descending its children. Returns true once the
         // node that hosts spineChild is reached — its enclosing Providers stay pushed
-        // (recorded in pushed). The host node is a ComponentNode resolving to
-        // spineChild for inline-mounted children, or an AnimatePresenceNode
-        // whose dynamic wrapper VE matches spineChild's MountPoint for wrapper-mounted
-        // children. Providers on a subtree that does NOT
+        // (recorded in pushed). The host node is the ComponentNode resolving to
+        // spineChild. Providers on a subtree that does NOT
         // contain the spine child are popped on the way out so only the path to spineChild
         // remains on the cursor.
         private static bool PushEnclosingProviders(
@@ -372,7 +415,7 @@ namespace Velvet
                         provider, nodeIndex, position, in walk,
                         rootProviderChildrenStartAtWalkRoot);
 
-                case ComponentNode component when walk.IsInlineSpineChild:
+                case ComponentNode component:
                     return MatchesInlineSpineChild(component, position, nodeIndex, in walk);
 
                 case MemoNode memo:
@@ -403,7 +446,7 @@ namespace Velvet
                     // ancestor's output but does NOT host the spine child being searched for. A
                     // detached mount that DID host it (a Portal's drained children, a VirtualList's items)
                     // is handled before this walk — see the DetachedMountContext branch in Push, which
-                    // rebuilds the enclosing context from the captured snapshot instead of descending the
+                    // rebuilds the enclosing context from the host's capture instead of descending the
                     // host's tree. So skip it: its own subtree cannot enclose a spine child not inside it.
                     return false;
             }
@@ -469,7 +512,15 @@ namespace Velvet
                 registry.InlineExplicitPositionKeyBoxes);
             var resolved = registry.TryGetFiberForInlineKey(
                 walk.Ancestor, slotKey, identity, walk.PortalScope, walk.Container);
-            return ReferenceEquals(resolved, walk.SpineChild);
+            if (!ReferenceEquals(resolved, walk.SpineChild)) return false;
+            if (!walk.CanFallBack) return true;
+            // The key is looked up in the child's own container, so where another child of Ancestor holds it in another
+            // container the key places the child only at the child's own node, and nowhere where that node stands in
+            // both.
+            var own = ReferenceEquals(component, walk.SpineChild.SourceNode);
+            if (!registry.SharesInlineKeyElsewhere(walk.SpineChild, own ? component : null)) return true;
+            if (own) walk.Match.Ambiguous = true;
+            return own;
         }
 
         private static bool PushMemoInner(
@@ -502,14 +553,21 @@ namespace Velvet
                 && ancestor.Reconciler.Context.IsSuspenseFallbackShownOnSpine(
                     ancestor, walk.Container, walk.PortalScope, FiberKeying.SuspenseAt(position, suspense.Key, nodeIndex),
                     suspense);
-            var sub = wasFallback
-                ? (suspense.Fallback != null ? new[] { suspense.Fallback } : System.Array.Empty<VNode>())
-                : (suspense.Children ?? System.Array.Empty<VNode>());
-            if (sub.Length == 0) return false;
-
-            var subPosition = FiberKeying.SuspenseSubtree(
-                position, suspenseKey, suspense.Key, nodeIndex, wasFallback);
-            return PushEnclosingProviders(sub, subPosition, in walk);
+            // A primary its boundary had committed stays behind the fallback, hidden with its fibers
+            // (GeneralPathReconciler.ExpandSuspenseInline), so a fiber the fallback does not hold is looked for there.
+            if (wasFallback && suspense.Fallback != null
+                && PushEnclosingProviders(
+                    new[] { suspense.Fallback },
+                    FiberKeying.SuspenseSubtree(position, suspenseKey, suspense.Key, nodeIndex, isFallback: true),
+                    in walk))
+            {
+                return true;
+            }
+            if (suspense.Children is not { Length: > 0 }) return false;
+            return PushEnclosingProviders(
+                suspense.Children,
+                FiberKeying.SuspenseSubtree(position, suspenseKey, suspense.Key, nodeIndex, isFallback: false),
+                in walk);
         }
 
         // A MotionNode establishes MotionContext for its subtree, exactly as a Provider establishes its
@@ -568,31 +626,42 @@ namespace Velvet
         // like an inline child — the only reason the canonical descent misses it is that the walker never
         // steps THROUGH the AnimatePresenceNode. Descend into each current child under the map key
         // FiberNodeFactory.PresenceChildMapKey assigns, so the ComponentNode arm matches the spine child
-        // and the enclosing Providers / MotionContext stay pushed. Only currently-present children are
-        // walked (not still-exiting ghosts): the covered case is an isolated re-render of a
-        // persisting descendant. Mirrors the Suspense arm.
+        // and the enclosing Providers / MotionContext stay pushed, then into each exiting child the presence's
+        // state holds. Mirrors the Suspense arm.
         private static bool PushPresenceChildren(
             AnimatePresenceNode presence,
             int nodeIndex,
             WalkPosition position,
             in SpineWalk walk)
         {
-            if (presence.Children == null) return false;
-
             var presencePosition = FiberKeying.Presence(position, presence.Key, nodeIndex);
-            var taken = new Dictionary<string, int>();
-            var autoIndex = 0;
-            foreach (var child in presence.Children)
+            if (presence.Children != null)
             {
-                if (child == null) continue;
-                var childKey = FiberNodeFactory.PresenceChildMapKey(child.Key, ref autoIndex, taken, out _);
-                var childPosition = FiberKeying.PresenceChild(presencePosition, childKey);
-                if (PushEnclosingProviders(new[] { child }, childPosition, in walk))
+                var taken = new Dictionary<string, int>();
+                var autoIndex = 0;
+                foreach (var child in presence.Children)
+                {
+                    if (child == null) continue;
+                    var childKey = FiberNodeFactory.PresenceChildMapKey(child.Key, ref autoIndex, taken, out _);
+                    var childPosition = FiberKeying.PresenceChild(presencePosition, childKey);
+                    if (PushEnclosingProviders(new[] { child }, childPosition, in walk))
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            // A child that is exiting is not among the children the presence is given: the expansion emits it from
+            // the presence's state, under the key it holds there.
+            if (ReconcilerContext.PresenceBoundaryState.Of(presence) is not { } state) return false;
+            foreach (var (key, node) in state.Committed)
+            {
+                if (!state.IsLeaving(key)) continue;
+                if (PushEnclosingProviders(new[] { node }, FiberKeying.PresenceChild(presencePosition, key), in walk))
                 {
                     return true;
                 }
             }
-
             return false;
         }
 

@@ -37,15 +37,16 @@ namespace Velvet
         // this contract.
         // Returns what occupies the element's slot as the patch leaves it, before a z-layer relocation the pass settles
         // later (FiberNodePatcher.PatchSelfPost).
-        internal VisualElement PatchNode(VisualElement element, VNode? oldNode, VNode? newNode)
+        // A list patched with capturesOnly records what its rows read and renders none of them.
+        internal VisualElement PatchNode(VisualElement element, VNode? oldNode, VNode? newNode, bool capturesOnly = false)
         {
             var patch = new FiberNodePatcher.SelfPatch(element, oldNode, newNode);
             _patcher.PatchSelfPre(ref patch);
-            ReconcileChildrenOf(ref patch);
+            ReconcileChildrenOf(ref patch, capturesOnly);
             return _patcher.PatchSelfPost(ref patch);
         }
 
-        private void ReconcileChildrenOf(ref FiberNodePatcher.SelfPatch patch)
+        private void ReconcileChildrenOf(ref FiberNodePatcher.SelfPatch patch, bool capturesOnly)
         {
             switch (patch.Kind)
             {
@@ -65,7 +66,9 @@ namespace Velvet
                     _patcher.HandleComponentMount(patch.Element, (ComponentNode)patch.NewNode!);
                     break;
                 case FiberNodePatcher.SelfPatchKind.VirtualList:
-                    patch.VirtualList!.Update((VirtualListNode)patch.NewNode!);
+                    // Ahead of the update, whose range renders rows under it.
+                    patch.VirtualList!.DetachedHost?.Capture(_ctx, null);
+                    if (!capturesOnly) patch.VirtualList!.Update((VirtualListNode)patch.NewNode!);
                     break;
             }
         }
@@ -141,6 +144,9 @@ namespace Velvet
             // declaring component returned, so its fiber is already current.
             var enclosingChildScope = _ctx.EnterPortalChildKeyScope(placeholder);
             _patcher.OpenPortalRange(ref patch);
+            var detachedHost = DetachedHost.OfPlaceholder(placeholder, _ctx.FiberStack.Current);
+            detachedHost.Capture(_ctx, patch.NewChildren);
+            var enclosingFrame = _ctx.ComponentContextStack.EnterFrame(detachedHost);
             var mounted = false;
             try
             {
@@ -150,20 +156,27 @@ namespace Velvet
             }
             finally
             {
+                _ctx.ComponentContextStack.ExitFrame(enclosingFrame);
                 _ctx.ExitPortalChildKeyScope(enclosingChildScope);
                 _ctx.CurrentPortalPlaceholder = enclosingPortal;
                 _patcher.ClosePortalRange(ref patch, mounted);
             }
         }
 
-        // A Provider reached as a node-typed keyed entry (e.g. inside an AnimatePresence subtree, or as a MemoNode's
-        // resolved inner), on a path where GeneralPathReconciler.ExpandInlineRecursive's inline Provider expansion
-        // does not apply: the new value is pushed, and a changed one propagated, before the children reconcile
-        // under it.
+        // A Provider patched as a node of its own, which a VirtualList row's item node is
+        // (FiberNodeFactory.CreateForContextProviderNode is reached the same way), where
+        // GeneralPathReconciler.ExpandInlineRecursive's inline Provider expansion does not apply: the new value is
+        // pushed, and a changed one propagated, before the children reconcile under it.
         private void ReconcileUnderProvider(in FiberNodePatcher.SelfPatch patch)
         {
             var oldNode = (ContextProviderNode)patch.OldNode!;
             var newNode = (ContextProviderNode)patch.NewNode!;
+            // Put back as GeneralPathReconciler puts it back around each walk. A VirtualList row's own patch reaches
+            // this with no walk around it where the fast path reconciles the whole output of the component rendering
+            // the list, or where a scroll renders the row, and the flag would otherwise outlive the pass and keep the
+            // next pass's changed Provider from starting a propagation generation of its own
+            // (FiberTreeTraversal.NotifyContextChanged).
+            var enclosingValueChanged = _ctx.ContextValueChanged;
             newNode.PushContext(_ctx.ComponentContextStack);
             try
             {
@@ -176,6 +189,7 @@ namespace Velvet
             finally
             {
                 newNode.PopContext(_ctx.ComponentContextStack);
+                _ctx.ContextValueChanged = enclosingValueChanged;
             }
         }
     }

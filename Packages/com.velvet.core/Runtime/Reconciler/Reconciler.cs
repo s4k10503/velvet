@@ -788,38 +788,49 @@ namespace Velvet
         }
 
         // What a detached item scope hands from Begin to Stamp and End: where in the host's append log the item fibers
-        // not yet stamped begin, and the spine Begin pushed.
+        // not yet stamped begin, and what Begin pushed and entered.
         private sealed class DetachedItemScope
         {
+            public DetachedHost Host = null!;
             public int Unstamped;
             public FiberContextSpine Spine;
+            public List<object>? PushedKeys;
+            public ContextFrame EnclosingFrame;
             public VisualElement? EnclosingPortal;
         }
 
         object? IReconcilerBridge.BeginDetachedItemScope(
-            ComponentFiber? host, List<KeyValuePair<object, object>>? enclosingContext, VisualElement? enclosingPortal,
-            bool outsidePass)
+            ComponentFiber? host, DetachedHost? detachedHost, VisualElement? enclosingPortal, bool outsidePass)
         {
+            if (detachedHost == null) return null;
             var stack = _ctx.ComponentContextStack;
-            if (enclosingContext != null)
+            var scope = new DetachedItemScope { Host = detachedHost, EnclosingPortal = _ctx.CurrentPortalPlaceholder };
+            var resolved = outsidePass ? detachedHost.Resolve() : null;
+            if (resolved != null)
             {
-                for (var i = 0; i < enclosingContext.Count; i++)
-                {
-                    stack.PushRaw(enclosingContext[i].Key, enclosingContext[i].Value);
-                }
+                // Under the spine, as FiberContextSpine pushes a stamp's snapshot under its edges.
+                scope.PushedKeys = new List<object>();
+                if (resolved.Tops != null) DetachedHostCapture.PushSnapshot(stack, resolved.Tops, scope.PushedKeys);
             }
-            if (host == null) return null;
-            var scope = new DetachedItemScope();
-            // Outside a pass no walk names the Portal the list sits in, which the rows the loop creates or patches are
-            // stamped with (ComponentRegistry.ReconcileExistingFiber); inside one the walk reconciling the list has.
-            scope.EnclosingPortal = _ctx.CurrentPortalPlaceholder;
-            if (outsidePass) _ctx.CurrentPortalPlaceholder = enclosingPortal;
-            // Outside a pass no walk has pushed the Providers that enclose the host, and the snapshot holds the values
-            // they had when the host last created or patched the list, which a memoized host need not have done since
-            // one changed; their committed values go on top. Inside a pass, including a row's walk in a range rendered outside one, the
-            // walk around the list has pushed them, and a spine read there would give the committed values that walk
-            // may be replacing.
-            if (outsidePass) scope.Spine = FiberContextSpine.Push(host);
+            if (outsidePass)
+            {
+                if (host != null)
+                {
+                    // Outside a pass no walk names the Portal the list sits in, which the rows the loop creates or
+                    // patches are stamped with (ComponentRegistry.ReconcileExistingFiber); inside one the walk
+                    // reconciling the list has.
+                    _ctx.CurrentPortalPlaceholder = enclosingPortal;
+                    // Outside a pass no walk has pushed the Providers that enclose the host, so their committed values
+                    // go on over the capture's snapshot. Inside a pass, including a row's walk in a range rendered
+                    // outside one, the walk around the list has pushed them and what the host put around the list,
+                    // and a spine read there would give the committed values that walk may be replacing.
+                    scope.Spine = FiberContextSpine.Push(host);
+                }
+                // What the host's own output put around the list, on top of what encloses the host.
+                resolved?.PushChain(stack, scope.PushedKeys!);
+            }
+            scope.EnclosingFrame = stack.EnterFrame(detachedHost);
+            if (host == null) return scope;
             // Item fibers created during the scope AppendChild onto FiberStack.Current; making it the host
             // links them under the host (so they share the host's ReconcilerContext / context cursor) and
             // lets the spine's parent-walk reach the host on an isolated re-render.
@@ -831,7 +842,7 @@ namespace Velvet
         }
 
         void IReconcilerBridge.StampDetachedItemFibers(
-            ComponentFiber? host, List<KeyValuePair<object, object>>? enclosingContext, VNode itemVnode, object? scopeToken)
+            ComponentFiber? host, DetachedRow row, VNode itemVnode, object? scopeToken)
         {
             if (host == null || scopeToken is not DetachedItemScope scope) return;
             // Stamp each fiber newly added under host since the prior call. DescendantNodes is
@@ -842,42 +853,40 @@ namespace Velvet
             foreach (var f in host.AppendedSince(scope.Unstamped))
             {
                 detached ??= new DetachedMountContext(
-                    enclosingContext, itemVnode != null ? new[] { itemVnode } : null, host,
+                    scope.Host, row, new[] { itemVnode }, _ctx.ComponentContextStack, host,
                     rootProviderChildrenStartAtWalkRoot: true);
                 f.DetachedMountContext = detached;
             }
             scope.Unstamped = host.AppendLogPosition;
         }
 
-        void IReconcilerBridge.EndDetachedItemScope(
-            ComponentFiber? host, List<KeyValuePair<object, object>>? enclosingContext, object? scopeToken)
+        void IReconcilerBridge.EndDetachedItemScope(ComponentFiber? host, object? scopeToken)
         {
+            if (scopeToken is not DetachedItemScope scope) return;
+            var stack = _ctx.ComponentContextStack;
             if (host != null)
             {
                 _ctx.FiberStack.Pop();
-                if (scopeToken is DetachedItemScope scope)
+                // Fallback for any item fiber not stamped per-item (StampDetachedItemFibers moves the cursor past
+                // the ones it handled): its edge walks no item vnode.
+                DetachedMountContext? detached = null;
+                foreach (var f in host.AppendedSince(scope.Unstamped))
                 {
-                    // Fallback for any item fiber not stamped per-item (StampDetachedItemFibers moves the cursor past
-                    // the ones it handled): only the enclosing snapshot is replayed, with no item-vnode walk.
-                    DetachedMountContext? detached = null;
-                    foreach (var f in host.AppendedSince(scope.Unstamped))
-                    {
-                        detached ??= new DetachedMountContext(enclosingContext, descendantNodes: null, anchor: host);
-                        f.DetachedMountContext = detached;
-                    }
-                    host.EndAppendLog();
-                    scope.Spine.Unwind();
-                    _ctx.CurrentPortalPlaceholder = scope.EnclosingPortal;
+                    detached ??= new DetachedMountContext(scope.Host, row: null, descendantNodes: null, stack, host);
+                    f.DetachedMountContext = detached;
                 }
+                host.EndAppendLog();
             }
-            var stack = _ctx.ComponentContextStack;
-            if (enclosingContext != null)
+            stack.ExitFrame(scope.EnclosingFrame);
+            if (scope.PushedKeys != null)
             {
-                for (var i = enclosingContext.Count - 1; i >= 0; i--)
+                for (var i = scope.PushedKeys.Count - 1; i >= 0; i--)
                 {
-                    stack.PopRaw(enclosingContext[i].Key);
+                    stack.PopRaw(scope.PushedKeys[i]);
                 }
             }
+            scope.Spine.Unwind();
+            _ctx.CurrentPortalPlaceholder = scope.EnclosingPortal;
         }
 
         #endregion

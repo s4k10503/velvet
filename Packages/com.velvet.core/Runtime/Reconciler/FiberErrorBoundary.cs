@@ -102,12 +102,14 @@ namespace Velvet
             // cursor it was pushed onto rather than unwound.
             var caughtUnder = cursor.SetAside();
             _ = FiberContextSpine.Push(fiber);
+            var enclosingFrame = cursor.EnterFrame(null);
             try
             {
                 return ShowFallbackTree(fiber, new[] { fallback });
             }
             finally
             {
+                cursor.ExitFrame(enclosingFrame);
                 cursor.Restore(caughtUnder);
             }
         }
@@ -151,6 +153,7 @@ namespace Velvet
                 return false;
             }
             fiber.PreviousTree = fallbackTree;
+            DetachedHost.CommitCapturesOf(fiber, fallbackTree);
             fiber.FallbackReplacedPreviousTree = true;
             // FallbackContentFailed is set when a re-entrant TryCatch above declined because THIS
             // fiber's own fallback content threw (logged, or shown by a farther ancestor instead) — the

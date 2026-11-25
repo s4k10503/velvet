@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+using System.Collections;
 using System.Reflection;
 using NUnit.Framework;
 
@@ -11,12 +11,14 @@ namespace Velvet.Tests
     [TestFixture]
     internal sealed class ComponentContextStackTests
     {
-        private static Dictionary<object, Stack<object>> StacksOf(ComponentContextStack stack)
-            => (Dictionary<object, Stack<object>>)typeof(ComponentContextStack)
+        // Non-generic, so the cast does not name the type of what the stacks hold.
+        private static IDictionary StacksOf(ComponentContextStack stack)
+            => (IDictionary)typeof(ComponentContextStack)
                 .GetField("_stacks", BindingFlags.NonPublic | BindingFlags.Instance)!
                 .GetValue(stack)!;
 
-        // GREEN_ON_BASE(characterization): the base already hands a context's emptied stack to the next context pushed.
+        // GREEN_ON_BASE(refactor): the base already hands a context's emptied stack to the next context pushed.
+        // The stacks now hold each value with the sequence it was pushed at, and still pass from context to context.
         [Test]
         public void Given_AContextPushedAndPopped_When_AnotherContextIsPushed_Then_ItTakesTheStackTheFirstLeft()
         {

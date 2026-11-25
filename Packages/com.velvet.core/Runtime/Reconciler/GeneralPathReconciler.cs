@@ -1491,6 +1491,7 @@ namespace Velvet
                 // Published only once the fallback has expanded: a catch on the aborting path during that
                 // expansion reconciles this boundary's rows from the tree they still hold, the failed one.
                 boundary.PreviousTree = caught.FallbackTree;
+                DetachedHost.CommitCapturesOf(boundary, caught.FallbackTree);
                 if (boundary.FallbackContentFailed)
                 {
                     // The fallback's own error went to the boundaries above and none caught it in this walk;
@@ -1643,6 +1644,7 @@ namespace Velvet
             // belongs to THIS fiber's output, not the outer caller's.
             var enclosingFiberTree = _ctx.CurrentFiberTree;
             _ctx.CurrentFiberTree = tree;
+            var enclosingFrame = _ctx.ComponentContextStack.EnterFrame(null);
             try
             {
                 var componentPosition = FiberKeying.ComponentChild(position, component.Key, nodeIndex);
@@ -1650,6 +1652,7 @@ namespace Velvet
             }
             finally
             {
+                _ctx.ComponentContextStack.ExitFrame(enclosingFrame);
                 _ctx.CurrentFiberTree = enclosingFiberTree;
                 _ctx.FiberStack.Pop();
             }
@@ -2518,6 +2521,7 @@ namespace Velvet
                 //    not re-emitted this render (their leaves are being removed), so drop them.
                 state.Committed.Clear();
                 foreach (var entry in nextCommitted) state.Committed.Add(entry);
+                state.Node = presence;
                 state.ExitComplete.Clear();
 
                 // This pass's own bookkeeping has settled — a completion queued above is staged now, so its

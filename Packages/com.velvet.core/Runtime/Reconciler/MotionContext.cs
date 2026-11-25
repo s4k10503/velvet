@@ -75,6 +75,14 @@ namespace Velvet
 
         private static bool IsOrchestration(KeyValuePair<object, object> entry)
             => ReferenceEquals(entry.Key, Orchestration);
+
+        // Left out of DetachedHostCapture.Local, which goes on over the snapshot and the spine a detached render pushes:
+        // the orchestration outlives no pass, and the enter flags are read from a snapshot rather than from where the
+        // host is now.
+        internal static bool TravelsOnlyInStamps(KeyValuePair<object, object> entry)
+            => ReferenceEquals(entry.Key, Orchestration)
+               || ReferenceEquals(entry.Key, EntersBlocked)
+               || ReferenceEquals(entry.Key, EntersWithheld);
     }
 
     // Mutable per-subtree stagger state pushed onto MotionContext.Orchestration (see its doc).

@@ -527,6 +527,10 @@ namespace Velvet
             // Fiber.IsRendering to determine the Render() context, so set it here.
             fiber.IsRendering = true;
             FiberAmbientStack.Push(fiber);
+            // An earlier render's captures still waiting name output this render replaces, so they are dropped, and a
+            // decision on this one reaches only its own.
+            fiber.CapturesAwaitingCommit?.Clear();
+            fiber.RenderUndecided = false;
             var retainedOutput = false;
 #if UNITY_EDITOR
             // Body output committed by this render, captured for the post-commit double-invoke diagnostic pass.
@@ -552,6 +556,8 @@ namespace Velvet
             // nested expansion render (SharedReconcileDepth > 0) already has the cursor populated by the
             // ongoing walk, and a root fiber (Parent == null) pushes its own Providers during its reconcile.
             var contextSpine = RebuildsContextSpine(fiber) ? FiberContextSpine.Push(fiber) : default;
+            var frameStack = fiber.Reconciler?.Context.ComponentContextStack;
+            var enclosingFrame = frameStack?.EnterFrame(null) ?? default;
             var ownedPass = OpenPass(fiber);
             try
             {
@@ -608,6 +614,7 @@ namespace Velvet
                 if (reconciler != null && !reconciler.LastTopLevelWasAborted && !fiber.FallbackReplacedPreviousTree)
                 {
                     fiber.PreviousTree = newTree;
+                    DetachedHost.CommitCapturesOf(fiber, newTree);
                     retainedOutput = true;
                     // A pass of this fiber that completes renders whatever an earlier one suspended on.
                     fiber.SuspendedOn = null;
@@ -663,6 +670,7 @@ namespace Velvet
                 // Runs after Render + Reconcile (descendants re-rendered during the expansion needed the
                 // spine as their base) and is a no-op for nested / root renders (default handle).
                 contextSpine.Unwind();
+                frameStack?.ExitFrame(enclosingFrame);
                 // A throw/suspend exits with this render's context reads still staged; drop them so
                 // the committed dependency list stays exactly as the last successful render left it
                 // (no-op on the success path, where CommitSettledHookDeps already swapped).
@@ -711,6 +719,7 @@ namespace Velvet
                 return;
             }
             fiber.PreviousTree = newTree;
+            DetachedHost.CommitCapturesOf(fiber, newTree);
             fiber.InvalidateMemoCache();
             FiberCommitWork.ParkOldTreeIfPending(fiber, reconciler, oldTree, deferReconcile: false);
             fiber.ParkedPassSuspended = reconciler.HasPendingWork;
@@ -748,11 +757,13 @@ namespace Velvet
             {
                 FiberBeginWork.CommitSettledValues(fiber);
                 context.RecordSuspenseRender(render);
+                fiber.RenderUndecided = true;
             }
             else if ((deferReconcile || ownsJournal) && context.Pass.Journal.IsOpen)
             {
                 FiberBeginWork.CommitSettledValues(fiber);
                 context.Pass.Journal.RecordHooks(render);
+                fiber.RenderUndecided = true;
             }
             else
             {

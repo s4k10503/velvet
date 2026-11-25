@@ -879,7 +879,7 @@ namespace Velvet
         /// Set on the top-level child fiber of a detached mount (a Portal's drained children, or a
         /// VirtualList's controller-rendered items). Those subtrees mount outside the normal parent-walked
         /// reconcile, so an isolated re-render's spine parent-walk cannot reach the host's enclosing
-        /// Providers. This carries the context that enclosed the detached mount so
+        /// Providers. This names the host whose captures hold the context around the detached mount, so
         /// <see cref="FiberContextSpine"/> can rebuild it directly. Null for every non-detached-top fiber.
         /// </summary>
         internal DetachedMountContext? DetachedMountContext { get; set; }
@@ -999,6 +999,14 @@ namespace Velvet
         // Whether a Motion this fiber mounts outside every presence emission withholds its mount enter: what
         // MotionContext.EntersBlocked said where the fiber was created, else its parent's answer.
         internal bool BlocksInitialEnters { get; set; }
+
+        // The captures a render of this fiber took of the detached hosts in its output ahead of FiberRenderer keeping
+        // that output; DetachedHost.CommitCapturesOf owns them.
+        internal List<DetachedHostCapture>? CapturesAwaitingCommit { get; set; }
+
+        // Whether this fiber's last render waits for a Suspense or the pass to keep or discard it
+        // (FiberRenderer.SettleHooks), until FiberHookCommit hands the decision to DetachedHost.SettleCapturesOf.
+        internal bool RenderUndecided { get; set; }
 
         /// <summary>The VNode array fixed by the previous reconcile. Serves as the "old" side for the next reconcile.</summary>
         internal VNode?[]? PreviousTree
