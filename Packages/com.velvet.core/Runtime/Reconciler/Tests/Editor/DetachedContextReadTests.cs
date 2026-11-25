@@ -404,7 +404,7 @@ namespace Velvet.Tests
         // What this pins is that a Portal's record keeps none either: give each capture a strong reference to the tree it
         // names, as captures held it before they named it weakly, and two of every five trees counted here stay alive.
         [Test]
-        public void Given_ComponentsRenderingAPortalRenderedAgainSeveralTimes_When_ACollectRuns_Then_TheirEarlierOutputTreesAreCollected()
+        public void Given_ComponentsRenderingAPortalRenderedAgainSeveralTimes_When_ACollectRuns_Then_MostOfTheirEarlierOutputTreesAreCollected()
         {
             // Arrange
             var mounts = new List<MountedTree>();
@@ -417,8 +417,7 @@ namespace Velvet.Tests
                 GC.WaitForPendingFinalizers();
                 GC.Collect();
 
-                // Assert — a stack scanned conservatively can keep a few alive, so the bound sits well under the two
-                // per owner a record holding its captures' trees keeps.
+                // Assert — well under the two per owner a record holding its captures' trees keeps.
                 Assert.That(earlier.Count(tree => tree.IsAlive), Is.LessThan(PortalOwners));
             }
             finally
