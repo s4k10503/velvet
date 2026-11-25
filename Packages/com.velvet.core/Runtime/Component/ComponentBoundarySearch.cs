@@ -64,7 +64,13 @@ namespace Velvet
         // As CaptureFromOwner, with the search starting at start rather than at the component the error belongs to; with
         // no start, the error goes to ReportUncaught.
         internal static void CaptureFrom(ComponentFiber? start, ComponentFiber owner, Exception exception)
-            => PropagateFrom(start == null || start.CaughtError == null ? start : start.Parent, owner, exception,
+            => CaptureAt(start == null || start.CaughtError == null ? start : start.Parent, owner, exception);
+
+        // CaptureFrom's search, starting at start even where start has caught. Where a boundary's swap to its fallback
+        // takes down the children it showed, React captures a deletion's error from the nearest mounted ancestor of the
+        // deleted child, which for those children is the boundary itself.
+        internal static void CaptureAt(ComponentFiber? start, ComponentFiber owner, Exception exception)
+            => PropagateFrom(start, owner, exception,
                 // MUTANT_SURVIVES(equivalent, literal): isRenderError reaches only FiberErrorBoundary.TryCatch.
                 // A search queued for the commit does not call it.
                 isRenderError: false, inCommit: true);

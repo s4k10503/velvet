@@ -34,6 +34,9 @@ namespace Velvet
         private readonly List<(VisualElement Parent, VisualElement Element, VisualElement Poolable, VisualElement? DiscardedRoot)> _cleanups = new();
         // Where the deletion's teardown runs among the pass's recorded writes: the turn of the fiber or construct that owns it.
         private TurnAnchor? _anchor;
+        // The boundary taking its children down as the deletion was decided (ReconcilePass.TakingDownRowsOf), which
+        // Teardown sets on the pass again for what it runs.
+        private ComponentFiber? _takenDownBy;
         private bool _deferred;
         private bool _queued;
         private bool _executed;
@@ -55,6 +58,7 @@ namespace Velvet
             commit._slotStart = slotStart;
             commit._occupants = occupants;
             commit._anchor = anchor;
+            commit._takenDownBy = ctx.Pass.TakingDownRowsOf;
             commit._deletion = DeletionPlan.Rent();
             return commit;
         }
@@ -184,6 +188,8 @@ namespace Velvet
             _executed = true;
             var ctx = Ctx;
             System.Runtime.ExceptionServices.ExceptionDispatchInfo? first = null;
+            var enclosingTakedown = ctx.Pass.TakingDownRowsOf;
+            ctx.Pass.TakingDownRowsOf = _takenDownBy;
             ctx.TeardownDepth++;
             try
             {
@@ -213,6 +219,7 @@ namespace Velvet
             finally
             {
                 ctx.TeardownDepth--;
+                ctx.Pass.TakingDownRowsOf = enclosingTakedown;
                 if (_walkOver) End();
             }
             first?.Throw();
@@ -473,6 +480,8 @@ namespace Velvet
             // MUTANT_SURVIVES(equivalent): Begin assigns the occupants before any read.
             _occupants = null;
             _anchor = null;
+            // MUTANT_SURVIVES(equivalent): Begin assigns it before any read; the reset only lets go of the fiber.
+            _takenDownBy = null;
             OwnOldFibers.Clear();
             NextGroup = null;
             _oldFibers = null;

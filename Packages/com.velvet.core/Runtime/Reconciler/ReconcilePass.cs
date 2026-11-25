@@ -26,7 +26,8 @@ namespace Velvet
             // The turn a FiberBegin marks, where the teardowns of the deletions that run at it are attached.
             internal TurnAnchor? Anchor;
             // The fiber whose turn a FiberEnd ends; for a RefDetach, the component whose walk queued the ref that replaces
-            // Child's.
+            // Child's; for a RemoveAt or a RemoveChild, the boundary taking its children down as it was recorded
+            // (TakingDownRowsOf).
             internal ComponentFiber? Fiber;
             // The index into Patches of a PatchPre, a PatchPost or a PatchTail.
             internal int Index;
@@ -54,6 +55,12 @@ namespace Velvet
         // The fiber whose unmount reconciles its rows away through the pass, while it does (FiberRenderer.UnmountWork):
         // ChildListWrites.FileUnderTheRun hands it a failure of a pass no wave owns.
         internal ComponentFiber? UnmountingFiber;
+
+        // The boundary whose swap to its fallback takes down the children it showed, while the swap's reconcile of them
+        // runs (FiberErrorBoundary.UnmountShownRows) and while a deletion that reconcile decided runs
+        // (DeletionCommit.Teardown). What that takedown throws is the boundary's own to catch
+        // (ChildListWrites.FileUnderTheBoundary).
+        internal ComponentFiber? TakingDownRowsOf;
 
         // The component that rendered each element created while a wave records into the pass, with the Portal whose
         // children it was created among, which a failed insert of the element is filed under in place of the root of its

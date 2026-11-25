@@ -1829,11 +1829,11 @@ namespace Velvet
         public HashSet<VisualElement> PendingZLayerRemovals { get; } = new();
 
         // Relocated elements whose placeholder was torn down while they still stood in their parent, with the
-        // element FiberElementCleaner returns to the pool for each and the root of the run that tore it down
-        // (ChildListWrites.RunRootOf); released at the end of the top-level pass for the reason PendingZLayerRemovals
-        // waits.
-        internal List<(VisualElement Real, VisualElement Poolable, ComponentFiber? Root)> PendingZLayerDeadReals { get; }
-            = new();
+        // element FiberElementCleaner returns to the pool for each, the root of the run that tore it down
+        // (ChildListWrites.RunRootOf) and the boundary taking its children down then (ReconcilePass.TakingDownRowsOf);
+        // released at the end of the top-level pass for the reason PendingZLayerRemovals waits.
+        internal List<(VisualElement Real, VisualElement Poolable, ComponentFiber? Root, ComponentFiber? TakenDownBy)>
+            PendingZLayerDeadReals { get; } = new();
 
         // Removed rows FiberElementCleaner has taken down and not yet reset: they go back to their pools once the pass's
         // recorded removals have landed, in the order the rows were taken down.

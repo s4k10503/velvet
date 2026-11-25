@@ -162,12 +162,25 @@ namespace Velvet
 
         // React reconciles a boundary's fallback against none of the children it replaces
         // (forceUnmountCurrentAndReconcile), so a component of the fallback with the type and key of one the boundary
-        // showed mounts afresh rather than keeping that one's state. PreviousTree is emptied with the rows, so that it
-        // describes what the boundary holds while the fallback mounts.
+        // showed mounts afresh rather than keeping that one's state, and it captures what deleting those children throws
+        // from the boundary, their nearest mounted ancestor (ReconcilePass.TakingDownRowsOf). A boundary that has caught
+        // shows a fallback, whose rows are not marked, since react-migration.md's error-boundary row leaves a fallback
+        // element's error to the boundary above. PreviousTree is emptied with the rows, so that it describes what the
+        // boundary holds while the fallback mounts.
         private static void UnmountShownRows(ComponentFiber fiber)
         {
             var shown = fiber.PreviousTree ?? Array.Empty<VNode>();
-            FiberCommitWork.ReconcileOwnRows(fiber, shown, Array.Empty<VNode>(), frameBudgetMs: 0);
+            var pass = fiber.Reconciler!.Context.Pass;
+            var enclosing = pass.TakingDownRowsOf;
+            pass.TakingDownRowsOf = fiber.CaughtError == null ? fiber : null;
+            try
+            {
+                FiberCommitWork.ReconcileOwnRows(fiber, shown, Array.Empty<VNode>(), frameBudgetMs: 0);
+            }
+            finally
+            {
+                pass.TakingDownRowsOf = enclosing;
+            }
             fiber.PreviousTree = Array.Empty<VNode>();
             // What the shown rows recorded against the boundary itself, for a Suspense or an AnimatePresence it
             // rendered directly, and the primaries the reconcile above reproduced for a new side to read. Inside an

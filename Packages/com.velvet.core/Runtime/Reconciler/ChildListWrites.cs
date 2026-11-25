@@ -690,6 +690,7 @@ namespace Velvet
             pass.Ops.Add(new ReconcilePass.Op
             {
                 Container = container, Caller = caller, Child = element!, Index = index, Kind = ReconcilePass.OpKind.RemoveAt,
+                Fiber = pass.TakingDownRowsOf,
             });
             Touch(container);
         }
@@ -719,7 +720,11 @@ namespace Velvet
             }
             pass.PendingParent[child] = null;
             RecordBehindApplyingRoot(pass);
-            pass.Ops.Add(new ReconcilePass.Op { Container = container, Child = child, Kind = ReconcilePass.OpKind.RemoveChild });
+            pass.Ops.Add(new ReconcilePass.Op
+            {
+                Container = container, Child = child, Kind = ReconcilePass.OpKind.RemoveChild,
+                Fiber = pass.TakingDownRowsOf,
+            });
         }
 
         // An op recorded while the ops of a wave's pass apply belongs to the root whose op is applying.
@@ -798,7 +803,7 @@ namespace Velvet
                             : null;
                         if (removed != null) NoteRemovalThrew(removed);
                         var added = op.Kind == ReconcilePass.OpKind.Insert ? op.Child : null;
-                        if (!FileFailure(pass, added, exception))
+                        if (!FileFailure(pass, added, removed != null ? op.Fiber : null, exception))
                         {
                             first ??= System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(exception);
                         }
@@ -839,12 +844,15 @@ namespace Velvet
             first?.Throw();
         }
 
-        // Files the failure of an insert of an element a wave created under the component that rendered it, for the wave
-        // to route (ReconcilePass.Failures), its search starting where React's commit starts a placement's
+        // Files the failure of a removal of a row a boundary was taking down under that boundary
+        // (FileUnderTheBoundary), that of an insert of an element a wave created under the component that rendered it,
+        // for the wave to route (ReconcilePass.Failures), its search starting where React's commit starts a placement's
         // (ComponentBoundarySearch.PlacementSearchStart), at the place the element's walk ended at, and that of any other
         // op as FileUnderTheRun files it, at the op's place.
-        private static bool FileFailure(ReconcilePass pass, VisualElement? added, Exception exception)
+        private static bool FileFailure(ReconcilePass pass, VisualElement? added, ComponentFiber? takenDownBy,
+            Exception exception)
         {
+            if (takenDownBy != null) return FileUnderTheBoundary(takenDownBy, exception);
             if (added != null)
             {
                 if (pass.Owners.TryGetValue(added, out var rendered))
@@ -873,12 +881,22 @@ namespace Velvet
             return true;
         }
 
-        // What a removal made at once threw, filed as the current pass files a failed op (FileUnderTheRun), with the element
-        // noted as one whose removal threw. False where nothing takes it, which leaves the caller to rethrow.
+        // What a takedown of the children a boundary showed throws (ReconcilePass.TakingDownRowsOf), captured from the
+        // boundary at once rather than filed for a wave to route (ReconcilePass.Failures), which nothing does outside a
+        // wave.
+        internal static bool FileUnderTheBoundary(ComponentFiber boundary, Exception exception)
+        {
+            ComponentBoundarySearch.CaptureAt(boundary, boundary, exception);
+            return true;
+        }
+
+        // What a removal made at once threw, filed as the current pass files a failed op (FileFailure), with the
+        // element noted as one whose removal threw. False where nothing takes it, which leaves the caller to rethrow.
         private static bool FileRemovalFailure(VisualElement element, Exception exception)
         {
             NoteRemovalThrew(element);
             var pass = s_current;
+            if (pass?.TakingDownRowsOf is { } boundary) return FileUnderTheBoundary(boundary, exception);
             return pass != null && FileUnderTheRun(pass, RunRootOf(pass), null, exception);
         }
 

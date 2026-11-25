@@ -309,16 +309,22 @@ namespace Velvet
             // A throw escaping here skips the rest of this element's teardown — including the ring detach whose
             // own note says skipping it strands a live band — and unwinds whichever removal loop called
             // in, so the rows it had not reached yet stay in the tree. One a component's ref throws is captured for a
-            // boundary from that component, as React's safelyDetachRef captures it; a ref no component rendered has none
-            // to start from.
+            // boundary from that component, as React's safelyDetachRef captures it, and from that component itself
+            // where it is a boundary taking its children down (ReconcilePass.TakingDownRowsOf); a ref no component
+            // rendered has none to start from.
             try
             {
                 FiberWorkLoop.RunAsMutationOrLayoutWork(installedRef.Cleanup, static cleanup => cleanup?.Invoke());
             }
             catch (System.Exception exception)
             {
-                if (installedRef.Owner != null) ComponentBoundarySearch.CaptureFromOwner(installedRef.Owner, exception);
-                else FiberLogger.LogException("FiberElementCleaner", exception);
+                var owner = installedRef.Owner;
+                if (owner == null) FiberLogger.LogException("FiberElementCleaner", exception);
+                else if (ReferenceEquals(owner, _ctx.Pass.TakingDownRowsOf))
+                {
+                    ChildListWrites.FileUnderTheBoundary(owner, exception);
+                }
+                else ComponentBoundarySearch.CaptureFromOwner(owner, exception);
             }
         }
 
@@ -840,7 +846,8 @@ namespace Velvet
             CleanupElement(real, element.panel, discardedRoot: null, plan);
             if (stillPlaced)
             {
-                _ctx.PendingZLayerDeadReals.Add((real, poolable, ChildListWrites.RunRootOf(_ctx.Pass)));
+                _ctx.PendingZLayerDeadReals.Add(
+                    (real, poolable, ChildListWrites.RunRootOf(_ctx.Pass), _ctx.Pass.TakingDownRowsOf));
                 return;
             }
             ReturnOccupantToPool(real, poolable);
@@ -848,8 +855,9 @@ namespace Velvet
 
         // Removes and pools the relocated elements CleanupZLayerPlaceholder left standing. Runs from Reconciler.FinishPass,
         // where no diff holds a physical index into their parents. A removal that throws does not stop the ones behind
-        // it; its failure is filed under the run that retired the element (ChildListWrites.FileUnderTheRun), and the
-        // first one nothing files is rethrown once every removal has run.
+        // it; its failure is filed under the run that retired the element (ChildListWrites.FileUnderTheRun), or under the
+        // boundary that was taking its children down as it did (ChildListWrites.FileUnderTheBoundary), and the first one
+        // nothing files is rethrown once every removal has run.
         internal void ReleaseRetiredZLayerReals()
         {
             if (_ctx.PendingZLayerDeadReals.Count == 0)
@@ -859,7 +867,7 @@ namespace Velvet
             var retired = _ctx.PendingZLayerDeadReals.ToArray();
             _ctx.PendingZLayerDeadReals.Clear();
             ExceptionDispatchInfo? first = null;
-            foreach (var (real, poolable, root) in retired)
+            foreach (var (real, poolable, root, takenDownBy) in retired)
             {
                 // Read ahead of ForgetRetired, which drops the note with the role.
                 var detachSent = FiberZLayerCoordinator.DetachSent(real);
@@ -874,10 +882,10 @@ namespace Velvet
                 }
                 catch (Exception exception)
                 {
-                    if (!ChildListWrites.FileUnderTheRun(_ctx.Pass, root, null, exception))
-                    {
-                        first ??= ExceptionDispatchInfo.Capture(exception);
-                    }
+                    var filed = takenDownBy != null
+                        ? ChildListWrites.FileUnderTheBoundary(takenDownBy, exception)
+                        : ChildListWrites.FileUnderTheRun(_ctx.Pass, root, null, exception);
+                    if (!filed) first ??= ExceptionDispatchInfo.Capture(exception);
                 }
                 ReturnOccupantNow(real, poolable);
             }
