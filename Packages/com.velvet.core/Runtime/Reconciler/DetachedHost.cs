@@ -25,11 +25,10 @@ namespace Velvet
         // collected is dropped at the next capture or resolve, except the latest.
         private readonly List<DetachedHostCapture> _captures = new(2);
 
-        // The latest capture named the owner's output by FiberRenderer's commit of it, or by an owner rendered inline
-        // holding it where the capture is taken, less one whose render a Suspense or an abandoned pass then discarded
-        // (DiscardCapturesOf). Resolve reads it where no capture is of a render that is the owner's now: a render
-        // committed since that did not reach the node took none. A fallback swap commits its tree elsewhere and marks
-        // none of the captures its fallback takes.
+        // The latest capture named the owner's output where that output is committed (CommitCapturesOf), or by an owner
+        // rendered inline holding it where the capture is taken, less one whose render a Suspense or an abandoned pass
+        // then discarded (DiscardCapturesOf). Resolve reads it where no capture is of a render that is the owner's now:
+        // a render committed since that did not reach the node took none.
         private DetachedHostCapture? _committed;
 
         // Tops is read only where a list's rows render outside a pass (Reconciler.BeginDetachedItemScope), so a Portal's
@@ -122,9 +121,9 @@ namespace Velvet
             _committed = capture;
         }
 
-        // Where FiberRenderer makes tree fiber's output: the latest capture of each host that names it becomes that
-        // host's committed one. A render whose output is not kept leaves its captures to that next commit, which names
-        // another tree.
+        // Where tree becomes fiber's output — FiberRenderer's commit, and a fallback swap's (FiberErrorBoundary,
+        // GeneralPathReconciler.ExpandBoundaryInline) — the latest capture of each host that names it becomes that
+        // host's committed one; a capture naming another tree stays unmarked.
         internal static void CommitCapturesOf(ComponentFiber fiber, VNode?[] tree)
         {
             if (fiber.CapturesAwaitingCommit is not { Count: > 0 } captures) return;

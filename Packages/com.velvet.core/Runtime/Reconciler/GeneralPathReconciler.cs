@@ -1491,6 +1491,7 @@ namespace Velvet
                 // Published only once the fallback has expanded: a catch on the aborting path during that
                 // expansion reconciles this boundary's rows from the tree they still hold, the failed one.
                 boundary.PreviousTree = caught.FallbackTree;
+                DetachedHost.CommitCapturesOf(boundary, caught.FallbackTree);
                 if (boundary.FallbackContentFailed)
                 {
                     // The fallback's own error went to the boundaries above and none caught it in this walk;

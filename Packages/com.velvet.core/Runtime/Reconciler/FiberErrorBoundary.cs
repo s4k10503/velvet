@@ -152,6 +152,7 @@ namespace Velvet
                 return false;
             }
             fiber.PreviousTree = fallbackTree;
+            DetachedHost.CommitCapturesOf(fiber, fallbackTree);
             fiber.FallbackReplacedPreviousTree = true;
             // FallbackContentFailed is set when a re-entrant TryCatch above declined because THIS
             // fiber's own fallback content threw (logged, or shown by a farther ancestor instead) — the
