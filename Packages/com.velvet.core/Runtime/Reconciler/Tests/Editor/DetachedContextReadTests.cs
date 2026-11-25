@@ -42,6 +42,9 @@ namespace Velvet.Tests
         private static StateUpdater<bool> s_setPortalShown;
         private static StateUpdater<string> s_setTheme;
         private static StateUpdater<string> s_setHostValue;
+        private static StateUpdater<HostTurn> s_setTurn;
+        private static ComponentFiber s_abortingHost;
+        private static bool s_fallbackShown;
         private static VisualElement s_portalTarget;
         private static VNode s_shell;
         private static VNode s_countingShell;
@@ -72,6 +75,9 @@ namespace Velvet.Tests
             s_setPortalShown = default;
             s_setTheme = default;
             s_setHostValue = default;
+            s_setTurn = default;
+            s_abortingHost = null;
+            s_fallbackShown = false;
             s_setSuspenderOwn = default;
             s_pendingRead = null;
             s_hiddenHostFiber = null;
@@ -161,6 +167,61 @@ namespace Velvet.Tests
 
             // Assert — null where no row rendered.
             Assert.That(s_reading, Is.EqualTo("second"));
+        }
+
+        [Test]
+        public void Given_AHostRenderThatAbortsAfterItPatchedTheList_When_ARowRendersAlone_Then_ItReadsTheValueTheCommittedRenderPutAroundTheList()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(AbortingHostRender, key: "host"), s_ignoringCaughtErrors);
+            RenderRange(mounted);
+            s_setTurn.Invoke(new HostTurn("second", Aborts: true, Tick: 0));
+            mounted.FlushStateForTest();
+            s_reading = null;
+
+            // Act
+            s_setReader.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert — null where the pass did not abort or the host kept a tree other than the one from before it.
+            Assert.That(HostKeptTheValue("first") ? s_reading : null, Is.EqualTo("first"));
+        }
+
+        [Test]
+        public void Given_ACommittedHostRenderThatDidNotReachTheList_When_ALaterOneChangesTheValueAroundItAndAborts_Then_ARowRenderingAloneReadsTheCommittedValue()
+        {
+            // Arrange — the first update changes only a label beside the list, which hands back the same instance.
+            using var mounted = V.Mount(_root, V.Component(AbortingHostRender, key: "host"), s_ignoringCaughtErrors);
+            RenderRange(mounted);
+            s_setTurn.Invoke(new HostTurn("first", Aborts: false, Tick: 1));
+            mounted.FlushStateForTest();
+            s_setTurn.Invoke(new HostTurn("second", Aborts: true, Tick: 1));
+            mounted.FlushStateForTest();
+            s_reading = null;
+
+            // Act
+            s_setReader.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert — null where the pass did not abort or the host kept a tree other than the one from before it.
+            Assert.That(HostKeptTheValue("first") ? s_reading : null, Is.EqualTo("first"));
+        }
+
+        [Test]
+        public void Given_AHostRenderThatSuspendsAfterItPatchedTheList_When_AScrollMountsARow_Then_TheRowReadsTheValueTheCommittedRenderPutAroundTheList()
+        {
+            // Arrange — the Suspense above the host keeps the output the host committed, hidden.
+            using var mounted = V.Mount(_root, V.Component(SuspenseOverSuspendingHostRender, key: "root"));
+            s_setHostValue.Invoke("second");
+            mounted.FlushStateForTest();
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            var notArranged = s_hiddenHostFiber is not { IsOffscreen: true } ? "the host was not hidden" : null;
+
+            // Act
+            RenderRange(mounted);
+
+            // Assert — an arrangement that fell short reads as what it missed rather than as the row's value.
+            Assert.That(notArranged ?? s_reading, Is.EqualTo("first"));
         }
 
         // GREEN_ON_BASE(characterization): the base skips the list the host hands back by instance.
@@ -402,6 +463,78 @@ namespace Velvet.Tests
         private sealed record SlicedRowProps(int Index, int Generation);
 
         private sealed record OwnerProps(int Index);
+
+        private static bool HostKeptTheValue(string value)
+            => s_fallbackShown && (s_abortingHost?.PreviousTree?[0] as ContextProviderNode<string>)?.Value == value;
+
+        // The value the host puts around the list, whether a ref cleanup beside the list fails in this render's walk,
+        // and a label's text, which changes the output without touching the list.
+        private sealed record HostTurn(string Value, bool Aborts, int Tick);
+
+        // The list comes ahead of the boundary in the walk, so it is patched before the ref cleanup fails.
+        [Component(Compiler = false)]
+        private static VNode AbortingHostRender()
+        {
+            s_abortingHost = FiberAmbientStack.Current;
+            var (turn, setTurn) = Hooks.UseState(new HostTurn("first", Aborts: false, Tick: 0));
+            s_setTurn = setTurn;
+            return V.Provider(s_theme, turn.Value, new VNode[]
+            {
+                s_shell,
+                V.Div(key: "boundary", children: new VNode[]
+                {
+                    V.Component(RefDroppingBoundary, turn.Aborts, key: "b"),
+                }),
+                V.Label(text: turn.Tick.ToString()),
+            });
+        }
+
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        private static VNode RefDroppingBoundary(bool aborts)
+        {
+            Hooks.UseFallback(_ =>
+            {
+                s_fallbackShown = true;
+                return V.Label(name: "fallback", text: "caught");
+            });
+            return V.Component(RefDroppingChild, aborts, key: "child");
+        }
+
+        // A ref removed outright is cleaned up where the patch drops it — see ReconcilerContext.SyncRefCallback.
+        [Component(Compiler = false)]
+        private static VNode RefDroppingChild(bool aborts)
+            => V.Label(text: "child", refCallback: aborts ? null : _ => () => throw new Exception(ThrowerError));
+
+        [Component(Compiler = false)]
+        private static VNode SuspenseOverSuspendingHostRender()
+            => V.Suspense(fallback: V.Label(text: "loading"), children: new VNode[]
+            {
+                V.Component(HostSuspendingAfterItsListRender, key: "host"),
+            });
+
+        // The list comes ahead of the reader in the walk, so it is patched before the read suspends.
+        [Component(Compiler = false)]
+        private static VNode HostSuspendingAfterItsListRender()
+        {
+            s_hiddenHostFiber = FiberAmbientStack.Current;
+            var (value, setValue) = Hooks.UseState("first");
+            s_setHostValue = setValue;
+            return V.Provider(s_theme, value, new VNode[]
+            {
+                s_shell,
+                V.Div(key: "after", children: new VNode[] { V.Component(PendingPastFirstRender, value, key: "read") }),
+            });
+        }
+
+        // Reads at once for the first value and is pending for any other.
+        [Component(Compiler = false)]
+        private static VNode PendingPastFirstRender(string value)
+        {
+            var read = Hooks.Use<int>(_ => value == "first"
+                ? VelvetTask.FromResult(0)
+                : (s_pendingRead = new VelvetTaskCompletionSource<int>()).Task, value);
+            return V.Label(text: "read:" + read);
+        }
 
         [Component(Compiler = false)]
         private static VNode OuterOverSuspendingMidRender()

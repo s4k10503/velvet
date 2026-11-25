@@ -11,19 +11,23 @@ namespace Velvet
     // node captures what the cursor holds around it within the frame (ComponentContextStack.EnterFrame) — the Providers
     // the owner's own output, or an enclosing host's children, put there — rather than what lies above the owner,
     // which FiberContextSpine rebuilds from committed outputs. A render of a detached child reads the capture
-    // Resolve picks, which passes over the capture of a render that was not committed while the owner holds one
-    // that was.
+    // Resolve picks, which passes over the capture of a render that was not committed.
     internal sealed class DetachedHost
     {
-        // A committed capture has to outlast the captures of the aborted or dropped renders taken after it.
+        // Bounds the captures held beside the committed one, which _committed keeps whatever this evicts.
         private const int KeptCaptures = 4;
 
         private static readonly ConditionalWeakTable<VisualElement, DetachedHost> s_ofPlaceholder = new();
 
         // A capture names its render's output weakly, so a record holds neither its owner's output tree nor a
         // Portal's children: a capture whose tree has been collected is dropped at the next capture or resolve,
-        // except the latest, which stands in where the owner committed a render that did not reach the node.
+        // except the latest.
         private readonly List<DetachedHostCapture> _captures = new(2);
+
+        // The latest capture whose tree was its owner's committed output, which Resolve reads where no capture is of a
+        // render that is the owner's now: a render committed since that did not reach the node took none, and a later
+        // one taken by a render that was not committed is passed over.
+        private DetachedHostCapture? _committed;
 
         internal DetachedHost(ComponentFiber? owner) => Owner = owner;
 
@@ -87,9 +91,26 @@ namespace Velvet
             _captures.Add(capture);
             DropDeadCaptures();
             if (_captures.Count > KeptCaptures) _captures.RemoveAt(0);
+            if (capture.EnclosingCapture != null || Owner == null) return;
+            // An owner rendered inline in a walk holds the output that walk expands before it reaches the node.
+            if (ReferenceEquals(capture.Tree, Owner.PreviousTree)) _committed = capture;
+            else (Owner.CapturesAwaitingCommit ??= new List<DetachedHostCapture>(1)).Add(capture);
         }
 
-        // The latest capture of a render that is committed now, else the latest there is.
+        // Where FiberRenderer makes tree fiber's output: the latest capture of each host that names it becomes that
+        // host's committed one. A render whose output is not kept leaves its captures to that next commit, which names
+        // another tree.
+        internal static void CommitCapturesOf(ComponentFiber fiber, VNode?[] tree)
+        {
+            if (fiber.CapturesAwaitingCommit is not { Count: > 0 } captures) return;
+            foreach (var capture in captures)
+            {
+                if (ReferenceEquals(capture.Tree, tree)) capture.Host._committed = capture;
+            }
+            captures.Clear();
+        }
+
+        // The latest capture of a render that is the owner's now, else the latest committed one, else the latest.
         internal DetachedHostCapture? Resolve()
         {
             DropDeadCaptures();
@@ -97,10 +118,11 @@ namespace Velvet
             {
                 if (IsCommitted(_captures[i])) return _captures[i];
             }
-            return _captures.Count > 0 ? _captures[_captures.Count - 1] : null;
+            return _committed ?? (_captures.Count > 0 ? _captures[_captures.Count - 1] : null);
         }
 
-        internal bool Holds(DetachedHostCapture capture) => _captures.Contains(capture);
+        internal bool Holds(DetachedHostCapture capture)
+            => ReferenceEquals(capture, _committed) || _captures.Contains(capture);
 
         // A capture whose render can no longer be committed: its tree collected, or the capture it was taken under
         // dropped by its own host. The latest is kept whatever it names.

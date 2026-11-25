@@ -610,6 +610,7 @@ namespace Velvet
                 if (reconciler != null && !reconciler.LastTopLevelWasAborted && !fiber.FallbackReplacedPreviousTree)
                 {
                     fiber.PreviousTree = newTree;
+                    DetachedHost.CommitCapturesOf(fiber, newTree);
                     retainedOutput = true;
                     // A pass of this fiber that completes renders whatever an earlier one suspended on.
                     fiber.SuspendedOn = null;
@@ -714,6 +715,7 @@ namespace Velvet
                 return;
             }
             fiber.PreviousTree = newTree;
+            DetachedHost.CommitCapturesOf(fiber, newTree);
             fiber.InvalidateMemoCache();
             FiberCommitWork.ParkOldTreeIfPending(fiber, reconciler, oldTree, deferReconcile: false);
             fiber.ParkedPassSuspended = reconciler.HasPendingWork;

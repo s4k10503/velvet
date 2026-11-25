@@ -1000,6 +1000,10 @@ namespace Velvet
         // MotionContext.EntersBlocked said where the fiber was created, else its parent's answer.
         internal bool BlocksInitialEnters { get; set; }
 
+        // The captures a render of this fiber took of the detached hosts in its output ahead of FiberRenderer keeping
+        // that output; DetachedHost.CommitCapturesOf owns them.
+        internal List<DetachedHostCapture>? CapturesAwaitingCommit { get; set; }
+
         /// <summary>The VNode array fixed by the previous reconcile. Serves as the "old" side for the next reconcile.</summary>
         internal VNode?[]? PreviousTree
         {
