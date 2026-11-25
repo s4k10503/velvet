@@ -1,4 +1,5 @@
 using System;
+using System.Reflection;
 using System.Text.RegularExpressions;
 using NUnit.Framework;
 using UnityEngine;
@@ -771,22 +772,31 @@ namespace Velvet.Tests
             => mounted.Root.Reconciler!.Context.VirtualListControllers[_mountPoint.Q<ScrollView>()]
                 .UpdateVisibleRange(scrollY: scrollY, viewportHeight: 50f * rows);
 
+        // A host's update renders the list's range again only for a viewport the list has measured, which a layout pass
+        // measures and EditMode runs none of, so the measurement is written as that pass would write it.
+        private void GiveTheListAViewport(MountedTree mounted, int rows)
+            => typeof(FiberVirtualListController)
+                .GetField("_viewportHeight", BindingFlags.NonPublic | BindingFlags.Instance)
+                ?.SetValue(mounted.Root.Reconciler!.Context.VirtualListControllers[_mountPoint.Q<ScrollView>()], 50f * rows);
+
         [Test]
         public void Given_ABoundaryBetweenTheUpdatedComponentAndTheComponentRenderingAList_When_TheUpdateDropsARowThatThrowsAsItDetaches_Then_TheBoundaryReportsIt()
         {
             // Arrange
             var log = new EventLog();
             using var mounted = Mount(log, V.Component(HandsTheListItsItems, key: "parent"));
+            GiveTheListAViewport(mounted, rows: 2);
             ShowTheListsRows(mounted, scrollY: 0f, rows: 2);
             mounted.DrainForTest();
+            var shown = _mountPoint.Q<DetachThrower>("R1") != null;
             log.Clear();
 
             // Act
             log.Setter<bool>("Shown").Invoke(false);
             RecordingWhatItThrows(mounted.GetSchedulerForTest().DrainImmediateForTest, log.Add);
 
-            // Assert
-            Assert.That(log.ToString(), Is.EqualTo("caught:C:detach:R1"));
+            // Assert — where the list never showed the row there was nothing to drop, so that reads as a sentinel
+            Assert.That(shown ? log.ToString() : "R1 was never shown", Is.EqualTo("caught:C:detach:R1"));
         }
 
         [Component(IsErrorBoundary = true, DisplayName = "C")]
