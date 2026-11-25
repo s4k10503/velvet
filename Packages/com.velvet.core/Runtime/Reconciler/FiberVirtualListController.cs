@@ -16,14 +16,12 @@ namespace Velvet
         private readonly VisualElement _visibleContainer;
         private readonly List<VisualElement?> _slotRows = new();
         private readonly IReconcilerBridge _reconciler;
-        // The fiber that rendered V.VirtualList and the live context cursor, captured so item renders (which
-        // happen outside the reconcile pass) can inherit the context enclosing the list. _enclosingContext is
-        // a snapshot of that context's top values, refreshed on each Update (both ctor and Update run
-        // mid-reconcile with a correct cursor). Both may be null when the controller is driven without a host
-        // / context (e.g. a unit test) — then item renders fall back to the prior context-less behaviour.
+        // The fiber that rendered V.VirtualList, which the rows parent under; null where no component was rendering
+        // it. DetachedHost is null only for a controller a unit test builds directly, whose rows render under no
+        // context.
         private readonly ComponentFiber? _hostFiber;
-        private readonly ComponentContextStack? _contextStack;
-        private List<KeyValuePair<object, object>>? _enclosingContext;
+        // The DetachedRow of each row, keyed by the element the buffers hold for it.
+        private readonly Dictionary<VisualElement, DetachedRow> _rows = new();
         // The Portal the list was created in, which its elements stay in for their life.
         private readonly VisualElement? _enclosingPortal;
 
@@ -71,18 +69,15 @@ namespace Velvet
             VirtualListNode node,
             IReconcilerBridge reconciler,
             ComponentFiber? hostFiber = null,
-            ComponentContextStack? contextStack = null,
+            DetachedHost? detachedHost = null,
             VisualElement? enclosingPortal = null)
         {
             _scrollView = scrollView ?? throw new ArgumentNullException(nameof(scrollView));
             _node = node ?? throw new ArgumentNullException(nameof(node));
             _reconciler = reconciler ?? throw new ArgumentNullException(nameof(reconciler));
             _hostFiber = hostFiber;
-            _contextStack = contextStack;
+            DetachedHost = detachedHost;
             _enclosingPortal = enclosingPortal;
-            // Capture the enclosing context now (the cursor is correct mid-reconcile, where CreateElement
-            // constructs this controller). The list's items render later, when the cursor is empty.
-            _enclosingContext = MotionContext.OutlivingPass(contextStack?.SnapshotTops());
 
             if (node.Name != null)
             {
@@ -119,6 +114,9 @@ namespace Velvet
             node.ListRef?.Set(_handle);
         }
 
+        // What the walks that reach the list capture around it, for the rows' renders.
+        internal DetachedHost? DetachedHost { get; }
+
         public void Update(VirtualListNode newNode)
         {
             if (_isDisposed)
@@ -134,9 +132,6 @@ namespace Velvet
             MeasureItems();
             if (_horizontal != newNode.Horizontal) FlipAxis();
             SizeSpacer();
-            // Update runs during the host's reconcile (PatchNode), so the cursor is correct here: refresh the
-            // snapshot in case the enclosing Provider / MotionContext value changed since the last render.
-            _enclosingContext = MotionContext.OutlivingPass(_contextStack?.SnapshotTops());
             ForceRefresh();
         }
 
@@ -439,10 +434,13 @@ namespace Velvet
             int newFirst, int newCount, VNode[] newNodes, string?[] newKeys, VisualElement[] newElements,
             bool outsidePass)
         {
-            // Render the items under the context that enclosed the V.VirtualList: the scope parents new item
-            // fibers under the host (so they share its context) and restores the enclosing snapshot onto the
-            // cursor for the item bodies, then stamps the new fibers for isolated-re-render reconstruction.
-            var scopeToken = _reconciler.BeginDetachedItemScope(_hostFiber, _enclosingContext, _enclosingPortal, outsidePass);
+            // Render the items under the context that encloses the V.VirtualList: the scope parents new item
+            // fibers under the host (so they share its context) and, outside a pass, puts the Providers that
+            // enclose the list onto the cursor for the item bodies, then stamps the new fibers for
+            // isolated-re-render reconstruction.
+            var scopeToken = _reconciler.BeginDetachedItemScope(_hostFiber, DetachedHost, _enclosingPortal, outsidePass);
+            // The capture the scope entered its frame under, which a row's node is noted against.
+            var under = DetachedHost?.Resolve();
             try
             {
                 for (var i = 0; i < newCount; i++)
@@ -502,8 +500,15 @@ namespace Velvet
                     }
                     var hasExisting = found.table != OldRowTable.None;
                     var existing = (node: found.node, element: found.element);
+                    DetachedRow? row = null;
                     if (hasExisting && ReconcileKeying.CanPatch(existing.node, vnode))
                     {
+                        // Ahead of the patch, which renders the components inside the row under this node.
+                        if (DetachedHost != null)
+                        {
+                            row = _rows.Remove(existing.element, out var kept) ? kept : new DetachedRow();
+                            row.Note(under, vnode);
+                        }
                         // Store the patch's RETURN: a class-driven wrap/unwrap (shadow-*/clip-path-*)
                         // swaps the slot's top-level element, and re-mounting a stale reference would
                         // strip the wrapper (or re-mount an emptied one).
@@ -511,15 +516,21 @@ namespace Velvet
                     }
                     else
                     {
+                        if (DetachedHost != null)
+                        {
+                            row = new DetachedRow();
+                            row.Note(under, vnode);
+                        }
                         // A same-key type flip (CanPatch=false) is a replacement, not a patch — mirroring
                         // the general keyed diff path's create-before-dispose ordering.
                         var replacement = _reconciler.CreateElementForController(vnode);
                         if (hasExisting)
                         {
-                            _reconciler.CleanupElementForController(existing.element);
+                            ReleaseRow(existing.element);
                         }
                         newElements[i] = replacement;
                     }
+                    if (row != null) _rows[newElements[i]] = row;
 
                     // The prior row leaves its table only once the slot holds an element, the order
                     // GeneralPathReconciler.CommitLeaf keeps for an old leaf it marks taken: a throw from the create
@@ -539,12 +550,12 @@ namespace Velvet
 
                     // Stamp this item's newly created fibers with its own vnode so an isolated re-render can
                     // rebuild a Provider the renderer placed above the item's consumer (reused items add none).
-                    _reconciler.StampDetachedItemFibers(_hostFiber, _enclosingContext, vnode, scopeToken);
+                    if (row != null) _reconciler.StampDetachedItemFibers(_hostFiber, row, vnode, scopeToken);
                 }
             }
             finally
             {
-                _reconciler.EndDetachedItemScope(_hostFiber, _enclosingContext, scopeToken);
+                _reconciler.EndDetachedItemScope(_hostFiber, scopeToken);
             }
         }
 
@@ -582,21 +593,27 @@ namespace Velvet
             => itemIndex < _node.Items.Count
                && string.Equals(_node.KeySelector(_node.Items[itemIndex]), key, StringComparison.Ordinal);
 
+        private void ReleaseRow(VisualElement element)
+        {
+            _rows.Remove(element);
+            _reconciler.CleanupElementForController(element);
+        }
+
         private void DisposeUntakenRows()
         {
             foreach (var kvp in _oldNodesByKey)
             {
-                _reconciler.CleanupElementForController(kvp.Value.element);
+                ReleaseRow(kvp.Value.element);
             }
 
             foreach (var kvp in _oldRepeatedKeyRows)
             {
-                _reconciler.CleanupElementForController(kvp.Value.element);
+                ReleaseRow(kvp.Value.element);
             }
 
             foreach (var kvp in _oldNodesByItemIndex)
             {
-                _reconciler.CleanupElementForController(kvp.Value.element);
+                ReleaseRow(kvp.Value.element);
             }
         }
 
@@ -611,7 +628,7 @@ namespace Velvet
             {
                 if (newElements[i] != null)
                 {
-                    _reconciler.CleanupElementForController(newElements[i]);
+                    ReleaseRow(newElements[i]);
                 }
             }
 
@@ -673,7 +690,7 @@ namespace Velvet
             {
                 if (_renderedElements[i] != null)
                 {
-                    _reconciler.CleanupElementForController(_renderedElements[i]);
+                    ReleaseRow(_renderedElements[i]);
                 }
             }
             ChildListWrites.Clear(_visibleContainer);

@@ -358,44 +358,6 @@ namespace Velvet
         }
     }
 
-    // Captured on the top-level child fiber of a DETACHED mount — one whose children reconcile outside the
-    // normal parent-walked reconcile, so FiberContextSpine's parent-walk cannot reach the host that carries
-    // their enclosing Providers. Two cases:
-    //   Portal — children mount in the deferred drain (DrainPendingPortalMounts), after the pass that
-    //   reconciled the declaring component's own tree has already unwound past it.
-    //   VirtualList — items mount via the controller (FiberVirtualListController) on scroll, outside any pass.
-    // EnclosingSnapshot is the top value of every context active outside the detached mount (the base the
-    // consumer reads). DescendantNodes is the committed VNode subtree to walk to recover any Provider placed
-    // directly inside the detached subtree above this fiber. Anchor is the fiber the detached mount parented
-    // the children under (the registry-lookup parent the DescendantNodes walk matches against; null when no
-    // walk is needed). The snapshot reflects mount time; a host re-render that changes the enclosing context
-    // re-runs the detached mount with a correct cursor, so this stale copy only matters for the narrow case
-    // of an isolated re-render after such a change.
-    internal sealed class DetachedMountContext
-    {
-        internal readonly List<KeyValuePair<object, object>>? EnclosingSnapshot;
-        internal readonly VNode?[]? DescendantNodes;
-        internal readonly ComponentFiber Anchor;
-        internal readonly bool RootProviderChildrenStartAtWalkRoot;
-        // The ComponentFiber that logically called V.Portal/V.WorldSpace (captured at enqueue time — see
-        // PendingPortalMounts). Null for VirtualList's detached items (no portal call site to resolve)
-        // and for a bare Reconciler.Reconcile() drain with nothing on FiberStack. Anchor is the separate
-        // question of which fiber the detached mount parented the children under, which VirtualList
-        // answers with its host and a portal drain answers with this same declaring fiber.
-        internal readonly ComponentFiber? LogicalParent;
-
-        internal DetachedMountContext(
-            List<KeyValuePair<object, object>>? enclosingSnapshot, VNode?[]? descendantNodes, ComponentFiber anchor,
-            ComponentFiber? logicalParent = null, bool rootProviderChildrenStartAtWalkRoot = false)
-        {
-            EnclosingSnapshot = MotionContext.OutlivingPass(enclosingSnapshot);
-            DescendantNodes = descendantNodes;
-            Anchor = anchor;
-            LogicalParent = logicalParent;
-            RootProviderChildrenStartAtWalkRoot = rootProviderChildrenStartAtWalkRoot;
-        }
-    }
-
     // What FiberZLayerCoordinator last arranged a parent's children into: whether its positioned children paint in the
     // band after its unpositioned ones, and whether its layout list holds a relocated child's box at another child's
     // index.

@@ -29,9 +29,9 @@ namespace Velvet
     {
         private readonly ComponentContextStack _stack;
         private readonly List<ContextProviderNode> _pushed;
-        // Keys raw-pushed from a Portal-top fiber's enclosing-context snapshot (no ContextProviderNode to
-        // pop). Always pushed before any _pushed Provider (the Portal edge is the spine's first), so per
-        // context key the raw base sits under the Providers and unwinds last.
+        // Keys raw-pushed at a detached edge (no ContextProviderNode to pop). They can sit between Providers of
+        // the same context pushed by other edges; Unwind pops every one of them, and a pop discards a top whoever
+        // pushed it, so the cursor comes back to where it was.
         private readonly List<object>? _rawPushedKeys;
         private readonly ReconcilerBufferPool _bufferPool;
 
@@ -70,10 +70,8 @@ namespace Velvet
             internal VisualElement? Container { get; init; }
 
             // The array being walked where it is Ancestor's own output, as FiberContextSpine.OwnOutput picks it for
-            // SpineChild. Null for a detached mount's captured DescendantNodes, which is
-            // stamped onto a fiber only on the drain that created it — so after the declaring body renders again
-            // that array still holds the nodes of the render that captured it, which ComponentFiber.SourceNode no
-            // longer names.
+            // SpineChild. Null at a detached edge, whose nodes are a Portal's children or a row's item node rather
+            // than the array a fiber's ComponentFiber.SourceTree is stamped from (ReconcilerContext.CurrentFiberTree).
             internal VNode?[]? OwnOutput { get; init; }
             // One instance shared by every Push, cleared at each edge. An element's children are reconciled by a
             // new walk, so PushScope starts their occurrence count over where that walk's claim does.
@@ -167,48 +165,36 @@ namespace Velvet
                 // controller-rendered items): the subtree mounted outside the parent-walked reconcile, so
                 // `ancestor`'s output hides this child behind a wrapper-emitting leaf the canonical
                 // descent skips (see the default arm of PushEnclosingProvidersForNode, which is where both
-                // kinds of host land). Rebuild from the captured snapshot instead: push the context that enclosed
-                // the detached mount as the base, then — when descendant VNodes were captured (Portal) — walk
-                // them to recover any Provider placed directly inside the subtree above this child. Deeper
-                // spine edges (this child -> target) then push the in-subtree Providers normally on top.
-                // Unwind is balanced per context key regardless of push origin (Pop discards the top), so the
-                // raw base pushes here coexist correctly with the Provider pushes the other edges add.
+                // kinds of host land). The edges above have pushed what encloses `ancestor`; on top go what the
+                // host's capture holds around the host, then the Providers inside the subtree above this child.
                 var detached = child.DetachedMountContext;
                 if (detached != null)
                 {
-                    var snapshot = detached.EnclosingSnapshot;
-                    if (snapshot != null)
+                    rawPushedKeys ??= new List<object>();
+                    PushRaw(stack, detached.EnterFlags, rawPushedKeys);
+                    var resolved = detached.Host.Resolve();
+                    resolved?.PushChain(stack, rawPushedKeys);
+                    registry.TryGetInlineKey(child, out _, out _, out var detachedScope, out var detachedContainer);
+                    var detachedWalk = new SpineWalk
                     {
-                        for (var s = 0; s < snapshot.Count; s++)
-                        {
-                            stack.PushRaw(snapshot[s].Key, snapshot[s].Value);
-                            (rawPushedKeys ??= new List<object>()).Add(snapshot[s].Key);
-                        }
-                    }
-                    if (detached.DescendantNodes is { Length: > 0 } && detached.Anchor != null)
+                        Ancestor = detached.Anchor,
+                        SpineChild = child,
+                        Stack = stack,
+                        Pushed = pushed,
+                        Registry = registry,
+                        MemoCache = memoCache,
+                        IsInlineSpineChild = true,
+                        PortalScope = detachedScope,
+                        Container = detachedContainer,
+                        OwnOutput = null,
+                        Claims = claims,
+                    };
+                    var current = detached.CurrentNodes(resolved);
+                    if (!PushDetachedDescent(current, detached, in detachedWalk)
+                        && !ReferenceEquals(current, detached.DescendantNodes))
                     {
-                        registry.TryGetInlineKey(child, out _, out _, out var detachedScope, out var detachedContainer);
-                        var detachedWalk = new SpineWalk
-                        {
-                            Ancestor = detached.Anchor,
-                            SpineChild = child,
-                            Stack = stack,
-                            Pushed = pushed,
-                            Registry = registry,
-                            MemoCache = memoCache,
-                            IsInlineSpineChild = true,
-                            PortalScope = detachedScope,
-                            Container = detachedContainer,
-                            OwnOutput = null,
-                            Claims = claims,
-                        };
-                        // A VirtualList item is one rendered node rather than a reconciled child array.
-                        PushEnclosingProviders(
-                            detached.RootProviderChildrenStartAtWalkRoot
-                                ? detached.DescendantNodes
-                                : FiberKeying.UnwrapLoneFragment(detached.DescendantNodes!),
-                            FiberKeying.WalkRoot, in detachedWalk,
-                            detached.RootProviderChildrenStartAtWalkRoot);
+                        claims.Clear();
+                        PushDetachedDescent(detached.DescendantNodes, detached, in detachedWalk);
                     }
                     continue;
                 }
@@ -243,6 +229,27 @@ namespace Velvet
         }
 
         private static readonly InlineKeyClaims s_claims = new();
+
+        private static void PushRaw(
+            ComponentContextStack stack, KeyValuePair<object, object>[] entries, List<object> pushedKeys)
+        {
+            for (var i = 0; i < entries.Length; i++)
+            {
+                stack.PushRaw(entries[i].Key, entries[i].Value);
+                pushedKeys.Add(entries[i].Key);
+            }
+        }
+
+        // Whether nodes hold the walk's spine child, with the Providers above it left pushed where they do.
+        private static bool PushDetachedDescent(VNode?[]? nodes, DetachedMountContext detached, in SpineWalk walk)
+        {
+            if (nodes is not { Length: > 0 }) return false;
+            // A VirtualList item is one rendered node rather than a reconciled child array.
+            return PushEnclosingProviders(
+                detached.RootProviderChildrenStartAtWalkRoot ? nodes : FiberKeying.UnwrapLoneFragment(nodes),
+                FiberKeying.WalkRoot, in walk,
+                detached.RootProviderChildrenStartAtWalkRoot);
+        }
 
         // Whether nothing in tree can push onto the cursor, so the walk of it would push nothing whichever child it
         // looked for. A walk visits every sibling before the one it wants, so skipping it keeps an isolated render's
@@ -307,8 +314,6 @@ namespace Velvet
                 }
                 _bufferPool.ReturnProviderNodeList(_pushed);
             }
-            // Pop the Portal snapshot base last: it was raw-pushed before every Provider, so per context key
-            // it sits at the bottom of the stack and must come off after the Providers layered above it.
             if (_rawPushedKeys != null)
             {
                 for (var i = _rawPushedKeys.Count - 1; i >= 0; i--)
@@ -403,7 +408,7 @@ namespace Velvet
                     // ancestor's output but does NOT host the spine child being searched for. A
                     // detached mount that DID host it (a Portal's drained children, a VirtualList's items)
                     // is handled before this walk — see the DetachedMountContext branch in Push, which
-                    // rebuilds the enclosing context from the captured snapshot instead of descending the
+                    // rebuilds the enclosing context from the host's capture instead of descending the
                     // host's tree. So skip it: its own subtree cannot enclose a spine child not inside it.
                     return false;
             }

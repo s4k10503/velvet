@@ -1553,13 +1553,14 @@ namespace Velvet
         // isolated re-render of them needs to rebuild their enclosing Providers, as the drain's
         // StampDrainedChildren does for a mount. Shared by every patch of a mounted Portal and WorldSpace.
         private void StampNewTopLevelChildren(
-            ComponentFiber declaringFiber, int appendedFrom, VNode?[]? descendantNodes)
+            VisualElement placeholder, ComponentFiber declaringFiber, int appendedFrom, VNode?[]? descendantNodes)
         {
             DetachedMountContext? detached = null;
             foreach (var f in declaringFiber.AppendedSince(appendedFrom))
             {
-                detached ??= new DetachedMountContext(_ctx.ComponentContextStack.SnapshotTops(),
-                    descendantNodes, declaringFiber, declaringFiber);
+                detached ??= new DetachedMountContext(
+                    DetachedHost.OfPlaceholder(placeholder, declaringFiber), row: null, descendantNodes,
+                    MotionContext.EnterFlagsOn(_ctx.ComponentContextStack), declaringFiber);
                 f.DetachedMountContext = detached;
             }
         }
@@ -1705,7 +1706,8 @@ namespace Velvet
                 }
                 if (mounted && portal.DeclaringFiber != null)
                 {
-                    StampNewTopLevelChildren(portal.DeclaringFiber, portal.ChildrenAppendedFrom, portal.StampedChildren);
+                    StampNewTopLevelChildren(
+                        placeholder, portal.DeclaringFiber, portal.ChildrenAppendedFrom, portal.StampedChildren);
                 }
             }
             finally

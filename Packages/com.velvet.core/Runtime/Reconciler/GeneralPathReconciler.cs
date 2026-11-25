@@ -1643,6 +1643,7 @@ namespace Velvet
             // belongs to THIS fiber's output, not the outer caller's.
             var enclosingFiberTree = _ctx.CurrentFiberTree;
             _ctx.CurrentFiberTree = tree;
+            var enclosingFrame = _ctx.ComponentContextStack.EnterFrame(null);
             try
             {
                 var componentPosition = FiberKeying.ComponentChild(position, component.Key, nodeIndex);
@@ -1650,6 +1651,7 @@ namespace Velvet
             }
             finally
             {
+                _ctx.ComponentContextStack.ExitFrame(enclosingFrame);
                 _ctx.CurrentFiberTree = enclosingFiberTree;
                 _ctx.FiberStack.Pop();
             }

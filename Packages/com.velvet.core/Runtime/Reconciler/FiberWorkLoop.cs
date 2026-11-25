@@ -936,6 +936,7 @@ namespace Velvet
             // it, so they go back on the cursor for the rows this slice renders, as RenderAndReconcile puts
             // them there for the slice that parked.
             var contextSpine = FiberContextSpine.Push(fiber);
+            var enclosingFrame = resumeContext.ComponentContextStack.EnterFrame(null);
             try
             {
                 using var portal = new FiberCommitWork.PortalScope(resumeContext, fiber);
@@ -959,6 +960,7 @@ namespace Velvet
             finally
             {
                 contextSpine.Unwind();
+                resumeContext.ComponentContextStack.ExitFrame(enclosingFrame);
                 resumeContext.CurrentFiberTree = enclosingFiberTree;
                 IsRenderingTransitionLane = wasRenderingTransitionLane;
                 TransitionDrainFiber = wasTransitionDrainFiber;

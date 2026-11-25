@@ -65,6 +65,8 @@ namespace Velvet
                     _patcher.HandleComponentMount(patch.Element, (ComponentNode)patch.NewNode!);
                     break;
                 case FiberNodePatcher.SelfPatchKind.VirtualList:
+                    // Ahead of the update, whose range renders rows under it.
+                    patch.VirtualList!.DetachedHost?.Capture(_ctx, null);
                     patch.VirtualList!.Update((VirtualListNode)patch.NewNode!);
                     break;
             }
@@ -141,6 +143,9 @@ namespace Velvet
             // declaring component returned, so its fiber is already current.
             var enclosingChildScope = _ctx.EnterPortalChildKeyScope(placeholder);
             _patcher.OpenPortalRange(ref patch);
+            var detachedHost = DetachedHost.OfPlaceholder(placeholder, _ctx.FiberStack.Current);
+            detachedHost.Capture(_ctx, patch.NewChildren);
+            var enclosingFrame = _ctx.ComponentContextStack.EnterFrame(detachedHost);
             var mounted = false;
             try
             {
@@ -150,6 +155,7 @@ namespace Velvet
             }
             finally
             {
+                _ctx.ComponentContextStack.ExitFrame(enclosingFrame);
                 _ctx.ExitPortalChildKeyScope(enclosingChildScope);
                 _ctx.CurrentPortalPlaceholder = enclosingPortal;
                 _patcher.ClosePortalRange(ref patch, mounted);

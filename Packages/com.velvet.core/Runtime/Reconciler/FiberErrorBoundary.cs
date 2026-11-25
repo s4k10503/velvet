@@ -101,12 +101,14 @@ namespace Velvet
             // cursor it was pushed onto rather than unwound.
             var caughtUnder = cursor.SetAside();
             _ = FiberContextSpine.Push(fiber);
+            var enclosingFrame = cursor.EnterFrame(null);
             try
             {
                 return ShowFallbackTree(fiber, new[] { fallback });
             }
             finally
             {
+                cursor.ExitFrame(enclosingFrame);
                 cursor.Restore(caughtUnder);
             }
         }

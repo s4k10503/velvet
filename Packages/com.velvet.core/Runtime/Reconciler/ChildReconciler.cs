@@ -478,6 +478,8 @@ namespace Velvet
                 // ReconcilerContext.PortalChildKeyScope owns it. Entered after the push, so the nesting
                 // it records is the one the children below reconcile at.
                 if (declaringFiber != null) _ctx.FiberStack.Push(declaringFiber);
+                var detachedHost = DetachedHost.OfPlaceholder(placeholder, logicalParent);
+                var enclosingFrame = _ctx.ComponentContextStack.EnterFrame(detachedHost);
                 var enclosingChildScope = _ctx.EnterPortalChildKeyScope(placeholder);
                 // A presence in the Portal's children expands with no emission of its enclosing presence child
                 // around it, so the child is read off where the placeholder sits.
@@ -493,13 +495,13 @@ namespace Velvet
                         slotStart: slotStart);
                     // The mount half of the structural pass FiberNodePatcher.PatchSelfPost runs for a Portal.
                     _patcher.ApplyStructuralVariants(resolvedTarget);
-                    StampDrainedChildren(drainAnchor, appendedFrom, contextSnapshot, children, logicalParent);
+                    StampDrainedChildren(drainAnchor, appendedFrom, detachedHost, children);
                 }
                 catch (FiberSuspendSignal)
                 {
                     mountSuspended = true;
                     RemoveRowsFrom(resolvedTarget, slotStart);
-                    StampDrainedChildren(drainAnchor, appendedFrom, contextSnapshot, children, logicalParent);
+                    StampDrainedChildren(drainAnchor, appendedFrom, detachedHost, children);
                 }
                 catch (Exception exception) when (FiledForTheWave(wave, declaringFiber, exception))
                 {
@@ -512,6 +514,7 @@ namespace Velvet
                     drainAnchor?.EndAppendLog();
                     _ctx.EnclosingPresenceChild = enclosingPresenceChild;
                     _ctx.ExitPortalChildKeyScope(enclosingChildScope);
+                    _ctx.ComponentContextStack.ExitFrame(enclosingFrame);
                     if (declaringFiber != null) _ctx.FiberStack.Pop();
                     _ctx.CurrentPortalPlaceholder = enclosingPortal;
                     PopContextSnapshot(contextSnapshot);
@@ -617,15 +620,15 @@ namespace Velvet
         // Stamps the fibers this drain entry just added under anchor with what an isolated re-render needs
         // to rebuild their enclosing Providers — the same read of what was appended since a mark that
         // FiberNodePatcher.StampNewTopLevelChildren applies on the patch half of the pair.
-        private static void StampDrainedChildren(
-            ComponentFiber? anchor, int appendedFrom,
-            List<KeyValuePair<object, object>>? contextSnapshot, VNode?[] children, ComponentFiber? logicalParent)
+        private void StampDrainedChildren(
+            ComponentFiber? anchor, int appendedFrom, DetachedHost detachedHost, VNode?[] children)
         {
             if (anchor == null) return;
             DetachedMountContext? detachedContext = null;
             foreach (var f in anchor.AppendedSince(appendedFrom))
             {
-                detachedContext ??= new DetachedMountContext(contextSnapshot, children, anchor, logicalParent);
+                detachedContext ??= new DetachedMountContext(
+                    detachedHost, row: null, children, MotionContext.EnterFlagsOn(_ctx.ComponentContextStack), anchor);
                 f.DetachedMountContext = detachedContext;
             }
         }

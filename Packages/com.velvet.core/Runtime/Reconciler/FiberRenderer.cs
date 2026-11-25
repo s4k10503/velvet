@@ -552,6 +552,8 @@ namespace Velvet
             // nested expansion render (SharedReconcileDepth > 0) already has the cursor populated by the
             // ongoing walk, and a root fiber (Parent == null) pushes its own Providers during its reconcile.
             var contextSpine = RebuildsContextSpine(fiber) ? FiberContextSpine.Push(fiber) : default;
+            var frameStack = fiber.Reconciler?.Context.ComponentContextStack;
+            var enclosingFrame = frameStack?.EnterFrame(null) ?? default;
             var ownedPass = OpenPass(fiber);
             try
             {
@@ -663,6 +665,7 @@ namespace Velvet
                 // Runs after Render + Reconcile (descendants re-rendered during the expansion needed the
                 // spine as their base) and is a no-op for nested / root renders (default handle).
                 contextSpine.Unwind();
+                frameStack?.ExitFrame(enclosingFrame);
                 // A throw/suspend exits with this render's context reads still staged; drop them so
                 // the committed dependency list stays exactly as the last successful render left it
                 // (no-op on the success path, where CommitSettledHookDeps already swapped).
