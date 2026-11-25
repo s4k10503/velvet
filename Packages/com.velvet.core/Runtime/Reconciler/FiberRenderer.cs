@@ -527,8 +527,8 @@ namespace Velvet
             // Fiber.IsRendering to determine the Render() context, so set it here.
             fiber.IsRendering = true;
             FiberAmbientStack.Push(fiber);
-            // What an earlier render left waiting was committed or never will be, so a decision on this one reaches
-            // only its own.
+            // An earlier render's captures still waiting name output this render replaces, so they are dropped, and a
+            // decision on this one reaches only its own.
             fiber.CapturesAwaitingCommit?.Clear();
             fiber.RenderUndecided = false;
             var retainedOutput = false;
