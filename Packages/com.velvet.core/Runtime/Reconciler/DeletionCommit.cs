@@ -23,6 +23,11 @@ namespace Velvet
         // What the walk decides, which the removals after it read (FiberElementCleaner.CleanupElement).
         private DeletionPlan _deletion = null!;
         private readonly HashSet<VisualElement> _portalsUnderRoots = new();
+        // The roots in the order they were added, which CollectHeldFibers walks, the Portals one of its rounds met, and
+        // the rows it read of one of them.
+        private readonly List<VisualElement> _rootsInOrder = new();
+        private readonly List<VisualElement> _metPortals = new();
+        private readonly List<VisualElement?> _portalRowsRead = new();
         // The rows of the Portals DetachPortals detached, each with the target it is a row of, from the first row of
         // each Portal to its last, which is the order Queue records their removals in.
         private readonly List<(VisualElement Target, VisualElement Row)> _portalRows = new();
@@ -335,39 +340,53 @@ namespace Velvet
         {
             // MUTANT_SURVIVES(equivalent, guard removed): a root collected again collects the same fibers.
             // Nothing is disposed while the roots are collected, and the new list replaces the entry where it stands.
+            // Its second walk meets only Portals the first one met, which are taken once.
             if (_deletion.Roots.ContainsKey(element)) return;
             List<ComponentFiber>? mounted = null;
             Ctx.ComponentRegistry.CollectFibersIn(element, ref mounted);
             _deletion.Roots[element] = new DeletionPlan.PlannedRoot(mounted, _cleaner.PoolableOccupantOf(element));
+            _rootsInOrder.Add(element);
         }
 
         // The fibers mounted inside the roots, and a Portal's under them: its rows, which mount on its target and
         // become roots too, reached at its placeholder (IsRoot), and its top-level children, which mount on the
-        // target among the rows. A Portal inside those rows is found by the next round.
+        // target among the rows. A Portal inside those rows is found by the next round. The Portals are met by
+        // walking the roots, so the cost is what the roots hold rather than every Portal placed, and a round takes
+        // the ones it met in the order their ranges were first recorded.
         private void CollectHeldFibers()
         {
             List<ComponentFiber>? owned = null;
-            // MUTANT_SURVIVES(equivalent, boundary): a round over an empty table reaches no placeholder and ends.
-            var reached = Ctx.PortalState.Count > 0;
-            while (reached)
+            // MUTANT_SURVIVES(equivalent, boundary): a walk over an empty table meets no placeholder.
+            if (Ctx.PortalState.Count > 0)
             {
-                reached = false;
-                foreach (var (placeholder, portal) in Ctx.PortalState)
+                for (var walked = 0; walked < _rootsInOrder.Count;)
                 {
-                    if (_portalsUnderRoots.Contains(placeholder) || !IsUnderARoot(placeholder)) continue;
-                    _portalsUnderRoots.Add(placeholder);
-                    reached = true;
-                    Ctx.ComponentRegistry.CollectInlineFibersOwnedByPortal(placeholder, ref owned);
-                    if (portal.Target == null) continue;
-                    var rows = RenderedChildrenOf(portal.Target);
-                    for (var slot = portal.SlotStart; slot < portal.SlotStart + portal.SlotLength && slot < rows.Count; slot++)
+                    for (var end = _rootsInOrder.Count; walked < end; walked++) MeetPortalsUnder(_rootsInOrder[walked]);
+                    // MUTANT_SURVIVES(equivalent, boundary): a list of one is in order already; the bound spares the
+                    // comparison its delegate for the walk of each removed element.
+                    if (_metPortals.Count > 1) _metPortals.Sort(Ctx.PortalState.Stored.ByRecordedOrder);
+                    foreach (var placeholder in _metPortals)
                     {
-                        AddRowAsRoot(rows[slot]);
+                        Ctx.ComponentRegistry.CollectInlineFibersOwnedByPortal(placeholder, ref owned);
+                        if (!Ctx.PortalState.TryGetValue(placeholder, out var portal) || portal.Target == null) continue;
+                        // By slot rather than through RenderedChildrenOf: a walk is made per removed element, and building
+                        // the target's whole list for each costs every row of every Portal sharing the target.
+                        _portalRowsRead.Clear();
+                        ChildListWrites.Rows(portal.Target, portal.SlotStart, portal.SlotStart + portal.SlotLength, _portalRowsRead);
+                        foreach (var row in _portalRowsRead) AddRowAsRoot(row!);
                     }
+                    _metPortals.Clear();
                 }
             }
             foreach (var root in _deletion.Roots.Values) AddHeld(root.Mounted);
             AddHeld(owned);
+        }
+
+        private void MeetPortalsUnder(VisualElement element)
+        {
+            if (Ctx.PortalState.ContainsKey(element) && _portalsUnderRoots.Add(element)) _metPortals.Add(element);
+            var count = ChildListWrites.HierarchyCount(element);
+            for (var i = 0; i < count; i++) MeetPortalsUnder(ChildListWrites.HierarchyChild(element, i));
         }
 
         private void AddHeld(List<ComponentFiber>? held)
@@ -483,6 +502,9 @@ namespace Velvet
             // The reset only lets the pooled instance drop the plan it pointed at.
             _deletion = null!;
             ClearAndTrim(_portalsUnderRoots);
+            ClearAndTrim(_rootsInOrder);
+            ClearAndTrim(_metPortals);
+            ClearAndTrim(_portalRowsRead);
             ClearAndTrim(_portalRows);
             ClearAndTrim(_orphans);
             ClearAndTrim(_collected);

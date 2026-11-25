@@ -33,38 +33,66 @@ namespace Velvet
         string? TargetId = null, ComponentFiber? DeclaringFiber = null,
         VisualElement? First = null, VisualElement? Last = null, bool ChildrenPending = false);
 
-    // The ranges as recorded, with the end of the last one on each target kept beside them so
-    // PortalSlotTracker.RowsBehindRanges does not read every range per question. A write that moves an end up keeps it,
-    // and one that takes the last end down, or moves its range to another target, leaves the target's end to be read
-    // again from the ranges on the next question.
+    // The ranges as recorded. Each target's ranges are listed by start, and every start is held against an offset the
+    // target keeps, so a shift of every range on a target moves the offset alone (ShiftOn), and one of the ranges
+    // behind a point writes whichever side of the point holds fewer ranges (ShiftBehind). The end of the last range on
+    // each target is kept beside them so PortalSlotTracker.RowsBehindRanges does not read every range per question. A
+    // write that moves an end up keeps it, and one that takes the last end down, or moves its range to another target,
+    // leaves the target's end to be read again from the target's ranges on the next question.
     internal sealed class PortalRangeStore : IEnumerable<KeyValuePair<VisualElement, PortalSlotInfo>>
     {
-        private sealed class TargetEnd
+        // A recorded range: Start is its SlotStart less the Offset of the target it is listed on, and Info's own
+        // SlotStart is not read.
+        internal sealed class Entry
         {
-            public bool Known;
-            public bool Any;
-            public int Last;
+            internal VisualElement Placeholder = null!;
+            internal PortalSlotInfo Info;
+            internal int Start;
+            internal TargetRanges? On;
         }
 
-        private readonly Dictionary<VisualElement, PortalSlotInfo> _map = new();
-        private readonly Dictionary<VisualElement, TargetEnd> _ends = new();
-        private readonly Dictionary<VisualElement, int> _rangesOn = new();
+        internal sealed class TargetRanges
+        {
+            internal readonly VisualElement Target;
+            internal readonly List<Entry> ByStart = new();
+            internal int Offset;
+            internal bool EndKnown;
+            internal int LastEnd;
+
+            internal TargetRanges(VisualElement target) => Target = target;
+        }
+
+        private static readonly System.Comparison<Entry> s_byStart = static (a, b) => a.Start.CompareTo(b.Start);
+
+        private readonly Dictionary<VisualElement, Entry> _map = new();
+        private readonly Dictionary<VisualElement, TargetRanges> _rangesOn = new();
         private readonly Dictionary<VisualElement, int> _growth = new();
         private readonly Dictionary<VisualElement, int> _shiftedBehindOpen = new();
         private readonly Dictionary<VisualElement, long> _recordedAt = new();
+        private readonly Stack<Entry> _spare = new();
+        private readonly List<Entry> _ties = new();
         private long _recorded;
 
         public int Count => _map.Count;
 
-        public Dictionary<VisualElement, PortalSlotInfo>.KeyCollection Keys => _map.Keys;
+        public Dictionary<VisualElement, Entry>.KeyCollection Keys => _map.Keys;
 
-        public Dictionary<VisualElement, PortalSlotInfo>.ValueCollection Values => _map.Values;
+        public ValueView Values => new(this);
 
         public bool ContainsKey(VisualElement placeholder) => _map.ContainsKey(placeholder);
 
-        public bool TryGetValue(VisualElement placeholder, out PortalSlotInfo info) => _map.TryGetValue(placeholder, out info);
+        public bool TryGetValue(VisualElement placeholder, out PortalSlotInfo info)
+        {
+            if (_map.TryGetValue(placeholder, out var entry))
+            {
+                info = Read(entry);
+                return true;
+            }
+            info = default;
+            return false;
+        }
 
-        public Dictionary<VisualElement, PortalSlotInfo>.Enumerator GetEnumerator() => _map.GetEnumerator();
+        public Enumerator GetEnumerator() => new(_map.GetEnumerator());
 
         IEnumerator<KeyValuePair<VisualElement, PortalSlotInfo>> IEnumerable<KeyValuePair<VisualElement, PortalSlotInfo>>.GetEnumerator()
             => GetEnumerator();
@@ -73,46 +101,57 @@ namespace Velvet
 
         public PortalSlotInfo this[VisualElement placeholder]
         {
-            get => _map[placeholder];
+            get => Read(_map[placeholder]);
             set
             {
-                if (_map.TryGetValue(placeholder, out var old))
+                if (_map.TryGetValue(placeholder, out var entry))
                 {
-                    Leave(old, value);
+                    var old = Read(entry);
+                    Leave(entry.On, old, value);
                     if (!ReferenceEquals(old.Target, value.Target))
                     {
-                        CountOn(old.Target, -1);
-                        CountOn(value.Target, 1);
+                        Detach(entry);
+                        Attach(entry, value.Target, value.SlotStart);
+                    }
+                    else if (old.SlotStart != value.SlotStart)
+                    {
+                        Move(entry, value.SlotStart);
                     }
                 }
                 else
                 {
-                    CountOn(value.Target, 1);
+                    entry = _spare.Count > 0 ? _spare.Pop() : new Entry();
+                    entry.Placeholder = placeholder;
+                    _map[placeholder] = entry;
                     _recordedAt[placeholder] = _recorded++;
+                    Attach(entry, value.Target, value.SlotStart);
                 }
-                _map[placeholder] = value;
-                if (value.Target != null && _ends.TryGetValue(value.Target, out var ends) && ends.Known)
+                entry.Info = value;
+                if (entry.On is { EndKnown: true } on)
                 {
                     var end = value.SlotStart + value.SlotLength;
-                    if (!ends.Any || end > ends.Last) ends.Last = end;
-                    ends.Any = true;
+                    // MUTANT_SURVIVES(equivalent, boundary): at an equal end the write leaves the end the target holds.
+                    if (end > on.LastEnd) on.LastEnd = end;
                 }
             }
         }
 
         public bool Remove(VisualElement placeholder)
         {
-            if (!_map.TryGetValue(placeholder, out var old)) return false;
-            Leave(old, default);
-            CountOn(old.Target, -1);
+            if (!_map.TryGetValue(placeholder, out var entry)) return false;
+            Leave(entry.On, Read(entry), default);
+            Detach(entry);
             _recordedAt.Remove(placeholder);
-            return _map.Remove(placeholder);
+            _map.Remove(placeholder);
+            entry.Placeholder = null!;
+            entry.Info = default;
+            _spare.Push(entry);
+            return true;
         }
 
         public void Clear()
         {
             _map.Clear();
-            _ends.Clear();
             _rangesOn.Clear();
             _growth.Clear();
             // MUTANT_SURVIVES(equivalent): the only caller is Reconciler.Dispose, and a disposed context runs no patch to
@@ -149,22 +188,10 @@ namespace Velvet
                 ? shifted
                 : throw new System.InvalidOperationException("A Portal range's shift was closed without being opened.");
 
-        private void CountOn(VisualElement? target, int by)
-        {
-            if (target == null) return;
-            var count = _rangesOn.GetValueOrDefault(target) + by;
-            if (count == 0)
-            {
-                _rangesOn.Remove(target);
-                _growth.Remove(target);
-            }
-            else _rangesOn[target] = count;
-        }
-
-        // Whether a range is still recorded on target, from the count kept per target rather than a read of every range.
+        // Whether a range is still recorded on target, from the ranges listed per target rather than a read of every range.
         internal bool HasRangeOn(VisualElement target) => _rangesOn.ContainsKey(target);
 
-        // Whether some range's target is below root, read off root's subtree against the targets counted rather than by
+        // Whether some range's target is below root, read off root's subtree against the targets listed rather than by
         // testing every range's target against root, so the answer costs what root's subtree is whatever else is
         // recorded.
         internal bool HasTargetBelow(VisualElement root)
@@ -183,33 +210,273 @@ namespace Velvet
         internal int? LastEndOn(VisualElement target)
         {
             // Most targets asked about hold no range, and answer without reading any.
-            if (!_rangesOn.ContainsKey(target)) return null;
-            if (!_ends.TryGetValue(target, out var ends)) _ends[target] = ends = new TargetEnd();
-            if (!ends.Known)
+            if (!_rangesOn.TryGetValue(target, out var on)) return null;
+            if (!on.EndKnown)
             {
-                ends.Any = false;
-                ends.Last = 0;
-                foreach (var info in _map.Values)
-                {
-                    if (!ReferenceEquals(info.Target, target)) continue;
-                    var end = info.SlotStart + info.SlotLength;
-                    if (!ends.Any || end > ends.Last) ends.Last = end;
-                    ends.Any = true;
-                }
-                ends.Known = true;
+                // A target is listed only while a range is on it, so the first entry replaces the floor.
+                on.LastEnd = int.MinValue;
+                foreach (var entry in on.ByStart) on.LastEnd = System.Math.Max(on.LastEnd, EndOf(entry, on));
+                on.EndKnown = true;
             }
-            return ends.Any ? ends.Last : null;
+            return on.LastEnd;
+        }
+
+        // Moves every range on target by delta.
+        internal void ShiftOn(VisualElement target, int delta)
+        {
+            if (!_rangesOn.TryGetValue(target, out var on)) return;
+            on.Offset += delta;
+            // Read only where EndKnown says it holds.
+            on.LastEnd += delta;
+        }
+
+        // Moves by delta the other ranges on target that lie behind the one changedPlaceholder held before its change
+        // (PortalSlotTracker.IsBehind). A range starting past the changed one's end is behind it, so the list is split
+        // there and the side holding fewer ranges is written (ShiftPast). A range starting at that end is taken out,
+        // decided by IsBehind, and put back where it then starts, and so is the changed range, which none of this moves.
+        internal void ShiftBehind(VisualElement target, VisualElement changedPlaceholder, PortalSlotInfo changed, int delta)
+        {
+            if (delta == 0 || !_rangesOn.TryGetValue(target, out var on)) return;
+            var list = on.ByStart;
+            var own = _map.TryGetValue(changedPlaceholder, out var changedEntry) && ReferenceEquals(changedEntry.On, on)
+                ? changedEntry
+                : null;
+            if (own != null) RemoveFrom(list, own);
+            var end = changed.SlotStart + changed.SlotLength - on.Offset;
+            var first = FirstAtOrPast(list, end);
+            var past = FirstPast(list, end);
+            _ties.Clear();
+            for (var i = first; i < past; i++) _ties.Add(list[i]);
+            list.RemoveRange(first, past - first);
+            var ends = ShiftEnds.None;
+            var offsetMoved = ShiftPast(on, first, delta, ref ends);
+            foreach (var tie in _ties)
+            {
+                var start = tie.Start + on.Offset - offsetMoved;
+                var isBehind = PortalSlotTracker.IsBehind(start, tie.Info.SlotLength > 0, tie.Placeholder, changedPlaceholder, changed);
+                ends.Add(start + tie.Info.SlotLength, isBehind);
+                tie.Start = start + (isBehind ? delta : 0) - on.Offset;
+                InsertInto(list, tie);
+            }
+            _ties.Clear();
+            if (own != null)
+            {
+                ends.Add(own.Start + on.Offset - offsetMoved + own.Info.SlotLength, moved: false);
+                own.Start -= offsetMoved;
+                InsertInto(list, own);
+            }
+            // MUTANT_SURVIVES(equivalent, clause removed): either clause only spares work. Where nothing moved no
+            // branch of KeepLastEnd changes the end, and where the end is unknown nothing reads what it writes.
+            if (on.EndKnown && ends.Moved) KeepLastEnd(on, ends, offsetMoved != 0, delta);
+        }
+
+        // The largest end before a shift of the ranges it moved and of the ranges it kept, as far as each side was read.
+        private struct ShiftEnds
+        {
+            internal bool Moved;
+            internal int MovedEnd;
+            internal int KeptEnd;
+
+            internal static ShiftEnds None => new() { MovedEnd = int.MinValue, KeptEnd = int.MinValue };
+
+            internal void Add(int end, bool moved)
+            {
+                if (moved)
+                {
+                    Moved = true;
+                    MovedEnd = System.Math.Max(MovedEnd, end);
+                }
+                else
+                {
+                    KeptEnd = System.Math.Max(KeptEnd, end);
+                }
+            }
+        }
+
+        // Moves by delta the ranges listed from first on, which all start past the changed range's end: directly where
+        // they are no more than the ranges ahead of them, and otherwise by moving the target's offset and writing the
+        // ranges ahead back by delta. Returns what the offset moved by.
+        private static int ShiftPast(TargetRanges on, int first, int delta, ref ShiftEnds ends)
+        {
+            var list = on.ByStart;
+            var behind = list.Count - first;
+            if (behind == 0) return 0;
+            ends.Moved = true;
+            var offsetMoved = 0;
+            // MUTANT_SURVIVES(equivalent, boundary): with as many ranges on either side, either way writes as many.
+            if (behind <= first)
+            {
+                for (var i = first; i < list.Count; i++)
+                {
+                    ends.MovedEnd = System.Math.Max(ends.MovedEnd, EndOf(list[i], on));
+                    list[i].Start += delta;
+                }
+            }
+            else
+            {
+                for (var i = 0; i < first; i++)
+                {
+                    ends.KeptEnd = System.Math.Max(ends.KeptEnd, EndOf(list[i], on));
+                    list[i].Start -= delta;
+                }
+                on.Offset += delta;
+                offsetMoved = delta;
+            }
+            // Moved down, a range behind can pass one ahead that starts inside the changed range.
+            // MUTANT_SURVIVES(equivalent, boundary): ShiftBehind returns before a delta of zero reaches this.
+            if (delta < 0 && first > 0 && list[first - 1].Start > list[first].Start) list.Sort(s_byStart);
+            return offsetMoved;
+        }
+
+        // The last end after a shift that moved a range. With the offset unmoved every moved range was read, and of the
+        // kept ones only those at the changed range's end and the changed one; with it moved every kept range was read.
+        private static void KeepLastEnd(TargetRanges on, ShiftEnds ends, bool offsetMoved, int delta)
+        {
+            if (!offsetMoved)
+            {
+                // MUTANT_SURVIVES(equivalent, boundary): ShiftBehind returns before a delta of zero reaches this.
+                if (delta > 0) on.LastEnd = System.Math.Max(on.LastEnd, ends.MovedEnd + delta);
+                else if (ends.MovedEnd >= on.LastEnd) on.EndKnown = false;
+            }
+            else if (ends.KeptEnd < on.LastEnd)
+            {
+                on.LastEnd = System.Math.Max(ends.KeptEnd, on.LastEnd + delta);
+            }
+            // MUTANT_SURVIVES(equivalent, boundary): ShiftBehind returns before a delta of zero reaches this.
+            else if (delta > 0)
+            {
+                on.EndKnown = false;
+            }
+        }
+
+        private static PortalSlotInfo Read(Entry entry)
+            => entry.Info with { SlotStart = entry.Start + (entry.On?.Offset ?? 0) };
+
+        private static int EndOf(Entry entry, TargetRanges on) => entry.Start + on.Offset + entry.Info.SlotLength;
+
+        private void Attach(Entry entry, VisualElement? target, int start)
+        {
+            if (target == null)
+            {
+                entry.On = null;
+                entry.Start = start;
+                return;
+            }
+            if (!_rangesOn.TryGetValue(target, out var on)) _rangesOn[target] = on = new TargetRanges(target);
+            entry.On = on;
+            entry.Start = start - on.Offset;
+            InsertInto(on.ByStart, entry);
+        }
+
+        // The target's growth goes with the last range on it.
+        private void Detach(Entry entry)
+        {
+            var on = entry.On;
+            if (on == null) return;
+            RemoveFrom(on.ByStart, entry);
+            entry.Start += on.Offset;
+            entry.On = null;
+            if (on.ByStart.Count > 0) return;
+            _rangesOn.Remove(on.Target);
+            _growth.Remove(on.Target);
+        }
+
+        private static void Move(Entry entry, int start)
+        {
+            var on = entry.On;
+            if (on == null)
+            {
+                entry.Start = start;
+                return;
+            }
+            RemoveFrom(on.ByStart, entry);
+            entry.Start = start - on.Offset;
+            InsertInto(on.ByStart, entry);
+        }
+
+        private static int FirstAtOrPast(List<Entry> list, int start) => Bound(list, start, past: false);
+
+        private static int FirstPast(List<Entry> list, int start) => Bound(list, start, past: true);
+
+        private static int Bound(List<Entry> list, int start, bool past)
+        {
+            var low = 0;
+            var high = list.Count;
+            while (low < high)
+            {
+                var middle = (low + high) / 2;
+                var at = list[middle].Start;
+                if (at < start || (past && at == start)) low = middle + 1;
+                else high = middle;
+            }
+            return low;
+        }
+
+        private static void InsertInto(List<Entry> list, Entry entry) => list.Insert(FirstPast(list, entry.Start), entry);
+
+        private static void RemoveFrom(List<Entry> list, Entry entry)
+        {
+            var i = FirstAtOrPast(list, entry.Start);
+            while (!ReferenceEquals(list[i], entry)) i++;
+            list.RemoveAt(i);
         }
 
         // A range leaving its old state: its target's last end no longer holds where it was that end and the new state
         // does not keep it there.
-        private void Leave(PortalSlotInfo old, PortalSlotInfo replacement)
+        private static void Leave(TargetRanges? on, PortalSlotInfo old, PortalSlotInfo replacement)
         {
-            if (old.Target == null || !_ends.TryGetValue(old.Target, out var ends) || !ends.Known) return;
+            if (on == null || !on.EndKnown) return;
             var oldEnd = old.SlotStart + old.SlotLength;
-            if (oldEnd < ends.Last) return;
+            if (oldEnd < on.LastEnd) return;
             var stays = ReferenceEquals(replacement.Target, old.Target) && replacement.SlotStart + replacement.SlotLength >= oldEnd;
-            if (!stays) ends.Known = false;
+            if (!stays) on.EndKnown = false;
+        }
+
+        internal struct Enumerator : IEnumerator<KeyValuePair<VisualElement, PortalSlotInfo>>
+        {
+            private Dictionary<VisualElement, Entry>.Enumerator _inner;
+
+            internal Enumerator(Dictionary<VisualElement, Entry>.Enumerator inner) => _inner = inner;
+
+            public KeyValuePair<VisualElement, PortalSlotInfo> Current => new(_inner.Current.Key, Read(_inner.Current.Value));
+
+            object System.Collections.IEnumerator.Current => Current;
+
+            public bool MoveNext() => _inner.MoveNext();
+
+            public void Reset() => throw new System.NotSupportedException();
+
+            public void Dispose() => _inner.Dispose();
+        }
+
+        internal readonly struct ValueView : IEnumerable<PortalSlotInfo>
+        {
+            private readonly PortalRangeStore _store;
+
+            internal ValueView(PortalRangeStore store) => _store = store;
+
+            public ValueEnumerator GetEnumerator() => new(_store);
+
+            IEnumerator<PortalSlotInfo> IEnumerable<PortalSlotInfo>.GetEnumerator() => GetEnumerator();
+
+            System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+        }
+
+        internal struct ValueEnumerator : IEnumerator<PortalSlotInfo>
+        {
+            private Enumerator _pairs;
+
+            internal ValueEnumerator(PortalRangeStore store) => _pairs = store.GetEnumerator();
+
+            public PortalSlotInfo Current => _pairs.Current.Value;
+
+            object System.Collections.IEnumerator.Current => Current;
+
+            public bool MoveNext() => _pairs.MoveNext();
+
+            public void Reset() => throw new System.NotSupportedException();
+
+            public void Dispose() => _pairs.Dispose();
         }
     }
 
@@ -225,7 +492,7 @@ namespace Velvet
 
         public int Count => _stored.Count;
 
-        public Dictionary<VisualElement, PortalSlotInfo>.KeyCollection Keys => _stored.Keys;
+        public Dictionary<VisualElement, PortalRangeStore.Entry>.KeyCollection Keys => _stored.Keys;
 
         public ValueView Values => new(this);
 
@@ -311,7 +578,7 @@ namespace Velvet
 
         internal struct Enumerator : IEnumerator<KeyValuePair<VisualElement, PortalSlotInfo>>
         {
-            private Dictionary<VisualElement, PortalSlotInfo>.Enumerator _inner;
+            private PortalRangeStore.Enumerator _inner;
 
             internal Enumerator(PortalRangeTable table) => _inner = table._stored.GetEnumerator();
 
@@ -433,13 +700,7 @@ namespace Velvet
             return startsPortal != null && PrecedesInTree(changedPlaceholder, startsPortal);
         }
 
-        // ShiftRangesBehind's list of the ranges it moves, kept between calls: nothing either of its passes calls
-        // reaches it again, and it empties the list before it returns.
-        private static readonly List<VisualElement> s_behind = new();
-
-        // Moves by delta the other ranges on target that lie behind the one changedPlaceholder held before its
-        // change. The changed entry is excluded whether or not it is still recorded. Mutate-while-iterate is
-        // avoided via a deferred 2-pass scan.
+        // PortalRangeStore.ShiftBehind owns which ranges move.
         internal static void ShiftRangesBehind(
             PortalRangeStore portalState,
             VisualElement? target,
@@ -447,23 +708,7 @@ namespace Velvet
             PortalSlotInfo changed,
             int delta)
         {
-            if (delta == 0 || target == null) return;
-            List<VisualElement>? placeholders = null;
-            foreach (var entry in portalState)
-            {
-                if (ReferenceEquals(entry.Key, changedPlaceholder)) continue;
-                if (!ReferenceEquals(entry.Value.Target, target)) continue;
-                if (!IsBehind(entry.Value.SlotStart, entry.Value.SlotLength > 0, entry.Key, changedPlaceholder, changed)) continue;
-                placeholders ??= s_behind;
-                placeholders.Add(entry.Key);
-            }
-            if (placeholders == null) return;
-            foreach (var ph in placeholders)
-            {
-                var state = portalState[ph];
-                portalState[ph] = state with { SlotStart = state.SlotStart + delta };
-            }
-            placeholders.Clear();
+            if (target != null) portalState.ShiftBehind(target, changedPlaceholder, changed, delta);
         }
 
         // The rows target holds behind the end of the last range on it, or null when no range is on target.
@@ -477,23 +722,7 @@ namespace Velvet
 
         // Moves by delta every range on target, which a change in target's own children does.
         internal static void ShiftRangesOn(PortalRangeStore portalState, VisualElement target, int delta)
-        {
-            // MUTANT_SURVIVES(equivalent): a zero delta rewrites every start it visits to its own value.
-            if (delta == 0) return;
-            List<VisualElement>? placeholders = null;
-            foreach (var entry in portalState)
-            {
-                if (!ReferenceEquals(entry.Value.Target, target)) continue;
-                placeholders ??= new List<VisualElement>();
-                placeholders.Add(entry.Key);
-            }
-            if (placeholders == null) return;
-            foreach (var ph in placeholders)
-            {
-                var state = portalState[ph];
-                portalState[ph] = state with { SlotStart = state.SlotStart + delta };
-            }
-        }
+            => portalState.ShiftOn(target, delta);
 
         // Document order between two distinct Portal placeholders, which hold no children, so neither is an
         // ancestor of the other; elements in separate trees are unordered.

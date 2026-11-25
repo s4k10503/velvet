@@ -189,6 +189,23 @@ namespace Velvet.Tests
             Assert.That(rows == null ? -1 : EntriesLeftInPooledWalks("_portalRows"), Is.EqualTo(0));
         }
 
+        [TestCase("_rootsInOrder")]
+        [TestCase("_portalRowsRead")]
+        public void Given_ADeletionOfAComponentHoldingAPortal_When_ItHasEnded_Then_NoPooledWalkKeepsWhatItsWalkOverTheRootsHeld(string field)
+        {
+            // Arrange
+            using var mounted = V.Mount(new VisualElement(), V.Component(PortalHolderHost, new Target(new VisualElement())));
+            mounted.DrainForTest();
+
+            // Act
+            s_setShown.Invoke(false);
+            mounted.DrainForTest();
+
+            // Assert — a walk with no such field reads as a count the expected one is not
+            var held = typeof(DeletionCommit).GetField(field, BindingFlags.NonPublic | BindingFlags.Instance);
+            Assert.That(held == null ? -1 : EntriesLeftInPooledWalks(field), Is.EqualTo(0));
+        }
+
         // GREEN_ON_BASE(characterization): the base returns and clears its pooled walks and plans the same way; only the helper that reads the pool moved.
         [Test]
         public void Given_ADeletionRunTwice_When_TheSecondHasEnded_Then_TheSecondReturnedTheOnePlanItRented()
