@@ -76,9 +76,9 @@ namespace Velvet
         private static bool IsOrchestration(KeyValuePair<object, object> entry)
             => ReferenceEquals(entry.Key, Orchestration);
 
-        // Left out of DetachedHostCapture.Local, which goes on top of everything else a detached render pushes: the
-        // orchestration outlives no pass, and the enter flags are read from the snapshot pushed under it, as they were
-        // where the stamped fiber or the capture was taken, rather than from where the host is now.
+        // Left out of DetachedHostCapture.Local, which goes on over the snapshot and the spine a detached render pushes:
+        // the orchestration outlives no pass, and the enter flags are read from that snapshot, as they were where the
+        // stamped fiber or the capture was taken, rather than from where the host is now.
         internal static bool TravelsOnlyInStamps(KeyValuePair<object, object> entry)
             => ReferenceEquals(entry.Key, Orchestration)
                || ReferenceEquals(entry.Key, EntersBlocked)

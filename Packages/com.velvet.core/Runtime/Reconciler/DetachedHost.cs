@@ -8,10 +8,10 @@ namespace Velvet
     // One occurrence of a node whose children mount outside the walk that reaches it: a V.VirtualList, whose
     // controller owns it, or a V.Portal / V.WorldSpace, found by its placeholder. Each walk that reaches the node
     // captures what the cursor holds around it within the frame (ComponentContextStack.EnterFrame) — the Providers
-    // the owner's own output, or an enclosing host's children, put there — and never what lies above the owner,
+    // the owner's own output, or an enclosing host's children, put there — rather than what lies above the owner,
     // which FiberContextSpine rebuilds from committed outputs. A render of a detached child reads the capture
-    // Resolve picks, so what an earlier render of the owner put there reaches no child once a later one is
-    // committed.
+    // Resolve picks, which passes over the capture of a render that was not committed while the owner holds one
+    // that was.
     internal sealed class DetachedHost
     {
         // A committed capture has to outlast the captures of the aborted or dropped renders taken after it.
@@ -143,8 +143,8 @@ namespace Velvet
         }
     }
 
-    // The item node a VirtualList row was handed by each patch, against the list's capture current at that patch, so
-    // the row's own render walks the node of the render its list resolves to.
+    // The item node a VirtualList row was created or patched with, against the list's capture current then, so the
+    // row's own render walks the node of the render its list resolves to.
     internal sealed class DetachedRow
     {
         private const int KeptNodes = 4;

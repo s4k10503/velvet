@@ -48,9 +48,9 @@ namespace Velvet
         }
 
         // Captures the current top value of every active context as an untyped snapshot. Used to carry the
-        // enclosing context of a deferred mount (a Portal's children reconcile after the main pass has unwound the
-        // cursor) so it can be restored via PushRaw/PopRaw around that deferred reconcile, which belongs to the same
-        // pass. Only the nearest (top) value per context is captured — that is all a read observes.
+        // enclosing context of a deferred mount (a Portal's children reconcile after the main pass has
+        // unwound the cursor) so it can be restored via PushRaw/PopRaw around that deferred reconcile.
+        // Only the nearest (top) value per context is captured — that is all a read observes.
         internal List<KeyValuePair<object, object>> SnapshotTops()
         {
             var snapshot = new List<KeyValuePair<object, object>>(_stacks.Count);
@@ -79,7 +79,7 @@ namespace Velvet
 
         internal ContextFrame Frame => _frame;
 
-        // Every entry the current frame pushed that is still on the cursor, each context's in the order it was pushed.
+        // Each context's entries in the order they were pushed, which DetachedHostCapture.PushChain replays.
         internal void CollectPushedInFrame(List<KeyValuePair<object, object>> into)
         {
             var since = _frame.Since;
@@ -88,7 +88,6 @@ namespace Velvet
                 var start = into.Count;
                 foreach (var pushed in entry.Value)
                 {
-                    // Enumerated from the top down, and the sequence only grows upward.
                     if (pushed.Seq < since) break;
                     into.Add(new KeyValuePair<object, object>(entry.Key, pushed.Value!));
                 }

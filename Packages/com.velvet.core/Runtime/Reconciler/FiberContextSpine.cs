@@ -29,9 +29,9 @@ namespace Velvet
     {
         private readonly ComponentContextStack _stack;
         private readonly List<ContextProviderNode> _pushed;
-        // Keys raw-pushed at a detached edge (no ContextProviderNode to pop). They can sit between Providers of
-        // the same context pushed by other edges; Unwind pops every one of them, and a pop discards a top whoever
-        // pushed it, so the cursor comes back to where it was.
+        // Keys raw-pushed from a stamp's snapshot and at a detached edge (no ContextProviderNode to pop). They can sit
+        // between Providers of the same context pushed by other edges; Unwind pops every one of them, and a pop
+        // discards a top whoever pushed it, so the cursor comes back to where it was.
         private readonly List<object>? _rawPushedKeys;
         private readonly ReconcilerBufferPool _bufferPool;
 
@@ -220,11 +220,10 @@ namespace Velvet
 
         private static readonly InlineKeyClaims s_claims = new();
 
-        // The snapshot the nearest detached stamp at or above target took where its fiber was created, under everything
-        // the edges push: what an edge rebuilds from committed outputs goes on top of it, and it answers only for a
-        // context no edge pushes — the enter flags, which nothing rebuilds, and the Providers above a fiber an edge finds
-        // no node for, such as a presence's exiting child, since PushPresenceChildren walks the children the presence is
-        // given.
+        // Goes under everything the edges push, so what an edge rebuilds from committed outputs reads as it is now and
+        // the snapshot answers for a context no edge pushes: the enter flags, which nothing rebuilds, and what lies
+        // above a fiber an edge finds no node for, such as a presence's exiting child, since PushPresenceChildren walks
+        // the children the presence is given. The nearest stamp's is the one taken last on the way down.
         private static List<object>? PushNearestStampUnderneath(ComponentFiber target, ComponentContextStack stack)
         {
             for (var f = target; f != null; f = f.Parent)

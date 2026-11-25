@@ -821,9 +821,9 @@ namespace Velvet
                     // reconciling the list has.
                     _ctx.CurrentPortalPlaceholder = enclosingPortal;
                     // Outside a pass no walk has pushed the Providers that enclose the host, so their committed values
-                    // go on first. Inside a pass, including a row's walk in a range rendered outside one, the walk
-                    // around the list has pushed them and what the host put around the list, and a spine read there
-                    // would give the committed values that walk may be replacing.
+                    // go on over the capture's snapshot. Inside a pass, including a row's walk in a range rendered
+                    // outside one, the walk around the list has pushed them and what the host put around the list,
+                    // and a spine read there would give the committed values that walk may be replacing.
                     scope.Spine = FiberContextSpine.Push(host);
                 }
                 // What the host's own output put around the list, on top of what encloses the host.
