@@ -33,6 +33,10 @@ namespace Velvet
         // output held the removed row the Portal sat in, from the first row of each Portal to its last, which is the order
         // Queue records their removals in.
         private readonly List<(VisualElement Target, VisualElement Row, ComponentFiber? Owner)> _portalRows = new();
+        // Where DetachPortals detaches a Portal, the owner of each removed row and of each row it detached, the first named
+        // for a row kept, so that finding a Portal's owner costs the elements above its placeholder rather than every row
+        // named before it.
+        private readonly Dictionary<VisualElement, ComponentFiber?> _rowOwners = new();
         private readonly HashSet<ComponentFiber> _orphans = new();
         private readonly HashSet<ComponentFiber> _collected = new();
         private readonly List<ComponentFiber> _fibers = new();
@@ -131,6 +135,11 @@ namespace Velvet
                 }
                 _deletion.Portals[placeholder] = new DeletionPlan.DetachedPortal(target, rows);
             }
+            // MUTANT_SURVIVES(equivalent, guard removed): with no Portal detached nothing looks an owner up in the table.
+            if (_deletion.Portals.Count > 0)
+            {
+                foreach (var (_, row, owner) in _removedRows) _rowOwners.TryAdd(row, owner);
+            }
             foreach (var (placeholder, detached) in _deletion.Portals)
             {
                 // The range as recorded, not as its rows place it (PortalRangeTable): the rows of the ranges removed before
@@ -140,7 +149,11 @@ namespace Velvet
                 if (portal.SlotLength > 0 && Ctx.SharedReconcileDepth > 0) Ctx.PortalTargetsToRestyle.Add(detached.Target);
                 Ctx.HostCommit.ShiftBehindPortalRange(detached.Target, placeholder, portal, -portal.SlotLength);
                 var owner = OwnerOfTheRemovedRowHolding(placeholder);
-                foreach (var row in detached.Rows) _portalRows.Add((detached.Target, row, owner));
+                foreach (var row in detached.Rows)
+                {
+                    _portalRows.Add((detached.Target, row, owner));
+                    _rowOwners.TryAdd(row, owner);
+                }
             }
         }
 
@@ -152,14 +165,7 @@ namespace Velvet
             for (VisualElement? ve = element; ve != null; ve = ChildListWrites.ParentOf(ve))
             {
                 ve = FiberZLayerCoordinator.PlaceholderOf(Ctx, ve) ?? ve;
-                foreach (var (_, row, owner) in _removedRows)
-                {
-                    if (ReferenceEquals(row, ve)) return owner;
-                }
-                foreach (var (_, row, owner) in _portalRows)
-                {
-                    if (ReferenceEquals(row, ve)) return owner;
-                }
+                if (_rowOwners.TryGetValue(ve, out var owner)) return owner;
             }
             return null;
         }
@@ -542,6 +548,7 @@ namespace Velvet
             ClearAndTrim(_metPortals);
             ClearAndTrim(_portalRowsRead);
             ClearAndTrim(_portalRows);
+            ClearAndTrim(_rowOwners);
             ClearAndTrim(_orphans);
             ClearAndTrim(_collected);
             _fibers.Clear();

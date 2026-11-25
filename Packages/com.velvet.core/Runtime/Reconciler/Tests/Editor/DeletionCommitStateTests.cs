@@ -189,6 +189,22 @@ namespace Velvet.Tests
             Assert.That(rows == null ? -1 : EntriesLeftInPooledWalks("_portalRows"), Is.EqualTo(0));
         }
 
+        [Test]
+        public void Given_ADeletionOfAComponentHoldingAPortal_When_ItHasEnded_Then_NoPooledWalkKeepsAnOwnerOfARowItDetached()
+        {
+            // Arrange
+            using var mounted = V.Mount(new VisualElement(), V.Component(PortalHolderHost, new Target(new VisualElement())));
+            mounted.DrainForTest();
+
+            // Act
+            s_setShown.Invoke(false);
+            mounted.DrainForTest();
+
+            // Assert — a walk with no such field reads as a count the expected one is not
+            var owners = typeof(DeletionCommit).GetField("_rowOwners", BindingFlags.NonPublic | BindingFlags.Instance);
+            Assert.That(owners == null ? -1 : EntriesLeftInPooledWalks("_rowOwners"), Is.EqualTo(0));
+        }
+
         [TestCase("_rootsInOrder")]
         [TestCase("_portalRowsRead")]
         public void Given_ADeletionOfAComponentHoldingAPortal_When_ItHasEnded_Then_NoPooledWalkKeepsWhatItsWalkOverTheRootsHeld(string field)
