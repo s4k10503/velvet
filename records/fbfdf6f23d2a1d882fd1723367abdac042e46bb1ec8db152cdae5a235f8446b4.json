@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "68b0075448ecaeb8c686149378f132b59ffc9487c3511caf40b75edcf906665c",
+ "killers": [],
+ "measured_by": "45513128623",
+ "mutant": {
+  "after": ";",
+  "before": "FiberWave.RefreshHasVariants(resumeContext, fiber.MountPoint);",
+  "column": 24,
+  "line": 854,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberWorkLoop.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3609e36f3f76a6af84b11b4c4b2dfe8a734c5bcc7c35d2bf093a78c20a44c54c",
+ "verdict": "survived"
+}

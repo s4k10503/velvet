@@ -1,0 +1,28 @@
+{
+ "detail": "EditMode: 1 failed: Given_FinishPass_When_ItsCallsAreRead_Then_TheRecordedWritesAreAppliedBeforeTheWritersItNames",
+ "file": "9a36d64ea97211be572afb4406c3c9116b0e3fc78437ccd1531f23a3b1a3b704",
+ "killers": [
+  {
+   "case": "Velvet.Tests.HostCommitRoutingTests.Given_FinishPass_When_ItsCallsAreRead_Then_TheRecordedWritesAreAppliedBeforeTheWritersItNames",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/HostCommitRoutingTests.cs": "dac3dc4d8f866c93da4a20c7ea479bb7a9692a6cb7c655f06b3c87e252cb97d6"
+   }
+  }
+ ],
+ "measured_by": "45513128623",
+ "mutant": {
+  "after": ";",
+  "before": "FiberZLayerCoordinator.DrainTeardowns(_ctx);",
+  "column": 28,
+  "line": 497,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/Reconciler.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3609e36f3f76a6af84b11b4c4b2dfe8a734c5bcc7c35d2bf093a78c20a44c54c",
+ "verdict": "killed"
+}

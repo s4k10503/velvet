@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "67bb8e5783a3c82a804e3b826f081e9c2f3e55696736840ea92bf7492bf3b4a7",
+ "killers": [],
+ "measured_by": "45513128623",
+ "mutant": {
+  "after": "",
+  "before": "if (fiber.IsDisposed) continue;",
+  "column": 16,
+  "line": 226,
+  "operator": "guard removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/DeletionCommit.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3609e36f3f76a6af84b11b4c4b2dfe8a734c5bcc7c35d2bf093a78c20a44c54c",
+ "verdict": "survived"
+}

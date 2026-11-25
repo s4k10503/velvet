@@ -1,0 +1,29 @@
+{
+ "detail": "EditMode: 1 failed: Given_AnImportantReaderTailwindEmitsAfterAnImportantLiteral_When_ItResolves_Then_ItsPayloadFollowsTheLiteral(\"[--w:700] !font-[300] !font-[var(--w)]\",\"!font-\",\"!font-[300]\",\"!font-[var(--w)]\")",
+ "file": "ce465686b452659a07e9ac8afa45bce3f8b72fb985afa70186f56c2322c23ffa",
+ "killers": [
+  {
+   "case": "Velvet.Tests.BoxShadowCustomPropertyTests.Given_AnImportantReaderTailwindEmitsAfterAnImportantLiteral_When_ItResolves_Then_ItsPayloadFollowsTheLiteral(\"[--w:700] !font-[300] !font-[var(--w)]\",\"!font-\",\"!font-[300]\",\"!font-[var(--w)]\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BoxShadowCustomPropertyTests.cs": "a35149c967993d8b7355c17c6536b5a77db3220d329067c9cc6a2e772829655c",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  }
+ ],
+ "measured_by": "45513128623",
+ "mutant": {
+  "after": "==",
+  "before": "!=",
+  "column": 63,
+  "line": 850,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberFontScope.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3609e36f3f76a6af84b11b4c4b2dfe8a734c5bcc7c35d2bf093a78c20a44c54c",
+ "verdict": "killed"
+}

@@ -1,0 +1,31 @@
+{
+ "detail": "EditMode: 1 failed among the 263 case(s) that ran the site: Given_a_portal_whose_last_row_is_relocated_and_holds_a_portal_into_the_same_container_When_it_unmounts_and_a_component_beside_it_renders_again_Then_the_component_patches_its_own_row",
+ "file": "e2a38e3ccad9f96447ad80f4afb6327fa45aa5680f7e8fd906411c982f155366",
+ "killers": [
+  {
+   "case": "Velvet.Tests.PortalElementTargetTests.Given_a_portal_whose_last_row_is_relocated_and_holds_a_portal_into_the_same_container_When_it_unmounts_and_a_component_beside_it_renders_again_Then_the_component_patches_its_own_row",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PortalElementTargetTests.cs": "400707d13521fc5566cab0de90871fe4a8d5223d196420377aaa60c15931fc3f",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae"
+   }
+  }
+ ],
+ "measured_by": "45513128623",
+ "mutant": {
+  "after": ";",
+  "before": "CleanupElement(child, child.panel, discardedRoot: null, plan);",
+  "column": 16,
+  "line": 749,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberElementCleaner.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3609e36f3f76a6af84b11b4c4b2dfe8a734c5bcc7c35d2bf093a78c20a44c54c",
+ "verdict": "killed"
+}

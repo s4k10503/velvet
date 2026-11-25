@@ -1,0 +1,62 @@
+{
+ "detail": "EditMode: 5 failed: Given_ACommitThatQueuesItselfAndThrowsOnEveryDrain_When_TheBoundedRunOfThrowingDrainsEnds_Then_ItsUpdateIsDroppedWithNoDrainRegistered, Given_AnImmediateDrainThatThrowsInsideATransitionTiersCallback_When_TheNextPassesRun_Then_OnlyTheTransitionItServedCommits, Given_AnImmediateDrainThatThrowsInsideATransitionTiersCallbackOnAPanel_When_TheNextPassRuns_Then_OnlyTheTransitionItServedCommits",
+ "file": "d5aa617b657d8dfcff77fc58ea5e811b2e195a6d2979afef635a29fb0e20f1a8",
+ "killers": [
+  {
+   "case": "Velvet.Tests.DrainExceptionRecoveryTests.Given_ACommitThatQueuesItselfAndThrowsOnEveryDrain_When_TheBoundedRunOfThrowingDrainsEnds_Then_ItsUpdateIsDroppedWithNoDrainRegistered",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/DrainExceptionRecoveryTests.cs": "7e04536445c82ebf523db6b3119ee7b89838784274720918effb695cb6e42339",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae"
+   }
+  },
+  {
+   "case": "Velvet.Tests.DrainExceptionRecoveryTests.Given_AnImmediateDrainThatThrowsInsideATransitionTiersCallbackOnAPanel_When_TheNextPassRuns_Then_OnlyTheTransitionItServedCommits",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/DrainExceptionRecoveryTests.cs": "7e04536445c82ebf523db6b3119ee7b89838784274720918effb695cb6e42339",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae"
+   }
+  },
+  {
+   "case": "Velvet.Tests.DrainExceptionRecoveryTests.Given_AnImmediateDrainThatThrowsInsideATransitionTiersCallback_When_TheNextPassesRun_Then_OnlyTheTransitionItServedCommits",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/DrainExceptionRecoveryTests.cs": "7e04536445c82ebf523db6b3119ee7b89838784274720918effb695cb6e42339",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae"
+   }
+  },
+  {
+   "case": "Velvet.Tests.DrainExceptionRecoveryTests.Given_AnUpdateDroppedAfterTheBoundedRunOfThrowingDrains_When_TheComponentUpdatesAgain_Then_ItCommits",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/DrainExceptionRecoveryTests.cs": "7e04536445c82ebf523db6b3119ee7b89838784274720918effb695cb6e42339",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae"
+   }
+  },
+  {
+   "case": "Velvet.Tests.DrainExceptionRecoveryTests.Given_ThrowingDrainsInterruptedByOneThatCompletes_When_ADrainThrowsAgain_Then_ItsQueuedUpdateStillHasADrainRegistered",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/DrainExceptionRecoveryTests.cs": "7e04536445c82ebf523db6b3119ee7b89838784274720918effb695cb6e42339",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae"
+   }
+  }
+ ],
+ "measured_by": "45513128623",
+ "mutant": {
+  "after": ";",
+  "before": "s_threw.Clear();",
+  "column": 16,
+  "line": 192,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberExecutionContext.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3609e36f3f76a6af84b11b4c4b2dfe8a734c5bcc7c35d2bf093a78c20a44c54c",
+ "verdict": "killed"
+}

@@ -1,0 +1,32 @@
+{
+ "detail": "EditMode: 1 failed among the 1 case(s) that ran the site: Given_TwoElementsOfOneStyleOnlyTheFirstReadingTheirVariable_When_TheirStylePassRuns_Then_TheChildOfTheSecondKeepsItsLetterSpacing",
+ "file": "3d0649a887c556aa46b6389f1a4f94fd1b5207ed7cdeae8f78184cd6cab749c7",
+ "killers": [
+  {
+   "case": "Velvet.Tests.InEventInheritedWritePanelTests.Given_TwoElementsOfOneStyleOnlyTheFirstReadingTheirVariable_When_TheirStylePassRuns_Then_TheChildOfTheSecondKeepsItsLetterSpacing",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/InEventInheritedWritePanelTests.cs": "111abfafc71b8f415198cfa8a6e0565f74cfef0c17d1418d5eb2fb7f6a2fbdb2",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "18b6b404187836003ea0db593918596c4ed3d84ab35733a088284926133a8987",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  }
+ ],
+ "measured_by": "45513128623",
+ "mutant": {
+  "after": "false",
+  "before": "true",
+  "column": 27,
+  "line": 449,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleCustomProperties.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3609e36f3f76a6af84b11b4c4b2dfe8a734c5bcc7c35d2bf093a78c20a44c54c",
+ "verdict": "killed"
+}

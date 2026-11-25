@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed among the 6 case(s) that ran the site: Given_AHasElementAboveAVirtualListMatchingARow_When_AResizeTakesTheRowsOfEmptiedItemsAway_Then_ItStopsMatching",
+ "file": "a4cac1754321f689026c2bc4a068f44cdc3980987bf2170312a7c8420d731522",
+ "killers": [
+  {
+   "case": "Velvet.Tests.VirtualListHasVariantTests.Given_AHasElementAboveAVirtualListMatchingARow_When_AResizeTakesTheRowsOfEmptiedItemsAway_Then_ItStopsMatching",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/VirtualListHasVariantTests.cs": "0f2ba04e94791ed99c039f28f55400303a0eda19638cf7267d65f4ec8a2ab02d",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae"
+   }
+  }
+ ],
+ "measured_by": "45513128623",
+ "mutant": {
+  "after": ";",
+  "before": "_reconciler.RefreshHasVariantsForController(_visibleContainer);",
+  "column": 16,
+  "line": 268,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberVirtualListController.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3609e36f3f76a6af84b11b4c4b2dfe8a734c5bcc7c35d2bf093a78c20a44c54c",
+ "verdict": "killed"
+}

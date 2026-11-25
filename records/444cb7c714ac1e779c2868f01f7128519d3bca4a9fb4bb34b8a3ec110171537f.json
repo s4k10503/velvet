@@ -1,0 +1,36 @@
+{
+ "detail": "EditMode: 2 failed among the 69 case(s) that ran the site: Given_TruncateBesideAWhiteSpaceClass_When_ATextBalanceLeafIsReconciled_Then_TheWhiteSpaceClassGivesTheCollapse(\"truncate whitespace-pre\"), Given_TruncateBesideAWhiteSpaceClass_When_ATextBalanceLeafIsReconciled_Then_TheWhiteSpaceClassGivesTheCollapse(\"whitespace-pre truncate\")",
+ "file": "679721cfb77429d6817b8a6bde3b483c82ed6fe233d323dfa85b91df64491546",
+ "killers": [
+  {
+   "case": "Velvet.Tests.StyleSheetTailwindOrderTests.Given_TruncateBesideAWhiteSpaceClass_When_ATextBalanceLeafIsReconciled_Then_TheWhiteSpaceClassGivesTheCollapse(\"truncate whitespace-pre\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/StyleSheetTailwindOrderTests.cs": "1dfd35500b140ea83de2ddc5adf80bc0a4a3de196eff5544ee5ab41c5205b56b",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  },
+  {
+   "case": "Velvet.Tests.StyleSheetTailwindOrderTests.Given_TruncateBesideAWhiteSpaceClass_When_ATextBalanceLeafIsReconciled_Then_TheWhiteSpaceClassGivesTheCollapse(\"whitespace-pre truncate\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/StyleSheetTailwindOrderTests.cs": "1dfd35500b140ea83de2ddc5adf80bc0a4a3de196eff5544ee5ab41c5205b56b",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  }
+ ],
+ "measured_by": "45513128623",
+ "mutant": {
+  "after": ";",
+  "before": "te.style.whiteSpace = whiteSpace;",
+  "column": 16,
+  "line": 674,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleTextEffectResolver.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3609e36f3f76a6af84b11b4c4b2dfe8a734c5bcc7c35d2bf093a78c20a44c54c",
+ "verdict": "killed"
+}

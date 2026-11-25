@@ -1,0 +1,38 @@
+{
+ "detail": "EditMode: 2 failed: Given_AWarmPool_When_AnUnchangedIndexedListReconciles_Then_NothingIsAllocated, Given_AWarmPool_When_AnUnchangedKeyedListReconciles_Then_NothingIsAllocated",
+ "file": "20d586d878c78d9e7c28c4a695baaa12084924ae6b021d4711b9db755e31dc02",
+ "killers": [
+  {
+   "case": "Velvet.Tests.Performance.FlatListReconcileAllocationTests.Given_AWarmPool_When_AnUnchangedIndexedListReconciles_Then_NothingIsAllocated",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/FlatListReconcileAllocationTests.cs": "ed986676b1ac13cfe4bb5e167fb6579f342b30b77bfbe6b22c10486b071e13ee",
+    "Packages/com.velvet.core/TestUtilities/GCAllocationCanary.cs": "fc61cead251d89e031e7591ac080a706d0568f2f3427cd7cda1ec3c93b965e58",
+    "Packages/com.velvet.core/TestUtilities/GCAllocationProbe.cs": "492823c099cf4f4de89da0da69c98d45cfc042070d93e2d0c0b95773310ebc2c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.Performance.FlatListReconcileAllocationTests.Given_AWarmPool_When_AnUnchangedKeyedListReconciles_Then_NothingIsAllocated",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/FlatListReconcileAllocationTests.cs": "ed986676b1ac13cfe4bb5e167fb6579f342b30b77bfbe6b22c10486b071e13ee",
+    "Packages/com.velvet.core/TestUtilities/GCAllocationCanary.cs": "fc61cead251d89e031e7591ac080a706d0568f2f3427cd7cda1ec3c93b965e58",
+    "Packages/com.velvet.core/TestUtilities/GCAllocationProbe.cs": "492823c099cf4f4de89da0da69c98d45cfc042070d93e2d0c0b95773310ebc2c"
+   }
+  }
+ ],
+ "measured_by": "45513128623",
+ "mutant": {
+  "after": ";",
+  "before": "_ctx.BufferPool.ReturnTurnList(oldTurns);",
+  "column": 16,
+  "line": 324,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ChildReconciler.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3609e36f3f76a6af84b11b4c4b2dfe8a734c5bcc7c35d2bf093a78c20a44c54c",
+ "verdict": "killed"
+}
