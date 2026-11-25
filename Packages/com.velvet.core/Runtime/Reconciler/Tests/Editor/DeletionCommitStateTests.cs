@@ -189,20 +189,64 @@ namespace Velvet.Tests
             Assert.That(rows == null ? -1 : EntriesLeftInPooledWalks("_portalRows"), Is.EqualTo(0));
         }
 
-        [Test]
-        public void Given_ADeletionOfAComponentHoldingAPortal_When_ItHasEnded_Then_NoPooledWalkKeepsAnOwnerOfARowItDetached()
+        // Keys rows by identity, counting each row it hashes.
+        private sealed class CountedOwnerKeys : IEqualityComparer<VisualElement>
         {
-            // Arrange
+            public int Hashes;
+
+            public bool Equals(VisualElement x, VisualElement y) => ReferenceEquals(x, y);
+
+            public int GetHashCode(VisualElement obj)
+            {
+                Hashes++;
+                return System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(obj);
+            }
+        }
+
+        // Has every pooled walk key the table it finds a detached Portal's owner in through keys, and returns what puts
+        // back the tables they had. A walk with no such table is left alone.
+        private static Action KeyPooledOwnerTablesThrough(IEqualityComparer<VisualElement> keys)
+        {
+            var field = typeof(DeletionCommit).GetField("_rowOwners", BindingFlags.NonPublic | BindingFlags.Instance);
+            Action restore = () => { };
+            if (field == null) return restore;
+            foreach (var walk in PooledWalks())
+            {
+                var had = field.GetValue(walk);
+                field.SetValue(walk, Activator.CreateInstance(field.FieldType, keys));
+                restore += () => field.SetValue(walk, had);
+            }
+            return restore;
+        }
+
+        [Test]
+        public void Given_ADeletionDetachingAPortalWhereThePassesWritesApply_When_ItHasEnded_Then_NoPooledWalkKeepsAnOwnerOfARowItDetached()
+        {
+            // Arrange — a first deletion leaves its walks in the pool, which then key their owner tables through keys that
+            // count, so the deletion below fills one of them only by detaching the Portal
             using var mounted = V.Mount(new VisualElement(), V.Component(PortalHolderHost, new Target(new VisualElement())));
             mounted.DrainForTest();
-
-            // Act
             s_setShown.Invoke(false);
             mounted.DrainForTest();
+            s_setShown.Invoke(true);
+            mounted.DrainForTest();
+            var keys = new CountedOwnerKeys();
+            var restore = KeyPooledOwnerTablesThrough(keys);
+            int left;
+            try
+            {
+                // Act
+                s_setShown.Invoke(false);
+                mounted.DrainForTest();
+                left = keys.Hashes > 0 ? EntriesLeftInPooledWalks("_rowOwners") : -1;
+            }
+            finally
+            {
+                restore();
+            }
 
-            // Assert — a walk with no such field reads as a count the expected one is not
-            var owners = typeof(DeletionCommit).GetField("_rowOwners", BindingFlags.NonPublic | BindingFlags.Instance);
-            Assert.That(owners == null ? -1 : EntriesLeftInPooledWalks("_rowOwners"), Is.EqualTo(0));
+            // Assert — a deletion that keyed no row into a table never filled one, which reads as a count the expected one is not
+            Assert.That(left, Is.EqualTo(0));
         }
 
         [TestCase("_rootsInOrder")]
