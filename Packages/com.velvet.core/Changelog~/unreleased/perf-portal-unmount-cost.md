@@ -5,5 +5,4 @@
   element holds a Portal target reads that element's subtree rather than every recorded range. Releasing the
   same-panel event bridge of a target reads a count kept per target rather than every range. A fiber leaves the list
   of inline fibers its Portal owns by its own node. A Suspense hide or reveal finds the Portals under the elements it
-  holds from those elements rather than from every Portal placed. Removing a Portal still shifts the ranges and the
-  fibers behind it by reading all of them, so unmounting many sibling Portals is not yet flat per Portal.
+  holds from those elements rather than from every Portal placed.

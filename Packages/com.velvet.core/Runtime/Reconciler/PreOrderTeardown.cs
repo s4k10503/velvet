@@ -20,6 +20,8 @@ namespace Velvet
         private readonly RenderedChildrenCache _rendered = new();
         private readonly HashSet<VisualElement> _visited = new();
         private readonly List<List<VisualElement>> _childrenAtDepth = new();
+        // Emptied before each goes back, one taken for each Portal whose rows a visit is reading.
+        private readonly Stack<List<VisualElement?>> _spareRows = new();
         private int _depth;
 
         private readonly List<Step> _plan = new();
@@ -221,7 +223,11 @@ namespace Velvet
         private void VisitPortalRows(VisualElement placeholder)
         {
             if (!Ctx.PortalState.TryGetValue(placeholder, out var portal)) return;
-            if (portal.Target != null)
+            if (portal.Target != null && PlansTakeDowns)
+            {
+                VisitRowsBySlot(portal.Target, portal.SlotStart, portal.SlotLength);
+            }
+            else if (portal.Target != null)
             {
                 var rows = _rendered.Of(portal.Target);
                 for (var slot = portal.SlotStart; slot < portal.SlotStart + portal.SlotLength && slot < rows.Count; slot++)
@@ -231,6 +237,18 @@ namespace Velvet
                 }
             }
             TakeDownFrom(_endingInPortal, placeholder);
+        }
+
+        // A walk that plans its take-downs writes no child list while it walks, so it can read a Portal's rows by slot
+        // where the target's whole list would cost every row of every Portal sharing the target, in a walk made for each
+        // of them (DeletionCommit.TakeDownLeaving).
+        private void VisitRowsBySlot(VisualElement target, int start, int length)
+        {
+            var rows = _spareRows.Count > 0 ? _spareRows.Pop() : new List<VisualElement?>();
+            ChildListWrites.Rows(target, start, start + length, rows);
+            foreach (var row in rows) Visit(Ctx.ZLayerPlaceholders.TryGetValue(row!, out var real) ? real : row!);
+            rows.Clear();
+            _spareRows.Push(rows);
         }
 
         // What starts at an element the walk does not descend into, a row a deletion keeps among them.
