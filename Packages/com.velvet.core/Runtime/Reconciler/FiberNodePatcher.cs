@@ -3384,12 +3384,13 @@ namespace Velvet
         // Portal target, whose children live outside regionRoot's subtree — and re-derive only the registered has-
         // elements found on those chains. This is O(depth) instead of O(registered has- elements x subtree scan), the
         // win the sweep needs under many has- elements x frequent flushes. A null regionRoot (region unknown) falls
-        // back to re-deriving every registered has- element so a stale payload is never missed. Idempotent (each evaluation reads the current subtree); no has- map
-        // is mutated by an evaluation (payloads resolve to USS classes / inline styles / stacked manipulators,
-        // not has- registrations), so walking and re-deriving in place is safe.
+        // back to re-deriving every registered has- element so a stale payload is never missed. Idempotent (each
+        // evaluation reads the current subtree); no has- map is mutated by an evaluation (payloads resolve to USS
+        // classes / inline styles / stacked manipulators, not has- registrations), so walking and re-deriving in place
+        // is safe.
         internal static void RefreshHasVariants(ReconcilerContext? ctx, VisualElement? regionRoot)
         {
-            if (ctx == null || !AnyContextHoldsHasRules())
+            if (ctx == null || s_hasContexts.Count == 0)
             {
                 return;
             }
@@ -3398,7 +3399,7 @@ namespace Velvet
             {
                 for (var i = 0; i < s_hasContexts.Count; i++)
                 {
-                    if (!s_hasContexts[i].TryGetTarget(out var holder) || !HoldsHasRules(holder)) continue;
+                    if (!s_hasContexts[i].TryGetTarget(out var holder)) continue;
                     foreach (var kv in holder.HasClassVariants)
                     {
                         EvaluateHasClass(holder, kv.Key, kv.Value);
@@ -3443,13 +3444,7 @@ namespace Velvet
                 return;
             }
             if (ctx is { IsDisposed: false }) ctx.Root?.ApplyStructuralVariantsOf(element);
-            RefreshHasVariantsAbove(element);
-        }
-
-        // The has- half of RestyleTreeAround.
-        internal static void RefreshHasVariantsAbove(VisualElement element)
-        {
-            if (AnyContextHoldsHasRules()) ReevaluateHasOnAncestorChain(element);
+            ReevaluateHasOnAncestorChain(element);
         }
 
         private static readonly HashSet<VisualElement> s_seedAncestors = new();
@@ -3460,7 +3455,6 @@ namespace Velvet
         // has- element above many seeds scans its subtree once.
         internal static void RefreshHasVariantsAbove(HashSet<VisualElement> seeds)
         {
-            if (seeds.Count == 0 || !AnyContextHoldsHasRules()) return;
             try
             {
                 foreach (var seed in seeds)
@@ -3484,10 +3478,14 @@ namespace Velvet
 
         private static void NoteHasRules(ReconcilerContext ctx)
         {
+            // MUTANT_SURVIVES(equivalent, boundary): an entry the walk never reaches is a context added again, which
+            // every walk then evaluates twice against the same tree, or a dead one, which every reader skips.
             for (var i = s_hasContexts.Count - 1; i >= 0; i--)
             {
                 if (!s_hasContexts[i].TryGetTarget(out var held))
                 {
+                    // MUTANT_SURVIVES(equivalent, line removed): every reader skips an entry TryGetTarget hands
+                    // nothing back for.
                     s_hasContexts.RemoveAt(i);
                 }
                 else if (ReferenceEquals(held, ctx))
@@ -3497,18 +3495,6 @@ namespace Velvet
             }
             s_hasContexts.Add(new WeakReference<ReconcilerContext>(ctx));
         }
-
-        private static bool AnyContextHoldsHasRules()
-        {
-            for (var i = 0; i < s_hasContexts.Count; i++)
-            {
-                if (s_hasContexts[i].TryGetTarget(out var ctx) && HoldsHasRules(ctx)) return true;
-            }
-            return false;
-        }
-
-        private static bool HoldsHasRules(ReconcilerContext ctx)
-            => !ctx.IsDisposed && (ctx.HasClassVariants.Count > 0 || ctx.HasVariantManipulators.Count > 0);
 
         // Re-derives every registered has- element on the ancestor chain from root (inclusive) up to the DOM
         // root. O(depth) O(1) lookups for each context s_hasContexts holds — see RefreshHasVariants for why only this
@@ -3525,7 +3511,7 @@ namespace Velvet
         {
             for (var i = 0; i < s_hasContexts.Count; i++)
             {
-                if (!s_hasContexts[i].TryGetTarget(out var ctx) || !HoldsHasRules(ctx)) continue;
+                if (!s_hasContexts[i].TryGetTarget(out var ctx)) continue;
                 if (ctx.HasClassVariants.TryGetValue(element, out var rules))
                 {
                     EvaluateHasClass(ctx, element, rules);

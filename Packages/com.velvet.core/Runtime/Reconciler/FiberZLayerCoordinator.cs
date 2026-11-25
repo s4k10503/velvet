@@ -91,10 +91,10 @@ namespace Velvet
         internal static bool IsInternal(VisualElement child)
             => child != null && s_held.TryGetValue(child, out var held) && held.Role is Role.Anchor or Role.Dead;
 
-        // A has- element's post-children pass runs ahead of the end of its pass, so a :has() query reads the tree the pass
-        // leaves: not what IsInternal names, a retired element waiting for ReleaseRetiredZLayerReals among them, and, as
-        // unplaced, the relocated element a placeholder holds the slot of, before that element joins the parent where
-        // the pass drains (ResolveQueuedMount).
+        // A has- element's post-children pass runs ahead of the end of its pass, so a :has() query reads the tree the
+        // pass leaves: not what IsInternal names, a retired element waiting for ReleaseRetiredZLayerReals among them,
+        // and, as unplaced, the relocated element a placeholder holds the slot of, before that element joins the parent
+        // where the pass drains (ResolveQueuedMount).
         internal static bool IsReadByHas(VisualElement child, out VisualElement? unplaced)
         {
             unplaced = null;

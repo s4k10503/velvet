@@ -8,9 +8,10 @@ namespace Velvet.Tests
     /// <summary>
     /// Specifies a <c>has-[…]:</c> element against changes to its subtree that its own post-children pass does not
     /// see: a relocated (<c>z-*</c>) descendant, which joins its parent only once its pass ends, and whose element
-    /// a removal retires until then; a Portal's children leaving the target the element holds; and a Portal from
-    /// another root, which registered none of the element's rules. Each holds once the change has rendered, as
-    /// <c>:has()</c> matches the tree as it stands after any change.
+    /// a removal retires until then; a Portal's children leaving the target the element holds, each time they leave;
+    /// and a Portal from another root, which registered none of the element's rules, as does the sweep of a root that
+    /// knows no region. Each holds once the change has rendered, as <c>:has()</c> matches the tree as it stands after
+    /// any change.
     /// </summary>
     [TestFixture]
     internal sealed class HasVariantTreeChangeTests
@@ -62,6 +63,12 @@ namespace Velvet.Tests
         private static VNode HolderTree()
             => V.Div(name: "holder", className: "has-[.on]:bg-mark", children: new VNode[] { V.Div(name: "target") });
 
+        private static void Show(MountedTree mounted, bool shown)
+        {
+            s_setShown.Invoke(shown);
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+        }
+
         [Test]
         public void Given_AHasClassElementAboveARelocatedChildCarryingTheClass_When_Mounted_Then_ItMatches()
         {
@@ -112,17 +119,34 @@ namespace Velvet.Tests
             // reaches "holder"; its Portal mounts a child carrying the class into "target".
             using var mounted = V.Mount(_root, V.Component(PortalHost, key: "root"));
             s_target = _root.Q<VisualElement>("target");
-            s_setShown.Invoke(true);
-            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            Show(mounted, true);
             var holder = _root.Q<VisualElement>("holder");
             var matchedWhileMounted = holder.ClassListContains("bg-mark");
 
             // Act
-            s_setShown.Invoke(false);
-            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            Show(mounted, false);
 
             // Assert — null where the element did not match the Portal's child.
             Assert.That(matchedWhileMounted ? holder.ClassListContains("bg-mark") : (bool?)null, Is.False);
+        }
+
+        [Test]
+        public void Given_AHasClassElementAboveAPortalTargetThatAPortalHasLeftOnce_When_ThePortalMountsAndUnmountsAgain_Then_ItStopsMatching()
+        {
+            // Arrange — as above, with the Portal unmounted once and mounted again before the change.
+            using var mounted = V.Mount(_root, V.Component(PortalHost, key: "root"));
+            s_target = _root.Q<VisualElement>("target");
+            Show(mounted, true);
+            Show(mounted, false);
+            Show(mounted, true);
+            var holder = _root.Q<VisualElement>("holder");
+            var matchedWhileMountedAgain = holder.ClassListContains("bg-mark");
+
+            // Act
+            Show(mounted, false);
+
+            // Assert — null where the element did not match the Portal's child mounted again.
+            Assert.That(matchedWhileMountedAgain ? holder.ClassListContains("bg-mark") : (bool?)null, Is.False);
         }
 
         [Test]
@@ -135,8 +159,7 @@ namespace Velvet.Tests
             using var portalling = V.Mount(_root, V.Div(children: new VNode[] { V.Component(PortalOwner, key: "owner") }));
 
             // Act
-            s_setShown.Invoke(true);
-            portalling.GetSchedulerForTest().DrainImmediateForTest();
+            Show(portalling, true);
 
             // Assert
             Assert.That(holderRoot.Q<VisualElement>("holder").ClassListContains("bg-mark"), Is.True);
@@ -155,6 +178,24 @@ namespace Velvet.Tests
             {
                 V.Portal(target, new VNode[] { V.Div(className: "on") }),
             }));
+
+            // Assert
+            Assert.That(holderRoot.Q<VisualElement>("holder").ClassListContains("bg-mark"), Is.True);
+        }
+
+        [Test]
+        public void Given_AHasClassElementInOneRoot_When_AnotherRootsSweepRunsWithNoRegion_Then_ItIsReDerived()
+        {
+            // Arrange — a child carrying the class joins "target" by a write no render made.
+            var holderRoot = new VisualElement();
+            using var holding = V.Mount(holderRoot, HolderTree());
+            var child = new VisualElement();
+            child.AddToClassList("on");
+            holderRoot.Q<VisualElement>("target").Add(child);
+            using var other = V.Mount(_root, V.Div());
+
+            // Act
+            FiberNodePatcher.RefreshHasVariants(other.Root.Reconciler.Context, regionRoot: null);
 
             // Assert
             Assert.That(holderRoot.Q<VisualElement>("holder").ClassListContains("bg-mark"), Is.True);

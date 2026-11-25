@@ -722,6 +722,8 @@ namespace Velvet
                 ReturnOccupantToPool(child, poolable);
             }
 
+            // MUTANT_SURVIVES(equivalent, boundary): a range of no rows leaves its target as it was, and re-deriving
+            // a tree no write changed leaves every match in it as it was.
             if (portalInfo.SlotLength > 0)
             {
                 FiberNodePatcher.RestyleTreeAround(_ctx, target);

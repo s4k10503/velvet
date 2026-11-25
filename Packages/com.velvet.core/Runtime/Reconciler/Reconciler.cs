@@ -509,6 +509,8 @@ namespace Velvet
             }
             finally
             {
+                // MUTANT_SURVIVES(equivalent, line removed): a seed left behind is re-derived again at the end of
+                // the next pass, which reads the tree as it stands then.
                 _ctx.TreeRestyleSeeds.Clear();
                 // Always clear the queue at top-level boundary so partially drained passes do
                 // not leak placeholders into the next reconcile; an abort raised DURING the
