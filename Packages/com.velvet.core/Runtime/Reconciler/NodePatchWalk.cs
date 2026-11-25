@@ -170,6 +170,12 @@ namespace Velvet
         {
             var oldNode = (ContextProviderNode)patch.OldNode!;
             var newNode = (ContextProviderNode)patch.NewNode!;
+            // Put back as GeneralPathReconciler puts it back around each walk. A VirtualList row's own patch reaches
+            // this with no walk around it where the fast path reconciles the whole output of the component rendering
+            // the list, or where a scroll renders the row, and the flag would otherwise outlive the pass and keep the
+            // next pass's changed Provider from starting a propagation generation of its own
+            // (FiberTreeTraversal.NotifyContextChanged).
+            var enclosingValueChanged = _ctx.ContextValueChanged;
             newNode.PushContext(_ctx.ComponentContextStack);
             try
             {
@@ -182,6 +188,7 @@ namespace Velvet
             finally
             {
                 newNode.PopContext(_ctx.ComponentContextStack);
+                _ctx.ContextValueChanged = enclosingValueChanged;
             }
         }
     }

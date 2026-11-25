@@ -57,7 +57,6 @@ namespace Velvet
             internal List<ContextProviderNode> Pushed { get; init; }
             internal ComponentRegistry Registry { get; init; }
             internal FiberMemoCache MemoCache { get; init; }
-            internal bool IsInlineSpineChild { get; init; }
             // The Portal scope and container members of SpineChild's own registration key, read back
             // from the registry rather than derived here — ComponentRegistry.TryGetInlineKey owns why.
             // Both are therefore constants of one edge rather than readings of where the descent has
@@ -148,13 +147,8 @@ namespace Velvet
             var rawPushedKeys = PushNearestStampUnderneath(target, stack);
 
             // For each spine edge (ancestor -> child), re-push the Providers in the ancestor's output
-            // that enclose `child`. The deepest ancestor encloses `target` itself.
-            //
-            // INLINE-mounted spine children match the canonical wrapper-less Component path: a
-            // ComponentNode in the ancestor's output resolves to `child` via the registry's
-            // tree-position keying. A WRAPPER-mounted spine child is hosted by a wrapper-emitting node
-            // whose container VE is the child's MountPoint; the providers enclosing that container in the
-            // ancestor's output are the ones that enclose it.
+            // that enclose `child`. The deepest ancestor encloses `target` itself: a ComponentNode in the
+            // ancestor's output resolves to `child` via the registry's tree-position keying.
             for (var i = 0; i < spine.Count; i++)
             {
                 claims.Clear();
@@ -179,7 +173,6 @@ namespace Velvet
                         Pushed = pushed,
                         Registry = registry,
                         MemoCache = memoCache,
-                        IsInlineSpineChild = true,
                         PortalScope = detachedScope,
                         Container = detachedContainer,
                         OwnOutput = null,
@@ -193,8 +186,10 @@ namespace Velvet
                 if (tree == null || tree.Length == 0) continue;
                 if (PushesNoContext(ancestor, tree)) continue;
 
-                var isInline = registry.TryGetInlineKey(child, out _, out _, out var childScope, out var childContainer);
-                if (!isInline && child.MountPoint == null) continue;
+                // A child mounted into a wrapper of its own is a VirtualList row's top
+                // (FiberNodeFactory.CreateForComponentNode), whose edge is the detached one above once the item loop
+                // has stamped it, and no node of an ancestor's output resolves to it.
+                if (!registry.TryGetInlineKey(child, out _, out _, out var childScope, out var childContainer)) continue;
 
                 var walk = new SpineWalk
                 {
@@ -204,7 +199,6 @@ namespace Velvet
                     Pushed = pushed,
                     Registry = registry,
                     MemoCache = memoCache,
-                    IsInlineSpineChild = isInline,
                     PortalScope = childScope,
                     Container = childContainer,
                     OwnOutput = tree,
@@ -335,10 +329,8 @@ namespace Velvet
         // Walks nodes (one reconcile scope of ancestor's
         // output) depth-first, pushing each Provider before descending its children. Returns true once the
         // node that hosts spineChild is reached — its enclosing Providers stay pushed
-        // (recorded in pushed). The host node is a ComponentNode resolving to
-        // spineChild for inline-mounted children, or an AnimatePresenceNode
-        // whose dynamic wrapper VE matches spineChild's MountPoint for wrapper-mounted
-        // children. Providers on a subtree that does NOT
+        // (recorded in pushed). The host node is the ComponentNode resolving to
+        // spineChild. Providers on a subtree that does NOT
         // contain the spine child are popped on the way out so only the path to spineChild
         // remains on the cursor.
         private static bool PushEnclosingProviders(
@@ -386,7 +378,7 @@ namespace Velvet
                         provider, nodeIndex, position, in walk,
                         rootProviderChildrenStartAtWalkRoot);
 
-                case ComponentNode component when walk.IsInlineSpineChild:
+                case ComponentNode component:
                     return MatchesInlineSpineChild(component, position, nodeIndex, in walk);
 
                 case MemoNode memo:

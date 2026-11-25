@@ -1,4 +1,5 @@
 #nullable enable
+using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using UnityEngine.UIElements;
@@ -19,6 +20,9 @@ namespace Velvet
 
         private static readonly ConditionalWeakTable<VisualElement, DetachedHost> s_ofPlaceholder = new();
 
+        // A capture names its render's output weakly, so a record holds neither its owner's output tree nor a
+        // Portal's children: a capture whose tree has been collected is dropped at the next capture or resolve,
+        // except the latest, which stands in where the owner committed a render that did not reach the node.
         private readonly List<DetachedHostCapture> _captures = new(2);
 
         internal DetachedHost(ComponentFiber? owner) => Owner = owner;
@@ -83,18 +87,36 @@ namespace Velvet
             {
                 if (capture.SameRenderAs(_captures[i])) _captures.RemoveAt(i);
             }
-            if (_captures.Count == KeptCaptures) _captures.RemoveAt(0);
             _captures.Add(capture);
+            DropDeadCaptures();
+            if (_captures.Count > KeptCaptures) _captures.RemoveAt(0);
         }
 
         // The latest capture of a render that is committed now, else the latest there is.
         internal DetachedHostCapture? Resolve()
         {
+            DropDeadCaptures();
             for (var i = _captures.Count - 1; i >= 0; i--)
             {
                 if (IsCommitted(_captures[i])) return _captures[i];
             }
             return _captures.Count > 0 ? _captures[_captures.Count - 1] : null;
+        }
+
+        internal bool Holds(DetachedHostCapture capture) => _captures.Contains(capture);
+
+        // A capture whose render can no longer be committed: its tree collected, or the capture it was taken under
+        // dropped by its own host. The latest is kept whatever it names.
+        private void DropDeadCaptures()
+        {
+            for (var i = _captures.Count - 2; i >= 0; i--)
+            {
+                var capture = _captures[i];
+                var dead = capture.EnclosingCapture is { } enclosing
+                    ? !enclosing.Host.Holds(enclosing)
+                    : capture.Tree == null;
+                if (dead) _captures.RemoveAt(i);
+            }
         }
 
         // The trees OwnOutput in FiberContextSpine reads an owner's output from. A capture taken inside an enclosing
@@ -117,27 +139,34 @@ namespace Velvet
     internal sealed class DetachedHostCapture
     {
         internal readonly DetachedHost Host;
-        internal readonly VNode?[]? Tree;
+        private readonly WeakReference<VNode?[]>? _tree;
+        private readonly WeakReference<VNode?[]>? _children;
         internal readonly DetachedHostCapture? EnclosingCapture;
         // Each context's entries in the order they were pushed.
         internal readonly KeyValuePair<object, object>[] Local;
         // The top value of every context where the capture was taken, less the orchestration, which a range rendered
         // under this capture pushes under everything else, as FiberContextSpine pushes a stamp's.
         internal readonly List<KeyValuePair<object, object>> Tops;
-        // A Portal's children in the render that reached it; null for a list.
-        internal readonly VNode?[]? Children;
+
 
         internal DetachedHostCapture(
             DetachedHost host, VNode?[]? tree, DetachedHostCapture? enclosingCapture,
             KeyValuePair<object, object>[] local, List<KeyValuePair<object, object>> tops, VNode?[]? children)
         {
             Host = host;
-            Tree = tree;
+            _tree = tree != null ? new WeakReference<VNode?[]>(tree) : null;
             EnclosingCapture = enclosingCapture;
             Local = local;
             Tops = tops;
-            Children = children;
+            _children = children != null ? new WeakReference<VNode?[]>(children) : null;
         }
+
+        // The owner output the walk was expanding; null once nothing else holds it, or for a capture taken under an
+        // enclosing host's.
+        internal VNode?[]? Tree => _tree != null && _tree.TryGetTarget(out var tree) ? tree : null;
+
+        // A Portal's children in the render that reached it, while that render's output is held; null for a list.
+        internal VNode?[]? Children => _children != null && _children.TryGetTarget(out var children) ? children : null;
 
         // Each key pushed goes into pushedKeys for the pop.
         internal static void PushSnapshot(
@@ -151,7 +180,8 @@ namespace Velvet
         }
 
         internal bool SameRenderAs(DetachedHostCapture other)
-            => ReferenceEquals(EnclosingCapture, other.EnclosingCapture) && ReferenceEquals(Tree, other.Tree);
+            => ReferenceEquals(EnclosingCapture, other.EnclosingCapture)
+                && (EnclosingCapture != null || Tree is { } tree && ReferenceEquals(tree, other.Tree));
 
         // Outermost first, so a nearer Provider of a context ends on top. The enclosing host is asked again rather than
         // taken as it was here: a walk of it that did not reach this host still decides what lies around it. Each key
@@ -168,30 +198,38 @@ namespace Velvet
     }
 
     // The item node a VirtualList row was created or patched with, against the list's capture current then, so the
-    // row's own render walks the node of the render its list resolves to.
+    // row's own render walks the node of the render its list resolves to. A node is kept only while the list still
+    // holds the capture it was noted against, and the latest whatever it was noted against.
     internal sealed class DetachedRow
     {
-        private const int KeptNodes = 4;
-
         private readonly List<(DetachedHostCapture? Under, VNode?[] Nodes)> _nodes = new(1);
 
-        internal void Note(DetachedHostCapture? under, VNode node)
+        internal void Note(DetachedHost list, DetachedHostCapture? under, VNode node)
         {
             for (var i = _nodes.Count - 1; i >= 0; i--)
             {
                 if (ReferenceEquals(_nodes[i].Under, under)) _nodes.RemoveAt(i);
             }
-            if (_nodes.Count == KeptNodes) _nodes.RemoveAt(0);
             _nodes.Add((under, new[] { node }));
+            DropNodesOfDeadCaptures(list);
         }
 
-        internal VNode?[]? NodesUnder(DetachedHostCapture? under)
+        internal VNode?[]? NodesUnder(DetachedHost list, DetachedHostCapture? under)
         {
+            DropNodesOfDeadCaptures(list);
             for (var i = _nodes.Count - 1; i >= 0; i--)
             {
                 if (ReferenceEquals(_nodes[i].Under, under)) return _nodes[i].Nodes;
             }
             return _nodes.Count > 0 ? _nodes[_nodes.Count - 1].Nodes : null;
+        }
+
+        private void DropNodesOfDeadCaptures(DetachedHost list)
+        {
+            for (var i = _nodes.Count - 2; i >= 0; i--)
+            {
+                if (_nodes[i].Under is not { } under || !list.Holds(under)) _nodes.RemoveAt(i);
+            }
         }
     }
 
@@ -226,6 +264,6 @@ namespace Velvet
         }
 
         internal VNode?[]? CurrentNodes(DetachedHostCapture? resolved)
-            => Row != null ? Row.NodesUnder(resolved) ?? DescendantNodes : resolved?.Children ?? DescendantNodes;
+            => Row != null ? Row.NodesUnder(Host, resolved) ?? DescendantNodes : resolved?.Children ?? DescendantNodes;
     }
 }

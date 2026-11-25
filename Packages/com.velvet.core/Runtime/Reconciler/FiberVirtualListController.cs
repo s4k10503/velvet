@@ -507,7 +507,7 @@ namespace Velvet
                         if (DetachedHost != null)
                         {
                             row = _rows.Remove(existing.element, out var kept) ? kept : new DetachedRow();
-                            row.Note(under, vnode);
+                            row.Note(DetachedHost, under, vnode);
                         }
                         // Store the patch's RETURN: a class-driven wrap/unwrap (shadow-*/clip-path-*)
                         // swaps the slot's top-level element, and re-mounting a stale reference would
@@ -519,7 +519,7 @@ namespace Velvet
                         if (DetachedHost != null)
                         {
                             row = new DetachedRow();
-                            row.Note(under, vnode);
+                            row.Note(DetachedHost, under, vnode);
                         }
                         // A same-key type flip (CanPatch=false) is a replacement, not a patch — mirroring
                         // the general keyed diff path's create-before-dispose ordering.

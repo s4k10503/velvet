@@ -11,3 +11,8 @@
   the nearest Provider, where it read a farther `V.Provider` of the same context above that component. Where that
   component had changed the Provider's value while handing back the same element instance around the list, and no
   mounted component below read the Provider, the row read the value from before the change.
+- Once a `V.Provider` a `V.VirtualList`'s renderer returns around a row had changed value with no render walking
+  around that row — a component whose output is the list and nothing else is one such, a scroll that renders the row
+  is another — a component under the same `V.Mount` that reads a context was told of at most one later change to a
+  `V.Provider` it reads, so a `Memoize` component kept the value it read then. React tells a context's consumers of
+  every change.

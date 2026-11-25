@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Runtime.CompilerServices;
 using NUnit.Framework;
 using UnityEngine.UIElements;
 using Velvet.TestUtilities;
@@ -20,12 +22,16 @@ namespace Velvet.Tests
         private const int SlicedRows = 8;
         private const int LastSlicedRow = SlicedRows - 1;
         private const string ThrowerError = "Detached context read test throw";
+        private const int PortalOwners = 8;
+        private const int OwnerRenders = 6;
 
         private static readonly ComponentContext<string> s_theme = ComponentContext<string>.Create("default");
         private static readonly IReadOnlyList<string> s_oneItem = new[] { "row" };
         private static readonly Dictionary<int, string> s_rowReadings = new();
         private static readonly Dictionary<int, ComponentFiber> s_rowFibers = new();
         private static readonly MountOptions s_ignoringCaughtErrors = new() { OnCaughtError = (_, _) => { } };
+        private static readonly ComponentFiber[] s_portalOwners = new ComponentFiber[PortalOwners];
+        private static readonly StateUpdater<int>[] s_setOwnerTicks = new StateUpdater<int>[PortalOwners];
 
         private static string s_reading;
         private static string s_fallbackReading;
@@ -263,6 +269,71 @@ namespace Velvet.Tests
             Assert.That(s_portalReading, Is.EqualTo("dark"));
         }
 
+        [Test]
+        public void Given_ARendererPuttingAProviderAroundAMemoizedRow_When_TheHostChangesItsValueTwice_Then_TheRowReadsTheSecondChangeToo()
+        {
+            // Arrange — the host's whole output is the list, so no walk encloses the rows' patches.
+            using var mounted = V.Mount(_root, V.Component(HostProvidingAroundMemoizedRowsRender, key: "host"));
+            RenderRange(mounted);
+            s_setHostValue.Invoke("second");
+            mounted.FlushStateForTest();
+            s_reading = null;
+
+            // Act
+            s_setHostValue.Invoke("third");
+            mounted.FlushStateForTest();
+
+            // Assert — null where the row did not render again.
+            Assert.That(s_reading, Is.EqualTo("third"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base keeps no output tree of a component rendering a Portal past its renders.
+        // What this pins is that a Portal's record keeps none either: give each capture a strong reference to the tree it
+        // names, as captures held it before they named it weakly, and two of every five trees counted here stay alive.
+        [Test]
+        public void Given_ComponentsRenderingAPortalRenderedAgainSeveralTimes_When_ACollectRuns_Then_TheirEarlierOutputTreesAreCollected()
+        {
+            // Arrange
+            var mounts = new List<MountedTree>();
+            try
+            {
+                var earlier = MountAndRenderPortalOwnersAgain(mounts);
+
+                // Act
+                GC.Collect();
+                GC.WaitForPendingFinalizers();
+                GC.Collect();
+
+                // Assert — a stack scanned conservatively can keep a few alive, so the bound sits well under the two
+                // per owner a record holding its captures' trees keeps.
+                Assert.That(earlier.Count(tree => tree.IsAlive), Is.LessThan(PortalOwners));
+            }
+            finally
+            {
+                foreach (var mounted in mounts) mounted.Dispose();
+            }
+        }
+
+        // The tree each render of an owner replaces, the one its last render replaces left out, so what is counted is
+        // what outlives a further render. Out of line, so no frame of the case's own holds one.
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static List<WeakReference> MountAndRenderPortalOwnersAgain(List<MountedTree> mounts)
+        {
+            var earlier = new List<WeakReference>();
+            for (var owner = 0; owner < PortalOwners; owner++)
+            {
+                var mounted = V.Mount(new VisualElement(), V.Component(PortalOwnerRender, new OwnerProps(owner), key: "owner"));
+                mounts.Add(mounted);
+                for (var render = 1; render <= OwnerRenders; render++)
+                {
+                    if (render < OwnerRenders) earlier.Add(new WeakReference(s_portalOwners[owner].PreviousTree));
+                    s_setOwnerTicks[owner].Invoke(render);
+                    mounted.FlushStateForTest();
+                }
+            }
+            return earlier;
+        }
+
         private void RenderRange(MountedTree mounted)
             => mounted.Root.Reconciler.Context.VirtualListControllers[_root.Q<ScrollView>()]
                 .UpdateVisibleRange(scrollY: 0f, viewportHeight: 200f);
@@ -270,6 +341,41 @@ namespace Velvet.Tests
         #region Components
 
         private sealed record SlicedRowProps(int Index, int Generation);
+
+        private sealed record OwnerProps(int Index);
+
+        // A new output tree each render, which reaches the Portal and so captures under it.
+        [Component(Compiler = false)]
+        private static VNode PortalOwnerRender(OwnerProps props)
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_portalOwners[props.Index] = FiberAmbientStack.Current;
+            s_setOwnerTicks[props.Index] = setTick;
+            return V.Fragment(children: new VNode[]
+            {
+                V.Label(text: tick.ToString()),
+                V.Portal(s_portalTarget, new VNode[] { V.Label(text: "in the portal") }),
+            });
+        }
+
+        [Component(Compiler = false)]
+        private static VNode HostProvidingAroundMemoizedRowsRender()
+        {
+            var (value, setValue) = Hooks.UseState("first");
+            s_setHostValue = setValue;
+            return RowList(item => V.Provider(s_theme, value, new VNode[]
+            {
+                V.Component(MemoizedReaderRender, key: item),
+            }));
+        }
+
+        // Bails on its equal props, so only the Provider's change propagating to it renders it again.
+        [Component(Compiler = false, Memoize = true)]
+        private static VNode MemoizedReaderRender()
+        {
+            s_reading = Hooks.UseContext(s_theme);
+            return V.Label(text: s_reading);
+        }
 
         private static VNode RowList(Func<string, VNode> renderer)
             => V.VirtualList(s_oneItem, item => item, itemHeight: 50f, renderer: renderer, overscan: 0);
