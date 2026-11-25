@@ -208,6 +208,27 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AHostRenderedInlineWhoseCommittedRenderDidNotReachTheList_When_ALaterOneChangesTheValueAroundItAndAborts_Then_ARowRenderingAloneReadsTheCommittedValue()
+        {
+            // Arrange — the host's first render is expanded in its parent's walk; its later ones are its own.
+            using var mounted = V.Mount(_root, V.Component(ParentOfAbortingHostRender, key: "parent"),
+                s_ignoringCaughtErrors);
+            RenderRange(mounted);
+            s_setTurn.Invoke(new HostTurn("first", Aborts: false, Tick: 1));
+            mounted.FlushStateForTest();
+            s_setTurn.Invoke(new HostTurn("second", Aborts: true, Tick: 1));
+            mounted.FlushStateForTest();
+            s_reading = null;
+
+            // Act
+            s_setReader.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert — null where the pass did not abort or the host kept a tree other than the one from before it.
+            Assert.That(HostKeptTheValue("first") ? s_reading : null, Is.EqualTo("first"));
+        }
+
+        [Test]
         public void Given_AHostRenderThatSuspendsAfterItPatchedTheList_When_AScrollMountsARow_Then_TheRowReadsTheValueTheCommittedRenderPutAroundTheList()
         {
             // Arrange — the Suspense above the host keeps the output the host committed, hidden.
@@ -487,6 +508,10 @@ namespace Velvet.Tests
                 V.Label(text: turn.Tick.ToString()),
             });
         }
+
+        [Component(Compiler = false)]
+        private static VNode ParentOfAbortingHostRender()
+            => V.Div(name: "parent", children: new VNode[] { V.Component(AbortingHostRender, key: "host") });
 
         [Component(Compiler = false, IsErrorBoundary = true)]
         private static VNode RefDroppingBoundary(bool aborts)
