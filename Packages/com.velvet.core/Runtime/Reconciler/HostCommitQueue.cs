@@ -55,16 +55,15 @@ namespace Velvet
         }
 
         // The owner a caller names, else the one an enclosing removal names, else the component whose walk is on the
-        // stack, which the flat path's rows all belong to (ChildReconciler names none). A fiber whose own unmount removes
-        // its rows (ReconcilePass.UnmountingFiber) goes with them, so its parent stands for it, read here while the fiber
-        // still names it; the root MountedTree.Dispose unmounts stands for itself, and holds what is thrown for once the
-        // unmount is done (CommitErrors.Capture).
+        // stack, which the flat path's rows all belong to (ChildReconciler names none). Where a fiber's own unmount removes
+        // its rows (ReconcilePass.UnmountingFiber), everything it holds goes with it, so its parent stands for whichever
+        // was named, read here while the fiber still names it. The root MountedTree.Dispose unmounts has none, which
+        // leaves what its rows throw to ChildListWrites.FileUnderTheRun.
         internal ComponentFiber? OwnerOfARemoval(ComponentFiber? owner)
         {
             var pass = _ctx.Pass;
-            var named = owner ?? pass.RemovalOwner ?? _ctx.FiberStack.Current;
-            var unmounting = pass.UnmountingFiber;
-            return unmounting is { IsMountRoot: false } && ReferenceEquals(named, unmounting) ? unmounting.Parent : named;
+            if (pass.UnmountingFiber is { } unmounting) return unmounting.Parent;
+            return owner ?? pass.RemovalOwner ?? _ctx.FiberStack.Current;
         }
 
         // Re-places the non-LIS elements so the slot range [slotStart, slotStart + count) ends up in
