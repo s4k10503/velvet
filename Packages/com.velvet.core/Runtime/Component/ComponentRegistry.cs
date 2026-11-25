@@ -530,10 +530,6 @@ namespace Velvet
         internal InlineTenancy? TenancyOf(VisualElement container)
             => _tenancies.TryGetValue(container, out var tenancy) ? tenancy : null;
 
-        // Null once a disposal has taken the fiber off element, so a list row whose component is gone names none.
-        internal ComponentFiber? WrapperFiberOn(VisualElement element)
-            => _wrapperIndex.TryGetValue(element, out var fiber) && ReferenceEquals(fiber.MountPoint, element) ? fiber : null;
-
         // Inline-mounted lookup by tree-position key, without the create half and without re-rendering
         // anything: the old-side walk in GeneralPathReconciler reads the previously rendered
         // ComponentFiber.PreviousTree through it, and FiberContextSpine matches a spine child by it.

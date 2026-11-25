@@ -11,9 +11,12 @@
   `refCallback:` cleanup threw as its element was removed went above the boundary that rendered the element wherever
   that boundary had caught: in its swap, or as it took down its own fallback to mount it again. Each now goes to the
   nearest boundary at or above the component whose output held the element, a list row's being the component that
-  rendered the list or the row's own component, passing over the components removed with it, as React captures what a
-  deletion throws from the nearest mounted ancestor of the deleted child; a boundary whose swap took its children
-  down reports it after the error it caught and keeps showing its fallback, and where that fallback then throws or
-  cannot be created, the boundary that replaces it reports it after the fallback's error. Where no boundary is above,
-  the same exception thrown as the root renders nothing for an uncaught error was logged with `Debug.LogException`
-  and never reached `MountOptions.OnUncaughtError`; it now reaches it after the error the root rendered nothing for.
+  rendered the list, passing over the components removed with it, as React captures what a deletion throws from the
+  nearest mounted ancestor of the deleted child; a boundary whose swap took its children down reports it after the
+  error it caught and keeps showing its fallback. Where the swap was for an error a `UseFrame` callback or a child's
+  own render threw, or one the boundary's own render caught, and that fallback then throws or cannot be created, the
+  boundary that replaces it reports it after the fallback's error, and an exception the effect cleanup of a
+  `V.VirtualList` component row threw as the swap took the row down, which was dropped, is reported there as well.
+  Where no boundary is above, the same exception thrown as the root renders nothing for an uncaught error was logged
+  with `Debug.LogException` and never reached `MountOptions.OnUncaughtError`; it now reaches it after the error the
+  root rendered nothing for.

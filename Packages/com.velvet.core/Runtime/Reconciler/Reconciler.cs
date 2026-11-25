@@ -719,12 +719,6 @@ namespace Velvet
 
         private VisualElement SlotOccupantOf(VisualElement row) => FiberZLayerCoordinator.PlaceholderOf(_ctx, row) ?? row;
 
-        void IReconcilerBridge.RemoveRowForController(VisualElement container, VisualElement slotRow, ComponentFiber? host)
-        {
-            using var removing = new ChildListWrites.RemovalOwnerScope(_ctx.ComponentRegistry.WrapperFiberOn(slotRow) ?? host);
-            ChildListWrites.Remove(container, slotRow);
-        }
-
         FiberBatchScheduler IReconcilerBridge.SchedulerForController => _ctx.BatchScheduler;
 
         void IReconcilerBridge.HoldRowLayoutEffects()

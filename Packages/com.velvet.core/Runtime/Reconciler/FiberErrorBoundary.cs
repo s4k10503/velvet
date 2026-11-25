@@ -182,6 +182,8 @@ namespace Velvet
         // reported once it has rendered. Where the fallback's own content failed, the original error goes on.
         internal static void ShowCaughtFallback(ComponentFiber fiber, BoundaryCaughtSignal caught)
         {
+            var ctx = fiber.Reconciler!.Context;
+            var takedownFrom = CapturesSoFar(ctx);
             fiber.IsShowingFallback = true;
             fiber.FallbackContentFailed = false;
             bool shown;
@@ -195,9 +197,15 @@ namespace Velvet
             }
             // A farther boundary that took the failed fallback's error has replaced this one, as where
             // ComponentBoundarySearch.PropagateFrom stops.
-            if (fiber.IsDisposed || fiber.IsBeingDeleted) return;
-            if (shown) RecordCatch(fiber.Reconciler!.Context, fiber, caught.Error, caught.Info);
-            else PassOnTheCaughtError(fiber, caught);
+            var replaced = fiber.IsDisposed || fiber.IsBeingDeleted;
+            if (shown && !replaced)
+            {
+                RecordCatch(ctx, fiber, caught.Error, caught.Info);
+                return;
+            }
+            var captured = TakeTheSwapsCaptures(ctx, fiber, takedownFrom);
+            if (!replaced) PassOnTheCaughtError(fiber, caught);
+            CaptureAgain(fiber, captured);
         }
 
         internal static void PassOnTheCaughtError(ComponentFiber boundary, BoundaryCaughtSignal caught)
@@ -279,7 +287,7 @@ namespace Velvet
             // Taken before the fallback is shown, which detaches what the failed output created, so that the
             // completions the fallback's own render queues stay out of it as well.
             var failedCompletions = ctx.CompletionsBelow(fiber);
-            var capturedFrom = ctx.NextCaptureSequence;
+            var takedownFrom = CapturesSoFar(ctx);
             var pushedOnto = FiberRenderer.PushFiber(fiber);
             fiber.IsShowingFallback = true;
             fiber.FallbackContentFailed = false;
@@ -326,11 +334,10 @@ namespace Velvet
                 FiberEffects.CommitStrandedLayoutWork(ctx);
                 return true;
             }
-            DropTheSwapsErrors(fiber);
-            var failure = TakeFallbackReconcileFailure(fiber);
             // Taken off the boundary ahead of the propagation below, whose replacement of it drops what it holds
             // (CommitErrors.DropUnmounted).
-            var captured = TakeTheSwapsCaptures(fiber, capturedFrom);
+            var captured = TakeTheSwapsCaptures(ctx, fiber, takedownFrom);
+            var failure = TakeFallbackReconcileFailure(fiber);
             if (failure == null)
             {
                 CaptureAgain(fiber, captured);
@@ -347,17 +354,51 @@ namespace Velvet
             return true;
         }
 
-        // A swap no wave owns applies its takedown before the fallback renders, so what the takedown throws is captured on
-        // the boundary at once (CaptureAgain owns why it is taken back where the swap fails).
-        private static List<Exception>? TakeTheSwapsCaptures(ComponentFiber boundary, long capturedFrom)
+        // Where a takedown starts among what is captured: the sequence the next capture the boundaries take is given
+        // (CommitErrors.Take), and how many a wave holds (ReconcilePass.HeldCaptures).
+        private static (long Sequence, int Held) CapturesSoFar(ReconcilerContext ctx)
+            => (ctx.NextCaptureSequence, ctx.Pass.HeldCaptures.Count);
+
+        // What the boundary took while showing its fallback (TakeDuringTheSwap), then what was captured on it since from,
+        // held by a wave or taken (CommitErrors.Capture). A swap no wave owns applies its takedown before the fallback
+        // renders, and a deletion that cannot wait for the writes to apply runs where it is decided, so what either
+        // throws reaches the boundary before the fallback has failed (CaptureAgain owns why it is taken back).
+        private static List<Exception>? TakeTheSwapsCaptures(
+            ReconcilerContext ctx, ComponentFiber boundary, (long Sequence, int Held) from)
         {
-            var captures = boundary.PendingCaptures;
-            if (captures == null) return null;
             List<Exception>? taken = null;
-            for (var i = captures.Count - 1; i >= 0; i--)
+            var during = ctx.ErrorsDuringFallbackSwap;
+            for (var i = 0; i < during.Count;)
             {
-                if (captures[i].Sequence < capturedFrom) continue;
-                (taken ??= new List<Exception>()).Insert(0, captures[i].Error);
+                if (!ReferenceEquals(during[i].Boundary, boundary))
+                {
+                    i++;
+                    continue;
+                }
+                (taken ??= new List<Exception>()).Add(during[i].Error);
+                during.RemoveAt(i);
+            }
+            var held = ctx.Pass.HeldCaptures;
+            for (var i = from.Held; i < held.Count;)
+            {
+                if (!ReferenceEquals(held[i].Boundary, boundary))
+                {
+                    i++;
+                    continue;
+                }
+                (taken ??= new List<Exception>()).Add(held[i].Error);
+                held.RemoveAt(i);
+            }
+            var captures = boundary.PendingCaptures;
+            if (captures == null) return taken;
+            for (var i = 0; i < captures.Count;)
+            {
+                if (captures[i].Sequence < from.Sequence)
+                {
+                    i++;
+                    continue;
+                }
+                (taken ??= new List<Exception>()).Add(captures[i].Error);
                 captures.RemoveAt(i);
             }
             return taken;

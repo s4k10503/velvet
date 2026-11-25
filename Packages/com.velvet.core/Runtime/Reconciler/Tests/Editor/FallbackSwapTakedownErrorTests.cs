@@ -20,12 +20,16 @@ namespace Velvet.Tests
     /// that capture taken in its parent's walk, and a <c>UseFrame</c> callback's error, and where, with no boundary above,
     /// the root renders nothing for a child's render error and reports both as uncaught; the <c>z-*</c> and ref cleanup
     /// cases follow the boundary's own render, and the <c>V.WorldSpace</c> cases, one inside a <c>z-*</c> element, its
-    /// parent's walk. A boundary the swap takes down with the element is passed over. Where a <c>UseFrame</c> swap's
-    /// fallback throws, the boundary above that replaces the swapping one takes what the takedown threw. A boundary
-    /// between the component whose update removed the element and the one that rendered it takes the error, from the
-    /// flat path and the general walk alike, and so does a boundary taking down its own fallback, and one above the
-    /// component rendering a <c>V.VirtualList</c> whose row an update drops or a scroll takes out. A removal a later drain
-    /// makes under another boundary still goes to that one.
+    /// parent's walk. A boundary the swap takes down with the element is passed over. Where the swapping boundary's
+    /// fallback throws, or cannot be created, the boundary above that replaces it takes what the takedown threw: for a
+    /// <c>UseFrame</c> callback's error, an element's detach error either way, and a <c>V.VirtualList</c> component
+    /// row's effect cleanup error where the fallback throws; for a child's own render error and for one the swapping
+    /// boundary's own render caught, such a row's ref cleanup error where the fallback throws. A boundary between the
+    /// component whose update removed the element and the one that rendered it takes the error, from the flat path and
+    /// the general walk alike, and so does a boundary taking down its own fallback, and one above the component rendering
+    /// a <c>V.VirtualList</c> whose row an update drops, an update empties the list of, a scroll takes out, or a scroll's
+    /// range that fails to render clears; what a row a scroll keeps throws as the list puts it back is thrown out of the
+    /// scroll. A removal a later drain makes under another boundary still goes to that one.
     /// </summary>
     /// <remarks>
     /// The tree mounts on a real panel, which is what runs a detach callback.
@@ -594,7 +598,7 @@ namespace Velvet.Tests
         {
             Hooks.UseFallback(_ => V.Label(text: "fallback"));
             return V.Fragment(
-                V.Div(className: "absolute z-10", key: "stacked", children: new VNode[]
+                V.Div(name: "stacked", className: "absolute z-10", key: "stacked", children: new VNode[]
                 {
                     V.WorldSpace(Vector3.zero, key: "ws",
                         children: new VNode[] { V.Custom<DetachThrower>(name: "X", key: "x") }),
@@ -615,14 +619,17 @@ namespace Velvet.Tests
             // Arrange
             var log = new EventLog();
             using var mounted = Mount(log, V.Component(RendersTheStackedWorldSpaceBoundaryInItsWalk, key: "parent"));
+            var relocated = _host.Root.Q<VisualElement>("stacked") is { } stacked
+                && FiberZLayerCoordinator.IsRelocatedReal(stacked);
             log.Clear();
 
             // Act
             log.Setter<bool>("Throws").Invoke(true);
             RecordingWhatItThrows(mounted.GetSchedulerForTest().DrainImmediateForTest, log.Add);
 
-            // Assert
-            Assert.That(log.ToString(), Is.EqualTo("caught:B:render:Child caught:B:detach:X"));
+            // Assert — the case is about an element relocated for its z-*, so one left in place reads as a sentinel
+            Assert.That(relocated ? log.ToString() : "the stacked element was not relocated",
+                Is.EqualTo("caught:B:render:Child caught:B:detach:X"));
         }
 
         // A boundary among the children the swap takes down, which goes with them.
@@ -746,6 +753,8 @@ namespace Velvet.Tests
 
         private sealed record Items(string[] Names);
 
+        // R1 alone throws, so which rows a range keeps decides whether a case has the thrower leave or stay:
+        // RebuildVisibleContainer takes out and puts back every row it keeps as well as removing the ones that leave.
         private static VNode ARowFor(string item)
             => item == "R1" ? V.Custom<DetachThrower>(name: item, key: item) : V.Div(name: item, key: item);
 
@@ -822,6 +831,223 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(log.ToString(), Is.EqualTo("caught:C:detach:R1"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base throws a kept row's detach error out of the range it renders,
+        // and the owner a row leaving the range is removed for must not reach a row the range keeps.
+        [Test]
+        public void Given_ABoundaryAboveTheComponentRenderingAList_When_AScrollKeepsARowThatThrowsAsItDetaches_Then_TheErrorLeavesTheScroll()
+        {
+            // Arrange
+            var log = new EventLog();
+            using var mounted = Mount(log, V.Component(HoldsAListRendererOfThreeRows, key: "c"));
+            ShowTheListsRows(mounted, scrollY: 0f, rows: 2);
+            mounted.DrainForTest();
+            log.Clear();
+
+            // Act
+            RecordingWhatItThrows(() => ShowTheListsRows(mounted, scrollY: 0f, rows: 3), log.Add);
+            RecordingWhatItThrows(mounted.GetSchedulerForTest().DrainImmediateForTest, log.Add);
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("threw:detach:R1"));
+        }
+
+        [Component]
+        private static VNode EmptiesTheListOnceHidden()
+        {
+            var (shown, _) = EventLog.UseState("Shown", true);
+            return V.Component(HoldsAListRendererOf, new Items(shown ? new[] { "R1", "R2" } : Array.Empty<string>()), key: "c");
+        }
+
+        [Test]
+        public void Given_ABoundaryBetweenTheUpdatedComponentAndTheComponentRenderingAList_When_TheUpdateEmptiesTheListOfARowThatThrowsAsItDetaches_Then_TheBoundaryReportsIt()
+        {
+            // Arrange
+            var log = new EventLog();
+            using var mounted = Mount(log, V.Component(EmptiesTheListOnceHidden, key: "parent"));
+            GiveTheListAViewport(mounted, rows: 2);
+            ShowTheListsRows(mounted, scrollY: 0f, rows: 2);
+            mounted.DrainForTest();
+            var shown = _mountPoint.Q<DetachThrower>("R1") != null;
+            log.Clear();
+
+            // Act
+            log.Setter<bool>("Shown").Invoke(false);
+            RecordingWhatItThrows(mounted.GetSchedulerForTest().DrainImmediateForTest, log.Add);
+
+            // Assert — where the list never showed the row there was nothing to empty it of, so that reads as a sentinel
+            Assert.That(shown ? log.ToString() : "R1 was never shown", Is.EqualTo("caught:C:detach:R1"));
+        }
+
+        private static VNode ARowOrAThrowFor(string item)
+            => item == "Unrenderable" ? throw new InvalidOperationException("render:" + item) : ARowFor(item);
+
+        [Component]
+        private static VNode RendersAListOfARowAndOneItCannotRender()
+            => V.VirtualList(items: new[] { "R1", "Unrenderable" }, keySelector: item => item, itemHeight: 50f,
+                renderer: ARowOrAThrowFor, overscan: 0);
+
+        [Component(IsErrorBoundary = true, DisplayName = "C")]
+        private static VNode HoldsAListRendererOfARowAndOneItCannotRender()
+        {
+            Hooks.UseFallback(_ => V.Label(text: "fallback-c"));
+            return V.Component(RendersAListOfARowAndOneItCannotRender, key: "list");
+        }
+
+        [Test]
+        public void Given_ABoundaryAboveTheComponentRenderingAList_When_AScrollsRangeFailsToRenderAndClearsARowThatThrowsAsItDetaches_Then_TheBoundaryReportsTheDetach()
+        {
+            // Arrange
+            var log = new EventLog();
+            using var mounted = Mount(log, V.Component(HoldsAListRendererOfARowAndOneItCannotRender, key: "c"));
+            ShowTheListsRows(mounted, scrollY: 0f, rows: 1);
+            mounted.DrainForTest();
+            log.Clear();
+
+            // Act — what the renderer throws leaves the scroll (PlaceRows), and is not what this case reads
+            RecordingWhatItThrows(() => ShowTheListsRows(mounted, scrollY: 50f, rows: 1),
+                thrown => { if (thrown != "threw:render:Unrenderable") log.Add(thrown); });
+            RecordingWhatItThrows(mounted.GetSchedulerForTest().DrainImmediateForTest, log.Add);
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("caught:C:detach:R1"));
+        }
+
+        private static readonly string[] s_oneRow = { "W" };
+
+        [Component(Compiler = false)]
+        private static VNode ARowWhoseEffectCleanupThrows()
+        {
+            Hooks.UseLayoutEffect((Func<Action>)(() => () =>
+            {
+                if (s_armed) throw new InvalidOperationException("cleanup:W");
+            }), Array.Empty<object>());
+            return V.Div(name: "W");
+        }
+
+        private static readonly Func<VisualElement, Action> s_rowRefCleanupThrows = _ => () =>
+        {
+            if (s_armed) throw new InvalidOperationException("ref:W");
+        };
+
+        [Component(Compiler = false)]
+        private static VNode ARowWhoseRefCleanupThrows() => V.Div(name: "W", refCallback: s_rowRefCleanupThrows);
+
+        [Component(IsErrorBoundary = true, DisplayName = "B")]
+        private static VNode FallsBackToAThrowerOverAFrameThrowerBesideAListRow()
+        {
+            Hooks.UseFallback(_ => V.Component(ThrowsAsTheFallback, key: "fallback"));
+            return V.Fragment(
+                V.VirtualList(items: s_oneRow, keySelector: item => item, itemHeight: 50f,
+                    renderer: _ => V.Component(ARowWhoseEffectCleanupThrows, key: "w"), overscan: 0, key: "list"),
+                V.Component(ThrowsOnAFrame, key: "child"));
+        }
+
+        [Component(IsErrorBoundary = true, DisplayName = "A")]
+        private static VNode CatchesForABoundaryWhoseFallbackThrowsBesideAListRow()
+        {
+            Hooks.UseFallback(_ => V.Label(text: "fallback-a"));
+            return V.Component(FallsBackToAThrowerOverAFrameThrowerBesideAListRow, key: "b");
+        }
+
+        [Test]
+        public void Given_ABoundaryWhoseFallbackThrowsBelowAnotherBoundary_When_ItsSwapForAFrameCallbacksErrorTakesDownAListRowWhoseEffectCleanupThrows_Then_TheBoundaryAboveReportsBothErrors()
+        {
+            // Arrange — the frame callback takes its baseline on the panel's first pass, which throws nothing
+            var log = new EventLog();
+            UseFrameFakeClockHost.Reset();
+            EditorPanelTestHelpers.SetPanelTimeFunction(_host.Panel, UseFrameFakeClockHost.ReadFakeClock);
+            using var mounted = Mount(log, V.Component(CatchesForABoundaryWhoseFallbackThrowsBesideAListRow, key: "a"));
+            ShowTheListsRows(mounted, scrollY: 0f, rows: 1);
+            mounted.FlushEffectsForTest();
+            EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
+            var shown = _mountPoint.Q<VisualElement>("W") != null;
+            log.Clear();
+
+            // Act
+            UseFrameFakeClockHost.Ms += 16;
+            RecordingWhatItThrows(() => EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel), log.Add);
+            RecordingWhatItThrows(mounted.GetSchedulerForTest().DrainImmediateForTest, log.Add);
+
+            // Assert — where the list never showed the row the swap had none to take down, so that reads as a sentinel
+            Assert.That(shown ? log.ToString() : "W was never shown",
+                Is.EqualTo("caught:A:render:Fallback caught:A:cleanup:W"));
+        }
+
+        [Component(IsErrorBoundary = true, DisplayName = "B")]
+        private static VNode FallsBackToAThrowerOverAnUpdatingChildBesideAListRow()
+        {
+            Hooks.UseFallback(_ => V.Component(ThrowsAsTheFallback, key: "fallback"));
+            return V.Fragment(
+                V.VirtualList(items: s_oneRow, keySelector: item => item, itemHeight: 50f,
+                    renderer: _ => V.Component(ARowWhoseRefCleanupThrows, key: "w"), overscan: 0, key: "list"),
+                V.Component(ThrowsOnItsOwnUpdate, key: "child"));
+        }
+
+        [Component(IsErrorBoundary = true, DisplayName = "A")]
+        private static VNode CatchesForABoundaryWhoseFallbackThrowsOverAnUpdatingChild()
+        {
+            Hooks.UseFallback(_ => V.Label(text: "fallback-a"));
+            return V.Component(FallsBackToAThrowerOverAnUpdatingChildBesideAListRow, key: "b");
+        }
+
+        [Test]
+        public void Given_ABoundaryWhoseFallbackThrowsBelowAnotherBoundary_When_ItsSwapForAChildsOwnRenderErrorTakesDownAListRowWhoseRefCleanupThrows_Then_TheBoundaryAboveReportsBothErrors()
+        {
+            // Arrange
+            var log = new EventLog();
+            using var mounted = Mount(log, V.Component(CatchesForABoundaryWhoseFallbackThrowsOverAnUpdatingChild, key: "a"));
+            ShowTheListsRows(mounted, scrollY: 0f, rows: 1);
+            mounted.DrainForTest();
+            var shown = _mountPoint.Q<VisualElement>("W") != null;
+            log.Clear();
+
+            // Act
+            log.Setter<bool>("Throws").Invoke(true);
+            RecordingWhatItThrows(mounted.GetSchedulerForTest().DrainImmediateForTest, log.Add);
+
+            // Assert — where the list never showed the row the swap had none to take down, so that reads as a sentinel
+            Assert.That(shown ? log.ToString() : "W was never shown",
+                Is.EqualTo("caught:A:render:Fallback caught:A:ref:W"));
+        }
+
+        [Component(IsErrorBoundary = true, DisplayName = "B")]
+        private static VNode CatchesOverAListRowWithAFallbackThatThrows()
+        {
+            var (throws, _) = EventLog.UseState("Throws", false);
+            Hooks.UseFallback(_ => V.Component(ThrowsAsTheFallback, key: "fallback"));
+            return V.Fragment(
+                V.VirtualList(items: s_oneRow, keySelector: item => item, itemHeight: 50f,
+                    renderer: _ => V.Component(ARowWhoseRefCleanupThrows, key: "w"), overscan: 0, key: "list"),
+                V.Component(ThrowsInRenderWhen, throws, key: "child"));
+        }
+
+        [Component(IsErrorBoundary = true, DisplayName = "A")]
+        private static VNode CatchesForABoundaryWhoseOwnRenderCatchesOverAListRow()
+        {
+            Hooks.UseFallback(_ => V.Label(text: "fallback-a"));
+            return V.Component(CatchesOverAListRowWithAFallbackThatThrows, key: "b");
+        }
+
+        [Test]
+        public void Given_ABoundaryWhoseFallbackThrowsBelowAnotherBoundary_When_ItsOwnRenderCatchesAChildsRenderErrorAndTakesDownAListRowWhoseRefCleanupThrows_Then_TheBoundaryAboveReportsBothErrors()
+        {
+            // Arrange
+            var log = new EventLog();
+            using var mounted = Mount(log, V.Component(CatchesForABoundaryWhoseOwnRenderCatchesOverAListRow, key: "a"));
+            ShowTheListsRows(mounted, scrollY: 0f, rows: 1);
+            mounted.DrainForTest();
+            var shown = _mountPoint.Q<VisualElement>("W") != null;
+            log.Clear();
+
+            // Act
+            log.Setter<bool>("Throws").Invoke(true);
+            RecordingWhatItThrows(mounted.GetSchedulerForTest().DrainImmediateForTest, log.Add);
+
+            // Assert — where the list never showed the row the swap had none to take down, so that reads as a sentinel
+            Assert.That(shown ? log.ToString() : "W was never shown",
+                Is.EqualTo("caught:A:render:Fallback caught:A:ref:W"));
         }
     }
 }
