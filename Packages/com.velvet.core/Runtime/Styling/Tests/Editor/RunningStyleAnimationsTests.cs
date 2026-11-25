@@ -25,7 +25,13 @@ namespace Velvet.Tests
         private int _thrown;
 
         [TearDown]
-        public void TearDown() => _replaced?.SetValue(null, _bound);
+        public void TearDown()
+        {
+            _replaced?.SetValue(null, _bound);
+            _replaced = null;
+            _bound = null;
+            _thrown = 0;
+        }
 
         private static TRead Reader<TRead>(string name) where TRead : Delegate
             => s_type?.GetMethod(name, Hidden) is { } method ? (TRead)Delegate.CreateDelegate(typeof(TRead), method) : null;
