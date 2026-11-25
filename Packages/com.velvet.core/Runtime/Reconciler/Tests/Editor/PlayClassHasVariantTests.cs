@@ -54,14 +54,19 @@ namespace Velvet.Tests
         [Test]
         public void Given_AHasClassElementNamingTheBoxClipAboveAMotionTextField_When_ItsMountEnterSwapsInATextOverflowUtility_Then_ItMatches()
         {
-            // Arrange — a classic enter, whose swap writes its to-class and whose end takes it away.
+            // Arrange — the classic enter AnimatePresence plays for a child it mounts, whose swap writes its to-class
+            // and whose end takes it away.
             _reconciler.Reconcile(Root, Array.Empty<VNode>(), new VNode[]
             {
                 V.Div(name: "parent", className: "has-[.overflow-hidden]:bg-mark", children: new VNode[]
                 {
-                    V.Motion(name: "m", elementType: typeof(TextField), transition: new StyleTransitionConfig
+                    V.AnimatePresence(children: new VNode[]
                     {
-                        DurationSec = DurationSec, EnterFromClass = "opacity-0", EnterToClass = "text-ellipsis",
+                        V.Motion(key: "m", name: "m", elementType: typeof(TextField),
+                            transition: new StyleTransitionConfig
+                            {
+                                DurationSec = DurationSec, EnterFromClass = "opacity-0", EnterToClass = "text-ellipsis",
+                            }),
                     }),
                 }),
             });

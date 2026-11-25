@@ -3811,6 +3811,13 @@ namespace Velvet
             {
                 return;
             }
+            // A row of an anchor stands among its list's rows, which the anchor's own pass reads; its place in the
+            // anchor alone is not where it stands.
+            if (logicalParent!.userData is ItemMountPlace)
+            {
+                ApplyStructuralVariants(logicalParent);
+                return;
+            }
             // Exclude the reconciler-invisible children (LogicalChildSlots.IsInvisible) from the sibling count:
             // none is part of the logical child list a first:/last:/nth match sees.
             EvaluateStructural(_ctx, element, LogicalChildSlots.ToLogical(logicalParent!, logicalIndex),
