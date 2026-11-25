@@ -810,7 +810,7 @@ namespace Velvet
             {
                 // Under the spine, as FiberContextSpine pushes a stamp's snapshot under its edges.
                 scope.PushedKeys = new List<object>();
-                DetachedHostCapture.PushSnapshot(stack, resolved.Tops, scope.PushedKeys);
+                if (resolved.Tops != null) DetachedHostCapture.PushSnapshot(stack, resolved.Tops, scope.PushedKeys);
             }
             if (outsidePass)
             {

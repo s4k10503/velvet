@@ -29,7 +29,19 @@ namespace Velvet
         // one taken by a render that was not committed is passed over.
         private DetachedHostCapture? _committed;
 
-        internal DetachedHost(ComponentFiber? owner) => Owner = owner;
+        // Tops is read only where a list's rows render outside a pass (Reconciler.BeginDetachedItemScope), so a Portal's
+        // capture takes none.
+        private readonly bool _takesTops;
+
+        private static readonly List<KeyValuePair<object, object>> s_pushed = new();
+        private static readonly Predicate<KeyValuePair<object, object>> s_travelsOnlyInStamps =
+            MotionContext.TravelsOnlyInStamps;
+
+        internal DetachedHost(ComponentFiber? owner, bool takesTops)
+        {
+            Owner = owner;
+            _takesTops = takesTops;
+        }
 
         // FiberStack.Current where the walk reaches the node: the fiber the detached children parent under while it is
         // mounted.
@@ -39,7 +51,7 @@ namespace Velvet
         {
             if (!s_ofPlaceholder.TryGetValue(placeholder, out var host))
             {
-                host = new DetachedHost(owner);
+                host = new DetachedHost(owner, takesTops: false);
                 s_ofPlaceholder.Add(placeholder, host);
             }
             return host;
@@ -73,17 +85,21 @@ namespace Velvet
         {
             var stack = ctx.ComponentContextStack;
             var frame = stack.Frame;
-            var pushed = new List<KeyValuePair<object, object>>();
-            stack.CollectPushedInFrame(pushed);
-            pushed.RemoveAll(MotionContext.TravelsOnlyInStamps);
             // A fallback swap reconciles the boundary's rows with no CurrentFiberTree of its own.
+            var tree = frame.EnclosingCapture == null ? Owner?.ReconcilingTree ?? ctx.CurrentFiberTree : null;
+            // A new capture each render rather than the latest one renamed where it holds the same: a row's node is noted
+            // against the capture its list's render took (DetachedRow), and a capture taken inside a Portal's children
+            // is committed while the Portal resolves to the one it was taken under, so a render that is not committed
+            // would pass its rows' nodes and those captures off as the committed render's.
+            s_pushed.Clear();
+            stack.CollectPushedInFrame(s_pushed);
+            s_pushed.RemoveAll(s_travelsOnlyInStamps);
             var capture = new DetachedHostCapture(
-                this,
-                frame.EnclosingCapture == null ? Owner?.ReconcilingTree ?? ctx.CurrentFiberTree : null,
-                frame.EnclosingCapture,
-                pushed.ToArray(),
-                MotionContext.OutlivingPass(stack.SnapshotTops())!,
+                this, tree, frame.EnclosingCapture,
+                s_pushed.Count == 0 ? Array.Empty<KeyValuePair<object, object>>() : s_pushed.ToArray(),
+                _takesTops ? MotionContext.OutlivingPass(stack.SnapshotTops()) : null,
                 children);
+            s_pushed.Clear();
             for (var i = _captures.Count - 1; i >= 0; i--)
             {
                 if (capture.SameRenderAs(_captures[i])) _captures.RemoveAt(i);
@@ -164,13 +180,12 @@ namespace Velvet
         // Each context's entries in the order they were pushed.
         internal readonly KeyValuePair<object, object>[] Local;
         // The top value of every context where the capture was taken, less the orchestration, which a range rendered
-        // under this capture pushes under everything else, as FiberContextSpine pushes a stamp's.
-        internal readonly List<KeyValuePair<object, object>> Tops;
-
+        // under this capture pushes under everything else, as FiberContextSpine pushes a stamp's. Null for a Portal's.
+        internal readonly List<KeyValuePair<object, object>>? Tops;
 
         internal DetachedHostCapture(
             DetachedHost host, VNode?[]? tree, DetachedHostCapture? enclosingCapture,
-            KeyValuePair<object, object>[] local, List<KeyValuePair<object, object>> tops, VNode?[]? children)
+            KeyValuePair<object, object>[] local, List<KeyValuePair<object, object>>? tops, VNode?[]? children)
         {
             Host = host;
             _tree = tree != null ? new WeakReference<VNode?[]>(tree) : null;

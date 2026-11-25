@@ -610,7 +610,7 @@ namespace Velvet
             // Capture the host fiber rendering this list and what the live cursor holds around it (correct
             // mid-reconcile, in this commit walk) so the controller can mount items under the host's shared
             // context — the rows a scroll renders mount outside any reconcile pass, where the cursor is empty.
-            var detachedHost = new DetachedHost(_ctx.FiberStack.Current);
+            var detachedHost = new DetachedHost(_ctx.FiberStack.Current, takesTops: true);
             detachedHost.Capture(_ctx, null);
             var controller = new FiberVirtualListController(
                 scrollView, virtualListNode, bridge, _ctx.FiberStack.Current, detachedHost,
